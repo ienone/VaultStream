@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🎉 BetterShare MVP 快速安装"
+echo "🎉 VaultStream MVP 快速安装"
 echo "============================"
 echo ""
 

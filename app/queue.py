@@ -12,8 +12,8 @@ from app.config import settings
 class TaskQueue:
     """Redis 任务队列"""
     
-    QUEUE_NAME = "bettershare:tasks"
-    PROCESSING_SET = "bettershare:processing"
+    QUEUE_NAME = "vaultstream:tasks"
+    PROCESSING_SET = "vaultstream:processing"
     
     def __init__(self):
         self.redis: Optional[aioredis.Redis] = None
