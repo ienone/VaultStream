@@ -1,84 +1,171 @@
-# TODO 开发清单（基于《更好的分享系统》设计）
+# TODO 开发清单（VaultStream：收藏为主 + 合规分享推送）
 
-## 阶段 0：项目基础设施与仓库结构
-- [x] 创建代码仓库基础结构（如 backend / app / bots / docs 等目录）
-- [x] 约定基础技术栈与代码规范（Python 版本、依赖管理工具、格式化 & lint 方案等）
-- [x] 搭建本地开发环境（`.env` 模板、配置文件示例）
-- [x] 搭建 Docker / Docker Compose（PostgreSQL + Redis + 后端）
-- [x] 编写基础 README（如何启动开发环境）
+> 原则：
+> 1) 私有存档（Full Archive） 与 分享输出（Share Card） 严格隔离  
+> 2) 解析与平台差异收敛到 -Adapter + 标准化 Schema-  
+> 3) “推过不再发”以 `pushed_records` 为准，所有推送必须可追溯、可重放（但默认不重复）  
+> 4) 先闭环再优化：入口→解析→入库→检索→分发
 
-## 阶段 1：后端核心骨架（FastAPI）
-- [x] 初始化 FastAPI 项目结构（分层：routers / services / repositories / models / schemas）
-- [x] 接入 PostgreSQL（使用 async ORM/Query 工具，如 SQLAlchemy + asyncpg 或 Tortoise ORM）
-- [x] 接入 Redis（做任务队列 & 去重缓存的基础包装）
-- [x] 设计基础配置体系（区分 dev / prod 环境，使用 Pydantic Settings 或类似方案）
-- [ ] 提供健康检查接口（`/health`）
+---
 
-## 阶段 2：数据模型与状态机
-- [x] 设计内容实体表 `contents`（含 content_id、platform、url、tags、status、created_at 等）
-- [x] 为跨平台元数据设计 JSONB 字段（如 `raw_metadata jsonb`）
-- [x] 设计并创建 `pushed_records` 表（记录 content_id、target_platform、timestamp 等）
-- [x] 明确内容状态机：`Unprocessed -> Pulled -> Distributed -> Archived`（当前实现到 Distributed；Archived 预留）
-- [ ] 为常用字段创建索引（platform、tags、status、created_at）
-- [ ] 模型/Schema 对齐：将 `platform_id`、通用互动字段、`extra_stats` 与 `schemas.py` / API 返回字段统一
+## 里程碑 M0：项目基础与可运行闭环（本地）
+- [x] 仓库结构（backend/app/bots/docs）
+- [x] Docker Compose（PostgreSQL + Redis + backend）
+- [x] 健康检查 `/health`（backend）
+- [x] 统一配置与密钥管理（dev/prod；env 校验；敏感信息不入库不出日志）
+- [x] 基础可观测：结构化日志（request_id / content_id / task_id）
 
-## 阶段 3：采集与解析流水线基础能力
-- [x] 设计「平台适配器 Adapter」接口（统一抽象：输入 URL / 标识，输出标准化结构）
-- [x] 实现通用 URL 净化模块（短链接还原、去除追踪参数 `?utm_*` 等）
-- [x] 实现第一个实际平台适配器（Bilibili）
-- [x] 实现异步解析流水线：
-  - [x] 解析任务入队（Redis 队列）
-  - [x] Worker 消费任务，调用对应平台 Adapter
-  - [x] 将解析结果写入 PostgreSQL（JSON 元数据 + 标准化字段）
-- [ ] 为流水线编写基础单元测试 / 集成测试样例
-- [ ] 进一步解耦解析逻辑（将 URL 识别 / ID 提取 / 清洗逻辑沉到 utils/adapter，避免多处重复）
+---
 
-## 阶段 4：输入端（Trigger）最小能力
-- [x] 设计后端接收链接的 API（`POST /shares`，参数包含 url、tags、source 等）
-- [x] 实现简单 Web 调试页面，用于手动提交 URL 触发采集
-- [ ] 设计未来移动端（Flutter）Share Target 的对接协议（请求体字段、鉴权方式），暂用文档形式描述
+## 里程碑 M1：收藏入口（Input）与去重模型
+目标：任何来源 URL 都能被“稳定收下”，并可追踪来源与去重。
 
-## 阶段 5：自动化分发层（机器人 / Output）
-- [x] 选择并搭建首个机器人运行环境（Telegram Bot）
-- [ ] 设计「分发规则」数据结构（Tag -> 目标频道/群、是否 NSFW、启用状态等）
-- [x] 提供后端 API：按条件查询待推送内容（未推送、按 tag / 平台筛选）
-- [x] 机器人侧实现：
-  - [x] 指令拉取 `/get [tag]`
-  - [ ] 主动轮询模式（定时从后端拉取未推送内容）
-  - [x] 图文混排消息发送格式（带封面/图片 + 文本 + 链接）
-- [x] 实现“推过不再发”逻辑：
-  - [x] 发送成功后回调/调用后端接口，写入 `pushed_records` & 更新内容状态
-  - [x] 确保同一内容不会对同一目标多次推送
+- [ ] 入口协议（文档即接口契约）
+  - [ ] `POST /shares`：url、tags、source（app/web/bot）、note、is_nsfw、client_context（可选）
+  - [ ] 鉴权方案：先简单 Token（Header），后续可扩展用户体系
+- [ ] URL 规范化与去重
+  - [ ] URL 净化：去 utm 等追踪参数、短链还原、统一 scheme/host
+  - [ ] 去重键：`canonical_url` + `platform`（必要时加 platform_id），避免重复入库
+- [ ] 数据模型（收藏核心）
+  - [ ] `contents`：canonical_url、platform、platform_id（可空）、title（可空）、tags、is_nsfw、status、raw_metadata(JSONB)、created_at
+  - [ ] `content_sources`（可选但推荐）：记录每次“分享触发”的来源（source、tags_snapshot、note、timestamp）
+- [ ] 状态机落地（以解析为中心）
+  - [ ] `Unprocessed -> Pulled -> Distributed -> Archived`
+  - [ ] 明确每个状态的进入条件与回滚策略（失败重试/人工修复）
 
-## 阶段 6：展示与检索（可与机器人并行推进）
-- [ ] 后端生成基础 RSS Feed（按 Tag 或频道区分，RSS 2.0）
-- [ ] 实现简单 Web 展示页（瀑布流/列表，分页展示）
-- [ ] 接入基础鉴权（Basic Auth 或简单 Token）以保护 Web 展示端
-- [ ] 支持按 Tag / 平台 / 时间过滤检索
+---
 
-## 阶段 7：内容合规与 NSFW 分流
-- [x] 设计标签体系与 NSFW 标记字段（`is_nsfw`）
-- [ ] 后端在分发规则中强制检查：NSFW 内容禁止发送至 QQ，只允许发送到 TG 特定频道
-- [ ] Web 展示端对 NSFW 内容做访问控制（登录后可见 / 独立区域）
-- [ ] 为涉及 NSFW 流程撰写说明文档，明确边界和使用规范
+## 里程碑 M2：解析流水线（Process）与 Adapter 体系
+目标：平台差异全部沉到 Adapter，流水线稳定、可重试、可观测。
 
-## 阶段 8：移动端 Flutter App（MD3）
-- [ ] 初始化 Flutter 项目，启用 Material Design 3（颜色方案、基础组件）
-- [ ] 设计并实现 Share Target 接入（iOS / Android 分平台配置）
-- [ ] 完成最小交互流程：
-  - [ ] 从其他 App 分享链接 -> 唤起本 App
-  - [ ] 选择预设分类（Cos/Tech/Meme 等）
-  - [ ] 可添加自定义标签 & NSFW 勾选
-  - [ ] 提交后调用后端 `POST /shares` 接口
-- [ ] 预留未来功能位（历史记录页、编辑标签等，但在 MVP 阶段可不实现）
+- [ ] Adapter 抽象（强约束输出）
+  - [ ] 输入：canonical_url / platform_id（可选）
+  - [ ] 输出：标准字段（title/author/published_at/media[]/text/cover）+ `raw_metadata`
+  - [ ] 错误分类：可重试/不可重试/需要登录凭证
+- [ ] Pipeline（队列 + Worker）
+  - [ ] Redis 队列任务格式版本化（task schema version）
+  - [ ] 幂等：同一 content_id 重复任务不造成脏写（基于乐观锁/更新时间戳）
+  - [ ] 重试策略：指数退避 + 最大次数 + dead-letter（可选）
+- [ ] 平台优先级（按收益递进）
+  - [x] Bilibili：视频/动态（封面、作者、简介、统计字段）
+  - [ ] Twitter/X：正文、媒体原图、作者信息（优先可公开方式；需要登录则走“协同解析”方案）
+  - [ ] 小红书/知乎：先做通用提取（正文+主图+作者），再定制
+  - [ ] 逐步完善：微博、抖音、酷安、YouTube 等
+- [ ] 协同解析（可选：降低反爬成本）
+  - [ ] 方案 A：移动端上传 cookie/token（强加密/短期存储/可撤销）
+  - [ ] 方案 B：移动端直接抓取“已展开页面”快照（HTML/关键字段）供后端结构化
 
-## 阶段 9：监控、日志与运维
-- [ ] 统一日志格式（请求日志、任务日志、分发日志）
-- [ ] 为关键任务添加简单监控指标（任务失败率、解析耗时、推送数量等）
-- [ ] 编写基础运维文档（如何部署、如何更新、如何排查常见错误）
+---
 
-## 阶段 10：迭代与扩展
-- [ ] 按优先级逐步接入更多平台适配器（微博、知乎、小红书等）
-- [ ] 优化解析质量（提取更丰富的结构化字段）
-- [ ] 丰富 Web 展示端（收藏、分组、批量操作等）
-- [ ] 丰富机器人交互（多步对话、搜索历史内容等）
+## 里程碑 M3：私有存档能力（Storage）与索引检索
+目标：库内“能找得到、翻得动、查得快”。
+
+- [ ] PostgreSQL 索引（最低成本先做）
+  - [ ] `(platform, created_at)`
+  - [ ] `status`
+  - [ ] `tags`（GIN）
+  - [ ] `raw_metadata` 常用路径（按平台增量加表达式索引）
+- [ ] 查询 API（给 Web/App/Bot 复用）
+  - [ ] 条件：tag/platform/status/is_nsfw/时间范围/关键字
+  - [ ] 分页：cursor 优先（按 created_at/content_id）
+- [ ] 语义检索（后置但要预留）
+  - [ ] `embeddings` 表：content_id、model、vector、updated_at
+  - [ ] 入库/更新触发：解析完成或摘要完成后生成 embedding
+
+---
+
+## 里程碑 M4：合规分享出库（Share Card）与分发规则（Output）
+目标：对外只输出“合规卡片”，永不直接外发私有原始信息。
+
+- [ ] 分享卡片（Share Card）定义（强约束）
+  - [ ] 字段：title、summary、cover_url（或本地代理）、source_url、tags、published_at（可空）
+  - [ ] 明确禁止字段：原始全文、敏感元数据、登录态信息
+- [ ] 分发规则（Distribution Rules）
+  - [ ] 数据结构：tag -> targets[]（TG/QQ/…）、enabled、nsfw_policy、rate_limit、time_window
+  - [ ] 规则匹配：多 tag 冲突时的优先级与合并策略
+- [ ] “推过不再发”（最终裁决在后端）
+  - [ ] `pushed_records` 唯一约束：content_id + target_platform + target_id
+  - [ ] 推送写入必须原子化：写 record + 更新 content 状态/时间
+- [ ] 审核/闸门（建议默认开启）
+  - [ ] 自动推送前的人工审批开关（按 tag/规则配置）
+  - [ ] NSFW 强制分流：不允许流向不合规目标（硬失败）
+
+---
+
+## 里程碑 M5：机器人与推送策略（TG 优先）
+目标：既能“拉取”，也能“定时推送”，并且可追溯、可降噪。
+
+- [ ] TG Bot：指令与主动推送双模式
+  - [x] `/get [tag]` 拉取未推送内容
+  - [ ] 主动轮询：按分发规则定时拉取（rate_limit、time_window）
+- [ ] 消息格式（降噪 + 高信息密度）
+  - [ ] 图文混排：首图 + 标题 + 摘要 + 来源链接 + tags
+  - [ ] 批量合并：多条内容用 media group/合并转发（尽量减少消息数）
+- [ ] 回执与一致性
+  - [ ] 发送成功后回调后端确认（写 pushed_records）
+  - [ ] 失败重试与幂等：同一目标不重复刷屏
+
+---
+
+## 里程碑 M6：Web 管理端（先“能用”，再“好用”）
+目标：管理内容、查找内容、配置分发规则、观察推送结果。
+
+- [ ] 基础鉴权（Token 或 Basic Auth 起步）
+- [ ] 内容列表/详情（瀑布流或列表）
+  - [ ] 筛选：tag/platform/status/is_nsfw/时间
+  - [ ] 操作：改 tags、标记 NSFW、触发重解析、手动归档
+- [ ] 分发规则 CRUD
+- [ ] 推送记录查询（按 content_id/目标/时间）
+- [ ] 导入/导出（JSON/CSV；用于迁移与备份）
+
+---
+
+## 里程碑 M7：移动端 Flutter（Share Target / 日常入口）
+目标：把“收藏”做成系统级动作，减少操作成本。
+
+- [ ] Flutter 工程初始化（Material 3 Expressive）
+- [ ] Share Target
+  - [ ] Android：接收分享文本/URL；iOS：Share Extension（如需要）
+  - [ ] 预设分类（Cos/Tech/Meme）+ 自定义 tag + NSFW 勾选 + note
+- [ ] 提交与反馈
+  - [ ] 提交后显示解析状态（轮询/推送均可）
+  - [ ] 本地草稿与失败重试
+
+---
+
+## 里程碑 M8：AI 摘要与增强（可选增量）
+目标：提升“可读性/可检索性”，但不破坏合规边界。
+
+- [ ] 摘要生成（对 Share Card 生效）
+  - [ ] 输入：标题/正文（若合规）/关键信息；输出：短摘要 + 关键标签建议
+  - [ ] 缓存与版本：避免重复消耗
+- [ ] 标签建议（半自动）
+  - [ ] 建议不自动落库，默认人工确认或在规则中选择自动
+- [ ] 多语言与翻译（如目标频道需要）
+
+---
+
+## 里程碑 M9：运维、安全、合规落地
+- [ ] 访问控制与最小权限
+  - [ ] 管理端与 API 分级权限（至少区分“只读/管理”）
+  - [ ] 凭证（cookie/token）加密存储、可撤销、过期策略
+- [ ] 反爬策略与风控
+  - [ ] 限速、代理池（如需要）、失败熔断
+- [ ] 备份与恢复演练（PG 定期备份 + 恢复验证）
+- [ ] 文档：NSFW 边界与使用规范（清晰写明“私有存档 vs 合规分享”）
+
+---
+
+## 里程碑 M10：测试与质量（贯穿式）
+- [ ] Adapter 单测（URL 识别/ID 提取/解析输出 schema 校验）
+- [ ] Pipeline 集成测试（队列 -> worker -> DB -> API）
+- [ ] 回归用例：去重、幂等、push 不重复、NSFW 分流硬失败
+- [ ] 性能基线：入库吞吐、查询分页、推送批量
+
+--- 
+
+## 当前优先级建议（从今天开始的 1-2 周）
+1) M1：入口协议 + 去重键 + health + 基础索引  
+2) M2：Adapter 输出 schema 强约束 + pipeline 幂等/重试  
+3) M4/M5：分发规则（最小可用）+ TG 主动推送 + pushed_records 唯一约束  
+4) M6：Web 端最小管理页（查、改 tag、看推送记录）

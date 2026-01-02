@@ -5,7 +5,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from loguru import logger
+from app.logging import logger, log_context
 
 from app.database import get_db
 from app.models import Content, ContentStatus, PushedRecord, Platform
@@ -54,8 +54,9 @@ async def create_share(
             'content_id': content.id,
             'action': 'parse'
         })
-        
-        logger.info(f"创建分享成功: {content.id} - {share.url}")
+
+        with log_context(content_id=content.id):
+            logger.info("创建分享成功")
         
         return ShareResponse(
             id=content.id,

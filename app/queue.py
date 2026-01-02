@@ -4,7 +4,7 @@ Redis 任务队列服务
 import json
 import redis.asyncio as aioredis
 from typing import Optional, Dict, Any
-from loguru import logger
+from app.logging import logger, ensure_task_id, log_context
 
 from app.config import settings
 
@@ -32,6 +32,16 @@ class TaskQueue:
         if self.redis:
             await self.redis.close()
             logger.info("Redis disconnected")
+
+    async def ping(self) -> bool:
+        """用于健康检查的轻量 Redis 探活。"""
+        try:
+            if not self.redis:
+                return False
+            await self.redis.ping()
+            return True
+        except Exception:
+            return False
     
     async def enqueue(self, task_data: Dict[str, Any]) -> bool:
         """
@@ -44,9 +54,13 @@ class TaskQueue:
             是否成功
         """
         try:
+            task_id = ensure_task_id(task_data.get("task_id"))
+            task_data = {**task_data, "task_id": task_id}
+            content_id = task_data.get("content_id")
             task_json = json.dumps(task_data)
             await self.redis.lpush(self.QUEUE_NAME, task_json)
-            logger.info(f"任务已入队: {task_data.get('content_id')}")
+            with log_context(task_id=task_id, content_id=content_id):
+                logger.info("任务已入队")
             return True
         except Exception as e:
             logger.error(f"任务入队失败: {e}")

@@ -6,7 +6,7 @@ import httpx
 from datetime import datetime
 from typing import Optional, Dict, Any
 from urllib.parse import urlparse, parse_qs, urljoin
-from loguru import logger
+from app.logging import logger
 
 from app.adapters.base import PlatformAdapter, ParsedContent
 from app.models import BilibiliContentType

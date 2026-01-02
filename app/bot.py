@@ -9,7 +9,7 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
 )
-from loguru import logger
+from app.logging import logger
 
 from app.config import settings
 from app.utils import normalize_bilibili_url, format_content_for_tg
@@ -133,7 +133,7 @@ class VaultStreamBot:
 
     def run(self):
         """运行Bot"""
-        if not settings.telegram_bot_token:
+        if not settings.telegram_bot_token or not settings.telegram_bot_token.get_secret_value():
             logger.error("未配置 TELEGRAM_BOT_TOKEN")
             return
         
@@ -142,7 +142,7 @@ class VaultStreamBot:
             return
         
         # 创建应用
-        builder = Application.builder().token(settings.telegram_bot_token)
+        builder = Application.builder().token(settings.telegram_bot_token.get_secret_value())
         
         # 配置代理
         if hasattr(settings, 'telegram_proxy_url') and settings.telegram_proxy_url:

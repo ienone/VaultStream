@@ -46,6 +46,12 @@ cp .env.example .env  # 配置 TELEGRAM_BOT_TOKEN 等
 ./start.sh
 ```
 
+健康检查：
+
+```bash
+curl http://localhost:8000/health
+```
+
 ### 2. 提交分享
 
 - Web 界面: 访问 `http://localhost:8000`。支持直接输入 BV/av/cv 号。
