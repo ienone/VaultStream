@@ -20,7 +20,7 @@ from app.api import router
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动时
-    logger.info("Starting BetterShare application...")
+    logger.info("Starting VaultStream application...")
     
     # 初始化数据库
     await init_db()
@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
     yield
     
     # 关闭时
-    logger.info("Shutting down BetterShare application...")
+    logger.info("Shutting down VaultStream application...")
     
     # 停止worker
     await worker.stop()
@@ -54,8 +54,8 @@ async def lifespan(app: FastAPI):
 
 # 创建应用
 app = FastAPI(
-    title="BetterShare API",
-    description="更好的分享系统 - MVP版本",
+    title="VaultStream API",
+    description="超级收藏夹 - MVP版本",
     version="0.1.0",
     lifespan=lifespan
 )
@@ -82,9 +82,9 @@ if static_dir.exists():
 async def api_root():
     """API根路径"""
     return {
-        "name": "BetterShare",
+        "name": "VaultStream",
         "version": "0.1.0",
-        "description": "更好的分享系统 - MVP版本"
+        "description": "超级收藏夹 - MVP版本"
     }
 
 

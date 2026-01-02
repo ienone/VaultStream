@@ -1,6 +1,6 @@
 # Bilibili API Reference
 
-本文档记录了 BetterShare 中使用的 Bilibili API 接口及其数据结构。
+本文档记录了 VaultStream 中使用的 Bilibili API 接口及其数据结构。
 
 ## 1. 视频信息 (Video)
 - Endpoint: `https://api.bilibili.com/x/web-interface/view`

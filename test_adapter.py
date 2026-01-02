@@ -13,7 +13,7 @@ async def test_bilibili_adapter():
     test_urls = [
         "https://www.bilibili.com/video/BV1xx411c7XD",  # 视频
         "https://www.bilibili.com/read/cv12345678",     # 专栏
-        "https://t.bilibili.com/123456789012345",       # 动态
+        "https://www.bilibili.com/opus/1150580721704763430",       # 动态
     ]
     
     for url in test_urls:
@@ -84,7 +84,7 @@ async def test_real_url():
 
 
 if __name__ == "__main__":
-    print("🧪 BetterShare - B站适配器测试")
+    print("🧪 VaultStream - B站适配器测试")
     print("="*60)
     
     # 运行测试

@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     """应用配置"""
     
     # 数据库配置
-    database_url: str = "postgresql+asyncpg://user:password@localhost:5432/bettershare"
+    database_url: str = "postgresql+asyncpg://user:password@localhost:5432/vaultstream"
     
     # Redis 配置
     redis_url: str = "redis://localhost:6379/0"

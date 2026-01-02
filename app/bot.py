@@ -15,8 +15,8 @@ from app.config import settings
 from app.utils import normalize_bilibili_url, format_content_for_tg
 
 
-class BetterShareBot:
-    """BetterShare Telegram Bot"""
+class VaultStreamBot:
+    """VaultStream Telegram Bot"""
     
     def __init__(self):
         self.api_base = f"http://localhost:{settings.api_port}/api/v1"
@@ -25,7 +25,7 @@ class BetterShareBot:
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """处理 /start 命令"""
         await update.message.reply_text(
-            "欢迎使用 BetterShare Bot!\n\n"
+            "欢迎使用 VaultStream Bot!\n\n"
             "可用命令:\n"
             "/get [tag] - 获取并发送一条内容\n"
             "/status - 查看系统状态"
@@ -168,5 +168,5 @@ class BetterShareBot:
 
 
 if __name__ == "__main__":
-    bot = BetterShareBot()
+    bot = VaultStreamBot()
     bot.run()

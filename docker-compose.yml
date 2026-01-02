@@ -1,9 +1,9 @@
 services:
   postgres:
     image: postgres:15
-    container_name: bettershare_postgres
+    container_name: vaultstream_postgres
     environment:
-      POSTGRES_DB: bettershare
+      POSTGRES_DB: vaultstream
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
     ports:
@@ -11,14 +11,14 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d bettershare"]
+      test: ["CMD-SHELL", "pg_isready -U user -d vaultstream"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: bettershare_redis
+    container_name: vaultstream_redis
     ports:
       - "6379:6379"
     volumes:
