@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# BetterShare 启动脚本
+# VaultStream 启动脚本
 
-echo "🚀 启动 BetterShare MVP"
+echo "🚀 启动 VaultStream MVP"
 echo "======================="
 
 # 检查虚拟环境

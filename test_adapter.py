@@ -84,7 +84,7 @@ async def test_real_url():
 
 
 if __name__ == "__main__":
-    print("🧪 BetterShare - B站适配器测试")
+    print("🧪 VaultStream - B站适配器测试")
     print("="*60)
     
     # 运行测试
