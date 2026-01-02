@@ -64,7 +64,7 @@ class BetterShareBot:
                 # 调试日志：记录返回的数据内容
                 logger.debug(f"后端 API 返回内容数量: {len(contents)}")
                 if contents:
-                    logger.debug(f"首条内容详情: ID={contents[0].get('id')}, Status={contents[0].get('status')}, Title={contents[0].get('title')}")
+                    logger.debug(f"首条内容详情: ID={contents[0].get('id')}, Status={contents[0].get('status')}, Title={contents[0].get('title')}, ContentType={contents[0].get('content_type')}")
                 
                 if not contents:
                     await update.message.reply_text("暂无待推送的内容")

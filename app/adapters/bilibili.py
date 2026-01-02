@@ -18,11 +18,11 @@ class BilibiliAdapter(PlatformAdapter):
     # API 端点
     API_VIDEO_INFO = "https://api.bilibili.com/x/web-interface/view"
     API_ARTICLE_INFO = "https://api.bilibili.com/x/article/view"
-    API_DYNAMIC_INFO = "https://api.bilibili.com/x/polymer/web-dynamic/v1/detail"
+    API_DYNAMIC_INFO = "https://api.bilibili.com/x/polymer/web-dynamic/v1/opus/detail"
     API_BANGUMI_INFO = "https://api.bilibili.com/pgc/view/web/season"
     API_AUDIO_INFO = "https://www.bilibili.com/audio/music-service-c/web/song/info"
-    API_LIVE_INFO = "https://api.live.bilibili.com/room/v1/Room/get_info"
-    
+    API_LIVE_INFO = "https://api.live.bilibili.com/xlive/web-room/v1/index/getRoomBaseInfo"
+
     # URL 模式
     PATTERNS = {
         BilibiliContentType.VIDEO: [
@@ -130,6 +130,10 @@ class BilibiliAdapter(PlatformAdapter):
             return await self._parse_article(clean_url)
         elif content_type == BilibiliContentType.BANGUMI.value:
             return await self._parse_bangumi(clean_url)
+        elif content_type == BilibiliContentType.LIVE.value:
+            return await self._parse_live(clean_url)
+        elif content_type == BilibiliContentType.DYNAMIC.value:
+            return await self._parse_dynamic(clean_url)
             
         raise NotImplementedError(f"尚未实现 {content_type} 的解析")
 
@@ -271,6 +275,140 @@ class BilibiliAdapter(PlatformAdapter):
                 cover_url=item.get('cover'),
                 media_urls=[item.get('cover')],
                 published_at=None,
+                raw_metadata=item,
+                stats=stats
+            )
+
+    async def _parse_live(self, url: str) -> ParsedContent:
+        """解析直播间"""
+        room_id = self._extract_id(url, BilibiliContentType.LIVE.value)
+        if not room_id:
+            raise ValueError(f"无法从URL提取直播间ID: {url}")
+            
+        async with httpx.AsyncClient(headers=self.headers, cookies=self.cookies) as client:
+            # 使用 getRoomBaseInfo 接口，该接口支持短号且返回数据较全
+            params = {
+                'req_biz': 'web_room_componet',
+                'room_ids': room_id
+            }
+            response = await client.get(self.API_LIVE_INFO, params=params)
+            data = response.json()
+            
+            if data.get('code') != 0:
+                raise Exception(f"B站API错误: {data.get('message')}")
+            
+            # 该接口返回的是字典，key 是长号 ID
+            by_room_ids = data.get('data', {}).get('by_room_ids', {})
+            if not by_room_ids:
+                raise Exception("未找到直播间信息")
+            
+            # 获取第一个（也是唯一一个）直播间信息
+            room_info = next(iter(by_room_ids.values()))
+            
+            # 直播间统计数据
+            stats = {
+                'view': room_info.get('online', 0),  # 人气值
+                'live_status': room_info.get('live_status', 0), # 0:未开播, 1:直播中, 2:轮播中
+            }
+            
+            return ParsedContent(
+                platform='bilibili',
+                content_type=BilibiliContentType.LIVE.value,
+                content_id=str(room_info.get('room_id')),
+                clean_url=url,
+                title=room_info.get('title'),
+                description=room_info.get('description'),
+                author_name=room_info.get('uname'),
+                author_id=str(room_info.get('uid')),
+                cover_url=room_info.get('cover'),
+                media_urls=[room_info.get('cover')] if room_info.get('cover') else [],
+                published_at=None,
+                raw_metadata=room_info,
+                stats=stats
+            )
+
+    async def _parse_dynamic(self, url: str) -> ParsedContent:
+        """解析动态/图文 (Opus)"""
+        dynamic_id = self._extract_id(url, BilibiliContentType.DYNAMIC.value)
+        if not dynamic_id:
+            raise ValueError(f"无法从URL提取动态ID: {url}")
+            
+        # 动态解析需要特定的 features 参数和 buvid3 cookie 才能稳定返回
+        params = {
+            'id': dynamic_id,
+            'features': 'onlyfansVote,onlyfansAssetsV2,decorationCard,htmlNewStyle,ugcDelete,editable,opusPrivateVisible,tribeeEdit,avatarAutoTheme,avatarTypeOpus'
+        }
+        
+        cookies = self.cookies.copy()
+        if 'buvid3' not in cookies:
+            cookies['buvid3'] = 'awa'
+            
+        async with httpx.AsyncClient(headers=self.headers, cookies=cookies) as client:
+            response = await client.get(self.API_DYNAMIC_INFO, params=params)
+            data = response.json()
+            
+            if data.get('code') != 0:
+                raise Exception(f"B站API错误: {data.get('message')}")
+            
+            item = data['data']['item']
+            modules = item.get('modules', [])
+            
+            # 兼容列表结构的 modules (Polymer API 特点)
+            modules_map = {}
+            if isinstance(modules, list):
+                for m in modules:
+                    # 修正映射逻辑：MODULE_TYPE_AUTHOR -> module_author
+                    m_type = m.get('module_type', '').lower().replace('_type_', '_')
+                    if m_type:
+                        modules_map[m_type] = m.get(m_type, {})
+            else:
+                modules_map = modules
+
+            module_author = modules_map.get('module_author', {})
+            module_dynamic = modules_map.get('module_dynamic', {})
+            module_stat = modules_map.get('module_stat', {})
+            module_title = modules_map.get('module_title', {})
+            
+            # 处理 Opus 图文内容
+            major = module_dynamic.get('major', {})
+            opus = major.get('opus', {})
+            
+            # 标题回退机制
+            title = opus.get('title') or module_title.get('text') or item.get('basic', {}).get('title') or "动态"
+            
+            # 提取正文：Opus 的文字在 p['text']['content'] 中
+            summary = ""
+            if opus.get('content', {}).get('paragraphs'):
+                summary = "\n".join([p.get('text', {}).get('content', '') 
+                                   for p in opus['content']['paragraphs'] 
+                                   if p.get('text', {}).get('content')])
+            
+            # 提取图片
+            pics = [p.get('url') for p in opus.get('pics', []) if p.get('url')]
+            
+            # 提取互动数据
+            stats = {
+                'view': 0,
+                'like': module_stat.get('like', {}).get('count', 0) if isinstance(module_stat.get('like'), dict) else 0,
+                'reply': module_stat.get('comment', {}).get('count', 0) if isinstance(module_stat.get('comment'), dict) else 0,
+                'share': module_stat.get('forward', {}).get('count', 0) if isinstance(module_stat.get('forward'), dict) else 0,
+            }
+            
+            # 作者 ID 回退
+            author_id = str(module_author.get('mid') or item.get('basic', {}).get('uid') or "")
+            
+            return ParsedContent(
+                platform='bilibili',
+                content_type=BilibiliContentType.DYNAMIC.value,
+                content_id=dynamic_id,
+                clean_url=url,
+                title=title,
+                description=summary,
+                author_name=module_author.get('name') or "未知用户",
+                author_id=author_id,
+                cover_url=pics[0] if pics else None,
+                media_urls=pics,
+                published_at=datetime.fromtimestamp(module_author.get('pub_ts')) if module_author.get('pub_ts') else None,
                 raw_metadata=item,
                 stats=stats
             )

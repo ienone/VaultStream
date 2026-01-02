@@ -58,6 +58,8 @@ class Content(Base):
     
     # 平台特有 ID (如 BV号, 推文ID)
     platform_id = Column(String(100), index=True)
+    # 平台特有内容类型 (如 B站的 video, live, dynamic)
+    content_type = Column(String(50), index=True)
     
     # 添加以下兼容性属性，以便 Pydantic 模型 ContentDetail 能够正确验证
     @property
@@ -67,11 +69,8 @@ class Content(Base):
 
     @property
     def bilibili_type(self):
-        """从 raw_metadata 中提取类型，或者返回默认值"""
-        if self.raw_metadata and isinstance(self.raw_metadata, dict):
-            # 尝试从原始数据中获取分区名或类型
-            return self.raw_metadata.get('tname') or "video"
-        return "video"
+        """映射 content_type 到 bilibili_type"""
+        return self.content_type
     
     # 通用互动数据
     view_count = Column(Integer, default=0)

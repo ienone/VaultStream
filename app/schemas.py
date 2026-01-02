@@ -37,6 +37,7 @@ class ContentDetail(BaseModel):
     tags: List[str]
     is_nsfw: bool
     source: Optional[str]
+    content_type: Optional[str] # 内容具体类型
 
     # 通用字段
     title: Optional[str] # 内容标题

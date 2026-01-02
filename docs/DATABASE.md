@@ -24,7 +24,7 @@
 | `media_urls` | JSON | 媒体资源列表 (图片、视频流地址) |
 | 通用互动数据 | | |
 | `view_count` | Integer | 播放/阅读数 |
-| `like_count` | Integer | 点赞数 |
+| `like_count` | Integer | 点赞数 |视频解析
 | `collect_count` | Integer | 收藏数 |
 | `share_count` | Integer | 分享数 |
 | `comment_count` | Integer | 评论数 |
@@ -32,7 +32,7 @@
 | `extra_stats` | JSON | 平台特有数据 (如 B 站投币 `coin`、弹幕 `danmaku`) |
 | `raw_metadata` | JSON | 原始 API 返回的完整 JSON 报文 |
 | 时间戳 | | |
-| `published_at` | DateTime | 内容在原平台的发布时间 |
+| `published_at` | DateTime | 内容在原平台的发布时间 |视频解析
 | `created_at` | DateTime | 记录创建时间 |
 
 ## 2. `pushed_records` 表 (分发追踪)

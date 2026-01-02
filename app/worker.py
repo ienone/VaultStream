@@ -87,6 +87,7 @@ class TaskWorker:
                 
                 # 更新内容信息
                 content.clean_url = parsed.clean_url
+                content.content_type = parsed.content_type
                 content.title = parsed.title
                 content.description = parsed.description
                 content.author_name = parsed.author_name
@@ -104,10 +105,11 @@ class TaskWorker:
                     content.collect_count = parsed.stats.get('favorite', 0)
                     content.share_count = parsed.stats.get('share', 0)
                     content.comment_count = parsed.stats.get('reply', 0)
-                    # 存储 B 站特有的投币和弹幕到 extra_stats
+                    # 存储 B 站特有的投币、弹幕和直播状态到 extra_stats
                     content.extra_stats = {
                         "coin": parsed.stats.get('coin', 0),
-                        "danmaku": parsed.stats.get('danmaku', 0)
+                        "danmaku": parsed.stats.get('danmaku', 0),
+                        "live_status": parsed.stats.get('live_status', 0)
                     }
                 
                 # 更新状态为已抓取
