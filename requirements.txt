@@ -1,0 +1,25 @@
+# FastAPI 和异步支持
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# 数据库
+asyncpg
+sqlalchemy
+alembic
+
+# Redis
+redis
+aioredis
+
+# HTTP 客户端
+httpx
+aiohttp
+
+# Telegram Bot
+python-telegram-bot
+
+# 工具库
+python-dotenv
+loguru
