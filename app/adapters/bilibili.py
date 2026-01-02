@@ -327,6 +327,121 @@ class BilibiliAdapter(PlatformAdapter):
                 stats=stats
             )
 
+    def _build_opus_archive(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """从 Polymer 动态详情中提取可存档的完整图文内容。
+
+        目标：用于个人浏览记录存档（raw_metadata 内），不影响对外分享字段。
+
+        Returns:
+            dict: 可 JSON 序列化的存档结构。
+        """
+        archive: Dict[str, Any] = {
+            "version": 1,
+            "type": "bilibili_opus",
+            "text": "",
+            "blocks": [],
+            "images": [],
+            "external": [],
+        }
+
+        modules = (item or {}).get("modules")
+        modules_map: Dict[str, Any] = {}
+        if isinstance(modules, list):
+            for m in modules:
+                m_type = (m.get("module_type") or "").lower().replace("_type_", "_")
+                if m_type:
+                    modules_map[m_type] = m.get(m_type, {})
+        elif isinstance(modules, dict):
+            modules_map = modules
+
+        module_dynamic = modules_map.get("module_dynamic", {})
+        module_title = modules_map.get("module_title", {})
+
+        major = (module_dynamic or {}).get("major", {})
+        opus = (major or {}).get("opus", {})
+
+        # 1) 标题
+        archive["title"] = opus.get("title") or module_title.get("text") or item.get("basic", {}).get("title") or ""
+
+        # 2) 结构化正文 paragraphs
+        paragraphs = ((opus.get("content") or {}).get("paragraphs") or [])
+        blocks = []
+        text_chunks = []
+        for p in paragraphs:
+            # 常见结构：{"para_type": 1, "text": {"content": "..."}}
+            para_type = p.get("para_type")
+            p_text = (p.get("text") or {}).get("content")
+            if p_text:
+                blocks.append({"type": "text", "text": p_text, "para_type": para_type})
+                text_chunks.append(p_text)
+
+            # 少量情况下图片也会出现在 paragraph 的 pic 字段
+            pic = p.get("pic") or {}
+            if isinstance(pic, dict):
+                url = pic.get("url") or pic.get("src")
+                if url:
+                    img = {
+                        "url": url,
+                        "width": pic.get("width"),
+                        "height": pic.get("height"),
+                        "size": pic.get("size"),
+                        "image_type": pic.get("image_type") or pic.get("type"),
+                    }
+                    blocks.append({"type": "image", **img})
+
+        # 3) 顶层 pics
+        pics = opus.get("pics") or []
+        images = []
+        for pic in pics:
+            if not isinstance(pic, dict):
+                continue
+            url = pic.get("url")
+            if not url:
+                continue
+            images.append(
+                {
+                    "url": url,
+                    "width": pic.get("width"),
+                    "height": pic.get("height"),
+                    "size": pic.get("size"),
+                    "image_type": pic.get("image_type"),
+                }
+            )
+
+        # 4) 兜底：如果没有 paragraphs，也尽量从可能存在的字段拿到文本
+        if not text_chunks:
+            fallback_text = opus.get("summary") or opus.get("text") or opus.get("content")
+            if isinstance(fallback_text, str) and fallback_text.strip():
+                blocks.append({"type": "text", "text": fallback_text})
+                text_chunks.append(fallback_text)
+
+        # 5) 额外附件/外链（如果存在）
+        rich_text_nodes = (opus.get("rich_text") or {}).get("nodes")
+        if isinstance(rich_text_nodes, list):
+            for n in rich_text_nodes:
+                if not isinstance(n, dict):
+                    continue
+                if n.get("type") in ("link", "url"):
+                    href = n.get("href") or n.get("url")
+                    if href:
+                        archive["external"].append({"url": href, "text": n.get("text")})
+
+        archive["blocks"] = blocks
+        archive["images"] = images
+        archive["text"] = "\n".join([t for t in text_chunks if t is not None]).strip()
+
+        # 日志：用于确认存档内容是否构建成功（避免打印全文）
+        logger.debug(
+            "Opus archive built: title_len={}, text_len={}, blocks={}, images={}, external={}",
+            len(str(archive.get("title") or "")),
+            len(str(archive.get("text") or "")),
+            len(archive.get("blocks") or []),
+            len(archive.get("images") or []),
+            len(archive.get("external") or []),
+        )
+
+        return archive
+
     async def _parse_dynamic(self, url: str) -> ParsedContent:
         """解析动态/图文 (Opus)"""
         dynamic_id = self._extract_id(url, BilibiliContentType.DYNAMIC.value)
@@ -351,8 +466,22 @@ class BilibiliAdapter(PlatformAdapter):
                 raise Exception(f"B站API错误: {data.get('message')}")
             
             item = data['data']['item']
+
+            # 构建存档数据（完整图文），放进 raw_metadata 里
+            try:
+                archive = self._build_opus_archive(item)
+                logger.info(
+                    "Opus archive ready: dynamic_id={}, text_len={}, images={}",
+                    dynamic_id,
+                    len(str(archive.get("text") or "")),
+                    len(archive.get("images") or []),
+                )
+            except Exception as e:
+                logger.warning(f"构建 Opus 存档失败: {e}")
+                archive = {"version": 1, "type": "bilibili_opus", "error": str(e)}
+
             modules = item.get('modules', [])
-            
+
             # 兼容列表结构的 modules (Polymer API 特点)
             modules_map = {}
             if isinstance(modules, list):
@@ -368,24 +497,24 @@ class BilibiliAdapter(PlatformAdapter):
             module_dynamic = modules_map.get('module_dynamic', {})
             module_stat = modules_map.get('module_stat', {})
             module_title = modules_map.get('module_title', {})
-            
+
             # 处理 Opus 图文内容
             major = module_dynamic.get('major', {})
             opus = major.get('opus', {})
-            
-            # 标题回退机制
+
+            # 标题回退机制（分享用：保持现状）
             title = opus.get('title') or module_title.get('text') or item.get('basic', {}).get('title') or "动态"
-            
-            # 提取正文：Opus 的文字在 p['text']['content'] 中
+
+            # 提取正文（分享用：保持现状，仍然是摘要/纯文本）
             summary = ""
             if opus.get('content', {}).get('paragraphs'):
                 summary = "\n".join([p.get('text', {}).get('content', '') 
                                    for p in opus['content']['paragraphs'] 
                                    if p.get('text', {}).get('content')])
-            
-            # 提取图片
+
+            # 提取图片（分享用：保持现状）
             pics = [p.get('url') for p in opus.get('pics', []) if p.get('url')]
-            
+
             # 提取互动数据
             stats = {
                 'view': 0,
@@ -393,10 +522,22 @@ class BilibiliAdapter(PlatformAdapter):
                 'reply': module_stat.get('comment', {}).get('count', 0) if isinstance(module_stat.get('comment'), dict) else 0,
                 'share': module_stat.get('forward', {}).get('count', 0) if isinstance(module_stat.get('forward'), dict) else 0,
             }
-            
+
             # 作者 ID 回退
             author_id = str(module_author.get('mid') or item.get('basic', {}).get('uid') or "")
-            
+
+            # raw_metadata：保留原始 item，并附加 archive（便于后续浏览功能开发）
+            raw_metadata = dict(item) if isinstance(item, dict) else {"item": item}
+            raw_metadata.setdefault("archive", {})
+            raw_metadata["archive"] = archive
+
+            logger.info(
+                "Dynamic parsed with archive attached: dynamic_id={}, has_archive={}, archive_keys={}",
+                dynamic_id,
+                bool(raw_metadata.get("archive")),
+                list((raw_metadata.get("archive") or {}).keys()),
+            )
+
             return ParsedContent(
                 platform='bilibili',
                 content_type=BilibiliContentType.DYNAMIC.value,
@@ -409,6 +550,6 @@ class BilibiliAdapter(PlatformAdapter):
                 cover_url=pics[0] if pics else None,
                 media_urls=pics,
                 published_at=datetime.fromtimestamp(module_author.get('pub_ts')) if module_author.get('pub_ts') else None,
-                raw_metadata=item,
+                raw_metadata=raw_metadata,
                 stats=stats
             )
