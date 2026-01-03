@@ -47,19 +47,69 @@ if [ ! -f ".env" ]; then
     fi
 fi
 
+get_env_value() {
+    local key="$1"
+    # 读取 .env 文件中的键值对，忽略注释行
+    #
+    awk -F= -v k="$key" '
+        $0 ~ /^[[:space:]]*#/ { next }
+        $1 ~ "^[[:space:]]*"k"[[:space:]]*$" {
+            v=$0
+            sub(/^[^=]*=/, "", v)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+            print v
+            exit
+        }
+    ' .env
+}
+
+STORAGE_BACKEND_VALUE="$(get_env_value "STORAGE_BACKEND")"
+STORAGE_S3_ENDPOINT_VALUE="$(get_env_value "STORAGE_S3_ENDPOINT")"
+
+# 可选：当使用本机 MinIO 作为 S3 端点时，启动 minio 服务
+if [ "${STORAGE_BACKEND_VALUE}" = "s3" ] && echo "${STORAGE_S3_ENDPOINT_VALUE}" | grep -Eq '^(http://)?(127\.0\.0\.1|localhost):9000/?$'; then
+    if docker compose ps minio 2>/dev/null | grep -q "Up"; then
+        echo "✅ MinIO 已在运行"
+    else
+        echo ""
+        echo "📦 检测到 STORAGE_BACKEND=s3 且端点为本机，是否启动 MinIO？"
+        echo "   - 端点: ${STORAGE_S3_ENDPOINT_VALUE:-http://127.0.0.1:9000}"
+        if [ "${AUTO_START_MINIO:-}" = "1" ]; then
+            REPLY="y"
+        else
+            read -p "启动 MinIO？(y/n) " -n 1 -r
+            echo
+        fi
+
+        if [[ ${REPLY:-} =~ ^[Yy]$ ]]; then
+            docker compose up -d minio
+            echo "⏳ 等待 MinIO 启动..."
+            sleep 3
+            if ! docker compose ps minio | grep -q "Up"; then
+                echo "❌ MinIO 启动失败，请检查 docker-compose/minio 镜像拉取/代理配置"
+                docker compose logs minio
+                exit 1
+            fi
+            echo "✅ MinIO 已启动"
+        else
+            echo "⚠️  已跳过启动 MinIO（若你使用远端 S3/MinIO，可忽略）"
+        fi
+    fi
+fi
+
 # 启动数据库和Redis
 echo ""
 echo "📦 启动 PostgreSQL 和 Redis..."
-docker compose up -d
+docker compose up -d postgres redis
 
 # 等待服务就绪
 echo "⏳ 等待数据库服务启动..."
 sleep 5
 
 # 检查服务状态
-if ! docker compose ps | grep -q "Up"; then
+if ! docker compose ps postgres redis | grep -q "Up"; then
     echo "❌ 数据库服务启动失败，请检查 docker-compose"
-    docker compose logs
+    docker compose logs postgres redis
     exit 1
 fi
 

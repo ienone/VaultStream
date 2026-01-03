@@ -17,3 +17,19 @@ build/
 .vscode/
 *.swp
 *.swo
+
+# 数据库迁移（开发阶段）
+migrations/
+
+# 导出文件和测试数据
+exports/
+
+# 测试脚本（保留test文件夹结构，但忽略临时测试文件）
+tests/check_*.py
+tests/test_bot_api_*.py
+tests/export_*.py
+
+# 临时文件
+*.tmp
+*.bak
+nohup.out

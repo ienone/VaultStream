@@ -34,6 +34,23 @@ class ParsedContent:
         if self.stats is None:
             self.stats = {}
 
+        # 强约束：必需的标识符必须存在
+        if not isinstance(self.platform, str) or not self.platform.strip():
+            raise ValueError("ParsedContent.platform 不能为空")
+        if not isinstance(self.content_type, str) or not self.content_type.strip():
+            raise ValueError("ParsedContent.content_type 不能为空")
+        if not isinstance(self.content_id, str) or not self.content_id.strip():
+            raise ValueError("ParsedContent.content_id 不能为空")
+        if not isinstance(self.clean_url, str) or not self.clean_url.strip():
+            raise ValueError("ParsedContent.clean_url 不能为空")
+
+        if not isinstance(self.media_urls, list):
+            raise ValueError("ParsedContent.media_urls 必须是列表")
+        if not isinstance(self.raw_metadata, dict):
+            raise ValueError("ParsedContent.raw_metadata 必须是字典")
+        if not isinstance(self.stats, dict):
+            raise ValueError("ParsedContent.stats 必须是字典")
+
 
 class PlatformAdapter(ABC):
     """平台适配器基类"""
@@ -52,3 +69,4 @@ class PlatformAdapter(ABC):
     async def parse(self, url: str) -> ParsedContent:
         """解析内容"""
         pass
+

@@ -4,6 +4,7 @@
 import asyncio
 from app.logging import logger, log_context, ensure_task_id
 import traceback
+from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +14,9 @@ from app.models import Content, ContentStatus, Platform, utcnow
 from app.adapters import AdapterFactory
 from app.config import settings
 from app.utils import normalize_bilibili_url
+from app.adapters.errors import AdapterError, RetryableAdapterError
+from app.storage import get_storage_backend
+from app.media_processing import store_archive_images_as_webp
 
 
 class TaskWorker:
@@ -50,6 +54,10 @@ class TaskWorker:
         Args:
             task_data: 任务数据，包含 content_id
         """
+        schema_version = int(task_data.get("schema_version") or 1)
+        action = task_data.get("action") or "parse"
+        attempt = int(task_data.get("attempt") or 0)
+        max_attempts = int(task_data.get("max_attempts") or 3)
         content_id = task_data.get('content_id')
         task_id = ensure_task_id(task_data.get("task_id"))
         if not content_id:
@@ -60,6 +68,7 @@ class TaskWorker:
             content = None
             with log_context(task_id=task_id, content_id=content_id):
                 try:
+                    logger.info(f"开始处理任务: schema={schema_version}, action={action}, attempt={attempt}/{max_attempts}")
                     # 获取内容记录
                     result = await session.execute(
                         select(Content).where(Content.id == content_id)
@@ -71,23 +80,80 @@ class TaskWorker:
                         await task_queue.mark_complete(content_id)
                         return
 
+                    # 幂等：解析任务遇到已完成内容，默认跳过。
+                    # 但若启用了归档媒体处理且存在未处理图片，则允许补处理（不重新解析）。
+                    if action == "parse" and content.status == ContentStatus.PULLED:
+                        if settings.enable_archive_media_processing:
+                            meta = content.raw_metadata
+                            archive = meta.get("archive") if isinstance(meta, dict) else None
+                            images = archive.get("images") if isinstance(archive, dict) else None
+                            need_media = False
+                            if isinstance(images, list) and images:
+                                for img in images:
+                                    if isinstance(img, dict) and img.get("url") and not img.get("stored_key"):
+                                        need_media = True
+                                        break
+
+                            if need_media:
+                                logger.info("内容已解析完成，但存在未处理图片；开始补处理归档媒体")
+                                try:
+                                    # Reuse the same processing logic by emulating ParsedContent shape.
+                                    class _ParsedLike:
+                                        raw_metadata = meta
+
+                                    await self._maybe_process_private_archive_media(_ParsedLike())
+                                    content.raw_metadata = meta
+                                    await session.commit()
+                                    logger.info("补处理归档媒体完成")
+                                except Exception as e:
+                                    logger.warning("补处理归档媒体失败，跳过: {}", f"{type(e).__name__}: {e}")
+
+                        logger.info("内容已解析完成，跳过解析")
+                        await task_queue.mark_complete(content_id)
+                        return
+
                     # 更新状态为处理中
                     content.status = ContentStatus.PROCESSING
                     await session.commit()
 
-                    # 增强解析鲁棒性：处理 B 站 ID 拼接
-                    if content.platform == Platform.BILIBILI:
-                        content.url = normalize_bilibili_url(content.url)
+                    # Pipeline 重试策略：仅对 retryable 错误进行指数退避重试
+                    parsed = None
+                    last_err: Exception | None = None
+                    base_delay = 1.0
+                    for i in range(max(1, max_attempts - attempt)):
+                        try:
+                            # 增强解析鲁棒性：处理 B 站 ID 拼接
+                            if content.platform == Platform.BILIBILI:
+                                content.url = normalize_bilibili_url(content.url)
 
-                    # 创建适配器
-                    adapter = AdapterFactory.create(
-                        content.platform,
-                        cookies=self._get_platform_cookies(content.platform)
-                    )
+                            adapter = AdapterFactory.create(
+                                content.platform,
+                                cookies=self._get_platform_cookies(content.platform)
+                            )
 
-                    # 解析内容
-                    logger.info("开始解析内容")
-                    parsed = await adapter.parse(content.url)
+                            logger.info(f"开始解析内容 (try={attempt + i + 1}/{max_attempts})")
+                            parsed = await adapter.parse(content.url)
+                            last_err = None
+                            break
+                        except AdapterError as e:
+                            last_err = e
+                            if not e.retryable:
+                                raise
+                            # retryable: sleep and continue
+                            delay = base_delay * (2 ** (attempt + i))
+                            logger.warning(f"可重试错误，{delay:.1f}s 后重试: {e}")
+                            await asyncio.sleep(delay)
+                        except Exception as e:
+                            # 未分类异常：默认不重试（避免无限放大问题）
+                            last_err = e
+                            raise
+
+                    if parsed is None:
+                        # 全部重试失败：统一抛出为 RetryableAdapterError 以便落库
+                        raise RetryableAdapterError(
+                            f"解析重试失败，已达到最大次数: {max_attempts}",
+                            details={"last_error": str(last_err) if last_err else None},
+                        )
 
                     # 更新内容信息
                     content.clean_url = parsed.clean_url
@@ -99,6 +165,13 @@ class TaskWorker:
                     content.cover_url = parsed.cover_url
                     content.media_urls = parsed.media_urls
                     content.published_at = parsed.published_at
+                    # 可选：对私有归档中的媒体进行处理（下载/转码/存储），不影响对外分享字段。
+                    if settings.enable_archive_media_processing:
+                        try:
+                            await self._maybe_process_private_archive_media(parsed)
+                        except Exception as e:
+                            logger.warning("Archive media processing skipped: {}", f"{type(e).__name__}: {e}")
+
                     content.raw_metadata = parsed.raw_metadata
 
                     # 统一存储 ID 和互动数据
@@ -141,6 +214,18 @@ class TaskWorker:
                         }
                         content.last_error_at = utcnow()
                         await session.commit()
+
+                    # 任务死信：达到最大尝试次数/不可重试错误
+                    reason = "failed"
+                    if isinstance(e, AdapterError) and e.auth_required:
+                        reason = "auth_required"
+                    elif isinstance(e, AdapterError) and not e.retryable:
+                        reason = "non_retryable"
+                    elif attempt + 1 >= max_attempts:
+                        reason = "max_attempts_reached"
+
+                    if reason != "failed":
+                        await task_queue.push_dead_letter(task_data, reason=reason)
                 
                 finally:
                     # 标记任务完成
@@ -158,6 +243,48 @@ class TaskWorker:
                 cookies['buvid3'] = settings.bilibili_buvid3.get_secret_value()
             return cookies
         return {}
+
+    async def _maybe_process_private_archive_media(self, parsed) -> None:
+        """进程私有归档媒体（如适用）。
+
+        当前的实现：
+            - 如果 parsed.raw_metadata 包含类似 opus 的归档且带有图片 URL，则将其存储为 WebP。
+
+        备注：
+        - 这会原地修改 parsed.raw_metadata（仅限私有）。
+        - 不会更改面向分享的字段，如 cover_url/media_urls。
+        """
+
+        meta = getattr(parsed, "raw_metadata", None)
+        if not isinstance(meta, dict):
+            return
+
+        archive = meta.get("archive")
+        if not isinstance(archive, dict):
+            return
+
+        images = archive.get("images")
+        if not isinstance(images, list) or not images:
+            return
+
+        storage = get_storage_backend()
+
+        # MinIO/S3: 确保bucket存在,避免首次使用时失败
+        ensure_bucket = getattr(storage, "ensure_bucket", None)
+        if callable(ensure_bucket):
+            await ensure_bucket()
+
+        namespace = "vaultstream"
+        quality = int(getattr(settings, "archive_image_webp_quality", 80) or 80)
+        max_count = getattr(settings, "archive_image_max_count", None)
+
+        await store_archive_images_as_webp(
+            archive=archive,
+            storage=storage,
+            namespace=namespace,
+            quality=quality,
+            max_images=max_count,
+        )
 
     async def _do_parse(self, session: AsyncSession, content: Content):
         """执行一次解析并保存结果（单次尝试）。

@@ -7,9 +7,10 @@ from app.config import settings
 from app.models import Base
 
 # 创建异步引擎
+# echo=False 避免输出大量 SQL 日志，仅在真正需要 SQL 调试时手动开启
 engine = create_async_engine(
     settings.database_url,
-    echo=settings.debug,
+    echo=settings.debug_sql,  # 使用独立的 debug_sql 配置
     future=True
 )
 
@@ -28,7 +29,7 @@ async def init_db():
 
 
 async def db_ping() -> bool:
-    """用于健康检查的轻量 DB 探活。"""
+    """数据库健康检查"""
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))

@@ -4,7 +4,8 @@
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, List
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, JSON, Enum as SQLEnum, UniqueConstraint
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -12,11 +13,7 @@ Base = declarative_base()
 
 
 def utcnow() -> datetime:
-    """Return a naive UTC datetime.
-
-    `datetime.utcnow()` is deprecated in Python 3.12+.
-    We keep DB columns as naive timestamps but always represent UTC.
-    """
+    """返回UTC 时间的当前时间戳。"""
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
@@ -70,11 +67,11 @@ class Content(Base):
     failure_count = Column(Integer, default=0)
     last_error = Column(Text)
     last_error_type = Column(String(200))
-    last_error_detail = Column(JSON)
+    last_error_detail = Column(JSONB)
     last_error_at = Column(DateTime)
     
     # 标签和分类
-    tags = Column(JSON, default=list)  # 用户自定义标签
+    tags = Column(JSONB, default=list)  # 用户自定义标签
     is_nsfw = Column(Boolean, default=False)
     source = Column(String(100))  # 来源标识
     
@@ -102,10 +99,10 @@ class Content(Base):
     comment_count = Column(Integer, default=0)
     
     # 平台特有扩展数据 (如 B站投币、转发等)
-    extra_stats = Column(JSON, default=dict)
+    extra_stats = Column(JSONB, default=dict)
     
     # 元数据（JSONB存储）
-    raw_metadata = Column(JSON)  # 原始平台数据
+    raw_metadata = Column(JSONB)  # 原始平台数据
     
     # 提取的通用字段
     title = Column(Text)
@@ -113,7 +110,7 @@ class Content(Base):
     author_name = Column(String(200))
     author_id = Column(String(100))
     cover_url = Column(Text)
-    media_urls = Column(JSON, default=list)  # 媒体资源URL列表
+    media_urls = Column(JSONB, default=list)  # 媒体资源URL列表
     
     # 时间戳
     created_at = Column(DateTime, default=utcnow, index=True)
@@ -142,9 +139,9 @@ class ContentSource(Base):
     content_id = Column(Integer, ForeignKey("contents.id"), nullable=False, index=True)
 
     source = Column(String(100))
-    tags_snapshot = Column(JSON, default=list)
+    tags_snapshot = Column(JSONB, default=list)
     note = Column(Text)
-    client_context = Column(JSON)
+    client_context = Column(JSONB)
 
     created_at = Column(DateTime, default=utcnow, index=True)
 

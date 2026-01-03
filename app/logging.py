@@ -1,9 +1,9 @@
-"""VaultStream logging utilities.
+"""VaultStream 日志模块
 
-Goal (M0): provide structured logs with `request_id`, `content_id`, `task_id`.
+目标（M0）：提供带有 `request_id`、`content_id`、`task_id` 的结构化日志。
 
-- Uses loguru.
-- Injects context via contextvars so existing `logger.info(...)` calls pick up IDs automatically.
+- 使用 loguru。
+- 通过 contextvars 注入上下文，使现有的 `logger.info(...)` 调用自动带上这些 ID。
 """
 
 from __future__ import annotations
@@ -68,12 +68,12 @@ def log_context(
 
 
 def setup_logging(*, level: str = "INFO", fmt: str = "json", debug: bool = False) -> None:
-    """Configure loguru sinks.
+    """设置日志配置
 
-    Args:
-        level: log level.
-        fmt: 'json' or 'text'.
-        debug: enable loguru backtrace/diagnose.
+    参数:
+        level: 日志级别。
+        fmt: 'json' 或 'text'。
+        debug: 是否启用 loguru 的 backtrace/diagnose。
     """
     logger.remove()
 
@@ -87,15 +87,29 @@ def setup_logging(*, level: str = "INFO", fmt: str = "json", debug: bool = False
         )
         return
 
-    # text format (still includes the structured IDs)
+    # text format - 简洁模式：仅在有ID时显示
+    def format_message(record):
+        parts = ["{time:YYYY-MM-DD HH:mm:ss}", "|", "{level:<8}", "|"]
+        
+        # 仅在存在时添加ID信息
+        ids = []
+        if record["extra"].get("request_id"):
+            ids.append(f"req={record['extra']['request_id'][:8]}")
+        if record["extra"].get("content_id"):
+            ids.append(f"cnt={record['extra']['content_id']}")
+        if record["extra"].get("task_id"):
+            ids.append(f"tsk={record['extra']['task_id'][:8]}")
+        
+        if ids:
+            parts.extend([" ".join(ids), "|"])
+        
+        parts.append("{name}:{function} - {message}")
+        return " ".join(parts)
+    
     logger.add(
         sys.stdout,
         level=level.upper(),
         backtrace=debug,
         diagnose=debug,
-        format=(
-            "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<8} | "
-            "rid={extra[request_id]} cid={extra[content_id]} tid={extra[task_id]} | "
-            "{name}:{function}:{line} - {message}"
-        ),
+        format=format_message,
     )

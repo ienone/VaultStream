@@ -14,6 +14,9 @@ class TaskQueue:
     
     QUEUE_NAME = "vaultstream:tasks"
     PROCESSING_SET = "vaultstream:processing"
+    DEAD_LETTER_QUEUE = "vaultstream:deadletter"
+
+    DEFAULT_TASK_SCHEMA_VERSION = 1
     
     def __init__(self):
         self.redis: Optional[aioredis.Redis] = None
@@ -25,13 +28,13 @@ class TaskQueue:
             encoding="utf-8",
             decode_responses=True
         )
-        logger.info("Redis connected")
+        logger.info("Redis 已连接")
     
     async def disconnect(self):
         """断开连接"""
         if self.redis:
             await self.redis.close()
-            logger.info("Redis disconnected")
+            logger.info("Redis 已断开连接")
 
     async def ping(self) -> bool:
         """用于健康检查的轻量 Redis 探活。"""
@@ -55,7 +58,14 @@ class TaskQueue:
         """
         try:
             task_id = ensure_task_id(task_data.get("task_id"))
-            task_data = {**task_data, "task_id": task_id}
+            task_data = {
+                "schema_version": int(task_data.get("schema_version") or self.DEFAULT_TASK_SCHEMA_VERSION),
+                "action": task_data.get("action") or "parse",
+                "attempt": int(task_data.get("attempt") or 0),
+                "max_attempts": int(task_data.get("max_attempts") or 3),
+                **task_data,
+                "task_id": task_id,
+            }
             content_id = task_data.get("content_id")
             task_json = json.dumps(task_data)
             await self.redis.lpush(self.QUEUE_NAME, task_json)
@@ -85,7 +95,13 @@ class TaskQueue:
                 # 标记为处理中
                 content_id = task_data.get('content_id')
                 if content_id:
-                    await self.redis.sadd(self.PROCESSING_SET, content_id)
+                    # 幂等：如果已经在处理中，丢弃重复任务（避免并发脏写）
+                    added = await self.redis.sadd(self.PROCESSING_SET, content_id)
+                    if not added:
+                        task_id = ensure_task_id(task_data.get("task_id"))
+                        with log_context(task_id=task_id, content_id=content_id):
+                            logger.info("重复任务已丢弃（content 正在处理中）")
+                        return None
                 
                 return task_data
         except Exception as e:
@@ -99,6 +115,14 @@ class TaskQueue:
             logger.info(f"任务已完成: {content_id}")
         except Exception as e:
             logger.error(f"标记任务完成失败: {e}")
+
+    async def push_dead_letter(self, task_data: Dict[str, Any], *, reason: str):
+        """将任务写入死信队列，便于后续人工排查或重放。"""
+        try:
+            payload = {**(task_data or {}), "dead_letter_reason": reason}
+            await self.redis.lpush(self.DEAD_LETTER_QUEUE, json.dumps(payload, ensure_ascii=False))
+        except Exception as e:
+            logger.error(f"写入死信队列失败: {e}")
     
     async def is_processing(self, content_id: int) -> bool:
         """检查任务是否正在处理"""

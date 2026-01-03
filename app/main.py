@@ -27,23 +27,23 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动时
     validate_settings()
-    logger.info("Starting VaultStream application...")
+    logger.info("启动 VaultStream 应用程序...")
     
     # 初始化数据库
     await init_db()
-    logger.info("Database initialized")
+    logger.info("数据库初始化完成")
     
     # 连接Redis
     await task_queue.connect()
     
     # 启动后台worker
     worker_task = asyncio.create_task(worker.start())
-    logger.info("Background worker started")
+    logger.info("后台任务工作器已启动")
     
     yield
     
     # 关闭时
-    logger.info("Shutting down VaultStream application...")
+    logger.info("关闭 VaultStream 应用程序...")
     
     # 停止worker
     await worker.stop()
@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
     # 断开Redis
     await task_queue.disconnect()
     
-    logger.info("Application shutdown complete")
+    logger.info("应用程序关闭完成")
 
 
 # 创建应用
@@ -79,7 +79,7 @@ async def request_id_middleware(request: Request, call_next):
         try:
             response = await call_next(request)
         except Exception:
-            logger.exception("Unhandled request exception")
+            logger.exception("未处理的请求异常")
             raise
         finally:
             elapsed_ms = (perf_counter() - start) * 1000
@@ -95,7 +95,6 @@ async def request_id_middleware(request: Request, call_next):
         response.headers["X-Request-Id"] = request_id
         return response
 
-    # 理论上不会走到这里，仅兜底
     from fastapi.responses import JSONResponse
 
     return JSONResponse(status_code=500, content={"detail": "internal error"}, headers={"X-Request-Id": request_id})

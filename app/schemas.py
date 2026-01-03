@@ -29,9 +29,9 @@ class ShareRequest(BaseModel):
         try:
             payload = json.dumps(v, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         except Exception as e:
-            raise ValueError(f"client_context must be JSON-serializable: {e}")
+            raise ValueError(f"client_context 序列化失败: {e}")
         if len(payload) > CLIENT_CONTEXT_MAX_BYTES: 
-            raise ValueError(f"client_context too large (> {CLIENT_CONTEXT_MAX_BYTES} bytes)") 
+            raise ValueError(f"client_context 太大 (> {CLIENT_CONTEXT_MAX_BYTES} 字节)") 
         return v
 
 
@@ -107,3 +107,33 @@ class MarkPushedRequest(BaseModel):
     content_id: int
     target_platform: str
     message_id: Optional[str] = None
+
+
+class ShareCard(BaseModel):
+    """合规分享卡片（对外输出用）。
+
+    与“私有存档 raw_metadata”严格隔离：这里不允许出现 raw_metadata、client_context 等全量信息。
+    """
+
+    id: int
+    platform: Platform
+    url: str
+    clean_url: Optional[str] = None
+    content_type: Optional[str] = None
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    author_name: Optional[str] = None  # 作者名称
+    author_id: Optional[str] = None     # 作者ID
+    cover_url: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    published_at: Optional[datetime] = None
+
+    # 少量通用互动数据（可选）
+    view_count: int = 0
+    like_count: int = 0
+    collect_count: int = 0
+    share_count: int = 0
+    comment_count: int = 0
+
+    class Config:
+        from_attributes = True

@@ -23,3 +23,9 @@ python-telegram-bot
 # 工具库
 python-dotenv
 loguru
+
+# 图片转码（可选：用于导出/归档时将图片转为 WebP）
+Pillow
+
+# S3/MinIO（可选：用于对象存储后端）
+boto3

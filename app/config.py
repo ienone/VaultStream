@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     debug: bool = True
+    debug_sql: bool = False  # 是否输出详细的SQL语句日志（默认关闭）
 
     # API 鉴权（M1：简单 Token）
     api_token: SecretStr = SecretStr("")
@@ -40,6 +41,31 @@ class Settings(BaseSettings):
     bilibili_sessdata: Optional[SecretStr] = None
     bilibili_bili_jct: Optional[SecretStr] = None
     bilibili_buvid3: Optional[SecretStr] = None
+
+    # 存储后端（用于私有归档的派生资产：图片 webp、未来音视频转码等）
+    storage_backend: Literal["local", "s3"] = "local"
+    storage_public_base_url: Optional[str] = None  # 若配置，可将 key 映射为可访问 URL
+
+    # LocalFS
+    storage_local_root: str = "data/storage"
+
+    # S3/MinIO
+    storage_s3_endpoint: Optional[str] = None
+    storage_s3_region: str = "us-east-1"
+    storage_s3_bucket: Optional[str] = None
+    storage_s3_access_key: Optional[SecretStr] = None
+    storage_s3_secret_key: Optional[SecretStr] = None
+
+    # S3/MinIO URL 渲染
+    # - 如果配置了 storage_public_base_url，URL 格式为：{base}/{bucket}/{key}
+    # - 如果 storage_s3_presign_urls 为 True，生成预签名的 GET URL（适用于私有bucket）
+    storage_s3_presign_urls: bool = False
+    storage_s3_presign_expires: int = 3600
+
+    # 媒体处理开关
+    enable_archive_media_processing: bool = False
+    archive_image_webp_quality: int = 80
+    archive_image_max_count: Optional[int] = None
     
     class Config:
         env_file = ".env"
@@ -55,15 +81,15 @@ def validate_settings() -> None:
     注意：不要在错误信息里输出敏感值。
     """
     if not settings.database_url:
-        raise RuntimeError("Missing DATABASE_URL")
+        raise RuntimeError("缺少DATABASE_URL")
     if not settings.redis_url:
-        raise RuntimeError("Missing REDIS_URL")
+        raise RuntimeError("缺少REDIS_URL")
 
     if settings.app_env == "prod" and settings.debug:
-        raise RuntimeError("DEBUG must be False in prod")
+        raise RuntimeError("生产环境下 DEBUG 必须为 False")
 
     if settings.enable_bot:
         if not settings.telegram_bot_token or not settings.telegram_bot_token.get_secret_value():
-            raise RuntimeError("ENABLE_BOT is True but TELEGRAM_BOT_TOKEN is missing")
+            raise RuntimeError("ENABLE_BOT 为 True，但缺少 TELEGRAM_BOT_TOKEN")
         if not settings.telegram_channel_id:
-            raise RuntimeError("ENABLE_BOT is True but TELEGRAM_CHANNEL_ID is missing")
+            raise RuntimeError("ENABLE_BOT 为 True，但缺少 TELEGRAM_CHANNEL_ID")

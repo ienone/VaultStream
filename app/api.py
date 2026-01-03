@@ -11,7 +11,7 @@ from app.database import get_db
 from app.models import Content, ContentStatus, PushedRecord, Platform, ContentSource
 from app.schemas import (
     ShareRequest, ShareResponse, ContentDetail,
-    GetContentRequest, MarkPushedRequest
+    GetContentRequest, MarkPushedRequest, ShareCard
 )
 from app.queue import task_queue
 from app.adapters import AdapterFactory
@@ -213,29 +213,37 @@ async def list_contents(
     db: AsyncSession = Depends(get_db)
 ):
     """列出内容"""
-    query = select(Content)
-    
-    # 添加过滤条件
-    conditions = []
-    if status:
-        conditions.append(Content.status == status)
-    if platform:
-        conditions.append(Content.platform == platform)
-    if tag:
-        conditions.append(Content.tags.contains([tag]))
-    
-    if conditions:
-        query = query.where(and_(*conditions))
-    
-    query = query.order_by(Content.created_at.desc()).limit(limit).offset(offset)
-    
-    result = await db.execute(query)
-    contents = result.scalars().all()
-    
-    return [ContentDetail.model_validate(c) for c in contents]
+    try:
+        query = select(Content)
+        
+        # 添加过滤条件
+        conditions = []
+        if status:
+            conditions.append(Content.status == status)
+        if platform:
+            conditions.append(Content.platform == platform)
+        # 安全处理tag查询：忽略空字符串
+        if tag and isinstance(tag, str) and tag.strip():
+            conditions.append(Content.tags.contains([tag.strip()]))
+        
+        if conditions:
+            query = query.where(and_(*conditions))
+        
+        query = query.order_by(Content.created_at.desc()).limit(limit).offset(offset)
+        
+        result = await db.execute(query)
+        contents = result.scalars().all()
+        
+        return [ContentDetail.model_validate(c) for c in contents]
+    except Exception as e:
+        logger.exception("列出内容失败")
+        raise HTTPException(
+            status_code=500,
+            detail=f"查询失败: {str(e)[:200]}"
+        )
 
 
-@router.post("/bot/get-content", response_model=List[ContentDetail])
+@router.post("/bot/get-content", response_model=List[ShareCard])
 async def get_content_for_bot(
     request: GetContentRequest,
     db: AsyncSession = Depends(get_db)
@@ -245,30 +253,64 @@ async def get_content_for_bot(
     
     返回未推送到指定平台的内容
     """
-    # 构建查询：解析完成（pulled）且未推送到目标平台
-    # 兼容历史：曾经把 distributed 当状态用的旧数据，也视为解析完成
-    subquery = (
-        select(PushedRecord.content_id)
-        .where(PushedRecord.target_platform == request.target_platform)
-    )
-    
-    query = select(Content).where(
-        and_(
-            Content.status.in_([ContentStatus.PULLED, ContentStatus.DISTRIBUTED]),
-            ~Content.id.in_(subquery)
+    try:
+        # 构建查询：解析完成（pulled）且未推送到目标平台
+        # 兼容历史：曾经把 distributed 当状态用的旧数据，也视为解析完成
+        subquery = (
+            select(PushedRecord.content_id)
+            .where(PushedRecord.target_platform == request.target_platform)
         )
-    )
-    
-    # 按标签过滤
-    if request.tag:
-        query = query.where(Content.tags.contains([request.tag]))
-    
-    query = query.order_by(Content.created_at.desc()).limit(request.limit)
-    
-    result = await db.execute(query)
-    contents = result.scalars().all()
-    
-    return [ContentDetail.model_validate(c) for c in contents]
+        
+        query = select(Content).where(
+            and_(
+                Content.status.in_([ContentStatus.PULLED, ContentStatus.DISTRIBUTED]),
+                ~Content.id.in_(subquery)
+            )
+        )
+        
+        # 按标签过滤（安全处理：忽略空字符串和None）
+        if request.tag and isinstance(request.tag, str) and request.tag.strip():
+            tag_value = request.tag.strip()
+            # PostgreSQL JSONB contains 查询
+            query = query.where(Content.tags.contains([tag_value]))
+        
+        query = query.order_by(Content.created_at.desc()).limit(request.limit)
+        
+        result = await db.execute(query)
+        contents = result.scalars().all()
+    except Exception as e:
+        logger.exception("查询待推送内容失败")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"查询失败: {str(e)[:200]}"
+        )
+
+    # 分享输出：严格返回 ShareCard（不带 raw_metadata）
+    cards: List[ShareCard] = []
+    for c in contents:
+        cards.append(
+            ShareCard(
+                id=c.id,
+                platform=c.platform,
+                url=c.url,
+                clean_url=c.clean_url,
+                content_type=c.content_type,
+                title=c.title,
+                summary=c.description,
+                author_name=c.author_name,  # 添加作者信息
+                author_id=c.author_id,      # 添加作者ID
+                cover_url=c.cover_url,
+                tags=c.tags or [],
+                published_at=c.published_at,
+                view_count=c.view_count or 0,
+                like_count=c.like_count or 0,
+                collect_count=c.collect_count or 0,
+                share_count=c.share_count or 0,
+                comment_count=c.comment_count or 0,
+            )
+        )
+
+    return cards
 
 
 @router.post("/bot/mark-pushed")
