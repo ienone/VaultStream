@@ -65,6 +65,13 @@ class Content(Base):
     canonical_url = Column(Text, index=True)  # 用于去重的规范化URL
     clean_url = Column(Text)  # 解析后的净化URL
     status = Column(SQLEnum(ContentStatus), default=ContentStatus.UNPROCESSED, index=True)
+
+    # 失败记录（用于失败重试/人工修复/后续可视化）
+    failure_count = Column(Integer, default=0)
+    last_error = Column(Text)
+    last_error_type = Column(String(200))
+    last_error_detail = Column(JSON)
+    last_error_at = Column(DateTime)
     
     # 标签和分类
     tags = Column(JSON, default=list)  # 用户自定义标签

@@ -57,12 +57,16 @@
 
 - 若命中去重（同平台同 canonical_url 已存在），返回已有内容的 `id`，并仍会写入一条 `content_sources`。
 
+- 存档优先行为说明：当同一内容已存在时，后续 `POST /api/v1/shares` 会更新内容的 `tags` 与 `source`（合并 tags），并始终写入 `content_sources` 以便追踪来源。若内容尚未解析成功（`status` 不是 `pulled` 且不是 `processing`），该接口会把内容重新置为 `unprocessed` 并重新入队解析；已解析成功的内容不会重复入队。
+
 ## 状态机（最小约束）
 
 - `unprocessed`：创建 contents 后的初始状态（已入队等待解析）。
 - `processing`：worker 取到任务后置为 processing。
 - `pulled`：解析成功并写入结构化字段后置为 pulled。
-- `failed`：解析异常时置为 failed（后续可引入重试机制/重新入队/人工修复/手动设置解析内容后重试）。
+- `failed`：解析异常时置为 failed。
+  - 后端会落库失败信息（用于后续可视化/人工修复）：`failure_count`、`last_error_type`、`last_error`、`last_error_at`（以及可选的 `last_error_detail`）。
+  - 当前最小重试方式：再次调用 `POST /shares` 提交同一内容（命中去重后若状态为 failed，会重新入队解析并把状态置回 unprocessed）。
 - `archived`：预留人工归档状态（当前未强制自动流转）。
 
 > 兼容说明：旧版本曾使用 `distributed` 作为状态；当前已改为“分发历史仅记录在 pushed_records”，后续会逐步把历史数据回写为 `pulled`。

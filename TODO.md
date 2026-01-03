@@ -30,8 +30,9 @@
   - [x] `contents`：canonical_url、platform、platform_id（可空）、title（可空）、tags、is_nsfw、status、raw_metadata(JSONB)、created_at
   - [x] `content_sources`（可选但推荐）：记录每次“分享触发”的来源（source、tags_snapshot、note、timestamp）
 - [x] 状态机落地（以解析为中心）
-  - [x] `Unprocessed -> Pulled -> Distributed -> Archived`
-  - [x] 明确每个状态的进入条件与回滚策略（失败重试/人工修复）
+  - [x] `unprocessed -> processing -> pulled|failed -> archived`
+  - [x] 明确每个状态的进入条件与回滚策略（失败记录落库 + reshare 触发重试；人工修复/管理端后置）
+  - [x] 最小回滚实现已完成：在 `contents` 表增加 `failure_count`、`last_error`、`last_error_type`、`last_error_detail`、`last_error_at`；worker 写入失败信息；`POST /shares` 对 `failed` 状态触发重试；`ContentDetail` 暴露失败摘要字段
 
 ---
 

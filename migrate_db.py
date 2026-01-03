@@ -55,6 +55,27 @@ async def migrate():
             )
         )
 
+        # M1.1: failure record columns (minimal rollback / manual fix basis)
+        if not await _column_exists(conn, "contents", "failure_count"):
+            print("Adding failure_count column to contents table...")
+            await conn.execute(text("ALTER TABLE contents ADD COLUMN failure_count INTEGER NOT NULL DEFAULT 0"))
+
+        if not await _column_exists(conn, "contents", "last_error"):
+            print("Adding last_error column to contents table...")
+            await conn.execute(text("ALTER TABLE contents ADD COLUMN last_error TEXT"))
+
+        if not await _column_exists(conn, "contents", "last_error_type"):
+            print("Adding last_error_type column to contents table...")
+            await conn.execute(text("ALTER TABLE contents ADD COLUMN last_error_type VARCHAR(200)"))
+
+        if not await _column_exists(conn, "contents", "last_error_detail"):
+            print("Adding last_error_detail column to contents table...")
+            await conn.execute(text("ALTER TABLE contents ADD COLUMN last_error_detail JSON"))
+
+        if not await _column_exists(conn, "contents", "last_error_at"):
+            print("Adding last_error_at column to contents table...")
+            await conn.execute(text("ALTER TABLE contents ADD COLUMN last_error_at TIMESTAMP WITHOUT TIME ZONE"))
+
         # 语义调整：DISTRIBUTED 不作为存档状态（历史数据回写到 PULLED）
         # 注意：本库的 Postgres enum label 使用的是成员名（大写），不是 value（小写）。
         await conn.execute(

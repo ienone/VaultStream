@@ -63,6 +63,48 @@ curl -X POST http://localhost:8000/api/v1/shares \
   -d '{"url": "BV1xx411c7XD", "tags": ["技术", "教程"]}'
 ```
 
+### 升级 / 迁移数据库
+
+当代码包含数据模型变更（例如新增 `canonical_url` 或解析失败相关字段）时，请先运行迁移脚本：
+
+```bash
+./venv/bin/python migrate_db.py
+```
+
+该脚本会尝试幂等地为现有数据库添加缺失的列和索引（包括 `failure_count`、`last_error*` 等）。
+
+### 回归测试示例（简要）
+
+1) 新内容首次入库：
+
+```bash
+curl -sS -X POST 'http://127.0.0.1:8000/api/v1/shares' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://www.bilibili.com/video/BV1newtest123","tags":["regress-new"],"source":"cli-test"}'
+```
+
+2) 已存在未解析内容再次提交（合并 tags 并重新入队；若解析失败会写入 `failure_count` / `last_error`）：
+
+```bash
+curl -sS -X POST 'http://127.0.0.1:8000/api/v1/shares' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://www.bilibili.com/video/BV1newtest123","tags":["repeat-tag"],"source":"cli-repeat"}'
+```
+
+3) 已解析成功内容再次提交（仅合并 tags，不重复入队）：
+
+```bash
+curl -sS -X POST 'http://127.0.0.1:8000/api/v1/shares' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://www.bilibili.com/video/BV198icBEErQ","tags":["post-pulled-test"],"source":"cli-pulled"}'
+```
+
+查看内容详情以观察 `status` 与失败信息：
+
+```bash
+curl -sS http://127.0.0.1:8000/api/v1/contents/3
+```
+
 ### 3. Bot 交互
 
 - `/get [tag]` - 获取并推送一条内容到频道。

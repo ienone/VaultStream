@@ -17,6 +17,7 @@ from app.queue import task_queue
 from app.adapters import AdapterFactory
 from app.config import settings
 from app.utils import normalize_bilibili_url, canonicalize_url
+from app.worker import worker
 
 router = APIRouter()
 
@@ -81,7 +82,7 @@ async def create_share(
         content = result.scalar_one_or_none()
 
         if content is None:
-            # 创建内容记录
+            # 创建内容记录（存档为主）
             content = Content(
                 platform=platform,
                 url=raw_url,
@@ -95,11 +96,27 @@ async def create_share(
             db.add(content)
             await db.flush()
 
-            # 首次入库才入队解析
+            # 首次入库：入队解析
             await task_queue.enqueue({
                 'content_id': content.id,
                 'action': 'parse'
             })
+
+        else:
+            # 存档优先：合并 tags、更新来源信息并始终写入 ContentSource
+            try:
+                existing_tags = set(content.tags or [])
+                incoming_tags = set(share.tags or [])
+                merged = list(existing_tags.union(incoming_tags))
+                content.tags = merged
+            except Exception:
+                # 若 tags 结构异常，回退为传入 tags
+                content.tags = share.tags or []
+
+            if share.source:
+                content.source = share.source
+
+            # 不再由分享触发自动重试：仅记录来源与标签，手动或后台重试由专门接口触发
 
         # 记录来源（无论是否去重）
         db.add(
@@ -146,6 +163,44 @@ async def get_content(
         raise HTTPException(status_code=404, detail="内容不存在")
     
     return ContentDetail.model_validate(content)
+
+
+@router.post("/contents/{content_id}/retry")
+async def retry_content(
+    content_id: int,
+    max_retries: int = 3,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """手动触发对指定内容的重试解析。
+
+    - `max_retries` 控制最大尝试次数（包含首次尝试）。
+    - 该接口不会重置 content 的其他字段，仅调用后台重试逻辑。
+    """
+    try:
+        result = await db.execute(
+            select(Content).where(Content.id == content_id)
+        )
+        content = result.scalar_one_or_none()
+
+        if not content:
+            raise HTTPException(status_code=404, detail="内容不存在")
+
+        ok = await worker.retry_parse(content_id, max_retries=max_retries)
+
+        if not ok:
+            # 重试达上限或内部错误，返回 500 并保留失败信息在内容记录中
+            raise HTTPException(status_code=500, detail="重试失败或达到最大重试次数")
+
+        # 刷新并返回最新状态
+        await db.refresh(content)
+        return {"success": True, "content_id": content_id, "status": content.status}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"重试接口失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/contents", response_model=List[ContentDetail])

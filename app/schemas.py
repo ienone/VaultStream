@@ -54,6 +54,12 @@ class ContentDetail(BaseModel):
     url: str
     clean_url: Optional[str]
     status: ContentStatus
+
+    # 解析失败信息（轻量字段，便于排查/人工修复）
+    failure_count: int = 0
+    last_error_type: Optional[str] = None
+    last_error: Optional[str] = None
+    last_error_at: Optional[datetime] = None
     tags: List[str]
     is_nsfw: bool
     source: Optional[str]
