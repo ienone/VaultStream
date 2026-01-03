@@ -72,4 +72,5 @@ curl -X POST http://localhost:8000/api/v1/shares \
 
 - [设计思路](docs/DESIGN.md)
 - [数据库结构](docs/DATABASE.md)
+- [API 接口契约](docs/API.md)
 - [开发待办清单](docs/TODO.md)

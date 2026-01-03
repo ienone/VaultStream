@@ -20,18 +20,18 @@
 ## 里程碑 M1：收藏入口（Input）与去重模型
 目标：任何来源 URL 都能被“稳定收下”，并可追踪来源与去重。
 
-- [ ] 入口协议（文档即接口契约）
-  - [ ] `POST /shares`：url、tags、source（app/web/bot）、note、is_nsfw、client_context（可选）
-  - [ ] 鉴权方案：先简单 Token（Header），后续可扩展用户体系
-- [ ] URL 规范化与去重
-  - [ ] URL 净化：去 utm 等追踪参数、短链还原、统一 scheme/host
-  - [ ] 去重键：`canonical_url` + `platform`（必要时加 platform_id），避免重复入库
-- [ ] 数据模型（收藏核心）
-  - [ ] `contents`：canonical_url、platform、platform_id（可空）、title（可空）、tags、is_nsfw、status、raw_metadata(JSONB)、created_at
-  - [ ] `content_sources`（可选但推荐）：记录每次“分享触发”的来源（source、tags_snapshot、note、timestamp）
-- [ ] 状态机落地（以解析为中心）
-  - [ ] `Unprocessed -> Pulled -> Distributed -> Archived`
-  - [ ] 明确每个状态的进入条件与回滚策略（失败重试/人工修复）
+- [x] 入口协议（文档即接口契约）
+  - [x] `POST /shares`：url、tags、source（app/web/bot）、note、is_nsfw、client_context（可选）
+  - [x] 鉴权方案：先简单 Token（Header），后续可扩展用户体系
+- [x] URL 规范化与去重
+  - [x] URL 净化：去 utm 等追踪参数、短链还原、统一 scheme/host
+  - [x] 去重键：`canonical_url` + `platform`（必要时加 platform_id），避免重复入库
+- [x] 数据模型（收藏核心）
+  - [x] `contents`：canonical_url、platform、platform_id（可空）、title（可空）、tags、is_nsfw、status、raw_metadata(JSONB)、created_at
+  - [x] `content_sources`（可选但推荐）：记录每次“分享触发”的来源（source、tags_snapshot、note、timestamp）
+- [x] 状态机落地（以解析为中心）
+  - [x] `Unprocessed -> Pulled -> Distributed -> Archived`
+  - [x] 明确每个状态的进入条件与回滚策略（失败重试/人工修复）
 
 ---
 

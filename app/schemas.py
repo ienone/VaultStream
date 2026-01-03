@@ -2,9 +2,14 @@
 Pydantic 模式定义（用于API请求/响应）
 """
 from datetime import datetime
+import json
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, HttpUrl, Field
+from pydantic import BaseModel, HttpUrl, Field, field_validator
 from app.models import ContentStatus, Platform, BilibiliContentType
+
+
+NOTE_MAX_LENGTH = 2000 # 备注内容的最大长度
+CLIENT_CONTEXT_MAX_BYTES = 4096 # JSON序列化后最大4KB
 
 
 class ShareRequest(BaseModel):
@@ -12,7 +17,22 @@ class ShareRequest(BaseModel):
     url: str = Field(..., description="要分享的URL")
     tags: List[str] = Field(default_factory=list, description="标签列表")
     source: Optional[str] = Field(None, description="来源标识")
+    note: Optional[str] = Field(None, description="备注", max_length=NOTE_MAX_LENGTH)
+    client_context: Optional[Dict[str, Any]] = Field(None, description="客户端上下文（可选）")
     is_nsfw: bool = Field(default=False, description="是否为NSFW内容")
+
+    @field_validator("client_context")
+    @classmethod
+    def validate_client_context_size(cls, v: Optional[Dict[str, Any]]):
+        if v is None:
+            return v
+        try:
+            payload = json.dumps(v, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        except Exception as e:
+            raise ValueError(f"client_context must be JSON-serializable: {e}")
+        if len(payload) > CLIENT_CONTEXT_MAX_BYTES: 
+            raise ValueError(f"client_context too large (> {CLIENT_CONTEXT_MAX_BYTES} bytes)") 
+        return v
 
 
 class ShareResponse(BaseModel):

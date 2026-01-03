@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     api_port: int = 8000
     debug: bool = True
 
+    # API 鉴权（M1：简单 Token）
+    api_token: SecretStr = SecretStr("")
+
     # 日志配置
     log_level: str = "INFO"
     log_format: Literal["json", "text"] = "json"

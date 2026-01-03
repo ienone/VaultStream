@@ -1,6 +1,53 @@
 import re
 import html
 from typing import List, Optional
+from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+
+
+_TRACKING_QUERY_KEYS = {
+    "gclid",
+    "fbclid",
+    "spm_id_from",
+    "from_source",
+    "vd_source",
+}
+
+
+def canonicalize_url(url: str) -> str:
+    """通用 URL 规范化：
+
+    - 去首尾空白
+    - 若缺少 scheme，默认补 https
+    - host 小写
+    - 移除 fragment
+    - 移除常见追踪参数（utm_* + 若干常见 key）
+
+    注意：平台短链解析由 adapter.clean_url 负责。
+    """
+    val = (url or "").strip()
+    if not val:
+        return val
+
+    if not val.startswith(("http://", "https://")):
+        # 对于纯域名/路径等，默认 https
+        val = "https://" + val
+
+    parsed = urlparse(val)
+    host = (parsed.netloc or "").lower()
+
+    query_pairs = parse_qsl(parsed.query, keep_blank_values=True)
+    filtered = []
+    for k, v in query_pairs:
+        lk = k.lower()
+        if lk.startswith("utm_"):
+            continue
+        if lk in _TRACKING_QUERY_KEYS:
+            continue
+        filtered.append((k, v))
+
+    new_query = urlencode(filtered, doseq=True)
+    normalized = parsed._replace(netloc=host, query=new_query, fragment="")
+    return urlunparse(normalized)
 
 def normalize_bilibili_url(url_or_id: str) -> str:
     """规范化 B 站 URL，支持 BV/av/cv 号"""
