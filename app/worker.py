@@ -4,7 +4,6 @@
 import asyncio
 from app.logging import logger, log_context, ensure_task_id
 import traceback
-from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 

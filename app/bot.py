@@ -96,8 +96,10 @@ class VaultStreamBot:
             if response.status_code != 200:
                 logger.error(f"后端 API 错误: status={response.status_code}")
                 try:
+                    # response.json() 在无法解析时会抛出 ValueError (JSONDecodeError)
                     error_detail = response.json().get('detail', '未知错误')
-                except:
+                except ValueError:
+                    # 兜底使用文本片段，避免捕获 BaseException
                     error_detail = response.text[:100] if response.text else '未知错误'
                 await update.message.reply_text(f"❌ 获取内容失败: {error_detail}")
                 return
@@ -186,12 +188,13 @@ class VaultStreamBot:
                 f"📦 队列任务数: {queue_size}"
             )
             logger.info(f"Bot /status 响应已发送: status={status}, queue_size={queue_size}")
-        except Exception as e:
-            logger.exception("处理 /status 命令失败")
-            try:
-                await update.message.reply_text("❌ 获取状态失败")
-            except:
-                pass
+            except Exception as e:
+                logger.exception("处理 /status 命令失败")
+                try:
+                    await update.message.reply_text("❌ 获取状态失败")
+                except Exception as reply_err:
+                    # 回复失败为 best-effort，不应掩盖原始异常
+                    logger.warning("回复 /status 失败: %s", reply_err)
 
     async def send_content_to_channel(self, content: dict, context: ContextTypes.DEFAULT_TYPE):
         """发送内容到频道"""
@@ -353,15 +356,13 @@ class VaultStreamBot:
                 # 等待停止信号
                 stop_event = asyncio.Event()
                 
-                def signal_handler():
-                    stop_event.set()
-                
-                # 注册信号处理
-                import signal
-                loop = asyncio.get_event_loop()
+                # 等待停止信号（可由外部通过 stop_event.set() 触发）
+                # 注意：不在此处注册全局信号处理，运行环境可自行管理进程信号。
                 try:
                     await stop_event.wait()
                 except asyncio.CancelledError:
+                    # 任务在关闭过程中被取消是预期行为，安全忽略以平滑退出
+                    # 保持显式捕获以避免捕获更广泛的 BaseException
                     pass
                 
                 logger.info("收到停止信号，正在关闭...")
