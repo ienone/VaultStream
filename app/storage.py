@@ -179,8 +179,9 @@ class S3StorageBackend(StorageBackend):
                     Params={"Bucket": self.bucket, "Key": safe_key},
                     ExpiresIn=max(60, int(self._presign_expires)),
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                # 预签名失败为非致命问题，记录日志便于排查并继续尝试其它访问方式
+                logger.warning("generate_presigned_url failed: %s", e)
 
         if self.public_base_url:
             return f"{self.public_base_url}/{self.bucket}/{safe_key}"
@@ -192,7 +193,9 @@ class S3StorageBackend(StorageBackend):
             try:
                 self._client.head_object(Bucket=self.bucket, Key=key)
                 return True
-            except Exception:
+            except Exception as e:
+                # 将异常视作“对象不存在”并记录调试信息
+                logger.debug("head_object check failed for %s: %s", key, e)
                 return False
 
         return await asyncio.to_thread(head)

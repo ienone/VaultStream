@@ -4,7 +4,7 @@ Pydantic 模式定义（用于API请求/响应）
 from datetime import datetime
 import json
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, HttpUrl, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 from app.models import ContentStatus, Platform, BilibiliContentType
 
 
