@@ -361,6 +361,8 @@ class VaultStreamBot:
                 try:
                     await stop_event.wait()
                 except asyncio.CancelledError:
+                    # 任务在关闭过程中被取消是预期行为，安全忽略以平滑退出
+                    # 保持显式捕获以避免捕获更广泛的 BaseException
                     pass
                 
                 logger.info("收到停止信号，正在关闭...")
