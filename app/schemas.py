@@ -2,9 +2,14 @@
 Pydantic 模式定义（用于API请求/响应）
 """
 from datetime import datetime
+import json
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, HttpUrl, Field
+from pydantic import BaseModel, Field, field_validator
 from app.models import ContentStatus, Platform, BilibiliContentType
+
+
+NOTE_MAX_LENGTH = 2000 # 备注内容的最大长度
+CLIENT_CONTEXT_MAX_BYTES = 4096 # JSON序列化后最大4KB
 
 
 class ShareRequest(BaseModel):
@@ -12,7 +17,22 @@ class ShareRequest(BaseModel):
     url: str = Field(..., description="要分享的URL")
     tags: List[str] = Field(default_factory=list, description="标签列表")
     source: Optional[str] = Field(None, description="来源标识")
+    note: Optional[str] = Field(None, description="备注", max_length=NOTE_MAX_LENGTH)
+    client_context: Optional[Dict[str, Any]] = Field(None, description="客户端上下文（可选）")
     is_nsfw: bool = Field(default=False, description="是否为NSFW内容")
+
+    @field_validator("client_context")
+    @classmethod
+    def validate_client_context_size(cls, v: Optional[Dict[str, Any]]):
+        if v is None:
+            return v
+        try:
+            payload = json.dumps(v, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        except Exception as e:
+            raise ValueError(f"client_context 序列化失败: {e}")
+        if len(payload) > CLIENT_CONTEXT_MAX_BYTES: 
+            raise ValueError(f"client_context 太大 (> {CLIENT_CONTEXT_MAX_BYTES} 字节)") 
+        return v
 
 
 class ShareResponse(BaseModel):
@@ -34,6 +54,12 @@ class ContentDetail(BaseModel):
     url: str
     clean_url: Optional[str]
     status: ContentStatus
+
+    # 解析失败信息（轻量字段，便于排查/人工修复）
+    failure_count: int = 0
+    last_error_type: Optional[str] = None
+    last_error: Optional[str] = None
+    last_error_at: Optional[datetime] = None
     tags: List[str]
     is_nsfw: bool
     source: Optional[str]
@@ -81,3 +107,33 @@ class MarkPushedRequest(BaseModel):
     content_id: int
     target_platform: str
     message_id: Optional[str] = None
+
+
+class ShareCard(BaseModel):
+    """合规分享卡片（对外输出用）。
+
+    与“私有存档 raw_metadata”严格隔离：这里不允许出现 raw_metadata、client_context 等全量信息。
+    """
+
+    id: int
+    platform: Platform
+    url: str
+    clean_url: Optional[str] = None
+    content_type: Optional[str] = None
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    author_name: Optional[str] = None  # 作者名称
+    author_id: Optional[str] = None     # 作者ID
+    cover_url: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    published_at: Optional[datetime] = None
+
+    # 少量通用互动数据（可选）
+    view_count: int = 0
+    like_count: int = 0
+    collect_count: int = 0
+    share_count: int = 0
+    comment_count: int = 0
+
+    class Config:
+        from_attributes = True

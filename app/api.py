@@ -2,27 +2,58 @@
 FastAPI 路由
 """
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from loguru import logger
+from app.logging import logger, log_context
 
 from app.database import get_db
-from app.models import Content, ContentStatus, PushedRecord, Platform
+from app.models import Content, ContentStatus, PushedRecord, Platform, ContentSource
 from app.schemas import (
     ShareRequest, ShareResponse, ContentDetail,
-    GetContentRequest, MarkPushedRequest
+    GetContentRequest, MarkPushedRequest, ShareCard
 )
 from app.queue import task_queue
 from app.adapters import AdapterFactory
+from app.config import settings
+from app.utils import normalize_bilibili_url, canonicalize_url
+from app.worker import worker
 
 router = APIRouter()
+
+
+def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
+    if not authorization:
+        return None
+    parts = authorization.split(" ", 1)
+    if len(parts) == 2 and parts[0].lower() == "bearer":
+        return parts[1].strip()
+    return None
+
+
+async def require_api_token(
+    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+):
+    """M1：简单 Token 鉴权。
+
+    - 当未设置 API_TOKEN 时：放行（便于本地开发）
+    - 当设置了 API_TOKEN 时：要求 X-API-Token 或 Authorization: Bearer
+    """
+    expected = settings.api_token.get_secret_value() if settings.api_token else ""
+    if not expected:
+        return
+
+    provided = x_api_token or _extract_bearer(authorization)
+    if not provided or provided != expected:
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 @router.post("/shares", response_model=ShareResponse)
 async def create_share(
     share: ShareRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
 ):
     """
     创建分享
@@ -30,32 +61,79 @@ async def create_share(
     接收一个URL，识别平台，创建内容记录并加入解析队列
     """
     try:
+        # 预处理：支持 BV/av/cv 直接输入
+        raw_url = share.url
+        url_for_detect = normalize_bilibili_url(raw_url)
+        url_for_detect = canonicalize_url(url_for_detect)
+
         # 检测平台
-        platform = AdapterFactory.detect_platform(share.url)
+        platform = AdapterFactory.detect_platform(url_for_detect)
         if not platform:
             raise HTTPException(status_code=400, detail="无法识别的平台URL")
+
+        # 计算 canonical_url（用于去重）
+        adapter = AdapterFactory.create(platform)
+        canonical_url = await adapter.clean_url(url_for_detect)
         
-        # 创建内容记录
-        content = Content(
-            platform=platform,
-            url=share.url,
-            tags=share.tags,
-            source=share.source,
-            is_nsfw=share.is_nsfw,
-            status=ContentStatus.UNPROCESSED
+        # 去重：platform + canonical_url
+        result = await db.execute(
+            select(Content).where(and_(Content.platform == platform, Content.canonical_url == canonical_url))
         )
-        
-        db.add(content)
+        content = result.scalar_one_or_none()
+
+        if content is None:
+            # 创建内容记录（存档为主）
+            content = Content(
+                platform=platform,
+                url=raw_url,
+                canonical_url=canonical_url,
+                clean_url=canonical_url,
+                tags=share.tags,
+                source=share.source,
+                is_nsfw=share.is_nsfw,
+                status=ContentStatus.UNPROCESSED,
+            )
+            db.add(content)
+            await db.flush()
+
+            # 首次入库：入队解析
+            await task_queue.enqueue({
+                'content_id': content.id,
+                'action': 'parse'
+            })
+
+        else:
+            # 存档优先：合并 tags、更新来源信息并始终写入 ContentSource
+            try:
+                existing_tags = set(content.tags or [])
+                incoming_tags = set(share.tags or [])
+                merged = list(existing_tags.union(incoming_tags))
+                content.tags = merged
+            except Exception:
+                # 若 tags 结构异常，回退为传入 tags
+                content.tags = share.tags or []
+
+            if share.source:
+                content.source = share.source
+
+            # 不再由分享触发自动重试：仅记录来源与标签，手动或后台重试由专门接口触发
+
+        # 记录来源（无论是否去重）
+        db.add(
+            ContentSource(
+                content_id=content.id,
+                source=share.source,
+                tags_snapshot=share.tags,
+                note=share.note,
+                client_context=share.client_context,
+            )
+        )
+
         await db.commit()
         await db.refresh(content)
-        
-        # 加入解析队列
-        await task_queue.enqueue({
-            'content_id': content.id,
-            'action': 'parse'
-        })
-        
-        logger.info(f"创建分享成功: {content.id} - {share.url}")
+
+        with log_context(content_id=content.id):
+            logger.info("创建分享成功")
         
         return ShareResponse(
             id=content.id,
@@ -87,6 +165,44 @@ async def get_content(
     return ContentDetail.model_validate(content)
 
 
+@router.post("/contents/{content_id}/retry")
+async def retry_content(
+    content_id: int,
+    max_retries: int = 3,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """手动触发对指定内容的重试解析。
+
+    - `max_retries` 控制最大尝试次数（包含首次尝试）。
+    - 该接口不会重置 content 的其他字段，仅调用后台重试逻辑。
+    """
+    try:
+        result = await db.execute(
+            select(Content).where(Content.id == content_id)
+        )
+        content = result.scalar_one_or_none()
+
+        if not content:
+            raise HTTPException(status_code=404, detail="内容不存在")
+
+        ok = await worker.retry_parse(content_id, max_retries=max_retries)
+
+        if not ok:
+            # 重试达上限或内部错误，返回 500 并保留失败信息在内容记录中
+            raise HTTPException(status_code=500, detail="重试失败或达到最大重试次数")
+
+        # 刷新并返回最新状态
+        await db.refresh(content)
+        return {"success": True, "content_id": content_id, "status": content.status}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"重试接口失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/contents", response_model=List[ContentDetail])
 async def list_contents(
     status: Optional[ContentStatus] = None,
@@ -97,29 +213,37 @@ async def list_contents(
     db: AsyncSession = Depends(get_db)
 ):
     """列出内容"""
-    query = select(Content)
-    
-    # 添加过滤条件
-    conditions = []
-    if status:
-        conditions.append(Content.status == status)
-    if platform:
-        conditions.append(Content.platform == platform)
-    if tag:
-        conditions.append(Content.tags.contains([tag]))
-    
-    if conditions:
-        query = query.where(and_(*conditions))
-    
-    query = query.order_by(Content.created_at.desc()).limit(limit).offset(offset)
-    
-    result = await db.execute(query)
-    contents = result.scalars().all()
-    
-    return [ContentDetail.model_validate(c) for c in contents]
+    try:
+        query = select(Content)
+        
+        # 添加过滤条件
+        conditions = []
+        if status:
+            conditions.append(Content.status == status)
+        if platform:
+            conditions.append(Content.platform == platform)
+        # 安全处理tag查询：忽略空字符串
+        if tag and isinstance(tag, str) and tag.strip():
+            conditions.append(Content.tags.contains([tag.strip()]))
+        
+        if conditions:
+            query = query.where(and_(*conditions))
+        
+        query = query.order_by(Content.created_at.desc()).limit(limit).offset(offset)
+        
+        result = await db.execute(query)
+        contents = result.scalars().all()
+        
+        return [ContentDetail.model_validate(c) for c in contents]
+    except Exception as e:
+        logger.exception("列出内容失败")
+        raise HTTPException(
+            status_code=500,
+            detail=f"查询失败: {str(e)[:200]}"
+        )
 
 
-@router.post("/bot/get-content", response_model=List[ContentDetail])
+@router.post("/bot/get-content", response_model=List[ShareCard])
 async def get_content_for_bot(
     request: GetContentRequest,
     db: AsyncSession = Depends(get_db)
@@ -129,29 +253,64 @@ async def get_content_for_bot(
     
     返回未推送到指定平台的内容
     """
-    # 构建查询：状态为PULLED且未推送到目标平台
-    subquery = (
-        select(PushedRecord.content_id)
-        .where(PushedRecord.target_platform == request.target_platform)
-    )
-    
-    query = select(Content).where(
-        and_(
-            Content.status == ContentStatus.PULLED,
-            ~Content.id.in_(subquery)
+    try:
+        # 构建查询：解析完成（pulled）且未推送到目标平台
+        # 兼容历史：曾经把 distributed 当状态用的旧数据，也视为解析完成
+        subquery = (
+            select(PushedRecord.content_id)
+            .where(PushedRecord.target_platform == request.target_platform)
         )
-    )
-    
-    # 按标签过滤
-    if request.tag:
-        query = query.where(Content.tags.contains([request.tag]))
-    
-    query = query.order_by(Content.created_at.desc()).limit(request.limit)
-    
-    result = await db.execute(query)
-    contents = result.scalars().all()
-    
-    return [ContentDetail.model_validate(c) for c in contents]
+        
+        query = select(Content).where(
+            and_(
+                Content.status.in_([ContentStatus.PULLED, ContentStatus.DISTRIBUTED]),
+                ~Content.id.in_(subquery)
+            )
+        )
+        
+        # 按标签过滤（安全处理：忽略空字符串和None）
+        if request.tag and isinstance(request.tag, str) and request.tag.strip():
+            tag_value = request.tag.strip()
+            # PostgreSQL JSONB contains 查询
+            query = query.where(Content.tags.contains([tag_value]))
+        
+        query = query.order_by(Content.created_at.desc()).limit(request.limit)
+        
+        result = await db.execute(query)
+        contents = result.scalars().all()
+    except Exception as e:
+        logger.exception("查询待推送内容失败")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"查询失败: {str(e)[:200]}"
+        )
+
+    # 分享输出：严格返回 ShareCard（不带 raw_metadata）
+    cards: List[ShareCard] = []
+    for c in contents:
+        cards.append(
+            ShareCard(
+                id=c.id,
+                platform=c.platform,
+                url=c.url,
+                clean_url=c.clean_url,
+                content_type=c.content_type,
+                title=c.title,
+                summary=c.description,
+                author_name=c.author_name,  # 添加作者信息
+                author_id=c.author_id,      # 添加作者ID
+                cover_url=c.cover_url,
+                tags=c.tags or [],
+                published_at=c.published_at,
+                view_count=c.view_count or 0,
+                like_count=c.like_count or 0,
+                collect_count=c.collect_count or 0,
+                share_count=c.share_count or 0,
+                comment_count=c.comment_count or 0,
+            )
+        )
+
+    return cards
 
 
 @router.post("/bot/mark-pushed")
@@ -162,7 +321,7 @@ async def mark_content_pushed(
     """
     供机器人调用：标记内容已推送
     
-    记录推送历史，更新内容状态
+    记录推送历史（分发历史不作为全局 status 维护）
     """
     try:
         # 检查内容是否存在
@@ -193,10 +352,7 @@ async def mark_content_pushed(
             message_id=request.message_id
         )
         db.add(pushed_record)
-        
-        # 更新内容状态
-        content.status = ContentStatus.DISTRIBUTED
-        
+
         await db.commit()
         
         logger.info(f"标记推送成功: {request.content_id} -> {request.target_platform}")

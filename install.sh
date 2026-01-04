@@ -114,7 +114,7 @@ if command -v docker &> /dev/null; then
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo "🚀 启动数据库服务..."
-        docker-compose up -d
+        docker compose up -d
         echo "✅ 数据库服务已启动"
         echo "   PostgreSQL: localhost:5432"
         echo "   Redis: localhost:6379"

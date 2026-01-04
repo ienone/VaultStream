@@ -1,6 +1,53 @@
 import re
 import html
 from typing import List, Optional
+from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+
+
+_TRACKING_QUERY_KEYS = {
+    "gclid",
+    "fbclid",
+    "spm_id_from",
+    "from_source",
+    "vd_source",
+}
+
+
+def canonicalize_url(url: str) -> str:
+    """通用 URL 规范化：
+
+    - 去首尾空白
+    - 若缺少 scheme，默认补 https
+    - host 小写
+    - 移除 fragment
+    - 移除常见追踪参数（utm_* + 若干常见 key）
+
+    注意：平台短链解析由 adapter.clean_url 负责。
+    """
+    val = (url or "").strip()
+    if not val:
+        return val
+
+    if not val.startswith(("http://", "https://")):
+        # 对于纯域名/路径等，默认 https
+        val = "https://" + val
+
+    parsed = urlparse(val)
+    host = (parsed.netloc or "").lower()
+
+    query_pairs = parse_qsl(parsed.query, keep_blank_values=True)
+    filtered = []
+    for k, v in query_pairs:
+        lk = k.lower()
+        if lk.startswith("utm_"):
+            continue
+        if lk in _TRACKING_QUERY_KEYS:
+            continue
+        filtered.append((k, v))
+
+    new_query = urlencode(filtered, doseq=True)
+    normalized = parsed._replace(netloc=host, query=new_query, fragment="")
+    return urlunparse(normalized)
 
 def normalize_bilibili_url(url_or_id: str) -> str:
     """规范化 B 站 URL，支持 BV/av/cv 号"""
@@ -43,7 +90,7 @@ def format_content_for_tg(content_dict: dict) -> str:
 
 def _format_bilibili_message(content: dict) -> str:
     """格式化B站特有的消息内容"""
-    meta = content.get('raw_metadata', {}) or {}
+    # 分享卡片（ShareCard）不包含 raw_metadata：避免对外泄露“私有存档”信息。
     url = content.get('clean_url') or content.get('url') or ""
     content_type = content.get('content_type')
     
@@ -70,7 +117,7 @@ def _format_bilibili_message(content: dict) -> str:
 
     # 根据类型定制图标和标签
     type_icon = "📺"
-    type_name = meta.get('tname', '视频')
+    type_name = '视频'
     
     stats_lines = []
     if content_type == 'live':
@@ -91,7 +138,7 @@ def _format_bilibili_message(content: dict) -> str:
         # 视频/番剧通用模板
         if content_type == 'bangumi':
             type_icon = "🎬"
-            type_name = meta.get('type_desc', '番剧/电影')
+            type_name = '番剧/电影'
         
         stats_lines.append(f"播放：{format_number(view)} | 弹幕：{format_number(danmaku)} | 收藏：{format_number(favorite)}")
         stats_lines.append(f"点赞：{format_number(like)} | 硬币：{format_number(coin)} | 评论：{format_number(reply)}")
@@ -107,7 +154,8 @@ def _format_bilibili_message(content: dict) -> str:
     # 移除空行
     lines = [line for line in lines if line]
     
-    desc = content.get('description', '')
+    # ShareCard 用 summary 字段；兼容旧字段 description
+    desc = content.get('summary') or content.get('description', '')
     if desc:
         clean_desc = html.escape(desc[:300] + "..." if len(desc) > 300 else desc)
         lines.append(f"\n简介：\n{clean_desc}")
