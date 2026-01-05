@@ -6,12 +6,12 @@ VaultStream 是一个多平台内容聚合和归档系统，支持从 B 站等�
 
 ### 核心特性
 
-- 🎯 **多平台支持**：当前支持 B 站（视频/动态/专栏），可扩展其他平台
-- 📦 **私有归档**：完整保存内容元数据和媒体资源
-- 🖼️ **媒体处理**：自动下载图片并转码为 WebP 格式优化存储
-- 🔄 **异步任务队列**：基于 Redis 的任务队列系统
-- 🤖 **Bot 集成**：Telegram Bot 推送到频道
-- 💾 **灵活存储**：支持本地文件系统和 S3/MinIO 对象存储
+- 🎯 多平台支持：当前支持 B 站（视频/动态/专栏），可扩展其他平台
+- 📦 私有归档：完整保存内容元数据和媒体资源
+- 🖼️ 媒体处理：自动下载图片并转码为 WebP 格式优化存储
+- 🔄 异步任务队列：基于 Redis 的任务队列系统
+- 🤖 Bot 集成：Telegram Bot 推送到频道
+- 💾 灵活存储：支持本地文件系统和 S3/MinIO 对象存储
 
 ---
 
@@ -133,12 +133,12 @@ VaultStream 是一个多平台内容聚合和归档系统，支持从 B 站等�
 
 ### 3.1 FastAPI 应用层 (`app/main.py`, `app/api.py`)
 
-**职责**：
+职责：
 - HTTP API 入口
 - 请求路由和参数验证
 - 中间件处理（日志、鉴权、CORS）
 
-**主要端点**：
+主要端点：
 
 | 端点 | 方法 | 功能 | 备注 |
 |------|------|------|------|
@@ -151,7 +151,7 @@ VaultStream 是一个多平台内容聚合和归档系统，支持从 B 站等�
 
 ### 3.2 适配器层 (`app/adapters/`)
 
-**设计模式**：工厂模式 + 策略模式
+设计模式：工厂模式 + 策略模式
 
 ```python
 AdapterFactory
@@ -172,14 +172,14 @@ BilibiliAdapter (具体实现)
 └── fetch_article()
 ```
 
-**扩展性**：
+扩展性：
 - 新增平台只需继承 `BaseAdapter`
 - 实现 `parse()` 和 `clean_url()` 方法
 - 在 `AdapterFactory` 注册
 
 ### 3.3 任务队列 (`app/queue.py`)
 
-**实现**：基于 Redis List 的简单队列
+实现：基于 Redis List 的简单队列
 
 ```python
 TaskQueue
@@ -189,7 +189,7 @@ TaskQueue
 └── push_dead_letter(task)     # 失败任务归档
 ```
 
-**任务结构**：
+任务结构：
 ```json
 {
   "schema_version": 1,
@@ -203,7 +203,7 @@ TaskQueue
 
 ### 3.4 后台 Worker (`app/worker.py`)
 
-**核心流程**：
+核心流程：
 
 ```python
 TaskWorker.start()
@@ -225,14 +225,14 @@ TaskWorker.start()
               └─> 达到最大次数 → dead letter
 ```
 
-**重试策略**：
+重试策略：
 - 可重试错误：网络超时、临时故障
 - 不可重试错误：权限不足、内容不存在
 - 指数退避：1s → 2s → 4s → 8s...
 
 ### 3.5 媒体处理 (`app/media_processing.py`)
 
-**当前实现**：归档图片处理
+当前实现：归档图片处理
 
 ```python
 store_archive_images_as_webp()
@@ -247,7 +247,7 @@ store_archive_images_as_webp()
   └─> 返回更新后的 archive
 ```
 
-**内容寻址**：
+内容寻址：
 ```
 key = blobs/sha256/AB/CD/ABCD1234...WXYZ.webp
       ↑       ↑    ↑  ↑   ↑
@@ -258,14 +258,14 @@ key = blobs/sha256/AB/CD/ABCD1234...WXYZ.webp
       blob 类型
 ```
 
-**优点**：
+优点：
 - 去重：相同内容只存储一次
 - 可验证：可通过 SHA256 校验完整性
 - 分布均匀：前缀分桶避免单目录文件过多
 
 ### 3.6 存储后端 (`app/storage.py`)
 
-**抽象接口**：
+抽象接口：
 
 ```python
 StorageBackend (抽象基类)
@@ -274,7 +274,7 @@ StorageBackend (抽象基类)
 └── get_url(key) → Optional[str]
 ```
 
-**两种实现**：
+两种实现：
 
 #### LocalStorageBackend
 - 存储位置：`data/storage/` (可配置)
@@ -289,7 +289,7 @@ StorageBackend (抽象基类)
   - 私有桶：预签名 URL (presigned)
 - 适用场景：生产环境、大规模部署
 
-**MinIO 集成要点**：
+MinIO 集成要点：
 ```python
 # 自动创建 bucket
 await storage.ensure_bucket()
@@ -301,7 +301,7 @@ storage_s3_presign_expires = 3600  # 1小时有效期
 
 ### 3.7 数据库模型 (`app/models.py`)
 
-**核心表结构**：
+核心表结构：
 
 ```sql
 -- 内容表
@@ -639,7 +639,10 @@ API_TOKEN=your_secret_token              # API 鉴权 Token
 ENABLE_BOT=false                         # 是否启用 Bot
 TELEGRAM_BOT_TOKEN=123456:ABC-DEF...     # Bot Token
 TELEGRAM_CHANNEL_ID=@your_channel        # 频道 ID
-TELEGRAM_PROXY_URL=http://127.0.0.1:7890 # 代理 (可选)
+
+# === 全局HTTP代理（可选，用于Telegram、Twitter、YouTube等）===
+HTTP_PROXY=http://127.0.0.1:7890         # HTTP代理地址
+# HTTPS_PROXY=http://127.0.0.1:7890      # HTTPS代理地址（可选）
 
 # === B站 Cookies (可选) ===
 BILIBILI_SESSDATA=your_sessdata
@@ -749,51 +752,51 @@ Content.last_error_at       # 失败时间
 
 ### 7.1 已实施优化
 
-1. **异步 I/O**
+1. 异步 I/O
    - FastAPI 异步路由
    - asyncpg 异步数据库
    - httpx 异步 HTTP 客户端
 
-2. **连接复用**
+2. 连接复用
    - 数据库连接池
    - Bot httpx client 复用
    - Redis 连接复用
 
-3. **任务队列**
+3. 任务队列
    - 解耦请求和处理
    - 后台异步处理
    - 并发控制
 
-4. **内容寻址存储**
+4. 内容寻址存储
    - 去重存储
    - 减少网络传输
    - 降低存储成本
 
-5. **日志精简** (本次优化)
+5. 日志精简 (本次优化)
    - 关闭 SQL echo
    - 减少 debug 日志
    - 独立 debug_sql 配置
 
-6. **Bot 优化** (本次优化)
+6. Bot 优化 (本次优化)
    - 复用 httpx 客户端
    - 异步标记推送状态
    - 减少阻塞等待
 
 ### 7.2 未来优化方向
 
-1. **缓存层**
+1. 缓存层
    - Redis 缓存热点内容
    - CDN 加速媒体访问
 
-2. **批量处理**
+2. 批量处理
    - 批量下载图片
    - 批量数据库操作
 
-3. **并发控制**
+3. 并发控制
    - Worker 多进程/多线程
    - 限流和熔断
 
-4. **监控和告警**
+4. 监控和告警
    - Prometheus + Grafana
    - 错误率、延迟监控
 
@@ -993,5 +996,5 @@ mc ls local/vaultstream/blobs/sha256/
 
 ---
 
-**版本**: v0.1  
-**最后更新**: 2026-01-03  
+版本: v0.1  
+最后更新: 2026-01-03  

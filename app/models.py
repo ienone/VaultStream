@@ -48,6 +48,13 @@ class BilibiliContentType(str, Enum):
     CHEESE = "cheese"        # 课程
 
 
+class TwitterContentType(str, Enum):
+    """Twitter内容类型"""
+    TWEET = "tweet"          # 推文
+    THREAD = "thread"        # 线程（暂时与tweet相同，未来可能扩展）
+    # 未来可扩展：SPACE, MOMENT 等
+
+
 class Content(Base):
     """内容表"""
     __tablename__ = "contents"
@@ -83,13 +90,17 @@ class Content(Base):
     # 添加以下兼容性属性，以便 Pydantic 模型 ContentDetail 能够正确验证
     @property
     def bilibili_id(self):
-        """映射 platform_id 到 bilibili_id"""
-        return self.platform_id
+        """映射 platform_id 到 bilibili_id（仅 B站有效）"""
+        if self.platform == Platform.BILIBILI:
+            return self.platform_id
+        return None
 
     @property
     def bilibili_type(self):
-        """映射 content_type 到 bilibili_type"""
-        return self.content_type
+        """映射 content_type 到 bilibili_type（仅 B站有效）"""
+        if self.platform == Platform.BILIBILI:
+            return self.content_type
+        return None
     
     # 通用互动数据
     view_count = Column(Integer, default=0)

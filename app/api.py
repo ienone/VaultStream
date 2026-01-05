@@ -81,6 +81,7 @@ async def create_share(
         )
         content = result.scalar_one_or_none()
 
+        is_new = False
         if content is None:
             # 创建内容记录（存档为主）
             content = Content(
@@ -95,12 +96,7 @@ async def create_share(
             )
             db.add(content)
             await db.flush()
-
-            # 首次入库：入队解析
-            await task_queue.enqueue({
-                'content_id': content.id,
-                'action': 'parse'
-            })
+            is_new = True
 
         else:
             # 存档优先：合并 tags、更新来源信息并始终写入 ContentSource
@@ -132,9 +128,16 @@ async def create_share(
         await db.commit()
         await db.refresh(content)
 
+        # 确保在事务提交并刷新内容记录后再入队，避免 worker 在未提交时读取不到记录导致竞态
+        if is_new:
+            await task_queue.enqueue({
+                'content_id': content.id,
+                'action': 'parse'
+            })
+
         with log_context(content_id=content.id):
             logger.info("创建分享成功")
-        
+
         return ShareResponse(
             id=content.id,
             platform=content.platform,
@@ -243,7 +246,7 @@ async def list_contents(
         )
 
 
-@router.post("/bot/get-content", response_model=List[ShareCard])
+@router.post("/bot/get-content", response_model=List[ContentDetail])
 async def get_content_for_bot(
     request: GetContentRequest,
     db: AsyncSession = Depends(get_db)
@@ -252,10 +255,11 @@ async def get_content_for_bot(
     供机器人调用：获取待分发的内容
     
     返回未推送到指定平台的内容
+    支持按标签和平台筛选
+    返回完整的 ContentDetail（包含 raw_metadata）以便 bot 能访问媒体存档
     """
     try:
         # 构建查询：解析完成（pulled）且未推送到目标平台
-        # 兼容历史：曾经把 distributed 当状态用的旧数据，也视为解析完成
         subquery = (
             select(PushedRecord.content_id)
             .where(PushedRecord.target_platform == request.target_platform)
@@ -268,16 +272,25 @@ async def get_content_for_bot(
             )
         )
         
-        # 按标签过滤（安全处理：忽略空字符串和None）
+        # 按标签过滤
         if request.tag and isinstance(request.tag, str) and request.tag.strip():
             tag_value = request.tag.strip()
-            # PostgreSQL JSONB contains 查询
             query = query.where(Content.tags.contains([tag_value]))
+        
+        # 按平台过滤（新增）
+        if hasattr(request, 'platform') and request.platform:
+            try:
+                platform_enum = Platform(request.platform)
+                query = query.where(Content.platform == platform_enum)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"无效的平台: {request.platform}")
         
         query = query.order_by(Content.created_at.desc()).limit(request.limit)
         
         result = await db.execute(query)
         contents = result.scalars().all()
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("查询待推送内容失败")
         raise HTTPException(
@@ -285,32 +298,9 @@ async def get_content_for_bot(
             detail=f"查询失败: {str(e)[:200]}"
         )
 
-    # 分享输出：严格返回 ShareCard（不带 raw_metadata）
-    cards: List[ShareCard] = []
-    for c in contents:
-        cards.append(
-            ShareCard(
-                id=c.id,
-                platform=c.platform,
-                url=c.url,
-                clean_url=c.clean_url,
-                content_type=c.content_type,
-                title=c.title,
-                summary=c.description,
-                author_name=c.author_name,  # 添加作者信息
-                author_id=c.author_id,      # 添加作者ID
-                cover_url=c.cover_url,
-                tags=c.tags or [],
-                published_at=c.published_at,
-                view_count=c.view_count or 0,
-                like_count=c.like_count or 0,
-                collect_count=c.collect_count or 0,
-                share_count=c.share_count or 0,
-                comment_count=c.comment_count or 0,
-            )
-        )
-
-    return cards
+    # Bot 内部调用：返回完整 ContentDetail（包含 raw_metadata）
+    logger.info(f"Bot 获取内容成功: platform={request.platform}, tag={request.tag}, count={len(contents)}")
+    return [ContentDetail.model_validate(c) for c in contents]
 
 
 @router.post("/bot/mark-pushed")
@@ -374,3 +364,37 @@ async def health_check():
         "status": "ok",
         "queue_size": queue_size
     }
+
+
+@router.get("/tags")
+async def get_tags(db: AsyncSession = Depends(get_db)):
+    """获取所有标签及其使用次数"""
+    try:
+        from sqlalchemy import func, distinct
+        from sqlalchemy.dialects.postgresql import JSONB
+        
+        # 查询所有已解析的内容的标签
+        result = await db.execute(
+            select(Content.tags).where(
+                and_(
+                    Content.status == ContentStatus.PULLED,
+                    Content.tags.isnot(None)
+                )
+            )
+        )
+        contents = result.scalars().all()
+        
+        # 统计标签出现次数
+        tag_counts = {}
+        for tags in contents:
+            if tags and isinstance(tags, list):
+                for tag in tags:
+                    if tag and isinstance(tag, str):
+                        tag_counts[tag] = tag_counts.get(tag, 0) + 1
+        
+        return tag_counts
+        
+    except Exception as e:
+        logger.exception("获取标签列表失败")
+        raise HTTPException(status_code=500, detail=str(e))
+

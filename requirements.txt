@@ -17,6 +17,9 @@ aioredis
 httpx
 aiohttp
 
+# Twitter 爬取
+
+
 # Telegram Bot
 python-telegram-bot
 

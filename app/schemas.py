@@ -98,6 +98,7 @@ class ContentDetail(BaseModel):
 class GetContentRequest(BaseModel):
     """获取待分发内容请求"""
     tag: Optional[str] = Field(None, description="按标签筛选")
+    platform: Optional[str] = Field(None, description="按平台筛选 (twitter, bilibili)")
     target_platform: str = Field(..., description="目标平台标识")
     limit: int = Field(1, ge=1, le=10, description="获取数量")
 

@@ -39,17 +39,17 @@
 ## 里程碑 M2：解析流水线（Process）与 Adapter 体系
 目标：平台差异全部沉到 Adapter，流水线稳定、可重试、可观测。
 
-- [ ] Adapter 抽象（强约束输出）
-  - [ ] 输入：canonical_url / platform_id（可选）
-  - [ ] 输出：标准字段（title/author/published_at/media[]/text/cover）+ `raw_metadata`
-  - [ ] 错误分类：可重试/不可重试/需要登录凭证
-- [ ] Pipeline（队列 + Worker）
-  - [ ] Redis 队列任务格式版本化（task schema version）
-  - [ ] 幂等：同一 content_id 重复任务不造成脏写（基于乐观锁/更新时间戳）
-  - [ ] 重试策略：指数退避 + 最大次数 + dead-letter（可选）
+- [x] Adapter 抽象（强约束输出）
+  - [x] 输入：canonical_url / platform_id（可选）
+  - [x] 输出：标准字段（title/author/published_at/media[]/text/cover）+ `raw_metadata`
+  - [x] 错误分类：可重试/不可重试/需要登录凭证
+- [x] Pipeline（队列 + Worker）
+  - [x] Redis 队列任务格式版本化（task schema version）
+  - [x] 幂等：同一 content_id 重复任务不造成脏写（基于乐观锁/更新时间戳）
+  - [x] 重试策略：指数退避 + 最大次数 + dead-letter（可选）
 - [ ] 平台优先级（按收益递进）
   - [x] Bilibili：视频/动态（封面、作者、简介、统计字段）
-  - [ ] Twitter/X：正文、媒体原图、作者信息（优先可公开方式；需要登录则走“协同解析”方案）
+  - [x] Twitter/X：正文、媒体原图、作者信息（**已完成访客模式支持**）
   - [ ] 小红书/知乎：先做通用提取（正文+主图+作者），再定制
   - [ ] 逐步完善：微博、抖音、酷安、YouTube 等
 - [ ] 协同解析（可选：降低反爬成本）

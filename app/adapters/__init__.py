@@ -4,6 +4,7 @@
 from typing import Optional
 from app.adapters.base import PlatformAdapter
 from app.adapters.bilibili import BilibiliAdapter
+from app.adapters.twitter_fx import TwitterFxAdapter
 from app.models import Platform
 
 
@@ -15,6 +16,8 @@ class AdapterFactory:
         """创建适配器实例"""
         if platform == Platform.BILIBILI:
             return BilibiliAdapter(**kwargs)
+        elif platform == Platform.TWITTER:
+            return TwitterFxAdapter(**kwargs)
         # 未来可以在这里添加其他平台
         raise ValueError(f"不支持的平台: {platform}")
     
@@ -23,5 +26,7 @@ class AdapterFactory:
         """从URL检测平台"""
         if 'bilibili.com' in url or 'b23.tv' in url:
             return Platform.BILIBILI
+        elif 'twitter.com' in url or 'x.com' in url or 't.co' in url:
+            return Platform.TWITTER
         # 未来添加其他平台检测
         return None

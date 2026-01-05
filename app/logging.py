@@ -104,7 +104,8 @@ def setup_logging(*, level: str = "INFO", fmt: str = "json", debug: bool = False
             parts.extend([" ".join(ids), "|"])
         
         parts.append("{name}:{function} - {message}")
-        return " ".join(parts)
+        # 确保每条日志以换行结束，避免多条日志连在一起显示
+        return " ".join(parts) + "\n"
     
     logger.add(
         sys.stdout,

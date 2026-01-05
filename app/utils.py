@@ -2,6 +2,23 @@ import re
 import html
 from typing import List, Optional
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+from datetime import datetime, timezone
+
+
+def normalize_datetime_for_db(dt: datetime | None) -> datetime | None:
+    """将 datetime 规范化为 UTC 且去除 tzinfo（返回 naive UTC datetime），或返回 None。
+
+    原因：模型中使用的 `utcnow()` 返回的是无时区（naive）的 UTC 时间，为避免
+    将带时区的 datetime 直接写入导致 asyncpg 抛出类型不匹配错误，
+    我们在写入 DB 前将带时区 datetime 转为 UTC 并去除 tzinfo。
+    """
+    if dt is None:
+        return None
+    if not isinstance(dt, datetime):
+        return dt
+    if dt.tzinfo is None:
+        return dt
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 _TRACKING_QUERY_KEYS = {
@@ -86,7 +103,83 @@ def format_content_for_tg(content_dict: dict) -> str:
     platform = content_dict.get('platform')
     if platform == 'bilibili':
         return _format_bilibili_message(content_dict)
+    elif platform == 'twitter':
+        return _format_twitter_message(content_dict)
     return _format_default_message(content_dict)
+
+def _format_twitter_message(content: dict) -> str:
+    """格式化 Twitter/X 特有的消息内容"""
+    url = content.get('clean_url') or content.get('url') or ""
+    
+    # 转义标题和作者
+    author_name = html.escape(str(content.get('author_name') or '未知'))
+    author_handle = content.get('extra_stats', {}).get('screen_name', '')
+    if author_handle:
+        author_display = f"{author_name} (@{author_handle})"
+    else:
+        author_display = author_name
+    
+    # 发布时间
+    pub_at = content.get('published_at')
+    if pub_at and isinstance(pub_at, str):
+        pub_at = pub_at.replace('T', ' ')
+    
+    # 互动数据
+    views = content.get('view_count', 0)
+    likes = content.get('like_count', 0)
+    retweets = content.get('share_count', 0)  # Twitter 的转发
+    replies = content.get('comment_count', 0)
+    
+    # 从 extra_stats 获取更多 Twitter 特有数据
+    extra = content.get('extra_stats', {}) or {}
+    bookmarks = extra.get('bookmarks', 0)
+    is_reply = extra.get('replying_to')
+    
+    lines = []
+    
+    # 作者信息
+    lines.append(f"{author_display}")
+    
+    # 如果是回复推文
+    if is_reply:
+        lines.append(f"回复：@{is_reply}")
+    
+    # 发布时间
+    if pub_at:
+        lines.append(f"时间：{pub_at}")
+    
+    # 互动统计
+    stats_parts = []
+    if views:
+        stats_parts.append(f"浏览 {format_number(views)}")
+    if likes:
+        stats_parts.append(f"点赞 {format_number(likes)}")
+    if retweets:
+        stats_parts.append(f"转发 {format_number(retweets)}")
+    if replies:
+        stats_parts.append(f"回复 {format_number(replies)}")
+    if bookmarks:
+        stats_parts.append(f"收藏 {format_number(bookmarks)}")
+    
+    if stats_parts:
+        lines.append(" | ".join(stats_parts))
+    
+    # 正文内容
+    desc = content.get('summary') or content.get('description', '')
+    if desc:
+        clean_desc = html.escape(desc[:500] + "..." if len(desc) > 500 else desc)
+        lines.append(f"\n{clean_desc}")
+    
+    # 链接
+    lines.append(f"\n链接：{url}")
+    
+    # 标签
+    if content.get('tags'):
+        tags_str = " ".join([f"#{tag}" for tag in content['tags']])
+        lines.append(f"\n{tags_str}")
+    
+    return "\n".join(lines)
+
 
 def _format_bilibili_message(content: dict) -> str:
     """格式化B站特有的消息内容"""

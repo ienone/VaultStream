@@ -186,15 +186,30 @@ curl -sS http://127.0.0.1:8000/api/v1/contents/3
 ## 📚 详细文档
 
 ### 核心文档
-- **[架构设计](docs/ARCHITECTURE.md)** - 完整的系统架构、组件说明、MinIO集成
-- **[工作流程](docs/WORKFLOWS.md)** - 详细的流程图、序列图、故障排查
-- **[优化总结](docs/OPTIMIZATION.md)** - 性能优化说明和效果对比
+- [架构设计](docs/ARCHITECTURE.md) - 完整的系统架构、组件说明、MinIO集成
+- [工作流程](docs/WORKFLOWS.md) - 详细的流程图、序列图、故障排查
+- [优化总结](docs/OPTIMIZATION.md) - 性能优化说明和效果对比
+
+### 平台适配器
+- [Twitter/X 适配器](docs/TWITTER_FX_ADAPTER.md) - FxTwitter API 适配器，无需认证
+- [B站 API 对接](docs/BILIBILI_API.md) - B站适配器实现细节
 
 ### 开发文档
 - [设计思路](docs/DESIGN.md) - 项目设计理念和目标
 - [数据库结构](docs/DATABASE.md) - 数据模型和表结构
 - [API 接口契约](docs/API.md) - API接口说明
-- [B站 API 对接](docs/BILIBILI_API.md) - B站适配器实现细节
-
-### 其他
 - [开发待办清单](TODO.md) - 功能规划和进度跟踪
+
+## 🌐 平台支持
+
+### Twitter/X
+- ✅ 基于 FxTwitter API，无需任何配置或登录
+- ✅ 支持公开推文的解析（文本、图片、视频、统计数据）
+
+### Bilibili
+- ✅ 视频 (BV/av)
+- ✅ 专栏文章
+- ✅ 动态
+- 🔧 需要登录才能访问的内容需配置 cookies(目前暂时没有)
+
+详细配置请参考各平台的适配器文档。

@@ -216,3 +216,125 @@ async def store_archive_images_as_webp(
     )
 
     return archive
+
+
+async def store_archive_videos(
+    *,
+    archive: dict[str, Any],
+    storage: StorageBackend,
+    namespace: str,
+    timeout_seconds: float = 120.0,
+    max_videos: Optional[int] = None,
+) -> dict[str, Any]:
+    """下载并存储存档中的视频，更新存档引用。
+
+    期望存档结构（与图片类似）：
+    - archive['videos'] 是包含至少 {'url': 'https://...'} 的字典列表
+
+    更新内容：
+    - 添加 archive['stored_videos'] 列表，包含存储的引用
+    - 对于 archive['videos'] 中的每个条目，添加可选的 'stored_key'/'stored_url'/'stored_sha256'
+
+    Args:
+        archive: 存档字典
+        storage: 存储后端
+        namespace: 存储命名空间
+        timeout_seconds: 下载超时时间
+        max_videos: 最大处理视频数量
+
+    Returns:
+        更新后的存档字典（同一对象被修改）。
+    """
+
+    videos = archive.get("videos")
+    if not isinstance(videos, list) or not videos:
+        return archive
+
+    stored_videos: list[dict[str, Any]] = []
+
+    count = 0
+    async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=True) as client:
+        for vid in videos:
+            if max_videos is not None and count >= max_videos:
+                break
+            if not isinstance(vid, dict):
+                continue
+            orig_url = vid.get("url")
+            if not isinstance(orig_url, str) or not orig_url.strip():
+                continue
+            orig_url = orig_url.strip()
+
+            # Skip if already processed
+            if isinstance(vid.get("stored_key"), str) and vid.get("stored_key"):
+                continue
+
+            video_bytes = None
+            key = None
+            sha256_hex = None
+
+            # Best-effort retries for transient failures
+            for attempt in range(3):
+                try:
+                    resp = await client.get(orig_url, headers=_request_headers_for_url(orig_url))
+                    resp.raise_for_status()
+                    video_bytes = resp.content
+                    sha256_hex = _sha256_bytes(video_bytes)
+                    
+                    # 检测视频格式（从URL或内容类型）
+                    content_type = resp.headers.get("content-type", "video/mp4")
+                    if "video" not in content_type:
+                        content_type = "video/mp4"  # 默认为 mp4
+                    
+                    # 从 content-type 提取扩展名
+                    ext = "mp4"  # 默认
+                    if "/" in content_type:
+                        mime_subtype = content_type.split("/")[1].split(";")[0].strip()
+                        if mime_subtype in ["mp4", "webm", "ogg", "mov", "avi", "mkv"]:
+                            ext = mime_subtype
+                    
+                    key = _content_addressed_key(namespace, sha256_hex, ext)
+                    await storage.put_bytes(key=key, data=video_bytes, content_type=content_type)
+                    break
+                except Exception as e:
+                    is_last = attempt >= 2
+                    if is_last:
+                        logger.warning(
+                            "Process video failed: {} (attempt={}/3, {})",
+                            orig_url,
+                            attempt + 1,
+                            f"{type(e).__name__}: {e}",
+                        )
+                    else:
+                        await asyncio.sleep(1.5 * (attempt + 1))
+                        continue
+
+            if not (video_bytes and key and sha256_hex):
+                continue
+
+            stored_url = storage.get_url(key=key)
+            
+            vid["stored_key"] = key
+            vid["stored_url"] = stored_url
+            vid["stored_sha256"] = sha256_hex
+            vid["stored_size"] = len(video_bytes)
+
+            stored_videos.append({
+                "orig_url": orig_url,
+                "key": key,
+                "url": stored_url,
+                "sha256": sha256_hex,
+                "size": len(video_bytes),
+            })
+
+            count += 1
+
+    if stored_videos:
+        archive["stored_videos"] = stored_videos
+
+    logger.info(
+        "Archive videos processed: total_videos={}, stored_videos={}",
+        len(videos),
+        len(stored_videos),
+    )
+
+    return archive

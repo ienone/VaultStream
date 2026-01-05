@@ -15,7 +15,7 @@ from app.config import settings
 from app.utils import normalize_bilibili_url
 from app.adapters.errors import AdapterError, RetryableAdapterError
 from app.storage import get_storage_backend
-from app.media_processing import store_archive_images_as_webp
+from app.media_processing import store_archive_images_as_webp, store_archive_videos
 
 
 class TaskWorker:
@@ -284,6 +284,16 @@ class TaskWorker:
             quality=quality,
             max_images=max_count,
         )
+        
+        # 处理视频（如果存档中有视频）
+        if archive.get("videos"):
+            max_videos = getattr(settings, "archive_video_max_count", None)
+            await store_archive_videos(
+                archive=archive,
+                storage=storage,
+                namespace=namespace,
+                max_videos=max_videos,
+            )
 
     async def _do_parse(self, session: AsyncSession, content: Content):
         """执行一次解析并保存结果（单次尝试）。
@@ -321,11 +331,26 @@ class TaskWorker:
             content.collect_count = parsed.stats.get('favorite', 0)
             content.share_count = parsed.stats.get('share', 0)
             content.comment_count = parsed.stats.get('reply', 0)
-            content.extra_stats = {
-                "coin": parsed.stats.get('coin', 0),
-                "danmaku": parsed.stats.get('danmaku', 0),
-                "live_status": parsed.stats.get('live_status', 0)
-            }
+            
+            # 平台特有数据存储到 extra_stats
+            if content.platform == Platform.BILIBILI:
+                # B站特有数据
+                content.extra_stats = {
+                    "coin": parsed.stats.get('coin', 0),
+                    "danmaku": parsed.stats.get('danmaku', 0),
+                    "live_status": parsed.stats.get('live_status', 0)
+                }
+            elif content.platform == Platform.TWITTER:
+                # Twitter 特有数据
+                content.extra_stats = {
+                    "bookmarks": parsed.stats.get('bookmarks', 0),
+                    "screen_name": parsed.stats.get('screen_name'),
+                    "replying_to": parsed.stats.get('replying_to'),
+                }
+            else:
+                # 其他平台：保留所有非通用字段
+                extra_keys = set(parsed.stats.keys()) - {'view', 'like', 'favorite', 'share', 'reply'}
+                content.extra_stats = {k: parsed.stats[k] for k in extra_keys if k in parsed.stats}
 
         # 标记已抓取并清理失败信息
         content.status = ContentStatus.PULLED

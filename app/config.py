@@ -22,7 +22,10 @@ class Settings(BaseSettings):
     enable_bot: bool = False
     telegram_bot_token: SecretStr = SecretStr("")
     telegram_channel_id: str = ""
-    telegram_proxy_url: Optional[str] = None
+    
+    # 全局代理配置（用于Telegram、Twitter、YouTube等）
+    http_proxy: Optional[str] = None
+    https_proxy: Optional[str] = None
     
     # 应用配置
     api_host: str = "0.0.0.0"
@@ -41,6 +44,10 @@ class Settings(BaseSettings):
     bilibili_sessdata: Optional[SecretStr] = None
     bilibili_bili_jct: Optional[SecretStr] = None
     bilibili_buvid3: Optional[SecretStr] = None
+
+    # Twitter/X 配置
+    # 现在使用 FxTwitter API，无需任何登录凭证或配置
+    # FxTwitter 是第三方 Twitter 内容解析服务，无需认证即可获取推文数据
 
     # 存储后端（用于私有归档的派生资产：图片 webp、未来音视频转码等）
     storage_backend: Literal["local", "s3"] = "local"
