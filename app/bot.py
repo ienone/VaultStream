@@ -4,16 +4,18 @@ Telegram Bot - 改进版
 import asyncio
 import httpx
 from typing import Optional, List, Dict, Any
-from telegram import Update, BotCommand, InputMediaPhoto, InputMediaVideo
+from telegram import Update, BotCommand, InputMediaPhoto, InputMediaVideo, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
+    CallbackQueryHandler,
     ContextTypes,
 )
 from app.logging import logger
 
 from app.config import settings
 from app.utils import normalize_bilibili_url, format_content_for_tg
+from app.media_utils import extract_media_urls
 
 
 class VaultStreamBot:
@@ -23,6 +25,47 @@ class VaultStreamBot:
         self.api_base = f"http://localhost:{settings.api_port}/api/v1"
         self.target_platform = f"TG_CHANNEL_{settings.telegram_channel_id}"
         self._client: Optional[httpx.AsyncClient] = None
+        
+        # 解析权限配置
+        self.admin_ids = self._parse_ids(settings.telegram_admin_ids)
+        self.whitelist_ids = self._parse_ids(settings.telegram_whitelist_ids)
+        self.blacklist_ids = self._parse_ids(settings.telegram_blacklist_ids)
+        
+        logger.info(f"Bot 权限配置: admins={len(self.admin_ids)}, whitelist={len(self.whitelist_ids)}, blacklist={len(self.blacklist_ids)}")
+    
+    def _parse_ids(self, ids_str: str) -> set:
+        """解析ID列表字符串"""
+        if not ids_str or not ids_str.strip():
+            return set()
+        return {int(id.strip()) for id in ids_str.split(",") if id.strip()}
+    
+    def _check_permission(self, user_id: int, require_admin: bool = False) -> tuple[bool, Optional[str]]:
+        """
+        检查用户权限
+        
+        Args:
+            user_id: 用户ID
+            require_admin: 是否需要管理员权限
+        
+        Returns:
+            (是否允许, 拒绝原因)
+        """
+        # 检查黑名单
+        if user_id in self.blacklist_ids:
+            return False, "您已被禁止使用此Bot"
+        
+        # 检查管理员权限
+        if require_admin:
+            if user_id not in self.admin_ids:
+                return False, "此命令仅限管理员使用"
+            return True, None
+        
+        # 检查白名单（如果配置了白名单）
+        if self.whitelist_ids:
+            if user_id not in self.whitelist_ids and user_id not in self.admin_ids:
+                return False, "您没有权限使用此Bot"
+        
+        return True, None
     
     async def _get_client(self) -> httpx.AsyncClient:
         """获取或创建复用的 httpx 客户端"""
@@ -38,7 +81,13 @@ class VaultStreamBot:
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """处理 /start 命令"""
         user = update.effective_user
-        logger.info(f"Bot /start 命令: user={user.username or user.id}")
+        logger.info(f"Bot /start 命令: user={user.username}(ID:{user.id})")
+        
+        # 权限检查
+        allowed, reason = self._check_permission(user.id)
+        if not allowed:
+            await update.message.reply_text(reason)
+            return
         
         help_text = (
             "欢迎使用 <b>VaultStream Bot</b>\n\n"
@@ -61,7 +110,19 @@ class VaultStreamBot:
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """处理 /help 命令"""
         user = update.effective_user
-        logger.info(f"Bot /help 命令: user={user.username or user.id}")
+        logger.info(f"Bot /help 命令: user={user.username}(ID:{user.id})")
+        
+        # 权限检查
+        allowed, reason = self._check_permission(user.id)
+        if not allowed:
+            await update.message.reply_text(reason)
+            return
+        
+        # 权限检查
+        allowed, reason = self._check_permission(user.id)
+        if not allowed:
+            await update.message.reply_text(reason)
+            return
         
         help_text = (
             "<b>VaultStream Bot 帮助</b>\n\n"
@@ -89,10 +150,22 @@ class VaultStreamBot:
     async def get_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """处理 /get 命令"""
         user = update.effective_user if update and update.effective_user else None
-        logger.info(f"Bot /get 命令触发: user={user.username if user and user.username else (user.id if user else 'unknown')}")
+        logger.info(f"Bot /get 命令触发: user={user.username if user and user.username else 'unknown'}(ID:{user.id if user else 'unknown'})")
         
         if not update or not update.message:
             logger.warning("Bot /get 命令: update 或 message 为空")
+            return
+        
+        # 权限检查
+        allowed, reason = self._check_permission(user.id)
+        if not allowed:
+            await update.message.reply_text(reason)
+            return
+        
+        # 权限检查
+        allowed, reason = self._check_permission(user.id)
+        if not allowed:
+            await update.message.reply_text(reason)
             return
         
         # 兼容旧用法: /get 标签
@@ -105,10 +178,16 @@ class VaultStreamBot:
     async def get_tag_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """处理 /get_tag 命令"""
         user = update.effective_user if update and update.effective_user else None
-        logger.info(f"Bot /get_tag 命令触发: user={user.username if user and user.username else (user.id if user else 'unknown')}")
+        logger.info(f"Bot /get_tag 命令触发: user={user.username if user and user.username else 'unknown'}(ID:{user.id if user else 'unknown'})")
         
         if not update or not update.message:
             logger.warning("Bot /get_tag 命令: update 或 message 为空")
+            return
+        
+        # 权限检查
+        allowed, reason = self._check_permission(user.id)
+        if not allowed:
+            await update.message.reply_text(reason)
             return
         
         if not context.args or len(context.args) == 0:
@@ -126,7 +205,7 @@ class VaultStreamBot:
     async def get_twitter_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """处理 /get_twitter 命令"""
         user = update.effective_user if update and update.effective_user else None
-        logger.info(f"Bot /get_twitter 命令触发: user={user.username if user and user.username else (user.id if user else 'unknown')}")
+        logger.info(f"Bot /get_twitter 命令触发: user={user.username if user and user.username else 'unknown'}(ID:{user.id if user else 'unknown'})")
         
         if not update or not update.message:
             logger.warning("Bot /get_twitter 命令: update 或 message 为空")
@@ -136,7 +215,7 @@ class VaultStreamBot:
     async def get_bilibili_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """处理 /get_bilibili 命令"""
         user = update.effective_user if update and update.effective_user else None
-        logger.info(f"Bot /get_bilibili 命令触发: user={user.username if user and user.username else (user.id if user else 'unknown')}")
+        logger.info(f"Bot /get_bilibili 命令触发: user={user.username if user and user.username else 'unknown'}(ID:{user.id if user else 'unknown'})")
         
         if not update or not update.message:
             logger.warning("Bot /get_bilibili 命令: update 或 message 为空")
@@ -146,7 +225,7 @@ class VaultStreamBot:
     async def list_tags_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """处理 /list_tags 命令"""
         user = update.effective_user if update and update.effective_user else None
-        logger.info(f"Bot /list_tags 命令触发: user={user.username if user and user.username else (user.id if user else 'unknown')}")
+        logger.info(f"Bot /list_tags 命令触发: user={user.username if user and user.username else 'unknown'}(ID:{user.id if user else 'unknown'})")
         
         if not update or not update.message:
             logger.warning("Bot /list_tags 命令: update 或 message 为空")
@@ -166,17 +245,16 @@ class VaultStreamBot:
                 await update.message.reply_text("暂无任何标签")
                 return
             
-            # 按数量排序
-            sorted_tags = sorted(tags_data.items(), key=lambda x: x[1], reverse=True)
-            
+            # API 返回格式: [{"name": "tag1", "count": 10}, ...]
+            # 已按 count 降序排序
             tag_lines = []
-            for tag, count in sorted_tags[:20]:
-                tag_lines.append(f"• {tag}: {count}")
+            for tag_item in tags_data[:20]:
+                tag_lines.append(f"• {tag_item['name']}: {tag_item['count']}")
             
             message = "<b>可用标签</b>\n\n" + "\n".join(tag_lines)
             
-            if len(sorted_tags) > 20:
-                message += f"\n\n还有 {len(sorted_tags) - 20} 个标签"
+            if len(tags_data) > 20:
+                message += f"\n\n还有 {len(tags_data) - 20} 个标签"
             
             await update.message.reply_text(message, parse_mode='HTML')
             
@@ -193,7 +271,7 @@ class VaultStreamBot:
             return
         
         user = update.effective_user
-        logger.info(f"Bot /status 命令: user={user.username or user.id}")
+        logger.info(f"Bot /status 命令: user={user.username}(ID:{user.id})")
             
         try:
             client = await self._get_client()
@@ -238,6 +316,85 @@ class VaultStreamBot:
             except Exception:
                 pass
     
+    async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """处理按钮回调"""
+        query = update.callback_query
+        await query.answer()
+        
+        user = update.effective_user
+        callback_data = query.data
+        
+        logger.info(f"Bot 按钮回调: user={user.username}(ID:{user.id}), data={callback_data}")
+        
+        # 按钮操作需要管理员权限
+        allowed, reason = self._check_permission(user.id, require_admin=True)
+        if not allowed:
+            try:
+                await query.edit_message_text(reason)
+            except Exception:
+                pass  # 忽略消息未修改的错误
+            return
+        
+        try:
+            # 解析回调数据: action_contentid
+            parts = callback_data.split("_", 1)
+            if len(parts) != 2:
+                await query.edit_message_text("无效的操作")
+                return
+            
+            action, content_id = parts
+            content_id = int(content_id)
+            
+            client = await self._get_client()
+            
+            if action == "delete":
+                # 删除内容
+                try:
+                    response = await client.delete(
+                        f"{self.api_base}/contents/{content_id}",
+                        timeout=5.0
+                    )
+                    if response.status_code == 200:
+                        try:
+                            await query.edit_message_text(
+                                f"✓ 内容 {content_id} 已删除",
+                                reply_markup=None
+                            )
+                        except Exception:
+                            pass
+                        # 尝试删除原消息
+                        try:
+                            if query.message and query.message.reply_to_message:
+                                await query.message.reply_to_message.delete()
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            await query.edit_message_text(f"删除失败: {response.status_code}")
+                        except Exception:
+                            pass
+                except Exception as e:
+                    logger.error(f"删除内容失败: {e}")
+                    try:
+                        await query.edit_message_text(f"操作失败: {str(e)[:100]}")
+                    except Exception:
+                        pass
+            
+            else:
+                try:
+                    await query.edit_message_text(f"未知操作: {action}")
+                except Exception:
+                    pass
+                
+        except ValueError:
+            try:
+                await query.edit_message_text("无效的内容ID")
+            except Exception:
+                pass
+        except Exception as e:
+            logger.exception(f"处理按钮回调失败: {e}")
+            await query.edit_message_text(f"操作失败: {str(e)[:100]}")
+    
     async def _get_content_by_filter(
         self, 
         update: Update, 
@@ -257,7 +414,7 @@ class VaultStreamBot:
             if platform:
                 filter_desc.append(f"平台={platform}")
             
-            logger.info(f"Bot 获取内容: user={user.username or user.id}, {', '.join(filter_desc) if filter_desc else '无筛选'}")
+            logger.info(f"Bot 获取内容: user={user.username}(ID:{user.id}), {', '.join(filter_desc) if filter_desc else '无筛选'}")
             
             # 构建请求
             client = await self._get_client()
@@ -337,7 +494,8 @@ class VaultStreamBot:
                 f"{self.api_base}/bot/mark-pushed",
                 json={
                     "content_id": content_id,
-                    "target_platform": self.target_platform
+                    "target_platform": self.target_platform,
+                    "target_id": str(settings.telegram_channel_id)  # 添加缺失的 target_id
                 }
             )
         except Exception as e:
@@ -349,6 +507,8 @@ class VaultStreamBot:
         if not content:
             raise ValueError("内容为空")
             
+        content_id = content.get("id")
+        
         try:
             format_start = time.time()
             text = format_content_for_tg(content)
@@ -358,62 +518,18 @@ class VaultStreamBot:
             max_caption_length = 1024
             max_message_length = 4096
             
-            # 从 raw_metadata 中提取媒体信息
+            # 创建 InlineKeyboard 按钮（仅保留删除功能）
+            keyboard = [
+                [
+                    InlineKeyboardButton("🗑️ 删除", callback_data=f"delete_{content_id}"),
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            # 提取媒体URL（使用优化后的工具函数）
             raw_metadata = content.get('raw_metadata', {})
-            archive = raw_metadata.get('archive', {})
-            
-            # 收集所有媒体
-            media_items = []
-            
-            # 优先使用原始媒体URL（Twitter CDN等），速度更快
-            # 存储的媒体（MinIO）仅用于归档备份
-            
-            # 获取原始图片URL
-            images = archive.get('images', [])
-            for img in images:
-                if img.get('url'):
-                    media_items.append({
-                        'type': 'photo',
-                        'url': img['url']
-                    })
-            
-            # 如果没有原始图片，降级使用存储的图片
-            if not media_items:
-                stored_images = archive.get('stored_images', [])
-                for img in stored_images:
-                    if img.get('url'):
-                        media_items.append({
-                            'type': 'photo',
-                            'url': img['url']
-                        })
-            
-            # 获取原始视频URL
-            videos = archive.get('videos', [])
-            for vid in videos:
-                if vid.get('url'):
-                    media_items.append({
-                        'type': 'video',
-                        'url': vid['url']
-                    })
-            
-            # 如果没有原始视频，降级使用存储的视频
-            if not videos:
-                stored_videos = archive.get('stored_videos', [])
-                for vid in stored_videos:
-                    if vid.get('url'):
-                        media_items.append({
-                            'type': 'video',
-                            'url': vid['url']
-                        })
-            
-            # 如果没有从存档中找到媒体，尝试使用 cover_url
-            if not media_items:
-                cover_url = content.get('cover_url')
-                if cover_url and isinstance(cover_url, str) and cover_url.strip():
-                    media_items.append({
-                        'type': 'photo',
-                        'url': cover_url.strip()
-                    })
+            cover_url = content.get('cover_url')
+            media_items = extract_media_urls(raw_metadata, cover_url)
             
             # 处理文本长度
             if media_items and len(text) > max_caption_length:
@@ -438,33 +554,48 @@ class VaultStreamBot:
                             media_group.append(InputMediaVideo(media=item['url']))
                 
                 try:
-                    await context.bot.send_media_group(
+                    messages = await context.bot.send_media_group(
                         chat_id=settings.telegram_channel_id,
                         media=media_group,
                         read_timeout=60,
                         write_timeout=60
                     )
+                    # Media group 不支持 reply_markup，需要单独发送按钮
+                    if messages:
+                        await context.bot.send_message(
+                            chat_id=settings.telegram_channel_id,
+                            text="管理操作:",
+                            reply_to_message_id=messages[0].message_id,
+                            reply_markup=reply_markup
+                        )
                 except Exception as media_error:
                     logger.warning(f"发送媒体组失败，降级为单个媒体: {media_error}")
                     # 降级：只发送第一个媒体
-                    await self._send_single_media(media_items[0], text, context)
+                    await self._send_single_media(media_items[0], text, context, reply_markup)
                     
             elif len(media_items) == 1:
                 # 只有一个媒体
-                await self._send_single_media(media_items[0], text, context)
+                await self._send_single_media(media_items[0], text, context, reply_markup)
             else:
                 # 没有媒体，纯文本
                 await context.bot.send_message(
                     chat_id=settings.telegram_channel_id,
                     text=text,
                     parse_mode='HTML',
-                    disable_web_page_preview=False
+                    disable_web_page_preview=False,
+                    reply_markup=reply_markup
                 )
         except Exception as e:
             logger.exception("发送到频道失败")
             raise
     
-    async def _send_single_media(self, media_item: dict, caption: str, context: ContextTypes.DEFAULT_TYPE):
+    async def _send_single_media(
+        self, 
+        media_item: dict, 
+        caption: str, 
+        context: ContextTypes.DEFAULT_TYPE,
+        reply_markup: Optional[InlineKeyboardMarkup] = None
+    ):
         """发送单个媒体"""
         try:
             if media_item['type'] == 'photo':
@@ -474,7 +605,8 @@ class VaultStreamBot:
                     caption=caption,
                     parse_mode='HTML',
                     read_timeout=30,
-                    write_timeout=30
+                    write_timeout=30,
+                    reply_markup=reply_markup
                 )
             elif media_item['type'] == 'video':
                 await context.bot.send_video(
@@ -483,7 +615,8 @@ class VaultStreamBot:
                     caption=caption,
                     parse_mode='HTML',
                     read_timeout=60,
-                    write_timeout=60
+                    write_timeout=60,
+                    reply_markup=reply_markup
                 )
         except Exception as e:
             logger.warning(f"发送单个媒体失败，降级为文本: {e}")
@@ -491,7 +624,8 @@ class VaultStreamBot:
                 chat_id=settings.telegram_channel_id,
                 text=caption,
                 parse_mode='HTML',
-                disable_web_page_preview=False
+                disable_web_page_preview=False,
+                reply_markup=reply_markup
             )
 
     async def post_init(self, application: Application) -> None:
@@ -598,7 +732,11 @@ class VaultStreamBot:
         application.add_handler(CommandHandler("get_bilibili", self.get_bilibili_command))
         application.add_handler(CommandHandler("list_tags", self.list_tags_command))
         application.add_handler(CommandHandler("status", self.status_command))
-        logger.info("已注册 8 个命令处理器")
+        
+        # 注册按钮回调处理器
+        application.add_handler(CallbackQueryHandler(self.button_callback))
+        
+        logger.info("已注册 8 个命令处理器 + 1 个回调处理器")
         
         # 启动轮询 - 使用简洁的现代 API
         try:

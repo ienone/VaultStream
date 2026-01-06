@@ -17,6 +17,7 @@ from app.database import init_db, db_ping
 from app.queue import task_queue
 from app.worker import worker
 from app.api import router
+from app.distribution_scheduler import get_distribution_scheduler
 
 
 setup_logging(level=settings.log_level, fmt=settings.log_format, debug=settings.debug)
@@ -40,10 +41,19 @@ async def lifespan(app: FastAPI):
     worker_task = asyncio.create_task(worker.start())
     logger.info("后台任务工作器已启动")
     
+    # 启动分发调度器
+    scheduler = get_distribution_scheduler(interval_seconds=60)
+    scheduler.start()
+    logger.info("分发调度器已启动")
+    
     yield
     
     # 关闭时
     logger.info("关闭 VaultStream 应用程序...")
+    
+    # 停止调度器
+    await scheduler.stop()
+    logger.info("分发调度器已停止")
     
     # 停止worker
     await worker.stop()

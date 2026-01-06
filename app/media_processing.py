@@ -132,7 +132,12 @@ async def store_archive_images_as_webp(
     url_to_stored_url: dict[str, str] = {}
 
     count = 0
-    async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=True) as client:
+    
+    # 配置代理（如 Twitter 图片需要代理）
+    from app.config import settings
+    proxy = settings.http_proxy if hasattr(settings, 'http_proxy') and settings.http_proxy else None
+    
+    async with httpx.AsyncClient(proxy=proxy, timeout=timeout_seconds, follow_redirects=True) as client:
         for img in images:
             if max_images is not None and count >= max_images:
                 break
@@ -281,7 +286,12 @@ async def store_archive_videos(
     stored_videos: list[dict[str, Any]] = []
 
     count = 0
-    async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=True) as client:
+    
+    # 配置代理（如 Twitter 视频需要代理）
+    from app.config import settings
+    proxy = settings.http_proxy if hasattr(settings, 'http_proxy') and settings.http_proxy else None
+    
+    async with httpx.AsyncClient(proxy=proxy, timeout=timeout_seconds, follow_redirects=True) as client:
         for vid in videos:
             if max_videos is not None and count >= max_videos:
                 break

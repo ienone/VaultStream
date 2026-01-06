@@ -17,6 +17,7 @@ from app.utils import normalize_bilibili_url
 from app.adapters.errors import AdapterError, RetryableAdapterError
 from app.storage import get_storage_backend
 from app.media_processing import store_archive_images_as_webp, store_archive_videos
+from app.push_service import get_push_service
 
 
 class TaskWorker:
@@ -121,24 +122,56 @@ class TaskWorker:
                         logger.info(f"内容已推送到目标，跳过: target_id={target_id}")
                         return
                     
-                    # TODO: 这里应该调用具体的推送实现（如 Telegram Bot）
-                    # 当前仅创建待推送记录，实际推送由外部Bot完成
-                    logger.info(
-                        f"分发任务已准备（等待Bot执行）: "
-                        f"content_id={content_id}, target={target_id}"
-                    )
+                    # 调用推送服务发送消息
+                    push_service = get_push_service()
                     
-                    # 创建待推送记录（状态为 pending）
-                    push_record = PushedRecord(
-                        content_id=content_id,
-                        target_platform=target_platform,
-                        target_id=target_id,
-                        push_status="pending"
-                    )
-                    session.add(push_record)
-                    await session.commit()
+                    # 构造内容数据（需要转为 dict）
+                    content_dict = {
+                        "id": content.id,
+                        "title": content.title,
+                        "platform": content.platform.value if content.platform else None,
+                        "cover_url": content.cover_url,
+                        "raw_metadata": content.raw_metadata,
+                        "canonical_url": content.canonical_url,
+                        "tags": content.tags,
+                        "is_nsfw": content.is_nsfw
+                    }
                     
-                    logger.info(f"分发任务已入队: record_id={push_record.id}")
+                    # 根据目标平台类型推送
+                    message_id = None
+                    if target_platform == "telegram":
+                        message_id = await push_service.push_to_telegram(content_dict, target_id)
+                    else:
+                        logger.warning(f"不支持的推送平台: {target_platform}")
+                        return
+                    
+                    if message_id:
+                        # 创建推送记录
+                        push_record = PushedRecord(
+                            content_id=content_id,
+                            target_platform=target_platform,
+                            target_id=target_id,
+                            message_id=str(message_id),
+                            push_status="success"
+                        )
+                        session.add(push_record)
+                        await session.commit()
+                        
+                        logger.info(
+                            f"分发任务完成: content_id={content_id}, "
+                            f"target={target_id}, message_id={message_id}"
+                        )
+                    else:
+                        # 推送失败，记录失败状态
+                        push_record = PushedRecord(
+                            content_id=content_id,
+                            target_platform=target_platform,
+                            target_id=target_id,
+                            push_status="failed"
+                        )
+                        session.add(push_record)
+                        await session.commit()
+                        logger.error(f"分发任务失败: content_id={content_id}, target={target_id}")
                     
                 except Exception as e:
                     logger.error(f"分发任务失败: {e}", exc_info=True)

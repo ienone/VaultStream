@@ -41,10 +41,10 @@ class ContentStatus(str, Enum):
 
 class ReviewStatus(str, Enum):
     """内容审核状态（M4 审批流）"""
-    PENDING = "pending"      # 待审核
-    APPROVED = "approved"    # 已批准
-    REJECTED = "rejected"    # 已拒绝
-    AUTO_APPROVED = "auto_approved"  # 自动批准
+    PENDING = "PENDING"      # 待审核
+    APPROVED = "APPROVED"    # 已批准
+    REJECTED = "REJECTED"    # 已拒绝
+    AUTO_APPROVED = "AUTO_APPROVED"  # 自动批准
 
 
 class Platform(str, Enum):
@@ -103,7 +103,7 @@ class Content(Base):
     last_error_at = Column(DateTime)
     
     # M4: 审批流状态
-    review_status = Column(SQLEnum(ReviewStatus), default=ReviewStatus.PENDING, index=True)
+    review_status = Column(SQLEnum(ReviewStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=ReviewStatus.PENDING, index=True)
     reviewed_at = Column(DateTime)  # 审核时间
     reviewed_by = Column(String(100))  # 审核人（预留）
     review_note = Column(Text)  # 审核备注

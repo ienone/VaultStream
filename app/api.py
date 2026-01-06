@@ -505,6 +505,49 @@ async def update_content(
     return content
 
 
+@router.delete("/contents/{content_id}")
+async def delete_content(
+    content_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """
+    删除内容
+    
+    注意：仅删除数据库记录，不删除存储的媒体文件
+    """
+    result = await db.execute(
+        select(Content).where(Content.id == content_id)
+    )
+    content = result.scalar_one_or_none()
+    
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+    
+    # 先删除关联的记录（避免外键约束错误）
+    from app.models import ContentSource, PushedRecord
+    
+    # 删除 content_sources
+    await db.execute(
+        select(ContentSource).where(ContentSource.content_id == content_id)
+    )
+    await db.execute(
+        ContentSource.__table__.delete().where(ContentSource.content_id == content_id)
+    )
+    
+    # 删除 pushed_records
+    await db.execute(
+        PushedRecord.__table__.delete().where(PushedRecord.content_id == content_id)
+    )
+    
+    # 最后删除 content
+    await db.delete(content)
+    await db.commit()
+    
+    logger.info(f"内容已删除: content_id={content_id}")
+    return {"status": "deleted", "content_id": content_id}
+
+
 @router.get("/tags", response_model=List[TagStats])
 async def get_tags_list(db: AsyncSession = Depends(get_db)):
     """获取所有标签列表及其使用次数 (M3)"""

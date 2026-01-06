@@ -138,6 +138,13 @@ async def main():
 asyncio.run(main())
 " 2>/dev/null || echo "⚠️  数据库表已存在或初始化失败，继续..."
 
+# 检查端口是否被占用
+if lsof -Pi :8000 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+    echo "⚠️  端口 8000 已被占用，正在停止旧进程..."
+    lsof -ti:8000 | xargs kill -9 2>/dev/null || true
+    sleep 1
+fi
+
 # 启动后端API
 echo ""
 echo "🌐 启动 FastAPI 后端..."
@@ -162,9 +169,11 @@ echo "⚠️  使用 Ctrl+C 停止服务"
 echo ""
 
 # 等待用户中断
-wait $API_PID查看实时日志: tail -f logs/app.log"
+wait $API_PID
+echo ""
+echo "🔍 查看实时日志: tail -f logs/app.log"
 echo ""
 echo "📊 数据位置:"
 echo "   - SQLite数据库: ./data/vaultstream.db"
 echo "   - 媒体文件: ./data/media/"
-echo "   - 日志文件: ./logs/
+echo "   - 日志文件: ./logs/"
