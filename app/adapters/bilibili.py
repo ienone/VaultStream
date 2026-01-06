@@ -106,6 +106,45 @@ class BilibiliAdapter(PlatformAdapter):
         val = re.sub(r"\n{3,}", "\n\n", val)
         return val.strip()
 
+    def _prune_metadata(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """裁剪冗余的大型元数据字段（如合辑列表、番剧章节列表等），防止数据库膨胀和接口响应过慢"""
+        if not item or not isinstance(item, dict):
+            return item
+            
+        # 1) UGC 合辑处理 (ugc_season)
+        # B站某些长视频属于合辑，ugc_season 包含了合辑中所有（可能几百个）视频的详细元数据
+        if 'ugc_season' in item and isinstance(item['ugc_season'], dict):
+            season = item.get('ugc_season')
+            if 'sections' in season and isinstance(season['sections'], list):
+                for section in season['sections']:
+                    if isinstance(section, dict) and 'episodes' in section and isinstance(section['episodes'], list):
+                        # 记录数量并清空详细列表，防止数据过载
+                        section['ep_count'] = len(section['episodes'])
+                        section['episodes'] = [] # 清空集数详情
+        
+        # 2) PGC 番剧处理 (episodes) - 针对番剧、电影等
+        if 'episodes' in item and isinstance(item['episodes'], list):
+            # 番剧详情接口会返回所有剧集列表
+            item['ep_count'] = len(item['episodes'])
+            item['episodes'] = [] # 清空剧集列表
+
+        # 3) 分P处理 (pages) - 针对多P视频
+        if 'pages' in item and isinstance(item['pages'], list):
+             # 分P通常包含每个分P的标题、时长等，如果太多也进行裁剪
+             if len(item['pages']) > 10:
+                 item['page_count'] = len(item['pages'])
+                 item['pages'] = item['pages'][:10] # 仅保留前10个预览
+             
+        # 4) PGC 章节处理 (sections)
+        if 'sections' in item and isinstance(item['sections'], list):
+            # 针对一些 PGC 内容的章节信息
+            for section in item['sections']:
+                if isinstance(section, dict) and 'episodes' in section and isinstance(section['episodes'], list):
+                    section['ep_count'] = len(section['episodes'])
+                    section['episodes'] = []
+                    
+        return item
+
     def _safe_url(self, url: Any) -> Optional[str]:
         if not url or not isinstance(url, str):
             return None
@@ -384,7 +423,7 @@ class BilibiliAdapter(PlatformAdapter):
                 cover_url=item.get('pic'),
                 media_urls=[item.get('pic')] if item.get('pic') else [],
                 published_at=datetime.fromtimestamp(item.get('pubdate')),
-                raw_metadata=item,
+                raw_metadata=self._prune_metadata(item),
                 stats=stats
             )
 
@@ -488,7 +527,7 @@ class BilibiliAdapter(PlatformAdapter):
                 cover_url=item.get('cover'),
                 media_urls=[item.get('cover')],
                 published_at=None,
-                raw_metadata=item,
+                raw_metadata=self._prune_metadata(item),
                 stats=stats
             )
 

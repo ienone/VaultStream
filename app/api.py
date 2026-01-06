@@ -40,7 +40,7 @@ def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
 
 
 async def require_api_token(
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token", description="API Token (Required)"),
+    x_api_token: str = Header(..., alias="X-API-Token", description="API Token (Required)"),
     authorization: Optional[str] = Header(default=None, alias="Authorization", description="Bearer Token (Alternative to X-API-Token)"),
 ):
     """简单 Token 鉴权。
