@@ -38,6 +38,15 @@ class ContentStatus(str, Enum):
     FAILED = "failed"            # 失败
     ARCHIVED = "archived"        # 已归档
 
+
+class ReviewStatus(str, Enum):
+    """内容审核状态（M4 审批流）"""
+    PENDING = "pending"      # 待审核
+    APPROVED = "approved"    # 已批准
+    REJECTED = "rejected"    # 已拒绝
+    AUTO_APPROVED = "auto_approved"  # 自动批准
+
+
 class Platform(str, Enum):
     """支持的平台"""
     BILIBILI = "bilibili"
@@ -92,6 +101,12 @@ class Content(Base):
     last_error_type = Column(String(200))
     last_error_detail = Column(JSON)
     last_error_at = Column(DateTime)
+    
+    # M4: 审批流状态
+    review_status = Column(SQLEnum(ReviewStatus), default=ReviewStatus.PENDING, index=True)
+    reviewed_at = Column(DateTime)  # 审核时间
+    reviewed_by = Column(String(100))  # 审核人（预留）
+    review_note = Column(Text)  # 审核备注
     
     # 标签和分类
     tags = Column(JSON, default=list)  # 用户自定义标签
@@ -176,17 +191,72 @@ class ContentSource(Base):
 
 
 class PushedRecord(Base):
-    """推送记录表"""
+    """推送记录表（M4 扩展：记录 message_id 和 target_id）"""
     __tablename__ = "pushed_records"
+    
+    __table_args__ = (
+        # 同一内容同一目标不重复推送（唯一约束）
+        UniqueConstraint("content_id", "target_id", name="uq_pushed_records_content_target"),
+        Index("ix_pushed_records_target_id", "target_id"),
+    )
     
     id = Column(Integer, primary_key=True, index=True)
     content_id = Column(Integer, ForeignKey("contents.id"), nullable=False, index=True)
-    target_platform = Column(String(100), nullable=False)  # TG_CHANNEL_A, QQ_GROUP_B 等
-    message_id = Column(String(200))  # 推送后的消息ID
+    
+    # M4 扩展字段
+    target_platform = Column(String(100), nullable=False)  # "telegram", "qq" 等
+    target_id = Column(String(200), nullable=False, index=True)  # 频道/群组 ID（如 @channel_name, -1001234567890）
+    message_id = Column(String(200))  # 推送后的消息ID（用于更新/撤回）
+    
+    # 推送状态
+    push_status = Column(String(50), default="success")  # success/failed/pending
+    error_message = Column(Text)  # 失败原因
+    
     pushed_at = Column(DateTime, default=utcnow, index=True)
     
     # 关系
     content = relationship("Content", back_populates="pushed_records")
+
+
+class DistributionRule(Base):
+    """分发规则表（M4 分发引擎）"""
+    __tablename__ = "distribution_rules"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # 规则名称与描述
+    name = Column(String(200), nullable=False, unique=True)
+    description = Column(Text)
+    
+    # 匹配条件（使用 JSON 存储灵活条件）
+    # 示例: {"tags": ["tech", "news"], "platform": "bilibili", "is_nsfw": false}
+    match_conditions = Column(JSON, nullable=False)
+    
+    # 目标配置（JSON 数组）
+    # 示例: [{"platform": "telegram", "target_id": "@my_channel", "enabled": true}]
+    targets = Column(JSON, nullable=False, default=list)
+    
+    # 规则配置
+    enabled = Column(Boolean, default=True, index=True)
+    priority = Column(Integer, default=0, index=True)  # 优先级（越大越高）
+    
+    # NSFW 策略
+    nsfw_policy = Column(String(50), default="block")  # "allow", "block", "separate_channel"
+    
+    # 审批配置
+    approval_required = Column(Boolean, default=False)  # 是否需要人工审批
+    auto_approve_conditions = Column(JSON)  # 自动审批条件（可选）
+    
+    # 限流配置
+    rate_limit = Column(Integer)  # 每小时最大推送数（可选）
+    time_window = Column(Integer)  # 时间窗口（秒）
+    
+    # 模板ID（预留）
+    template_id = Column(String(100))
+    
+    # 时间戳
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
 class TaskStatus(str, Enum):

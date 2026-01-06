@@ -6,10 +6,11 @@ from app.logging import logger, log_context, ensure_task_id
 import traceback
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional
 
 from app.queue import task_queue
 from app.database import AsyncSessionLocal
-from app.models import Content, ContentStatus, Platform, utcnow
+from app.models import Content, ContentStatus, Platform, utcnow, PushedRecord, ReviewStatus
 from app.adapters import AdapterFactory
 from app.config import settings
 from app.utils import normalize_bilibili_url
@@ -51,7 +52,8 @@ class TaskWorker:
         处理单个任务
         
         Args:
-            task_data: 任务数据，包含 content_id
+            task_data: 任务数据，包含 content_id 和可选的 action 字段
+                      action 可以是 "parse" (默认) 或 "distribute"
         """
         schema_version = int(task_data.get("schema_version") or 1)
         action = task_data.get("action") or "parse"
@@ -59,6 +61,97 @@ class TaskWorker:
         max_attempts = int(task_data.get("max_attempts") or 3)
         content_id = task_data.get('content_id')
         task_id = ensure_task_id(task_data.get("task_id"))
+        
+        if not content_id:
+            logger.warning("任务数据缺少 content_id")
+            return
+        
+        # 根据 action 分发到不同的处理器
+        if action == "distribute":
+            await self._process_distribution_task(task_data, task_id)
+        else:
+            await self._process_parse_task(task_data, task_id)
+    
+    async def _process_distribution_task(self, task_data: dict, task_id: str):
+        """
+        处理分发任务（M4）
+        
+        task_data 示例:
+        {
+            "action": "distribute",
+            "content_id": 123,
+            "rule_id": 1,
+            "target_platform": "telegram",
+            "target_id": "@my_channel"
+        }
+        """
+        content_id = task_data.get('content_id')
+        target_platform = task_data.get('target_platform')
+        target_id = task_data.get('target_id')
+        rule_id = task_data.get('rule_id')
+        
+        with log_context(task_id=task_id, content_id=content_id):
+            logger.info(f"开始处理分发任务: target={target_platform}:{target_id}")
+            
+            async with AsyncSessionLocal() as session:
+                try:
+                    # 获取内容记录
+                    result = await session.execute(
+                        select(Content).where(Content.id == content_id)
+                    )
+                    content = result.scalar_one_or_none()
+                    
+                    if not content:
+                        logger.warning(f"内容不存在: {content_id}")
+                        return
+                    
+                    # 检查审批状态
+                    if content.review_status not in [ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED]:
+                        logger.warning(f"内容未批准，跳过分发: review_status={content.review_status}")
+                        return
+                    
+                    # 检查是否已推送
+                    existing = await session.execute(
+                        select(PushedRecord).where(
+                            PushedRecord.content_id == content_id,
+                            PushedRecord.target_id == target_id
+                        )
+                    )
+                    if existing.scalar_one_or_none():
+                        logger.info(f"内容已推送到目标，跳过: target_id={target_id}")
+                        return
+                    
+                    # TODO: 这里应该调用具体的推送实现（如 Telegram Bot）
+                    # 当前仅创建待推送记录，实际推送由外部Bot完成
+                    logger.info(
+                        f"分发任务已准备（等待Bot执行）: "
+                        f"content_id={content_id}, target={target_id}"
+                    )
+                    
+                    # 创建待推送记录（状态为 pending）
+                    push_record = PushedRecord(
+                        content_id=content_id,
+                        target_platform=target_platform,
+                        target_id=target_id,
+                        push_status="pending"
+                    )
+                    session.add(push_record)
+                    await session.commit()
+                    
+                    logger.info(f"分发任务已入队: record_id={push_record.id}")
+                    
+                except Exception as e:
+                    logger.error(f"分发任务失败: {e}", exc_info=True)
+                    await session.rollback()
+    
+    async def _process_parse_task(self, task_data: dict, task_id: str):
+        """处理解析任务"""
+        schema_version = int(task_data.get("schema_version") or 1)
+        action = task_data.get("action") or "parse"
+        attempt = int(task_data.get("attempt") or 0)
+        max_attempts = int(task_data.get("max_attempts") or 3)
+        content_id = task_data.get('content_id')
+        
         if not content_id:
             logger.warning("任务数据缺少 content_id")
             return
@@ -197,6 +290,17 @@ class TaskWorker:
 
                     await session.commit()
                     logger.info("内容解析完成")
+                    
+                    # M4: 解析完成后尝试自动审批
+                    try:
+                        from app.distribution import DistributionEngine
+                        engine = DistributionEngine(session)
+                        auto_approved = await engine.auto_approve_if_eligible(content)
+                        
+                        if auto_approved:
+                            logger.info(f"内容已自动审批: content_id={content_id}")
+                    except Exception as e:
+                        logger.warning(f"自动审批检查失败: {e}", exc_info=True)
 
                 except Exception as e:
                     logger.error(f"处理任务失败: {content_id}, 错误: {e}")

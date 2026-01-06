@@ -12,11 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.logging import logger, log_context
 
 from app.database import get_db
-from app.models import Content, ContentStatus, PushedRecord, Platform, ContentSource, Task, TaskStatus
+from app.models import Content, ContentStatus, PushedRecord, Platform, ContentSource, Task, TaskStatus, DistributionRule, ReviewStatus
 from app.schemas import (
     ShareRequest, ShareResponse, ContentDetail,
     GetContentRequest, MarkPushedRequest, ShareCard,
-    ContentListResponse, TagStats, QueueStats, DashboardStats, ContentUpdate
+    ContentListResponse, TagStats, QueueStats, DashboardStats, ContentUpdate,
+    ShareCardPreview, OptimizedMedia, DistributionRuleCreate, DistributionRuleUpdate, 
+    DistributionRuleResponse, ReviewAction, BatchReviewRequest, PushedRecordResponse
 )
 from app.storage import get_storage_backend, LocalStorageBackend
 from app.queue import task_queue
@@ -315,9 +317,9 @@ async def mark_content_pushed(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    供机器人调用：标记内容已推送
+    供机器人调用：标记内容已推送（M4增强）
     
-    记录推送历史（分发历史不作为全局 status 维护）
+    记录推送历史，实现"同一目标推过不再推"逻辑
     """
     try:
         # 检查内容是否存在
@@ -329,31 +331,44 @@ async def mark_content_pushed(
         if not content:
             raise HTTPException(status_code=404, detail="内容不存在")
         
-        # 检查是否已推送
+        # M4: 检查是否已推送到该目标（使用 target_id 去重）
         existing = await db.execute(
             select(PushedRecord).where(
                 and_(
                     PushedRecord.content_id == request.content_id,
-                    PushedRecord.target_platform == request.target_platform
+                    PushedRecord.target_id == request.target_id
                 )
             )
         )
-        if existing.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail="已标记为推送")
+        existing_record = existing.scalar_one_or_none()
         
-        # 创建推送记录
+        if existing_record:
+            # 如果已存在记录，更新 message_id（支持消息更新场景）
+            if request.message_id:
+                existing_record.message_id = request.message_id
+                existing_record.push_status = "success"
+                await db.commit()
+                logger.info(f"更新推送记录: content_id={request.content_id}, target_id={request.target_id}")
+            else:
+                logger.info(f"推送记录已存在: content_id={request.content_id}, target_id={request.target_id}")
+            
+            return {"success": True, "message": "已更新", "record_id": existing_record.id}
+        
+        # 创建新推送记录
         pushed_record = PushedRecord(
             content_id=request.content_id,
             target_platform=request.target_platform,
-            message_id=request.message_id
+            target_id=request.target_id,
+            message_id=request.message_id,
+            push_status="success"
         )
         db.add(pushed_record)
 
         await db.commit()
         
-        logger.info(f"标记推送成功: {request.content_id} -> {request.target_platform}")
+        logger.info(f"标记推送成功: content_id={request.content_id} -> {request.target_id}")
         
-        return {"success": True, "message": "标记成功"}
+        return {"success": True, "message": "标记成功", "record_id": pushed_record.id}
         
     except HTTPException:
         raise
@@ -609,3 +624,331 @@ async def proxy_media(
         
     # FileResponse 自动处理 Range 和文件流。
     return FileResponse(file_path, media_type=mime_type)
+
+
+# ========== M4: 分享卡片预览 API ==========
+
+@router.get("/contents/{content_id}/preview", response_model=ShareCardPreview)
+async def get_content_preview(
+    content_id: int,
+    db: AsyncSession = Depends(get_db),
+    storage: LocalStorageBackend = Depends(get_storage_backend),
+    _: None = Depends(require_api_token),
+):
+    """
+    获取内容的分享卡片预览（M4）
+    
+    严格剥离敏感信息，仅返回合规字段和优化媒体资源
+    """
+    result = await db.execute(select(Content).where(Content.id == content_id))
+    content = result.scalar_one_or_none()
+    
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+    
+    # 构建优化媒体列表
+    optimized_media = []
+    base_url = settings.base_url or "http://localhost:8000"
+    
+    # 处理媒体URL（如果已下载到本地）
+    if content.media_urls:
+        for media_url in content.media_urls:
+            # 检查是否是本地存储的媒体
+            if media_url.startswith("local://"):
+                key = media_url.replace("local://", "")
+                proxy_url = f"{base_url}/api/v1/media/{key}"
+                
+                # 尝试获取媒体信息
+                file_path = storage._full_path(key)
+                size_bytes = os.path.getsize(file_path) if os.path.exists(file_path) else None
+                
+                # 判断媒体类型
+                mime_type, _ = mimetypes.guess_type(key)
+                media_type = "image" if mime_type and mime_type.startswith("image/") else "video"
+                
+                optimized_media.append(OptimizedMedia(
+                    type=media_type,
+                    url=proxy_url,
+                    size_bytes=size_bytes
+                ))
+            else:
+                # 外部URL（未下载）
+                optimized_media.append(OptimizedMedia(
+                    type="image",  # 默认假定为图片
+                    url=media_url
+                ))
+    
+    # 生成摘要（从description截取前200字符）
+    summary = None
+    if content.description:
+        summary = content.description[:200] + ("..." if len(content.description) > 200 else "")
+    
+    return ShareCardPreview(
+        id=content.id,
+        platform=content.platform,
+        title=content.title,
+        summary=summary,
+        author_name=content.author_name,
+        cover_url=content.cover_url,
+        optimized_media=optimized_media,
+        source_url=content.clean_url or content.url,
+        tags=content.tags or [],
+        published_at=content.published_at,
+        view_count=content.view_count,
+        like_count=content.like_count
+    )
+
+
+# ========== M4: 分发规则 CRUD API ==========
+
+@router.post("/distribution-rules", response_model=DistributionRuleResponse)
+async def create_distribution_rule(
+    rule: DistributionRuleCreate,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """创建分发规则"""
+    # 检查名称是否重复
+    result = await db.execute(
+        select(DistributionRule).where(DistributionRule.name == rule.name)
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Rule name already exists")
+    
+    db_rule = DistributionRule(**rule.model_dump())
+    db.add(db_rule)
+    await db.commit()
+    await db.refresh(db_rule)
+    
+    logger.info(f"分发规则已创建: {db_rule.name} (ID: {db_rule.id})")
+    return db_rule
+
+
+@router.get("/distribution-rules", response_model=List[DistributionRuleResponse])
+async def list_distribution_rules(
+    enabled: Optional[bool] = None,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """获取所有分发规则"""
+    query = select(DistributionRule).order_by(desc(DistributionRule.priority), DistributionRule.id)
+    
+    if enabled is not None:
+        query = query.where(DistributionRule.enabled == enabled)
+    
+    result = await db.execute(query)
+    rules = result.scalars().all()
+    return rules
+
+
+@router.get("/distribution-rules/{rule_id}", response_model=DistributionRuleResponse)
+async def get_distribution_rule(
+    rule_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """获取单个分发规则"""
+    result = await db.execute(
+        select(DistributionRule).where(DistributionRule.id == rule_id)
+    )
+    rule = result.scalar_one_or_none()
+    
+    if not rule:
+        raise HTTPException(status_code=404, detail="Distribution rule not found")
+    
+    return rule
+
+
+@router.patch("/distribution-rules/{rule_id}", response_model=DistributionRuleResponse)
+async def update_distribution_rule(
+    rule_id: int,
+    rule_update: DistributionRuleUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """更新分发规则"""
+    result = await db.execute(
+        select(DistributionRule).where(DistributionRule.id == rule_id)
+    )
+    db_rule = result.scalar_one_or_none()
+    
+    if not db_rule:
+        raise HTTPException(status_code=404, detail="Distribution rule not found")
+    
+    # 更新字段
+    update_data = rule_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_rule, key, value)
+    
+    await db.commit()
+    await db.refresh(db_rule)
+    
+    logger.info(f"分发规则已更新: {db_rule.name} (ID: {db_rule.id})")
+    return db_rule
+
+
+@router.delete("/distribution-rules/{rule_id}")
+async def delete_distribution_rule(
+    rule_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """删除分发规则"""
+    result = await db.execute(
+        select(DistributionRule).where(DistributionRule.id == rule_id)
+    )
+    db_rule = result.scalar_one_or_none()
+    
+    if not db_rule:
+        raise HTTPException(status_code=404, detail="Distribution rule not found")
+    
+    await db.delete(db_rule)
+    await db.commit()
+    
+    logger.info(f"分发规则已删除: {db_rule.name} (ID: {rule_id})")
+    return {"status": "deleted", "id": rule_id}
+
+
+# ========== M4: 审批流 API ==========
+
+@router.post("/contents/{content_id}/review")
+async def review_content(
+    content_id: int,
+    action: ReviewAction,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """审批单个内容"""
+    result = await db.execute(select(Content).where(Content.id == content_id))
+    content = result.scalar_one_or_none()
+    
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+    
+    if action.action not in ["approve", "reject"]:
+        raise HTTPException(status_code=400, detail="Invalid action")
+    
+    # 更新审批状态
+    content.review_status = ReviewStatus.APPROVED if action.action == "approve" else ReviewStatus.REJECTED
+    content.reviewed_at = datetime.utcnow()
+    content.reviewed_by = action.reviewed_by
+    content.review_note = action.note
+    
+    await db.commit()
+    await db.refresh(content)
+    
+    logger.info(f"内容审批完成: content_id={content_id}, action={action.action}, by={action.reviewed_by}")
+    
+    return {
+        "id": content.id,
+        "review_status": content.review_status,
+        "reviewed_at": content.reviewed_at
+    }
+
+
+@router.post("/contents/batch-review")
+async def batch_review_contents(
+    request: BatchReviewRequest,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """批量审批内容"""
+    if request.action not in ["approve", "reject"]:
+        raise HTTPException(status_code=400, detail="Invalid action")
+    
+    review_status = ReviewStatus.APPROVED if request.action == "approve" else ReviewStatus.REJECTED
+    
+    # 批量更新
+    result = await db.execute(
+        select(Content).where(Content.id.in_(request.content_ids))
+    )
+    contents = result.scalars().all()
+    
+    if not contents:
+        raise HTTPException(status_code=404, detail="No contents found")
+    
+    updated_count = 0
+    for content in contents:
+        content.review_status = review_status
+        content.reviewed_at = datetime.utcnow()
+        content.reviewed_by = request.reviewed_by
+        content.review_note = request.note
+        updated_count += 1
+    
+    await db.commit()
+    
+    logger.info(f"批量审批完成: {updated_count} 条内容, action={request.action}")
+    
+    return {
+        "updated": updated_count,
+        "action": request.action,
+        "content_ids": request.content_ids
+    }
+
+
+@router.get("/contents/pending-review", response_model=ContentListResponse)
+async def get_pending_review_contents(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    platform: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """获取待审批内容列表"""
+    query = select(Content).where(Content.review_status == ReviewStatus.PENDING)
+    
+    if platform:
+        try:
+            platform_enum = Platform(platform)
+            query = query.where(Content.platform == platform_enum)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid platform")
+    
+    # 计算总数
+    count_result = await db.execute(
+        select(func.count()).select_from(query.subquery())
+    )
+    total = count_result.scalar() or 0
+    
+    # 分页查询
+    offset = (page - 1) * size
+    query = query.order_by(desc(Content.created_at)).offset(offset).limit(size)
+    
+    result = await db.execute(query)
+    contents = result.scalars().all()
+    
+    return ContentListResponse(
+        items=[ContentDetail.model_validate(c) for c in contents],
+        total=total,
+        page=page,
+        size=size,
+        has_more=offset + size < total
+    )
+
+
+# ========== M4: 推送记录查询 API ==========
+
+@router.get("/pushed-records", response_model=List[PushedRecordResponse])
+async def list_pushed_records(
+    content_id: Optional[int] = None,
+    target_id: Optional[str] = None,
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """查询推送记录"""
+    query = select(PushedRecord).order_by(desc(PushedRecord.pushed_at))
+    
+    if content_id:
+        query = query.where(PushedRecord.content_id == content_id)
+    
+    if target_id:
+        query = query.where(PushedRecord.target_id == target_id)
+    
+    query = query.limit(limit)
+    
+    result = await db.execute(query)
+    records = result.scalars().all()
+    
+    return [PushedRecordResponse.model_validate(r) for r in records]
+

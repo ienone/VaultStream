@@ -5,7 +5,7 @@ from datetime import datetime
 import json
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator
-from app.models import ContentStatus, Platform, BilibiliContentType
+from app.models import ContentStatus, Platform, BilibiliContentType, ReviewStatus
 
 
 NOTE_MAX_LENGTH = 2000 # 备注内容的最大长度
@@ -60,6 +60,13 @@ class ContentDetail(BaseModel):
     last_error_type: Optional[str] = None
     last_error: Optional[str] = None
     last_error_at: Optional[datetime] = None
+    
+    # M4: 审批流字段
+    review_status: Optional[ReviewStatus] = ReviewStatus.PENDING
+    reviewed_at: Optional[datetime] = None
+    reviewed_by: Optional[str] = None
+    review_note: Optional[str] = None
+    
     tags: List[str]
     is_nsfw: bool
     source: Optional[str]
@@ -146,6 +153,7 @@ class MarkPushedRequest(BaseModel):
     """标记已推送请求"""
     content_id: int
     target_platform: str
+    target_id: str  # M4: 新增目标ID（如频道ID）
     message_id: Optional[str] = None
 
 
@@ -175,5 +183,129 @@ class ShareCard(BaseModel):
     share_count: int = 0
     comment_count: int = 0
 
+    class Config:
+        from_attributes = True
+
+
+# ========== M4: 分发规则与审批流 Schema ==========
+
+class OptimizedMedia(BaseModel):
+    """优化后的媒体资源（Share Card 使用）"""
+    type: str  # "image", "video", "audio"
+    url: str  # 代理URL或优化后的URL
+    thumbnail_url: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    size_bytes: Optional[int] = None
+
+
+class ShareCardPreview(BaseModel):
+    """分享卡片预览（完整版）"""
+    id: int
+    platform: Platform
+    title: Optional[str]
+    summary: Optional[str]
+    author_name: Optional[str]
+    cover_url: Optional[str]
+    optimized_media: List[OptimizedMedia] = Field(default_factory=list)
+    source_url: str  # 原始来源链接
+    tags: List[str]
+    published_at: Optional[datetime]
+    
+    # 互动数据
+    view_count: int = 0
+    like_count: int = 0
+    
+    class Config:
+        from_attributes = True
+
+
+class DistributionTarget(BaseModel):
+    """分发目标配置"""
+    platform: str  # "telegram", "qq" 等
+    target_id: str  # 频道/群组 ID
+    enabled: bool = True
+
+
+class DistributionRuleCreate(BaseModel):
+    """创建分发规则"""
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    match_conditions: Dict[str, Any] = Field(..., description="匹配条件 JSON")
+    targets: List[Dict[str, Any]] = Field(default_factory=list, description="目标配置列表")
+    enabled: bool = True
+    priority: int = 0
+    nsfw_policy: str = Field(default="block", description="NSFW策略: allow/block/separate_channel")
+    approval_required: bool = False
+    auto_approve_conditions: Optional[Dict[str, Any]] = None
+    rate_limit: Optional[int] = None
+    time_window: Optional[int] = None
+    template_id: Optional[str] = None
+
+
+class DistributionRuleUpdate(BaseModel):
+    """更新分发规则"""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    match_conditions: Optional[Dict[str, Any]] = None
+    targets: Optional[List[Dict[str, Any]]] = None
+    enabled: Optional[bool] = None
+    priority: Optional[int] = None
+    nsfw_policy: Optional[str] = None
+    approval_required: Optional[bool] = None
+    auto_approve_conditions: Optional[Dict[str, Any]] = None
+    rate_limit: Optional[int] = None
+    time_window: Optional[int] = None
+    template_id: Optional[str] = None
+
+
+class DistributionRuleResponse(BaseModel):
+    """分发规则响应"""
+    id: int
+    name: str
+    description: Optional[str]
+    match_conditions: Dict[str, Any]
+    targets: List[Dict[str, Any]]
+    enabled: bool
+    priority: int
+    nsfw_policy: str
+    approval_required: bool
+    auto_approve_conditions: Optional[Dict[str, Any]]
+    rate_limit: Optional[int]
+    time_window: Optional[int]
+    template_id: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class ReviewAction(BaseModel):
+    """审批操作"""
+    action: str = Field(..., description="approve/reject")
+    note: Optional[str] = Field(None, description="审批备注")
+    reviewed_by: Optional[str] = Field(None, description="审批人")
+
+
+class BatchReviewRequest(BaseModel):
+    """批量审批请求"""
+    content_ids: List[int] = Field(..., min_items=1)
+    action: str = Field(..., description="approve/reject")
+    note: Optional[str] = None
+    reviewed_by: Optional[str] = None
+
+
+class PushedRecordResponse(BaseModel):
+    """推送记录响应"""
+    id: int
+    content_id: int
+    target_platform: str
+    target_id: str
+    message_id: Optional[str]
+    push_status: str
+    error_message: Optional[str]
+    pushed_at: datetime
+    
     class Config:
         from_attributes = True

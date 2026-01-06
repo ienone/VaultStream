@@ -102,36 +102,42 @@
 
 ---
 
-## 里程碑 M4：合规分享出库（Share Card）与分发规则（Output）
-目标：对外只输出“合规卡片”，永不直接外发私有原始信息。
+## 里程碑 M4：合规分享出库（Share Card）与分发规则（Output）✅
+目标：对外只输出"合规卡片"，永不直接外发私有原始信息。
 
-- [ ] 分享卡片（Share Card）定义（强约束）
-  - [ ] 字段：title、summary、cover_url（或本地代理）、source_url、tags、published_at（可空）
-  - [ ] 明确禁止字段：原始全文、敏感元数据、登录态信息
-- [ ] 分发规则（Distribution Rules）
-  - [ ] 数据结构：tag -> targets[]（TG/QQ/…）、enabled、nsfw_policy、rate_limit、time_window
-  - [ ] 规则匹配：多 tag 冲突时的优先级与合并策略
-- [ ] “推过不再发”（最终裁决在后端）
-  - [ ] `pushed_records` 唯一约束：content_id + target_platform + target_id
-  - [ ] 推送写入必须原子化：写 record + 更新 content 状态/时间
-- [ ] 审核/闸门（建议默认开启）
-  - [ ] 自动推送前的人工审批开关（按 tag/规则配置）
-  - [ ] NSFW 强制分流：不允许流向不合规目标（硬失败）
+- [x] 分享卡片（Share Card）定义与优化
+  - [x] 统一数据结构：title、summary、optimized_media[]（使用 M3 代理/压缩图）、source_url、tags
+  - [x] **预览 API**：`GET /contents/{id}/preview` 提供各平台适配后的渲染效果
+  - [x] **禁止泄露**：严格剥离原始全文、敏感元数据（如 Cookie 信息）、内部文件路径
+- [x] 分发引擎（Distribution Engine）
+  - [x] **分发规则模型 `distribution_rules`**：tag -> targets[]（TG/QQ/…）、enabled、nsfw_policy、approval_required、template_id
+  - [x] **审批流管理**：在 `contents` 增加 `review_status` (pending/approved/rejected)；支持按规则自动审批
+  - [x] **异步推送任务**：Worker 增加 `distribute` 任务类型，处理平台限流、重试退避
+- [x] 推送历史与一致性(一处推过不再推)
+  - [x] 推送历史记录表 `pushed_records`：content_id、target_id、message_id、push_status、唯一约束保证不重复推送
+  - [x] 规则匹配策略：DistributionEngine 实现优先级匹配、NSFW策略、频率限制
+- [x] 安全闸门
+  - [x] NSFW 强制分流：不合规目标强制拦截（硬失败）
+  - [x] 发送回执确认：Bot 发送成功后调用 `POST /bot/mark-pushed` 同步记录
+
+**已完成文档**：[M4 分发规则与审批流 API 文档](docs/M4_DISTRIBUTION.md)
 
 ---
 
-## 里程碑 M5：机器人与推送策略（TG 优先）
-目标：既能“拉取”，也能“定时推送”，并且可追溯、可降噪。
+## 里程碑 M5：机器人与推送实现（TG 优先）
+目标：既能“拉取”，也能“自动推送”，并且支持 Markdown 渲染与多媒体合并。
 
-- [ ] TG Bot：指令与主动推送双模式
-  - [x] `/get [tag]` 拉取未推送内容
-  - [ ] 主动轮询：按分发规则定时拉取（rate_limit、time_window）
-- [ ] 消息格式（降噪 + 高信息密度）
-  - [ ] 图文混排：首图 + 标题 + 摘要 + 来源链接 + tags
-  - [ ] 批量合并：多条内容用 media group/合并转发（尽量减少消息数）
-- [ ] 回执与一致性
-  - [ ] 发送成功后回调后端确认（写 pushed_records）
-  - [ ] 失败重试与幂等：同一目标不重复刷屏
+- [ ] TG Bot：主动推送与指令拉取双模式
+  - [x] `/get [tag]` 拉取未推送内容 (Pull Mode)
+  - [ ] **Webhook/Worker 触发推送** (Push Mode)：响应 M4 分发引擎发起的推送请求。
+  - [ ] 主动轮询：按分发规则定时检查待推送内容。
+- [ ] 消息渲染与优化
+  - [ ] **MarkdownV2 适配**：增强标题、标签、短摘要的显示效果。
+  - [ ] **多媒体合并 (Media Group)**：针对 Twitter 多图、B 站动态多图，合并为单条消息发送。
+  - [ ] 按钮交互：在卡片下方增加“标记 NSFW”、“重解析”或“管理”快捷按钮。
+- [ ] 推送可靠性
+  - [ ] **结果回执**：发送成功后获取 `message_id` 并立即同步至 `pushed_records`。
+  - [ ] 错误处理：针对 TG `FloodWait` (Rate Limit) 的指数退避策略。
 
 ---
 
@@ -193,7 +199,7 @@
 --- 
 
 ## 当前优先级建议（从今天开始的 1-2 周）
-1) M1：入口协议 + 去重键 + health + 基础索引  
-2) M2：Adapter 输出 schema 强约束 + pipeline 幂等/重试  
-3) M4/M5：分发规则（最小可用）+ TG 主动推送 + pushed_records 唯一约束  
-4) M6：Web 端最小管理页（查、改 tag、看推送记录）
+1) M1：入口协议 + 去重键 + health + 基础索引 ✅
+2) M2：Adapter 输出 schema 强约束 + pipeline 幂等/重试 ✅
+3) M4/M5：分发规则与审批流 + TG 分组推送适配(Media Group) + 推送回执一致性
+4) M6：Web 端最小管理页（列表展示、审批操作、分发规则配置）
