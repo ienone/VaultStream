@@ -4,7 +4,7 @@
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, List
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum, UniqueConstraint
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum, UniqueConstraint, JSON
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -15,6 +15,18 @@ Base = declarative_base()
 def utcnow() -> datetime:
     """返回UTC 时间的当前时间戳。"""
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+# JSON 类型适配器：PostgreSQL 用 JSONB，SQLite 用 JSON
+def get_json_type():
+    """根据数据库类型返回合适的 JSON 字段类型"""
+    try:
+        from app.config import settings
+        if settings.database_type == "postgresql":
+            return JSONB
+    except:
+        pass
+    return JSON
 
 
 class ContentStatus(str, Enum):
@@ -74,11 +86,11 @@ class Content(Base):
     failure_count = Column(Integer, default=0)
     last_error = Column(Text)
     last_error_type = Column(String(200))
-    last_error_detail = Column(JSONB)
+    last_error_detail = Column(JSON)
     last_error_at = Column(DateTime)
     
     # 标签和分类
-    tags = Column(JSONB, default=list)  # 用户自定义标签
+    tags = Column(JSON, default=list)  # 用户自定义标签
     is_nsfw = Column(Boolean, default=False)
     source = Column(String(100))  # 来源标识
     
@@ -110,10 +122,10 @@ class Content(Base):
     comment_count = Column(Integer, default=0)
     
     # 平台特有扩展数据 (如 B站投币、转发等)
-    extra_stats = Column(JSONB, default=dict)
+    extra_stats = Column(JSON, default=dict)
     
-    # 元数据（JSONB存储）
-    raw_metadata = Column(JSONB)  # 原始平台数据
+    # 元数据（JSON存储）
+    raw_metadata = Column(JSON)  # 原始平台数据
     
     # 提取的通用字段
     title = Column(Text)
@@ -121,7 +133,7 @@ class Content(Base):
     author_name = Column(String(200))
     author_id = Column(String(100))
     cover_url = Column(Text)
-    media_urls = Column(JSONB, default=list)  # 媒体资源URL列表
+    media_urls = Column(JSON, default=list)  # 媒体资源URL列表
     
     # 时间戳
     created_at = Column(DateTime, default=utcnow, index=True)
@@ -150,9 +162,9 @@ class ContentSource(Base):
     content_id = Column(Integer, ForeignKey("contents.id"), nullable=False, index=True)
 
     source = Column(String(100))
-    tags_snapshot = Column(JSONB, default=list)
+    tags_snapshot = Column(JSON, default=list)
     note = Column(Text)
-    client_context = Column(JSONB)
+    client_context = Column(JSON)
 
     created_at = Column(DateTime, default=utcnow, index=True)
 
@@ -171,3 +183,29 @@ class PushedRecord(Base):
     
     # 关系
     content = relationship("Content", back_populates="pushed_records")
+
+
+class TaskStatus(str, Enum):
+    """任务状态"""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class Task(Base):
+    """任务表（用于SQLite队列模式）"""
+    __tablename__ = "tasks"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    task_type = Column(String(100), nullable=False)  # "parse_content"
+    payload = Column(JSON, nullable=False)  # {"content_id": 123}
+    status = Column(SQLEnum(TaskStatus), default=TaskStatus.PENDING, index=True)
+    priority = Column(Integer, default=0, index=True)  # 越大越优先
+    retry_count = Column(Integer, default=0)
+    max_retries = Column(Integer, default=3)
+    last_error = Column(Text)
+    
+    created_at = Column(DateTime, default=utcnow, index=True)
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)

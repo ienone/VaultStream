@@ -4,14 +4,15 @@ uvicorn[standard]
 pydantic
 pydantic-settings
 
-# 数据库
-asyncpg
+# 数据库（仅支持 SQLite 轻量模式）
+aiosqlite  # SQLite 异步驱动
 sqlalchemy
 alembic
 
-# Redis
-redis
-aioredis
+# PostgreSQL 和 Redis（已移除，如需请取消注释）
+# asyncpg  # PostgreSQL 异步驱动（生产模式）
+# redis
+# aioredis
 
 # HTTP 客户端
 httpx
@@ -30,5 +31,5 @@ loguru
 # 图片转码（可选：用于导出/归档时将图片转为 WebP）
 Pillow
 
-# S3/MinIO（可选：用于对象存储后端）
-boto3
+# S3/MinIO（已移除，如需请取消注释）
+# boto3

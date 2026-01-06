@@ -28,6 +28,11 @@ else
 fi
 echo "🐍 使用 Python: $PYTHON"
 
+# 创建数据目录（轻量模式需要）
+echo "📁 创建数据目录..."
+mkdir -p ./data/media
+mkdir -p ./logs
+
 # 检查环境配置
 if [ ! -f ".env" ]; then
     echo "⚠️  未找到 .env 文件，从示例创建..."
@@ -63,16 +68,46 @@ get_env_value() {
     ' .env
 }
 
+# 读取部署模式配置
+DATABASE_TYPE="$(get_env_value "DATABASE_TYPE")"
+QUEUE_TYPE="$(get_env_value "QUEUE_TYPE")"
 STORAGE_BACKEND_VALUE="$(get_env_value "STORAGE_BACKEND")"
+STORAGE_TYPE="$(get_env_value "STORAGE_TYPE")"
 STORAGE_S3_ENDPOINT_VALUE="$(get_env_value "STORAGE_S3_ENDPOINT")"
 
+# 使用默认值
+DATABASE_TYPE="${DATABASE_TYPE:-sqlite}"
+QUEUE_TYPE="${QUEUE_TYPE:-sqlite}"
+STORAGE_TYPE="${STORAGE_TYPE:-local}"
+
+echo ""
+echo "🔍 检测到部署模式："
+echo "   - 数据库: $DATABASE_TYPE"
+echo "   - 队列: $QUEUE_TYPE"
+echo "   - 存储: ${STORAGE_TYPE:-${STORAGE_BACKEND_VALUE:-local}}"
+
+# 根据配置决定是否需要 Docker 服务
+NEED_POSTGRES=false
+NEED_REDIS=false
+NEED_MINIO=false
+
+if [ "$DATABASE_TYPE" = "postgresql" ]; then
+    NEED_POSTGRES=true
+fi
+
+if [ "$QUEUE_TYPE" = "redis" ]; then
+    NEED_REDIS=true
+fi
+
 # 可选：当使用本机 MinIO 作为 S3 端点时，启动 minio 服务
-if [ "${STORAGE_BACKEND_VALUE}" = "s3" ] && echo "${STORAGE_S3_ENDPOINT_VALUE}" | grep -Eq '^(http://)?(127\.0\.0\.1|localhost):9000/?$'; then
+STORAGE_CHECK="${STORAGE_TYPE:-${STORAGE_BACKEND_VALUE}}"
+if [ "${STORAGE_CHECK}" = "s3" ] && echo "${STORAGE_S3_ENDPOINT_VALUE}" | grep -Eq '^(http://)?(127\.0\.0\.1|localhost):9000/?$'; then
+    NEED_MINIO=true
     if docker compose ps minio 2>/dev/null | grep -q "Up"; then
         echo "✅ MinIO 已在运行"
     else
         echo ""
-        echo "📦 检测到 STORAGE_BACKEND=s3 且端点为本机，是否启动 MinIO？"
+        echo "📦 检测到存储后端=s3 且端点为本机，是否启动 MinIO？"
         echo "   - 端点: ${STORAGE_S3_ENDPOINT_VALUE:-http://127.0.0.1:9000}"
         if [ "${AUTO_START_MINIO:-}" = "1" ]; then
             REPLY="y"
@@ -86,34 +121,48 @@ if [ "${STORAGE_BACKEND_VALUE}" = "s3" ] && echo "${STORAGE_S3_ENDPOINT_VALUE}" 
             echo "⏳ 等待 MinIO 启动..."
             sleep 3
             if ! docker compose ps minio | grep -q "Up"; then
-                echo "❌ MinIO 启动失败，请检查 docker-compose/minio 镜像拉取/代理配置"
+                echo "❌ MinIO 启动失败，请检查 docker-compose"
                 docker compose logs minio
                 exit 1
             fi
             echo "✅ MinIO 已启动"
         else
             echo "⚠️  已跳过启动 MinIO（若你使用远端 S3/MinIO，可忽略）"
+            NEED_MINIO=false
         fi
     fi
 fi
 
-# 启动数据库和Redis
-echo ""
-echo "📦 启动 PostgreSQL 和 Redis..."
-docker compose up -d postgres redis
-
-# 等待服务就绪
-echo "⏳ 等待数据库服务启动..."
-sleep 5
-
-# 检查服务状态
-if ! docker compose ps postgres redis | grep -q "Up"; then
-    echo "❌ 数据库服务启动失败，请检查 docker-compose"
-    docker compose logs postgres redis
-    exit 1
+# 启动所需的 Docker 服务
+SERVICES_TO_START=""
+if [ "$NEED_POSTGRES" = true ]; then
+    SERVICES_TO_START="$SERVICES_TO_START postgres"
+fi
+if [ "$NEED_REDIS" = true ]; then
+    SERVICES_TO_START="$SERVICES_TO_START redis"
 fi
 
-echo "✅ PostgreSQL 和 Redis 已启动"
+if [ -n "$SERVICES_TO_START" ]; then
+    echo ""
+    echo "📦 启动 Docker 服务:$SERVICES_TO_START"
+    docker compose up -d $SERVICES_TO_START
+
+    # 等待服务就绪
+    echo "⏳ 等待服务启动..."
+    sleep 5
+
+    # 检查服务状态
+    if ! docker compose ps $SERVICES_TO_START | grep -q "Up"; then
+        echo "❌ 服务启动失败，请检查 docker-compose"
+        docker compose logs $SERVICES_TO_START
+        exit 1
+    fi
+
+    echo "✅ Docker 服务已启动"
+else
+    echo ""
+    echo "✅ 轻量模式：无需启动 Docker 服务"
+fi
 
 # 运行数据库迁移
 echo ""

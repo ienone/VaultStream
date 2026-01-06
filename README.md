@@ -38,11 +38,71 @@ static/                # 前端测试页面 (Material 3)
 
 ## 使用方法
 
-### 1. 启动服务
+### 部署模式选择
+
+VaultStream 支持两种部署模式：
+
+1. **轻量模式**（默认推荐）
+   - SQLite + 本地文件存储 + 任务表队列
+   - 适合个人/小团队使用
+   - 资源占用低（~200MB 内存）
+   - 无需 Docker，单机部署
+
+2. **生产模式**
+   - PostgreSQL + Redis + MinIO
+   - 适合高并发/大规模部署
+   - 支持多节点、分布式
+
+详见 [轻量化部署指南](docs/LIGHTWEIGHT_DEPLOYMENT.md)
+
+### 快速开始（轻量模式）
+
+#### 1. 安装依赖
 
 ```bash
 ./install.sh
-cp .env.example .env  # 配置 TELEGRAM_BOT_TOKEN 等
+```
+
+#### 2. 配置环境
+
+```bash
+cp .env.example .env  # 配置环境变量
+```
+
+关键配置（默认已设置为轻量模式）：
+
+```dotenv
+DATABASE_TYPE=sqlite
+SQLITE_DB_PATH=./data/vaultstream.db
+QUEUE_TYPE=sqlite
+STORAGE_TYPE=local
+```
+
+#### 3. 启动服务
+
+```bash
+./start.sh
+```
+
+服务将在 `http://localhost:8000` 启动。
+
+### 生产模式部署
+
+1. 编辑 `.env`，切换到生产模式：
+
+```dotenv
+DATABASE_TYPE=postgresql
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/vaultstream
+QUEUE_TYPE=redis
+REDIS_URL=redis://localhost:6379/0
+STORAGE_BACKEND=s3
+```
+
+2. 使用 Docker Compose 启动依赖服务：
+
+```bash
+# 取消注释 docker-compose.yml 中的 postgres/redis/minio 服务
+docker-compose up -d
 ./start.sh
 ```
 

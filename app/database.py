@@ -2,24 +2,15 @@
 数据库连接管理
 """
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from app.config import settings
 from app.models import Base
 
-# 创建异步引擎
-# echo=False 避免输出大量 SQL 日志，仅在真正需要 SQL 调试时手动开启
-engine = create_async_engine(
-    settings.database_url,
-    echo=settings.debug_sql,  # 使用独立的 debug_sql 配置
-    future=True
-)
+# 使用适配器模式支持多种数据库
+from app.db_adapter import get_database_adapter
 
-# 创建异步会话工厂
-AsyncSessionLocal = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False
-)
+# 获取数据库适配器
+_db_adapter = get_database_adapter()
+engine = _db_adapter.get_engine()
+AsyncSessionLocal = _db_adapter.get_session_maker()
 
 
 async def init_db():

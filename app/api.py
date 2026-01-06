@@ -398,3 +398,41 @@ async def get_tags(db: AsyncSession = Depends(get_db)):
         logger.exception("获取标签列表失败")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/media/{key:path}")
+async def get_media(key: str):
+    """
+    代理本地存储的媒体文件
+    仅在使用本地存储模式时有效
+    """
+    from fastapi.responses import Response
+    from app.storage import get_storage_backend, LocalStorageBackend
+    import mimetypes
+    
+    try:
+        storage = get_storage_backend()
+        
+        # 仅本地存储需要代理
+        if not isinstance(storage, LocalStorageBackend):
+            raise HTTPException(404, "Not a local storage endpoint")
+        
+        # 读取文件
+        file_path = storage._full_path(key)
+        import os
+        if not os.path.exists(file_path):
+            raise HTTPException(404, "Media not found")
+        
+        # 读取文件内容
+        with open(file_path, 'rb') as f:
+            data = f.read()
+        
+        # 根据扩展名推断 Content-Type
+        content_type = mimetypes.guess_type(key)[0] or "application/octet-stream"
+        
+        return Response(content=data, media_type=content_type)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"获取媒体文件失败: {key}")
+        raise HTTPException(status_code=500, detail=str(e))

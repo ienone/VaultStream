@@ -12,11 +12,12 @@ class Settings(BaseSettings):
     # 运行环境
     app_env: Literal["dev", "prod"] = "dev"
     
-    # 数据库配置
-    database_url: str = "postgresql+asyncpg://user:password@localhost:5432/vaultstream"
+    # 数据库配置（仅支持 SQLite）
+    database_type: Literal["sqlite"] = "sqlite"
+    sqlite_db_path: str = "./data/vaultstream.db"
     
-    # Redis 配置
-    redis_url: str = "redis://localhost:6379/0"
+    # 队列配置（仅支持 SQLite 任务表）
+    queue_type: Literal["sqlite"] = "sqlite"
     
     # Telegram Bot 配置
     enable_bot: bool = False
@@ -87,10 +88,9 @@ def validate_settings() -> None:
 
     注意：不要在错误信息里输出敏感值。
     """
-    if not settings.database_url:
-        raise RuntimeError("缺少DATABASE_URL")
-    if not settings.redis_url:
-        raise RuntimeError("缺少REDIS_URL")
+    # 校验数据库路径
+    if not settings.sqlite_db_path:
+        raise RuntimeError("缺少 SQLITE_DB_PATH 配置")
 
     if settings.app_env == "prod" and settings.debug:
         raise RuntimeError("生产环境下 DEBUG 必须为 False")

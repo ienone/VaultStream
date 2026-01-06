@@ -1,58 +1,30 @@
-services:
-  postgres:
-    image: postgres:15
-    container_name: vaultstream_postgres
-    environment:
-      POSTGRES_DB: vaultstream
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d vaultstream"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+# VaultStream 轻量模式部署
+# 当前不需要 Docker 服务，直接运行 ./start.sh 即可
 
-  redis:
-    image: redis:7-alpine
-    container_name: vaultstream_redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+# 如需使用 Docker 运行应用本身，可取消下面的注释：
+# services:
+#   app:
+#     build: .
+#     container_name: vaultstream_app
+#     ports:
+#       - "8000:8000"
+#     volumes:
+#       - ./data:/app/data  # SQLite 数据库 + 本地媒体存储
+#       - ./logs:/app/logs  # 日志文件
+#     environment:
+#       - DATABASE_TYPE=sqlite
+#       - SQLITE_DB_PATH=/app/data/vaultstream.db
+#       - QUEUE_TYPE=sqlite
+#       - STORAGE_BACKEND=local
+#       - STORAGE_LOCAL_ROOT=/app/data/media
+#       - STORAGE_PUBLIC_BASE_URL=http://localhost:8000/api/v1
+#     restart: unless-stopped
 
-  # 可选项: MinIO (S3兼容对象存储) 用于转码储存资产（图片 WebP，未来的音视频等）
-  # 用法:
-  # - 启动: docker compose up -d minio
-  # - 控制台: http://localhost:9001
-  # - S3端点: http://localhost:9000
-  minio:
-    image: minio/minio:latest
-    container_name: vaultstream_minio
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    command: server /data --console-address ":9001"
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - minio_data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  postgres_data:
-  redis_data:
-  minio_data:
+# ============================================================================
+# PostgreSQL/Redis/MinIO 服务定义已移除
+# ============================================================================
+# 如需使用生产模式，请参考 git 历史或文档重新添加：
+# - PostgreSQL 服务
+# - Redis 服务  
+# - MinIO 服务
+# ============================================================================

@@ -18,14 +18,18 @@ build/
 *.swp
 *.swo
 
-# 数据库迁移（开发阶段）
-migrations/
+# # 数据库迁移（开发阶段）
+# migrations/
+
+# 数据内容
+data/*
+migrations
 
 # 导出文件和测试数据
 exports/
 
-# 测试脚本（保留test文件夹结构，但忽略临时测试文件）
-tests/*.py
+# 测试脚本
+tests/*
 
 
 # 临时文件
