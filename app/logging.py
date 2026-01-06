@@ -1,15 +1,16 @@
 """VaultStream 日志模块
 
-目标（M0）：提供带有 `request_id`、`content_id`、`task_id` 的结构化日志。
+目标（M0）：提供带有 \`request_id\`、\`content_id\`、\`task_id\` 的结构化日志。
 
 - 使用 loguru。
-- 通过 contextvars 注入上下文，使现有的 `logger.info(...)` 调用自动带上这些 ID。
+- 通过 contextvars 注入上下文，使现有的 \`logger.info(...)\` 调用自动带上这些 ID。
 """
 
 from __future__ import annotations
 
 import sys
 import uuid
+import os
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Iterator, Optional
@@ -76,12 +77,27 @@ def setup_logging(*, level: str = "INFO", fmt: str = "json", debug: bool = False
         debug: 是否启用 loguru 的 backtrace/diagnose。
     """
     logger.remove()
+    
+    # 确保日志目录存在
+    os.makedirs("logs", exist_ok=True)
 
     if fmt.lower() == "json":
+        # 终端 JSON 输出
         logger.add(
             sys.stdout,
             level=level.upper(),
             serialize=True,
+            backtrace=debug,
+            diagnose=debug,
+        )
+        # JSON 格式的日志文件
+        logger.add(
+            "logs/vaultstream.json.log",
+            level=level.upper(),
+            serialize=True,
+            rotation="10 MB",
+            retention="7 days",
+            compression="zip",
             backtrace=debug,
             diagnose=debug,
         )
@@ -99,18 +115,30 @@ def setup_logging(*, level: str = "INFO", fmt: str = "json", debug: bool = False
             ids.append(f"cnt={record['extra']['content_id']}")
         if record["extra"].get("task_id"):
             ids.append(f"tsk={record['extra']['task_id'][:8]}")
-        
+
         if ids:
-            parts.extend([" ".join(ids), "|"])
+            parts.append(" " + " | ".join(ids) + " -")
         
-        parts.append("{name}:{function} - {message}")
-        # 确保每条日志以换行结束，避免多条日志连在一起显示
-        return " ".join(parts) + "\n"
-    
+        parts.append(" {name}:{function} -")
+        parts.append(" {message}")
+        return "".join(parts) + "\n"
+
+    # 终端文本输出
     logger.add(
         sys.stdout,
         level=level.upper(),
+        format=format_message,
         backtrace=debug,
         diagnose=debug,
+    )
+    # 文本格式的日志文件
+    logger.add(
+        "logs/vaultstream.log",
+        level=level.upper(),
         format=format_message,
+        rotation="10 MB",
+        retention="7 days",
+        compression="zip",
+        backtrace=debug,
+        diagnose=debug,
     )

@@ -36,7 +36,6 @@ app/
 ├── storage.py         # 存储后端抽象层
 └── utils.py           # 工具函数 (URL规范化, 文本格式化)
 docs/                  # 详细文档
-static/                # 前端测试页面 (Material 3)
 ```
 
 ## 使用方法
@@ -49,6 +48,27 @@ VaultStream 采用**轻量化架构**：
 - **任务队列**: SQLite Task表（使用`SELECT FOR UPDATE SKIP LOCKED`）
 - **媒体存储**: 本地文件系统 + SHA256内容寻址
 - **资源占用**: ~200MB 内存
+
+### 持久化运行 (Systemd)
+
+对于 Linux 服务器，可以使用 systemd 将 VaultStream 作为服务运行，确保后台自动重启并持久化执行：
+
+1. **部署服务**:
+   ```bash
+   ./scripts/deploy_services.sh
+   ```
+
+2. **管理命令**:
+   - 启动 API: `sudo systemctl start vaultstream-api`
+   - 查看日志: `tail -f logs/vaultstream.log`
+   - 检查状态: `sudo systemctl status vaultstream-api`
+
+### 日志系统
+
+项目现已支持自动写入日志文件：
+- 文本日志: `logs/vaultstream.log`
+- JSON日志: `logs/vaultstream.json.log` (适合日志聚合)
+- 支持自动按天/大小切换、压缩及保留 7 天记录。
 - **部署要求**: 无需Docker，单机部署
 
 **适用场景**: 个人/小团队内容收藏与分享

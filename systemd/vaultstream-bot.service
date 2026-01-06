@@ -1,0 +1,18 @@
+[Unit]
+Description=VaultStream Telegram Bot Service
+After=vaultstream-api.service
+
+[Service]
+Type=simple
+User={{USER}}
+Group={{GROUP}}
+WorkingDirectory={{PROJECT_ROOT}}
+ExecStart={{PROJECT_ROOT}}/venv/bin/python -m app.bot
+Restart=always
+RestartSec=5
+EnvironmentFile={{PROJECT_ROOT}}/.env
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

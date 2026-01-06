@@ -1,0 +1,21 @@
+[Unit]
+Description=VaultStream API & Worker Service
+After=network.target
+
+[Service]
+Type=simple
+User={{USER}}
+Group={{GROUP}}
+WorkingDirectory={{PROJECT_ROOT}}
+# 使用绝对路径指向虚拟环境中的 python
+ExecStart={{PROJECT_ROOT}}/venv/bin/python -m app.main
+Restart=always
+RestartSec=5
+# 环境变量加载
+EnvironmentFile={{PROJECT_ROOT}}/.env
+# 标准输出和错误输出会被 journald 收集，同时也由 app/logging.py 写入文件
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

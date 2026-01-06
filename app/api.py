@@ -40,21 +40,28 @@ def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
 
 
 async def require_api_token(
-    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
-    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token", description="API Token (Required)"),
+    authorization: Optional[str] = Header(default=None, alias="Authorization", description="Bearer Token (Alternative to X-API-Token)"),
 ):
-    """M1：简单 Token 鉴权。
-
-    - 当未设置 API_TOKEN 时：放行（便于本地开发）
-    - 当设置了 API_TOKEN 时：要求 X-API-Token 或 Authorization: Bearer
+    """简单 Token 鉴权。
+    
+    要求提供有效的 X-API-Token 或 Authorization: Bearer。
     """
+    provided = x_api_token or _extract_bearer(authorization)
+    if not provided:
+        raise HTTPException(status_code=401, detail="X-API-Token or Authorization header is required")
+
     expected = settings.api_token.get_secret_value() if settings.api_token else ""
     if not expected:
-        return
+        # 如果未设置 API_TOKEN，为了安全起见拒绝访问，提示服务端配置问题
+        logger.error("API_TOKEN is not configured in settings")
+        raise HTTPException(
+            status_code=500, 
+            detail="Server security configuration error: API_TOKEN is not set"
+        )
 
-    provided = x_api_token or _extract_bearer(authorization)
-    if not provided or provided != expected:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    if provided != expected:
+        raise HTTPException(status_code=401, detail="Invalid API Token")
 
 
 @router.post("/shares", response_model=ShareResponse)
@@ -159,23 +166,6 @@ async def create_share(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/contents/{content_id}", response_model=ContentDetail)
-async def get_content(
-    content_id: int,
-    db: AsyncSession = Depends(get_db)
-):
-    """获取内容详情"""
-    result = await db.execute(
-        select(Content).where(Content.id == content_id)
-    )
-    content = result.scalar_one_or_none()
-    
-    if not content:
-        raise HTTPException(status_code=404, detail="内容不存在")
-    
-    return ContentDetail.model_validate(content)
-
-
 @router.post("/contents/{content_id}/retry")
 async def retry_content(
     content_id: int,
@@ -214,50 +204,11 @@ async def retry_content(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/contents", response_model=List[ContentDetail])
-async def list_contents(
-    status: Optional[ContentStatus] = None,
-    platform: Optional[Platform] = None,
-    tag: Optional[str] = None,
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_db)
-):
-    """列出内容"""
-    try:
-        query = select(Content)
-        
-        # 添加过滤条件
-        conditions = []
-        if status:
-            conditions.append(Content.status == status)
-        if platform:
-            conditions.append(Content.platform == platform)
-        # 安全处理tag查询：忽略空字符串
-        if tag and isinstance(tag, str) and tag.strip():
-            conditions.append(Content.tags.contains([tag.strip()]))
-        
-        if conditions:
-            query = query.where(and_(*conditions))
-        
-        query = query.order_by(Content.created_at.desc()).limit(limit).offset(offset)
-        
-        result = await db.execute(query)
-        contents = result.scalars().all()
-        
-        return [ContentDetail.model_validate(c) for c in contents]
-    except Exception as e:
-        logger.exception("列出内容失败")
-        raise HTTPException(
-            status_code=500,
-            detail=f"查询失败: {str(e)[:200]}"
-        )
-
-
 @router.post("/bot/get-content", response_model=List[ContentDetail])
 async def get_content_for_bot(
     request: GetContentRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
 ):
     """
     供机器人调用：获取待分发的内容
@@ -314,7 +265,8 @@ async def get_content_for_bot(
 @router.post("/bot/mark-pushed")
 async def mark_content_pushed(
     request: MarkPushedRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
 ):
     """
     供机器人调用：标记内容已推送（M4增强）
@@ -549,7 +501,10 @@ async def delete_content(
 
 
 @router.get("/tags", response_model=List[TagStats])
-async def get_tags_list(db: AsyncSession = Depends(get_db)):
+async def get_tags_list(
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
     """获取所有标签列表及其使用次数 (M3)"""
     try:
         # 查询所有有标签的内容

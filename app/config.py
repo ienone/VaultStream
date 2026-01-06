@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     # 应用配置
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    base_url: Optional[str] = None  # 外部访问的基础 URL，例如 https://vault.example.com
     debug: bool = True
     debug_sql: bool = False  # 是否输出详细的SQL语句日志（默认关闭）
 
