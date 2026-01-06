@@ -31,31 +31,31 @@ app/
 ├── bot.py             # Telegram Bot 逻辑
 ├── models.py          # SQLAlchemy 数据库模型
 ├── worker.py          # 异步抓取任务处理器
-└── utils.py           # 解耦的工具函数 (URL规范化, 文本格式化)
+├── db_adapter.py      # 数据库适配器抽象层
+├── queue_adapter.py   # 队列适配器抽象层
+├── storage.py         # 存储后端抽象层
+└── utils.py           # 工具函数 (URL规范化, 文本格式化)
 docs/                  # 详细文档
 static/                # 前端测试页面 (Material 3)
 ```
 
 ## 使用方法
 
-### 部署模式选择
+### 架构特点
 
-VaultStream 支持两种部署模式：
+VaultStream 采用**轻量化架构**：
 
-1. **轻量模式**（默认推荐）
-   - SQLite + 本地文件存储 + 任务表队列
-   - 适合个人/小团队使用
-   - 资源占用低（~200MB 内存）
-   - 无需 Docker，单机部署
+- **数据库**: SQLite（WAL模式，性能优化）
+- **任务队列**: SQLite Task表（使用`SELECT FOR UPDATE SKIP LOCKED`）
+- **媒体存储**: 本地文件系统 + SHA256内容寻址
+- **资源占用**: ~200MB 内存
+- **部署要求**: 无需Docker，单机部署
 
-2. **生产模式**
-   - PostgreSQL + Redis + MinIO
-   - 适合高并发/大规模部署
-   - 支持多节点、分布式
+**适用场景**: 个人/小团队内容收藏与分享
 
-详见 [轻量化部署指南](docs/LIGHTWEIGHT_DEPLOYMENT.md)
+> **扩展性说明**: 代码保留了适配器抽象层（DatabaseAdapter, QueueAdapter, StorageBackend），如需扩展到PostgreSQL/Redis/S3等生产级组件，可参考git历史重新实现。
 
-### 快速开始（轻量模式）
+### 快速开始
 
 #### 1. 安装依赖
 
@@ -69,13 +69,24 @@ VaultStream 支持两种部署模式：
 cp .env.example .env  # 配置环境变量
 ```
 
-关键配置（默认已设置为轻量模式）：
+关键配置：
 
 ```dotenv
+# 数据库（SQLite）
 DATABASE_TYPE=sqlite
 SQLITE_DB_PATH=./data/vaultstream.db
+
+# 任务队列（SQLite）
 QUEUE_TYPE=sqlite
-STORAGE_TYPE=local
+
+# 存储后端（本地）
+STORAGE_BACKEND=local
+STORAGE_LOCAL_ROOT=./data/media
+
+# 媒体处理
+ENABLE_ARCHIVE_MEDIA_PROCESSING=True
+ARCHIVE_IMAGE_WEBP_QUALITY=80
+ARCHIVE_IMAGE_MAX_COUNT=100
 ```
 
 #### 3. 启动服务
@@ -86,190 +97,239 @@ STORAGE_TYPE=local
 
 服务将在 `http://localhost:8000` 启动。
 
-### 生产模式部署
+访问地址：
+- 测试页面: http://localhost:8000
+- API文档: http://localhost:8000/docs
+- 交互式API: http://localhost:8000/redoc
 
-1. 编辑 `.env`，切换到生产模式：
-
-```dotenv
-DATABASE_TYPE=postgresql
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/vaultstream
-QUEUE_TYPE=redis
-REDIS_URL=redis://localhost:6379/0
-STORAGE_BACKEND=s3
-```
-
-2. 使用 Docker Compose 启动依赖服务：
-
-```bash
-# 取消注释 docker-compose.yml 中的 postgres/redis/minio 服务
-docker-compose up -d
-./start.sh
-```
-
-### 1.1 （可选）启用私有归档媒体处理（图片→WebP→存储）
-
-该功能仅作用于私有归档（`Content.raw_metadata.archive`），不会进入对外分享卡片字段。
-
-- 本地存储（默认）
-  - `.env`：设置 `STORAGE_BACKEND=local`、`STORAGE_LOCAL_ROOT=data/storage`
-- MinIO/S3
-  - 安装依赖：`pip install -r requirements.txt`（包含 `boto3`）
-  - `.env`：设置 `STORAGE_BACKEND=s3`，并配置 `STORAGE_S3_ENDPOINT/BUCKET/ACCESS_KEY/SECRET_KEY`
-
-MinIO（Docker）快速启动：
-
-- `docker compose up -d minio`
-- Console: `http://localhost:9001`（默认账号密码 `minioadmin/minioadmin`）
-- S3 endpoint: `http://localhost:9000`
-
-注意：
-
-- 归档媒体存储会把结果写回 `Content.raw_metadata.archive`（私有）；不会影响对外分享卡片。
-- `STORAGE_PUBLIC_BASE_URL` 只负责“把 key 映射成 URL”的字符串拼接；是否可匿名访问取决于你是否把 bucket 做成公开、或通过网关/鉴权访问。
-
-MinIO 介入点（什么时候会写入对象存储）：
-
-- Worker 在“适配器解析成功”后、写入 `Content.raw_metadata` 之前触发媒体处理：下载图片 → 转 WebP → 写入 Storage → 回写 `raw_metadata.archive.images[].stored_*`。
-- 如果单张图片处理失败，默认会记录 warning 并继续处理其它图片，不会让整条内容解析失败。
-- 如果你需要“补处理/重试失败图片”：重新入队同一条内容的 `parse` 任务时，worker 会在内容已是 `PULLED` 的情况下检测是否存在未处理图片（`stored_key` 为空），若存在则仅补处理媒体（不重新解析）。
-
-MinIO bucket：
-
-- 当 `STORAGE_BACKEND=s3` 时，系统会在首次写入前自动确保 bucket 存在（不存在则创建）。
-- 归档图片默认以内容寻址（sha256）写入，例如：`vaultstream/blobs/sha256/ab/cd/<sha>.webp`。
-
-启用开关：
-
-- `.env`：设置 `ENABLE_ARCHIVE_MEDIA_PROCESSING=True`
-- 可选调参：`ARCHIVE_IMAGE_WEBP_QUALITY`、`ARCHIVE_IMAGE_MAX_COUNT`
-
-健康检查：
+#### 4. 健康检查
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-### 1.2 导出某条内容为 Markdown（图片链接指向 MinIO WebP）
+### 功能特性
 
-导出脚本会读取 `Content.raw_metadata.archive`，输出 Markdown 文件；可选补跑“缺失图片处理”。
+#### 私有归档媒体处理（图片→WebP→存储）
 
-1) 建议配置（用于把 stored_key 映射成可访问 URL）：
+该功能仅作用于私有归档（`Content.raw_metadata.archive`），不会进入对外分享卡片字段。
 
-- `.env`：设置 `STORAGE_PUBLIC_BASE_URL=http://127.0.0.1:9000`
+**配置**：
+```dotenv
+ENABLE_ARCHIVE_MEDIA_PROCESSING=True
+ARCHIVE_IMAGE_WEBP_QUALITY=80        # WebP质量（1-100）
+ARCHIVE_IMAGE_MAX_COUNT=100          # 单个内容最多处理图片数
+```
 
-说明：这只会影响导出出来的 URL 字符串。MinIO 默认 bucket 通常是私有的，所以直接访问 `http://127.0.0.1:9000/<bucket>/<key>` 可能会 403。
+**存储位置**：
+- 本地路径：`./data/media/`
+- 目录结构：SHA256内容寻址 + 2级分片
+- 示例：`data/media/ab/cd/abcdef123...webp`
 
-两种可用方式（二选一）：
+**处理流程**：
+1. Worker在内容解析成功后自动触发
+2. 下载远程图片 → Pillow转WebP → 计算SHA256
+3. 存储到本地文件系统（内容寻址）
+4. 更新`raw_metadata.archive.images[].stored_*`字段
 
-- 方式 A：把 bucket 设置为可匿名读取（开发环境最省事），这样 `9000/<bucket>/<key>` 能直接打开。
-- 方式 B：保持 bucket 私有，启用 presigned URL（导出的链接会更长但可直接访问）：
-  - `.env`：设置 `STORAGE_S3_PRESIGN_URLS=True`，可选 `STORAGE_S3_PRESIGN_EXPIRES=3600`
-  - 此时可以不设置 `STORAGE_PUBLIC_BASE_URL`，系统会生成带签名的临时访问 URL。
-  - 优先级：只要启用了 `STORAGE_S3_PRESIGN_URLS=True`，系统会优先生成 presigned URL（即使你同时配置了 `STORAGE_PUBLIC_BASE_URL`）。
+**访问方式**：
+- API代理：`GET /api/v1/media/{key}`
+- 直接访问：`./data/media/{hash[0:2]}/{hash[2:4]}/{hash}.webp`
 
-2) 导出：
+**补处理失败图片**：
+```bash
+# 重新触发同一内容的解析任务，系统会自动检测并补处理未存储的图片
+curl -X POST http://localhost:8000/api/v1/shares \
+  -H "Content-Type: application/json" \
+  -d '{"url": "原URL"}'
+```
+
+#### 导出内容为Markdown
+
+导出脚本读取`Content.raw_metadata.archive`，生成包含本地图片引用的Markdown文件：
 
 ```bash
+# 基础导出
 ./venv/bin/python tests/export_markdown.py --content-id 6 --out exports/content_6.md
+
+# 导出前补处理缺失图片（推荐）
+./venv/bin/python tests/export_markdown.py \
+  --content-id 6 \
+  --out exports/content_6.md \
+  --process-missing-images \
+  --max-images 100
 ```
 
-3) 导出前补处理缺失图片（推荐）：
+## 核心API
 
-```bash
-./venv/bin/python tests/export_markdown.py --content-id 6 --out exports/content_6.md --process-missing-images --max-images 100
-```
-
-测试脚本目录：
-
-- `tests/test_adapter.py`：离线 fixture 测试、适配器解析测试等
-- `tests/export_markdown.py`：按 content_id 导出 Markdown（可选补处理缺失图片）
-
-
-### 2. 提交分享
-
-- Web 界面: 访问 `http://localhost:8000`。支持直接输入 BV/av/cv 号。
-- API 提交:
+### 1. 创建分享
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/shares \
   -H "Content-Type: application/json" \
-  -d '{"url": "BV1xx411c7XD", "tags": ["技术", "教程"]}'
+  -d '{
+    "url": "https://www.bilibili.com/video/BV1xx411c7mD",
+    "tags": ["技术", "教程"],
+    "note": "值得收藏",
+    "is_nsfw": false
+  }'
 ```
 
-### 升级 / 迁移数据库
-
-当代码包含数据模型变更（例如新增 `canonical_url` 或解析失败相关字段）时，请先运行迁移脚本：
+### 2. 获取待分发内容
 
 ```bash
-./venv/bin/python migrate_db.py
+curl -X POST http://localhost:8000/api/v1/bot/get-content \
+  -H "Content-Type: application/json" \
+  -d '{
+    "target_platform": "TG_CHANNEL_@example",
+    "platform": "bilibili",
+    "limit": 5
+  }'
 ```
 
-该脚本会尝试幂等地为现有数据库添加缺失的列和索引（包括 `failure_count`、`last_error*` 等）。
-
-### 回归测试示例（简要）
-
-1) 新内容首次入库：
+### 3. 标记已推送
 
 ```bash
-curl -sS -X POST 'http://127.0.0.1:8000/api/v1/shares' \
-  -H 'Content-Type: application/json' \
-  -d '{"url":"https://www.bilibili.com/video/BV1newtest123","tags":["regress-new"],"source":"cli-test"}'
+curl -X POST http://localhost:8000/api/v1/bot/mark-pushed \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content_id": 123,
+    "target_platform": "TG_CHANNEL_@example",
+    "message_id": "456"
+  }'
 ```
 
-2) 已存在未解析内容再次提交（合并 tags 并重新入队；若解析失败会写入 `failure_count` / `last_error`）：
+### 4. 查询内容详情
 
 ```bash
-curl -sS -X POST 'http://127.0.0.1:8000/api/v1/shares' \
-  -H 'Content-Type: application/json' \
-  -d '{"url":"https://www.bilibili.com/video/BV1newtest123","tags":["repeat-tag"],"source":"cli-repeat"}'
+curl http://localhost:8000/api/v1/contents/123
 ```
 
-3) 已解析成功内容再次提交（仅合并 tags，不重复入队）：
+### 5. 访问存储的图片
 
 ```bash
-curl -sS -X POST 'http://127.0.0.1:8000/api/v1/shares' \
-  -H 'Content-Type: application/json' \
-  -d '{"url":"https://www.bilibili.com/video/BV198icBEErQ","tags":["post-pulled-test"],"source":"cli-pulled"}'
+# 通过API代理访问
+curl http://localhost:8000/api/v1/media/blobs/sha256/ab/cd/abcdef123...webp
+
+# 或直接访问文件系统
+cat ./data/media/ab/cd/abcdef123...webp
 ```
 
-查看内容详情以观察 `status` 与失败信息：
+## Telegram Bot
+
+### 启动Bot
 
 ```bash
-curl -sS http://127.0.0.1:8000/api/v1/contents/3
+./venv/bin/python -m app.bot
 ```
 
-### 3. Bot 交互
+### Bot命令
 
-- `/get [tag]` - 获取并推送一条内容到频道。
-- `/status` - 查看系统状态。
+- `/start` - 开始使用
+- `/get [tag]` - 拉取未推送内容（可选指定tag过滤）
+- `/status` - 查看系统状态
+- `/stats` - 查看统计信息
 
-## 📚 详细文档
+### 配置
 
-### 核心文档
-- [架构设计](docs/ARCHITECTURE.md) - 完整的系统架构、组件说明、MinIO集成
-- [工作流程](docs/WORKFLOWS.md) - 详细的流程图、序列图、故障排查
-- [优化总结](docs/OPTIMIZATION.md) - 性能优化说明和效果对比
+在`.env`中配置：
 
-### 平台适配器
-- [Twitter/X 适配器](docs/TWITTER_FX_ADAPTER.md) - FxTwitter API 适配器，无需认证
-- [B站 API 对接](docs/BILIBILI_API.md) - B站适配器实现细节
+```dotenv
+ENABLE_BOT=True
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+TELEGRAM_CHANNEL_ID=@your_channel_id
+```
 
-### 开发文档
-- [设计思路](docs/DESIGN.md) - 项目设计理念和目标
-- [数据库结构](docs/DATABASE.md) - 数据模型和表结构
-- [API 接口契约](docs/API.md) - API接口说明
-- [开发待办清单](TODO.md) - 功能规划和进度跟踪
+## 数据存储说明
 
-## 🌐 平台支持
+### 元数据存储（SQLite）
 
-### Twitter/X
-- ✅ 基于 FxTwitter API，无需任何配置或登录
-- ✅ 支持公开推文的解析（文本、图片、视频、统计数据）
+**位置**: `./data/vaultstream.db`
 
-### Bilibili
-- ✅ 视频 (BV/av)
-- ✅ 专栏文章
-- ✅ 动态
-- 🔧 需要登录才能访问的内容需配置 cookies(目前暂时没有)
+**表结构**:
+- `contents`: 内容主表（标题、URL、作者、统计数据等）
+- `content_sources`: 分享来源记录
+- `pushed_records`: 推送记录
+- `tasks`: 异步任务队列
 
-详细配置请参考各平台的适配器文档。
+**优化配置**:
+- WAL模式：支持并发读写
+- 64MB缓存
+- mmap启用
+- 外键约束
+
+### 媒体文件存储（本地文件系统）
+
+**位置**: `./data/media/`
+
+**目录结构**: SHA256内容寻址 + 2级分片
+```
+./data/media/
+├── ab/                    # 哈希前2位
+│   └── cd/                # 哈希3-4位  
+│       └── abcdef123...webp  # 完整哈希值.webp
+```
+
+**存储流程**:
+1. 下载原始图片
+2. Pillow转WebP（质量可配置）
+3. 计算SHA256哈希
+4. 写入分片目录
+5. 更新数据库引用
+
+## 测试
+
+```bash
+# 运行所有测试
+./venv/bin/python -m pytest tests/
+
+# 测试特定适配器
+./venv/bin/python -m pytest tests/test_adapter.py -k bilibili
+
+# 测试API
+./venv/bin/python -m pytest tests/test_api.py
+```
+
+## 开发文档
+
+- [架构设计](docs/ARCHITECTURE.md) - 完整的系统架构、组件说明、适配器模式
+- [API文档](docs/API.md) - 详细的API接口说明
+- [数据库设计](docs/DATABASE.md) - 数据模型和索引策略
+- [工作流程](docs/WORKFLOWS.md) - 内容处理流程和状态机
+- [B站适配器](docs/BILIBILI_API.md) - B站平台解析实现
+- [Twitter适配器](docs/TWITTER.md) - Twitter平台解析实现
+
+## 技术栈
+
+- **后端**: FastAPI + SQLAlchemy + aiosqlite
+- **任务队列**: SQLite Task表
+- **数据库**: SQLite（WAL模式）
+- **存储**: 本地文件系统
+- **图片处理**: Pillow（WebP转码）
+- **日志**: Loguru
+- **Bot**: python-telegram-bot
+
+## 路线图
+
+详见 [TODO.md](TODO.md)
+
+当前重点：
+- [x] M0: 基础架构（轻量化完成）
+- [x] M1: 收藏入口与去重
+- [x] M2: 解析流水线（Bilibili/Twitter适配器）
+- [x] M3: 媒体存储与转码
+- [ ] M4: 分享卡片与分发规则
+- [ ] M5: Telegram Bot完善
+- [ ] M6: Web管理端
+- [ ] M7: Flutter移动端
+- [ ] M8: AI摘要增强
+- [ ] M9: 运维与安全
+- [ ] M10: 测试覆盖
+
+## 贡献指南
+
+欢迎提交Issue和Pull Request！
+
+## 许可证
+
+MIT License

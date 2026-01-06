@@ -8,12 +8,13 @@
 
 ---
 
-## 里程碑 M0：项目基础与可运行闭环（本地）
+## 里程碑 M0：项目基础与可运行闭环（本地）✅
 - [x] 仓库结构（backend/app/bots/docs）
-- [x] Docker Compose（PostgreSQL + Redis + backend）
+- [x] ~~Docker Compose（PostgreSQL + Redis + backend）~~ → **轻量化架构（SQLite + 本地存储）**
 - [x] 健康检查 `/health`（backend）
 - [x] 统一配置与密钥管理（dev/prod；env 校验；敏感信息不入库不出日志）
 - [x] 基础可观测：结构化日志（request_id / content_id / task_id）
+- [x] **架构简化**：移除PostgreSQL/Redis/MinIO依赖，仅保留适配器抽象层
 
 ---
 
@@ -44,7 +45,7 @@
   - [x] 输出：标准字段（title/author/published_at/media[]/text/cover）+ `raw_metadata`
   - [x] 错误分类：可重试/不可重试/需要登录凭证
 - [x] Pipeline（队列 + Worker）
-  - [x] Redis 队列任务格式版本化（task schema version）
+  - [x] ~~Redis 队列任务格式版本化~~ → **SQLite Task 表队列**（使用SELECT FOR UPDATE SKIP LOCKED）
   - [x] 幂等：同一 content_id 重复任务不造成脏写（基于乐观锁/更新时间戳）
   - [x] 重试策略：指数退避 + 最大次数 + dead-letter（可选）
 - [ ] 平台优先级
@@ -61,11 +62,13 @@
 ## 里程碑 M3：私有存档能力（Storage）与索引检索
 目标：库内“能找得到、翻得动、查得快”。
 
-- [ ] PostgreSQL 索引（最低成本先做）
+- [x] **媒体存储**：本地文件系统 + SHA256内容寻址 + 2级目录分片
+- [x] **图片转码**：WebP格式转换（可配置质量，默认80）
+- [ ] SQLite 索引优化
   - [ ] `(platform, created_at)`
   - [ ] `status`
-  - [ ] `tags`（GIN）
-  - [ ] `raw_metadata` 常用路径（按平台增量加表达式索引）
+  - [ ] `tags`（JSON字段索引）
+  - [ ] `raw_metadata` 常用路径（JSON表达式索引）
 - [ ] 查询 API（给 Web/App/Bot 复用）
   - [ ] 条件：tag/platform/status/is_nsfw/时间范围/关键字
   - [ ] 分页：cursor 优先（按 created_at/content_id）
@@ -150,7 +153,7 @@
 - [ ] 访问控制与最小权限
   - [ ] 管理端与 API 分级权限（至少区分“只读/管理”）
   - [ ] 凭证（cookie/token）加密存储、可撤销、过期策略
-- [ ] 反爬策略与风控
+- [ ] 反爬策略与风控SQLite 数据库文件 + 本地媒体目录备份
   - [ ] 限速、代理池（如需要）、失败熔断
 - [ ] 备份与恢复演练（PG 定期备份 + 恢复验证）
 - [ ] 文档：NSFW 边界与使用规范（清晰写明“私有存档 vs 合规分享”）

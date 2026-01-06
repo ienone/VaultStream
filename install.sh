@@ -1,7 +1,10 @@
 #!/bin/bash
 
-echo "🎉 VaultStream MVP 快速安装"
-echo "============================"
+echo "🎉 VaultStream 轻量化安装"
+echo "=========================="
+echo ""
+echo "📦 架构: SQLite + 本地存储 + 任务表队列"
+echo "💾 资源: ~200MB 内存占用"
 echo ""
 
 # 检查Python版本
@@ -12,13 +15,6 @@ fi
 
 PYTHON_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
 echo "✅ Python 版本: $PYTHON_VERSION"
-
-# 检查Docker
-if ! command -v docker &> /dev/null; then
-    echo "⚠️  未找到 Docker，需要手动安装 PostgreSQL 和 Redis"
-else
-    echo "✅ Docker 已安装"
-fi
 
 # 检查并安装 python3-venv
 echo ""
@@ -107,29 +103,26 @@ else
     echo "✅ 配置文件已存在"
 fi
 
-# 启动数据库
+# 创建数据目录
 echo ""
-if command -v docker &> /dev/null; then
-    read -p "是否启动 PostgreSQL 和 Redis？(y/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo "🚀 启动数据库服务..."
-        docker compose up -d
-        echo "✅ 数据库服务已启动"
-        echo "   PostgreSQL: localhost:5432"
-        echo "   Redis: localhost:6379"
-    fi
-fi
+echo "📁 创建数据目录..."
+mkdir -p ./data/media
+mkdir -p ./logs
+echo "✅ 数据目录已创建"
+echo "   - SQLite数据库: ./data/vaultstream.db"
+echo "   - 媒体存储: ./data/media/"
+echo "   - 日志文件: ./logs/"
 
 echo ""
 echo "✨ 安装完成！"
 echo ""
 echo "📝 下一步："
-echo "   1. 确保已配置 .env 文件"
-echo "   2. 启动后端: python -m app.main"
-echo "   3. 启动Bot: python -m app.bot"
-echo "   4. 访问: http://localhost:8000"
+echo "   1. 确保已配置 .env 文件（特别是 TELEGRAM_BOT_TOKEN）"
+echo "   2. 启动服务: ./start.sh"
+echo "   3. 访问API文档: http://localhost:8000/docs"
 echo ""
-echo "或使用快捷命令:"
-echo "   ./start.sh"
+echo "💡 提示："
+echo "   - 轻量模式无需 Docker"
+echo "   - 数据存储在 ./data/ 目录"
+echo "   - 定期备份 ./data/ 目录即可"
 echo ""

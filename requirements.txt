@@ -9,7 +9,7 @@ aiosqlite  # SQLite 异步驱动
 sqlalchemy
 alembic
 
-# PostgreSQL 和 Redis（已移除，如需请取消注释）
+# PostgreSQL 和 Redis（已移除）
 # asyncpg  # PostgreSQL 异步驱动（生产模式）
 # redis
 # aioredis
