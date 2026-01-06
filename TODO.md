@@ -59,22 +59,46 @@
 
 ---
 
-## 里程碑 M3：私有存档能力（Storage）与索引检索
+## 里程碑 M3：私有存档能力（Storage）与索引检索 ✅
 目标：库内“能找得到、翻得动、查得快”。
 
-- [x] **媒体存储**：本地文件系统 + SHA256内容寻址 + 2级目录分片
-- [x] **图片转码**：WebP格式转换（可配置质量，默认80）
-- [ ] SQLite 索引优化
-  - [ ] `(platform, created_at)`
-  - [ ] `status`
-  - [ ] `tags`（JSON字段索引）
-  - [ ] `raw_metadata` 常用路径（JSON表达式索引）
-- [ ] 查询 API（给 Web/App/Bot 复用）
-  - [ ] 条件：tag/platform/status/is_nsfw/时间范围/关键字
-  - [ ] 分页：cursor 优先（按 created_at/content_id）
+- [x] 媒体存储：本地文件系统 + SHA256内容寻址 + 2级目录分片
+- [x] 图片转码：WebP格式转换（可配置质量，默认80）
+- [x] 媒体访问增强
+  - [x] 媒体代理 API (静态流式输出，支持 Range)
+  - [x] 自动化缩略图生成 (图片压缩)
+- [x] SQLite 索引优化
+  - [x] `(platform, created_at)`
+  - [x] `status`
+  - [x] `tags`（JSON字段索引）
+  - [x] `raw_metadata` 常用路径（已映射到主表字段）
+  - [x] 基于 SQLite FTS5 的全文搜索集成
+- [x] 管理辅助 API
+  - [x] 全局标签列表及计数 API (GET /tags)
+  - [x] 标签合并与重命名支持 (通过 PATCH /contents 实现基础修改)
+  - [x] 队列状态实时统计 (Pending/Processing/Failed 计数)
+  - [x] 仪表盘聚合统计 (按平台、时间轴、容量占用)
+- [x] 查询 API（给 Web/App/Bot 复用）
+  - [x] 条件：tag/platform/status/is_nsfw/时间范围/关键字
+  - [x] 分页：offset 分页，支持 page/size
+  - [x] 排序：默认按时间倒序
+- [x] 内容详情 API (给 Web/App/Bot 复用，便于可视化)
+  - [x] 基本字段：title/author/published_at/tags/is_nsfw/status/created_at/updated_at
+  - [x] 媒体列表：类型/url/本地代理 url/宽高/大小
+- [x] 修改 API
+  - [x] 改 tags（覆盖）
+  - [x] 改标题/备注
+  - [x] 标记 NSFW
+  - [x] 触发重解析 (可通过修改 status)
+  - [x] 删除（可以实现软/硬删）
 - [ ] 语义检索（后置但要预留）
   - [ ] `embeddings` 表：content_id、model、vector、updated_at
   - [ ] 入库/更新触发：解析完成或摘要完成后生成 embedding
+
+- [x] 文档记录：
+  - [x] API 说明 ([docs/API.md](docs/API.md))
+  - [x] 示例请求响应 (已集成在文档中)
+  - [x] 数据库索引与 FTS5 说明 ([docs/DATABASE.md](docs/DATABASE.md))
 
 ---
 

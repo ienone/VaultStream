@@ -103,6 +103,45 @@ class GetContentRequest(BaseModel):
     limit: int = Field(1, ge=1, le=10, description="获取数量")
 
 
+class ContentListResponse(BaseModel):
+    """内容列表响应"""
+    items: List[ContentDetail]
+    total: int
+    page: int
+    size: int
+    has_more: bool
+
+
+class TagStats(BaseModel):
+    """标签统计"""
+    name: str
+    count: int
+
+
+class QueueStats(BaseModel):
+    """队列统计"""
+    pending: int
+    processing: int
+    failed: int
+    archived: int
+    total: int
+
+
+class DashboardStats(BaseModel):
+    """仪表盘数据"""
+    platform_counts: Dict[str, int]
+    daily_growth: List[Dict[str, Any]]
+    storage_usage_bytes: int
+
+
+class ContentUpdate(BaseModel):
+    """内容修改请求"""
+    tags: Optional[List[str]] = None
+    title: Optional[str] = None
+    is_nsfw: Optional[bool] = None
+    status: Optional[ContentStatus] = None
+
+
 class MarkPushedRequest(BaseModel):
     """标记已推送请求"""
     content_id: int

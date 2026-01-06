@@ -1,18 +1,24 @@
 """
 FastAPI 路由
 """
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Header
-from sqlalchemy import select, and_
+from typing import List, Optional, Dict, Any
+import os
+import mimetypes
+from datetime import datetime, timedelta
+from fastapi import APIRouter, Depends, HTTPException, Query, Header, Response
+from fastapi.responses import FileResponse
+from sqlalchemy import select, and_, or_, func, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.logging import logger, log_context
 
 from app.database import get_db
-from app.models import Content, ContentStatus, PushedRecord, Platform, ContentSource
+from app.models import Content, ContentStatus, PushedRecord, Platform, ContentSource, Task, TaskStatus
 from app.schemas import (
     ShareRequest, ShareResponse, ContentDetail,
-    GetContentRequest, MarkPushedRequest, ShareCard
+    GetContentRequest, MarkPushedRequest, ShareCard,
+    ContentListResponse, TagStats, QueueStats, DashboardStats, ContentUpdate
 )
+from app.storage import get_storage_backend, LocalStorageBackend
 from app.queue import task_queue
 from app.adapters import AdapterFactory
 from app.config import settings
@@ -366,73 +372,240 @@ async def health_check():
     }
 
 
-@router.get("/tags")
-async def get_tags(db: AsyncSession = Depends(get_db)):
-    """获取所有标签及其使用次数"""
+# --- M3: 私有存档查询与管理 API ---
+
+@router.get("/contents", response_model=ContentListResponse)
+async def list_contents(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    platform: Optional[Platform] = Query(None),
+    status: Optional[ContentStatus] = Query(None),
+    tag: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+    is_nsfw: Optional[bool] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """内容列表查询 (M3)"""
+    conditions = []
+    if platform:
+        conditions.append(Content.platform == platform)
+    if status:
+        conditions.append(Content.status == status)
+    if is_nsfw is not None:
+        conditions.append(Content.is_nsfw == is_nsfw)
+        
+    if tag:
+        # SQLite JSON 包含逻辑
+        conditions.append(Content.tags.contains([tag]))
+        
+    if q:
+        # 基础全文搜索 (M3: 优先尝试 FTS5，降级使用 ILIKE)
+        try:
+            # 简单处理搜索词
+            safe_q = q.replace("'", "''")
+            fts_query = text("SELECT content_id FROM contents_fts WHERE contents_fts MATCH :q")
+            result = await db.execute(fts_query, {"q": safe_q})
+            ids = [row[0] for row in result.all()]
+            if ids:
+                conditions.append(Content.id.in_(ids))
+            else:
+                # FTS5 没中，降级到 ILIKE
+                conditions.append(or_(
+                    Content.title.ilike(f"%{q}%"),
+                    Content.description.ilike(f"%{q}%"),
+                    Content.author_name.ilike(f"%{q}%")
+                ))
+        except Exception as e:
+            logger.warning(f"FTS5 search failed, falling back to ILIKE: {e}")
+            conditions.append(or_(
+                Content.title.ilike(f"%{q}%"),
+                Content.description.ilike(f"%{q}%"),
+                Content.author_name.ilike(f"%{q}%")
+            ))
+
+    # 统计总数
+    count_query = select(func.count()).select_from(Content).where(and_(*conditions))
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+    
+    # 列表查询
+    query = (
+        select(Content)
+        .where(and_(*conditions))
+        .order_by(desc(Content.created_at))
+        .offset((page-1)*size)
+        .limit(size)
+    )
+    result = await db.execute(query)
+    items = result.scalars().all()
+    
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "size": size,
+        "has_more": total > page * size
+    }
+
+
+@router.get("/contents/{content_id}", response_model=ContentDetail)
+async def get_content_detail(
+    content_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """内容详情 (M3)"""
+    result = await db.execute(select(Content).where(Content.id == content_id))
+    content = result.scalar_one_or_none()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+    return content
+
+
+@router.patch("/contents/{content_id}", response_model=ContentDetail)
+async def update_content(
+    content_id: int,
+    request: ContentUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """修改内容 (M3)"""
+    result = await db.execute(select(Content).where(Content.id == content_id))
+    content = result.scalar_one_or_none()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+    
+    if request.tags is not None:
+        content.tags = request.tags
+    if request.title is not None:
+        content.title = request.title
+    if request.is_nsfw is not None:
+        content.is_nsfw = request.is_nsfw
+    if request.status is not None:
+        content.status = request.status
+        
+    await db.commit()
+    await db.refresh(content)
+    return content
+
+
+@router.get("/tags", response_model=List[TagStats])
+async def get_tags_list(db: AsyncSession = Depends(get_db)):
+    """获取所有标签列表及其使用次数 (M3)"""
     try:
-        from sqlalchemy import func, distinct
-        from sqlalchemy.dialects.postgresql import JSONB
-        
-        # 查询所有已解析的内容的标签
+        # 查询所有有标签的内容
         result = await db.execute(
-            select(Content.tags).where(
-                and_(
-                    Content.status == ContentStatus.PULLED,
-                    Content.tags.isnot(None)
-                )
-            )
+            select(Content.tags).where(Content.tags.isnot(None))
         )
-        contents = result.scalars().all()
+        all_tags_lists = result.scalars().all()
         
-        # 统计标签出现次数
-        tag_counts = {}
-        for tags in contents:
-            if tags and isinstance(tags, list):
-                for tag in tags:
-                    if tag and isinstance(tag, str):
-                        tag_counts[tag] = tag_counts.get(tag, 0) + 1
+        counts = {}
+        for tags in all_tags_lists:
+            if isinstance(tags, list):
+                for t in tags:
+                    counts[t] = counts.get(t, 0) + 1
         
-        return tag_counts
+        # 转换为 Schema 格式并排序
+        tag_stats = [
+            {"name": name, "count": count} 
+            for name, count in sorted(counts.items(), key=lambda x: x[1], reverse=True)
+        ]
+        return tag_stats
         
     except Exception as e:
         logger.exception("获取标签列表失败")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/media/{key:path}")
-async def get_media(key: str):
-    """
-    代理本地存储的媒体文件
-    仅在使用本地存储模式时有效
-    """
-    from fastapi.responses import Response
-    from app.storage import get_storage_backend, LocalStorageBackend
-    import mimetypes
+@router.get("/dashboard/stats", response_model=DashboardStats)
+async def get_dashboard_stats(
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """仪表盘全局统计 (M3)"""
+    # 平台分布统计
+    platform_query = select(Content.platform, func.count()).group_by(Content.platform)
+    platform_results = (await db.execute(platform_query)).all()
+    # 注意：SQLAlchemy 返回的是元组，Platform 是枚举
+    platform_counts = {str(p[0].value): p[1] for p in platform_results}
     
-    try:
-        storage = get_storage_backend()
+    # 最近 7 天增长趋势
+    today = datetime.now().date()
+    daily_growth = []
+    for i in range(6, -1, -1):
+        day = today - timedelta(days=i)
+        day_start = datetime.combine(day, datetime.min.time())
+        day_end = datetime.combine(day, datetime.max.time())
         
-        # 仅本地存储需要代理
-        if not isinstance(storage, LocalStorageBackend):
-            raise HTTPException(404, "Not a local storage endpoint")
+        count_q = select(func.count()).select_from(Content).where(
+            and_(Content.created_at >= day_start, Content.created_at <= day_end)
+        )
+        day_count = (await db.execute(count_q)).scalar() or 0
+        daily_growth.append({"date": day.isoformat(), "count": day_count})
+
+    # 存储空间占用统计
+    storage = get_storage_backend()
+    usage = 0
+    if isinstance(storage, LocalStorageBackend):
+        root = storage.root_dir
+        if os.path.exists(root):
+            for dirpath, _, filenames in os.walk(root):
+                for f in filenames:
+                    usage += os.path.getsize(os.path.join(dirpath, f))
+    
+    return {
+        "platform_counts": platform_counts,
+        "daily_growth": daily_growth,
+        "storage_usage_bytes": usage
+    }
+
+
+@router.get("/dashboard/queue", response_model=QueueStats)
+async def get_dashboard_queue(
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """任务队列状态统计 (M3)"""
+    # 从 tasks 表获取待处理/进行中状态
+    task_query = select(Task.status, func.count()).group_by(Task.status)
+    task_results = (await db.execute(task_query)).all()
+    task_stats = {str(r[0].value): r[1] for r in task_results}
+    
+    # 从 contents 表获取已归档统计
+    archived_query = select(func.count()).select_from(Content).where(Content.status == ContentStatus.ARCHIVED)
+    archived_count = (await db.execute(archived_query)).scalar() or 0
+    
+    total_tasks = sum(task_stats.values())
+    
+    return {
+        "pending": task_stats.get("pending", 0),
+        "processing": task_stats.get("running", 0),
+        "failed": task_stats.get("failed", 0),
+        "archived": archived_count,
+        "total": total_tasks
+    }
+
+
+@router.get("/media/{key:path}")
+async def proxy_media(
+    key: str,
+    storage: LocalStorageBackend = Depends(get_storage_backend),
+):
+    """
+    媒体代理 API (M3)
+    支持 Range 请求以加速播放视频预览。
+    """
+    if not isinstance(storage, LocalStorageBackend):
+        raise HTTPException(status_code=400, detail="Only local storage proxy is supported")
         
-        # 读取文件
-        file_path = storage._full_path(key)
-        import os
-        if not os.path.exists(file_path):
-            raise HTTPException(404, "Media not found")
+    file_path = storage._full_path(key)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Media not found")
         
-        # 读取文件内容
-        with open(file_path, 'rb') as f:
-            data = f.read()
+    mime_type, _ = mimetypes.guess_type(file_path)
+    if not mime_type:
+        mime_type = "application/octet-stream"
         
-        # 根据扩展名推断 Content-Type
-        content_type = mimetypes.guess_type(key)[0] or "application/octet-stream"
-        
-        return Response(content=data, media_type=content_type)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(f"获取媒体文件失败: {key}")
-        raise HTTPException(status_code=500, detail=str(e))
+    # FileResponse 自动处理 Range 和文件流。
+    return FileResponse(file_path, media_type=mime_type)

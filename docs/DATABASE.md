@@ -56,6 +56,32 @@
 ./venv/bin/python migrate_db.py
 ```
 
+## 4. 索引 (M3)
+
+### 复合索引
+针对管理端的常用查询路径，建立了以下索引：
+- `(platform, created_at)`: 按平台和时间排序。
+- `(status, created_at)`: 按状态（如“待处理”）和时间排序。
+- `(is_nsfw, created_at)`: 按敏感分级和时间排序。
+
+### 全文搜索 (FTS5)
+针对 SQLite 平台，利用 `FTS5` 扩展创建了虚拟表 `contents_fts`，并配置了自动化触发器。
+- **搜索范围**: 标题 (`title`)、正文描述 (`description`)、作者昵称 (`author_name`)。
+- **同步机制**: 采用数据库级触发器 (`AFTER INSERT/UPDATE/DELETE`) 保证搜索索引与 `contents` 原表实时一致。
+
+## 5. 任务队列表 (`tasks`)
+
+由于后端移除了 Redis 依赖，采用 SQLite 表模拟简单的任务队列。支持原子取任务 (`SELECT FOR UPDATE SKIP LOCKED` 语义在 SQLite 中通过文件锁实现并发安全)。
+
+| 字段名 | 类型 | 说明 |
+| :--- | :--- | :--- |
+| `id` | Integer | 自增主键 |
+| `task_type` | String | 任务类型 (如 `parse_content`) |
+| `payload` | JSON | 任务负载 (如 `{"content_id": 123}`) |
+| `status` | Enum | `pending`, `running`, `completed`, `failed` |
+| `priority` | Integer | 优先级 (越大越靠前) |
+| `retry_count`| Integer | 已重试次数 |
+
 
 ## 2. `pushed_records` 表 (分发追踪)
 

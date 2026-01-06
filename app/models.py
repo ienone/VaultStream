@@ -4,7 +4,7 @@
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, List
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum, UniqueConstraint, JSON
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum, UniqueConstraint, JSON, Index
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -73,6 +73,10 @@ class Content(Base):
 
     __table_args__ = (
         UniqueConstraint("platform", "canonical_url", name="uq_contents_platform_canonical_url"),
+        # M3 增加复合索引以加速查询和排序
+        Index("ix_contents_platform_created_at", "platform", "created_at"),
+        Index("ix_contents_status_created_at", "status", "created_at"),
+        Index("ix_contents_is_nsfw_created_at", "is_nsfw", "created_at"),
     )
     
     id = Column(Integer, primary_key=True, index=True)

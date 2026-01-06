@@ -85,6 +85,22 @@ def _image_to_webp(data: bytes, quality: int = 80) -> tuple[bytes, Optional[int]
         return out.getvalue(), int(width) if width else None, int(height) if height else None
 
 
+def _create_thumbnail_webp(data: bytes, size: tuple[int, int] = (300, 300), quality: int = 70) -> bytes:
+    """创建缩略图"""
+    try:
+        from PIL import Image
+    except Exception as e:
+        raise RuntimeError("缩略图生成需要安装 Pillow") from e
+
+    from io import BytesIO
+    with Image.open(BytesIO(data)) as im:
+        # 保持比例缩放
+        im.thumbnail(size, Image.Resampling.LANCZOS)
+        out = BytesIO()
+        im.save(out, format="WEBP", quality=quality)
+        return out.getvalue()
+
+
 async def store_archive_images_as_webp(
     *,
     archive: dict[str, Any],
@@ -147,6 +163,18 @@ async def store_archive_images_as_webp(
                     sha256_hex = _sha256_bytes(webp_bytes)
                     key = _content_addressed_key(namespace, sha256_hex, "webp")
                     await storage.put_bytes(key=key, data=webp_bytes, content_type="image/webp")
+                    
+                    # 同时生成并存储缩略图 (M3: 可视化列表加速)
+                    try:
+                        thumb_bytes = _create_thumbnail_webp(webp_bytes)
+                        # thumb key 命名规范: hash.thumb.webp
+                        thumb_key = key.replace(".webp", ".thumb.webp")
+                        await storage.put_bytes(key=thumb_key, data=thumb_bytes, content_type="image/webp")
+                        img["thumb_key"] = thumb_key
+                        img["thumb_url"] = storage.get_url(key=thumb_key)
+                    except Exception as thumb_err:
+                        logger.warning(f"生成缩略图失败: {thumb_err}")
+                        
                     break
                 except Exception as e:
                     is_last = attempt >= 2
