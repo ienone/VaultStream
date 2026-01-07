@@ -8,7 +8,7 @@ User={{USER}}
 Group={{GROUP}}
 WorkingDirectory={{PROJECT_ROOT}}
 # 使用绝对路径指向虚拟环境中的 python
-ExecStart={{PROJECT_ROOT}}/venv/bin/python -m app.main
+ExecStart={{PROJECT_ROOT}}/.venv/bin/python -m app.main
 Restart=always
 RestartSec=5
 # 环境变量加载

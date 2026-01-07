@@ -1,4 +1,4 @@
-.env
+/.env
 __pycache__/
 *.py[cod]
 *$py.class
@@ -17,6 +17,13 @@ build/
 .vscode/
 *.swp
 *.swo
+
+# Monorepo: backend runtime
+backend/.env
+backend/data/
+backend/logs/
+backend/exports/
+backend/.venv/
 
 # # 数据库迁移（开发阶段）
 # migrations/

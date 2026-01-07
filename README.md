@@ -25,16 +25,22 @@ VaultStream 是多平台内容存档与分享系统。通过爬取存档和结�
 ## 项目结构
 
 ```text
-app/
-├── adapters/          # 平台解析适配器 (B站, X等)
-├── api.py             # FastAPI 路由定义
-├── bot.py             # Telegram Bot 逻辑
-├── models.py          # SQLAlchemy 数据库模型
-├── worker.py          # 异步抓取任务处理器
-├── db_adapter.py      # 数据库适配器抽象层
-├── queue_adapter.py   # 队列适配器抽象层
-├── storage.py         # 存储后端抽象层
-└── utils.py           # 工具函数 (URL规范化, 文本格式化)
+backend/
+├── app/
+│   ├── adapters/      # 平台解析适配器 (B站, X等)
+│   ├── api.py         # FastAPI 路由定义
+│   ├── bot.py         # Telegram Bot 逻辑
+│   ├── models.py      # SQLAlchemy 数据库模型
+│   ├── worker.py      # 异步抓取任务处理器
+│   ├── db_adapter.py  # 数据库适配器抽象层
+│   ├── queue_adapter.py
+│   ├── storage.py     # 存储后端抽象层
+│   └── utils.py       # 工具函数 (URL规范化, 文本格式化)
+├── scripts/           # 部署与管理脚本
+├── systemd/           # systemd service 模板
+├── static/            # 静态资源（测试页等）
+└── .env.example       # 后端环境变量示例
+frontend/              # Flutter 前端（待创建）
 docs/                  # 详细文档
 ```
 
@@ -86,7 +92,7 @@ VaultStream 采用**轻量化架构**：
 #### 2. 配置环境
 
 ```bash
-cp .env.example .env  # 配置环境变量
+cp backend/.env.example backend/.env  # 配置后端环境变量
 ```
 
 关键配置：
@@ -170,12 +176,12 @@ curl -X POST http://localhost:8000/api/v1/shares \
 
 ```bash
 # 基础导出
-./venv/bin/python tests/export_markdown.py --content-id 6 --out exports/content_6.md
+./backend/.venv/bin/python backend/tests/export_markdown.py --content-id 6 --out backend/exports/content_6.md
 
 # 导出前补处理缺失图片（推荐）
-./venv/bin/python tests/export_markdown.py \
+./backend/.venv/bin/python backend/tests/export_markdown.py \
   --content-id 6 \
-  --out exports/content_6.md \
+  --out backend/exports/content_6.md \
   --process-missing-images \
   --max-images 100
 ```
@@ -240,7 +246,7 @@ cat ./data/media/ab/cd/abcdef123...webp
 ### 启动Bot
 
 ```bash
-./venv/bin/python -m app.bot
+./backend/.venv/bin/python -m app.bot
 ```
 
 ### Bot命令
@@ -301,13 +307,13 @@ TELEGRAM_CHANNEL_ID=@your_channel_id
 
 ```bash
 # 运行所有测试
-./venv/bin/python -m pytest tests/
+./backend/.venv/bin/python -m pytest backend/tests/
 
 # 测试特定适配器
-./venv/bin/python -m pytest tests/test_adapter.py -k bilibili
+./backend/.venv/bin/python -m pytest backend/tests/test_adapter.py -k bilibili
 
 # 测试API
-./venv/bin/python -m pytest tests/test_api.py
+./backend/.venv/bin/python -m pytest backend/tests/
 ```
 
 ## 开发文档

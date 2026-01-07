@@ -8,7 +8,7 @@
 ## 1. 执行数据库迁移（如果还没执行）
 
 ```bash
-cd [PROJECT_ROOT]
+cd [PROJECT_ROOT]/backend
 sqlite3 data/vaultstream.db < migrations/m4_distribution_and_review.sql
 ```
 
@@ -16,7 +16,7 @@ sqlite3 data/vaultstream.db < migrations/m4_distribution_and_review.sql
 
 ```bash
 # 使用项目文件夹内的Python
-cd [PROJECT_ROOT]
+cd [PROJECT_ROOT]/backend
 python3 -m app.main
 ```
 
@@ -153,7 +153,7 @@ curl -X POST http://localhost:8000/api/v1/bot/mark-pushed \
 ## 8. 运行测试脚本
 
 ```bash
-cd [PROJECT_ROOT]
+cd [PROJECT_ROOT]/backend
 python3 tests/test_m4_features.py
 ```
 

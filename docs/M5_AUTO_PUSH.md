@@ -139,7 +139,7 @@ curl -X POST http://localhost:8000/api/v1/contents/batch-review \
 运行测试脚本：
 
 ```bash
-./venv/bin/python tests/test_m5_distribution.py
+./backend/.venv/bin/python backend/tests/test_m5_distribution.py
 ```
 
 测试会：

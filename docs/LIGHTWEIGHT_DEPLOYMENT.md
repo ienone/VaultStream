@@ -53,9 +53,12 @@ VaultStream 当前采用轻量化架构，无需复杂的Docker配置和外部�
 git clone <repository>
 cd VaultStream
 
+# 进入后端目录
+cd backend
+
 # 创建Python虚拟环境
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 
 # 安装依赖
 pip install -r requirements.txt
@@ -106,10 +109,12 @@ LOG_LEVEL=INFO
 
 ```bash
 # 使用启动脚本（推荐）
+cd ..
 ./start.sh
 
 # 或手动启动
-source venv/bin/activate
+cd backend
+source .venv/bin/activate
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
@@ -118,7 +123,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 在另一个终端：
 
 ```bash
-source venv/bin/activate
+cd backend
+source .venv/bin/activate
 python -m app.bot
 ```
 

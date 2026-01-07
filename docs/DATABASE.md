@@ -50,10 +50,11 @@
 
 注意：这些字段由 worker 在解析异常时写入；成功解析后会清理 `last_error*` 字段但保留 `failure_count` 作为历史统计。
 
-迁移：仓库提供 `migrate_db.py`，会尝试幂等添加上述列以及 `canonical_url` 列。请在升级部署时运行该脚本：
+迁移：使用仓库内的 SQL 迁移脚本执行（位于 `backend/migrations/`）。例如：
 
 ```bash
-./venv/bin/python migrate_db.py
+cd backend
+sqlite3 data/vaultstream.db < migrations/m4_distribution_and_review.sql
 ```
 
 ## 4. 索引 (M3)

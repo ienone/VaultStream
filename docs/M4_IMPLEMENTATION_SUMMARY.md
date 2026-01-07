@@ -190,6 +190,7 @@ sqlite3 data/vaultstream.db < migrations/m4_distribution_and_review.sql
 ### 功能测试
 运行测试脚本：
 ```bash
+cd backend
 python3 tests/test_m4_features.py
 ```
 
