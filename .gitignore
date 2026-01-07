@@ -1,17 +1,25 @@
 /.env
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
 venv/
+.venv/
 ENV/
 env/
-.venv
 *.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Build artifacts
 dist/
 build/
 *.log
+
+# OS/IDE
 .DS_Store
 .idea/
 .vscode/
@@ -24,22 +32,27 @@ backend/data/
 backend/logs/
 backend/exports/
 backend/.venv/
+backend/venv/
+backend/migrations/
 
-# # 数据库迁移（开发阶段）
-# migrations/
+# data safety
+data/
+logs/
 
-# 数据内容
-data/*
-migrations
-
-# 导出文件和测试数据
+# 导出文件（通常为运行产物）
 exports/
 
-# 测试脚本
-tests/*
+# Flutter (frontend)
+frontend/.dart_tool/
+frontend/build/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.metadata
+frontend/.packages
 
 
 # 临时文件
 *.tmp
 *.bak
 nohup.out
+项目背景与现状.md
