@@ -70,7 +70,8 @@ class ContentDetail(BaseModel):
     tags: List[str]
     is_nsfw: bool
     source: Optional[str]
-    content_type: Optional[str] # 内容具体类型
+    platform_id: Optional[str] = None # 平台特有ID
+    content_type: Optional[str] = None # 内容具体类型
 
     # 通用字段
     title: Optional[str] # 内容标题
@@ -170,9 +171,11 @@ class ShareCard(BaseModel):
     content_type: Optional[str] = None
     title: Optional[str] = None
     summary: Optional[str] = None
+    description: Optional[str] = None  # Added for text content display
     author_name: Optional[str] = None  # 作者名称
     author_id: Optional[str] = None     # 作者ID
     cover_url: Optional[str] = None
+    media_urls: List[str] = Field(default_factory=list) # M6: 支持首图回退
     tags: List[str] = Field(default_factory=list)
     published_at: Optional[datetime] = None
 
@@ -185,6 +188,15 @@ class ShareCard(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ShareCardListResponse(BaseModel):
+    """分发合规内容列表响应"""
+    items: List[ShareCard]
+    total: int
+    page: int
+    size: int
+    has_more: bool
 
 
 # ========== M4: 分发规则与审批流 Schema ==========

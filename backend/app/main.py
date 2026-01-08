@@ -148,6 +148,11 @@ async def health_root():
     }
 
 
+# 挂载媒体文件目录（供 frontend 访问归档的图片视频）
+media_dir = Path(settings.storage_local_root)
+if media_dir.exists():
+    app.mount("/media", StaticFiles(directory=str(media_dir)), name="media")
+
 # 挂载静态文件（必须放在最后，避免覆盖 /health 等路由）
 static_dir = Path(__file__).parent.parent / "static"
 if static_dir.exists():

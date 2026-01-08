@@ -287,8 +287,6 @@ class TaskWorker:
                     content.description = parsed.description
                     content.author_name = parsed.author_name
                     content.author_id = parsed.author_id
-                    content.cover_url = parsed.cover_url
-                    content.media_urls = parsed.media_urls
                     content.published_at = parsed.published_at
                     # 可选：对私有归档中的媒体进行处理（下载/转码/存储），不影响对外分享字段。
                     if settings.enable_archive_media_processing:
@@ -296,6 +294,10 @@ class TaskWorker:
                             await self._maybe_process_private_archive_media(parsed)
                         except Exception as e:
                             logger.warning("Archive media processing skipped: {}", f"{type(e).__name__}: {e}")
+
+                    # 将（可能被本地化的）媒体字段同步回内容记录
+                    content.cover_url = parsed.cover_url
+                    content.media_urls = parsed.media_urls
 
                     content.raw_metadata = parsed.raw_metadata
 
@@ -388,7 +390,7 @@ class TaskWorker:
 
         备注：
         - 这会原地修改 parsed.raw_metadata（仅限私有）。
-        - 不会更改面向分享的字段，如 cover_url/media_urls。
+        - 也会根据本地化结果同步更新面向分享的字段，如 cover_url/media_urls。
         """
 
         meta = getattr(parsed, "raw_metadata", None)
@@ -422,6 +424,21 @@ class TaskWorker:
             max_images=max_count,
         )
         
+        # 将本地化后的图片 URL 同步回 ParsedContent，供外部展示使用
+        stored_images = archive.get("stored_images", [])
+        if stored_images:
+            # 提取所有本地化后的 URL
+            local_urls = [img["url"] for img in stored_images if img.get("url")]
+            if local_urls:
+                # 严格去重并保持顺序 (使用 dict.fromkeys 来保持顺序)
+                unique_local_urls = list(dict.fromkeys(local_urls))
+                
+                # 始终使用本地化后的真实 URL 覆盖原始 URL
+                parsed.media_urls = unique_local_urls
+                
+                # 同步更新封面
+                parsed.cover_url = unique_local_urls[0]
+
         # 处理视频（如果存档中有视频）
         if archive.get("videos"):
             max_videos = getattr(settings, "archive_video_max_count", None)
@@ -455,9 +472,16 @@ class TaskWorker:
         content.description = parsed.description
         content.author_name = parsed.author_name
         content.author_id = parsed.author_id
+        content.published_at = parsed.published_at
+
+        if settings.enable_archive_media_processing:
+            try:
+                await self._maybe_process_private_archive_media(parsed)
+            except Exception as e:
+                logger.warning("Archive media processing skipped: {}", f"{type(e).__name__}: {e}")
+
         content.cover_url = parsed.cover_url
         content.media_urls = parsed.media_urls
-        content.published_at = parsed.published_at
         content.raw_metadata = parsed.raw_metadata
 
         # 统一存储 ID 和互动数据

@@ -5,8 +5,9 @@ from typing import List, Optional, Dict, Any
 import os
 import mimetypes
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Query, Header, Response
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Header, Response, Request
+from fastapi.responses import FileResponse, StreamingResponse
+import httpx
 from sqlalchemy import select, and_, or_, func, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.logging import logger, log_context
@@ -16,7 +17,7 @@ from app.models import Content, ContentStatus, PushedRecord, Platform, ContentSo
 from app.schemas import (
     ShareRequest, ShareResponse, ContentDetail,
     GetContentRequest, MarkPushedRequest, ShareCard,
-    ContentListResponse, TagStats, QueueStats, DashboardStats, ContentUpdate,
+    ContentListResponse, ShareCardListResponse, TagStats, QueueStats, DashboardStats, ContentUpdate,
     ShareCardPreview, OptimizedMedia, DistributionRuleCreate, DistributionRuleUpdate, 
     DistributionRuleResponse, ReviewAction, BatchReviewRequest, PushedRecordResponse
 )
@@ -336,6 +337,54 @@ async def health_check():
     return {
         "status": "ok",
         "queue_size": queue_size
+    }
+
+
+@router.get("/cards", response_model=ShareCardListResponse)
+async def list_share_cards(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    platform: Optional[Platform] = Query(None),
+    status: Optional[ContentStatus] = Query(None),
+    tag: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """
+    轻量级分享卡片列表 (M6 优化)
+    
+    仅返回封面、标题、作者等必要信息，不包含 raw_metadata
+    """
+    conditions = []
+    if platform:
+        conditions.append(Content.platform == platform)
+    if status:
+        conditions.append(Content.status == status)
+    if tag:
+        conditions.append(Content.tags.contains([tag]))
+        
+    # 统计总数
+    count_query = select(func.count()).select_from(Content).where(and_(*conditions))
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+    
+    # 列表查询
+    stmt = (
+        select(Content)
+        .where(and_(*conditions))
+        .order_by(desc(Content.created_at))
+        .offset((page - 1) * size)
+        .limit(size)
+    )
+    result = await db.execute(stmt)
+    contents = result.scalars().all()
+    
+    return {
+        "items": contents,
+        "total": total,
+        "page": page,
+        "size": size,
+        "has_more": total > page * size
     }
 
 
@@ -949,4 +998,34 @@ async def list_pushed_records(
     records = result.scalars().all()
     
     return [PushedRecordResponse.model_validate(r) for r in records]
+
+
+@router.get("/proxy/image")
+async def proxy_image(url: str = Query(..., description="要代理的图片 URL")):
+    """通用图片代理，用于解决跨域、Referer 校验或网络瓶颈（如 Twitter/B站）"""
+    async def stream_image():
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        }
+        # 针对 B 站图片添加 Referer
+        if "hdslb.com" in url or "bilibili" in url:
+            headers["Referer"] = "https://www.bilibili.com/"
+        
+        # 使用配置的代理
+        proxy = settings.http_proxy or settings.https_proxy
+        
+        async with httpx.AsyncClient(proxy=proxy, timeout=10.0) as client:
+            try:
+                async with client.stream("GET", url, headers=headers, follow_redirects=True) as resp:
+                    if resp.status_code != 200:
+                         logger.error(f"Image proxy upstream error {resp.status_code} for {url}")
+                         # 抛出异常以中断连接，避免返回 200 OK 空响应
+                         raise Exception(f"Upstream error {resp.status_code}")
+                    
+                    async for chunk in resp.aiter_bytes():
+                        yield chunk
+            except Exception as e:
+                logger.error(f"Image proxy error for {url}: {e}")
+
+    return StreamingResponse(stream_image(), media_type="image/jpeg")
 

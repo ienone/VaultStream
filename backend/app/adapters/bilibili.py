@@ -904,17 +904,19 @@ class BilibiliAdapter(PlatformAdapter):
             # 标题回退机制（分享用：保持现状）
             title = opus.get('title') or module_title.get('text') or item.get('basic', {}).get('title') or "动态"
 
-            # 提取正文（分享用：保持现状，仍然是摘要/纯文本）
-            summary = ""
-            if opus.get('content', {}).get('paragraphs'):
+            # 提取正文（分享用：优先使用 archive 中的完整纯文本）
+            summary = archive.get("plain_text") or ""
+            if not summary and opus.get('content', {}).get('paragraphs'):
                 summary = "\n".join([p.get('text', {}).get('content', '') 
                                    for p in opus['content']['paragraphs'] 
                                    if p.get('text', {}).get('content')])
 
             summary = self._clean_text(summary)
 
-            # 提取图片（分享用：保持现状）
-            pics = [self._safe_url(p.get('url')) for p in opus.get('pics', []) if self._safe_url(p.get('url'))]
+            # 提取图片（分享用：优先使用 archive 中的图片列表）
+            pics = [img.get("url") for img in archive.get("images", []) if img.get("url")]
+            if not pics:
+                pics = [self._safe_url(p.get('url')) for p in opus.get('pics', []) if self._safe_url(p.get('url'))]
 
             # 提取互动数据
             stats = {

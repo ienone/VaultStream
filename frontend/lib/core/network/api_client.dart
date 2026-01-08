@@ -9,9 +9,12 @@ Dio apiClient(Ref ref) {
   final dio = Dio(
     //配置基本选项
     BaseOptions(
-      baseUrl: 'http://localhost:8000', // 默认的基础URL地址
+      baseUrl: 'http://localhost:8000/api/v1', // 添加 API 版本前缀
       connectTimeout: const Duration(seconds: 10), // 连接超时时间
       receiveTimeout: const Duration(seconds: 10), // 接收数据超时时间
+      headers: {
+        'X-API-Token': '114514', // 注入 API Token 进行鉴权
+      },
     ),
   );
 

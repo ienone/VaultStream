@@ -294,7 +294,7 @@ class TwitterFxAdapter(PlatformAdapter):
             "media": media_list,
             "poll": tweet.get("poll"),  # 如果是投票推文
             "quote": tweet.get("quote"),  # 如果是引用推文
-            "original_api_response": tweet,  # 保存完整响应用于调试
+            # "original_api_response": tweet,  # 移除冗余字段
             # 私有存档结构（用于媒体处理）
             "archive": {
                 "version": "1",

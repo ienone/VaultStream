@@ -1,36 +1,105 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'providers/collection_provider.dart';
+import 'widgets/content_card.dart';
+import 'widgets/content_detail_sheet.dart';
+import 'models/content.dart';
 
-// 定义一个名为CollectionPage的无状态(Stateless)Widget类
-class CollectionPage extends StatelessWidget {
-  const CollectionPage({
-    super.key,
-  }); // 常量构造函数，接受一个可选的key参数，传递给父类StatelessWidget的构造函数。
+class CollectionPage extends ConsumerWidget {
+  const CollectionPage({super.key});
 
-  // override关键字表示重写父类的build方法
   @override
-  Widget build(BuildContext context) {
-    // 返回一个居中的布局Center Widget
-    return Center(
-      // Center Widget的子Widget是一个垂直排列的Column Widget
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center, // 主轴对齐方式为居中对齐
-        // 定义Column的子Widget列表
-        children: [
-          Icon(
-            Icons.perm_media_outlined, // 使用一个媒体图标
-            size: 64,
-            color: Theme.of(context).colorScheme.primary,
+  Widget build(BuildContext context, WidgetRef ref) {
+    final collectionAsync = ref.watch(collectionProvider());
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('收藏库'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => ref.invalidate(collectionProvider()),
           ),
-          const SizedBox(height: 16), // 添加一个高度为16像素的空白间距
-          Text(
-            'Content Collection', // 显示标题文本
-            style: Theme.of(context).textTheme.headlineMedium, // 使用主题中的中等标题样式
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            onPressed: () {
+              // TODO: Show filter dialog
+            },
           ),
-          const SizedBox(height: 8), // 添加一个高度为8像素的空白间距
-          const Text('这里将显示收集的内容。'), // 显示描述文本
         ],
+      ),
+      body: collectionAsync.when(
+        data: (response) => _CollectionGrid(items: response.items),
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (err, stack) => Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 48,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              const SizedBox(height: 16),
+              Text('加载失败: $err'),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => ref.invalidate(collectionProvider()),
+                child: const Text('重试'),
+              ),
+            ],
+          ),
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          // TODO: Implementation for adding new content manually
+        },
+        child: const Icon(Icons.add),
       ),
     );
   }
 }
-// 这个文件当前只包含CollectionPage的基本UI结构，相当于背景板/默认内容
+
+class _CollectionGrid extends StatelessWidget {
+  final List<ShareCard> items;
+
+  const _CollectionGrid({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: MasonryGridView.count(
+        crossAxisCount: _getCrossAxisCount(context),
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+          final item = items[index];
+          return ContentCard(
+            content: item,
+            onTap: () {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                useSafeArea: true,
+                backgroundColor: Theme.of(context).colorScheme.surface,
+                builder: (context) => ContentDetailSheet(contentId: item.id),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  int _getCrossAxisCount(BuildContext context) {
+    double width = MediaQuery.of(context).size.width;
+    if (width > 1200) return 4;
+    if (width > 800) return 3;
+    if (width > 600) return 2;
+    return 1;
+  }
+}
