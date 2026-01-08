@@ -22,11 +22,11 @@ class ContentDetailSheet extends ConsumerWidget {
 
     // 获取 API Base URL 用于映射媒体链接
     final dio = ref.watch(apiClientProvider);
-    final baseUrl = dio.options.baseUrl.replaceFirst('/api/v1', '');
+    final apiBaseUrl = dio.options.baseUrl;
     final apiToken = dio.options.headers['X-API-Token']?.toString();
 
     return detailAsync.when(
-      data: (detail) => _buildDetail(context, detail, baseUrl, apiToken),
+      data: (detail) => _buildDetail(context, detail, apiBaseUrl, apiToken),
       loading: () => const SizedBox(
         height: 360,
         child: Center(child: CircularProgressIndicator()),
@@ -55,7 +55,7 @@ class ContentDetailSheet extends ConsumerWidget {
   Widget _buildDetail(
     BuildContext context,
     ContentDetail detail,
-    String baseUrl,
+    String apiBaseUrl,
     String? apiToken,
   ) {
     final theme = Theme.of(context);
@@ -212,7 +212,7 @@ class ContentDetailSheet extends ConsumerWidget {
                       const SizedBox(height: 16),
 
                       // RICH CONTENT
-                      _buildRichContent(context, detail, baseUrl, apiToken),
+                      _buildRichContent(context, detail, apiBaseUrl, apiToken),
 
                       const SizedBox(height: 24),
 
@@ -250,48 +250,223 @@ class ContentDetailSheet extends ConsumerWidget {
   Widget _buildRichContent(
     BuildContext context,
     ContentDetail detail,
-    String baseUrl,
+    String apiBaseUrl,
     String? apiToken,
   ) {
     final theme = Theme.of(context);
-    final images = _extractAllImages(detail, baseUrl);
+    final storedMap = _getStoredMap(detail);
+    final images = _extractAllImages(detail, apiBaseUrl);
 
-    // Bilibili Article/Opus: Render Markdown which contains images
-    if (detail.platform.toLowerCase() == 'bilibili' &&
+    // Try to get Markdown content
+    String? markdown;
+    if (detail.rawMetadata != null && detail.rawMetadata!['archive'] != null) {
+      markdown = detail.rawMetadata!['archive']['markdown'];
+    }
+
+    // Fallback: Check if description itself is Markdown (heuristic: contains markdown image)
+    if ((markdown == null || markdown.isEmpty) &&
+        detail.platform.toLowerCase() == 'bilibili' &&
         (detail.description?.contains('![') ?? false)) {
-      // A simple heuristic: if it contains markdown image syntax, treat as markdown
-      // Or usually Bilibili description from our backend is mostly Markdown
-      return Markdown(
-        data: detail.description ?? '',
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        padding: EdgeInsets.zero,
-        imageBuilder: (uri, title, alt) {
-          String url = uri.toString();
-          // Fix Proxy for markdown inline images
-          if (url.contains('hdslb.com') && !url.contains('proxy')) {
-            url = '$baseUrl/api/v1/proxy/image?url=${Uri.encodeComponent(url)}';
-          }
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: CachedNetworkImage(
-              imageUrl: url,
-              httpHeaders: buildImageHeaders(
-                imageUrl: url,
-                baseUrl: baseUrl,
-                apiToken: apiToken,
+      markdown = detail.description;
+    }
+
+    if (markdown != null && markdown.isNotEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Markdown(
+            data: markdown,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
+            selectable: true,
+            onTapLink: (text, href, title) {
+              if (href != null)
+                launchUrl(
+                  Uri.parse(href),
+                  mode: LaunchMode.externalApplication,
+                );
+            },
+            styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+              // Material 3 Expressive Typography
+              p: theme.textTheme.bodyLarge?.copyWith(
+                height: 1.7,
+                fontSize: 17,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
               ),
-              placeholder: (c, u) => Container(
-                height: 200,
-                color: theme.colorScheme.surfaceContainerHighest,
+              h1: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: theme.colorScheme.primary,
+              ),
+              h2: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: theme.colorScheme.secondary,
+              ),
+              h3: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+              blockSpacing: 24,
+              listBullet: theme.textTheme.bodyLarge?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.bold,
+              ),
+              blockquote: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSecondaryContainer,
+                height: 1.6,
+                fontStyle: FontStyle.italic,
+              ),
+              blockquotePadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 16,
+              ),
+              blockquoteDecoration: BoxDecoration(
+                color: theme.colorScheme.secondaryContainer.withValues(
+                  alpha: 0.35,
+                ),
+                borderRadius: BorderRadius.circular(16), // Softer corners
+                border: Border(
+                  left: BorderSide(
+                    color: theme.colorScheme.secondary,
+                    width: 6,
+                  ),
+                ),
+              ),
+              code: theme.textTheme.bodyMedium?.copyWith(
+                backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                fontFamily: 'monospace',
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              codeblockDecoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.5,
+                ),
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
-          );
-        },
+            imageBuilder: (uri, title, alt) {
+              String url = uri.toString();
+
+              // 尝试在 storedMap 中寻找本地匹配
+              if (storedMap.containsKey(url)) {
+                url = _mapUrl(storedMap[url]!, apiBaseUrl);
+              } else {
+                // 尝试去参匹配
+                final cleanUrl = url.split('?').first;
+                final match = storedMap.entries.firstWhere(
+                  (e) => e.key.split('?').first == cleanUrl,
+                  orElse: () => const MapEntry('', ''),
+                );
+                if (match.key.isNotEmpty) {
+                  url = _mapUrl(match.value, apiBaseUrl);
+                } else {
+                  // 兜底：处理原始链接（通常走代理）
+                  url = _mapUrl(url, apiBaseUrl);
+                }
+              }
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: theme.colorScheme.shadow.withValues(
+                              alpha: 0.08,
+                            ),
+                            blurRadius: 15,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: CachedNetworkImage(
+                          imageUrl: url,
+                          httpHeaders: buildImageHeaders(
+                            imageUrl: url,
+                            baseUrl: apiBaseUrl,
+                            apiToken: apiToken,
+                          ),
+                          fit: BoxFit.fitWidth,
+                          placeholder: (c, u) => Container(
+                            height: 240,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceContainerHighest
+                                  .withValues(alpha: 0.5),
+                            ),
+                            child: Center(
+                              child: SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: theme.colorScheme.primary.withValues(
+                                    alpha: 0.5,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            height: 160,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.errorContainer
+                                  .withValues(alpha: 0.3),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.error_outline_rounded,
+                                  color: theme.colorScheme.error,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '图片无法载入',
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                    color: theme.colorScheme.onErrorContainer,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (alt != null && alt.trim().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          top: 12,
+                          left: 8,
+                          right: 8,
+                        ),
+                        child: Text(
+                          alt,
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+          if (detail.platform.toLowerCase() == 'bilibili')
+            _buildBilibiliStats(context, detail),
+        ],
       );
     }
 
-    // Default (Twitter etc): Text + Grid
+    // Default (Twitter etc) or no Markdown found: Text + Grid
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -330,7 +505,7 @@ class ContentDetailSheet extends ConsumerWidget {
             itemBuilder: (context, index) {
               final headers = buildImageHeaders(
                 imageUrl: images[index],
-                baseUrl: baseUrl,
+                baseUrl: apiBaseUrl,
                 apiToken: apiToken,
               );
               return ClipRRect(
@@ -380,55 +555,28 @@ class ContentDetailSheet extends ConsumerWidget {
     );
   }
 
-  List<String> _extractAllImages(ContentDetail detail, String baseUrl) {
+  List<String> _extractAllImages(ContentDetail detail, String apiBaseUrl) {
     final list = <String>{};
-
-    // 0. 预处理：构建 stored_images 映射表 (orig_url -> local_url)
-    Map<String, String> storedMap = {};
-    try {
-      if (detail.rawMetadata != null) {
-        final archive = detail.rawMetadata!['archive'];
-        if (archive != null) {
-          final storedImages = archive['stored_images'];
-          if (storedImages is List) {
-            for (var img in storedImages) {
-              if (img is Map && img['orig_url'] != null && img['url'] != null) {
-                String localPath = img['url'];
-                if (!localPath.startsWith('/')) localPath = '/$localPath';
-                storedMap[img['orig_url']] = localPath;
-              }
-            }
-          }
-        }
-      }
-    } catch (_) {}
+    final storedMap = _getStoredMap(detail);
 
     // 1. 优先使用已经清洗/本地化的 mediaUrls
     if (detail.mediaUrls.isNotEmpty) {
+      // 尝试强行使用第一张本地图片兜底 (Fix for mismatching params if only one image)
       if (detail.mediaUrls.length == 1 &&
-          list.isEmpty &&
           (detail.mediaUrls.first.contains('twimg.com') ||
               detail.mediaUrls.first.contains('hdslb.com'))) {
-        // 单图且为外部链接，尝试强行使用第一张本地图片兜底 (Fix for mismatching params)
         if (storedMap.isNotEmpty) {
-          list.add(_mapUrl(storedMap.values.first, baseUrl));
+          list.add(_mapUrl(storedMap.values.first, apiBaseUrl));
         }
       }
 
-      for (var url in detail.mediaUrls) {
-        if (url.isEmpty) continue;
-        if (list.isNotEmpty) {
-          break /* 只做兜底，如果已经加了就不重复加了? 不，这里逻辑有点乱，保持原样但增加单图修正 */;
-        }
-      }
-
-      // Re-implementing loop correctly
+      // 正常的媒体列表匹配逻辑
       for (var url in detail.mediaUrls) {
         if (url.isEmpty) continue;
 
         // 尝试匹配本地存储 (Level 1: Local First)
         if (storedMap.containsKey(url)) {
-          list.add(_mapUrl(storedMap[url]!, baseUrl));
+          list.add(_mapUrl(storedMap[url]!, apiBaseUrl));
         } else {
           // 再次尝试去参匹配 (Ignore query params like ?name=orig)
           final cleanUrl = url.split('?').first;
@@ -438,10 +586,10 @@ class ContentDetailSheet extends ConsumerWidget {
           );
 
           if (match.key.isNotEmpty) {
-            list.add(_mapUrl(match.value, baseUrl));
+            list.add(_mapUrl(match.value, apiBaseUrl));
           } else {
             // 确实找不到，只能用原始链接（会走代理）
-            list.add(_mapUrl(url, baseUrl));
+            list.add(_mapUrl(url, apiBaseUrl));
           }
         }
       }
@@ -452,9 +600,9 @@ class ContentDetailSheet extends ConsumerWidget {
       if (detail.coverUrl != null && detail.coverUrl!.isNotEmpty) {
         final url = detail.coverUrl!;
         if (storedMap.containsKey(url)) {
-          list.add(_mapUrl(storedMap[url]!, baseUrl));
+          list.add(_mapUrl(storedMap[url]!, apiBaseUrl));
         } else {
-          list.add(_mapUrl(url, baseUrl));
+          list.add(_mapUrl(url, apiBaseUrl));
         }
       }
 
@@ -468,7 +616,7 @@ class ContentDetailSheet extends ConsumerWidget {
             if (stored is List && stored.isNotEmpty) {
               for (var img in stored) {
                 if (img is Map && img['url'] != null) {
-                  list.add(_mapUrl(img['url'] as String, baseUrl));
+                  list.add(_mapUrl(img['url'] as String, apiBaseUrl));
                 }
               }
             } else {
@@ -477,9 +625,9 @@ class ContentDetailSheet extends ConsumerWidget {
               if (images is List) {
                 for (var img in images) {
                   if (img is String) {
-                    list.add(_mapUrl(img, baseUrl));
+                    list.add(_mapUrl(img, apiBaseUrl));
                   } else if (img is Map && img['url'] != null) {
-                    list.add(_mapUrl(img['url'] as String, baseUrl));
+                    list.add(_mapUrl(img['url'] as String, apiBaseUrl));
                   }
                 }
               }
@@ -492,21 +640,97 @@ class ContentDetailSheet extends ConsumerWidget {
     return list.toList();
   }
 
-  String _mapUrl(String url, String baseUrl) {
+  Map<String, String> _getStoredMap(ContentDetail detail) {
+    Map<String, String> storedMap = {};
+    try {
+      if (detail.rawMetadata != null) {
+        final archive = detail.rawMetadata!['archive'];
+        if (archive != null) {
+          // 0. 我们需要一个 namespace，通常是 vaultstream
+          const namespace = 'vaultstream';
+
+          final storedImages = archive['stored_images'];
+          if (storedImages is List) {
+            for (var img in storedImages) {
+              if (img is Map && img['orig_url'] != null) {
+                String? localPath = img['url'];
+
+                // 优先检查 stored_url 接口返回的 URL 是否带 api 路径
+                // 如果后端返回的 url 404 (如 /api/v1/vaultstream/blobs/...)
+                // 或者 url 为空，我们都利用 key 强制转换为正确的 media 代理路径
+                final String? key = img['key'];
+                if (key != null) {
+                  // 如果 key 是 sha256:xxx 格式，补充 vaultstream/blobs 前缀
+                  if (key.startsWith('sha256:')) {
+                    final hashVal = key.split(':')[1];
+                    localPath =
+                        '$namespace/blobs/sha256/${hashVal.substring(0, 2)}/${hashVal.substring(2, 4)}/$hashVal.webp';
+                  } else {
+                    localPath = key;
+                  }
+                }
+
+                if (localPath != null) {
+                  storedMap[img['orig_url']] = localPath;
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return storedMap;
+  }
+
+  String _mapUrl(String url, String apiBaseUrl) {
     if (url.isEmpty) return url;
 
-    // 1. 处理需要代理的外部域名 (优先检查)
-    if (url.contains('pbs.twimg.com') || url.contains('hdslb.com')) {
-      return '$baseUrl/api/v1/proxy/image?url=${Uri.encodeComponent(url)}';
+    // 0. 处理协议相对路径
+    if (url.startsWith('//')) {
+      url = 'https:$url';
     }
 
-    // 2. 处理本地存储的相对路径或带 localhost 的路径
+    // 1. 处理需要代理的外部域名 (针对 B 站、Twitter 图片反盗链)
+    if (url.contains('pbs.twimg.com') ||
+        url.contains('hdslb.com') ||
+        url.contains('bilibili.com')) {
+      // 避免重复代理
+      if (url.contains('/proxy/image?url=')) return url;
+      return '$apiBaseUrl/proxy/image?url=${Uri.encodeComponent(url)}';
+    }
+
+    // 2. 核心修复：防止重复添加 /media/ 前缀
+    // 如果 URL 已经包含 /api/v1/media/，直接返回
+    if (url.contains('/api/v1/media/')) return url;
+
+    // 3. 处理本地存储路径 (归档的 blobs)
+    if (url.contains('blobs/sha256/')) {
+      // 3.1 如果已经包含了 /media/ 但没有 /api/v1/
+      if (url.startsWith('/media/') || url.contains('/media/')) {
+        final path = url.contains('http')
+            ? url.substring(url.indexOf('/media/'))
+            : url;
+        final cleanPath = path.startsWith('/') ? path : '/$path';
+        return '$apiBaseUrl$cleanPath';
+      }
+
+      // 3.2 如果包含了 /api/v1/ 但没有 /media/
+      if (url.contains('/api/v1/')) {
+        return url.replaceFirst('/api/v1/', '/api/v1/media/');
+      }
+
+      // 3.3 纯相对路径的情况
+      final cleanKey = url.startsWith('/') ? url.substring(1) : url;
+      return '$apiBaseUrl/media/$cleanKey';
+    }
+
+    // 4. 处理其他原本就在 /media 下的路径
     if (url.startsWith('/media') || url.contains('/media/')) {
       final path = url.contains('http')
           ? url.substring(url.indexOf('/media/'))
           : url;
-      // 动态使用当前 API 的 base URL
-      return '$baseUrl$path';
+      final cleanPath = path.startsWith('/') ? path : '/$path';
+      return '$apiBaseUrl$cleanPath';
     }
 
     return url;

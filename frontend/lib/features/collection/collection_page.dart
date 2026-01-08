@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:go_router/go_router.dart';
 import 'providers/collection_provider.dart';
 import 'widgets/content_card.dart';
-import 'widgets/content_detail_sheet.dart';
 import 'models/content.dart';
 
 class CollectionPage extends ConsumerWidget {
@@ -81,13 +81,7 @@ class _CollectionGrid extends StatelessWidget {
           return ContentCard(
             content: item,
             onTap: () {
-              showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                useSafeArea: true,
-                backgroundColor: Theme.of(context).colorScheme.surface,
-                builder: (context) => ContentDetailSheet(contentId: item.id),
-              );
+              context.push('/collection/${item.id}');
             },
           );
         },
@@ -97,9 +91,10 @@ class _CollectionGrid extends StatelessWidget {
 
   int _getCrossAxisCount(BuildContext context) {
     double width = MediaQuery.of(context).size.width;
+    if (width > 1600) return 5;
     if (width > 1200) return 4;
     if (width > 800) return 3;
-    if (width > 600) return 2;
+    if (width > 400) return 2;
     return 1;
   }
 }

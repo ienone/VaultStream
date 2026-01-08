@@ -4,6 +4,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart'; // 引入riverpod
 
 // 引入自行构建的各个页面和布局组件
 import '../features/collection/collection_page.dart';
+import '../features/collection/content_detail_page.dart';
 import '../features/dashboard/dashboard_page.dart';
 import '../features/review/review_page.dart';
 import '../features/settings/settings_page.dart';
@@ -55,6 +56,15 @@ GoRouter goRouter(Ref ref) {
               GoRoute(
                 path: '/collection',
                 builder: (context, state) => const CollectionPage(),
+                routes: [
+                  GoRoute(
+                    path: ':id',
+                    builder: (context, state) {
+                      final id = int.parse(state.pathParameters['id']!);
+                      return ContentDetailPage(contentId: id);
+                    },
+                  ),
+                ],
               ),
             ],
           ),
