@@ -2,7 +2,7 @@
 """检查数据库中的tags存储情况"""
 import asyncio
 import sys
-from pathlib import Path
+from ypathlib import Path
 
 # Add the project root to the path
 sys.path.insert(0, str(Path(__file__).parent))
