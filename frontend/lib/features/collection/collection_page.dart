@@ -1,6 +1,5 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:go_router/go_router.dart';
@@ -28,7 +27,9 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text('收藏库'),
-        backgroundColor: Theme.of(context).colorScheme.surface.withOpacity(0.8),
+        backgroundColor: Theme.of(
+          context,
+        ).colorScheme.surface.withValues(alpha: 0.8),
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         flexibleSpace: ClipRect(

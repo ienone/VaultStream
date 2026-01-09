@@ -9,7 +9,9 @@ class SettingsPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('设置'),
-        backgroundColor: Theme.of(context).colorScheme.surface.withOpacity(0.8),
+        backgroundColor: Theme.of(
+          context,
+        ).colorScheme.surface.withValues(alpha: 0.8),
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         flexibleSpace: ClipRect(

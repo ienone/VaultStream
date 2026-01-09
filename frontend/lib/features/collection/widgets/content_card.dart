@@ -233,9 +233,9 @@ class _ContentCardState extends ConsumerState<ContentCard> {
               color: _isHovered && _extractedColor != null
                   ? Color.alphaBlend(
                       _extractedColor!.withAlpha(30),
-                      colorScheme.surface,
+                      colorScheme.surfaceContainer,
                     )
-                  : colorScheme.surface,
+                  : colorScheme.surfaceContainer,
               child: InkWell(
                 onTap: widget.onTap,
                 child: Column(

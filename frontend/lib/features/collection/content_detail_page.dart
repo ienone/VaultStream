@@ -10,6 +10,7 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:intl/intl.dart';
 import 'models/content.dart';
 import 'providers/collection_provider.dart';
+import '../../theme/app_theme.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/network/image_headers.dart';
@@ -48,18 +49,6 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     hex = hex.replaceFirst('#', '');
     if (hex.length == 6) hex = 'FF$hex';
     return Color(int.parse(hex, radix: 16));
-  }
-
-  Color _getAdjustedColor(Color color, Brightness brightness) {
-    HSLColor hsl = HSLColor.fromColor(color);
-    if (brightness == Brightness.light) {
-      if (hsl.lightness > 0.6) hsl = hsl.withLightness(0.5);
-      if (hsl.saturation < 0.3) hsl = hsl.withSaturation(0.5);
-    } else {
-      if (hsl.lightness < 0.4) hsl = hsl.withLightness(0.7);
-      if (hsl.saturation > 0.8) hsl = hsl.withSaturation(0.6);
-    }
-    return hsl.toColor();
   }
 
   void _onScroll() {
@@ -121,18 +110,24 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               )
             : colorScheme;
 
+        // Use AppTheme to create a consistent theme even for custom colors
+        final customTheme = AppTheme.fromColorScheme(
+          customColorScheme,
+          theme.brightness,
+        );
+
         final appBarColor = baseColor != null
             ? customColorScheme.surfaceContainer
             : colorScheme.surface;
 
         return Theme(
-          data: theme.copyWith(colorScheme: customColorScheme),
+          data: customTheme,
           child: Scaffold(
             backgroundColor: customColorScheme.surface,
             appBar: AppBar(
               title: Text(
                 detail.platform.toLowerCase() == 'twitter' ? '推文详情' : '内容详情',
-                style: theme.textTheme.titleMedium?.copyWith(
+                style: customTheme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: customColorScheme.onSurface,
                 ),
@@ -191,8 +186,13 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               )
             : colorScheme;
 
+        final customTheme = AppTheme.fromColorScheme(
+          customColorScheme,
+          theme.brightness,
+        );
+
         return Theme(
-          data: theme.copyWith(colorScheme: customColorScheme),
+          data: customTheme,
           child: Scaffold(
             backgroundColor: customColorScheme.surface,
             appBar: AppBar(
@@ -555,26 +555,27 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       PageRouteBuilder(
         opaque: false,
         barrierColor: Colors.transparent,
-        pageBuilder: (context, _, __) => _FullScreenGallery(
-          images: images,
-          initialIndex: initialIndex,
-          apiBaseUrl: apiBaseUrl,
-          apiToken: apiToken,
-          contentId: contentId,
-          contentColor: _contentColor,
-          onPageChanged: (index) {
-            if (!mounted) return;
-            setState(() {
-              _currentImageIndex = index;
-              if (images.isNotEmpty) {
-                _selectedImageUrl = images[index];
-              }
-            });
-            if (_imagePageController.hasClients) {
-              _imagePageController.jumpToPage(index);
-            }
-          },
-        ),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            _FullScreenGallery(
+              images: images,
+              initialIndex: initialIndex,
+              apiBaseUrl: apiBaseUrl,
+              apiToken: apiToken,
+              contentId: contentId,
+              contentColor: _contentColor,
+              onPageChanged: (index) {
+                if (!mounted) return;
+                setState(() {
+                  _currentImageIndex = index;
+                  if (images.isNotEmpty) {
+                    _selectedImageUrl = images[index];
+                  }
+                });
+                if (_imagePageController.hasClients) {
+                  _imagePageController.jumpToPage(index);
+                }
+              },
+            ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(opacity: animation, child: child);
         },
@@ -590,18 +591,40 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        border: Border(left: BorderSide(color: colorScheme.outlineVariant)),
+        border: Border(
+          left: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
       ),
       child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
         child: Container(
           decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerLow,
+            color: isDark
+                ? colorScheme.surfaceContainer
+                : colorScheme.surfaceContainerLow,
             borderRadius: BorderRadius.circular(28),
+            border: isDark
+                ? Border.all(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    width: 1,
+                  )
+                : null,
+            boxShadow: isDark
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ]
+                : null,
           ),
           padding: const EdgeInsets.all(28),
           child: Column(
@@ -679,7 +702,14 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         if (headers.isNotEmpty)
           Container(
             width: 320,
-            color: colorScheme.surfaceContainerLow,
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerLow,
+              border: Border(
+                left: BorderSide(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+                ),
+              ),
+            ),
             child: _buildTOC(context, headers),
           ),
       ],
@@ -775,6 +805,8 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       child: Column(
@@ -782,8 +814,25 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         children: [
           Container(
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerLow,
+              color: isDark
+                  ? colorScheme.surfaceContainer
+                  : colorScheme.surfaceContainerLow,
               borderRadius: BorderRadius.circular(28),
+              border: isDark
+                  ? Border.all(
+                      color: Colors.white.withValues(alpha: 0.05),
+                      width: 1,
+                    )
+                  : null,
+              boxShadow: isDark
+                  ? [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                  : null,
             ),
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -1355,11 +1404,12 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             data: markdown,
             selectable: true,
             onTapLink: (text, href, title) {
-              if (href != null)
+              if (href != null) {
                 launchUrl(
                   Uri.parse(href),
                   mode: LaunchMode.externalApplication,
                 );
+              }
             },
             styleSheet: style,
             builders: {
@@ -1367,6 +1417,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               'h2': _HeaderBuilder(_headerKeys, style.h2),
               'h3': _HeaderBuilder(_headerKeys, style.h3),
             },
+            // ignore: deprecated_member_use
             imageBuilder: (uri, title, alt) => _buildMarkdownImage(
               context,
               detail,

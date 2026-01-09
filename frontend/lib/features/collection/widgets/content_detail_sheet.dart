@@ -281,11 +281,12 @@ class ContentDetailSheet extends ConsumerWidget {
             padding: EdgeInsets.zero,
             selectable: true,
             onTapLink: (text, href, title) {
-              if (href != null)
+              if (href != null) {
                 launchUrl(
                   Uri.parse(href),
                   mode: LaunchMode.externalApplication,
                 );
+              }
             },
             styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
               // Material 3 Expressive Typography
@@ -343,6 +344,7 @@ class ContentDetailSheet extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
+            // ignore: deprecated_member_use
             imageBuilder: (uri, title, alt) {
               String url = uri.toString();
 
