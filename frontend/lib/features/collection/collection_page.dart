@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/layout/responsive_layout.dart';
 import 'providers/collection_provider.dart';
 import 'widgets/content_card.dart';
 import 'models/content.dart';
@@ -152,11 +153,11 @@ class _CollectionGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final topPadding = MediaQuery.of(context).padding.top + 5;
+    final topPadding = MediaQuery.of(context).padding.top + 15;
     return MasonryGridView.count(
       controller: scrollController,
       padding: EdgeInsets.fromLTRB(24, topPadding, 24, 100),
-      crossAxisCount: _getCrossAxisCount(context),
+      crossAxisCount: ResponsiveLayout.getColumnCount(context),
       mainAxisSpacing: 20,
       crossAxisSpacing: 20,
       itemCount: items.length,
@@ -173,14 +174,5 @@ class _CollectionGrid extends StatelessWidget {
         );
       },
     );
-  }
-
-  int _getCrossAxisCount(BuildContext context) {
-    double width = MediaQuery.of(context).size.width;
-    if (width > 1600) return 5;
-    if (width > 1200) return 4;
-    if (width > 800) return 3;
-    if (width > 400) return 2;
-    return 1;
   }
 }

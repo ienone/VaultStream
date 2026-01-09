@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:palette_generator/palette_generator.dart';
+import '../../../core/layout/responsive_layout.dart';
 import '../models/content.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -171,6 +172,9 @@ class _ContentCardState extends ConsumerState<ContentCard> {
         content.platform.toLowerCase() == 'x';
     final hasImage = imageUrl.isNotEmpty;
 
+    final double cardWidth = ResponsiveLayout.getCardWidth(context);
+    final bool isTinyCard = cardWidth < 220; // 卡片宽度较小时视为极小卡片
+
     // 根据封面图宽高比确定卡片布局比例
     bool isLandscapeCover = true;
     try {
@@ -185,23 +189,32 @@ class _ContentCardState extends ConsumerState<ContentCard> {
           if (currentImg != null &&
               currentImg['width'] != null &&
               currentImg['height'] != null) {
-            isLandscapeCover = currentImg['width'] > currentImg['height'];
+            isLandscapeCover = currentImg['width'] >= currentImg['height'];
           }
         }
       }
     } catch (_) {}
 
-    final double aspectRatio = isLandscapeCover ? 16 / 18 : 36 / 78;
+    // 标准化图片比例：横屏统一 16:9，竖屏统一 4:5 (0.8)
+    final double imageAspectRatio = isLandscapeCover ? 16 / 9 : 0.8;
+
+    // 平衡点：回归固定比例布局以保证对齐美感，但根据卡片宽度选择不同的高度比例
+    final double cardAspectRatio;
+    if (isLandscapeCover) {
+      cardAspectRatio = isTinyCard ? 16 / 20 : 16 / 18;
+    } else {
+      cardAspectRatio = isTinyCard ? 0.46 : 0.52;
+    }
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       child: AnimatedScale(
-        scale: _isHovered ? 1.05 : 1.0,
+        scale: _isHovered ? 1.02 : 1.0,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOutBack,
         child: AspectRatio(
-          aspectRatio: aspectRatio,
+          aspectRatio: cardAspectRatio,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 300),
             decoration: BoxDecoration(
@@ -210,10 +223,10 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                   ? [
                       BoxShadow(
                         color: (_extractedColor ?? colorScheme.primary)
-                            .withAlpha(50),
-                        blurRadius: 20,
-                        spreadRadius: 2,
-                        offset: const Offset(0, 8),
+                            .withAlpha(40),
+                        blurRadius: 15,
+                        spreadRadius: 1,
+                        offset: const Offset(0, 6),
                       ),
                     ]
                   : null,
@@ -226,13 +239,13 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                 side: BorderSide(
                   color: _isHovered && _extractedColor != null
                       ? _extractedColor!.withAlpha(120)
-                      : colorScheme.outlineVariant.withAlpha(100),
-                  width: _isHovered ? 2 : 1,
+                      : colorScheme.outlineVariant.withAlpha(80),
+                  width: _isHovered ? 1.5 : 1,
                 ),
               ),
               color: _isHovered && _extractedColor != null
                   ? Color.alphaBlend(
-                      _extractedColor!.withAlpha(30),
+                      _extractedColor!.withAlpha(20),
                       colorScheme.surfaceContainer,
                     )
                   : colorScheme.surfaceContainer,
@@ -243,8 +256,8 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                   children: [
                     // Image Section
                     if (hasImage)
-                      Expanded(
-                        flex: isLandscapeCover ? 11 : 68,
+                      AspectRatio(
+                        aspectRatio: imageAspectRatio,
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
@@ -254,11 +267,17 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                                 imageUrl: imageUrl,
                                 httpHeaders: imageHeaders,
                                 fit: BoxFit.cover,
-                                maxHeightDiskCache: 1000,
+                                maxHeightDiskCache: 800,
                                 placeholder: (context, url) => Container(
                                   color: colorScheme.surfaceContainerHighest,
                                   child: const Center(
-                                    child: CircularProgressIndicator(),
+                                    child: SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
                                   ),
                                 ),
                                 errorWidget: (context, url, error) => Container(
@@ -309,13 +328,10 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                               ),
                           ],
                         ),
-                      )
-                    else if (isLandscapeCover)
-                      const Spacer(flex: 7),
+                      ),
 
-                    // Text/Meta Section
+                    // 内容区域
                     Expanded(
-                      flex: isLandscapeCover ? 7 : 10,
                       child: Padding(
                         padding: const EdgeInsets.all(12),
                         child: Column(
@@ -337,43 +353,33 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                                                   _extractedColor != null
                                               ? _extractedColor
                                               : colorScheme.onSurfaceVariant,
-                                          letterSpacing: 0.2,
+                                          letterSpacing: 0.1,
+                                          fontSize: isTinyCard ? 11 : 12,
                                         ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                                if (content.publishedAt != null) ...[
-                                  Text(
-                                    DateFormat(
-                                      'yyyy-MM-dd',
-                                    ).format(content.publishedAt!.toLocal()),
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      color: colorScheme.outline.withAlpha(180),
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
                               ],
                             ),
-                            const SizedBox(height: 10),
+                            const SizedBox(height: 8),
                             // Title / Content Text
                             Expanded(
                               child: isTwitter
                                   ? (content.description != null &&
                                             content.description!.isNotEmpty
                                         ? Text(
-                                            content.description!
-                                                .trim()
-                                                .split('\n')
-                                                .first,
+                                            content.description!.trim(),
                                             style: theme.textTheme.bodyMedium
                                                 ?.copyWith(
-                                                  height: 1.5,
-                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: isTinyCard
+                                                      ? 12
+                                                      : 13,
+                                                  height: 1.4,
+                                                  fontWeight: FontWeight.w500,
                                                   color: colorScheme.onSurface,
                                                 ),
-                                            maxLines: 1,
+                                            maxLines: isTinyCard ? 3 : 4,
                                             overflow: TextOverflow.ellipsis,
                                           )
                                         : const SizedBox.shrink())
@@ -382,28 +388,32 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                                             content.title!,
                                             style: theme.textTheme.titleMedium
                                                 ?.copyWith(
-                                                  fontSize: 12,
+                                                  fontSize: isTinyCard
+                                                      ? 13
+                                                      : 14,
                                                   fontWeight: FontWeight.w800,
-                                                  height: 1.2,
+                                                  height: 1.3,
                                                   color: colorScheme.onSurface,
                                                   letterSpacing: -0.2,
                                                 ),
-                                            maxLines: isLandscapeCover ? 3 : 2,
+                                            maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
                                           )
                                         : const SizedBox.shrink()),
                             ),
-                            const SizedBox(height: 10),
+                            const SizedBox(height: 8),
                             // Tags & Stats Row
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 if (content.tags.isNotEmpty)
                                   Expanded(
                                     child: Wrap(
                                       spacing: 4,
+                                      runSpacing: 4,
                                       children: content.tags
-                                          .take(isLandscapeCover ? 2 : 1)
+                                          .take(isTinyCard ? 1 : 2)
                                           .map(
                                             (tag) => Container(
                                               padding:
@@ -415,7 +425,7 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                                                 color:
                                                     (_extractedColor ??
                                                             colorScheme.primary)
-                                                        .withAlpha(30),
+                                                        .withAlpha(25),
                                                 borderRadius:
                                                     BorderRadius.circular(6),
                                               ),
@@ -429,7 +439,7 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                                                           _extractedColor ??
                                                           colorScheme.primary,
                                                       fontWeight:
-                                                          FontWeight.w800,
+                                                          FontWeight.w700,
                                                       fontSize: 10,
                                                     ),
                                               ),
@@ -439,61 +449,65 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                                     ),
                                   )
                                 else
-                                  const Spacer(),
+                                  const SizedBox.shrink(),
                                 const SizedBox(width: 8),
-                                // Mini Stats
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
+                                // Date & Stats
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
-                                    if (content.viewCount > 0) ...[
-                                      Icon(
-                                        Icons.remove_red_eye_outlined,
-                                        size: 14,
-                                        color: _isHovered
-                                            ? (_extractedColor ??
-                                                  colorScheme.primary)
-                                            : colorScheme.outline,
-                                      ),
-                                      const SizedBox(width: 4),
+                                    if (!isTinyCard &&
+                                        content.publishedAt != null)
                                       Text(
-                                        _formatCount(content.viewCount),
+                                        DateFormat('yyyy-MM-dd').format(
+                                          content.publishedAt!.toLocal(),
+                                        ),
                                         style: theme.textTheme.labelSmall
                                             ?.copyWith(
-                                              color: _isHovered
-                                                  ? (_extractedColor ??
-                                                        colorScheme.onSurface)
-                                                  : colorScheme.outline,
-                                              fontWeight: _isHovered
-                                                  ? FontWeight.w900
-                                                  : FontWeight.normal,
+                                              color: colorScheme.outline
+                                                  .withAlpha(150),
+                                              fontSize: 10,
                                             ),
                                       ),
-                                      const SizedBox(width: 8),
-                                    ],
-                                    if (content.likeCount > 0) ...[
-                                      Icon(
-                                        Icons.favorite_border,
-                                        size: 14,
-                                        color: _isHovered
-                                            ? (_extractedColor ??
-                                                  Colors.redAccent)
-                                            : colorScheme.outline,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        _formatCount(content.likeCount),
-                                        style: theme.textTheme.labelSmall
-                                            ?.copyWith(
-                                              color: _isHovered
-                                                  ? (_extractedColor ??
-                                                        colorScheme.onSurface)
-                                                  : colorScheme.outline,
-                                              fontWeight: _isHovered
-                                                  ? FontWeight.w900
-                                                  : FontWeight.normal,
-                                            ),
-                                      ),
-                                    ],
+                                    const SizedBox(height: 2),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (content.viewCount > 0) ...[
+                                          Icon(
+                                            Icons.remove_red_eye_outlined,
+                                            size: 12,
+                                            color: colorScheme.outline,
+                                          ),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            _formatCount(content.viewCount),
+                                            style: theme.textTheme.labelSmall
+                                                ?.copyWith(
+                                                  color: colorScheme.outline,
+                                                  fontSize: 10,
+                                                ),
+                                          ),
+                                        ],
+                                        if (content.likeCount > 0) ...[
+                                          if (content.viewCount > 0)
+                                            const SizedBox(width: 6),
+                                          Icon(
+                                            Icons.favorite_border,
+                                            size: 11,
+                                            color: colorScheme.outline,
+                                          ),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            _formatCount(content.likeCount),
+                                            style: theme.textTheme.labelSmall
+                                                ?.copyWith(
+                                                  color: colorScheme.outline,
+                                                  fontSize: 10,
+                                                ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                                   ],
                                 ),
                               ],

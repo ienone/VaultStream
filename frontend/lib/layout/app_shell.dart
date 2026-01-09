@@ -12,7 +12,7 @@ class AppShell extends StatelessWidget {
     // Usually 600dp is a good standard for Table/Desktop vs Mobile
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth < 600) {
+        if (constraints.maxWidth < 800) {
           return _MobileShell(navigationShell: navigationShell);
         } else {
           return _DesktopShell(navigationShell: navigationShell);
