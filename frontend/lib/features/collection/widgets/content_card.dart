@@ -5,6 +5,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:palette_generator/palette_generator.dart';
 import '../../../core/layout/responsive_layout.dart';
+import '../../../theme/app_theme.dart';
 import '../models/content.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -53,10 +54,10 @@ class _ContentCardState extends ConsumerState<ContentCard> {
         widget.content.rawMetadata?['archive']?['dominant_color'];
 
     if (backendColor != null && backendColor.startsWith('#')) {
-      final color = _parseHexColor(backendColor);
+      final color = AppTheme.parseHexColor(backendColor);
       if (mounted) {
         setState(() {
-          _extractedColor = _getAdjustedColor(
+          _extractedColor = AppTheme.getAdjustedColor(
             color,
             Theme.of(context).brightness,
           );
@@ -105,7 +106,7 @@ class _ContentCardState extends ConsumerState<ContentCard> {
 
         if (color != null) {
           // 4. 转换并缓存调整后的颜色
-          final adjustedColor = _getAdjustedColor(
+          final adjustedColor = AppTheme.getAdjustedColor(
             color,
             Theme.of(context).brightness,
           );
@@ -116,38 +117,6 @@ class _ContentCardState extends ConsumerState<ContentCard> {
     } catch (e) {
       // 忽略提取失败
     }
-  }
-
-  Color _getAdjustedColor(Color color, Brightness brightness) {
-    HSLColor hsl = HSLColor.fromColor(color);
-
-    if (brightness == Brightness.light) {
-      // 亮色模式：如果颜色太浅（如接近白色的黄/青），将其压暗，确保文字可读
-      if (hsl.lightness > 0.6) {
-        hsl = hsl.withLightness(0.5);
-      }
-      // 适当提升饱和度，让颜色在亮色背景下更“鲜活”一些
-      if (hsl.saturation < 0.3) {
-        hsl = hsl.withSaturation(0.5);
-      }
-    } else {
-      // 深色模式：如果颜色太深（如接近黑色的深蓝），将其提亮
-      if (hsl.lightness < 0.4) {
-        hsl = hsl.withLightness(0.7);
-      }
-      // 深色模式下饱和度不宜过高，避免刺眼
-      if (hsl.saturation > 0.8) {
-        hsl = hsl.withSaturation(0.6);
-      }
-    }
-
-    return hsl.toColor();
-  }
-
-  Color _parseHexColor(String hex) {
-    hex = hex.replaceFirst('#', '');
-    if (hex.length == 6) hex = 'FF$hex';
-    return Color(int.parse(hex, radix: 16));
   }
 
   @override
@@ -167,44 +136,22 @@ class _ContentCardState extends ConsumerState<ContentCard> {
       baseUrl: apiBaseUrl,
       apiToken: apiToken,
     );
-    final isTwitter =
-        content.platform.toLowerCase() == 'twitter' ||
-        content.platform.toLowerCase() == 'x';
+    final isTwitter = content.isTwitter;
     final hasImage = imageUrl.isNotEmpty;
 
     final double cardWidth = ResponsiveLayout.getCardWidth(context);
     final bool isTinyCard = cardWidth < 220; // 卡片宽度较小时视为极小卡片
 
     // 根据封面图宽高比确定卡片布局比例
-    bool isLandscapeCover = true;
-    try {
-      if (content.rawMetadata != null &&
-          content.rawMetadata!['archive'] != null) {
-        final storedImages = content.rawMetadata!['archive']['stored_images'];
-        if (storedImages is List && storedImages.isNotEmpty) {
-          final currentImg = storedImages.firstWhere(
-            (img) => _compareUrls(img['orig_url'], content.coverUrl),
-            orElse: () => storedImages.first,
-          );
-          if (currentImg != null &&
-              currentImg['width'] != null &&
-              currentImg['height'] != null) {
-            isLandscapeCover = currentImg['width'] >= currentImg['height'];
-          }
-        }
-      }
-    } catch (_) {}
+    final bool isLandscapeCover = content.isLandscapeCover;
 
     // 标准化图片比例：横屏统一 16:9，竖屏统一 4:5 (0.8)
     final double imageAspectRatio = isLandscapeCover ? 16 / 9 : 0.8;
 
     // 平衡点：回归固定比例布局以保证对齐美感，但根据卡片宽度选择不同的高度比例
-    final double cardAspectRatio;
-    if (isLandscapeCover) {
-      cardAspectRatio = isTinyCard ? 16 / 20 : 16 / 18;
-    } else {
-      cardAspectRatio = isTinyCard ? 0.46 : 0.52;
-    }
+    final double cardAspectRatio = isLandscapeCover
+        ? (isTinyCard ? 16 / 20 : 16 / 18)
+        : (isTinyCard ? 0.46 : 0.52);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),

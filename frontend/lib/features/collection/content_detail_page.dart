@@ -45,12 +45,6 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     _contentScrollController.addListener(_onScroll);
   }
 
-  Color _parseHexColor(String hex) {
-    hex = hex.replaceFirst('#', '');
-    if (hex.length == 6) hex = 'FF$hex';
-    return Color(int.parse(hex, radix: 16));
-  }
-
   void _onScroll() {
     if (!mounted) return;
     String? currentVisible;
@@ -84,6 +78,22 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     super.dispose();
   }
 
+  ThemeData _getCustomTheme(String? hexColor, Brightness brightness) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final baseColor = hexColor != null && hexColor.startsWith('#')
+        ? AppTheme.parseHexColor(hexColor)
+        : null;
+
+    _contentColor = baseColor;
+
+    final customColorScheme = baseColor != null
+        ? ColorScheme.fromSeed(seedColor: baseColor, brightness: brightness)
+        : colorScheme;
+
+    return AppTheme.fromColorScheme(customColorScheme, brightness);
+  }
+
   @override
   Widget build(BuildContext context) {
     final detailAsync = ref.watch(contentDetailProvider(widget.contentId));
@@ -91,48 +101,30 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     final apiBaseUrl = dio.options.baseUrl;
     final apiToken = dio.options.headers['X-API-Token']?.toString();
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
 
     return detailAsync.when(
       data: (detail) {
-        final String? hexColor = detail.coverColor ?? widget.initialColor;
-        final Color? baseColor = hexColor != null && hexColor.startsWith('#')
-            ? _parseHexColor(hexColor)
-            : null;
-
-        // Store color for use in other methods (like lightbox)
-        _contentColor = baseColor;
-
-        final customColorScheme = baseColor != null
-            ? ColorScheme.fromSeed(
-                seedColor: baseColor,
-                brightness: theme.brightness,
-              )
-            : colorScheme;
-
-        // Use AppTheme to create a consistent theme even for custom colors
-        final customTheme = AppTheme.fromColorScheme(
-          customColorScheme,
+        final customTheme = _getCustomTheme(
+          detail.coverColor ?? widget.initialColor,
           theme.brightness,
         );
-
-        final appBarColor = baseColor != null
-            ? customColorScheme.surfaceContainer
-            : colorScheme.surface;
+        final colorScheme = customTheme.colorScheme;
 
         return Theme(
           data: customTheme,
           child: Scaffold(
-            backgroundColor: customColorScheme.surface,
+            backgroundColor: colorScheme.surface,
             appBar: AppBar(
               title: Text(
-                detail.platform.toLowerCase() == 'twitter' ? '推文详情' : '内容详情',
+                detail.isTwitter ? '推文详情' : '内容详情',
                 style: customTheme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: customColorScheme.onSurface,
+                  color: colorScheme.onSurface,
                 ),
               ),
-              backgroundColor: appBarColor.withValues(alpha: 0.8),
+              backgroundColor: colorScheme.surfaceContainer.withValues(
+                alpha: 0.8,
+              ),
               elevation: 0,
               surfaceTintColor: Colors.transparent,
               flexibleSpace: ClipRect(
@@ -172,32 +164,19 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         );
       },
       loading: () {
-        final String? hexColor = widget.initialColor;
-        final Color? baseColor = hexColor != null && hexColor.startsWith('#')
-            ? _parseHexColor(hexColor)
-            : null;
-
-        _contentColor = baseColor;
-
-        final customColorScheme = baseColor != null
-            ? ColorScheme.fromSeed(
-                seedColor: baseColor,
-                brightness: theme.brightness,
-              )
-            : colorScheme;
-
-        final customTheme = AppTheme.fromColorScheme(
-          customColorScheme,
+        final customTheme = _getCustomTheme(
+          widget.initialColor,
           theme.brightness,
         );
+        final colorScheme = customTheme.colorScheme;
 
         return Theme(
           data: customTheme,
           child: Scaffold(
-            backgroundColor: customColorScheme.surface,
+            backgroundColor: colorScheme.surface,
             appBar: AppBar(
               title: const Text('加载中...'),
-              backgroundColor: customColorScheme.surface.withValues(alpha: 0.8),
+              backgroundColor: colorScheme.surface.withValues(alpha: 0.8),
               elevation: 0,
               surfaceTintColor: Colors.transparent,
               flexibleSpace: ClipRect(
@@ -214,7 +193,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       error: (err, stack) => Scaffold(
         appBar: AppBar(
           title: const Text('加载失败'),
-          backgroundColor: colorScheme.surface.withValues(alpha: 0.8),
+          backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.8),
           elevation: 0,
           surfaceTintColor: Colors.transparent,
           flexibleSpace: ClipRect(
@@ -252,56 +231,36 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool isLandscape = constraints.maxWidth > 800;
-        final bool isTwitter =
-            detail.platform.toLowerCase() == 'twitter' ||
-            detail.platform.toLowerCase() == 'x';
         final bool hasMarkdown = _hasMarkdown(detail);
 
-        if (isLandscape) {
-          if (isTwitter) {
-            return _buildTwitterLandscape(
-              context,
-              detail,
-              apiBaseUrl,
-              apiToken,
-            );
-          } else if (hasMarkdown) {
-            return _buildMarkdownLandscape(
-              context,
-              detail,
-              apiBaseUrl,
-              apiToken,
-            );
-          } else if (detail.platform.toLowerCase() == 'bilibili') {
-            return _buildBilibiliLandscape(
-              context,
-              detail,
-              apiBaseUrl,
-              apiToken,
-            );
-          } else {
-            return _buildDefaultLandscape(
-              context,
-              detail,
-              apiBaseUrl,
-              apiToken,
-            );
-          }
-        } else {
-          // Portrait: normal top-to-bottom
+        if (!isLandscape) {
           return _buildPortraitLayout(context, detail, apiBaseUrl, apiToken);
         }
+
+        if (detail.isTwitter) {
+          return _buildTwitterLandscape(context, detail, apiBaseUrl, apiToken);
+        }
+
+        if (hasMarkdown) {
+          return _buildMarkdownLandscape(context, detail, apiBaseUrl, apiToken);
+        }
+
+        if (detail.isBilibili) {
+          return _buildBilibiliLandscape(context, detail, apiBaseUrl, apiToken);
+        }
+
+        return _buildDefaultLandscape(context, detail, apiBaseUrl, apiToken);
       },
     );
   }
 
   bool _hasMarkdown(ContentDetail detail) {
-    if (detail.rawMetadata != null && detail.rawMetadata!['archive'] != null) {
-      final md = detail.rawMetadata!['archive']['markdown'];
-      return md != null && md.toString().isNotEmpty;
+    final archive = detail.rawMetadata?['archive'];
+    if (archive != null) {
+      final md = archive['markdown'];
+      if (md != null && md.toString().isNotEmpty) return true;
     }
-    return detail.platform.toLowerCase() == 'bilibili' &&
-        (detail.description?.contains('![') ?? false);
+    return detail.isBilibili && (detail.description?.contains('![') ?? false);
   }
 
   // --- Twitter Red-style Layout ---
@@ -841,10 +800,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                 _buildAuthorHeader(context, detail),
                 const SizedBox(height: 24),
                 Text(
-                  detail.title ??
-                      (detail.platform.toLowerCase() == 'twitter'
-                          ? '推文'
-                          : '无标题内容'),
+                  detail.title ?? (detail.isTwitter ? '推文' : '无标题内容'),
                   style: theme.textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w900,
                     height: 1.2,
@@ -855,8 +811,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                 const SizedBox(height: 24),
                 _buildUnifiedStats(context, detail),
                 const SizedBox(height: 16),
-                if (detail.platform.toLowerCase() == 'bilibili' &&
-                    detail.platformId != null)
+                if (detail.isBilibili && detail.platformId != null)
                   _buildBvidCard(context, detail),
                 const SizedBox(height: 16),
                 _buildTags(context, detail),
@@ -1069,7 +1024,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   Widget _buildAuthorHeader(BuildContext context, ContentDetail detail) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final bool isBilibili = detail.platform.toLowerCase() == 'bilibili';
+    final bool isBilibili = detail.isBilibili;
 
     return Row(
       children: [
@@ -1135,7 +1090,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final stats = detail.extraStats;
-    final bool isBilibili = detail.platform.toLowerCase() == 'bilibili';
+    final bool isBilibili = detail.isBilibili;
 
     final List<Widget> items = [];
 
@@ -1305,8 +1260,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   Widget _buildBvidCard(BuildContext context, ContentDetail detail) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    if (detail.platformId == null ||
-        detail.platform.toLowerCase() != 'bilibili') {
+    if (detail.platformId == null || !detail.isBilibili) {
       return const SizedBox.shrink();
     }
     return Container(

@@ -5,6 +5,8 @@ part 'content.g.dart';
 
 @freezed
 abstract class ShareCard with _$ShareCard {
+  const ShareCard._();
+
   const factory ShareCard({
     required int id,
     required String platform,
@@ -23,12 +25,45 @@ abstract class ShareCard with _$ShareCard {
     @JsonKey(name: 'raw_metadata') Map<String, dynamic>? rawMetadata,
   }) = _ShareCard;
 
+  bool get isTwitter =>
+      platform.toLowerCase() == 'twitter' || platform.toLowerCase() == 'x';
+
+  bool get isBilibili => platform.toLowerCase() == 'bilibili';
+
+  bool get isLandscapeCover {
+    try {
+      if (rawMetadata != null && rawMetadata!['archive'] != null) {
+        final storedImages = rawMetadata!['archive']['stored_images'];
+        if (storedImages is List && storedImages.isNotEmpty) {
+          final currentImg = storedImages.firstWhere(
+            (img) => _compareUrls(img['orig_url'], coverUrl),
+            orElse: () => storedImages.first,
+          );
+          if (currentImg != null &&
+              currentImg['width'] != null &&
+              currentImg['height'] != null) {
+            return (currentImg['width'] as num) >=
+                (currentImg['height'] as num);
+          }
+        }
+      }
+    } catch (_) {}
+    return true; // Default to landscape
+  }
+
+  bool _compareUrls(dynamic url1, dynamic url2) {
+    if (url1 == null || url2 == null) return false;
+    return url1.toString() == url2.toString();
+  }
+
   factory ShareCard.fromJson(Map<String, dynamic> json) =>
       _$ShareCardFromJson(json);
 }
 
 @freezed
 abstract class ContentDetail with _$ContentDetail {
+  const ContentDetail._();
+
   const factory ContentDetail({
     required int id,
     required String platform,
@@ -57,6 +92,11 @@ abstract class ContentDetail with _$ContentDetail {
     @JsonKey(name: 'extra_stats') @Default({}) Map<String, dynamic> extraStats,
     @JsonKey(name: 'raw_metadata') Map<String, dynamic>? rawMetadata,
   }) = _ContentDetail;
+
+  bool get isTwitter =>
+      platform.toLowerCase() == 'twitter' || platform.toLowerCase() == 'x';
+
+  bool get isBilibili => platform.toLowerCase() == 'bilibili';
 
   factory ContentDetail.fromJson(Map<String, dynamic> json) =>
       _$ContentDetailFromJson(json);

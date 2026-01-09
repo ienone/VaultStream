@@ -123,4 +123,38 @@ class AppTheme {
       ),
     );
   }
+
+  /// Parses a hex color string (e.g., "#FFAABB" or "FFAABB") to a [Color].
+  static Color parseHexColor(String hex) {
+    String cleanedHex = hex.replaceFirst('#', '');
+    if (cleanedHex.length == 6) cleanedHex = 'FF$cleanedHex';
+    return Color(int.parse(cleanedHex, radix: 16));
+  }
+
+  /// Adjusts a color for better readability based on the brightness.
+  static Color getAdjustedColor(Color color, Brightness brightness) {
+    HSLColor hsl = HSLColor.fromColor(color);
+
+    if (brightness == Brightness.light) {
+      // 亮色模式：如果颜色太浅（如接近白色的黄/青），将其压暗，确保文字可读
+      if (hsl.lightness > 0.6) {
+        hsl = hsl.withLightness(0.5);
+      }
+      // 适当提升饱和度，让颜色在亮色背景下更“鲜活”一些
+      if (hsl.saturation < 0.3) {
+        hsl = hsl.withSaturation(0.5);
+      }
+    } else {
+      // 深色模式：如果颜色太深（如接近黑色的深蓝），将其提亮
+      if (hsl.lightness < 0.4) {
+        hsl = hsl.withLightness(0.7);
+      }
+      // 深色模式下饱和度不宜过高，避免刺眼
+      if (hsl.saturation > 0.8) {
+        hsl = hsl.withSaturation(0.6);
+      }
+    }
+
+    return hsl.toColor();
+  }
 }

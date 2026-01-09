@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../core/layout/responsive_layout.dart';
 
 class AppShell extends StatelessWidget {
   final StatefulNavigationShell navigationShell;
@@ -12,7 +13,7 @@ class AppShell extends StatelessWidget {
     // Usually 600dp is a good standard for Table/Desktop vs Mobile
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth < 800) {
+        if (constraints.maxWidth < ResponsiveLayout.mobileBreakpoint) {
           return _MobileShell(navigationShell: navigationShell);
         } else {
           return _DesktopShell(navigationShell: navigationShell);
@@ -84,7 +85,9 @@ class _DesktopShell extends StatelessWidget {
                 initialLocation: index == navigationShell.currentIndex,
               );
             },
-            extended: MediaQuery.of(context).size.width >= 1200,
+            extended:
+                MediaQuery.of(context).size.width >=
+                ResponsiveLayout.desktopBreakpoint,
             minWidth: 80,
             minExtendedWidth: 200,
             leading: const SizedBox(height: 20),
