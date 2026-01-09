@@ -423,14 +423,18 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                                           Icon(
                                             Icons.remove_red_eye_outlined,
                                             size: 12,
-                                            color: colorScheme.outline,
+                                            color: _isHovered && _extractedColor != null 
+                                                ? _extractedColor 
+                                                : colorScheme.outline,
                                           ),
                                           const SizedBox(width: 2),
                                           Text(
                                             _formatCount(content.viewCount),
                                             style: theme.textTheme.labelSmall
                                                 ?.copyWith(
-                                                  color: colorScheme.outline,
+                                                  color: _isHovered && _extractedColor != null 
+                                                      ? _extractedColor 
+                                                      : colorScheme.outline,
                                                   fontSize: 10,
                                                 ),
                                           ),
@@ -441,14 +445,18 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                                           Icon(
                                             Icons.favorite_border,
                                             size: 11,
-                                            color: colorScheme.outline,
+                                            color: _isHovered && _extractedColor != null 
+                                                ? _extractedColor 
+                                                : colorScheme.outline,
                                           ),
                                           const SizedBox(width: 2),
                                           Text(
                                             _formatCount(content.likeCount),
                                             style: theme.textTheme.labelSmall
                                                 ?.copyWith(
-                                                  color: colorScheme.outline,
+                                                  color: _isHovered && _extractedColor != null 
+                                                      ? _extractedColor 
+                                                      : colorScheme.outline,
                                                   fontSize: 10,
                                                 ),
                                           ),
