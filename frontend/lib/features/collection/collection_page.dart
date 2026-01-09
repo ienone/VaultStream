@@ -17,8 +17,15 @@ class CollectionPage extends ConsumerStatefulWidget {
 
 class _CollectionPageState extends ConsumerState<CollectionPage> {
   final ScrollController _scrollController = ScrollController();
-  bool _isFabExtended = true;
+  final ValueNotifier<bool> _isFabExtended = ValueNotifier(true);
   DateTime? _lastScrollTime;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _isFabExtended.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,8 +63,8 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
         onNotification: (notification) {
           if (notification is ScrollUpdateNotification) {
             // 只要在滚动，就收缩
-            if (_isFabExtended) {
-              setState(() => _isFabExtended = false);
+            if (_isFabExtended.value) {
+              _isFabExtended.value = false;
             }
             _lastScrollTime = DateTime.now();
           } else if (notification is ScrollEndNotification) {
@@ -66,7 +73,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
             _lastScrollTime = scrollTime;
             Future.delayed(const Duration(milliseconds: 600), () {
               if (mounted && _lastScrollTime == scrollTime) {
-                setState(() => _isFabExtended = true);
+                _isFabExtended.value = true;
               }
             });
           }
@@ -77,7 +84,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
             items: response.items,
             scrollController: _scrollController,
           ),
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const _CollectionSkeleton(),
           error: (err, stack) => Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -99,19 +106,17 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
           ),
         ),
       ),
-      floatingActionButton: _isFabExtended
-          ? _wrapBlurredFab(
-              onPressed: () {
-                // TODO: Add content
-              },
-              isExtended: true,
-            )
-          : _wrapBlurredFab(
-              onPressed: () {
-                // TODO: Add content
-              },
-              isExtended: false,
-            ),
+      floatingActionButton: ValueListenableBuilder<bool>(
+        valueListenable: _isFabExtended,
+        builder: (context, isExtended, child) {
+          return _wrapBlurredFab(
+            onPressed: () {
+              // TODO: Add content
+            },
+            isExtended: isExtended,
+          );
+        },
+      ),
     );
   }
 
@@ -130,16 +135,14 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
           filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
           child: Container(
             decoration: BoxDecoration(
-              color: Theme.of(context)
-                  .colorScheme
-                  .primaryContainer
-                  .withValues(alpha: 0.4),
+              color: Theme.of(
+                context,
+              ).colorScheme.primaryContainer.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: Theme.of(context)
-                    .colorScheme
-                    .primary
-                    .withValues(alpha: 0.15),
+                color: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: 0.15),
                 width: 1,
               ),
             ),
@@ -187,6 +190,76 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _CollectionSkeleton extends StatelessWidget {
+  const _CollectionSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final topPadding = MediaQuery.of(context).padding.top + 15;
+    return MasonryGridView.count(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(24, topPadding, 24, 100),
+      crossAxisCount: ResponsiveLayout.getColumnCount(context),
+      mainAxisSpacing: 20,
+      crossAxisSpacing: 20,
+      itemCount: 10,
+      itemBuilder: (context, index) {
+        return _SkeletonCard(index: index);
+      },
+    );
+  }
+}
+
+class _SkeletonCard extends StatefulWidget {
+  final int index;
+  const _SkeletonCard({required this.index});
+
+  @override
+  State<_SkeletonCard> createState() => _SkeletonCardState();
+}
+
+class _SkeletonCardState extends State<_SkeletonCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 模拟瀑布流卡片的高度差异
+    final height = 180.0 + (widget.index % 3) * 60;
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          height: height,
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest
+                .withValues(
+                  alpha: 0.3 + 0.3 * _controller.value, // 呼吸效果
+                ),
+            borderRadius: BorderRadius.circular(16),
+          ),
+        );
+      },
     );
   }
 }
