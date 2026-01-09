@@ -99,47 +99,93 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
           ),
         ),
       ),
-      floatingActionButton: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 400),
-        switchInCurve: Curves.easeOutBack,
-        switchOutCurve: Curves.easeInCubic,
-        layoutBuilder: (currentChild, previousChildren) {
-          return Stack(
-            alignment: Alignment.centerRight,
-            children: <Widget>[
-              ...previousChildren,
-              if (currentChild != null) currentChild,
-            ],
-          );
-        },
-        transitionBuilder: (child, animation) {
-          return FadeTransition(
-            opacity: animation,
-            child: ScaleTransition(
-              scale: animation,
-              alignment: Alignment.centerRight,
-              child: child,
+      floatingActionButton: _isFabExtended
+          ? _wrapBlurredFab(
+              onPressed: () {
+                // TODO: Add content
+              },
+              isExtended: true,
+            )
+          : _wrapBlurredFab(
+              onPressed: () {
+                // TODO: Add content
+              },
+              isExtended: false,
             ),
-          );
-        },
-        child: _isFabExtended
-            ? FloatingActionButton.extended(
-                key: const ValueKey('extended'),
-                heroTag: null,
-                onPressed: () {
-                  // TODO: Add content
-                },
-                icon: const Icon(Icons.add),
-                label: const Text('添加内容'),
-              )
-            : FloatingActionButton(
-                key: const ValueKey('collapsed'),
-                heroTag: null,
-                onPressed: () {
-                  // TODO: Add content
-                },
-                child: const Icon(Icons.add),
+    );
+  }
+
+  Widget _wrapBlurredFab({
+    required VoidCallback onPressed,
+    required bool isExtended,
+  }) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOutCubic,
+      width: isExtended ? 140 : 56,
+      height: 56,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context)
+                  .colorScheme
+                  .primaryContainer
+                  .withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.15),
+                width: 1,
               ),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onPressed,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: OverflowBox(
+                    maxWidth: 140,
+                    minWidth: 0,
+                    alignment: Alignment.center,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.add),
+                        AnimatedOpacity(
+                          duration: const Duration(milliseconds: 400),
+                          opacity: isExtended ? 1.0 : 0.0,
+                          child: AnimatedSize(
+                            duration: const Duration(milliseconds: 400),
+                            child: isExtended
+                                ? Row(
+                                    children: const [
+                                      SizedBox(width: 8),
+                                      Text(
+                                        '添加内容',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

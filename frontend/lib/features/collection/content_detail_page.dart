@@ -799,15 +799,16 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               children: [
                 _buildAuthorHeader(context, detail),
                 const SizedBox(height: 24),
-                Text(
-                  detail.title ?? (detail.isTwitter ? '推文' : '无标题内容'),
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    height: 1.2,
-                    letterSpacing: -0.5,
-                    color: colorScheme.onSurface,
+                if (!detail.isTwitter && (detail.title != null && detail.title!.isNotEmpty))
+                  Text(
+                    detail.title ?? '无标题内容',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      height: 1.2,
+                      letterSpacing: -0.5,
+                      color: colorScheme.onSurface,
+                    ),
                   ),
-                ),
                 const SizedBox(height: 24),
                 _buildUnifiedStats(context, detail),
                 const SizedBox(height: 16),
@@ -1410,50 +1411,83 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           const SizedBox(height: 24),
         ],
         if (images.isNotEmpty)
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: images.length == 1 ? 1 : 2,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: images.length == 1 ? 16 / 9 : 1.0,
-            ),
-            itemCount: images.length,
-            itemBuilder: (context, index) {
-              final url = images[index];
-              return GestureDetector(
-                onTap: () => _showFullScreenImage(
-                  context,
-                  images,
-                  index,
-                  apiBaseUrl,
-                  apiToken,
-                  detail.id,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(28),
-                  child: Hero(
-                    tag: index == 0
-                        ? 'content-image-${detail.id}'
-                        : 'image-$index-${detail.id}',
-                    child: CachedNetworkImage(
-                      imageUrl: url,
-                      httpHeaders: buildImageHeaders(
-                        imageUrl: url,
-                        baseUrl: apiBaseUrl,
-                        apiToken: apiToken,
-                      ),
-                      fit: BoxFit.cover,
-                      placeholder: (c, u) => Container(
-                        color: theme.colorScheme.surfaceContainerHighest,
-                      ),
+          if (images.length == 1)
+            GestureDetector(
+              onTap: () => _showFullScreenImage(
+                context,
+                images,
+                0,
+                apiBaseUrl,
+                apiToken,
+                detail.id,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(28),
+                child: Hero(
+                  tag: 'content-image-${detail.id}',
+                  child: CachedNetworkImage(
+                    imageUrl: images.first,
+                    httpHeaders: buildImageHeaders(
+                      imageUrl: images.first,
+                      baseUrl: apiBaseUrl,
+                      apiToken: apiToken,
+                    ),
+                    fit: BoxFit.contain,
+                    placeholder: (c, u) => Container(
+                      height: 240,
+                      width: double.infinity,
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      child: const Center(child: CircularProgressIndicator()),
                     ),
                   ),
                 ),
-              );
-            },
-          ),
+              ),
+            )
+          else
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 1.0,
+              ),
+              itemCount: images.length,
+              itemBuilder: (context, index) {
+                final url = images[index];
+                return GestureDetector(
+                  onTap: () => _showFullScreenImage(
+                    context,
+                    images,
+                    index,
+                    apiBaseUrl,
+                    apiToken,
+                    detail.id,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(28),
+                    child: Hero(
+                      tag: index == 0
+                          ? 'content-image-${detail.id}'
+                          : 'image-$index-${detail.id}',
+                      child: CachedNetworkImage(
+                        imageUrl: url,
+                        httpHeaders: buildImageHeaders(
+                          imageUrl: url,
+                          baseUrl: apiBaseUrl,
+                          apiToken: apiToken,
+                        ),
+                        fit: BoxFit.cover,
+                        placeholder: (c, u) => Container(
+                          color: theme.colorScheme.surfaceContainerHighest,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
         if (detail.platform.toLowerCase() == 'bilibili')
           _buildBilibiliStats(context, detail),
       ],
