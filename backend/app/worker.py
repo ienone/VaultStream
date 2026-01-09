@@ -483,6 +483,10 @@ class TaskWorker:
         content.cover_url = parsed.cover_url
         content.media_urls = parsed.media_urls
         content.raw_metadata = parsed.raw_metadata
+        
+        # M5: 同步封面主色调
+        if isinstance(content.raw_metadata, dict) and "archive" in content.raw_metadata:
+            content.cover_color = content.raw_metadata["archive"].get("dominant_color")
 
         # 统一存储 ID 和互动数据
         content.platform_id = parsed.content_id

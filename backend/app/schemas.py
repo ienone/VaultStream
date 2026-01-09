@@ -79,6 +79,7 @@ class ContentDetail(BaseModel):
     author_name: Optional[str] # 作者名称
     author_id: Optional[str] # 作者平台ID
     cover_url: Optional[str] # 封面URL
+    cover_color: Optional[str] = None # 封面主色调 (Hex)
     media_urls: List[str] # 媒体资源URL列表
     view_count: int = 0 # 查看次数
     like_count: int = 0 # 点赞次数
@@ -175,6 +176,7 @@ class ShareCard(BaseModel):
     author_name: Optional[str] = None  # 作者名称
     author_id: Optional[str] = None     # 作者ID
     cover_url: Optional[str] = None
+    cover_color: Optional[str] = None  # M5: 封面主色调 (Hex)
     media_urls: List[str] = Field(default_factory=list) # M6: 支持首图回退
     tags: List[str] = Field(default_factory=list)
     published_at: Optional[datetime] = None

@@ -101,6 +101,29 @@ def _create_thumbnail_webp(data: bytes, size: tuple[int, int] = (300, 300), qual
         return out.getvalue()
 
 
+def _get_dominant_color(data: bytes) -> Optional[str]:
+    """获取图片的色彩主色调 (Hex 格式)"""
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+
+    from io import BytesIO
+    try:
+        with Image.open(BytesIO(data)) as im:
+            # 缩放到极小尺寸以快速获取主色
+            im = im.convert("RGB")
+            im.thumbnail((50, 50))
+            
+            # 使用简单的中位切分或缩放平均值
+            # 这里采用缩放至 1x1 的平均值方法，简单且高效
+            avg_color = im.resize((1, 1), Image.Resampling.LANCZOS).getpixel((0, 0))
+            return '#{:02x}{:02x}{:02x}'.format(avg_color[0], avg_color[1], avg_color[2])
+    except Exception as e:
+        logger.warning(f"提取图片颜色失败: {e}")
+        return None
+
+
 async def store_archive_images_as_webp(
     *,
     archive: dict[str, Any],
@@ -179,6 +202,13 @@ async def store_archive_images_as_webp(
                         img["thumb_url"] = storage.get_url(key=thumb_key)
                     except Exception as thumb_err:
                         logger.warning(f"生成缩略图失败: {thumb_err}")
+                    
+                    # M5: 提取主图颜色
+                    if count == 0:
+                        try:
+                            archive["dominant_color"] = _get_dominant_color(webp_bytes or src_bytes)
+                        except Exception as color_err:
+                            logger.warning(f"提取主色调失败: {color_err}")
                         
                     break
                 except Exception as e:

@@ -323,7 +323,7 @@ class ContentDetailSheet extends ConsumerWidget {
                 color: theme.colorScheme.secondaryContainer.withValues(
                   alpha: 0.35,
                 ),
-                borderRadius: BorderRadius.circular(16), // Softer corners
+                borderRadius: BorderRadius.circular(24),
                 border: Border(
                   left: BorderSide(
                     color: theme.colorScheme.secondary,

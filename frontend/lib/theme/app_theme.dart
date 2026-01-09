@@ -29,26 +29,52 @@ class AppTheme {
       // fontFamily: 'NotoSans',
 
       // 导航栏主题配置由NavigationRailThemeData定义
-      navigationRailTheme: const NavigationRailThemeData(
+      navigationRailTheme: NavigationRailThemeData(
         labelType: NavigationRailLabelType.all, // 显示所有标签
-        groupAlignment:
-            -0.9, // groupAlignment取值范围是-1.0到1.0，-1.0表示完全顶部对齐，0.0表示垂直居中对齐，1.0表示完全底部对齐，这里设置为-0.9，表示接近顶部对齐
+        groupAlignment: -0.9,
+        backgroundColor: scheme.surfaceContainerHigh,
+        indicatorColor: scheme.secondaryContainer,
+        indicatorShape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(20)),
+        ),
+        selectedIconTheme: IconThemeData(
+          color: scheme.onSecondaryContainer,
+          size: 28,
+        ),
+        unselectedIconTheme: IconThemeData(
+          color: scheme.onSurfaceVariant,
+          size: 24,
+        ),
+        selectedLabelTextStyle: TextStyle(
+          color: scheme.onSurface,
+          fontWeight: FontWeight.w900,
+          fontSize: 12,
+          letterSpacing: 0.5,
+        ),
+        unselectedLabelTextStyle: TextStyle(
+          color: scheme.onSurfaceVariant,
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+        ),
       ),
 
       // 卡片主题配置由CardThemeData定义
       cardTheme: CardThemeData(
         clipBehavior: Clip.antiAlias, // 抗锯齿裁剪行为
         elevation: 0, // 卡片阴影高度
-        shape: RoundedRectangleBorder(
-          // 卡片形状为圆角矩形
-          side: BorderSide(
-            color: scheme.outlineVariant,
-          ), // 卡片边框颜色为颜色方案中的outlineVariant
-          borderRadius: const BorderRadius.all(Radius.circular(12)),
-          // Radius.circular(12)表示创建一个圆角半径为12像素的Radius对象
-          // borderRadius.all表示应用于所有角
-          // const用于在编译时创建不可变的常量对象,避免运行时反复创建对象带来的性能开销
+        color: scheme.surfaceContainerLow,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(28)),
         ),
+      ),
+
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: scheme.primaryContainer,
+        foregroundColor: scheme.onPrimaryContainer,
+        elevation: 4,
+        hoverElevation: 8,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        extendedSizeConstraints: const BoxConstraints.tightFor(height: 56),
       ),
     );
   }
@@ -58,17 +84,49 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      navigationRailTheme: const NavigationRailThemeData(
+      navigationRailTheme: NavigationRailThemeData(
         labelType: NavigationRailLabelType.all,
         groupAlignment: -0.9,
+        backgroundColor: scheme.surfaceContainerHigh,
+        indicatorColor: scheme.secondaryContainer,
+        indicatorShape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(20)),
+        ),
+        selectedIconTheme: IconThemeData(
+          color: scheme.onSecondaryContainer,
+          size: 28,
+        ),
+        unselectedIconTheme: IconThemeData(
+          color: scheme.onSurfaceVariant,
+          size: 24,
+        ),
+        selectedLabelTextStyle: TextStyle(
+          color: scheme.onSurface,
+          fontWeight: FontWeight.w900,
+          fontSize: 12,
+          letterSpacing: 0.5,
+        ),
+        unselectedLabelTextStyle: TextStyle(
+          color: scheme.onSurfaceVariant,
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+        ),
       ),
       cardTheme: CardThemeData(
         clipBehavior: Clip.antiAlias,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          side: BorderSide(color: scheme.outlineVariant),
-          borderRadius: const BorderRadius.all(Radius.circular(12)),
+        color: scheme.surfaceContainerLow,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(28)),
         ),
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: scheme.primaryContainer,
+        foregroundColor: scheme.onPrimaryContainer,
+        elevation: 4,
+        hoverElevation: 8,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        extendedSizeConstraints: const BoxConstraints.tightFor(height: 56),
       ),
     );
   }

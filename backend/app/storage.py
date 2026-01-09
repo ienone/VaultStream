@@ -42,6 +42,10 @@ class StorageBackend:
         """检查对象是否存在"""
         raise NotImplementedError
 
+    async def get_bytes(self, key: str) -> bytes:
+        """读取对象的字节数据"""
+        raise NotImplementedError
+
     def get_url(self, *, key: str) -> Optional[str]:
         """获取对象的访问URL"""
         return None
@@ -67,6 +71,19 @@ class LocalStorageBackend(StorageBackend):
     async def exists(self, *, key: str) -> bool:
         path = self._full_path(key)
         return os.path.exists(path)
+
+    async def get_bytes(self, key: str) -> bytes:
+        path = self._full_path(key)
+
+        def read_file() -> bytes:
+            with open(path, "rb") as f:
+                return f.read()
+
+        try:
+            return await asyncio.to_thread(read_file)
+        except Exception as e:
+            logger.error(f"Read object failed: {key}, {e}")
+            raise
 
     def get_url(self, *, key: str) -> Optional[str]:
         if not self.public_base_url:

@@ -59,9 +59,25 @@ GoRouter goRouter(Ref ref) {
                 routes: [
                   GoRoute(
                     path: ':id',
-                    builder: (context, state) {
+                    pageBuilder: (context, state) {
                       final id = int.parse(state.pathParameters['id']!);
-                      return ContentDetailPage(contentId: id);
+                      final color = state.uri.queryParameters['color'];
+                      return CustomTransitionPage(
+                        key: state.pageKey,
+                        child: ContentDetailPage(
+                          contentId: id,
+                          initialColor: color,
+                        ),
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) {
+                              return FadeTransition(
+                                opacity: CurveTween(
+                                  curve: Curves.easeInOutCirc,
+                                ).animate(animation),
+                                child: child,
+                              );
+                            },
+                      );
                     },
                   ),
                 ],

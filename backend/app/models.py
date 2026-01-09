@@ -152,6 +152,7 @@ class Content(Base):
     author_name = Column(String(200))
     author_id = Column(String(100))
     cover_url = Column(Text)
+    cover_color = Column(String(20))  # M5: 封面主色调 (Hex)
     media_urls = Column(JSON, default=list)  # 媒体资源URL列表
     
     # 时间戳

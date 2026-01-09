@@ -15,6 +15,7 @@ _ShareCard _$ShareCardFromJson(Map<String, dynamic> json) => _ShareCard(
   description: json['description'] as String?,
   authorName: json['author_name'] as String?,
   coverUrl: json['cover_url'] as String?,
+  coverColor: json['cover_color'] as String?,
   mediaUrls:
       (json['media_urls'] as List<dynamic>?)
           ?.map((e) => e as String)
@@ -41,6 +42,7 @@ Map<String, dynamic> _$ShareCardToJson(_ShareCard instance) =>
       'description': instance.description,
       'author_name': instance.authorName,
       'cover_url': instance.coverUrl,
+      'cover_color': instance.coverColor,
       'media_urls': instance.mediaUrls,
       'tags': instance.tags,
       'view_count': instance.viewCount,
@@ -65,6 +67,7 @@ _ContentDetail _$ContentDetailFromJson(Map<String, dynamic> json) =>
       description: json['description'] as String?,
       authorName: json['author_name'] as String?,
       coverUrl: json['cover_url'] as String?,
+      coverColor: json['cover_color'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
       publishedAt: json['published_at'] == null
@@ -77,6 +80,9 @@ _ContentDetail _$ContentDetailFromJson(Map<String, dynamic> json) =>
           const [],
       viewCount: (json['view_count'] as num?)?.toInt() ?? 0,
       likeCount: (json['like_count'] as num?)?.toInt() ?? 0,
+      collectCount: (json['collect_count'] as num?)?.toInt() ?? 0,
+      shareCount: (json['share_count'] as num?)?.toInt() ?? 0,
+      commentCount: (json['comment_count'] as num?)?.toInt() ?? 0,
       extraStats: json['extra_stats'] as Map<String, dynamic>? ?? const {},
       rawMetadata: json['raw_metadata'] as Map<String, dynamic>?,
     );
@@ -97,12 +103,16 @@ Map<String, dynamic> _$ContentDetailToJson(_ContentDetail instance) =>
       'description': instance.description,
       'author_name': instance.authorName,
       'cover_url': instance.coverUrl,
+      'cover_color': instance.coverColor,
       'created_at': instance.createdAt.toIso8601String(),
       'updated_at': instance.updatedAt.toIso8601String(),
       'published_at': instance.publishedAt?.toIso8601String(),
       'media_urls': instance.mediaUrls,
       'view_count': instance.viewCount,
       'like_count': instance.likeCount,
+      'collect_count': instance.collectCount,
+      'share_count': instance.shareCount,
+      'comment_count': instance.commentCount,
       'extra_stats': instance.extraStats,
       'raw_metadata': instance.rawMetadata,
     };

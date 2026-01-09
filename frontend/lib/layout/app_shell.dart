@@ -84,9 +84,9 @@ class _DesktopShell extends StatelessWidget {
                 initialLocation: index == navigationShell.currentIndex,
               );
             },
-            extended:
-                MediaQuery.of(context).size.width >=
-                1200, // Extended Rail on large screens
+            extended: MediaQuery.of(context).size.width >= 1200,
+            minWidth: 80,
+            minExtendedWidth: 200,
             destinations: const [
               NavigationRailDestination(
                 icon: Icon(Icons.dashboard_outlined),
@@ -110,7 +110,6 @@ class _DesktopShell extends StatelessWidget {
               ),
             ],
           ),
-          const VerticalDivider(thickness: 1, width: 1),
           Expanded(child: navigationShell),
         ],
       ),

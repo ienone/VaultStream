@@ -15,7 +15,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$ShareCard {
 
- int get id; String get platform; String get url; String? get title; String? get summary; String? get description;@JsonKey(name: 'author_name') String? get authorName;@JsonKey(name: 'cover_url') String? get coverUrl;@JsonKey(name: 'media_urls') List<String> get mediaUrls; List<String> get tags;@JsonKey(name: 'view_count') int get viewCount;@JsonKey(name: 'like_count') int get likeCount;@JsonKey(name: 'published_at') DateTime? get publishedAt;@JsonKey(name: 'raw_metadata') Map<String, dynamic>? get rawMetadata;
+ int get id; String get platform; String get url; String? get title; String? get summary; String? get description;@JsonKey(name: 'author_name') String? get authorName;@JsonKey(name: 'cover_url') String? get coverUrl;@JsonKey(name: 'cover_color') String? get coverColor;@JsonKey(name: 'media_urls') List<String> get mediaUrls; List<String> get tags;@JsonKey(name: 'view_count') int get viewCount;@JsonKey(name: 'like_count') int get likeCount;@JsonKey(name: 'published_at') DateTime? get publishedAt;@JsonKey(name: 'raw_metadata') Map<String, dynamic>? get rawMetadata;
 /// Create a copy of ShareCard
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -28,16 +28,16 @@ $ShareCardCopyWith<ShareCard> get copyWith => _$ShareCardCopyWithImpl<ShareCard>
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is ShareCard&&(identical(other.id, id) || other.id == id)&&(identical(other.platform, platform) || other.platform == platform)&&(identical(other.url, url) || other.url == url)&&(identical(other.title, title) || other.title == title)&&(identical(other.summary, summary) || other.summary == summary)&&(identical(other.description, description) || other.description == description)&&(identical(other.authorName, authorName) || other.authorName == authorName)&&(identical(other.coverUrl, coverUrl) || other.coverUrl == coverUrl)&&const DeepCollectionEquality().equals(other.mediaUrls, mediaUrls)&&const DeepCollectionEquality().equals(other.tags, tags)&&(identical(other.viewCount, viewCount) || other.viewCount == viewCount)&&(identical(other.likeCount, likeCount) || other.likeCount == likeCount)&&(identical(other.publishedAt, publishedAt) || other.publishedAt == publishedAt)&&const DeepCollectionEquality().equals(other.rawMetadata, rawMetadata));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ShareCard&&(identical(other.id, id) || other.id == id)&&(identical(other.platform, platform) || other.platform == platform)&&(identical(other.url, url) || other.url == url)&&(identical(other.title, title) || other.title == title)&&(identical(other.summary, summary) || other.summary == summary)&&(identical(other.description, description) || other.description == description)&&(identical(other.authorName, authorName) || other.authorName == authorName)&&(identical(other.coverUrl, coverUrl) || other.coverUrl == coverUrl)&&(identical(other.coverColor, coverColor) || other.coverColor == coverColor)&&const DeepCollectionEquality().equals(other.mediaUrls, mediaUrls)&&const DeepCollectionEquality().equals(other.tags, tags)&&(identical(other.viewCount, viewCount) || other.viewCount == viewCount)&&(identical(other.likeCount, likeCount) || other.likeCount == likeCount)&&(identical(other.publishedAt, publishedAt) || other.publishedAt == publishedAt)&&const DeepCollectionEquality().equals(other.rawMetadata, rawMetadata));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,platform,url,title,summary,description,authorName,coverUrl,const DeepCollectionEquality().hash(mediaUrls),const DeepCollectionEquality().hash(tags),viewCount,likeCount,publishedAt,const DeepCollectionEquality().hash(rawMetadata));
+int get hashCode => Object.hash(runtimeType,id,platform,url,title,summary,description,authorName,coverUrl,coverColor,const DeepCollectionEquality().hash(mediaUrls),const DeepCollectionEquality().hash(tags),viewCount,likeCount,publishedAt,const DeepCollectionEquality().hash(rawMetadata));
 
 @override
 String toString() {
-  return 'ShareCard(id: $id, platform: $platform, url: $url, title: $title, summary: $summary, description: $description, authorName: $authorName, coverUrl: $coverUrl, mediaUrls: $mediaUrls, tags: $tags, viewCount: $viewCount, likeCount: $likeCount, publishedAt: $publishedAt, rawMetadata: $rawMetadata)';
+  return 'ShareCard(id: $id, platform: $platform, url: $url, title: $title, summary: $summary, description: $description, authorName: $authorName, coverUrl: $coverUrl, coverColor: $coverColor, mediaUrls: $mediaUrls, tags: $tags, viewCount: $viewCount, likeCount: $likeCount, publishedAt: $publishedAt, rawMetadata: $rawMetadata)';
 }
 
 
@@ -48,7 +48,7 @@ abstract mixin class $ShareCardCopyWith<$Res>  {
   factory $ShareCardCopyWith(ShareCard value, $Res Function(ShareCard) _then) = _$ShareCardCopyWithImpl;
 @useResult
 $Res call({
- int id, String platform, String url, String? title, String? summary, String? description,@JsonKey(name: 'author_name') String? authorName,@JsonKey(name: 'cover_url') String? coverUrl,@JsonKey(name: 'media_urls') List<String> mediaUrls, List<String> tags,@JsonKey(name: 'view_count') int viewCount,@JsonKey(name: 'like_count') int likeCount,@JsonKey(name: 'published_at') DateTime? publishedAt,@JsonKey(name: 'raw_metadata') Map<String, dynamic>? rawMetadata
+ int id, String platform, String url, String? title, String? summary, String? description,@JsonKey(name: 'author_name') String? authorName,@JsonKey(name: 'cover_url') String? coverUrl,@JsonKey(name: 'cover_color') String? coverColor,@JsonKey(name: 'media_urls') List<String> mediaUrls, List<String> tags,@JsonKey(name: 'view_count') int viewCount,@JsonKey(name: 'like_count') int likeCount,@JsonKey(name: 'published_at') DateTime? publishedAt,@JsonKey(name: 'raw_metadata') Map<String, dynamic>? rawMetadata
 });
 
 
@@ -65,7 +65,7 @@ class _$ShareCardCopyWithImpl<$Res>
 
 /// Create a copy of ShareCard
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? platform = null,Object? url = null,Object? title = freezed,Object? summary = freezed,Object? description = freezed,Object? authorName = freezed,Object? coverUrl = freezed,Object? mediaUrls = null,Object? tags = null,Object? viewCount = null,Object? likeCount = null,Object? publishedAt = freezed,Object? rawMetadata = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? platform = null,Object? url = null,Object? title = freezed,Object? summary = freezed,Object? description = freezed,Object? authorName = freezed,Object? coverUrl = freezed,Object? coverColor = freezed,Object? mediaUrls = null,Object? tags = null,Object? viewCount = null,Object? likeCount = null,Object? publishedAt = freezed,Object? rawMetadata = freezed,}) {
   return _then(_self.copyWith(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as int,platform: null == platform ? _self.platform : platform // ignore: cast_nullable_to_non_nullable
@@ -75,6 +75,7 @@ as String?,summary: freezed == summary ? _self.summary : summary // ignore: cast
 as String?,description: freezed == description ? _self.description : description // ignore: cast_nullable_to_non_nullable
 as String?,authorName: freezed == authorName ? _self.authorName : authorName // ignore: cast_nullable_to_non_nullable
 as String?,coverUrl: freezed == coverUrl ? _self.coverUrl : coverUrl // ignore: cast_nullable_to_non_nullable
+as String?,coverColor: freezed == coverColor ? _self.coverColor : coverColor // ignore: cast_nullable_to_non_nullable
 as String?,mediaUrls: null == mediaUrls ? _self.mediaUrls : mediaUrls // ignore: cast_nullable_to_non_nullable
 as List<String>,tags: null == tags ? _self.tags : tags // ignore: cast_nullable_to_non_nullable
 as List<String>,viewCount: null == viewCount ? _self.viewCount : viewCount // ignore: cast_nullable_to_non_nullable
@@ -166,10 +167,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( int id,  String platform,  String url,  String? title,  String? summary,  String? description, @JsonKey(name: 'author_name')  String? authorName, @JsonKey(name: 'cover_url')  String? coverUrl, @JsonKey(name: 'media_urls')  List<String> mediaUrls,  List<String> tags, @JsonKey(name: 'view_count')  int viewCount, @JsonKey(name: 'like_count')  int likeCount, @JsonKey(name: 'published_at')  DateTime? publishedAt, @JsonKey(name: 'raw_metadata')  Map<String, dynamic>? rawMetadata)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( int id,  String platform,  String url,  String? title,  String? summary,  String? description, @JsonKey(name: 'author_name')  String? authorName, @JsonKey(name: 'cover_url')  String? coverUrl, @JsonKey(name: 'cover_color')  String? coverColor, @JsonKey(name: 'media_urls')  List<String> mediaUrls,  List<String> tags, @JsonKey(name: 'view_count')  int viewCount, @JsonKey(name: 'like_count')  int likeCount, @JsonKey(name: 'published_at')  DateTime? publishedAt, @JsonKey(name: 'raw_metadata')  Map<String, dynamic>? rawMetadata)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _ShareCard() when $default != null:
-return $default(_that.id,_that.platform,_that.url,_that.title,_that.summary,_that.description,_that.authorName,_that.coverUrl,_that.mediaUrls,_that.tags,_that.viewCount,_that.likeCount,_that.publishedAt,_that.rawMetadata);case _:
+return $default(_that.id,_that.platform,_that.url,_that.title,_that.summary,_that.description,_that.authorName,_that.coverUrl,_that.coverColor,_that.mediaUrls,_that.tags,_that.viewCount,_that.likeCount,_that.publishedAt,_that.rawMetadata);case _:
   return orElse();
 
 }
@@ -187,10 +188,10 @@ return $default(_that.id,_that.platform,_that.url,_that.title,_that.summary,_tha
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( int id,  String platform,  String url,  String? title,  String? summary,  String? description, @JsonKey(name: 'author_name')  String? authorName, @JsonKey(name: 'cover_url')  String? coverUrl, @JsonKey(name: 'media_urls')  List<String> mediaUrls,  List<String> tags, @JsonKey(name: 'view_count')  int viewCount, @JsonKey(name: 'like_count')  int likeCount, @JsonKey(name: 'published_at')  DateTime? publishedAt, @JsonKey(name: 'raw_metadata')  Map<String, dynamic>? rawMetadata)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( int id,  String platform,  String url,  String? title,  String? summary,  String? description, @JsonKey(name: 'author_name')  String? authorName, @JsonKey(name: 'cover_url')  String? coverUrl, @JsonKey(name: 'cover_color')  String? coverColor, @JsonKey(name: 'media_urls')  List<String> mediaUrls,  List<String> tags, @JsonKey(name: 'view_count')  int viewCount, @JsonKey(name: 'like_count')  int likeCount, @JsonKey(name: 'published_at')  DateTime? publishedAt, @JsonKey(name: 'raw_metadata')  Map<String, dynamic>? rawMetadata)  $default,) {final _that = this;
 switch (_that) {
 case _ShareCard():
-return $default(_that.id,_that.platform,_that.url,_that.title,_that.summary,_that.description,_that.authorName,_that.coverUrl,_that.mediaUrls,_that.tags,_that.viewCount,_that.likeCount,_that.publishedAt,_that.rawMetadata);case _:
+return $default(_that.id,_that.platform,_that.url,_that.title,_that.summary,_that.description,_that.authorName,_that.coverUrl,_that.coverColor,_that.mediaUrls,_that.tags,_that.viewCount,_that.likeCount,_that.publishedAt,_that.rawMetadata);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -207,10 +208,10 @@ return $default(_that.id,_that.platform,_that.url,_that.title,_that.summary,_tha
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( int id,  String platform,  String url,  String? title,  String? summary,  String? description, @JsonKey(name: 'author_name')  String? authorName, @JsonKey(name: 'cover_url')  String? coverUrl, @JsonKey(name: 'media_urls')  List<String> mediaUrls,  List<String> tags, @JsonKey(name: 'view_count')  int viewCount, @JsonKey(name: 'like_count')  int likeCount, @JsonKey(name: 'published_at')  DateTime? publishedAt, @JsonKey(name: 'raw_metadata')  Map<String, dynamic>? rawMetadata)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( int id,  String platform,  String url,  String? title,  String? summary,  String? description, @JsonKey(name: 'author_name')  String? authorName, @JsonKey(name: 'cover_url')  String? coverUrl, @JsonKey(name: 'cover_color')  String? coverColor, @JsonKey(name: 'media_urls')  List<String> mediaUrls,  List<String> tags, @JsonKey(name: 'view_count')  int viewCount, @JsonKey(name: 'like_count')  int likeCount, @JsonKey(name: 'published_at')  DateTime? publishedAt, @JsonKey(name: 'raw_metadata')  Map<String, dynamic>? rawMetadata)?  $default,) {final _that = this;
 switch (_that) {
 case _ShareCard() when $default != null:
-return $default(_that.id,_that.platform,_that.url,_that.title,_that.summary,_that.description,_that.authorName,_that.coverUrl,_that.mediaUrls,_that.tags,_that.viewCount,_that.likeCount,_that.publishedAt,_that.rawMetadata);case _:
+return $default(_that.id,_that.platform,_that.url,_that.title,_that.summary,_that.description,_that.authorName,_that.coverUrl,_that.coverColor,_that.mediaUrls,_that.tags,_that.viewCount,_that.likeCount,_that.publishedAt,_that.rawMetadata);case _:
   return null;
 
 }
@@ -222,7 +223,7 @@ return $default(_that.id,_that.platform,_that.url,_that.title,_that.summary,_tha
 @JsonSerializable()
 
 class _ShareCard implements ShareCard {
-  const _ShareCard({required this.id, required this.platform, required this.url, this.title, this.summary, this.description, @JsonKey(name: 'author_name') this.authorName, @JsonKey(name: 'cover_url') this.coverUrl, @JsonKey(name: 'media_urls') final  List<String> mediaUrls = const [], final  List<String> tags = const [], @JsonKey(name: 'view_count') this.viewCount = 0, @JsonKey(name: 'like_count') this.likeCount = 0, @JsonKey(name: 'published_at') this.publishedAt, @JsonKey(name: 'raw_metadata') final  Map<String, dynamic>? rawMetadata}): _mediaUrls = mediaUrls,_tags = tags,_rawMetadata = rawMetadata;
+  const _ShareCard({required this.id, required this.platform, required this.url, this.title, this.summary, this.description, @JsonKey(name: 'author_name') this.authorName, @JsonKey(name: 'cover_url') this.coverUrl, @JsonKey(name: 'cover_color') this.coverColor, @JsonKey(name: 'media_urls') final  List<String> mediaUrls = const [], final  List<String> tags = const [], @JsonKey(name: 'view_count') this.viewCount = 0, @JsonKey(name: 'like_count') this.likeCount = 0, @JsonKey(name: 'published_at') this.publishedAt, @JsonKey(name: 'raw_metadata') final  Map<String, dynamic>? rawMetadata}): _mediaUrls = mediaUrls,_tags = tags,_rawMetadata = rawMetadata;
   factory _ShareCard.fromJson(Map<String, dynamic> json) => _$ShareCardFromJson(json);
 
 @override final  int id;
@@ -233,6 +234,7 @@ class _ShareCard implements ShareCard {
 @override final  String? description;
 @override@JsonKey(name: 'author_name') final  String? authorName;
 @override@JsonKey(name: 'cover_url') final  String? coverUrl;
+@override@JsonKey(name: 'cover_color') final  String? coverColor;
  final  List<String> _mediaUrls;
 @override@JsonKey(name: 'media_urls') List<String> get mediaUrls {
   if (_mediaUrls is EqualUnmodifiableListView) return _mediaUrls;
@@ -273,16 +275,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ShareCard&&(identical(other.id, id) || other.id == id)&&(identical(other.platform, platform) || other.platform == platform)&&(identical(other.url, url) || other.url == url)&&(identical(other.title, title) || other.title == title)&&(identical(other.summary, summary) || other.summary == summary)&&(identical(other.description, description) || other.description == description)&&(identical(other.authorName, authorName) || other.authorName == authorName)&&(identical(other.coverUrl, coverUrl) || other.coverUrl == coverUrl)&&const DeepCollectionEquality().equals(other._mediaUrls, _mediaUrls)&&const DeepCollectionEquality().equals(other._tags, _tags)&&(identical(other.viewCount, viewCount) || other.viewCount == viewCount)&&(identical(other.likeCount, likeCount) || other.likeCount == likeCount)&&(identical(other.publishedAt, publishedAt) || other.publishedAt == publishedAt)&&const DeepCollectionEquality().equals(other._rawMetadata, _rawMetadata));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ShareCard&&(identical(other.id, id) || other.id == id)&&(identical(other.platform, platform) || other.platform == platform)&&(identical(other.url, url) || other.url == url)&&(identical(other.title, title) || other.title == title)&&(identical(other.summary, summary) || other.summary == summary)&&(identical(other.description, description) || other.description == description)&&(identical(other.authorName, authorName) || other.authorName == authorName)&&(identical(other.coverUrl, coverUrl) || other.coverUrl == coverUrl)&&(identical(other.coverColor, coverColor) || other.coverColor == coverColor)&&const DeepCollectionEquality().equals(other._mediaUrls, _mediaUrls)&&const DeepCollectionEquality().equals(other._tags, _tags)&&(identical(other.viewCount, viewCount) || other.viewCount == viewCount)&&(identical(other.likeCount, likeCount) || other.likeCount == likeCount)&&(identical(other.publishedAt, publishedAt) || other.publishedAt == publishedAt)&&const DeepCollectionEquality().equals(other._rawMetadata, _rawMetadata));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,platform,url,title,summary,description,authorName,coverUrl,const DeepCollectionEquality().hash(_mediaUrls),const DeepCollectionEquality().hash(_tags),viewCount,likeCount,publishedAt,const DeepCollectionEquality().hash(_rawMetadata));
+int get hashCode => Object.hash(runtimeType,id,platform,url,title,summary,description,authorName,coverUrl,coverColor,const DeepCollectionEquality().hash(_mediaUrls),const DeepCollectionEquality().hash(_tags),viewCount,likeCount,publishedAt,const DeepCollectionEquality().hash(_rawMetadata));
 
 @override
 String toString() {
-  return 'ShareCard(id: $id, platform: $platform, url: $url, title: $title, summary: $summary, description: $description, authorName: $authorName, coverUrl: $coverUrl, mediaUrls: $mediaUrls, tags: $tags, viewCount: $viewCount, likeCount: $likeCount, publishedAt: $publishedAt, rawMetadata: $rawMetadata)';
+  return 'ShareCard(id: $id, platform: $platform, url: $url, title: $title, summary: $summary, description: $description, authorName: $authorName, coverUrl: $coverUrl, coverColor: $coverColor, mediaUrls: $mediaUrls, tags: $tags, viewCount: $viewCount, likeCount: $likeCount, publishedAt: $publishedAt, rawMetadata: $rawMetadata)';
 }
 
 
@@ -293,7 +295,7 @@ abstract mixin class _$ShareCardCopyWith<$Res> implements $ShareCardCopyWith<$Re
   factory _$ShareCardCopyWith(_ShareCard value, $Res Function(_ShareCard) _then) = __$ShareCardCopyWithImpl;
 @override @useResult
 $Res call({
- int id, String platform, String url, String? title, String? summary, String? description,@JsonKey(name: 'author_name') String? authorName,@JsonKey(name: 'cover_url') String? coverUrl,@JsonKey(name: 'media_urls') List<String> mediaUrls, List<String> tags,@JsonKey(name: 'view_count') int viewCount,@JsonKey(name: 'like_count') int likeCount,@JsonKey(name: 'published_at') DateTime? publishedAt,@JsonKey(name: 'raw_metadata') Map<String, dynamic>? rawMetadata
+ int id, String platform, String url, String? title, String? summary, String? description,@JsonKey(name: 'author_name') String? authorName,@JsonKey(name: 'cover_url') String? coverUrl,@JsonKey(name: 'cover_color') String? coverColor,@JsonKey(name: 'media_urls') List<String> mediaUrls, List<String> tags,@JsonKey(name: 'view_count') int viewCount,@JsonKey(name: 'like_count') int likeCount,@JsonKey(name: 'published_at') DateTime? publishedAt,@JsonKey(name: 'raw_metadata') Map<String, dynamic>? rawMetadata
 });
 
 
@@ -310,7 +312,7 @@ class __$ShareCardCopyWithImpl<$Res>
 
 /// Create a copy of ShareCard
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? platform = null,Object? url = null,Object? title = freezed,Object? summary = freezed,Object? description = freezed,Object? authorName = freezed,Object? coverUrl = freezed,Object? mediaUrls = null,Object? tags = null,Object? viewCount = null,Object? likeCount = null,Object? publishedAt = freezed,Object? rawMetadata = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? platform = null,Object? url = null,Object? title = freezed,Object? summary = freezed,Object? description = freezed,Object? authorName = freezed,Object? coverUrl = freezed,Object? coverColor = freezed,Object? mediaUrls = null,Object? tags = null,Object? viewCount = null,Object? likeCount = null,Object? publishedAt = freezed,Object? rawMetadata = freezed,}) {
   return _then(_ShareCard(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as int,platform: null == platform ? _self.platform : platform // ignore: cast_nullable_to_non_nullable
@@ -320,6 +322,7 @@ as String?,summary: freezed == summary ? _self.summary : summary // ignore: cast
 as String?,description: freezed == description ? _self.description : description // ignore: cast_nullable_to_non_nullable
 as String?,authorName: freezed == authorName ? _self.authorName : authorName // ignore: cast_nullable_to_non_nullable
 as String?,coverUrl: freezed == coverUrl ? _self.coverUrl : coverUrl // ignore: cast_nullable_to_non_nullable
+as String?,coverColor: freezed == coverColor ? _self.coverColor : coverColor // ignore: cast_nullable_to_non_nullable
 as String?,mediaUrls: null == mediaUrls ? _self._mediaUrls : mediaUrls // ignore: cast_nullable_to_non_nullable
 as List<String>,tags: null == tags ? _self._tags : tags // ignore: cast_nullable_to_non_nullable
 as List<String>,viewCount: null == viewCount ? _self.viewCount : viewCount // ignore: cast_nullable_to_non_nullable
@@ -337,7 +340,7 @@ as Map<String, dynamic>?,
 /// @nodoc
 mixin _$ContentDetail {
 
- int get id; String get platform;@JsonKey(name: 'platform_id') String? get platformId;@JsonKey(name: 'content_type') String? get contentType; String get url;@JsonKey(name: 'clean_url') String? get cleanUrl; String get status;@JsonKey(name: 'review_status') String? get reviewStatus; List<String> get tags;@JsonKey(name: 'is_nsfw') bool get isNsfw; String? get title; String? get description;@JsonKey(name: 'author_name') String? get authorName;@JsonKey(name: 'cover_url') String? get coverUrl;@JsonKey(name: 'created_at') DateTime get createdAt;@JsonKey(name: 'updated_at') DateTime get updatedAt;@JsonKey(name: 'published_at') DateTime? get publishedAt;@JsonKey(name: 'media_urls') List<String> get mediaUrls;@JsonKey(name: 'view_count') int get viewCount;@JsonKey(name: 'like_count') int get likeCount;@JsonKey(name: 'extra_stats') Map<String, dynamic> get extraStats;@JsonKey(name: 'raw_metadata') Map<String, dynamic>? get rawMetadata;
+ int get id; String get platform;@JsonKey(name: 'platform_id') String? get platformId;@JsonKey(name: 'content_type') String? get contentType; String get url;@JsonKey(name: 'clean_url') String? get cleanUrl; String get status;@JsonKey(name: 'review_status') String? get reviewStatus; List<String> get tags;@JsonKey(name: 'is_nsfw') bool get isNsfw; String? get title; String? get description;@JsonKey(name: 'author_name') String? get authorName;@JsonKey(name: 'cover_url') String? get coverUrl;@JsonKey(name: 'cover_color') String? get coverColor;@JsonKey(name: 'created_at') DateTime get createdAt;@JsonKey(name: 'updated_at') DateTime get updatedAt;@JsonKey(name: 'published_at') DateTime? get publishedAt;@JsonKey(name: 'media_urls') List<String> get mediaUrls;@JsonKey(name: 'view_count') int get viewCount;@JsonKey(name: 'like_count') int get likeCount;@JsonKey(name: 'collect_count') int get collectCount;@JsonKey(name: 'share_count') int get shareCount;@JsonKey(name: 'comment_count') int get commentCount;@JsonKey(name: 'extra_stats') Map<String, dynamic> get extraStats;@JsonKey(name: 'raw_metadata') Map<String, dynamic>? get rawMetadata;
 /// Create a copy of ContentDetail
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -350,16 +353,16 @@ $ContentDetailCopyWith<ContentDetail> get copyWith => _$ContentDetailCopyWithImp
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is ContentDetail&&(identical(other.id, id) || other.id == id)&&(identical(other.platform, platform) || other.platform == platform)&&(identical(other.platformId, platformId) || other.platformId == platformId)&&(identical(other.contentType, contentType) || other.contentType == contentType)&&(identical(other.url, url) || other.url == url)&&(identical(other.cleanUrl, cleanUrl) || other.cleanUrl == cleanUrl)&&(identical(other.status, status) || other.status == status)&&(identical(other.reviewStatus, reviewStatus) || other.reviewStatus == reviewStatus)&&const DeepCollectionEquality().equals(other.tags, tags)&&(identical(other.isNsfw, isNsfw) || other.isNsfw == isNsfw)&&(identical(other.title, title) || other.title == title)&&(identical(other.description, description) || other.description == description)&&(identical(other.authorName, authorName) || other.authorName == authorName)&&(identical(other.coverUrl, coverUrl) || other.coverUrl == coverUrl)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt)&&(identical(other.publishedAt, publishedAt) || other.publishedAt == publishedAt)&&const DeepCollectionEquality().equals(other.mediaUrls, mediaUrls)&&(identical(other.viewCount, viewCount) || other.viewCount == viewCount)&&(identical(other.likeCount, likeCount) || other.likeCount == likeCount)&&const DeepCollectionEquality().equals(other.extraStats, extraStats)&&const DeepCollectionEquality().equals(other.rawMetadata, rawMetadata));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ContentDetail&&(identical(other.id, id) || other.id == id)&&(identical(other.platform, platform) || other.platform == platform)&&(identical(other.platformId, platformId) || other.platformId == platformId)&&(identical(other.contentType, contentType) || other.contentType == contentType)&&(identical(other.url, url) || other.url == url)&&(identical(other.cleanUrl, cleanUrl) || other.cleanUrl == cleanUrl)&&(identical(other.status, status) || other.status == status)&&(identical(other.reviewStatus, reviewStatus) || other.reviewStatus == reviewStatus)&&const DeepCollectionEquality().equals(other.tags, tags)&&(identical(other.isNsfw, isNsfw) || other.isNsfw == isNsfw)&&(identical(other.title, title) || other.title == title)&&(identical(other.description, description) || other.description == description)&&(identical(other.authorName, authorName) || other.authorName == authorName)&&(identical(other.coverUrl, coverUrl) || other.coverUrl == coverUrl)&&(identical(other.coverColor, coverColor) || other.coverColor == coverColor)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt)&&(identical(other.publishedAt, publishedAt) || other.publishedAt == publishedAt)&&const DeepCollectionEquality().equals(other.mediaUrls, mediaUrls)&&(identical(other.viewCount, viewCount) || other.viewCount == viewCount)&&(identical(other.likeCount, likeCount) || other.likeCount == likeCount)&&(identical(other.collectCount, collectCount) || other.collectCount == collectCount)&&(identical(other.shareCount, shareCount) || other.shareCount == shareCount)&&(identical(other.commentCount, commentCount) || other.commentCount == commentCount)&&const DeepCollectionEquality().equals(other.extraStats, extraStats)&&const DeepCollectionEquality().equals(other.rawMetadata, rawMetadata));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hashAll([runtimeType,id,platform,platformId,contentType,url,cleanUrl,status,reviewStatus,const DeepCollectionEquality().hash(tags),isNsfw,title,description,authorName,coverUrl,createdAt,updatedAt,publishedAt,const DeepCollectionEquality().hash(mediaUrls),viewCount,likeCount,const DeepCollectionEquality().hash(extraStats),const DeepCollectionEquality().hash(rawMetadata)]);
+int get hashCode => Object.hashAll([runtimeType,id,platform,platformId,contentType,url,cleanUrl,status,reviewStatus,const DeepCollectionEquality().hash(tags),isNsfw,title,description,authorName,coverUrl,coverColor,createdAt,updatedAt,publishedAt,const DeepCollectionEquality().hash(mediaUrls),viewCount,likeCount,collectCount,shareCount,commentCount,const DeepCollectionEquality().hash(extraStats),const DeepCollectionEquality().hash(rawMetadata)]);
 
 @override
 String toString() {
-  return 'ContentDetail(id: $id, platform: $platform, platformId: $platformId, contentType: $contentType, url: $url, cleanUrl: $cleanUrl, status: $status, reviewStatus: $reviewStatus, tags: $tags, isNsfw: $isNsfw, title: $title, description: $description, authorName: $authorName, coverUrl: $coverUrl, createdAt: $createdAt, updatedAt: $updatedAt, publishedAt: $publishedAt, mediaUrls: $mediaUrls, viewCount: $viewCount, likeCount: $likeCount, extraStats: $extraStats, rawMetadata: $rawMetadata)';
+  return 'ContentDetail(id: $id, platform: $platform, platformId: $platformId, contentType: $contentType, url: $url, cleanUrl: $cleanUrl, status: $status, reviewStatus: $reviewStatus, tags: $tags, isNsfw: $isNsfw, title: $title, description: $description, authorName: $authorName, coverUrl: $coverUrl, coverColor: $coverColor, createdAt: $createdAt, updatedAt: $updatedAt, publishedAt: $publishedAt, mediaUrls: $mediaUrls, viewCount: $viewCount, likeCount: $likeCount, collectCount: $collectCount, shareCount: $shareCount, commentCount: $commentCount, extraStats: $extraStats, rawMetadata: $rawMetadata)';
 }
 
 
@@ -370,7 +373,7 @@ abstract mixin class $ContentDetailCopyWith<$Res>  {
   factory $ContentDetailCopyWith(ContentDetail value, $Res Function(ContentDetail) _then) = _$ContentDetailCopyWithImpl;
 @useResult
 $Res call({
- int id, String platform,@JsonKey(name: 'platform_id') String? platformId,@JsonKey(name: 'content_type') String? contentType, String url,@JsonKey(name: 'clean_url') String? cleanUrl, String status,@JsonKey(name: 'review_status') String? reviewStatus, List<String> tags,@JsonKey(name: 'is_nsfw') bool isNsfw, String? title, String? description,@JsonKey(name: 'author_name') String? authorName,@JsonKey(name: 'cover_url') String? coverUrl,@JsonKey(name: 'created_at') DateTime createdAt,@JsonKey(name: 'updated_at') DateTime updatedAt,@JsonKey(name: 'published_at') DateTime? publishedAt,@JsonKey(name: 'media_urls') List<String> mediaUrls,@JsonKey(name: 'view_count') int viewCount,@JsonKey(name: 'like_count') int likeCount,@JsonKey(name: 'extra_stats') Map<String, dynamic> extraStats,@JsonKey(name: 'raw_metadata') Map<String, dynamic>? rawMetadata
+ int id, String platform,@JsonKey(name: 'platform_id') String? platformId,@JsonKey(name: 'content_type') String? contentType, String url,@JsonKey(name: 'clean_url') String? cleanUrl, String status,@JsonKey(name: 'review_status') String? reviewStatus, List<String> tags,@JsonKey(name: 'is_nsfw') bool isNsfw, String? title, String? description,@JsonKey(name: 'author_name') String? authorName,@JsonKey(name: 'cover_url') String? coverUrl,@JsonKey(name: 'cover_color') String? coverColor,@JsonKey(name: 'created_at') DateTime createdAt,@JsonKey(name: 'updated_at') DateTime updatedAt,@JsonKey(name: 'published_at') DateTime? publishedAt,@JsonKey(name: 'media_urls') List<String> mediaUrls,@JsonKey(name: 'view_count') int viewCount,@JsonKey(name: 'like_count') int likeCount,@JsonKey(name: 'collect_count') int collectCount,@JsonKey(name: 'share_count') int shareCount,@JsonKey(name: 'comment_count') int commentCount,@JsonKey(name: 'extra_stats') Map<String, dynamic> extraStats,@JsonKey(name: 'raw_metadata') Map<String, dynamic>? rawMetadata
 });
 
 
@@ -387,7 +390,7 @@ class _$ContentDetailCopyWithImpl<$Res>
 
 /// Create a copy of ContentDetail
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? platform = null,Object? platformId = freezed,Object? contentType = freezed,Object? url = null,Object? cleanUrl = freezed,Object? status = null,Object? reviewStatus = freezed,Object? tags = null,Object? isNsfw = null,Object? title = freezed,Object? description = freezed,Object? authorName = freezed,Object? coverUrl = freezed,Object? createdAt = null,Object? updatedAt = null,Object? publishedAt = freezed,Object? mediaUrls = null,Object? viewCount = null,Object? likeCount = null,Object? extraStats = null,Object? rawMetadata = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? platform = null,Object? platformId = freezed,Object? contentType = freezed,Object? url = null,Object? cleanUrl = freezed,Object? status = null,Object? reviewStatus = freezed,Object? tags = null,Object? isNsfw = null,Object? title = freezed,Object? description = freezed,Object? authorName = freezed,Object? coverUrl = freezed,Object? coverColor = freezed,Object? createdAt = null,Object? updatedAt = null,Object? publishedAt = freezed,Object? mediaUrls = null,Object? viewCount = null,Object? likeCount = null,Object? collectCount = null,Object? shareCount = null,Object? commentCount = null,Object? extraStats = null,Object? rawMetadata = freezed,}) {
   return _then(_self.copyWith(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as int,platform: null == platform ? _self.platform : platform // ignore: cast_nullable_to_non_nullable
@@ -403,12 +406,16 @@ as bool,title: freezed == title ? _self.title : title // ignore: cast_nullable_t
 as String?,description: freezed == description ? _self.description : description // ignore: cast_nullable_to_non_nullable
 as String?,authorName: freezed == authorName ? _self.authorName : authorName // ignore: cast_nullable_to_non_nullable
 as String?,coverUrl: freezed == coverUrl ? _self.coverUrl : coverUrl // ignore: cast_nullable_to_non_nullable
+as String?,coverColor: freezed == coverColor ? _self.coverColor : coverColor // ignore: cast_nullable_to_non_nullable
 as String?,createdAt: null == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
 as DateTime,updatedAt: null == updatedAt ? _self.updatedAt : updatedAt // ignore: cast_nullable_to_non_nullable
 as DateTime,publishedAt: freezed == publishedAt ? _self.publishedAt : publishedAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,mediaUrls: null == mediaUrls ? _self.mediaUrls : mediaUrls // ignore: cast_nullable_to_non_nullable
 as List<String>,viewCount: null == viewCount ? _self.viewCount : viewCount // ignore: cast_nullable_to_non_nullable
 as int,likeCount: null == likeCount ? _self.likeCount : likeCount // ignore: cast_nullable_to_non_nullable
+as int,collectCount: null == collectCount ? _self.collectCount : collectCount // ignore: cast_nullable_to_non_nullable
+as int,shareCount: null == shareCount ? _self.shareCount : shareCount // ignore: cast_nullable_to_non_nullable
+as int,commentCount: null == commentCount ? _self.commentCount : commentCount // ignore: cast_nullable_to_non_nullable
 as int,extraStats: null == extraStats ? _self.extraStats : extraStats // ignore: cast_nullable_to_non_nullable
 as Map<String, dynamic>,rawMetadata: freezed == rawMetadata ? _self.rawMetadata : rawMetadata // ignore: cast_nullable_to_non_nullable
 as Map<String, dynamic>?,
@@ -496,10 +503,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( int id,  String platform, @JsonKey(name: 'platform_id')  String? platformId, @JsonKey(name: 'content_type')  String? contentType,  String url, @JsonKey(name: 'clean_url')  String? cleanUrl,  String status, @JsonKey(name: 'review_status')  String? reviewStatus,  List<String> tags, @JsonKey(name: 'is_nsfw')  bool isNsfw,  String? title,  String? description, @JsonKey(name: 'author_name')  String? authorName, @JsonKey(name: 'cover_url')  String? coverUrl, @JsonKey(name: 'created_at')  DateTime createdAt, @JsonKey(name: 'updated_at')  DateTime updatedAt, @JsonKey(name: 'published_at')  DateTime? publishedAt, @JsonKey(name: 'media_urls')  List<String> mediaUrls, @JsonKey(name: 'view_count')  int viewCount, @JsonKey(name: 'like_count')  int likeCount, @JsonKey(name: 'extra_stats')  Map<String, dynamic> extraStats, @JsonKey(name: 'raw_metadata')  Map<String, dynamic>? rawMetadata)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( int id,  String platform, @JsonKey(name: 'platform_id')  String? platformId, @JsonKey(name: 'content_type')  String? contentType,  String url, @JsonKey(name: 'clean_url')  String? cleanUrl,  String status, @JsonKey(name: 'review_status')  String? reviewStatus,  List<String> tags, @JsonKey(name: 'is_nsfw')  bool isNsfw,  String? title,  String? description, @JsonKey(name: 'author_name')  String? authorName, @JsonKey(name: 'cover_url')  String? coverUrl, @JsonKey(name: 'cover_color')  String? coverColor, @JsonKey(name: 'created_at')  DateTime createdAt, @JsonKey(name: 'updated_at')  DateTime updatedAt, @JsonKey(name: 'published_at')  DateTime? publishedAt, @JsonKey(name: 'media_urls')  List<String> mediaUrls, @JsonKey(name: 'view_count')  int viewCount, @JsonKey(name: 'like_count')  int likeCount, @JsonKey(name: 'collect_count')  int collectCount, @JsonKey(name: 'share_count')  int shareCount, @JsonKey(name: 'comment_count')  int commentCount, @JsonKey(name: 'extra_stats')  Map<String, dynamic> extraStats, @JsonKey(name: 'raw_metadata')  Map<String, dynamic>? rawMetadata)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _ContentDetail() when $default != null:
-return $default(_that.id,_that.platform,_that.platformId,_that.contentType,_that.url,_that.cleanUrl,_that.status,_that.reviewStatus,_that.tags,_that.isNsfw,_that.title,_that.description,_that.authorName,_that.coverUrl,_that.createdAt,_that.updatedAt,_that.publishedAt,_that.mediaUrls,_that.viewCount,_that.likeCount,_that.extraStats,_that.rawMetadata);case _:
+return $default(_that.id,_that.platform,_that.platformId,_that.contentType,_that.url,_that.cleanUrl,_that.status,_that.reviewStatus,_that.tags,_that.isNsfw,_that.title,_that.description,_that.authorName,_that.coverUrl,_that.coverColor,_that.createdAt,_that.updatedAt,_that.publishedAt,_that.mediaUrls,_that.viewCount,_that.likeCount,_that.collectCount,_that.shareCount,_that.commentCount,_that.extraStats,_that.rawMetadata);case _:
   return orElse();
 
 }
@@ -517,10 +524,10 @@ return $default(_that.id,_that.platform,_that.platformId,_that.contentType,_that
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( int id,  String platform, @JsonKey(name: 'platform_id')  String? platformId, @JsonKey(name: 'content_type')  String? contentType,  String url, @JsonKey(name: 'clean_url')  String? cleanUrl,  String status, @JsonKey(name: 'review_status')  String? reviewStatus,  List<String> tags, @JsonKey(name: 'is_nsfw')  bool isNsfw,  String? title,  String? description, @JsonKey(name: 'author_name')  String? authorName, @JsonKey(name: 'cover_url')  String? coverUrl, @JsonKey(name: 'created_at')  DateTime createdAt, @JsonKey(name: 'updated_at')  DateTime updatedAt, @JsonKey(name: 'published_at')  DateTime? publishedAt, @JsonKey(name: 'media_urls')  List<String> mediaUrls, @JsonKey(name: 'view_count')  int viewCount, @JsonKey(name: 'like_count')  int likeCount, @JsonKey(name: 'extra_stats')  Map<String, dynamic> extraStats, @JsonKey(name: 'raw_metadata')  Map<String, dynamic>? rawMetadata)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( int id,  String platform, @JsonKey(name: 'platform_id')  String? platformId, @JsonKey(name: 'content_type')  String? contentType,  String url, @JsonKey(name: 'clean_url')  String? cleanUrl,  String status, @JsonKey(name: 'review_status')  String? reviewStatus,  List<String> tags, @JsonKey(name: 'is_nsfw')  bool isNsfw,  String? title,  String? description, @JsonKey(name: 'author_name')  String? authorName, @JsonKey(name: 'cover_url')  String? coverUrl, @JsonKey(name: 'cover_color')  String? coverColor, @JsonKey(name: 'created_at')  DateTime createdAt, @JsonKey(name: 'updated_at')  DateTime updatedAt, @JsonKey(name: 'published_at')  DateTime? publishedAt, @JsonKey(name: 'media_urls')  List<String> mediaUrls, @JsonKey(name: 'view_count')  int viewCount, @JsonKey(name: 'like_count')  int likeCount, @JsonKey(name: 'collect_count')  int collectCount, @JsonKey(name: 'share_count')  int shareCount, @JsonKey(name: 'comment_count')  int commentCount, @JsonKey(name: 'extra_stats')  Map<String, dynamic> extraStats, @JsonKey(name: 'raw_metadata')  Map<String, dynamic>? rawMetadata)  $default,) {final _that = this;
 switch (_that) {
 case _ContentDetail():
-return $default(_that.id,_that.platform,_that.platformId,_that.contentType,_that.url,_that.cleanUrl,_that.status,_that.reviewStatus,_that.tags,_that.isNsfw,_that.title,_that.description,_that.authorName,_that.coverUrl,_that.createdAt,_that.updatedAt,_that.publishedAt,_that.mediaUrls,_that.viewCount,_that.likeCount,_that.extraStats,_that.rawMetadata);case _:
+return $default(_that.id,_that.platform,_that.platformId,_that.contentType,_that.url,_that.cleanUrl,_that.status,_that.reviewStatus,_that.tags,_that.isNsfw,_that.title,_that.description,_that.authorName,_that.coverUrl,_that.coverColor,_that.createdAt,_that.updatedAt,_that.publishedAt,_that.mediaUrls,_that.viewCount,_that.likeCount,_that.collectCount,_that.shareCount,_that.commentCount,_that.extraStats,_that.rawMetadata);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -537,10 +544,10 @@ return $default(_that.id,_that.platform,_that.platformId,_that.contentType,_that
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( int id,  String platform, @JsonKey(name: 'platform_id')  String? platformId, @JsonKey(name: 'content_type')  String? contentType,  String url, @JsonKey(name: 'clean_url')  String? cleanUrl,  String status, @JsonKey(name: 'review_status')  String? reviewStatus,  List<String> tags, @JsonKey(name: 'is_nsfw')  bool isNsfw,  String? title,  String? description, @JsonKey(name: 'author_name')  String? authorName, @JsonKey(name: 'cover_url')  String? coverUrl, @JsonKey(name: 'created_at')  DateTime createdAt, @JsonKey(name: 'updated_at')  DateTime updatedAt, @JsonKey(name: 'published_at')  DateTime? publishedAt, @JsonKey(name: 'media_urls')  List<String> mediaUrls, @JsonKey(name: 'view_count')  int viewCount, @JsonKey(name: 'like_count')  int likeCount, @JsonKey(name: 'extra_stats')  Map<String, dynamic> extraStats, @JsonKey(name: 'raw_metadata')  Map<String, dynamic>? rawMetadata)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( int id,  String platform, @JsonKey(name: 'platform_id')  String? platformId, @JsonKey(name: 'content_type')  String? contentType,  String url, @JsonKey(name: 'clean_url')  String? cleanUrl,  String status, @JsonKey(name: 'review_status')  String? reviewStatus,  List<String> tags, @JsonKey(name: 'is_nsfw')  bool isNsfw,  String? title,  String? description, @JsonKey(name: 'author_name')  String? authorName, @JsonKey(name: 'cover_url')  String? coverUrl, @JsonKey(name: 'cover_color')  String? coverColor, @JsonKey(name: 'created_at')  DateTime createdAt, @JsonKey(name: 'updated_at')  DateTime updatedAt, @JsonKey(name: 'published_at')  DateTime? publishedAt, @JsonKey(name: 'media_urls')  List<String> mediaUrls, @JsonKey(name: 'view_count')  int viewCount, @JsonKey(name: 'like_count')  int likeCount, @JsonKey(name: 'collect_count')  int collectCount, @JsonKey(name: 'share_count')  int shareCount, @JsonKey(name: 'comment_count')  int commentCount, @JsonKey(name: 'extra_stats')  Map<String, dynamic> extraStats, @JsonKey(name: 'raw_metadata')  Map<String, dynamic>? rawMetadata)?  $default,) {final _that = this;
 switch (_that) {
 case _ContentDetail() when $default != null:
-return $default(_that.id,_that.platform,_that.platformId,_that.contentType,_that.url,_that.cleanUrl,_that.status,_that.reviewStatus,_that.tags,_that.isNsfw,_that.title,_that.description,_that.authorName,_that.coverUrl,_that.createdAt,_that.updatedAt,_that.publishedAt,_that.mediaUrls,_that.viewCount,_that.likeCount,_that.extraStats,_that.rawMetadata);case _:
+return $default(_that.id,_that.platform,_that.platformId,_that.contentType,_that.url,_that.cleanUrl,_that.status,_that.reviewStatus,_that.tags,_that.isNsfw,_that.title,_that.description,_that.authorName,_that.coverUrl,_that.coverColor,_that.createdAt,_that.updatedAt,_that.publishedAt,_that.mediaUrls,_that.viewCount,_that.likeCount,_that.collectCount,_that.shareCount,_that.commentCount,_that.extraStats,_that.rawMetadata);case _:
   return null;
 
 }
@@ -552,7 +559,7 @@ return $default(_that.id,_that.platform,_that.platformId,_that.contentType,_that
 @JsonSerializable()
 
 class _ContentDetail implements ContentDetail {
-  const _ContentDetail({required this.id, required this.platform, @JsonKey(name: 'platform_id') this.platformId, @JsonKey(name: 'content_type') this.contentType, required this.url, @JsonKey(name: 'clean_url') this.cleanUrl, required this.status, @JsonKey(name: 'review_status') this.reviewStatus, required final  List<String> tags, @JsonKey(name: 'is_nsfw') required this.isNsfw, this.title, this.description, @JsonKey(name: 'author_name') this.authorName, @JsonKey(name: 'cover_url') this.coverUrl, @JsonKey(name: 'created_at') required this.createdAt, @JsonKey(name: 'updated_at') required this.updatedAt, @JsonKey(name: 'published_at') this.publishedAt, @JsonKey(name: 'media_urls') final  List<String> mediaUrls = const [], @JsonKey(name: 'view_count') this.viewCount = 0, @JsonKey(name: 'like_count') this.likeCount = 0, @JsonKey(name: 'extra_stats') final  Map<String, dynamic> extraStats = const {}, @JsonKey(name: 'raw_metadata') final  Map<String, dynamic>? rawMetadata}): _tags = tags,_mediaUrls = mediaUrls,_extraStats = extraStats,_rawMetadata = rawMetadata;
+  const _ContentDetail({required this.id, required this.platform, @JsonKey(name: 'platform_id') this.platformId, @JsonKey(name: 'content_type') this.contentType, required this.url, @JsonKey(name: 'clean_url') this.cleanUrl, required this.status, @JsonKey(name: 'review_status') this.reviewStatus, required final  List<String> tags, @JsonKey(name: 'is_nsfw') required this.isNsfw, this.title, this.description, @JsonKey(name: 'author_name') this.authorName, @JsonKey(name: 'cover_url') this.coverUrl, @JsonKey(name: 'cover_color') this.coverColor, @JsonKey(name: 'created_at') required this.createdAt, @JsonKey(name: 'updated_at') required this.updatedAt, @JsonKey(name: 'published_at') this.publishedAt, @JsonKey(name: 'media_urls') final  List<String> mediaUrls = const [], @JsonKey(name: 'view_count') this.viewCount = 0, @JsonKey(name: 'like_count') this.likeCount = 0, @JsonKey(name: 'collect_count') this.collectCount = 0, @JsonKey(name: 'share_count') this.shareCount = 0, @JsonKey(name: 'comment_count') this.commentCount = 0, @JsonKey(name: 'extra_stats') final  Map<String, dynamic> extraStats = const {}, @JsonKey(name: 'raw_metadata') final  Map<String, dynamic>? rawMetadata}): _tags = tags,_mediaUrls = mediaUrls,_extraStats = extraStats,_rawMetadata = rawMetadata;
   factory _ContentDetail.fromJson(Map<String, dynamic> json) => _$ContentDetailFromJson(json);
 
 @override final  int id;
@@ -575,6 +582,7 @@ class _ContentDetail implements ContentDetail {
 @override final  String? description;
 @override@JsonKey(name: 'author_name') final  String? authorName;
 @override@JsonKey(name: 'cover_url') final  String? coverUrl;
+@override@JsonKey(name: 'cover_color') final  String? coverColor;
 @override@JsonKey(name: 'created_at') final  DateTime createdAt;
 @override@JsonKey(name: 'updated_at') final  DateTime updatedAt;
 @override@JsonKey(name: 'published_at') final  DateTime? publishedAt;
@@ -587,6 +595,9 @@ class _ContentDetail implements ContentDetail {
 
 @override@JsonKey(name: 'view_count') final  int viewCount;
 @override@JsonKey(name: 'like_count') final  int likeCount;
+@override@JsonKey(name: 'collect_count') final  int collectCount;
+@override@JsonKey(name: 'share_count') final  int shareCount;
+@override@JsonKey(name: 'comment_count') final  int commentCount;
  final  Map<String, dynamic> _extraStats;
 @override@JsonKey(name: 'extra_stats') Map<String, dynamic> get extraStats {
   if (_extraStats is EqualUnmodifiableMapView) return _extraStats;
@@ -617,16 +628,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ContentDetail&&(identical(other.id, id) || other.id == id)&&(identical(other.platform, platform) || other.platform == platform)&&(identical(other.platformId, platformId) || other.platformId == platformId)&&(identical(other.contentType, contentType) || other.contentType == contentType)&&(identical(other.url, url) || other.url == url)&&(identical(other.cleanUrl, cleanUrl) || other.cleanUrl == cleanUrl)&&(identical(other.status, status) || other.status == status)&&(identical(other.reviewStatus, reviewStatus) || other.reviewStatus == reviewStatus)&&const DeepCollectionEquality().equals(other._tags, _tags)&&(identical(other.isNsfw, isNsfw) || other.isNsfw == isNsfw)&&(identical(other.title, title) || other.title == title)&&(identical(other.description, description) || other.description == description)&&(identical(other.authorName, authorName) || other.authorName == authorName)&&(identical(other.coverUrl, coverUrl) || other.coverUrl == coverUrl)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt)&&(identical(other.publishedAt, publishedAt) || other.publishedAt == publishedAt)&&const DeepCollectionEquality().equals(other._mediaUrls, _mediaUrls)&&(identical(other.viewCount, viewCount) || other.viewCount == viewCount)&&(identical(other.likeCount, likeCount) || other.likeCount == likeCount)&&const DeepCollectionEquality().equals(other._extraStats, _extraStats)&&const DeepCollectionEquality().equals(other._rawMetadata, _rawMetadata));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ContentDetail&&(identical(other.id, id) || other.id == id)&&(identical(other.platform, platform) || other.platform == platform)&&(identical(other.platformId, platformId) || other.platformId == platformId)&&(identical(other.contentType, contentType) || other.contentType == contentType)&&(identical(other.url, url) || other.url == url)&&(identical(other.cleanUrl, cleanUrl) || other.cleanUrl == cleanUrl)&&(identical(other.status, status) || other.status == status)&&(identical(other.reviewStatus, reviewStatus) || other.reviewStatus == reviewStatus)&&const DeepCollectionEquality().equals(other._tags, _tags)&&(identical(other.isNsfw, isNsfw) || other.isNsfw == isNsfw)&&(identical(other.title, title) || other.title == title)&&(identical(other.description, description) || other.description == description)&&(identical(other.authorName, authorName) || other.authorName == authorName)&&(identical(other.coverUrl, coverUrl) || other.coverUrl == coverUrl)&&(identical(other.coverColor, coverColor) || other.coverColor == coverColor)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt)&&(identical(other.publishedAt, publishedAt) || other.publishedAt == publishedAt)&&const DeepCollectionEquality().equals(other._mediaUrls, _mediaUrls)&&(identical(other.viewCount, viewCount) || other.viewCount == viewCount)&&(identical(other.likeCount, likeCount) || other.likeCount == likeCount)&&(identical(other.collectCount, collectCount) || other.collectCount == collectCount)&&(identical(other.shareCount, shareCount) || other.shareCount == shareCount)&&(identical(other.commentCount, commentCount) || other.commentCount == commentCount)&&const DeepCollectionEquality().equals(other._extraStats, _extraStats)&&const DeepCollectionEquality().equals(other._rawMetadata, _rawMetadata));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hashAll([runtimeType,id,platform,platformId,contentType,url,cleanUrl,status,reviewStatus,const DeepCollectionEquality().hash(_tags),isNsfw,title,description,authorName,coverUrl,createdAt,updatedAt,publishedAt,const DeepCollectionEquality().hash(_mediaUrls),viewCount,likeCount,const DeepCollectionEquality().hash(_extraStats),const DeepCollectionEquality().hash(_rawMetadata)]);
+int get hashCode => Object.hashAll([runtimeType,id,platform,platformId,contentType,url,cleanUrl,status,reviewStatus,const DeepCollectionEquality().hash(_tags),isNsfw,title,description,authorName,coverUrl,coverColor,createdAt,updatedAt,publishedAt,const DeepCollectionEquality().hash(_mediaUrls),viewCount,likeCount,collectCount,shareCount,commentCount,const DeepCollectionEquality().hash(_extraStats),const DeepCollectionEquality().hash(_rawMetadata)]);
 
 @override
 String toString() {
-  return 'ContentDetail(id: $id, platform: $platform, platformId: $platformId, contentType: $contentType, url: $url, cleanUrl: $cleanUrl, status: $status, reviewStatus: $reviewStatus, tags: $tags, isNsfw: $isNsfw, title: $title, description: $description, authorName: $authorName, coverUrl: $coverUrl, createdAt: $createdAt, updatedAt: $updatedAt, publishedAt: $publishedAt, mediaUrls: $mediaUrls, viewCount: $viewCount, likeCount: $likeCount, extraStats: $extraStats, rawMetadata: $rawMetadata)';
+  return 'ContentDetail(id: $id, platform: $platform, platformId: $platformId, contentType: $contentType, url: $url, cleanUrl: $cleanUrl, status: $status, reviewStatus: $reviewStatus, tags: $tags, isNsfw: $isNsfw, title: $title, description: $description, authorName: $authorName, coverUrl: $coverUrl, coverColor: $coverColor, createdAt: $createdAt, updatedAt: $updatedAt, publishedAt: $publishedAt, mediaUrls: $mediaUrls, viewCount: $viewCount, likeCount: $likeCount, collectCount: $collectCount, shareCount: $shareCount, commentCount: $commentCount, extraStats: $extraStats, rawMetadata: $rawMetadata)';
 }
 
 
@@ -637,7 +648,7 @@ abstract mixin class _$ContentDetailCopyWith<$Res> implements $ContentDetailCopy
   factory _$ContentDetailCopyWith(_ContentDetail value, $Res Function(_ContentDetail) _then) = __$ContentDetailCopyWithImpl;
 @override @useResult
 $Res call({
- int id, String platform,@JsonKey(name: 'platform_id') String? platformId,@JsonKey(name: 'content_type') String? contentType, String url,@JsonKey(name: 'clean_url') String? cleanUrl, String status,@JsonKey(name: 'review_status') String? reviewStatus, List<String> tags,@JsonKey(name: 'is_nsfw') bool isNsfw, String? title, String? description,@JsonKey(name: 'author_name') String? authorName,@JsonKey(name: 'cover_url') String? coverUrl,@JsonKey(name: 'created_at') DateTime createdAt,@JsonKey(name: 'updated_at') DateTime updatedAt,@JsonKey(name: 'published_at') DateTime? publishedAt,@JsonKey(name: 'media_urls') List<String> mediaUrls,@JsonKey(name: 'view_count') int viewCount,@JsonKey(name: 'like_count') int likeCount,@JsonKey(name: 'extra_stats') Map<String, dynamic> extraStats,@JsonKey(name: 'raw_metadata') Map<String, dynamic>? rawMetadata
+ int id, String platform,@JsonKey(name: 'platform_id') String? platformId,@JsonKey(name: 'content_type') String? contentType, String url,@JsonKey(name: 'clean_url') String? cleanUrl, String status,@JsonKey(name: 'review_status') String? reviewStatus, List<String> tags,@JsonKey(name: 'is_nsfw') bool isNsfw, String? title, String? description,@JsonKey(name: 'author_name') String? authorName,@JsonKey(name: 'cover_url') String? coverUrl,@JsonKey(name: 'cover_color') String? coverColor,@JsonKey(name: 'created_at') DateTime createdAt,@JsonKey(name: 'updated_at') DateTime updatedAt,@JsonKey(name: 'published_at') DateTime? publishedAt,@JsonKey(name: 'media_urls') List<String> mediaUrls,@JsonKey(name: 'view_count') int viewCount,@JsonKey(name: 'like_count') int likeCount,@JsonKey(name: 'collect_count') int collectCount,@JsonKey(name: 'share_count') int shareCount,@JsonKey(name: 'comment_count') int commentCount,@JsonKey(name: 'extra_stats') Map<String, dynamic> extraStats,@JsonKey(name: 'raw_metadata') Map<String, dynamic>? rawMetadata
 });
 
 
@@ -654,7 +665,7 @@ class __$ContentDetailCopyWithImpl<$Res>
 
 /// Create a copy of ContentDetail
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? platform = null,Object? platformId = freezed,Object? contentType = freezed,Object? url = null,Object? cleanUrl = freezed,Object? status = null,Object? reviewStatus = freezed,Object? tags = null,Object? isNsfw = null,Object? title = freezed,Object? description = freezed,Object? authorName = freezed,Object? coverUrl = freezed,Object? createdAt = null,Object? updatedAt = null,Object? publishedAt = freezed,Object? mediaUrls = null,Object? viewCount = null,Object? likeCount = null,Object? extraStats = null,Object? rawMetadata = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? platform = null,Object? platformId = freezed,Object? contentType = freezed,Object? url = null,Object? cleanUrl = freezed,Object? status = null,Object? reviewStatus = freezed,Object? tags = null,Object? isNsfw = null,Object? title = freezed,Object? description = freezed,Object? authorName = freezed,Object? coverUrl = freezed,Object? coverColor = freezed,Object? createdAt = null,Object? updatedAt = null,Object? publishedAt = freezed,Object? mediaUrls = null,Object? viewCount = null,Object? likeCount = null,Object? collectCount = null,Object? shareCount = null,Object? commentCount = null,Object? extraStats = null,Object? rawMetadata = freezed,}) {
   return _then(_ContentDetail(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as int,platform: null == platform ? _self.platform : platform // ignore: cast_nullable_to_non_nullable
@@ -670,12 +681,16 @@ as bool,title: freezed == title ? _self.title : title // ignore: cast_nullable_t
 as String?,description: freezed == description ? _self.description : description // ignore: cast_nullable_to_non_nullable
 as String?,authorName: freezed == authorName ? _self.authorName : authorName // ignore: cast_nullable_to_non_nullable
 as String?,coverUrl: freezed == coverUrl ? _self.coverUrl : coverUrl // ignore: cast_nullable_to_non_nullable
+as String?,coverColor: freezed == coverColor ? _self.coverColor : coverColor // ignore: cast_nullable_to_non_nullable
 as String?,createdAt: null == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
 as DateTime,updatedAt: null == updatedAt ? _self.updatedAt : updatedAt // ignore: cast_nullable_to_non_nullable
 as DateTime,publishedAt: freezed == publishedAt ? _self.publishedAt : publishedAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,mediaUrls: null == mediaUrls ? _self._mediaUrls : mediaUrls // ignore: cast_nullable_to_non_nullable
 as List<String>,viewCount: null == viewCount ? _self.viewCount : viewCount // ignore: cast_nullable_to_non_nullable
 as int,likeCount: null == likeCount ? _self.likeCount : likeCount // ignore: cast_nullable_to_non_nullable
+as int,collectCount: null == collectCount ? _self.collectCount : collectCount // ignore: cast_nullable_to_non_nullable
+as int,shareCount: null == shareCount ? _self.shareCount : shareCount // ignore: cast_nullable_to_non_nullable
+as int,commentCount: null == commentCount ? _self.commentCount : commentCount // ignore: cast_nullable_to_non_nullable
 as int,extraStats: null == extraStats ? _self._extraStats : extraStats // ignore: cast_nullable_to_non_nullable
 as Map<String, dynamic>,rawMetadata: freezed == rawMetadata ? _self._rawMetadata : rawMetadata // ignore: cast_nullable_to_non_nullable
 as Map<String, dynamic>?,
