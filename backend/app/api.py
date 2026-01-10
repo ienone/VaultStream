@@ -347,6 +347,10 @@ async def list_share_cards(
     platform: Optional[Platform] = Query(None),
     status: Optional[ContentStatus] = Query(None),
     tag: Optional[str] = Query(None),
+    author: Optional[str] = Query(None),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    q: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
@@ -360,8 +364,40 @@ async def list_share_cards(
         conditions.append(Content.platform == platform)
     if status:
         conditions.append(Content.status == status)
-    if tag:
-        conditions.append(Content.tags.contains([tag]))
+    if author:
+        conditions.append(Content.author_name.ilike(f"%{author}%"))
+    if start_date:
+        conditions.append(Content.created_at >= start_date)
+    if end_date:
+        conditions.append(Content.created_at <= end_date)
+    
+    if q:
+        # 基础全文搜索 (M3: 结合 FTS5 与 ILIKE 以提升 CJK 搜索效果)
+        fts_ids = []
+        try:
+            # 简单处理搜索词
+            safe_q = q.replace("'", "''")
+            # 尝试 FTS5
+            fts_query = text("SELECT content_id FROM contents_fts WHERE contents_fts MATCH :q")
+            result = await db.execute(fts_query, {"q": safe_q})
+            fts_ids = [row[0] for row in result.all()]
+        except Exception as e:
+            # FTS 失败不应该阻断搜索，仅记录日志
+            logger.warning(f"FTS5 search warning: {e}")
+        
+        # 构建 ILIKE 模糊匹配条件 (作为 FTS 的补充或兜底)
+        like_cond = or_(
+            Content.title.ilike(f"%{q}%"),
+            Content.description.ilike(f"%{q}%"),
+            Content.author_name.ilike(f"%{q}%")
+        )
+
+        if fts_ids:
+            # 如果 FTS 有结果，取并集 (FTS 结果 OR ILIKE 结果)
+            conditions.append(or_(Content.id.in_(fts_ids), like_cond))
+        else:
+            # FTS 无结果或报错，仅使用 ILIKE
+            conditions.append(like_cond)
         
     # 统计总数
     count_query = select(func.count()).select_from(Content).where(and_(*conditions))
@@ -397,6 +433,9 @@ async def list_contents(
     platform: Optional[Platform] = Query(None),
     status: Optional[ContentStatus] = Query(None),
     tag: Optional[str] = Query(None),
+    author: Optional[str] = Query(None),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
     q: Optional[str] = Query(None),
     is_nsfw: Optional[bool] = Query(None),
     db: AsyncSession = Depends(get_db),
@@ -410,35 +449,40 @@ async def list_contents(
         conditions.append(Content.status == status)
     if is_nsfw is not None:
         conditions.append(Content.is_nsfw == is_nsfw)
+    
+    if author:
+        conditions.append(Content.author_name.ilike(f"%{author}%"))
+    if start_date:
+        conditions.append(Content.created_at >= start_date)
+    if end_date:
+        conditions.append(Content.created_at <= end_date)
         
     if tag:
         # SQLite JSON 包含逻辑
         conditions.append(Content.tags.contains([tag]))
         
     if q:
-        # 基础全文搜索 (M3: 优先尝试 FTS5，降级使用 ILIKE)
+        # 基础全文搜索 (M3: 结合 FTS5 与 ILIKE 以提升 CJK 搜索效果)
+        fts_ids = []
         try:
             # 简单处理搜索词
             safe_q = q.replace("'", "''")
             fts_query = text("SELECT content_id FROM contents_fts WHERE contents_fts MATCH :q")
             result = await db.execute(fts_query, {"q": safe_q})
-            ids = [row[0] for row in result.all()]
-            if ids:
-                conditions.append(Content.id.in_(ids))
-            else:
-                # FTS5 没中，降级到 ILIKE
-                conditions.append(or_(
-                    Content.title.ilike(f"%{q}%"),
-                    Content.description.ilike(f"%{q}%"),
-                    Content.author_name.ilike(f"%{q}%")
-                ))
+            fts_ids = [row[0] for row in result.all()]
         except Exception as e:
-            logger.warning(f"FTS5 search failed, falling back to ILIKE: {e}")
-            conditions.append(or_(
-                Content.title.ilike(f"%{q}%"),
-                Content.description.ilike(f"%{q}%"),
-                Content.author_name.ilike(f"%{q}%")
-            ))
+            logger.warning(f"FTS5 search warning: {e}")
+            
+        like_cond = or_(
+            Content.title.ilike(f"%{q}%"),
+            Content.description.ilike(f"%{q}%"),
+            Content.author_name.ilike(f"%{q}%")
+        )
+
+        if fts_ids:
+            conditions.append(or_(Content.id.in_(fts_ids), like_cond))
+        else:
+            conditions.append(like_cond)
 
     # 统计总数
     count_query = select(func.count()).select_from(Content).where(and_(*conditions))
@@ -479,6 +523,34 @@ async def get_content_detail(
     return content
 
 
+@router.post("/contents/{content_id}/re-parse")
+async def re_parse_content(
+    content_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """强制重新解析内容"""
+    result = await db.execute(select(Content).where(Content.id == content_id))
+    content = result.scalar_one_or_none()
+    
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    # 异步调用强制重试
+    # 注意：为了快速响应，这里不等待整个解析过程，只等待放入队列或启动任务
+    # 但 worker.retry_parse 是个 async 函数，会由 FastAPI 直接 await
+    # 如果耗时较长，最好改为后台任务。
+    # 为了简化，直接 await worker.retry_parse(..., force=True)
+    # 实际项目中可能需要 BackgroundTasks
+    
+    ok = await worker.retry_parse(content_id, force=True)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Re-parse failed immediately")
+        
+    await db.refresh(content)
+    return {"status": "processing", "content_id": content_id}
+
+
 @router.patch("/contents/{content_id}", response_model=ContentDetail)
 async def update_content(
     content_id: int,
@@ -496,6 +568,10 @@ async def update_content(
         content.tags = request.tags
     if request.title is not None:
         content.title = request.title
+    if request.description is not None:
+        content.description = request.description
+    if request.author_name is not None:
+        content.author_name = request.author_name
     if request.is_nsfw is not None:
         content.is_nsfw = request.is_nsfw
     if request.status is not None:

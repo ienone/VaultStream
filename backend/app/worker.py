@@ -526,7 +526,7 @@ class TaskWorker:
 
         await session.commit()
 
-    async def retry_parse(self, content_id: int, max_retries: int = 3, delay_seconds: float = 1.0, backoff_factor: float = 2.0):
+    async def retry_parse(self, content_id: int, max_retries: int = 3, delay_seconds: float = 1.0, backoff_factor: float = 2.0, force: bool = False):
         """对指定 content_id 进行重试解析。
 
         会进行最多 `max_retries` 次尝试（包含第一次），每次失败会记录失败信息并按指数退避等待。
@@ -548,8 +548,8 @@ class TaskWorker:
                         logger.warning(f"重试解析：内容不存在 {content_id}")
                         return False
 
-                    # 如果已解析成功，直接返回
-                    if content.status == ContentStatus.PULLED:
+                    # 如果已解析成功，直接返回 (除非 force=True)
+                    if not force and content.status == ContentStatus.PULLED:
                         logger.info(f"重试解析：内容已解析完成 {content_id}")
                         return True
 

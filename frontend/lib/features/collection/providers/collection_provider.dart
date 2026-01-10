@@ -13,6 +13,9 @@ class Collection extends _$Collection {
     String? tag,
     String? platform,
     String? status,
+    String? author,
+    DateTime? startDate,
+    DateTime? endDate,
     String? query,
   }) async {
     final dio = ref.watch(apiClientProvider);
@@ -25,6 +28,9 @@ class Collection extends _$Collection {
         if (tag != null) 'tag': tag,
         if (platform != null) 'platform': platform,
         if (status != null) 'status': status,
+        if (author != null) 'author': author,
+        if (startDate != null) 'start_date': startDate.toIso8601String(),
+        if (endDate != null) 'end_date': endDate.toIso8601String(),
         if (query != null) 'q': query,
       },
     );

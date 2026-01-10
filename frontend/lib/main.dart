@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart'; // 引入Riverpod库，
 import 'package:dynamic_color/dynamic_color.dart'; // 引入dynamic_color库，用于动态颜色支持
 import 'theme/app_theme.dart'; // 引入自定义的应用主题
 import 'routing/app_router.dart'; // 引入自定义的应用路由
+import 'core/providers/theme_provider.dart';
 
 void main() {
   runApp(const ProviderScope(child: VaultStreamApp()));
@@ -31,14 +32,10 @@ class VaultStreamApp extends ConsumerWidget {
     // ref参数是WidgetRef对象，提供访问和监听Riverpod providers的功能。
 
     final router = ref.watch(goRouterProvider);
-    // final关键字用于声明一个不可变的局部变量router,
-    // ref.watch方法是用于监听和获取指定的provider的当前值。
-    // goRouterProvider是一个自定义的provider，提供应用的路由配置。
-    // 通过ref.watch(goRouterProvider)，可以获取当前的路由配置，并将其赋值给不可变的局部变量router
+    final themeMode = ref.watch(themeModeProvider);
 
     return DynamicColorBuilder(
       // return语句用于返回一个Widget，这里返回的是DynamicColorBuilder Widget
-      // DynamicColorBuilder是dynamic_color库提供的一个Widget，用于构建支持动态颜色的应用
       builder: (lightDynamic, darkDynamic) {
         // builder参数是一个回调函数，接受两个参数lightDynamic和darkDynamic，作用是根据动态颜色构建应用的主题
         // lightDynamic表示浅色主题的动态颜色，darkDynamic表示深色主题的动态颜色
@@ -49,7 +46,7 @@ class VaultStreamApp extends ConsumerWidget {
           title: 'VaultStream',
           theme: AppTheme.light(lightDynamic), // 默认主题，使用浅色动态颜色
           darkTheme: AppTheme.dark(darkDynamic), // 深色主题，使用深色动态颜色
-          themeMode: ThemeMode.system, // 主题模式，跟随系统设置
+          themeMode: themeMode, // 主题模式
           routerConfig: router, // 应用的路由配置是叫router
           debugShowCheckedModeBanner: false,
         );

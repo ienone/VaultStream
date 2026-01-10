@@ -147,6 +147,8 @@ class ContentUpdate(BaseModel):
     """内容修改请求"""
     tags: Optional[List[str]] = None
     title: Optional[str] = None
+    description: Optional[str] = None
+    author_name: Optional[str] = None
     is_nsfw: Optional[bool] = None
     status: Optional[ContentStatus] = None
 

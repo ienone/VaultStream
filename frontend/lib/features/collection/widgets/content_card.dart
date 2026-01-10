@@ -312,7 +312,7 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                             const SizedBox(height: 8),
                             // Title / Content Text
                             Expanded(
-                              child: isTwitter
+                              child: (isTwitter || content.isWeibo)
                                   ? (content.description != null &&
                                             content.description!.isNotEmpty
                                         ? Text(
@@ -643,6 +643,21 @@ class _PlatformBadge extends StatelessWidget {
       case 'bilibili':
         color = const Color(0xFFFB7299);
         icon = FontAwesomeIcons.bilibili;
+        break;
+      case 'xiaohongshu':
+        color = const Color(0xFFFF2442);
+        icon = Icons.book; // Use generic book or specific if available
+        label = '小红书';
+        break;
+      case 'weibo':
+        color = const Color(0xFFE6162D);
+        icon = FontAwesomeIcons.weibo;
+        label = '微博';
+        break;
+      case 'zhihu':
+        color = const Color(0xFF0084FF);
+        icon = FontAwesomeIcons.zhihu;
+        label = '知乎';
         break;
       case 'ku_an':
         color = const Color(0xFF1E88E5);

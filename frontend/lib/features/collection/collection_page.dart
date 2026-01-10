@@ -5,7 +5,10 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/layout/responsive_layout.dart';
 import 'providers/collection_provider.dart';
+import 'providers/search_history_provider.dart';
 import 'widgets/content_card.dart';
+import 'widgets/add_content_dialog.dart';
+import 'widgets/filter_dialog.dart';
 import 'models/content.dart';
 
 class CollectionPage extends ConsumerStatefulWidget {
@@ -18,26 +21,61 @@ class CollectionPage extends ConsumerStatefulWidget {
 class _CollectionPageState extends ConsumerState<CollectionPage> {
   final ScrollController _scrollController = ScrollController();
   final ValueNotifier<bool> _isFabExtended = ValueNotifier(true);
+  final SearchController _searchController = SearchController();
+  String _searchQuery = '';
   DateTime? _lastScrollTime;
+
+  String? _selectedPlatform;
+  String? _selectedStatus;
+  String? _selectedAuthor;
+  DateTimeRange? _selectedDateRange;
 
   @override
   void dispose() {
     _scrollController.dispose();
     _isFabExtended.dispose();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  void _performSearch(String query) {
+    if (query.trim().isNotEmpty) {
+      ref.read(searchHistoryProvider.notifier).add(query);
+    }
+    setState(() {
+      _searchQuery = query;
+    });
+    // Close the search view
+    if (_searchController.isOpen) {
+      _searchController.closeView(query);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final collectionAsync = ref.watch(collectionProvider());
+    final collectionAsync = ref.watch(collectionProvider(
+      query: _searchQuery.isEmpty ? null : _searchQuery,
+      platform: _selectedPlatform,
+      status: _selectedStatus,
+      author: _selectedAuthor,
+      startDate: _selectedDateRange?.start,
+      endDate: _selectedDateRange?.end,
+    ));
+    final historyAsync = ref.watch(searchHistoryProvider);
+    final theme = Theme.of(context);
 
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('收藏库'),
-        backgroundColor: Theme.of(
-          context,
-        ).colorScheme.surface.withValues(alpha: 0.8),
+        title: _searchQuery.isNotEmpty
+          ? GestureDetector(
+              onTap: () {
+                _searchController.openView();
+              },
+              child: Text('搜索: $_searchQuery', style: const TextStyle(fontSize: 16)),
+            )
+          : const Text('收藏库'),
+        backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.8),
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         flexibleSpace: ClipRect(
@@ -47,14 +85,115 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
           ),
         ),
         actions: [
+          SearchAnchor(
+            searchController: _searchController,
+            viewHintText: '搜索标题、描述、标签...',
+            builder: (BuildContext context, SearchController controller) {
+              return IconButton(
+                icon: const Icon(Icons.search),
+                onPressed: () {
+                  controller.openView();
+                },
+              );
+            },
+            suggestionsBuilder: (BuildContext context, SearchController controller) {
+              final keyword = controller.text;
+              return historyAsync.when(
+                data: (history) {
+                  final suggestions = keyword.isEmpty
+                      ? history
+                      : history.where((s) => s.contains(keyword)).toList();
+                  
+                  return [
+                    if (keyword.isNotEmpty)
+                      ListTile(
+                        leading: const Icon(Icons.search),
+                        title: Text('搜索 "$keyword"'),
+                        onTap: () => _performSearch(keyword),
+                      ),
+                    if (suggestions.isNotEmpty && keyword.isEmpty)
+                       Padding(
+                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                         child: Row(
+                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                           children: [
+                             Text('历史记录', style: theme.textTheme.titleSmall),
+                             TextButton(
+                               onPressed: () => ref.read(searchHistoryProvider.notifier).clear(),
+                               child: const Text('清除'),
+                             )
+                           ],
+                         ),
+                       ),
+                    ...suggestions.map((item) => ListTile(
+                      leading: const Icon(Icons.history),
+                      title: Text(item),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.close, size: 16),
+                        onPressed: () {
+                          // Prevent closing the view
+                          ref.read(searchHistoryProvider.notifier).remove(item);
+                        },
+                      ),
+                      onTap: () {
+                        controller.text = item;
+                        controller.selection = TextSelection.collapsed(offset: item.length);
+                        _performSearch(item);
+                      },
+                    )),
+                  ];
+                },
+                loading: () => [const Center(child: CircularProgressIndicator())],
+                error: (err, stack) => [ListTile(title: Text('Error: $err'))],
+              );
+            },
+            viewOnSubmitted: (value) {
+              _performSearch(value);
+            },
+          ),
+          if (_searchQuery.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () {
+                setState(() {
+                  _searchQuery = '';
+                  _searchController.clear();
+                });
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => ref.invalidate(collectionProvider()),
+            onPressed: () => ref.invalidate(collectionProvider),
           ),
           IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: () {
-              // TODO: Show filter dialog
+            icon: Icon(
+              Icons.filter_list,
+              color: (_selectedPlatform != null ||
+                      _selectedStatus != null ||
+                      _selectedAuthor != null ||
+                      _selectedDateRange != null)
+                  ? Theme.of(context).colorScheme.primary
+                  : null,
+            ),
+            onPressed: () async {
+              final result = await showDialog<Map<String, dynamic>>(
+                context: context,
+                builder: (context) => FilterDialog(
+                  initialPlatform: _selectedPlatform,
+                  initialStatus: _selectedStatus,
+                  initialAuthor: _selectedAuthor,
+                  initialDateRange: _selectedDateRange,
+                ),
+              );
+
+              if (result != null) {
+                setState(() {
+                  _selectedPlatform = result['platform'];
+                  _selectedStatus = result['status'];
+                  _selectedAuthor = result['author'];
+                  _selectedDateRange = result['dateRange'];
+                });
+              }
             },
           ),
         ],
@@ -98,7 +237,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
                 Text('加载失败: $err'),
                 const SizedBox(height: 16),
                 ElevatedButton(
-                  onPressed: () => ref.invalidate(collectionProvider()),
+                  onPressed: () => ref.invalidate(collectionProvider),
                   child: const Text('重试'),
                 ),
               ],
@@ -108,10 +247,19 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
       ),
       floatingActionButton: ValueListenableBuilder<bool>(
         valueListenable: _isFabExtended,
-        builder: (context, isExtended, child) {
+        builder: (ctx, isExtended, child) {
           return _wrapBlurredFab(
-            onPressed: () {
-              // TODO: Add content
+            onPressed: () async {
+              final result = await showDialog<bool>(
+                context: context,
+                builder: (context) => const AddContentDialog(),
+              );
+              if (result == true) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('内容已添加到队列，正在解析...')),
+                );
+              }
             },
             isExtended: isExtended,
           );

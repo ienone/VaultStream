@@ -1,3 +1,4 @@
+// ignore_for_file: use_build_context_synchronously
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,7 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:intl/intl.dart';
 import 'models/content.dart';
 import 'providers/collection_provider.dart';
+import 'widgets/edit_content_dialog.dart';
 import '../../theme/app_theme.dart';
 
 import '../../core/network/api_client.dart';
@@ -67,6 +69,24 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     }
     if (currentVisible != null && currentVisible != _activeHeader) {
       setState(() => _activeHeader = currentVisible);
+    }
+  }
+
+  Future<void> _reParseContent(int contentId) async {
+    try {
+      final dio = ref.read(apiClientProvider);
+      await dio.post('/contents/$contentId/re-parse');
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已触发重新解析')),
+      );
+      // Wait a bit or just invalidate. Worker is async.
+      ref.invalidate(contentDetailProvider(contentId));
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('重新解析请求失败: $e')),
+      );
     }
   }
 
@@ -141,20 +161,82 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               ),
               actions: [
                 IconButton.filledTonal(
+                  tooltip: '重新解析',
+                  icon: const Icon(Icons.refresh_rounded, size: 20),
+                  onPressed: () => _reParseContent(detail.id),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  tooltip: '编辑',
+                  icon: const Icon(Icons.edit_outlined, size: 20),
+                  onPressed: () async {
+                    final result = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => EditContentDialog(content: detail),
+                    );
+                    if (result == true) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('已更新内容')),
+                      );
+                    }
+                  },
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  tooltip: '删除',
+                  icon: const Icon(Icons.delete_outline, size: 20),
+                  color: colorScheme.error,
+                  onPressed: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('确认删除'),
+                        content: const Text('确定要删除这条内容吗？此操作不可撤销。'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('取消'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            style: TextButton.styleFrom(
+                              foregroundColor: colorScheme.error,
+                            ),
+                            child: const Text('删除'),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (confirm == true) {
+                      if (!context.mounted) return;
+                      try {
+                        final dio = ref.read(apiClientProvider);
+                        await dio.delete('/contents/${detail.id}');
+                        if (!context.mounted) return;
+                        ref.invalidate(collectionProvider);
+                        Navigator.of(context).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('已删除内容')),
+                        );
+                      } catch (e) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('删除失败: $e')),
+                        );
+                      }
+                    }
+                  },
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
                   tooltip: '阅读原文',
                   icon: const Icon(Icons.open_in_new, size: 20),
                   onPressed: () => launchUrl(
                     Uri.parse(detail.url),
                     mode: LaunchMode.externalApplication,
                   ),
-                ),
-                const SizedBox(width: 8),
-                IconButton.filledTonal(
-                  tooltip: '分享',
-                  icon: const Icon(Icons.share_outlined, size: 20),
-                  onPressed: () {
-                    // TODO: Implement share
-                  },
                 ),
                 const SizedBox(width: 16),
               ],

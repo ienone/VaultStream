@@ -22,6 +22,9 @@ final class CollectionProvider
       String? tag,
       String? platform,
       String? status,
+      String? author,
+      DateTime? startDate,
+      DateTime? endDate,
       String? query,
     })
     super.argument,
@@ -58,7 +61,7 @@ final class CollectionProvider
   }
 }
 
-String _$collectionHash() => r'15c39a7e93ccda97a3553e7ca2975b26e5ce8cce';
+String _$collectionHash() => r'494762ccf655a0b22832a26774c12ad12c1e6f70';
 
 final class CollectionFamily extends $Family
     with
@@ -73,6 +76,9 @@ final class CollectionFamily extends $Family
             String? tag,
             String? platform,
             String? status,
+            String? author,
+            DateTime? startDate,
+            DateTime? endDate,
             String? query,
           })
         > {
@@ -91,6 +97,9 @@ final class CollectionFamily extends $Family
     String? tag,
     String? platform,
     String? status,
+    String? author,
+    DateTime? startDate,
+    DateTime? endDate,
     String? query,
   }) => CollectionProvider._(
     argument: (
@@ -99,6 +108,9 @@ final class CollectionFamily extends $Family
       tag: tag,
       platform: platform,
       status: status,
+      author: author,
+      startDate: startDate,
+      endDate: endDate,
       query: query,
     ),
     from: this,
@@ -117,6 +129,9 @@ abstract class _$Collection extends $AsyncNotifier<ShareCardListResponse> {
             String? tag,
             String? platform,
             String? status,
+            String? author,
+            DateTime? startDate,
+            DateTime? endDate,
             String? query,
           });
   int get page => _$args.page;
@@ -124,6 +139,9 @@ abstract class _$Collection extends $AsyncNotifier<ShareCardListResponse> {
   String? get tag => _$args.tag;
   String? get platform => _$args.platform;
   String? get status => _$args.status;
+  String? get author => _$args.author;
+  DateTime? get startDate => _$args.startDate;
+  DateTime? get endDate => _$args.endDate;
   String? get query => _$args.query;
 
   FutureOr<ShareCardListResponse> build({
@@ -132,6 +150,9 @@ abstract class _$Collection extends $AsyncNotifier<ShareCardListResponse> {
     String? tag,
     String? platform,
     String? status,
+    String? author,
+    DateTime? startDate,
+    DateTime? endDate,
     String? query,
   });
   @$mustCallSuper
@@ -159,6 +180,9 @@ abstract class _$Collection extends $AsyncNotifier<ShareCardListResponse> {
         tag: _$args.tag,
         platform: _$args.platform,
         status: _$args.status,
+        author: _$args.author,
+        startDate: _$args.startDate,
+        endDate: _$args.endDate,
         query: _$args.query,
       ),
     );

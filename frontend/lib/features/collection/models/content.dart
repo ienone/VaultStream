@@ -30,6 +30,10 @@ abstract class ShareCard with _$ShareCard {
 
   bool get isBilibili => platform.toLowerCase() == 'bilibili';
 
+  bool get isXiaohongshu => platform.toLowerCase() == 'xiaohongshu';
+  bool get isWeibo => platform.toLowerCase() == 'weibo';
+  bool get isZhihu => platform.toLowerCase() == 'zhihu';
+
   bool get isLandscapeCover {
     try {
       if (rawMetadata != null && rawMetadata!['archive'] != null) {
@@ -97,6 +101,10 @@ abstract class ContentDetail with _$ContentDetail {
       platform.toLowerCase() == 'twitter' || platform.toLowerCase() == 'x';
 
   bool get isBilibili => platform.toLowerCase() == 'bilibili';
+
+  bool get isXiaohongshu => platform.toLowerCase() == 'xiaohongshu';
+  bool get isWeibo => platform.toLowerCase() == 'weibo';
+  bool get isZhihu => platform.toLowerCase() == 'zhihu';
 
   factory ContentDetail.fromJson(Map<String, dynamic> json) =>
       _$ContentDetailFromJson(json);
