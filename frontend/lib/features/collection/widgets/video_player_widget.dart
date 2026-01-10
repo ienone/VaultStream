@@ -6,11 +6,7 @@ class VideoPlayerWidget extends StatefulWidget {
   final String videoUrl;
   final Map<String, String>? headers;
 
-  const VideoPlayerWidget({
-    super.key,
-    required this.videoUrl,
-    this.headers,
-  });
+  const VideoPlayerWidget({super.key, required this.videoUrl, this.headers});
 
   @override
   State<VideoPlayerWidget> createState() => _VideoPlayerWidgetState();
@@ -85,10 +81,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
             children: [
               const Icon(Icons.error_outline, color: Colors.white),
               const SizedBox(height: 8),
-              Text(
-                '视频加载失败',
-                style: const TextStyle(color: Colors.white),
-              ),
+              Text('视频加载失败', style: const TextStyle(color: Colors.white)),
             ],
           ),
         ),
@@ -99,17 +92,13 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
       return Container(
         color: Colors.black,
         height: 240,
-        child: const Center(
-          child: CircularProgressIndicator(),
-        ),
+        child: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return AspectRatio(
       aspectRatio: _videoPlayerController.value.aspectRatio,
-      child: Chewie(
-        controller: _chewieController!,
-      ),
+      child: Chewie(controller: _chewieController!),
     );
   }
 }

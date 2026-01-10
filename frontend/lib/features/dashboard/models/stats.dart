@@ -21,7 +21,8 @@ abstract class QueueStats with _$QueueStats {
 abstract class DashboardStats with _$DashboardStats {
   const factory DashboardStats({
     @JsonKey(name: 'platform_counts') required Map<String, int> platformCounts,
-    @JsonKey(name: 'daily_growth') required List<Map<String, dynamic>> dailyGrowth,
+    @JsonKey(name: 'daily_growth')
+    required List<Map<String, dynamic>> dailyGrowth,
     @JsonKey(name: 'storage_usage_bytes') required int storageUsageBytes,
   }) = _DashboardStats;
 

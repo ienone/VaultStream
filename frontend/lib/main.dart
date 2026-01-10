@@ -54,4 +54,5 @@ class VaultStreamApp extends ConsumerWidget {
     );
   }
 }
+
 // 启动-> ProviderScope(Riverpod状态管理)-> VaultStreamApp(应用主体)-> DynamicColorBuilder(动态颜色支持)-> MaterialApp.router(路由化应用)

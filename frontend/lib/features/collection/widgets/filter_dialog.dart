@@ -59,7 +59,7 @@ class _FilterDialogState extends State<FilterDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return AlertDialog(
       title: const Text('筛选内容'),
       scrollable: true,
@@ -79,10 +79,12 @@ class _FilterDialogState extends State<FilterDialog> {
                 isDense: true,
                 items: [
                   const DropdownMenuItem(value: null, child: Text('全部')),
-                  ..._platforms.map((p) => DropdownMenuItem(
-                        value: p,
-                        child: Text(p.toUpperCase()),
-                      )),
+                  ..._platforms.map(
+                    (p) => DropdownMenuItem(
+                      value: p,
+                      child: Text(p.toUpperCase()),
+                    ),
+                  ),
                 ],
                 onChanged: (val) => setState(() => _platform = val),
               ),
@@ -101,10 +103,9 @@ class _FilterDialogState extends State<FilterDialog> {
                 isDense: true,
                 items: [
                   const DropdownMenuItem(value: null, child: Text('全部')),
-                  ..._statuses.map((s) => DropdownMenuItem(
-                        value: s,
-                        child: Text(s),
-                      )),
+                  ..._statuses.map(
+                    (s) => DropdownMenuItem(value: s, child: Text(s)),
+                  ),
                 ],
                 onChanged: (val) => setState(() => _status = val),
               ),

@@ -50,10 +50,10 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
   bool _isVideo(String url) {
     final lower = url.toLowerCase().split('?').first;
-    return lower.endsWith('.mp4') || 
-           lower.endsWith('.mov') || 
-           lower.endsWith('.webm') ||
-           lower.endsWith('.mkv');
+    return lower.endsWith('.mp4') ||
+        lower.endsWith('.mov') ||
+        lower.endsWith('.webm') ||
+        lower.endsWith('.mkv');
   }
 
   void _onScroll() {
@@ -86,16 +86,16 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       final dio = ref.read(apiClientProvider);
       await dio.post('/contents/$contentId/re-parse');
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已触发重新解析')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已触发重新解析')));
       // Wait a bit or just invalidate. Worker is async.
       ref.invalidate(contentDetailProvider(contentId));
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('重新解析请求失败: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('重新解析请求失败: $e')));
     }
   }
 
@@ -185,9 +185,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                     );
                     if (result == true) {
                       if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('已更新内容')),
-                      );
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(const SnackBar(content: Text('已更新内容')));
                     }
                   },
                 ),
@@ -226,14 +226,14 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                         if (!context.mounted) return;
                         ref.invalidate(collectionProvider);
                         Navigator.of(context).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('已删除内容')),
-                        );
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(const SnackBar(content: Text('已删除内容')));
                       } catch (e) {
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('删除失败: $e')),
-                        );
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text('删除失败: $e')));
                       }
                     }
                   },
@@ -913,7 +913,8 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               children: [
                 _buildAuthorHeader(context, detail),
                 const SizedBox(height: 24),
-                if (!detail.isTwitter && (detail.title != null && detail.title!.isNotEmpty))
+                if (!detail.isTwitter &&
+                    (detail.title != null && detail.title!.isNotEmpty))
                   Text(
                     detail.title ?? '无标题内容',
                     style: theme.textTheme.headlineSmall?.copyWith(
@@ -1146,7 +1147,8 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     if (detail.contentType == 'user_profile') {
       avatarUrl = detail.coverUrl;
     } else {
-      avatarUrl = detail.rawMetadata?['user']?['avatar_hd'] ??
+      avatarUrl =
+          detail.rawMetadata?['user']?['avatar_hd'] ??
           detail.rawMetadata?['user']?['profile_image_url'] ??
           detail.rawMetadata?['author']?['face'];
     }
@@ -1155,8 +1157,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     final dio = ref.read(apiClientProvider);
     final apiBaseUrl = dio.options.baseUrl;
     final apiToken = dio.options.headers['X-API-Token']?.toString();
-    final mappedAvatarUrl =
-        avatarUrl != null ? _mapUrl(avatarUrl, apiBaseUrl) : null;
+    final mappedAvatarUrl = avatarUrl != null
+        ? _mapUrl(avatarUrl, apiBaseUrl)
+        : null;
 
     return Row(
       children: [
@@ -1641,7 +1644,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                           height: 240,
                           width: double.infinity,
                           color: theme.colorScheme.surfaceContainerHighest,
-                          child: const Center(child: CircularProgressIndicator()),
+                          child: const Center(
+                            child: CircularProgressIndicator(),
+                          ),
                         ),
                       ),
                     ),
@@ -1668,7 +1673,13 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                     child: Stack(
                       children: [
                         Container(color: Colors.black),
-                        const Center(child: Icon(Icons.play_circle_outline, color: Colors.white, size: 48)),
+                        const Center(
+                          child: Icon(
+                            Icons.play_circle_outline,
+                            color: Colors.white,
+                            size: 48,
+                          ),
+                        ),
                         Positioned.fill(
                           child: Material(
                             color: Colors.transparent,
@@ -1676,10 +1687,18 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                               onTap: () {
                                 // TODO: Open video player dialog
                               },
-                              child: const Center(child: Text("VIDEO", style: TextStyle(color: Colors.white, fontSize: 10))),
+                              child: const Center(
+                                child: Text(
+                                  "VIDEO",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
-                        )
+                        ),
                       ],
                     ),
                   );
@@ -1997,7 +2016,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       if (detail.rawMetadata != null &&
           detail.rawMetadata!['archive'] != null) {
         final archive = detail.rawMetadata!['archive'];
-        
+
         // 1. Images
         final storedImages = archive['stored_images'];
         if (storedImages is List) {
@@ -2018,7 +2037,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             }
           }
         }
-        
+
         // 2. Videos
         final storedVideos = archive['stored_videos'];
         if (storedVideos is List) {

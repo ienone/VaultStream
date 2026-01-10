@@ -29,8 +29,10 @@ from app.config import settings
 from app.utils import normalize_bilibili_url, canonicalize_url
 from app.worker import worker
 
-router = APIRouter()
+from app.repositories.content_repository import ContentRepository
+from app.services.content_service import ContentService
 
+router = APIRouter()
 
 def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
     if not authorization:
@@ -42,119 +44,38 @@ def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
 
 
 async def require_api_token(
-    x_api_token: str = Header(..., alias="X-API-Token", description="API Token (Required)"),
-    authorization: Optional[str] = Header(default=None, alias="Authorization", description="Bearer Token (Alternative to X-API-Token)"),
+    x_api_token: str = Header(..., alias="X-API-Token"),
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
 ):
-    """简单 Token 鉴权。
-    
-    要求提供有效的 X-API-Token 或 Authorization: Bearer。
-    """
     provided = x_api_token or _extract_bearer(authorization)
-    if not provided:
-        raise HTTPException(status_code=401, detail="X-API-Token or Authorization header is required")
-
     expected = settings.api_token.get_secret_value() if settings.api_token else ""
-    if not expected:
-        # 如果未设置 API_TOKEN，为了安全起见拒绝访问，提示服务端配置问题
-        logger.error("API_TOKEN is not configured in settings")
-        raise HTTPException(
-            status_code=500, 
-            detail="Server security configuration error: API_TOKEN is not set"
-        )
+    if not provided or provided != expected:
+        raise HTTPException(status_code=401, detail="Invalid or missing API Token")
 
-    if provided != expected:
-        raise HTTPException(status_code=401, detail="Invalid API Token")
+# --- 依赖项注入助手 ---
+async def get_content_service(db: AsyncSession = Depends(get_db)) -> ContentService:
+    return ContentService(db)
+
+async def get_content_repo(db: AsyncSession = Depends(get_db)) -> ContentRepository:
+    return ContentRepository(db)
 
 
 @router.post("/shares", response_model=ShareResponse)
 async def create_share(
     share: ShareRequest,
-    db: AsyncSession = Depends(get_db),
+    service: ContentService = Depends(get_content_service),
     _: None = Depends(require_api_token),
 ):
-    """
-    创建分享
-    
-    接收一个URL，识别平台，创建内容记录并加入解析队列
-    """
+    """创建分享 (重构版)"""
     try:
-        # 预处理：支持 BV/av/cv 直接输入
-        raw_url = share.url
-        url_for_detect = normalize_bilibili_url(raw_url)
-        url_for_detect = canonicalize_url(url_for_detect)
-
-        # 检测平台
-        platform = AdapterFactory.detect_platform(url_for_detect)
-        if not platform:
-            raise HTTPException(status_code=400, detail="无法识别的平台URL")
-
-        # 计算 canonical_url（用于去重）
-        adapter = AdapterFactory.create(platform)
-        canonical_url = await adapter.clean_url(url_for_detect)
-        
-        # 去重：platform + canonical_url
-        result = await db.execute(
-            select(Content).where(and_(Content.platform == platform, Content.canonical_url == canonical_url))
+        content = await service.create_share(
+            url=share.url,
+            tags=share.tags,
+            source_name=share.source,
+            note=share.note,
+            is_nsfw=share.is_nsfw,
+            client_context=share.client_context
         )
-        content = result.scalar_one_or_none()
-
-        is_new = False
-        if content is None:
-            # 创建内容记录（存档为主）
-            content = Content(
-                platform=platform,
-                url=raw_url,
-                canonical_url=canonical_url,
-                clean_url=canonical_url,
-                tags=share.tags,
-                source=share.source,
-                is_nsfw=share.is_nsfw,
-                status=ContentStatus.UNPROCESSED,
-            )
-            db.add(content)
-            await db.flush()
-            is_new = True
-
-        else:
-            # 存档优先：合并 tags、更新来源信息并始终写入 ContentSource
-            try:
-                existing_tags = set(content.tags or [])
-                incoming_tags = set(share.tags or [])
-                merged = list(existing_tags.union(incoming_tags))
-                content.tags = merged
-            except Exception:
-                # 若 tags 结构异常，回退为传入 tags
-                content.tags = share.tags or []
-
-            if share.source:
-                content.source = share.source
-
-            # 不再由分享触发自动重试：仅记录来源与标签，手动或后台重试由专门接口触发
-
-        # 记录来源（无论是否去重）
-        db.add(
-            ContentSource(
-                content_id=content.id,
-                source=share.source,
-                tags_snapshot=share.tags,
-                note=share.note,
-                client_context=share.client_context,
-            )
-        )
-
-        await db.commit()
-        await db.refresh(content)
-
-        # 确保在事务提交并刷新内容记录后再入队，避免 worker 在未提交时读取不到记录导致竞态
-        if is_new:
-            await task_queue.enqueue({
-                'content_id': content.id,
-                'action': 'parse'
-            })
-
-        with log_context(content_id=content.id):
-            logger.info("创建分享成功")
-
         return ShareResponse(
             id=content.id,
             platform=content.platform,
@@ -162,10 +83,12 @@ async def create_share(
             status=content.status,
             created_at=content.created_at
         )
-        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"创建分享失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to create share")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 
 
 @router.post("/contents/{content_id}/retry")
@@ -352,72 +275,54 @@ async def list_share_cards(
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
     q: Optional[str] = Query(None),
-    db: AsyncSession = Depends(get_db),
+    repo: ContentRepository = Depends(get_content_repo),
     _: None = Depends(require_api_token),
 ):
-    """
-    轻量级分享卡片列表 (M6 优化)
-    
-    仅返回封面、标题、作者等必要信息，不包含 raw_metadata
-    """
-    conditions = []
-    if platform:
-        conditions.append(Content.platform == platform)
-    if status:
-        conditions.append(Content.status == status)
-    if author:
-        conditions.append(Content.author_name.ilike(f"%{author}%"))
-    if start_date:
-        conditions.append(Content.created_at >= start_date)
-    if end_date:
-        conditions.append(Content.created_at <= end_date)
-    
-    if q:
-        # 基础全文搜索 (M3: 结合 FTS5 与 ILIKE 以提升 CJK 搜索效果)
-        fts_ids = []
-        try:
-            # 简单处理搜索词
-            safe_q = q.replace("'", "''")
-            # 尝试 FTS5
-            fts_query = text("SELECT content_id FROM contents_fts WHERE contents_fts MATCH :q")
-            result = await db.execute(fts_query, {"q": safe_q})
-            fts_ids = [row[0] for row in result.all()]
-        except Exception as e:
-            # FTS 失败不应该阻断搜索，仅记录日志
-            logger.warning(f"FTS5 search warning: {e}")
-        
-        # 构建 ILIKE 模糊匹配条件 (作为 FTS 的补充或兜底)
-        like_cond = or_(
-            Content.title.ilike(f"%{q}%"),
-            Content.description.ilike(f"%{q}%"),
-            Content.author_name.ilike(f"%{q}%")
-        )
-
-        if fts_ids:
-            # 如果 FTS 有结果，取并集 (FTS 结果 OR ILIKE 结果)
-            conditions.append(or_(Content.id.in_(fts_ids), like_cond))
-        else:
-            # FTS 无结果或报错，仅使用 ILIKE
-            conditions.append(like_cond)
-        
-    # 统计总数
-    count_query = select(func.count()).select_from(Content).where(and_(*conditions))
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
-    
-    # 列表查询
-    stmt = (
-        select(Content)
-        .where(and_(*conditions))
-        .order_by(desc(Content.created_at))
-        .offset((page - 1) * size)
-        .limit(size)
+    """轻量级分享卡片列表 (重构版)"""
+    contents, total = await repo.list_contents(
+        page=page, size=size, platform=platform, status=status, 
+        tag=tag, author=author, start_date=start_date, end_date=end_date, q=q
     )
-    result = await db.execute(stmt)
-    contents = result.scalars().all()
-    
+
+    items = []
+    for c in contents:
+        summary = (c.description or c.title or "")[:200]
+        if len(c.description or c.title or "") > 200:
+            summary += "..."
+
+        items.append({
+            "id": c.id,
+            "platform": c.platform,
+            "url": c.url,
+            "clean_url": c.clean_url,
+            "content_type": c.content_type,
+            "title": c.title,
+            "summary": summary,
+            "description": c.description or c.title,
+            "author_name": c.author_name,
+            "author_id": c.author_id,
+            "cover_url": c.cover_url,
+            "cover_color": c.cover_color,
+            "media_urls": [], 
+            "tags": c.tags or [],
+            "published_at": c.published_at,
+            "view_count": c.view_count or 0,
+            "like_count": c.like_count or 0,
+            "collect_count": c.collect_count or 0,
+            "share_count": c.share_count or 0,
+            "comment_count": c.comment_count or 0,
+        })
+
     return {
-        "items": contents,
+        "items": items,
+        "total": total,
+        "page": page,
+        "size": size,
+        "has_more": total > page * size
+    }
+
+    return {
+        "items": items,
         "total": total,
         "page": page,
         "size": size,
@@ -439,67 +344,14 @@ async def list_contents(
     end_date: Optional[datetime] = Query(None),
     q: Optional[str] = Query(None),
     is_nsfw: Optional[bool] = Query(None),
-    db: AsyncSession = Depends(get_db),
+    repo: ContentRepository = Depends(get_content_repo),
     _: None = Depends(require_api_token),
 ):
-    """内容列表查询 (M3)"""
-    conditions = []
-    if platform:
-        conditions.append(Content.platform == platform)
-    if status:
-        conditions.append(Content.status == status)
-    if is_nsfw is not None:
-        conditions.append(Content.is_nsfw == is_nsfw)
-    
-    if author:
-        conditions.append(Content.author_name.ilike(f"%{author}%"))
-    if start_date:
-        conditions.append(Content.created_at >= start_date)
-    if end_date:
-        conditions.append(Content.created_at <= end_date)
-        
-    if tag:
-        # SQLite JSON 包含逻辑
-        conditions.append(Content.tags.contains([tag]))
-        
-    if q:
-        # 基础全文搜索 (M3: 结合 FTS5 与 ILIKE 以提升 CJK 搜索效果)
-        fts_ids = []
-        try:
-            # 简单处理搜索词
-            safe_q = q.replace("'", "''")
-            fts_query = text("SELECT content_id FROM contents_fts WHERE contents_fts MATCH :q")
-            result = await db.execute(fts_query, {"q": safe_q})
-            fts_ids = [row[0] for row in result.all()]
-        except Exception as e:
-            logger.warning(f"FTS5 search warning: {e}")
-            
-        like_cond = or_(
-            Content.title.ilike(f"%{q}%"),
-            Content.description.ilike(f"%{q}%"),
-            Content.author_name.ilike(f"%{q}%")
-        )
-
-        if fts_ids:
-            conditions.append(or_(Content.id.in_(fts_ids), like_cond))
-        else:
-            conditions.append(like_cond)
-
-    # 统计总数
-    count_query = select(func.count()).select_from(Content).where(and_(*conditions))
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
-    
-    # 列表查询
-    query = (
-        select(Content)
-        .where(and_(*conditions))
-        .order_by(desc(Content.created_at))
-        .offset((page-1)*size)
-        .limit(size)
+    """完整内容列表查询 (重构版)"""
+    items, total = await repo.list_contents(
+        page=page, size=size, platform=platform, status=status,
+        tag=tag, author=author, start_date=start_date, end_date=end_date, q=q, is_nsfw=is_nsfw
     )
-    result = await db.execute(query)
-    items = result.scalars().all()
     
     return {
         "items": items,
@@ -524,32 +376,24 @@ async def get_content_detail(
     return content
 
 
+from fastapi import BackgroundTasks
+
 @router.post("/contents/{content_id}/re-parse")
 async def re_parse_content(
     content_id: int,
-    db: AsyncSession = Depends(get_db),
+    background_tasks: BackgroundTasks,
+    repo: ContentRepository = Depends(get_content_repo),
     _: None = Depends(require_api_token),
 ):
-    """强制重新解析内容"""
-    result = await db.execute(select(Content).where(Content.id == content_id))
-    content = result.scalar_one_or_none()
-    
+    """强制重新解析内容 (异步重构版)"""
+    content = await repo.get_by_id(content_id)
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
 
-    # 异步调用强制重试
-    # 注意：为了快速响应，这里不等待整个解析过程，只等待放入队列或启动任务
-    # 但 worker.retry_parse 是个 async 函数，会由 FastAPI 直接 await
-    # 如果耗时较长，最好改为后台任务。
-    # 为了简化，直接 await worker.retry_parse(..., force=True)
-    # 实际项目中可能需要 BackgroundTasks
+    # 放入后台任务执行，立即返回
+    background_tasks.add_task(worker.retry_parse, content_id, force=True)
     
-    ok = await worker.retry_parse(content_id, force=True)
-    if not ok:
-        raise HTTPException(status_code=500, detail="Re-parse failed immediately")
-        
-    await db.refresh(content)
-    return {"status": "processing", "content_id": content_id}
+    return {"status": "processing", "content_id": content_id, "message": "Re-parsing started in background"}
 
 
 @router.patch("/contents/{content_id}", response_model=ContentDetail)

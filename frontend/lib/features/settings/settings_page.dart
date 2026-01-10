@@ -34,9 +34,9 @@ class SettingsPage extends ConsumerWidget {
             child: Text(
               '外观',
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -72,15 +72,15 @@ class SettingsPage extends ConsumerWidget {
           ),
           const Divider(),
           Center(
-             child: Padding(
-               padding: const EdgeInsets.all(16.0),
-               child: Text(
-                 'VaultStream v0.1.0',
-                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                   color: Theme.of(context).colorScheme.outline,
-                 ),
-               ),
-             ),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                'VaultStream v0.1.0',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+              ),
+            ),
           ),
         ],
       ),

@@ -48,21 +48,27 @@ class DashboardPage extends ConsumerWidget {
             children: [
               Text(
                 '系统概览',
-                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 24),
               _buildStatsGrid(context, statsAsync, queueAsync),
               const SizedBox(height: 32),
               Text(
                 '平台分布',
-                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 16),
               _buildPlatformDistribution(context, statsAsync),
               const SizedBox(height: 32),
               Text(
                 '最近 7 天增长',
-                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 16),
               _buildGrowthChart(context, statsAsync),
@@ -90,7 +96,8 @@ class DashboardPage extends ConsumerWidget {
           context,
           '总内容',
           statsAsync.when(
-            data: (s) => s.platformCounts.values.fold(0, (a, b) => a + b).toString(),
+            data: (s) =>
+                s.platformCounts.values.fold(0, (a, b) => a + b).toString(),
             loading: () => '...',
             error: (_, _) => '!',
           ),
@@ -193,7 +200,9 @@ class DashboardPage extends ConsumerWidget {
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
-            side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+            side: BorderSide(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
           ),
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -211,7 +220,9 @@ class DashboardPage extends ConsumerWidget {
                             entry.key.toUpperCase(),
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
-                          Text('${entry.value} (${(percent * 100).toStringAsFixed(1)}%)'),
+                          Text(
+                            '${entry.value} (${(percent * 100).toStringAsFixed(1)}%)',
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -241,14 +252,18 @@ class DashboardPage extends ConsumerWidget {
       data: (stats) {
         if (stats.dailyGrowth.isEmpty) return const Center(child: Text('暂无数据'));
 
-        final maxCount = stats.dailyGrowth
-            .fold(0, (max, day) => (day['count'] as int) > max ? day['count'] as int : max);
+        final maxCount = stats.dailyGrowth.fold(
+          0,
+          (max, day) => (day['count'] as int) > max ? day['count'] as int : max,
+        );
 
         return Card(
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
-            side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+            side: BorderSide(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
           ),
           child: Padding(
             padding: const EdgeInsets.all(24),

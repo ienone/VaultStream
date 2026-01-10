@@ -308,17 +308,12 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                                       width: 16,
                                       height: 16,
                                       fit: BoxFit.cover,
-                                      placeholder:
-                                          (context, url) => Container(
-                                            color: colorScheme
-                                                .surfaceContainerHighest,
-                                          ),
-                                      errorWidget:
-                                          (context, url, error) =>
-                                              const Icon(
-                                                Icons.person,
-                                                size: 12,
-                                              ),
+                                      placeholder: (context, url) => Container(
+                                        color:
+                                            colorScheme.surfaceContainerHighest,
+                                      ),
+                                      errorWidget: (context, url, error) =>
+                                          const Icon(Icons.person, size: 12),
                                     ),
                                   ),
                                   const SizedBox(width: 6),
@@ -331,10 +326,9 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                                           fontWeight: FontWeight.w700,
                                           color:
                                               _isHovered &&
-                                                      _extractedColor != null
-                                                  ? _extractedColor
-                                                  : colorScheme
-                                                      .onSurfaceVariant,
+                                                  _extractedColor != null
+                                              ? _extractedColor
+                                              : colorScheme.onSurfaceVariant,
                                           letterSpacing: 0.1,
                                           fontSize: isTinyCard ? 11 : 12,
                                         ),

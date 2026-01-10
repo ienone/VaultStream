@@ -131,36 +131,42 @@ class ContentDetailSheet extends ConsumerWidget {
                               if (detail.contentType == 'user_profile') {
                                 avatarUrl = detail.coverUrl;
                               } else {
-                                avatarUrl = detail.rawMetadata?['user']?['avatar_hd'] ??
-                                    detail.rawMetadata?['user']?['profile_image_url'] ??
+                                avatarUrl =
+                                    detail.rawMetadata?['user']?['avatar_hd'] ??
+                                    detail
+                                        .rawMetadata?['user']?['profile_image_url'] ??
                                     detail.rawMetadata?['author']?['face'];
                               }
-                              final mappedAvatarUrl = avatarUrl != null ? _mapUrl(avatarUrl, apiBaseUrl) : null;
-                              
+                              final mappedAvatarUrl = avatarUrl != null
+                                  ? _mapUrl(avatarUrl, apiBaseUrl)
+                                  : null;
+
                               return CircleAvatar(
                                 radius: 12,
                                 backgroundColor: colorScheme.primaryContainer,
-                                backgroundImage: mappedAvatarUrl != null 
-                                  ? CachedNetworkImageProvider(
-                                      mappedAvatarUrl,
-                                      headers: buildImageHeaders(
-                                        imageUrl: mappedAvatarUrl,
-                                        baseUrl: apiBaseUrl,
-                                        apiToken: apiToken,
-                                      ),
-                                    ) 
-                                  : null,
-                                child: mappedAvatarUrl == null 
-                                  ? Text(
-                                      (detail.authorName ?? '?').substring(0, 1).toUpperCase(),
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: colorScheme.onPrimaryContainer,
-                                      ),
-                                    )
-                                  : null,
+                                backgroundImage: mappedAvatarUrl != null
+                                    ? CachedNetworkImageProvider(
+                                        mappedAvatarUrl,
+                                        headers: buildImageHeaders(
+                                          imageUrl: mappedAvatarUrl,
+                                          baseUrl: apiBaseUrl,
+                                          apiToken: apiToken,
+                                        ),
+                                      )
+                                    : null,
+                                child: mappedAvatarUrl == null
+                                    ? Text(
+                                        (detail.authorName ?? '?')
+                                            .substring(0, 1)
+                                            .toUpperCase(),
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: colorScheme.onPrimaryContainer,
+                                        ),
+                                      )
+                                    : null,
                               );
-                            }
+                            },
                           ),
                           const SizedBox(width: 8),
                           Text(
@@ -208,17 +214,30 @@ class ContentDetailSheet extends ConsumerWidget {
                           ),
                         ],
                       ),
-                      
+
                       // User Profile Stats (Following count fix)
-                      if (detail.contentType == 'user_profile' && detail.platform.toLowerCase() == 'weibo')
+                      if (detail.contentType == 'user_profile' &&
+                          detail.platform.toLowerCase() == 'weibo')
                         Padding(
                           padding: const EdgeInsets.only(top: 16),
                           child: Wrap(
                             spacing: 20,
                             children: [
-                              _LabelStat(label: '粉丝', value: detail.extraStats['followers'] ?? 0),
-                              _LabelStat(label: '关注', value: detail.extraStats['following'] ?? detail.extraStats['friends'] ?? 0),
-                              _LabelStat(label: '微博', value: detail.extraStats['statuses'] ?? 0),
+                              _LabelStat(
+                                label: '粉丝',
+                                value: detail.extraStats['followers'] ?? 0,
+                              ),
+                              _LabelStat(
+                                label: '关注',
+                                value:
+                                    detail.extraStats['following'] ??
+                                    detail.extraStats['friends'] ??
+                                    0,
+                              ),
+                              _LabelStat(
+                                label: '微博',
+                                value: detail.extraStats['statuses'] ?? 0,
+                              ),
                             ],
                           ),
                         ),
@@ -595,54 +614,6 @@ class ContentDetailSheet extends ConsumerWidget {
     );
   }
 
-  List<String> _extractAllImages(ContentDetail detail, String apiBaseUrl) {
-    final list = <String>{};
-    final storedMap = _getStoredMap(detail);
-
-    // 1. 优先使用已经清洗/本地化的 mediaUrls
-    if (detail.mediaUrls.isNotEmpty) {
-      // 正常的媒体列表匹配逻辑
-      for (var url in detail.mediaUrls) {
-        if (url.isEmpty || _isVideo(url)) continue;
-
-        // 尝试匹配本地存储 (Level 1: Local First)
-        if (storedMap.containsKey(url)) {
-          list.add(_mapUrl(storedMap[url]!, apiBaseUrl));
-        } else {
-          // 再次尝试去参匹配 (Ignore query params like ?name=orig)
-          final cleanUrl = url.split('?').first;
-          final match = storedMap.entries.firstWhere(
-            (e) => e.key.split('?').first == cleanUrl,
-            orElse: () => const MapEntry('', ''),
-          );
-
-          if (match.key.isNotEmpty) {
-            list.add(_mapUrl(match.value, apiBaseUrl));
-          } else {
-            // 确实找不到，只能用原始链接（会走代理）
-            list.add(_mapUrl(url, apiBaseUrl));
-          }
-        }
-      }
-    }
-
-    // 2. 如果 mediaUrls 为空，再尝试从 rawMetadata 兜底
-    if (list.isEmpty) {
-      if (detail.coverUrl != null &&
-          detail.coverUrl!.isNotEmpty &&
-          !_isVideo(detail.coverUrl!)) {
-        final url = detail.coverUrl!;
-        if (storedMap.containsKey(url)) {
-          list.add(_mapUrl(storedMap[url]!, apiBaseUrl));
-        } else {
-          list.add(_mapUrl(url, apiBaseUrl));
-        }
-      }
-    }
-
-    return list.toList();
-  }
-
   List<String> _extractAllMedia(ContentDetail detail, String apiBaseUrl) {
     final list = <String>{};
     final storedMap = _getStoredMap(detail);
@@ -678,7 +649,7 @@ class ContentDetailSheet extends ConsumerWidget {
       if (detail.rawMetadata != null &&
           detail.rawMetadata!['archive'] != null) {
         final archive = detail.rawMetadata!['archive'];
-        
+
         // 1. Images
         final storedImages = archive['stored_images'];
         if (storedImages is List) {
@@ -699,7 +670,7 @@ class ContentDetailSheet extends ConsumerWidget {
             }
           }
         }
-        
+
         // 2. Videos
         final storedVideos = archive['stored_videos'];
         if (storedVideos is List) {
@@ -781,15 +752,6 @@ class ContentDetailSheet extends ConsumerWidget {
     }
 
     return url;
-  }
-
-  bool _isVideo(String url) {
-    if (url.isEmpty) return false;
-    final lower = url.toLowerCase().split('?').first;
-    return lower.endsWith('.mp4') ||
-        lower.endsWith('.mov') ||
-        lower.endsWith('.webm') ||
-        lower.endsWith('.mkv');
   }
 
   Widget _getPlatformIcon(String platform, double size) {

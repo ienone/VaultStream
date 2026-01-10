@@ -19,11 +19,11 @@ class SearchHistory extends _$SearchHistory {
 
     final prefs = await SharedPreferences.getInstance();
     final currentList = state.value ?? [];
-    
+
     // Remove if exists to move to top
     final newList = List<String>.from(currentList)..remove(queryTrimmed);
     newList.insert(0, queryTrimmed);
-    
+
     // Limit to 20 items
     if (newList.length > 20) {
       newList.removeRange(20, newList.length);
@@ -36,9 +36,9 @@ class SearchHistory extends _$SearchHistory {
   Future<void> remove(String query) async {
     final prefs = await SharedPreferences.getInstance();
     final currentList = state.value ?? [];
-    
+
     final newList = List<String>.from(currentList)..remove(query);
-    
+
     await prefs.setStringList(_key, newList);
     state = AsyncValue.data(newList);
   }

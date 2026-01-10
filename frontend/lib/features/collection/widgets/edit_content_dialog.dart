@@ -26,9 +26,13 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.content.title);
-    _descriptionController = TextEditingController(text: widget.content.description);
+    _descriptionController = TextEditingController(
+      text: widget.content.description,
+    );
     _authorController = TextEditingController(text: widget.content.authorName);
-    _tagsController = TextEditingController(text: widget.content.tags.join(' '));
+    _tagsController = TextEditingController(
+      text: widget.content.tags.join(' '),
+    );
     _isNsfw = widget.content.isNsfw;
   }
 
@@ -82,7 +86,7 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return AlertDialog(
       title: const Text('编辑内容'),
       content: SingleChildScrollView(
@@ -131,7 +135,9 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
             SwitchListTile(
               title: const Text('标记为 NSFW'),
               value: _isNsfw,
-              onChanged: _isLoading ? null : (val) => setState(() => _isNsfw = val),
+              onChanged: _isLoading
+                  ? null
+                  : (val) => setState(() => _isNsfw = val),
               contentPadding: EdgeInsets.zero,
             ),
             if (_errorMessage != null) ...[

@@ -45,12 +45,7 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
 
       await dio.post(
         '/shares',
-        data: {
-          'url': url,
-          'tags': tags,
-          'is_nsfw': _isNsfw,
-          'source': 'app',
-        },
+        data: {'url': url, 'tags': tags, 'is_nsfw': _isNsfw, 'source': 'app'},
       );
 
       if (mounted) {
@@ -69,7 +64,7 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return AlertDialog(
       title: const Text('添加收藏内容'),
       content: SingleChildScrollView(
@@ -101,7 +96,9 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
             SwitchListTile(
               title: const Text('标记为 NSFW'),
               value: _isNsfw,
-              onChanged: _isLoading ? null : (val) => setState(() => _isNsfw = val),
+              onChanged: _isLoading
+                  ? null
+                  : (val) => setState(() => _isNsfw = val),
               contentPadding: EdgeInsets.zero,
             ),
             if (_errorMessage != null) ...[
