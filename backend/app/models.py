@@ -339,3 +339,14 @@ class WeiboUser(Base):
     
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class SystemSetting(Base):
+    """系统动态设置表"""
+    __tablename__ = "system_settings"
+    
+    key = Column(String(100), primary_key=True, index=True)
+    value = Column(JSON, nullable=False)  # 存储各种格式的配置（JSON 格式）
+    category = Column(String(50), index=True) # platform, storage, general, etc.
+    description = Column(Text)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)

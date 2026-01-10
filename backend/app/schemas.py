@@ -339,7 +339,27 @@ class WeiboUserResponse(BaseModel):
     friends_count: int
     statuses_count: int
     verified: bool
-    verified_reason: Optional[str]
-    
+    class Config:
+        from_attributes = True
+
+
+class SystemSettingBase(BaseModel):
+    """系统设置基础"""
+    value: Any
+    category: Optional[str] = "general"
+    description: Optional[str] = None
+
+
+class SystemSettingUpdate(BaseModel):
+    """更新系统设置"""
+    value: Any
+    description: Optional[str] = None
+
+
+class SystemSettingResponse(SystemSettingBase):
+    """系统设置响应"""
+    key: str
+    updated_at: datetime
+
     class Config:
         from_attributes = True

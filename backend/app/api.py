@@ -14,13 +14,14 @@ from starlette.concurrency import run_in_threadpool
 from app.logging import logger, log_context
 
 from app.database import get_db
-from app.models import Content, ContentStatus, PushedRecord, Platform, ContentSource, Task, TaskStatus, DistributionRule, ReviewStatus, WeiboUser
+from app.models import Content, ContentStatus, PushedRecord, Platform, ContentSource, Task, TaskStatus, DistributionRule, ReviewStatus, WeiboUser, SystemSetting
 from app.schemas import (
     ShareRequest, ShareResponse, ContentDetail,
     GetContentRequest, MarkPushedRequest, ShareCard,
     ContentListResponse, ShareCardListResponse, TagStats, QueueStats, DashboardStats, ContentUpdate,
     ShareCardPreview, OptimizedMedia, DistributionRuleCreate, DistributionRuleUpdate, 
-    DistributionRuleResponse, ReviewAction, BatchReviewRequest, PushedRecordResponse, WeiboUserResponse
+    DistributionRuleResponse, ReviewAction, BatchReviewRequest, PushedRecordResponse, WeiboUserResponse,
+    SystemSettingResponse, SystemSettingUpdate
 )
 from app.storage import get_storage_backend, LocalStorageBackend
 from app.queue import task_queue
@@ -1021,4 +1022,85 @@ async def archive_weibo_user(
     except Exception as e:
         logger.exception(f"Weibo user archive failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== System Settings API ==========
+
+@router.get("/settings", response_model=List[SystemSettingResponse])
+async def list_settings(
+    category: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """获取系统设置列表"""
+    query = select(SystemSetting)
+    if category:
+        query = query.where(SystemSetting.category == category)
+    
+    result = await db.execute(query)
+    settings_list = result.scalars().all()
+    return settings_list
+
+
+@router.get("/settings/{key}", response_model=SystemSettingResponse)
+async def get_setting(
+    key: str,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """获取单个设置"""
+    result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
+    setting = result.scalar_one_or_none()
+    if not setting:
+        raise HTTPException(status_code=404, detail="Setting not found")
+    return setting
+
+
+@router.put("/settings/{key}", response_model=SystemSettingResponse)
+async def update_setting(
+    key: str,
+    update: SystemSettingUpdate,
+    category: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """创建或更新设置"""
+    result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
+    setting = result.scalar_one_or_none()
+    
+    if setting:
+        setting.value = update.value
+        if update.description:
+            setting.description = update.description
+        if category:
+            setting.category = category
+    else:
+        setting = SystemSetting(
+            key=key,
+            value=update.value,
+            category=category or "general",
+            description=update.description
+        )
+        db.add(setting)
+    
+    await db.commit()
+    await db.refresh(setting)
+    return setting
+
+
+@router.delete("/settings/{key}")
+async def delete_setting(
+    key: str,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """删除设置"""
+    result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
+    setting = result.scalar_one_or_none()
+    if not setting:
+        raise HTTPException(status_code=404, detail="Setting not found")
+    
+    await db.delete(setting)
+    await db.commit()
+    return {"status": "deleted", "key": key}
 
