@@ -125,18 +125,42 @@ class ContentDetailSheet extends ConsumerWidget {
                       // Author and Stats
                       Row(
                         children: [
-                          CircleAvatar(
-                            radius: 12,
-                            backgroundColor: colorScheme.primaryContainer,
-                            child: Text(
-                              (detail.authorName ?? '?')
-                                  .substring(0, 1)
-                                  .toUpperCase(),
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: colorScheme.onPrimaryContainer,
-                              ),
-                            ),
+                          Builder(
+                            builder: (context) {
+                              String? avatarUrl;
+                              if (detail.contentType == 'user_profile') {
+                                avatarUrl = detail.coverUrl;
+                              } else {
+                                avatarUrl = detail.rawMetadata?['user']?['avatar_hd'] ??
+                                    detail.rawMetadata?['user']?['profile_image_url'] ??
+                                    detail.rawMetadata?['author']?['face'];
+                              }
+                              final mappedAvatarUrl = avatarUrl != null ? _mapUrl(avatarUrl, apiBaseUrl) : null;
+                              
+                              return CircleAvatar(
+                                radius: 12,
+                                backgroundColor: colorScheme.primaryContainer,
+                                backgroundImage: mappedAvatarUrl != null 
+                                  ? CachedNetworkImageProvider(
+                                      mappedAvatarUrl,
+                                      headers: buildImageHeaders(
+                                        imageUrl: mappedAvatarUrl,
+                                        baseUrl: apiBaseUrl,
+                                        apiToken: apiToken,
+                                      ),
+                                    ) 
+                                  : null,
+                                child: mappedAvatarUrl == null 
+                                  ? Text(
+                                      (detail.authorName ?? '?').substring(0, 1).toUpperCase(),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: colorScheme.onPrimaryContainer,
+                                      ),
+                                    )
+                                  : null,
+                              );
+                            }
                           ),
                           const SizedBox(width: 8),
                           Text(
@@ -184,6 +208,20 @@ class ContentDetailSheet extends ConsumerWidget {
                           ),
                         ],
                       ),
+                      
+                      // User Profile Stats (Following count fix)
+                      if (detail.contentType == 'user_profile' && detail.platform.toLowerCase() == 'weibo')
+                        Padding(
+                          padding: const EdgeInsets.only(top: 16),
+                          child: Wrap(
+                            spacing: 20,
+                            children: [
+                              _LabelStat(label: '粉丝', value: detail.extraStats['followers'] ?? 0),
+                              _LabelStat(label: '关注', value: detail.extraStats['following'] ?? detail.extraStats['friends'] ?? 0),
+                              _LabelStat(label: '微博', value: detail.extraStats['statuses'] ?? 0),
+                            ],
+                          ),
+                        ),
                       const SizedBox(height: 20),
 
                       // Tags
@@ -255,7 +293,7 @@ class ContentDetailSheet extends ConsumerWidget {
   ) {
     final theme = Theme.of(context);
     final storedMap = _getStoredMap(detail);
-    final images = _extractAllImages(detail, apiBaseUrl);
+    final images = _extractAllMedia(detail, apiBaseUrl);
 
     // Try to get Markdown content
     String? markdown;
@@ -563,18 +601,9 @@ class ContentDetailSheet extends ConsumerWidget {
 
     // 1. 优先使用已经清洗/本地化的 mediaUrls
     if (detail.mediaUrls.isNotEmpty) {
-      // 尝试强行使用第一张本地图片兜底 (Fix for mismatching params if only one image)
-      if (detail.mediaUrls.length == 1 &&
-          (detail.mediaUrls.first.contains('twimg.com') ||
-              detail.mediaUrls.first.contains('hdslb.com'))) {
-        if (storedMap.isNotEmpty) {
-          list.add(_mapUrl(storedMap.values.first, apiBaseUrl));
-        }
-      }
-
       // 正常的媒体列表匹配逻辑
       for (var url in detail.mediaUrls) {
-        if (url.isEmpty) continue;
+        if (url.isEmpty || _isVideo(url)) continue;
 
         // 尝试匹配本地存储 (Level 1: Local First)
         if (storedMap.containsKey(url)) {
@@ -597,9 +626,11 @@ class ContentDetailSheet extends ConsumerWidget {
       }
     }
 
-    // 2. 如果 mediaUrls 为空，再尝试从 rawMetadata 兜底（主要针对未处理或旧数据）
+    // 2. 如果 mediaUrls 为空，再尝试从 rawMetadata 兜底
     if (list.isEmpty) {
-      if (detail.coverUrl != null && detail.coverUrl!.isNotEmpty) {
+      if (detail.coverUrl != null &&
+          detail.coverUrl!.isNotEmpty &&
+          !_isVideo(detail.coverUrl!)) {
         final url = detail.coverUrl!;
         if (storedMap.containsKey(url)) {
           list.add(_mapUrl(storedMap[url]!, apiBaseUrl));
@@ -607,36 +638,35 @@ class ContentDetailSheet extends ConsumerWidget {
           list.add(_mapUrl(url, apiBaseUrl));
         }
       }
+    }
 
-      try {
-        final meta = detail.rawMetadata;
-        if (meta != null) {
-          final archive = meta['archive'];
-          if (archive != null) {
-            // 优先找本地化后的 stored_images
-            final stored = archive['stored_images'];
-            if (stored is List && stored.isNotEmpty) {
-              for (var img in stored) {
-                if (img is Map && img['url'] != null) {
-                  list.add(_mapUrl(img['url'] as String, apiBaseUrl));
-                }
-              }
-            } else {
-              // 找不到则找原始 images
-              final images = archive['images'];
-              if (images is List) {
-                for (var img in images) {
-                  if (img is String) {
-                    list.add(_mapUrl(img, apiBaseUrl));
-                  } else if (img is Map && img['url'] != null) {
-                    list.add(_mapUrl(img['url'] as String, apiBaseUrl));
-                  }
-                }
-              }
-            }
+    return list.toList();
+  }
+
+  List<String> _extractAllMedia(ContentDetail detail, String apiBaseUrl) {
+    final list = <String>{};
+    final storedMap = _getStoredMap(detail);
+
+    if (detail.mediaUrls.isNotEmpty) {
+      for (var url in detail.mediaUrls) {
+        if (url.isEmpty) continue;
+
+        if (storedMap.containsKey(url)) {
+          list.add(_mapUrl(storedMap[url]!, apiBaseUrl));
+        } else {
+          final cleanUrl = url.split('?').first;
+          final match = storedMap.entries.firstWhere(
+            (e) => e.key.split('?').first == cleanUrl,
+            orElse: () => const MapEntry('', ''),
+          );
+
+          if (match.key.isNotEmpty) {
+            list.add(_mapUrl(match.value, apiBaseUrl));
+          } else {
+            list.add(_mapUrl(url, apiBaseUrl));
           }
         }
-      } catch (_) {}
+      }
     }
 
     return list.toList();
@@ -645,37 +675,49 @@ class ContentDetailSheet extends ConsumerWidget {
   Map<String, String> _getStoredMap(ContentDetail detail) {
     Map<String, String> storedMap = {};
     try {
-      if (detail.rawMetadata != null) {
+      if (detail.rawMetadata != null &&
+          detail.rawMetadata!['archive'] != null) {
         final archive = detail.rawMetadata!['archive'];
-        if (archive != null) {
-          // 0. 我们需要一个 namespace，通常是 vaultstream
-          const namespace = 'vaultstream';
-
-          final storedImages = archive['stored_images'];
-          if (storedImages is List) {
-            for (var img in storedImages) {
-              if (img is Map && img['orig_url'] != null) {
-                String? localPath = img['url'];
-
-                // 优先检查 stored_url 接口返回的 URL 是否带 api 路径
-                // 如果后端返回的 url 404 (如 /api/v1/vaultstream/blobs/...)
-                // 或者 url 为空，我们都利用 key 强制转换为正确的 media 代理路径
-                final String? key = img['key'];
-                if (key != null) {
-                  // 如果 key 是 sha256:xxx 格式，补充 vaultstream/blobs 前缀
-                  if (key.startsWith('sha256:')) {
-                    final hashVal = key.split(':')[1];
-                    localPath =
-                        '$namespace/blobs/sha256/${hashVal.substring(0, 2)}/${hashVal.substring(2, 4)}/$hashVal.webp';
-                  } else {
-                    localPath = key;
-                  }
-                }
-
-                if (localPath != null) {
-                  storedMap[img['orig_url']] = localPath;
+        
+        // 1. Images
+        final storedImages = archive['stored_images'];
+        if (storedImages is List) {
+          for (var img in storedImages) {
+            if (img is Map && img['orig_url'] != null) {
+              String? localPath = img['url'];
+              final String? key = img['key'];
+              if (key != null) {
+                if (key.startsWith('sha256:')) {
+                  final hashVal = key.split(':')[1];
+                  localPath =
+                      'vaultstream/blobs/sha256/${hashVal.substring(0, 2)}/${hashVal.substring(2, 4)}/$hashVal.webp';
+                } else {
+                  localPath = key;
                 }
               }
+              if (localPath != null) storedMap[img['orig_url']] = localPath;
+            }
+          }
+        }
+        
+        // 2. Videos
+        final storedVideos = archive['stored_videos'];
+        if (storedVideos is List) {
+          for (var vid in storedVideos) {
+            if (vid is Map && vid['orig_url'] != null) {
+              String? localPath = vid['url'];
+              final String? key = vid['key'];
+              if (key != null) {
+                if (key.startsWith('sha256:')) {
+                  final hashVal = key.split(':')[1];
+                  final ext = key.split('.').last;
+                  localPath =
+                      'vaultstream/blobs/sha256/${hashVal.substring(0, 2)}/${hashVal.substring(2, 4)}/$hashVal.$ext';
+                } else {
+                  localPath = key;
+                }
+              }
+              if (localPath != null) storedMap[vid['orig_url']] = localPath;
             }
           }
         }
@@ -695,7 +737,10 @@ class ContentDetailSheet extends ConsumerWidget {
     // 1. 处理需要代理的外部域名 (针对 B 站、Twitter 图片反盗链)
     if (url.contains('pbs.twimg.com') ||
         url.contains('hdslb.com') ||
-        url.contains('bilibili.com')) {
+        url.contains('bilibili.com') ||
+        url.contains('xhscdn.com') ||
+        url.contains('sinaimg.cn') ||
+        url.contains('zhimg.com')) {
       // 避免重复代理
       if (url.contains('/proxy/image?url=')) return url;
       return '$apiBaseUrl/proxy/image?url=${Uri.encodeComponent(url)}';
@@ -736,6 +781,15 @@ class ContentDetailSheet extends ConsumerWidget {
     }
 
     return url;
+  }
+
+  bool _isVideo(String url) {
+    if (url.isEmpty) return false;
+    final lower = url.toLowerCase().split('?').first;
+    return lower.endsWith('.mp4') ||
+        lower.endsWith('.mov') ||
+        lower.endsWith('.webm') ||
+        lower.endsWith('.mkv');
   }
 
   Widget _getPlatformIcon(String platform, double size) {

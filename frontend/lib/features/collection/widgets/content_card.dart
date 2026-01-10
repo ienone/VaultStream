@@ -289,6 +289,40 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                               children: [
                                 _PlatformBadge(platform: content.platform),
                                 const SizedBox(width: 8),
+                                if (content.authorAvatarUrl != null) ...[
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: CachedNetworkImage(
+                                      imageUrl: _mapUrl(
+                                        content.authorAvatarUrl!,
+                                        apiBaseUrl,
+                                      ),
+                                      httpHeaders: buildImageHeaders(
+                                        imageUrl: _mapUrl(
+                                          content.authorAvatarUrl!,
+                                          apiBaseUrl,
+                                        ),
+                                        baseUrl: apiBaseUrl,
+                                        apiToken: apiToken,
+                                      ),
+                                      width: 16,
+                                      height: 16,
+                                      fit: BoxFit.cover,
+                                      placeholder:
+                                          (context, url) => Container(
+                                            color: colorScheme
+                                                .surfaceContainerHighest,
+                                          ),
+                                      errorWidget:
+                                          (context, url, error) =>
+                                              const Icon(
+                                                Icons.person,
+                                                size: 12,
+                                              ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                ],
                                 Expanded(
                                   child: Text(
                                     content.authorName ?? '未知作者',
@@ -297,9 +331,10 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                                           fontWeight: FontWeight.w700,
                                           color:
                                               _isHovered &&
-                                                  _extractedColor != null
-                                              ? _extractedColor
-                                              : colorScheme.onSurfaceVariant,
+                                                      _extractedColor != null
+                                                  ? _extractedColor
+                                                  : colorScheme
+                                                      .onSurfaceVariant,
                                           letterSpacing: 0.1,
                                           fontSize: isTinyCard ? 11 : 12,
                                         ),
@@ -500,6 +535,15 @@ class _ContentCardState extends ConsumerState<ContentCard> {
     return count.toString();
   }
 
+  bool _isVideo(String url) {
+    if (url.isEmpty) return false;
+    final lower = url.toLowerCase().split('?').first;
+    return lower.endsWith('.mp4') ||
+        lower.endsWith('.mov') ||
+        lower.endsWith('.webm') ||
+        lower.endsWith('.mkv');
+  }
+
   bool _compareUrls(dynamic url1, String? url2) {
     if (url1 == null || url2 == null) return false;
     final s1 = url1.toString().split('?').first;
@@ -511,10 +555,17 @@ class _ContentCardState extends ConsumerState<ContentCard> {
     String url = '';
     final content = widget.content;
     // 封面优先，B站Opus等特殊场景回退到首张媒体图
-    if (content.coverUrl != null && content.coverUrl!.isNotEmpty) {
+    if (content.coverUrl != null &&
+        content.coverUrl!.isNotEmpty &&
+        !_isVideo(content.coverUrl!)) {
       url = content.coverUrl!;
     } else if (content.mediaUrls.isNotEmpty) {
-      url = content.mediaUrls.first;
+      // 找第一个不是视频的媒体
+      try {
+        url = content.mediaUrls.firstWhere((u) => !_isVideo(u));
+      } catch (_) {
+        url = '';
+      }
     }
 
     if (url.isEmpty) return '';

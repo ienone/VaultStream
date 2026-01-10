@@ -133,6 +133,32 @@ class Content(Base):
             return self.content_type
         return None
     
+    @property
+    def author_avatar_url(self) -> Optional[str]:
+        """从 raw_metadata 中提取作者头像 URL"""
+        try:
+            if not self.raw_metadata:
+                return None
+            
+            if self.platform == Platform.WEIBO:
+                # 微博博主主页
+                if self.content_type == "user_profile":
+                    return self.raw_metadata.get("avatar_hd")
+                # 微博正文
+                return self.raw_metadata.get("user", {}).get("avatar_hd") or \
+                       self.raw_metadata.get("user", {}).get("profile_image_url")
+            
+            if self.platform == Platform.BILIBILI:
+                return self.raw_metadata.get("author", {}).get("face") or \
+                       self.raw_metadata.get("owner", {}).get("face")
+            
+            if self.platform == Platform.TWITTER:
+                return self.raw_metadata.get("user", {}).get("profile_image_url_https")
+                
+        except Exception:
+            pass
+        return None
+    
     # 通用互动数据
     view_count = Column(Integer, default=0)
     like_count = Column(Integer, default=0)
@@ -284,3 +310,32 @@ class Task(Base):
     created_at = Column(DateTime, default=utcnow, index=True)
     started_at = Column(DateTime)
     completed_at = Column(DateTime)
+
+
+class WeiboUser(Base):
+    """微博用户存档表"""
+    __tablename__ = "weibo_users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    platform_id = Column(String(50), nullable=False, unique=True, index=True) # Weibo UID
+    
+    nick_name = Column(String(100), nullable=False)
+    avatar_hd = Column(Text)
+    description = Column(Text)
+    
+    followers_count = Column(Integer, default=0)
+    friends_count = Column(Integer, default=0)
+    statuses_count = Column(Integer, default=0)
+    
+    verified = Column(Boolean, default=False)
+    verified_type = Column(Integer)
+    verified_reason = Column(Text)
+    
+    gender = Column(String(10)) # m, f
+    location = Column(String(100))
+    
+    # 原始数据
+    raw_data = Column(JSON)
+    
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)

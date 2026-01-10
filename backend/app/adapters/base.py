@@ -20,6 +20,7 @@ class ParsedContent:
     author_name: Optional[str] = None
     author_id: Optional[str] = None
     cover_url: Optional[str] = None
+    cover_color: Optional[str] = None
     media_urls: list = None
     published_at: Optional[datetime] = None  # 将 str 改为 datetime
     

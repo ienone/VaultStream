@@ -2,6 +2,7 @@ import re
 import json
 import logging
 import requests
+import httpx
 from typing import Optional, List, Dict, Any
 from app.adapters.base import PlatformAdapter, ParsedContent
 from app.adapters.errors import NonRetryableAdapterError, RetryableAdapterError, AuthRequiredAdapterError
@@ -21,8 +22,10 @@ class WeiboAdapter(PlatformAdapter):
     # https://weibo.com/2656274875/49999... 
     # https://weibo.com/detail/49999...
     # https://m.weibo.cn/status/49999...
-    # group 1: uid (optional), group 2: mblogid (bid)
-    URL_PATTERN = re.compile(r"(?:weibo\.com|weibo\.cn)/(?:(\d+)/|status/|detail/)?([A-Za-z0-9]{9,})")
+    # https://weibo.com/u/5673255066
+    # https://mapp.api.weibo.cn/fx/493bfdaf31cffc58f0ddcb59738cf77c.html
+    # group 1: uid (optional), group 2: mblogid (bid) OR uid (if u/ pattern)
+    URL_PATTERN = re.compile(r"(?:weibo\.com|weibo\.cn|mapp\.api\.weibo\.cn)/(?:(\d+)/|status/|detail/|u/|fx/)?([A-Za-z0-9]+)(?:\.html)?")
 
     def __init__(self, cookies: Optional[Dict[str, str]] = None):
         """
@@ -35,43 +38,70 @@ class WeiboAdapter(PlatformAdapter):
 
     async def detect_content_type(self, url: str) -> Optional[str]:
         if self.URL_PATTERN.search(url):
+            if "/u/" in url:
+                return "user"
             return "status"
         # mapp links detection
         if "mapp.api.weibo.cn" in url:
-            return "status"
+            return "status" # Potentially status, will be resolved
         return None
 
     async def clean_url(self, url: str) -> str:
         # Resolve short/mobile links first
         if "mapp.api.weibo.cn" in url or "m.weibo.cn" in url:
             try:
-                # Use HEAD request to resolve redirect
-                # Use allow_redirects=True to follow to the end
-                resp = requests.head(url, allow_redirects=True, timeout=10)
-                url = resp.url
-            except Exception:
-                pass # Fallback to original logic if network fails
+                # Use a mobile User-Agent for better redirection handling
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1"
+                }
+                # Use GET request for mapp links as HEAD often doesn't redirect correctly
+                async with httpx.AsyncClient(headers=headers, follow_redirects=True, timeout=10.0) as client:
+                    resp = await client.get(url)
+                    final_url = str(resp.url)
+                    
+                    if "mapp.api.weibo.cn" in final_url:
+                        # Try parsing from body
+                        match_body = re.search(r'"mblogid":\s*"([a-zA-Z0-9]+)"', resp.text)
+                        if match_body:
+                            return f"https://weibo.com/detail/{match_body.group(1)}"
+                        
+                        match_bid = re.search(r'bid=([a-zA-Z0-9]+)', resp.text)
+                        if match_bid:
+                            return f"https://weibo.com/detail/{match_bid.group(1)}"
+                    
+                    url = final_url
+            except Exception as e:
+                logger.warning(f"Failed to resolve mobile/mapp URL {url}: {e}")
 
         match = self.URL_PATTERN.search(url)
         if match:
-            bid = match.group(2)
-            uid = match.group(1)
+            part1 = match.group(1)
+            part2 = match.group(2)
+            
+            # Check if it is a user profile URL
+            if "/u/" in url or (part1 is None and part2.isdigit() and len(part2) > 9): 
+                 if "/u/" in url:
+                     return f"https://weibo.com/u/{part2}"
+
+            bid = part2
+            uid = part1
             if uid:
                 return f"https://weibo.com/{uid}/{bid}"
-            return f"https://weibo.com/detail/{bid}"
+            if bid:
+                 return f"https://weibo.com/detail/{bid}"
         return url.split("?")[0]
 
     async def parse(self, url: str) -> ParsedContent:
+        # Resolve URL first if it's a mapp link
+        if "mapp.api.weibo.cn" in url:
+            url = await self.clean_url(url)
+
         # Merge settings cookie and passed cookies
         cookies_dict = self.cookies.copy()
         
         # Priority: settings > passed cookies (usually settings has the secret value)
         if settings.weibo_cookie:
-            # Assuming settings.weibo_cookie is a full cookie string, we might need to parse it if we want to merge granularly.
-            # But here, we just use it as a header "Cookie" string if available, or rely on passed dict.
-            # However, requests.get accepts `cookies` dict OR `headers={'Cookie': ...}`.
-            # Let's prefer the dict for requests if possible, but the setting is a string.
-            pass
+             pass
 
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -79,17 +109,66 @@ class WeiboAdapter(PlatformAdapter):
             "Accept": "application/json, text/plain, */*",
         }
         
-        # If settings.weibo_cookie is set, use it as the Cookie header (it's usually a raw string)
         if settings.weibo_cookie:
              headers["Cookie"] = settings.weibo_cookie.get_secret_value()
-        # If we have instance cookies (from factory), and no settings cookie, or we want to merge?
-        # Usually settings.weibo_cookie contains the full auth.
-        # If headers["Cookie"] is not set, we can use requests `cookies` parameter.
         
         request_cookies = None
         if "Cookie" not in headers and self.cookies:
             request_cookies = self.cookies
 
+        # 1. Handle User Profile
+        if "/u/" in url:
+            match = re.search(r"/u/(\d+)", url)
+            if match:
+                uid = match.group(1)
+                user_info = self.fetch_user_profile(uid)
+                
+                # Construct archive for color extraction and media processing
+                archive = {
+                    "type": "weibo_user",
+                    "title": user_info.get('nick_name', ''),
+                    "plain_text": user_info.get('description', ''),
+                    "images": [],
+                    "videos": []
+                }
+                
+                if user_info.get('avatar_hd'):
+                    archive["images"].append({
+                        "url": user_info.get('avatar_hd'),
+                        "width": None, 
+                        "height": None
+                    })
+                
+                return ParsedContent(
+                    platform="weibo",
+                    content_type="user_profile",
+                    content_id=f"u_{uid}",
+                    clean_url=url,
+                    title=f"微博博主: {user_info.get('nick_name', uid)}",
+                    description=user_info.get('description', ''),
+                    author_name=user_info.get('nick_name', ''),
+                    author_id=uid,
+                    cover_url=user_info.get('avatar_hd', ''),
+                    media_urls=[user_info.get('avatar_hd', '')] if user_info.get('avatar_hd') else [],
+                    published_at=datetime.now(), 
+                    raw_metadata={
+                        **user_info,
+                        "archive": archive # Required for worker color extraction
+                    },
+                    stats={
+                        # Map user metrics to standard stats keys for frontend display
+                        # followers -> view (粉丝)
+                        # friends/following -> share (关注)
+                        # statuses -> reply (博文)
+                        "view": user_info.get('followers_count', 0),
+                        "share": user_info.get('friends_count', 0),
+                        "reply": user_info.get('statuses_count', 0),
+                        "like": 0,
+                        "favorite": 0
+                    }
+                )
+
+        # 2. Handle Status (Tweet)
         match = self.URL_PATTERN.search(url)
         if not match:
             raise NonRetryableAdapterError("Invalid Weibo URL")
@@ -118,6 +197,19 @@ class WeiboAdapter(PlatformAdapter):
 
             if "text" not in data and "page_info" not in data:
                  raise NonRetryableAdapterError("Invalid Weibo data structure (possibly blocked or deleted)")
+
+            # Handle Long Text (Added based on WeiboSpider)
+            if data.get("isLongText"):
+                try:
+                    long_text_url = f"https://weibo.com/ajax/statuses/longtext?id={bid}"
+                    lt_resp = requests.get(long_text_url, headers=headers, cookies=request_cookies, timeout=10)
+                    if lt_resp.status_code == 200:
+                        lt_data = lt_resp.json()
+                        if lt_data.get("data", {}).get("longTextContent"):
+                             data["text"] = lt_data["data"]["longTextContent"]
+                             # Update plain text in archive building later
+                except Exception as e:
+                    logger.warning(f"Failed to fetch long text for {bid}: {e}")
 
             # 构建标准化存档（用于媒体下载和展示）
             archive = self._build_weibo_archive(data)
@@ -214,6 +306,84 @@ class WeiboAdapter(PlatformAdapter):
         except Exception as e:
             logger.exception("Error parsing Weibo content")
             raise NonRetryableAdapterError(f"Unexpected error: {str(e)}")
+
+    def fetch_user_profile(self, uid: str) -> Dict[str, Any]:
+        """获取用户详细信息 (Ported from WeiboSpider)"""
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://weibo.com/",
+            "Accept": "application/json, text/plain, */*",
+        }
+        if settings.weibo_cookie:
+             headers["Cookie"] = settings.weibo_cookie.get_secret_value()
+        
+        cookies = self.cookies or {}
+
+        # 1. Basic Info
+        info_url = f"https://weibo.com/ajax/profile/info?uid={uid}"
+        try:
+            resp_info = requests.get(info_url, headers=headers, cookies=cookies, timeout=10)
+            resp_info.raise_for_status()
+            info_data = resp_info.json()
+            user_base = self._parse_user_info_spider(info_data.get('data', {}).get('user', {}))
+        except Exception as e:
+            logger.error(f"Failed to fetch user info for {uid}: {e}")
+            raise RetryableAdapterError(f"Failed to fetch user info: {e}")
+
+        # 2. Detail Info
+        detail_url = f"https://weibo.com/ajax/profile/detail?uid={uid}"
+        try:
+            resp_detail = requests.get(detail_url, headers=headers, cookies=cookies, timeout=10)
+            resp_detail.raise_for_status()
+            detail_data = resp_detail.json()
+            user_detail = self._parse_user_detail_spider(user_base, detail_data.get('data', {}))
+        except Exception as e:
+            logger.warning(f"Failed to fetch user detail for {uid}: {e}")
+            user_detail = user_base # Fallback to base info
+
+        return user_detail
+
+    def _parse_user_info_spider(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """解析用户信息 (Refer: WeiboSpider/weibospider/spiders/common.py)"""
+        user = {
+            "platform_id": str(data.get('id', '')),
+            "nick_name": data.get('screen_name', ''),
+            "avatar_hd": data.get('avatar_hd', ''),
+            "verified": data.get('verified', False),
+            "description": data.get('description', ''),
+            "followers_count": data.get('followers_count', 0),
+            "friends_count": data.get('friends_count', 0),
+            "statuses_count": data.get('statuses_count', 0),
+            "gender": data.get('gender', 'n'),
+            "location": data.get('location', ''),
+            "mbrank": data.get('mbrank', 0),
+            "mbtype": data.get('mbtype', 0),
+            "credit_score": data.get('credit_score', 0),
+        }
+        if user['verified']:
+            user['verified_type'] = data.get('verified_type', 0)
+            user['verified_reason'] = data.get('verified_reason', '')
+        return user
+
+    def _parse_user_detail_spider(self, item: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any]:
+        """解析详细数据 (Refer: WeiboSpider/weibospider/spiders/user.py)"""
+        item['birthday'] = data.get('birthday', '')
+        item['created_at_str'] = data.get('created_at', '') # "2010-05-31 23:07:59" usually
+        item['desc_text'] = data.get('desc_text', '')
+        item['ip_location'] = data.get('ip_location', '')
+        item['sunshine_credit'] = data.get('sunshine_credit', {}).get('level', '')
+        # item['label_desc'] = [label['name'] for label in data.get('label_desc', [])]
+        if 'company' in data:
+            item['company'] = data['company']
+        if 'education' in data:
+            item['education'] = data['education']
+        
+        # Merge raw data for archival
+        item['raw_data'] = {
+             'detail': data
+             # 'info': ... (already partly in item)
+        }
+        return item
 
     def _build_weibo_archive(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """构建标准化存档结构"""

@@ -294,27 +294,64 @@ class TaskWorker:
                             await self._maybe_process_private_archive_media(parsed)
                         except Exception as e:
                             logger.warning("Archive media processing skipped: {}", f"{type(e).__name__}: {e}")
+                    
+                    # M5: 如果封面色仍然为空（例如未开启归档处理），尝试直接提取
+                    if not getattr(parsed, "cover_color", None) and parsed.cover_url:
+                        from app.media_processing import extract_cover_color
+                        parsed.cover_color = await extract_cover_color(parsed.cover_url)
 
                     # 将（可能被本地化的）媒体字段同步回内容记录
                     content.cover_url = parsed.cover_url
                     content.media_urls = parsed.media_urls
 
                     content.raw_metadata = parsed.raw_metadata
+                    
+                    # 同步封面主色调到数据库
+                    content.cover_color = getattr(parsed, "cover_color", None)
+                    if not content.cover_color and isinstance(content.raw_metadata, dict) and "archive" in content.raw_metadata:
+                        content.cover_color = content.raw_metadata["archive"].get("dominant_color")
 
                     # 统一存储 ID 和互动数据
                     content.platform_id = parsed.content_id
                     if hasattr(parsed, 'stats') and parsed.stats:
+                        # 优先从映射好的通用字段取值
                         content.view_count = parsed.stats.get('view', 0)
                         content.like_count = parsed.stats.get('like', 0)
                         content.collect_count = parsed.stats.get('favorite', 0)
                         content.share_count = parsed.stats.get('share', 0)
                         content.comment_count = parsed.stats.get('reply', 0)
-                        # 存储 B 站特有的投币、弹幕和直播状态到 extra_stats
-                        content.extra_stats = {
-                            "coin": parsed.stats.get('coin', 0),
-                            "danmaku": parsed.stats.get('danmaku', 0),
-                            "live_status": parsed.stats.get('live_status', 0)
-                        }
+                        
+                        # 平台特有数据存储到 extra_stats
+                        if content.platform == Platform.BILIBILI:
+                            # B站特有数据
+                            content.extra_stats = {
+                                "coin": parsed.stats.get('coin', 0),
+                                "danmaku": parsed.stats.get('danmaku', 0),
+                                "live_status": parsed.stats.get('live_status', 0)
+                            }
+                        elif content.platform == Platform.TWITTER:
+                            # Twitter 特有数据
+                            content.extra_stats = {
+                                "bookmarks": parsed.stats.get('bookmarks', 0),
+                                "screen_name": parsed.stats.get('screen_name'),
+                                "replying_to": parsed.stats.get('replying_to'),
+                            }
+                        elif content.platform == Platform.WEIBO:
+                            # 微博特有数据
+                            if content.content_type == "user_profile":
+                                content.extra_stats = {
+                                    "followers": parsed.stats.get('view', 0),
+                                    "following": parsed.stats.get('share', 0),
+                                    "statuses": parsed.stats.get('reply', 0),
+                                }
+                            else:
+                                content.extra_stats = {
+                                    "repost": parsed.stats.get('share', 0),
+                                }
+                        else:
+                            # 其他平台：保留所有非通用字段
+                            extra_keys = set(parsed.stats.keys()) - {'view', 'like', 'favorite', 'share', 'reply'}
+                            content.extra_stats = {k: parsed.stats[k] for k in extra_keys if k in parsed.stats}
 
                     # 更新状态为已抓取并清理失败信息（保留 failure_count 作为历史统计）
                     content.status = ContentStatus.PULLED
@@ -516,13 +553,19 @@ class TaskWorker:
                 await self._maybe_process_private_archive_media(parsed)
             except Exception as e:
                 logger.warning("Archive media processing skipped: {}", f"{type(e).__name__}: {e}")
+        
+        # M5: 如果封面色仍然为空，尝试直接提取
+        if not getattr(parsed, "cover_color", None) and parsed.cover_url:
+            from app.media_processing import extract_cover_color
+            parsed.cover_color = await extract_cover_color(parsed.cover_url)
 
         content.cover_url = parsed.cover_url
         content.media_urls = parsed.media_urls
         content.raw_metadata = parsed.raw_metadata
         
-        # M5: 同步封面主色调
-        if isinstance(content.raw_metadata, dict) and "archive" in content.raw_metadata:
+        # 同步封面主色调
+        content.cover_color = getattr(parsed, "cover_color", None)
+        if not content.cover_color and isinstance(content.raw_metadata, dict) and "archive" in content.raw_metadata:
             content.cover_color = content.raw_metadata["archive"].get("dominant_color")
 
         # 统一存储 ID 和互动数据
@@ -549,6 +592,18 @@ class TaskWorker:
                     "screen_name": parsed.stats.get('screen_name'),
                     "replying_to": parsed.stats.get('replying_to'),
                 }
+            elif content.platform == Platform.WEIBO:
+                # 微博特有数据
+                if content.content_type == "user_profile":
+                    content.extra_stats = {
+                        "followers": parsed.stats.get('view', 0),
+                        "following": parsed.stats.get('share', 0),
+                        "statuses": parsed.stats.get('reply', 0),
+                    }
+                else:
+                    content.extra_stats = {
+                        "repost": parsed.stats.get('share', 0),
+                    }
             else:
                 # 其他平台：保留所有非通用字段
                 extra_keys = set(parsed.stats.keys()) - {'view', 'like', 'favorite', 'share', 'reply'}

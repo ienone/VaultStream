@@ -177,6 +177,7 @@ class ShareCard(BaseModel):
     description: Optional[str] = None  # Added for text content display
     author_name: Optional[str] = None  # 作者名称
     author_id: Optional[str] = None     # 作者ID
+    author_avatar_url: Optional[str] = None # 作者头像URL
     cover_url: Optional[str] = None
     cover_color: Optional[str] = None  # M5: 封面主色调 (Hex)
     media_urls: List[str] = Field(default_factory=list) # M6: 支持首图回退
@@ -322,6 +323,23 @@ class PushedRecordResponse(BaseModel):
     push_status: str
     error_message: Optional[str]
     pushed_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class WeiboUserResponse(BaseModel):
+    """微博用户响应"""
+    id: int
+    platform_id: str
+    nick_name: str
+    avatar_hd: Optional[str]
+    description: Optional[str]
+    followers_count: int
+    friends_count: int
+    statuses_count: int
+    verified: bool
+    verified_reason: Optional[str]
     
     class Config:
         from_attributes = True

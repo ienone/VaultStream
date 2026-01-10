@@ -1141,6 +1141,23 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     final colorScheme = theme.colorScheme;
     final bool isBilibili = detail.isBilibili;
 
+    // 获取头像 URL
+    String? avatarUrl;
+    if (detail.contentType == 'user_profile') {
+      avatarUrl = detail.coverUrl;
+    } else {
+      avatarUrl = detail.rawMetadata?['user']?['avatar_hd'] ??
+          detail.rawMetadata?['user']?['profile_image_url'] ??
+          detail.rawMetadata?['author']?['face'];
+    }
+
+    // 处理 API Base URL 和 Token 用于代理头像
+    final dio = ref.read(apiClientProvider);
+    final apiBaseUrl = dio.options.baseUrl;
+    final apiToken = dio.options.headers['X-API-Token']?.toString();
+    final mappedAvatarUrl =
+        avatarUrl != null ? _mapUrl(avatarUrl, apiBaseUrl) : null;
+
     return Row(
       children: [
         Container(
@@ -1156,15 +1173,27 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           child: CircleAvatar(
             radius: 20,
             backgroundColor: colorScheme.surface,
-            child: Text(
-              (detail.authorName ?? '?').substring(0, 1).toUpperCase(),
-              style: TextStyle(
-                color: isBilibili
-                    ? const Color(0xFFFB7299)
-                    : colorScheme.primary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            backgroundImage: mappedAvatarUrl != null
+                ? CachedNetworkImageProvider(
+                    mappedAvatarUrl,
+                    headers: buildImageHeaders(
+                      imageUrl: mappedAvatarUrl,
+                      baseUrl: apiBaseUrl,
+                      apiToken: apiToken,
+                    ),
+                  )
+                : null,
+            child: mappedAvatarUrl == null
+                ? Text(
+                    (detail.authorName ?? '?').substring(0, 1).toUpperCase(),
+                    style: TextStyle(
+                      color: isBilibili
+                          ? const Color(0xFFFB7299)
+                          : colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
+                : null,
           ),
         ),
         const SizedBox(width: 14),
@@ -1206,61 +1235,106 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     final colorScheme = theme.colorScheme;
     final stats = detail.extraStats;
     final bool isBilibili = detail.isBilibili;
+    final bool isWeibo = detail.platform.toLowerCase() == 'weibo';
+    final bool isUserProfile = detail.contentType == 'user_profile';
 
     final List<Widget> items = [];
 
-    // Views
-    items.add(
-      _buildUnifiedStatItem(
-        context,
-        Icons.visibility_outlined,
-        '查看',
-        detail.viewCount.toString(),
-      ),
-    );
-
-    // Likes
-    items.add(
-      _buildUnifiedStatItem(
-        context,
-        Icons.favorite_border,
-        '点赞',
-        detail.likeCount.toString(),
-      ),
-    );
-
-    // Collects
-    if (detail.collectCount > 0 || isBilibili) {
+    if (isUserProfile) {
+      // Weibo User Profile Stats
       items.add(
         _buildUnifiedStatItem(
           context,
-          Icons.star_border,
-          '收藏',
-          (detail.collectCount > 0
-                  ? detail.collectCount
-                  : (stats['favorite'] ?? 0))
-              .toString(),
+          Icons.people_outline,
+          '粉丝',
+          (stats['followers'] ?? 0).toString(),
         ),
       );
-    }
-
-    // Comments / Replies
-    if (detail.commentCount > 0 || isBilibili) {
       items.add(
         _buildUnifiedStatItem(
           context,
-          Icons.chat_bubble_outline,
-          '评论',
-          (detail.commentCount > 0
-                  ? detail.commentCount
-                  : (stats['reply'] ?? 0))
-              .toString(),
+          Icons.person_add_alt_1_outlined,
+          '关注',
+          (stats['following'] ?? stats['friends'] ?? 0).toString(),
         ),
       );
+      items.add(
+        _buildUnifiedStatItem(
+          context,
+          Icons.article_outlined,
+          '微博',
+          (stats['statuses'] ?? 0).toString(),
+        ),
+      );
+    } else {
+      // Standard Post Stats (Weibo / Twitter / Bilibili)
+      // Reposts (Weibo uses share_count as Repost count)
+      if (detail.shareCount > 0 || isWeibo) {
+        items.add(
+          _buildUnifiedStatItem(
+            context,
+            Icons.repeat_rounded, // Repost icon
+            '转发',
+            detail.shareCount.toString(),
+          ),
+        );
+      }
+
+      // Views
+      if (detail.viewCount > 0 || !isWeibo) {
+        items.add(
+          _buildUnifiedStatItem(
+            context,
+            Icons.visibility_outlined,
+            '查看',
+            detail.viewCount.toString(),
+          ),
+        );
+      }
+
+      // Likes
+      items.add(
+        _buildUnifiedStatItem(
+          context,
+          Icons.favorite_border,
+          '点赞',
+          detail.likeCount.toString(),
+        ),
+      );
+
+      // Collects
+      if (detail.collectCount > 0 || isBilibili) {
+        items.add(
+          _buildUnifiedStatItem(
+            context,
+            Icons.star_border,
+            '收藏',
+            (detail.collectCount > 0
+                    ? detail.collectCount
+                    : (stats['favorite'] ?? 0))
+                .toString(),
+          ),
+        );
+      }
+
+      // Comments / Replies
+      if (detail.commentCount > 0 || isBilibili || isWeibo) {
+        items.add(
+          _buildUnifiedStatItem(
+            context,
+            Icons.chat_bubble_outline,
+            '评论',
+            (detail.commentCount > 0
+                    ? detail.commentCount
+                    : (stats['reply'] ?? 0))
+                .toString(),
+          ),
+        );
+      }
     }
 
-    // Bilibili specific
-    if (isBilibili) {
+    // Bilibili specific (Common for both types if applicable, but usually only posts)
+    if (isBilibili && !isUserProfile) {
       if (stats['coin'] != null) {
         items.add(
           _buildUnifiedStatItem(
@@ -1458,7 +1532,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   }) {
     final theme = Theme.of(context);
     final storedMap = _getStoredMap(detail);
-    final mediaUrls = _extractAllImages(detail, apiBaseUrl);
+    final mediaUrls = _extractAllMedia(detail, apiBaseUrl);
     final markdown = _getMarkdownContent(detail);
 
     // 用于跟踪 Hero 标签是否已被使用，防止重复导致卡死
@@ -1872,6 +1946,31 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     final storedMap = _getStoredMap(detail);
     if (detail.mediaUrls.isNotEmpty) {
       for (var url in detail.mediaUrls) {
+        if (url.isEmpty || _isVideo(url)) continue;
+        if (storedMap.containsKey(url)) {
+          list.add(_mapUrl(storedMap[url]!, apiBaseUrl));
+        } else {
+          final cleanUrl = url.split('?').first;
+          final match = storedMap.entries.firstWhere(
+            (e) => e.key.split('?').first == cleanUrl,
+            orElse: () => const MapEntry('', ''),
+          );
+          list.add(
+            match.key.isNotEmpty
+                ? _mapUrl(match.value, apiBaseUrl)
+                : _mapUrl(url, apiBaseUrl),
+          );
+        }
+      }
+    }
+    return list.toList();
+  }
+
+  List<String> _extractAllMedia(ContentDetail detail, String apiBaseUrl) {
+    final list = <String>{};
+    final storedMap = _getStoredMap(detail);
+    if (detail.mediaUrls.isNotEmpty) {
+      for (var url in detail.mediaUrls) {
         if (url.isEmpty) continue;
         if (storedMap.containsKey(url)) {
           list.add(_mapUrl(storedMap[url]!, apiBaseUrl));
@@ -1898,6 +1997,8 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       if (detail.rawMetadata != null &&
           detail.rawMetadata!['archive'] != null) {
         final archive = detail.rawMetadata!['archive'];
+        
+        // 1. Images
         final storedImages = archive['stored_images'];
         if (storedImages is List) {
           for (var img in storedImages) {
@@ -1917,6 +2018,29 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             }
           }
         }
+        
+        // 2. Videos
+        final storedVideos = archive['stored_videos'];
+        if (storedVideos is List) {
+          for (var vid in storedVideos) {
+            if (vid is Map && vid['orig_url'] != null) {
+              String? localPath = vid['url'];
+              final String? key = vid['key'];
+              if (key != null) {
+                if (key.startsWith('sha256:')) {
+                  final hashVal = key.split(':')[1];
+                  // 视频保持原后缀，不强转 webp
+                  final ext = key.split('.').last;
+                  localPath =
+                      'vaultstream/blobs/sha256/${hashVal.substring(0, 2)}/${hashVal.substring(2, 4)}/$hashVal.$ext';
+                } else {
+                  localPath = key;
+                }
+              }
+              if (localPath != null) storedMap[vid['orig_url']] = localPath;
+            }
+          }
+        }
       }
     } catch (_) {}
     return storedMap;
@@ -1933,7 +2057,10 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     // 1. 处理需要代理的外部域名 (针对 B 站、Twitter 图片反盗链)
     if (url.contains('pbs.twimg.com') ||
         url.contains('hdslb.com') ||
-        url.contains('bilibili.com')) {
+        url.contains('bilibili.com') ||
+        url.contains('xhscdn.com') ||
+        url.contains('sinaimg.cn') ||
+        url.contains('zhimg.com')) {
       if (url.contains('/proxy/image?url=')) return url;
       return '$apiBaseUrl/proxy/image?url=${Uri.encodeComponent(url)}';
     }
@@ -2128,21 +2255,16 @@ class _FullScreenGalleryState extends State<_FullScreenGallery> {
                       minScale: 1.0,
                       maxScale: 4.0,
                       child: Center(
-                        child: GestureDetector(
-                          onTap: () {
-                            // Consume tap on image to prevent closing
-                          },
-                          child: Hero(
-                            tag: _getHeroTag(index),
-                            child: CachedNetworkImage(
+                        child: Hero(
+                          tag: _getHeroTag(index),
+                          child: CachedNetworkImage(
+                            imageUrl: widget.images[index],
+                            httpHeaders: buildImageHeaders(
                               imageUrl: widget.images[index],
-                              httpHeaders: buildImageHeaders(
-                                imageUrl: widget.images[index],
-                                baseUrl: widget.apiBaseUrl,
-                                apiToken: widget.apiToken,
-                              ),
-                              fit: BoxFit.contain,
+                              baseUrl: widget.apiBaseUrl,
+                              apiToken: widget.apiToken,
                             ),
+                            fit: BoxFit.contain,
                           ),
                         ),
                       ),

@@ -10,16 +10,17 @@ from fastapi.responses import FileResponse, StreamingResponse
 import httpx
 from sqlalchemy import select, and_, or_, func, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 from app.logging import logger, log_context
 
 from app.database import get_db
-from app.models import Content, ContentStatus, PushedRecord, Platform, ContentSource, Task, TaskStatus, DistributionRule, ReviewStatus
+from app.models import Content, ContentStatus, PushedRecord, Platform, ContentSource, Task, TaskStatus, DistributionRule, ReviewStatus, WeiboUser
 from app.schemas import (
     ShareRequest, ShareResponse, ContentDetail,
     GetContentRequest, MarkPushedRequest, ShareCard,
     ContentListResponse, ShareCardListResponse, TagStats, QueueStats, DashboardStats, ContentUpdate,
     ShareCardPreview, OptimizedMedia, DistributionRuleCreate, DistributionRuleUpdate, 
-    DistributionRuleResponse, ReviewAction, BatchReviewRequest, PushedRecordResponse
+    DistributionRuleResponse, ReviewAction, BatchReviewRequest, PushedRecordResponse, WeiboUserResponse
 )
 from app.storage import get_storage_backend, LocalStorageBackend
 from app.queue import task_queue
@@ -1086,6 +1087,8 @@ async def proxy_image(url: str = Query(..., description="要代理的图片 URL"
         # 针对 B 站图片添加 Referer
         if "hdslb.com" in url or "bilibili" in url:
             headers["Referer"] = "https://www.bilibili.com/"
+        elif "sinaimg.cn" in url or "weibocdn.com" in url:
+            headers["Referer"] = "https://weibo.com/"
         
         # 使用配置的代理
         proxy = settings.http_proxy or settings.https_proxy
@@ -1104,4 +1107,74 @@ async def proxy_image(url: str = Query(..., description="要代理的图片 URL"
                 logger.error(f"Image proxy error for {url}: {e}")
 
     return StreamingResponse(stream_image(), media_type="image/jpeg")
+
+
+# ========== Weibo Specific API ==========
+
+@router.post("/weibo/users/{uid}/archive", response_model=WeiboUserResponse)
+async def archive_weibo_user(
+    uid: str,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """
+    存档微博用户数据
+    
+    调用微博适配器获取用户详细信息并存入数据库
+    """
+    try:
+        # 使用 AdapterFactory 创建 adapter
+        adapter = AdapterFactory.create(Platform.WEIBO)
+        
+        # 确保 adapter 支持 fetch_user_profile
+        if not hasattr(adapter, 'fetch_user_profile'):
+             raise HTTPException(status_code=500, detail="Adapter does not support user fetching")
+        
+        # 在线程池中运行同步的 request 调用
+        user_data = await run_in_threadpool(adapter.fetch_user_profile, uid)
+        
+        # 检查用户是否存在
+        result = await db.execute(select(WeiboUser).where(WeiboUser.platform_id == uid))
+        db_user = result.scalar_one_or_none()
+        
+        if not db_user:
+            db_user = WeiboUser(
+                platform_id=uid,
+                nick_name=user_data.get('nick_name', ''),
+                avatar_hd=user_data.get('avatar_hd', ''),
+                description=user_data.get('description', ''),
+                followers_count=user_data.get('followers_count', 0),
+                friends_count=user_data.get('friends_count', 0),
+                statuses_count=user_data.get('statuses_count', 0),
+                verified=user_data.get('verified', False),
+                verified_type=user_data.get('verified_type'),
+                verified_reason=user_data.get('verified_reason'),
+                gender=user_data.get('gender', ''),
+                location=user_data.get('location', ''),
+                raw_data=user_data.get('raw_data', {})
+            )
+            db.add(db_user)
+        else:
+            # 更新现有用户
+            db_user.nick_name = user_data.get('nick_name', '')
+            db_user.avatar_hd = user_data.get('avatar_hd', '')
+            db_user.description = user_data.get('description', '')
+            db_user.followers_count = user_data.get('followers_count', 0)
+            db_user.friends_count = user_data.get('friends_count', 0)
+            db_user.statuses_count = user_data.get('statuses_count', 0)
+            db_user.verified = user_data.get('verified', False)
+            db_user.verified_type = user_data.get('verified_type')
+            db_user.verified_reason = user_data.get('verified_reason')
+            db_user.gender = user_data.get('gender', '')
+            db_user.location = user_data.get('location', '')
+            db_user.raw_data = user_data.get('raw_data', {})
+            
+        await db.commit()
+        await db.refresh(db_user)
+        
+        return db_user
+
+    except Exception as e:
+        logger.exception(f"Weibo user archive failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 

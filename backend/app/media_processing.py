@@ -126,6 +126,25 @@ def _get_dominant_color(data: bytes) -> Optional[str]:
         return None
 
 
+async def extract_cover_color(url: str, timeout_seconds: float = 10.0) -> Optional[str]:
+    """从 URL 提取封面主色调（无需启用完整的归档处理）"""
+    if not url:
+        return None
+    
+    from app.config import settings
+    proxy = settings.http_proxy if hasattr(settings, 'http_proxy') and settings.http_proxy else None
+    
+    headers = _request_headers_for_url(url)
+    try:
+        async with httpx.AsyncClient(proxy=proxy, timeout=timeout_seconds, follow_redirects=True) as client:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            return _get_dominant_color(resp.content)
+    except Exception as e:
+        logger.warning(f"Failed to extract color from {url}: {e}")
+        return None
+
+
 async def store_archive_images_as_webp(
     *,
     archive: dict[str, Any],
