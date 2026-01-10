@@ -39,7 +39,7 @@ class AdapterFactory:
             return Platform.TWITTER
         elif 'xiaohongshu.com' in url or 'xhslink.com' in url:
             return Platform.XIAOHONGSHU
-        elif 'weibo.com' in url or 'weibo.cn' in url:
+        elif 'weibo.com' in url or 'weibo.cn' in url or 'mapp.api.weibo.cn' in url:
             return Platform.WEIBO
         elif 'zhihu.com' in url:
             return Platform.ZHIHU

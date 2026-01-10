@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import 'models/content.dart';
 import 'providers/collection_provider.dart';
 import 'widgets/edit_content_dialog.dart';
+import 'widgets/video_player_widget.dart';
 import '../../theme/app_theme.dart';
 
 import '../../core/network/api_client.dart';
@@ -45,6 +46,14 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     super.initState();
     _imagePageController = PageController();
     _contentScrollController.addListener(_onScroll);
+  }
+
+  bool _isVideo(String url) {
+    final lower = url.toLowerCase().split('?').first;
+    return lower.endsWith('.mp4') || 
+           lower.endsWith('.mov') || 
+           lower.endsWith('.webm') ||
+           lower.endsWith('.mkv');
   }
 
   void _onScroll() {
@@ -319,7 +328,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           return _buildPortraitLayout(context, detail, apiBaseUrl, apiToken);
         }
 
-        if (detail.isTwitter) {
+        if (detail.isTwitter || detail.isWeibo) {
           return _buildTwitterLandscape(context, detail, apiBaseUrl, apiToken);
         }
 
@@ -412,6 +421,18 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                 },
                 itemBuilder: (context, index) {
                   final img = images[index];
+                  if (_isVideo(img)) {
+                    return Center(
+                      child: VideoPlayerWidget(
+                        videoUrl: img,
+                        headers: buildImageHeaders(
+                          imageUrl: img,
+                          baseUrl: apiBaseUrl,
+                          apiToken: apiToken,
+                        ),
+                      ),
+                    );
+                  }
                   return Center(
                     child: GestureDetector(
                       onTap: () => _showFullScreenImage(
@@ -560,20 +581,31 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(13),
-                      child: CachedNetworkImage(
-                        imageUrl: img,
-                        httpHeaders: buildImageHeaders(
-                          imageUrl: img,
-                          baseUrl: apiBaseUrl,
-                          apiToken: apiToken,
-                        ),
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) => Container(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.surfaceContainerHighest,
-                        ),
-                      ),
+                      child: _isVideo(img)
+                          ? Container(
+                              color: Colors.black,
+                              child: const Center(
+                                child: Icon(
+                                  Icons.play_circle_fill,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              ),
+                            )
+                          : CachedNetworkImage(
+                              imageUrl: img,
+                              httpHeaders: buildImageHeaders(
+                                imageUrl: img,
+                                baseUrl: apiBaseUrl,
+                                apiToken: apiToken,
+                              ),
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => Container(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHighest,
+                              ),
+                            ),
                     ),
                   ),
                 );
@@ -1426,7 +1458,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   }) {
     final theme = Theme.of(context);
     final storedMap = _getStoredMap(detail);
-    final images = _extractAllImages(detail, apiBaseUrl);
+    final mediaUrls = _extractAllImages(detail, apiBaseUrl);
     final markdown = _getMarkdownContent(detail);
 
     // 用于跟踪 Hero 标签是否已被使用，防止重复导致卡死
@@ -1492,38 +1524,56 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           ),
           const SizedBox(height: 24),
         ],
-        if (images.isNotEmpty)
-          if (images.length == 1)
-            GestureDetector(
-              onTap: () => _showFullScreenImage(
-                context,
-                images,
-                0,
-                apiBaseUrl,
-                apiToken,
-                detail.id,
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(28),
-                child: Hero(
-                  tag: 'content-image-${detail.id}',
-                  child: CachedNetworkImage(
-                    imageUrl: images.first,
-                    httpHeaders: buildImageHeaders(
-                      imageUrl: images.first,
-                      baseUrl: apiBaseUrl,
-                      apiToken: apiToken,
+        if (mediaUrls.isNotEmpty)
+          if (mediaUrls.length == 1)
+            Builder(
+              builder: (context) {
+                final url = mediaUrls.first;
+                if (_isVideo(url)) {
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(28),
+                    child: VideoPlayerWidget(
+                      videoUrl: url,
+                      headers: buildImageHeaders(
+                        imageUrl: url,
+                        baseUrl: apiBaseUrl,
+                        apiToken: apiToken,
+                      ),
                     ),
-                    fit: BoxFit.contain,
-                    placeholder: (c, u) => Container(
-                      height: 240,
-                      width: double.infinity,
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      child: const Center(child: CircularProgressIndicator()),
+                  );
+                }
+                return GestureDetector(
+                  onTap: () => _showFullScreenImage(
+                    context,
+                    mediaUrls,
+                    0,
+                    apiBaseUrl,
+                    apiToken,
+                    detail.id,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(28),
+                    child: Hero(
+                      tag: 'content-image-${detail.id}',
+                      child: CachedNetworkImage(
+                        imageUrl: url,
+                        httpHeaders: buildImageHeaders(
+                          imageUrl: url,
+                          baseUrl: apiBaseUrl,
+                          apiToken: apiToken,
+                        ),
+                        fit: BoxFit.contain,
+                        placeholder: (c, u) => Container(
+                          height: 240,
+                          width: double.infinity,
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          child: const Center(child: CircularProgressIndicator()),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
+                );
+              },
             )
           else
             GridView.builder(
@@ -1535,13 +1585,35 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                 crossAxisSpacing: 12,
                 childAspectRatio: 1.0,
               ),
-              itemCount: images.length,
+              itemCount: mediaUrls.length,
               itemBuilder: (context, index) {
-                final url = images[index];
+                final url = mediaUrls[index];
+                if (_isVideo(url)) {
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(28),
+                    child: Stack(
+                      children: [
+                        Container(color: Colors.black),
+                        const Center(child: Icon(Icons.play_circle_outline, color: Colors.white, size: 48)),
+                        Positioned.fill(
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () {
+                                // TODO: Open video player dialog
+                              },
+                              child: const Center(child: Text("VIDEO", style: TextStyle(color: Colors.white, fontSize: 10))),
+                            ),
+                          ),
+                        )
+                      ],
+                    ),
+                  );
+                }
                 return GestureDetector(
                   onTap: () => _showFullScreenImage(
                     context,
-                    images,
+                    mediaUrls,
                     index,
                     apiBaseUrl,
                     apiToken,

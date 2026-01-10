@@ -35,6 +35,8 @@ def _request_headers_for_url(url: str) -> dict[str, str]:
     if "hdslb.com/" in lowered:
         headers["Referer"] = "https://www.bilibili.com/"
         headers["Origin"] = "https://www.bilibili.com"
+    elif "sinaimg.cn" in lowered or "weibocdn.com" in lowered:
+        headers["Referer"] = "https://weibo.com/"
 
     return headers
 

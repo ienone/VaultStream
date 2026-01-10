@@ -427,8 +427,16 @@ class TaskWorker:
         # 将本地化后的图片 URL 同步回 ParsedContent，供外部展示使用
         stored_images = archive.get("stored_images", [])
         if stored_images:
-            # 提取所有本地化后的 URL
-            local_urls = [img["url"] for img in stored_images if img.get("url")]
+            # 提取所有本地化后的 URL (优先使用 url，否则使用 local://key)
+            local_urls = []
+            for img in stored_images:
+                u = img.get("url")
+                k = img.get("key")
+                if u:
+                    local_urls.append(u)
+                elif k:
+                    local_urls.append(f"local://{k}")
+
             if local_urls:
                 # 严格去重并保持顺序 (使用 dict.fromkeys 来保持顺序)
                 unique_local_urls = list(dict.fromkeys(local_urls))
@@ -448,6 +456,35 @@ class TaskWorker:
                 namespace=namespace,
                 max_videos=max_videos,
             )
+            
+            # 将本地化后的视频 URL 同步回 ParsedContent
+            stored_videos = archive.get("stored_videos", [])
+            if stored_videos:
+                local_vid_urls = []
+                for v in stored_videos:
+                    u = v.get("url")
+                    k = v.get("key")
+                    if u:
+                        local_vid_urls.append(u)
+                    elif k:
+                        local_vid_urls.append(f"local://{k}")
+
+                if local_vid_urls:
+                    # 合并图片和视频的本地 URL
+                    # 注意：这里我们简单地将视频 URL 追加到现有 media_urls (如果是本地图片更新过的) 后面
+                    # 或者重新构建 media_urls? 
+                    # 最安全的方式是：保留原有的顺序，但是替换成 stored URL
+                    # 但 ParsedContent.media_urls 是一个扁平列表，没有类型区分。
+                    # 简单起见，我们将视频追加到列表（如果尚未存在）
+                    current_urls = set(parsed.media_urls)
+                    for v_url in local_vid_urls:
+                        if v_url not in current_urls:
+                            parsed.media_urls.append(v_url)
+                    
+                    # 如果只有视频没有图片，设置视频封面
+                    if not parsed.cover_url and local_vid_urls:
+                         # 理想情况是视频的封面图，但这里我们只有视频URL
+                         pass
 
     async def _do_parse(self, session: AsyncSession, content: Content):
         """执行一次解析并保存结果（单次尝试）。

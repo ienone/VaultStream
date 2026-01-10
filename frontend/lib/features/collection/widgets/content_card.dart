@@ -423,8 +423,10 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                                           Icon(
                                             Icons.remove_red_eye_outlined,
                                             size: 12,
-                                            color: _isHovered && _extractedColor != null 
-                                                ? _extractedColor 
+                                            color:
+                                                _isHovered &&
+                                                    _extractedColor != null
+                                                ? _extractedColor
                                                 : colorScheme.outline,
                                           ),
                                           const SizedBox(width: 2),
@@ -432,8 +434,11 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                                             _formatCount(content.viewCount),
                                             style: theme.textTheme.labelSmall
                                                 ?.copyWith(
-                                                  color: _isHovered && _extractedColor != null 
-                                                      ? _extractedColor 
+                                                  color:
+                                                      _isHovered &&
+                                                          _extractedColor !=
+                                                              null
+                                                      ? _extractedColor
                                                       : colorScheme.outline,
                                                   fontSize: 10,
                                                 ),
@@ -445,8 +450,10 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                                           Icon(
                                             Icons.favorite_border,
                                             size: 11,
-                                            color: _isHovered && _extractedColor != null 
-                                                ? _extractedColor 
+                                            color:
+                                                _isHovered &&
+                                                    _extractedColor != null
+                                                ? _extractedColor
                                                 : colorScheme.outline,
                                           ),
                                           const SizedBox(width: 2),
@@ -454,8 +461,11 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                                             _formatCount(content.likeCount),
                                             style: theme.textTheme.labelSmall
                                                 ?.copyWith(
-                                                  color: _isHovered && _extractedColor != null 
-                                                      ? _extractedColor 
+                                                  color:
+                                                      _isHovered &&
+                                                          _extractedColor !=
+                                                              null
+                                                      ? _extractedColor
                                                       : colorScheme.outline,
                                                   fontSize: 10,
                                                 ),
@@ -583,7 +593,11 @@ class _ContentCardState extends ConsumerState<ContentCard> {
     // 1. 处理需要代理的外部域名
     if (url.contains('pbs.twimg.com') ||
         url.contains('hdslb.com') ||
-        url.contains('bilibili.com')) {
+        url.contains('bilibili.com') ||
+        url.contains('xhscdn.com') || // 小红书
+        url.contains('sinaimg.cn') || // 微博
+        url.contains('zhimg.com')) {
+      // 知乎
       if (url.contains('/proxy/image?url=')) return url;
       return '$apiBaseUrl/proxy/image?url=${Uri.encodeComponent(url)}';
     }

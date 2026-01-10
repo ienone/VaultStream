@@ -50,6 +50,8 @@ dependencies:
   auto_size_text: ^3.0.0
   palette_generator: ^0.3.3+7
   shared_preferences: ^2.5.4
+  video_player: ^2.10.1
+  chewie: ^1.13.0
 
 dev_dependencies:
   flutter_test:

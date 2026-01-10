@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     bilibili_bili_jct: Optional[SecretStr] = None
     bilibili_buvid3: Optional[SecretStr] = None
 
+    # 小红书/知乎/微博 配置 (需要 Cookie)
+    xiaohongshu_cookie: Optional[SecretStr] = None
+    zhihu_cookie: Optional[SecretStr] = None
+    weibo_cookie: Optional[SecretStr] = None
+
     # Twitter/X 配置
     # 现在使用 FxTwitter API，无需任何登录凭证或配置
     # FxTwitter 是第三方 Twitter 内容解析服务，无需认证即可获取推文数据
