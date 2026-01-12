@@ -418,6 +418,12 @@ async def update_content(
         content.description = request.description
     if request.author_name is not None:
         content.author_name = request.author_name
+    if request.cover_url is not None:
+        if content.cover_url != request.cover_url:
+            content.cover_url = request.cover_url
+            # Re-extract color
+            from app.media_processing import extract_cover_color
+            content.cover_color = await extract_cover_color(content.cover_url)
     if request.is_nsfw is not None:
         content.is_nsfw = request.is_nsfw
     if request.status is not None:

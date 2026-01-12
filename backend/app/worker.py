@@ -349,20 +349,30 @@ class TaskWorker:
                                     "repost": parsed.stats.get('share', 0),
                                 }
                         elif content.platform == Platform.ZHIHU:
-                            # 知乎特有数据映射
-                            # Map voteup to like if like is 0
-                            if content.like_count == 0:
-                                content.like_count = parsed.stats.get('voteup_count', 0)
-                            
-                            content.extra_stats = {
-                                "voteup_count": parsed.stats.get('voteup_count', 0),
-                                "thanks_count": parsed.stats.get('thanks_count', 0),
-                                "follower_count": parsed.stats.get('follower_count', 0),
-                                "visit_count": parsed.stats.get('visit_count', 0),
-                                "answer_count": parsed.stats.get('answer_count', 0),
-                                "reaction_count": parsed.stats.get('reaction_count', 0), # Pin
-                                "repin_count": parsed.stats.get('repin_count', 0), # Pin
-                            }
+                            # 知乎数据映射
+                            if content.content_type == "user_profile":
+                                content.extra_stats = {
+                                    "follower_count": parsed.stats.get('follower_count', 0),
+                                    "following_count": parsed.stats.get('following_count', 0),
+                                    "voteup_count": parsed.stats.get('voteup_count', 0),
+                                    "thanked_count": parsed.stats.get('thanked_count', 0),
+                                    "favorited_count": parsed.stats.get('favorited_count', 0),
+                                    "logs_count": parsed.stats.get('logs_count', 0),
+                                    "answer_count": parsed.stats.get('answer_count', 0),
+                                    "articles_count": parsed.stats.get('articles_count', 0),
+                                    "pins_count": parsed.stats.get('pins_count', 0),
+                                    "question_count": parsed.stats.get('question_count', 0),
+                                }
+                            else:
+                                content.extra_stats = {
+                                    "voteup_count": parsed.stats.get('voteup_count', 0),
+                                    "thanks_count": parsed.stats.get('thanks_count', 0),
+                                    "follower_count": parsed.stats.get('follower_count', 0),
+                                    "visit_count": parsed.stats.get('visit_count', 0),
+                                    "answer_count": parsed.stats.get('answer_count', 0),
+                                    "reaction_count": parsed.stats.get('reaction_count', 0), # Pin
+                                    "repin_count": parsed.stats.get('repin_count', 0), # Pin
+                                }
                         else:
                             # 其他平台：保留所有非通用字段
                             extra_keys = set(parsed.stats.keys()) - {'view', 'like', 'favorite', 'share', 'reply'}

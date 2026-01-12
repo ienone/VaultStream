@@ -63,9 +63,11 @@ def parse_article(html_content: str, url: str) -> Optional[ParsedContent]:
     
     # Stats
     stats = {
+        "like": article_data.get('voteupCount', 0),
+        "reply": article_data.get('commentCount', 0),
+        "favorite": article_data.get('favoritedCount', 0),
         "voteup_count": article_data.get('voteupCount', 0),
         "comment_count": article_data.get('commentCount', 0),
-        # Column specific stats if available
     }
     
     # Cover URL logic: titleImage -> imageUrl -> first image in content

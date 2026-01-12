@@ -14,7 +14,9 @@ _ShareCard _$ShareCardFromJson(Map<String, dynamic> json) => _ShareCard(
   summary: json['summary'] as String?,
   description: json['description'] as String?,
   authorName: json['author_name'] as String?,
+  authorId: json['author_id'] as String?,
   authorAvatarUrl: json['author_avatar_url'] as String?,
+  contentType: json['content_type'] as String?,
   coverUrl: json['cover_url'] as String?,
   coverColor: json['cover_color'] as String?,
   mediaUrls:
@@ -27,6 +29,9 @@ _ShareCard _$ShareCardFromJson(Map<String, dynamic> json) => _ShareCard(
       const [],
   viewCount: (json['view_count'] as num?)?.toInt() ?? 0,
   likeCount: (json['like_count'] as num?)?.toInt() ?? 0,
+  collectCount: (json['collect_count'] as num?)?.toInt() ?? 0,
+  shareCount: (json['share_count'] as num?)?.toInt() ?? 0,
+  commentCount: (json['comment_count'] as num?)?.toInt() ?? 0,
   publishedAt: json['published_at'] == null
       ? null
       : DateTime.parse(json['published_at'] as String),
@@ -42,13 +47,18 @@ Map<String, dynamic> _$ShareCardToJson(_ShareCard instance) =>
       'summary': instance.summary,
       'description': instance.description,
       'author_name': instance.authorName,
+      'author_id': instance.authorId,
       'author_avatar_url': instance.authorAvatarUrl,
+      'content_type': instance.contentType,
       'cover_url': instance.coverUrl,
       'cover_color': instance.coverColor,
       'media_urls': instance.mediaUrls,
       'tags': instance.tags,
       'view_count': instance.viewCount,
       'like_count': instance.likeCount,
+      'collect_count': instance.collectCount,
+      'share_count': instance.shareCount,
+      'comment_count': instance.commentCount,
       'published_at': instance.publishedAt?.toIso8601String(),
       'raw_metadata': instance.rawMetadata,
     };

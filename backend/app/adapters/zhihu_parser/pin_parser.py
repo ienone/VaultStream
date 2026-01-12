@@ -73,10 +73,12 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
     published_at = datetime.fromtimestamp(created) if created else None
 
     stats = {
+        "like": pin_data.get('reactionCount', 0),
+        "reply": pin_data.get('commentCount', 0),
+        "share": pin_data.get('repinCount', 0),
         "reaction_count": pin_data.get('reactionCount', 0),
         "comment_count": pin_data.get('commentCount', 0),
         "repin_count": pin_data.get('repinCount', 0),
-        "like_count": pin_data.get('likeCount', 0),
     }
 
     return ParsedContent(

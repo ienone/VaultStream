@@ -15,7 +15,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$ShareCard {
 
- int get id; String get platform; String get url; String? get title; String? get summary; String? get description;@JsonKey(name: 'author_name') String? get authorName;@JsonKey(name: 'author_avatar_url') String? get authorAvatarUrl;@JsonKey(name: 'cover_url') String? get coverUrl;@JsonKey(name: 'cover_color') String? get coverColor;@JsonKey(name: 'media_urls') List<String> get mediaUrls; List<String> get tags;@JsonKey(name: 'view_count') int get viewCount;@JsonKey(name: 'like_count') int get likeCount;@JsonKey(name: 'published_at') DateTime? get publishedAt;@JsonKey(name: 'raw_metadata') Map<String, dynamic>? get rawMetadata;
+ int get id; String get platform; String get url; String? get title; String? get summary; String? get description;@JsonKey(name: 'author_name') String? get authorName;@JsonKey(name: 'author_id') String? get authorId;@JsonKey(name: 'author_avatar_url') String? get authorAvatarUrl;@JsonKey(name: 'content_type') String? get contentType;@JsonKey(name: 'cover_url') String? get coverUrl;@JsonKey(name: 'cover_color') String? get coverColor;@JsonKey(name: 'media_urls') List<String> get mediaUrls; List<String> get tags;@JsonKey(name: 'view_count') int get viewCount;@JsonKey(name: 'like_count') int get likeCount;@JsonKey(name: 'collect_count') int get collectCount;@JsonKey(name: 'share_count') int get shareCount;@JsonKey(name: 'comment_count') int get commentCount;@JsonKey(name: 'published_at') DateTime? get publishedAt;@JsonKey(name: 'raw_metadata') Map<String, dynamic>? get rawMetadata;
 /// Create a copy of ShareCard
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -28,16 +28,16 @@ $ShareCardCopyWith<ShareCard> get copyWith => _$ShareCardCopyWithImpl<ShareCard>
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is ShareCard&&(identical(other.id, id) || other.id == id)&&(identical(other.platform, platform) || other.platform == platform)&&(identical(other.url, url) || other.url == url)&&(identical(other.title, title) || other.title == title)&&(identical(other.summary, summary) || other.summary == summary)&&(identical(other.description, description) || other.description == description)&&(identical(other.authorName, authorName) || other.authorName == authorName)&&(identical(other.authorAvatarUrl, authorAvatarUrl) || other.authorAvatarUrl == authorAvatarUrl)&&(identical(other.coverUrl, coverUrl) || other.coverUrl == coverUrl)&&(identical(other.coverColor, coverColor) || other.coverColor == coverColor)&&const DeepCollectionEquality().equals(other.mediaUrls, mediaUrls)&&const DeepCollectionEquality().equals(other.tags, tags)&&(identical(other.viewCount, viewCount) || other.viewCount == viewCount)&&(identical(other.likeCount, likeCount) || other.likeCount == likeCount)&&(identical(other.publishedAt, publishedAt) || other.publishedAt == publishedAt)&&const DeepCollectionEquality().equals(other.rawMetadata, rawMetadata));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ShareCard&&(identical(other.id, id) || other.id == id)&&(identical(other.platform, platform) || other.platform == platform)&&(identical(other.url, url) || other.url == url)&&(identical(other.title, title) || other.title == title)&&(identical(other.summary, summary) || other.summary == summary)&&(identical(other.description, description) || other.description == description)&&(identical(other.authorName, authorName) || other.authorName == authorName)&&(identical(other.authorId, authorId) || other.authorId == authorId)&&(identical(other.authorAvatarUrl, authorAvatarUrl) || other.authorAvatarUrl == authorAvatarUrl)&&(identical(other.contentType, contentType) || other.contentType == contentType)&&(identical(other.coverUrl, coverUrl) || other.coverUrl == coverUrl)&&(identical(other.coverColor, coverColor) || other.coverColor == coverColor)&&const DeepCollectionEquality().equals(other.mediaUrls, mediaUrls)&&const DeepCollectionEquality().equals(other.tags, tags)&&(identical(other.viewCount, viewCount) || other.viewCount == viewCount)&&(identical(other.likeCount, likeCount) || other.likeCount == likeCount)&&(identical(other.collectCount, collectCount) || other.collectCount == collectCount)&&(identical(other.shareCount, shareCount) || other.shareCount == shareCount)&&(identical(other.commentCount, commentCount) || other.commentCount == commentCount)&&(identical(other.publishedAt, publishedAt) || other.publishedAt == publishedAt)&&const DeepCollectionEquality().equals(other.rawMetadata, rawMetadata));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,platform,url,title,summary,description,authorName,authorAvatarUrl,coverUrl,coverColor,const DeepCollectionEquality().hash(mediaUrls),const DeepCollectionEquality().hash(tags),viewCount,likeCount,publishedAt,const DeepCollectionEquality().hash(rawMetadata));
+int get hashCode => Object.hashAll([runtimeType,id,platform,url,title,summary,description,authorName,authorId,authorAvatarUrl,contentType,coverUrl,coverColor,const DeepCollectionEquality().hash(mediaUrls),const DeepCollectionEquality().hash(tags),viewCount,likeCount,collectCount,shareCount,commentCount,publishedAt,const DeepCollectionEquality().hash(rawMetadata)]);
 
 @override
 String toString() {
-  return 'ShareCard(id: $id, platform: $platform, url: $url, title: $title, summary: $summary, description: $description, authorName: $authorName, authorAvatarUrl: $authorAvatarUrl, coverUrl: $coverUrl, coverColor: $coverColor, mediaUrls: $mediaUrls, tags: $tags, viewCount: $viewCount, likeCount: $likeCount, publishedAt: $publishedAt, rawMetadata: $rawMetadata)';
+  return 'ShareCard(id: $id, platform: $platform, url: $url, title: $title, summary: $summary, description: $description, authorName: $authorName, authorId: $authorId, authorAvatarUrl: $authorAvatarUrl, contentType: $contentType, coverUrl: $coverUrl, coverColor: $coverColor, mediaUrls: $mediaUrls, tags: $tags, viewCount: $viewCount, likeCount: $likeCount, collectCount: $collectCount, shareCount: $shareCount, commentCount: $commentCount, publishedAt: $publishedAt, rawMetadata: $rawMetadata)';
 }
 
 
@@ -48,7 +48,7 @@ abstract mixin class $ShareCardCopyWith<$Res>  {
   factory $ShareCardCopyWith(ShareCard value, $Res Function(ShareCard) _then) = _$ShareCardCopyWithImpl;
 @useResult
 $Res call({
- int id, String platform, String url, String? title, String? summary, String? description,@JsonKey(name: 'author_name') String? authorName,@JsonKey(name: 'author_avatar_url') String? authorAvatarUrl,@JsonKey(name: 'cover_url') String? coverUrl,@JsonKey(name: 'cover_color') String? coverColor,@JsonKey(name: 'media_urls') List<String> mediaUrls, List<String> tags,@JsonKey(name: 'view_count') int viewCount,@JsonKey(name: 'like_count') int likeCount,@JsonKey(name: 'published_at') DateTime? publishedAt,@JsonKey(name: 'raw_metadata') Map<String, dynamic>? rawMetadata
+ int id, String platform, String url, String? title, String? summary, String? description,@JsonKey(name: 'author_name') String? authorName,@JsonKey(name: 'author_id') String? authorId,@JsonKey(name: 'author_avatar_url') String? authorAvatarUrl,@JsonKey(name: 'content_type') String? contentType,@JsonKey(name: 'cover_url') String? coverUrl,@JsonKey(name: 'cover_color') String? coverColor,@JsonKey(name: 'media_urls') List<String> mediaUrls, List<String> tags,@JsonKey(name: 'view_count') int viewCount,@JsonKey(name: 'like_count') int likeCount,@JsonKey(name: 'collect_count') int collectCount,@JsonKey(name: 'share_count') int shareCount,@JsonKey(name: 'comment_count') int commentCount,@JsonKey(name: 'published_at') DateTime? publishedAt,@JsonKey(name: 'raw_metadata') Map<String, dynamic>? rawMetadata
 });
 
 
@@ -65,7 +65,7 @@ class _$ShareCardCopyWithImpl<$Res>
 
 /// Create a copy of ShareCard
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? platform = null,Object? url = null,Object? title = freezed,Object? summary = freezed,Object? description = freezed,Object? authorName = freezed,Object? authorAvatarUrl = freezed,Object? coverUrl = freezed,Object? coverColor = freezed,Object? mediaUrls = null,Object? tags = null,Object? viewCount = null,Object? likeCount = null,Object? publishedAt = freezed,Object? rawMetadata = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? platform = null,Object? url = null,Object? title = freezed,Object? summary = freezed,Object? description = freezed,Object? authorName = freezed,Object? authorId = freezed,Object? authorAvatarUrl = freezed,Object? contentType = freezed,Object? coverUrl = freezed,Object? coverColor = freezed,Object? mediaUrls = null,Object? tags = null,Object? viewCount = null,Object? likeCount = null,Object? collectCount = null,Object? shareCount = null,Object? commentCount = null,Object? publishedAt = freezed,Object? rawMetadata = freezed,}) {
   return _then(_self.copyWith(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as int,platform: null == platform ? _self.platform : platform // ignore: cast_nullable_to_non_nullable
@@ -74,13 +74,18 @@ as String,title: freezed == title ? _self.title : title // ignore: cast_nullable
 as String?,summary: freezed == summary ? _self.summary : summary // ignore: cast_nullable_to_non_nullable
 as String?,description: freezed == description ? _self.description : description // ignore: cast_nullable_to_non_nullable
 as String?,authorName: freezed == authorName ? _self.authorName : authorName // ignore: cast_nullable_to_non_nullable
+as String?,authorId: freezed == authorId ? _self.authorId : authorId // ignore: cast_nullable_to_non_nullable
 as String?,authorAvatarUrl: freezed == authorAvatarUrl ? _self.authorAvatarUrl : authorAvatarUrl // ignore: cast_nullable_to_non_nullable
+as String?,contentType: freezed == contentType ? _self.contentType : contentType // ignore: cast_nullable_to_non_nullable
 as String?,coverUrl: freezed == coverUrl ? _self.coverUrl : coverUrl // ignore: cast_nullable_to_non_nullable
 as String?,coverColor: freezed == coverColor ? _self.coverColor : coverColor // ignore: cast_nullable_to_non_nullable
 as String?,mediaUrls: null == mediaUrls ? _self.mediaUrls : mediaUrls // ignore: cast_nullable_to_non_nullable
 as List<String>,tags: null == tags ? _self.tags : tags // ignore: cast_nullable_to_non_nullable
 as List<String>,viewCount: null == viewCount ? _self.viewCount : viewCount // ignore: cast_nullable_to_non_nullable
 as int,likeCount: null == likeCount ? _self.likeCount : likeCount // ignore: cast_nullable_to_non_nullable
+as int,collectCount: null == collectCount ? _self.collectCount : collectCount // ignore: cast_nullable_to_non_nullable
+as int,shareCount: null == shareCount ? _self.shareCount : shareCount // ignore: cast_nullable_to_non_nullable
+as int,commentCount: null == commentCount ? _self.commentCount : commentCount // ignore: cast_nullable_to_non_nullable
 as int,publishedAt: freezed == publishedAt ? _self.publishedAt : publishedAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,rawMetadata: freezed == rawMetadata ? _self.rawMetadata : rawMetadata // ignore: cast_nullable_to_non_nullable
 as Map<String, dynamic>?,
@@ -168,10 +173,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( int id,  String platform,  String url,  String? title,  String? summary,  String? description, @JsonKey(name: 'author_name')  String? authorName, @JsonKey(name: 'author_avatar_url')  String? authorAvatarUrl, @JsonKey(name: 'cover_url')  String? coverUrl, @JsonKey(name: 'cover_color')  String? coverColor, @JsonKey(name: 'media_urls')  List<String> mediaUrls,  List<String> tags, @JsonKey(name: 'view_count')  int viewCount, @JsonKey(name: 'like_count')  int likeCount, @JsonKey(name: 'published_at')  DateTime? publishedAt, @JsonKey(name: 'raw_metadata')  Map<String, dynamic>? rawMetadata)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( int id,  String platform,  String url,  String? title,  String? summary,  String? description, @JsonKey(name: 'author_name')  String? authorName, @JsonKey(name: 'author_id')  String? authorId, @JsonKey(name: 'author_avatar_url')  String? authorAvatarUrl, @JsonKey(name: 'content_type')  String? contentType, @JsonKey(name: 'cover_url')  String? coverUrl, @JsonKey(name: 'cover_color')  String? coverColor, @JsonKey(name: 'media_urls')  List<String> mediaUrls,  List<String> tags, @JsonKey(name: 'view_count')  int viewCount, @JsonKey(name: 'like_count')  int likeCount, @JsonKey(name: 'collect_count')  int collectCount, @JsonKey(name: 'share_count')  int shareCount, @JsonKey(name: 'comment_count')  int commentCount, @JsonKey(name: 'published_at')  DateTime? publishedAt, @JsonKey(name: 'raw_metadata')  Map<String, dynamic>? rawMetadata)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _ShareCard() when $default != null:
-return $default(_that.id,_that.platform,_that.url,_that.title,_that.summary,_that.description,_that.authorName,_that.authorAvatarUrl,_that.coverUrl,_that.coverColor,_that.mediaUrls,_that.tags,_that.viewCount,_that.likeCount,_that.publishedAt,_that.rawMetadata);case _:
+return $default(_that.id,_that.platform,_that.url,_that.title,_that.summary,_that.description,_that.authorName,_that.authorId,_that.authorAvatarUrl,_that.contentType,_that.coverUrl,_that.coverColor,_that.mediaUrls,_that.tags,_that.viewCount,_that.likeCount,_that.collectCount,_that.shareCount,_that.commentCount,_that.publishedAt,_that.rawMetadata);case _:
   return orElse();
 
 }
@@ -189,10 +194,10 @@ return $default(_that.id,_that.platform,_that.url,_that.title,_that.summary,_tha
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( int id,  String platform,  String url,  String? title,  String? summary,  String? description, @JsonKey(name: 'author_name')  String? authorName, @JsonKey(name: 'author_avatar_url')  String? authorAvatarUrl, @JsonKey(name: 'cover_url')  String? coverUrl, @JsonKey(name: 'cover_color')  String? coverColor, @JsonKey(name: 'media_urls')  List<String> mediaUrls,  List<String> tags, @JsonKey(name: 'view_count')  int viewCount, @JsonKey(name: 'like_count')  int likeCount, @JsonKey(name: 'published_at')  DateTime? publishedAt, @JsonKey(name: 'raw_metadata')  Map<String, dynamic>? rawMetadata)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( int id,  String platform,  String url,  String? title,  String? summary,  String? description, @JsonKey(name: 'author_name')  String? authorName, @JsonKey(name: 'author_id')  String? authorId, @JsonKey(name: 'author_avatar_url')  String? authorAvatarUrl, @JsonKey(name: 'content_type')  String? contentType, @JsonKey(name: 'cover_url')  String? coverUrl, @JsonKey(name: 'cover_color')  String? coverColor, @JsonKey(name: 'media_urls')  List<String> mediaUrls,  List<String> tags, @JsonKey(name: 'view_count')  int viewCount, @JsonKey(name: 'like_count')  int likeCount, @JsonKey(name: 'collect_count')  int collectCount, @JsonKey(name: 'share_count')  int shareCount, @JsonKey(name: 'comment_count')  int commentCount, @JsonKey(name: 'published_at')  DateTime? publishedAt, @JsonKey(name: 'raw_metadata')  Map<String, dynamic>? rawMetadata)  $default,) {final _that = this;
 switch (_that) {
 case _ShareCard():
-return $default(_that.id,_that.platform,_that.url,_that.title,_that.summary,_that.description,_that.authorName,_that.authorAvatarUrl,_that.coverUrl,_that.coverColor,_that.mediaUrls,_that.tags,_that.viewCount,_that.likeCount,_that.publishedAt,_that.rawMetadata);case _:
+return $default(_that.id,_that.platform,_that.url,_that.title,_that.summary,_that.description,_that.authorName,_that.authorId,_that.authorAvatarUrl,_that.contentType,_that.coverUrl,_that.coverColor,_that.mediaUrls,_that.tags,_that.viewCount,_that.likeCount,_that.collectCount,_that.shareCount,_that.commentCount,_that.publishedAt,_that.rawMetadata);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -209,10 +214,10 @@ return $default(_that.id,_that.platform,_that.url,_that.title,_that.summary,_tha
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( int id,  String platform,  String url,  String? title,  String? summary,  String? description, @JsonKey(name: 'author_name')  String? authorName, @JsonKey(name: 'author_avatar_url')  String? authorAvatarUrl, @JsonKey(name: 'cover_url')  String? coverUrl, @JsonKey(name: 'cover_color')  String? coverColor, @JsonKey(name: 'media_urls')  List<String> mediaUrls,  List<String> tags, @JsonKey(name: 'view_count')  int viewCount, @JsonKey(name: 'like_count')  int likeCount, @JsonKey(name: 'published_at')  DateTime? publishedAt, @JsonKey(name: 'raw_metadata')  Map<String, dynamic>? rawMetadata)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( int id,  String platform,  String url,  String? title,  String? summary,  String? description, @JsonKey(name: 'author_name')  String? authorName, @JsonKey(name: 'author_id')  String? authorId, @JsonKey(name: 'author_avatar_url')  String? authorAvatarUrl, @JsonKey(name: 'content_type')  String? contentType, @JsonKey(name: 'cover_url')  String? coverUrl, @JsonKey(name: 'cover_color')  String? coverColor, @JsonKey(name: 'media_urls')  List<String> mediaUrls,  List<String> tags, @JsonKey(name: 'view_count')  int viewCount, @JsonKey(name: 'like_count')  int likeCount, @JsonKey(name: 'collect_count')  int collectCount, @JsonKey(name: 'share_count')  int shareCount, @JsonKey(name: 'comment_count')  int commentCount, @JsonKey(name: 'published_at')  DateTime? publishedAt, @JsonKey(name: 'raw_metadata')  Map<String, dynamic>? rawMetadata)?  $default,) {final _that = this;
 switch (_that) {
 case _ShareCard() when $default != null:
-return $default(_that.id,_that.platform,_that.url,_that.title,_that.summary,_that.description,_that.authorName,_that.authorAvatarUrl,_that.coverUrl,_that.coverColor,_that.mediaUrls,_that.tags,_that.viewCount,_that.likeCount,_that.publishedAt,_that.rawMetadata);case _:
+return $default(_that.id,_that.platform,_that.url,_that.title,_that.summary,_that.description,_that.authorName,_that.authorId,_that.authorAvatarUrl,_that.contentType,_that.coverUrl,_that.coverColor,_that.mediaUrls,_that.tags,_that.viewCount,_that.likeCount,_that.collectCount,_that.shareCount,_that.commentCount,_that.publishedAt,_that.rawMetadata);case _:
   return null;
 
 }
@@ -224,7 +229,7 @@ return $default(_that.id,_that.platform,_that.url,_that.title,_that.summary,_tha
 @JsonSerializable()
 
 class _ShareCard extends ShareCard {
-  const _ShareCard({required this.id, required this.platform, required this.url, this.title, this.summary, this.description, @JsonKey(name: 'author_name') this.authorName, @JsonKey(name: 'author_avatar_url') this.authorAvatarUrl, @JsonKey(name: 'cover_url') this.coverUrl, @JsonKey(name: 'cover_color') this.coverColor, @JsonKey(name: 'media_urls') final  List<String> mediaUrls = const [], final  List<String> tags = const [], @JsonKey(name: 'view_count') this.viewCount = 0, @JsonKey(name: 'like_count') this.likeCount = 0, @JsonKey(name: 'published_at') this.publishedAt, @JsonKey(name: 'raw_metadata') final  Map<String, dynamic>? rawMetadata}): _mediaUrls = mediaUrls,_tags = tags,_rawMetadata = rawMetadata,super._();
+  const _ShareCard({required this.id, required this.platform, required this.url, this.title, this.summary, this.description, @JsonKey(name: 'author_name') this.authorName, @JsonKey(name: 'author_id') this.authorId, @JsonKey(name: 'author_avatar_url') this.authorAvatarUrl, @JsonKey(name: 'content_type') this.contentType, @JsonKey(name: 'cover_url') this.coverUrl, @JsonKey(name: 'cover_color') this.coverColor, @JsonKey(name: 'media_urls') final  List<String> mediaUrls = const [], final  List<String> tags = const [], @JsonKey(name: 'view_count') this.viewCount = 0, @JsonKey(name: 'like_count') this.likeCount = 0, @JsonKey(name: 'collect_count') this.collectCount = 0, @JsonKey(name: 'share_count') this.shareCount = 0, @JsonKey(name: 'comment_count') this.commentCount = 0, @JsonKey(name: 'published_at') this.publishedAt, @JsonKey(name: 'raw_metadata') final  Map<String, dynamic>? rawMetadata}): _mediaUrls = mediaUrls,_tags = tags,_rawMetadata = rawMetadata,super._();
   factory _ShareCard.fromJson(Map<String, dynamic> json) => _$ShareCardFromJson(json);
 
 @override final  int id;
@@ -234,7 +239,9 @@ class _ShareCard extends ShareCard {
 @override final  String? summary;
 @override final  String? description;
 @override@JsonKey(name: 'author_name') final  String? authorName;
+@override@JsonKey(name: 'author_id') final  String? authorId;
 @override@JsonKey(name: 'author_avatar_url') final  String? authorAvatarUrl;
+@override@JsonKey(name: 'content_type') final  String? contentType;
 @override@JsonKey(name: 'cover_url') final  String? coverUrl;
 @override@JsonKey(name: 'cover_color') final  String? coverColor;
  final  List<String> _mediaUrls;
@@ -253,6 +260,9 @@ class _ShareCard extends ShareCard {
 
 @override@JsonKey(name: 'view_count') final  int viewCount;
 @override@JsonKey(name: 'like_count') final  int likeCount;
+@override@JsonKey(name: 'collect_count') final  int collectCount;
+@override@JsonKey(name: 'share_count') final  int shareCount;
+@override@JsonKey(name: 'comment_count') final  int commentCount;
 @override@JsonKey(name: 'published_at') final  DateTime? publishedAt;
  final  Map<String, dynamic>? _rawMetadata;
 @override@JsonKey(name: 'raw_metadata') Map<String, dynamic>? get rawMetadata {
@@ -277,16 +287,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ShareCard&&(identical(other.id, id) || other.id == id)&&(identical(other.platform, platform) || other.platform == platform)&&(identical(other.url, url) || other.url == url)&&(identical(other.title, title) || other.title == title)&&(identical(other.summary, summary) || other.summary == summary)&&(identical(other.description, description) || other.description == description)&&(identical(other.authorName, authorName) || other.authorName == authorName)&&(identical(other.authorAvatarUrl, authorAvatarUrl) || other.authorAvatarUrl == authorAvatarUrl)&&(identical(other.coverUrl, coverUrl) || other.coverUrl == coverUrl)&&(identical(other.coverColor, coverColor) || other.coverColor == coverColor)&&const DeepCollectionEquality().equals(other._mediaUrls, _mediaUrls)&&const DeepCollectionEquality().equals(other._tags, _tags)&&(identical(other.viewCount, viewCount) || other.viewCount == viewCount)&&(identical(other.likeCount, likeCount) || other.likeCount == likeCount)&&(identical(other.publishedAt, publishedAt) || other.publishedAt == publishedAt)&&const DeepCollectionEquality().equals(other._rawMetadata, _rawMetadata));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ShareCard&&(identical(other.id, id) || other.id == id)&&(identical(other.platform, platform) || other.platform == platform)&&(identical(other.url, url) || other.url == url)&&(identical(other.title, title) || other.title == title)&&(identical(other.summary, summary) || other.summary == summary)&&(identical(other.description, description) || other.description == description)&&(identical(other.authorName, authorName) || other.authorName == authorName)&&(identical(other.authorId, authorId) || other.authorId == authorId)&&(identical(other.authorAvatarUrl, authorAvatarUrl) || other.authorAvatarUrl == authorAvatarUrl)&&(identical(other.contentType, contentType) || other.contentType == contentType)&&(identical(other.coverUrl, coverUrl) || other.coverUrl == coverUrl)&&(identical(other.coverColor, coverColor) || other.coverColor == coverColor)&&const DeepCollectionEquality().equals(other._mediaUrls, _mediaUrls)&&const DeepCollectionEquality().equals(other._tags, _tags)&&(identical(other.viewCount, viewCount) || other.viewCount == viewCount)&&(identical(other.likeCount, likeCount) || other.likeCount == likeCount)&&(identical(other.collectCount, collectCount) || other.collectCount == collectCount)&&(identical(other.shareCount, shareCount) || other.shareCount == shareCount)&&(identical(other.commentCount, commentCount) || other.commentCount == commentCount)&&(identical(other.publishedAt, publishedAt) || other.publishedAt == publishedAt)&&const DeepCollectionEquality().equals(other._rawMetadata, _rawMetadata));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,platform,url,title,summary,description,authorName,authorAvatarUrl,coverUrl,coverColor,const DeepCollectionEquality().hash(_mediaUrls),const DeepCollectionEquality().hash(_tags),viewCount,likeCount,publishedAt,const DeepCollectionEquality().hash(_rawMetadata));
+int get hashCode => Object.hashAll([runtimeType,id,platform,url,title,summary,description,authorName,authorId,authorAvatarUrl,contentType,coverUrl,coverColor,const DeepCollectionEquality().hash(_mediaUrls),const DeepCollectionEquality().hash(_tags),viewCount,likeCount,collectCount,shareCount,commentCount,publishedAt,const DeepCollectionEquality().hash(_rawMetadata)]);
 
 @override
 String toString() {
-  return 'ShareCard(id: $id, platform: $platform, url: $url, title: $title, summary: $summary, description: $description, authorName: $authorName, authorAvatarUrl: $authorAvatarUrl, coverUrl: $coverUrl, coverColor: $coverColor, mediaUrls: $mediaUrls, tags: $tags, viewCount: $viewCount, likeCount: $likeCount, publishedAt: $publishedAt, rawMetadata: $rawMetadata)';
+  return 'ShareCard(id: $id, platform: $platform, url: $url, title: $title, summary: $summary, description: $description, authorName: $authorName, authorId: $authorId, authorAvatarUrl: $authorAvatarUrl, contentType: $contentType, coverUrl: $coverUrl, coverColor: $coverColor, mediaUrls: $mediaUrls, tags: $tags, viewCount: $viewCount, likeCount: $likeCount, collectCount: $collectCount, shareCount: $shareCount, commentCount: $commentCount, publishedAt: $publishedAt, rawMetadata: $rawMetadata)';
 }
 
 
@@ -297,7 +307,7 @@ abstract mixin class _$ShareCardCopyWith<$Res> implements $ShareCardCopyWith<$Re
   factory _$ShareCardCopyWith(_ShareCard value, $Res Function(_ShareCard) _then) = __$ShareCardCopyWithImpl;
 @override @useResult
 $Res call({
- int id, String platform, String url, String? title, String? summary, String? description,@JsonKey(name: 'author_name') String? authorName,@JsonKey(name: 'author_avatar_url') String? authorAvatarUrl,@JsonKey(name: 'cover_url') String? coverUrl,@JsonKey(name: 'cover_color') String? coverColor,@JsonKey(name: 'media_urls') List<String> mediaUrls, List<String> tags,@JsonKey(name: 'view_count') int viewCount,@JsonKey(name: 'like_count') int likeCount,@JsonKey(name: 'published_at') DateTime? publishedAt,@JsonKey(name: 'raw_metadata') Map<String, dynamic>? rawMetadata
+ int id, String platform, String url, String? title, String? summary, String? description,@JsonKey(name: 'author_name') String? authorName,@JsonKey(name: 'author_id') String? authorId,@JsonKey(name: 'author_avatar_url') String? authorAvatarUrl,@JsonKey(name: 'content_type') String? contentType,@JsonKey(name: 'cover_url') String? coverUrl,@JsonKey(name: 'cover_color') String? coverColor,@JsonKey(name: 'media_urls') List<String> mediaUrls, List<String> tags,@JsonKey(name: 'view_count') int viewCount,@JsonKey(name: 'like_count') int likeCount,@JsonKey(name: 'collect_count') int collectCount,@JsonKey(name: 'share_count') int shareCount,@JsonKey(name: 'comment_count') int commentCount,@JsonKey(name: 'published_at') DateTime? publishedAt,@JsonKey(name: 'raw_metadata') Map<String, dynamic>? rawMetadata
 });
 
 
@@ -314,7 +324,7 @@ class __$ShareCardCopyWithImpl<$Res>
 
 /// Create a copy of ShareCard
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? platform = null,Object? url = null,Object? title = freezed,Object? summary = freezed,Object? description = freezed,Object? authorName = freezed,Object? authorAvatarUrl = freezed,Object? coverUrl = freezed,Object? coverColor = freezed,Object? mediaUrls = null,Object? tags = null,Object? viewCount = null,Object? likeCount = null,Object? publishedAt = freezed,Object? rawMetadata = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? platform = null,Object? url = null,Object? title = freezed,Object? summary = freezed,Object? description = freezed,Object? authorName = freezed,Object? authorId = freezed,Object? authorAvatarUrl = freezed,Object? contentType = freezed,Object? coverUrl = freezed,Object? coverColor = freezed,Object? mediaUrls = null,Object? tags = null,Object? viewCount = null,Object? likeCount = null,Object? collectCount = null,Object? shareCount = null,Object? commentCount = null,Object? publishedAt = freezed,Object? rawMetadata = freezed,}) {
   return _then(_ShareCard(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as int,platform: null == platform ? _self.platform : platform // ignore: cast_nullable_to_non_nullable
@@ -323,13 +333,18 @@ as String,title: freezed == title ? _self.title : title // ignore: cast_nullable
 as String?,summary: freezed == summary ? _self.summary : summary // ignore: cast_nullable_to_non_nullable
 as String?,description: freezed == description ? _self.description : description // ignore: cast_nullable_to_non_nullable
 as String?,authorName: freezed == authorName ? _self.authorName : authorName // ignore: cast_nullable_to_non_nullable
+as String?,authorId: freezed == authorId ? _self.authorId : authorId // ignore: cast_nullable_to_non_nullable
 as String?,authorAvatarUrl: freezed == authorAvatarUrl ? _self.authorAvatarUrl : authorAvatarUrl // ignore: cast_nullable_to_non_nullable
+as String?,contentType: freezed == contentType ? _self.contentType : contentType // ignore: cast_nullable_to_non_nullable
 as String?,coverUrl: freezed == coverUrl ? _self.coverUrl : coverUrl // ignore: cast_nullable_to_non_nullable
 as String?,coverColor: freezed == coverColor ? _self.coverColor : coverColor // ignore: cast_nullable_to_non_nullable
 as String?,mediaUrls: null == mediaUrls ? _self._mediaUrls : mediaUrls // ignore: cast_nullable_to_non_nullable
 as List<String>,tags: null == tags ? _self._tags : tags // ignore: cast_nullable_to_non_nullable
 as List<String>,viewCount: null == viewCount ? _self.viewCount : viewCount // ignore: cast_nullable_to_non_nullable
 as int,likeCount: null == likeCount ? _self.likeCount : likeCount // ignore: cast_nullable_to_non_nullable
+as int,collectCount: null == collectCount ? _self.collectCount : collectCount // ignore: cast_nullable_to_non_nullable
+as int,shareCount: null == shareCount ? _self.shareCount : shareCount // ignore: cast_nullable_to_non_nullable
+as int,commentCount: null == commentCount ? _self.commentCount : commentCount // ignore: cast_nullable_to_non_nullable
 as int,publishedAt: freezed == publishedAt ? _self.publishedAt : publishedAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,rawMetadata: freezed == rawMetadata ? _self._rawMetadata : rawMetadata // ignore: cast_nullable_to_non_nullable
 as Map<String, dynamic>?,

@@ -19,6 +19,8 @@ import '../../core/network/api_client.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import '../../core/network/image_headers.dart';
 
+import 'package:google_fonts/google_fonts.dart';
+
 class _CodeElementBuilder extends MarkdownElementBuilder {
   final BuildContext context;
 
@@ -29,61 +31,115 @@ class _CodeElementBuilder extends MarkdownElementBuilder {
     var language = '';
     if (element.attributes['class'] != null) {
       String lg = element.attributes['class'] as String;
-      language = lg.substring(9);
+      if (lg.startsWith('language-')) {
+        language = lg.substring(9);
+      }
     }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final appTheme = Theme.of(context);
 
     if (language == 'latex') {
       // Render LaTeX
       return Container(
-        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.symmetric(vertical: 16),
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
         alignment: Alignment.center,
-        child: Math.tex(
-          element.textContent,
-          textStyle: preferredStyle?.copyWith(fontSize: 16),
+        decoration: BoxDecoration(
+          color: appTheme.colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: appTheme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
+        ),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Math.tex(
+            element.textContent,
+            textStyle: preferredStyle?.copyWith(
+              fontSize: 20,
+              color: appTheme.colorScheme.onSurface,
+            ),
+          ),
         ),
       );
     }
 
     return Container(
+      margin: const EdgeInsets.symmetric(vertical: 16),
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(
-          context,
-        ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
+        color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF8F8F8),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Theme.of(
-            context,
-          ).colorScheme.outlineVariant.withValues(alpha: 0.5),
+          color: appTheme.colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
       ),
-      child: Stack(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SelectableText(
-              element.textContent,
-              style: preferredStyle?.copyWith(
-                fontFamily: 'monospace',
-                fontSize: 13,
-              ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            decoration: BoxDecoration(
+              color: appTheme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            ),
+            child: Row(
+              children: [
+                if (language.isNotEmpty)
+                  Text(
+                    language.toUpperCase(),
+                    style: appTheme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                      color: appTheme.colorScheme.primary,
+                    ),
+                  )
+                else
+                  const Icon(Icons.code, size: 14),
+                const Spacer(),
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: element.textContent));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('已复制代码'),
+                          duration: Duration(seconds: 1),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4.0),
+                      child: Row(
+                        children: [
+                          Icon(Icons.copy_rounded, size: 14),
+                          SizedBox(width: 4),
+                          Text('复制', style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          Positioned(
-            right: 0,
-            top: 0,
-            child: IconButton(
-              icon: const Icon(Icons.copy, size: 16),
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: element.textContent));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('已复制代码'),
-                    duration: Duration(seconds: 1),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SelectableText(
+                element.textContent,
+                style: GoogleFonts.firaCode(
+                  textStyle: TextStyle(
+                    fontSize: 14,
+                    height: 1.5,
+                    color: isDark ? const Color(0xFFD4D4D4) : const Color(0xFF333333),
                   ),
-                );
-              },
+                ),
+              ),
             ),
           ),
         ],
@@ -450,71 +506,165 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       return _buildPortraitLayout(context, detail, apiBaseUrl, apiToken);
     }
 
-    // Use avatar URL for the main image in this layout
     final String imageUrl = detail.authorAvatarUrl ?? detail.coverUrl ?? '';
+    final mappedAvatarUrl = _mapUrl(imageUrl, apiBaseUrl);
 
     return Row(
       children: [
-        // Left: Avatar / Cover
+        // Left: Large Square Avatar Section
         Expanded(
           flex: 4,
           child: Container(
-            color: colorScheme.surfaceContainerHigh,
+            color: colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
             child: Center(
-              child: Hero(
-                tag: 'content-image-${detail.id}',
-                child: ClipOval(
-                  child: CachedNetworkImage(
-                    imageUrl: _mapUrl(imageUrl, apiBaseUrl),
-                    httpHeaders: buildImageHeaders(
-                      imageUrl: _mapUrl(imageUrl, apiBaseUrl),
-                      baseUrl: apiBaseUrl,
-                      apiToken: apiToken,
+              child: GestureDetector(
+                onTap: () => _launchAuthorProfile(detail),
+                child: Hero(
+                  tag: 'content-image-${detail.id}',
+                  child: Container(
+                    decoration: BoxDecoration(
+                      boxShadow: [
+                        BoxShadow(
+                          color: colorScheme.shadow.withValues(alpha: 0.1),
+                          blurRadius: 40,
+                          offset: const Offset(0, 20),
+                        ),
+                      ],
                     ),
-                    width: 240,
-                    height: 240,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) =>
-                        const CircularProgressIndicator(),
-                    errorWidget: (context, url, error) =>
-                        const Icon(Icons.person, size: 80),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(32),
+                      child: CachedNetworkImage(
+                        imageUrl: mappedAvatarUrl,
+                        httpHeaders: buildImageHeaders(
+                          imageUrl: mappedAvatarUrl,
+                          baseUrl: apiBaseUrl,
+                          apiToken: apiToken,
+                        ),
+                        width: 320,
+                        height: 320,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) =>
+                            const CircularProgressIndicator(),
+                        errorWidget: (context, url, error) =>
+                            const Icon(Icons.person, size: 80),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
         ),
-        // Right: Stats & Info
+        // Right: Information Card Section
         Expanded(
           flex: 6,
           child: Container(
-            color: colorScheme.surface,
-            padding: const EdgeInsets.all(48),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  detail.authorName ?? 'Unknown',
-                  style: theme.textTheme.displaySmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurface,
+            color: colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
+            padding: const EdgeInsets.all(40),
+            child: Container(
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                borderRadius: BorderRadius.circular(36),
+                boxShadow: [
+                  BoxShadow(
+                    color: colorScheme.shadow.withValues(alpha: 0.08),
+                    blurRadius: 30,
+                    offset: const Offset(0, 10),
                   ),
-                ),
-                const SizedBox(height: 16),
-                if (detail.description != null)
+                ],
+              ),
+              padding: const EdgeInsets.all(48),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header with Small Avatar and Nickname
+                  Row(
+                    children: [
+                      // Small circular avatar inside the card
+                      ClipOval(
+                        child: CachedNetworkImage(
+                          imageUrl: mappedAvatarUrl,
+                          httpHeaders: buildImageHeaders(
+                            imageUrl: mappedAvatarUrl,
+                            baseUrl: apiBaseUrl,
+                            apiToken: apiToken,
+                          ),
+                          width: 48,
+                          height: 48,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            GestureDetector(
+                              onTap: () => _launchAuthorProfile(detail),
+                              child: Text(
+                                detail.authorName ?? 'Unknown',
+                                style: theme.textTheme.displaySmall?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                  color: colorScheme.onSurface,
+                                  fontSize: 36,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                _getPlatformIcon(detail.platform, 16),
+                                const SizedBox(width: 8),
+                                Text(
+                                  detail.platform.toUpperCase(),
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                    color: colorScheme.outline,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+                  // Description
+                  if (detail.description != null && detail.description!.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                      child: Text(
+                        detail.description!,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          height: 1.6,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 48),
+                  // Unified Stats Grid
+                  _buildUnifiedStats(context, detail),
+                  const SizedBox(height: 40),
+                  // Detailed Platform-specific Stats
                   Text(
-                    detail.description!,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
+                    '详细数据',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.primary,
+                      letterSpacing: 1.2,
                     ),
                   ),
-                const SizedBox(height: 48),
-                _buildUnifiedStats(context, detail),
-                const SizedBox(height: 48),
-                // Extra metadata from raw_metadata
-                if (detail.rawMetadata != null)
-                  _buildDetailedUserStats(context, detail.rawMetadata!),
-              ],
+                  const SizedBox(height: 16),
+                  _buildDetailedUserStats(context, {
+                    ...detail.extraStats,
+                    ...(detail.rawMetadata ?? {}),
+                  }),
+                ],
+              ),
             ),
           ),
         ),
@@ -522,38 +672,90 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     );
   }
 
+  void _launchAuthorProfile(ContentDetail detail) {
+    if (detail.authorId != null && detail.authorId!.isNotEmpty) {
+      String url;
+      if (detail.isZhihu) {
+        url = "https://www.zhihu.com/people/${detail.authorId}";
+      } else if (detail.isBilibili) {
+        url = "https://space.bilibili.com/${detail.authorId}";
+      } else if (detail.isTwitter) {
+        url = "https://twitter.com/i/user/${detail.authorId}";
+      } else if (detail.isWeibo) {
+        url = "https://weibo.com/u/${detail.authorId}";
+      } else {
+        return;
+      }
+      launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    }
+  }
+
   Widget _buildDetailedUserStats(
     BuildContext context,
     Map<String, dynamic> metadata,
   ) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    
     // Render additional stats like logs_count, following_columns etc.
     final Map<String, String> keyMap = {
-      'followerCount': '粉丝',
-      'followingCount': '关注',
-      'voteupCount': '获赞',
-      'thankedCount': '获谢',
-      'favoritedCount': '被收藏',
-      'logsCount': '公共编辑',
-      'followingColumnsCount': '关注专栏',
-      'followingTopicCount': '关注话题',
-      'followingQuestionCount': '关注问题',
-      'followingFavlistsCount': '关注收藏夹',
+      // Zhihu
+      'follower_count': '粉丝',
+      'following_count': '关注',
+      'voteup_count': '获赞',
+      'thanked_count': '获谢',
+      'favorited_count': '被收藏',
+      'logs_count': '公共编辑',
+      'answer_count': '回答',
+      'articles_count': '文章',
+      'pins_count': '想法',
+      'question_count': '提问',
+      'following_columns_count': '关注专栏',
+      'following_topic_count': '关注话题',
+      'following_question_count': '关注问题',
+      'following_favlists_count': '关注收藏夹',
+      // Weibo (from extra_stats)
+      'followers': '粉丝',
+      'friends': '关注',
+      'following': '关注',
+      'statuses': '微博',
+      'credit_score': '信用分',
+      'urank': '等级',
     };
 
+    final statsToDisplay = metadata.entries
+        .where((e) => keyMap.containsKey(e.key) && (e.value is num && e.value > 0))
+        .toList();
+
+    if (statsToDisplay.isEmpty) return const SizedBox.shrink();
+
     return Wrap(
-      spacing: 16,
-      runSpacing: 16,
-      children: metadata.entries
-          .where(
-            (e) => keyMap.containsKey(e.key) && (e.value is int && e.value > 0),
-          )
-          .map((e) {
-            return Chip(
-              avatar: const Icon(Icons.bar_chart, size: 16),
-              label: Text('${keyMap[e.key]}: ${e.value}'),
-            );
-          })
-          .toList(),
+      spacing: 12,
+      runSpacing: 12,
+      children: statsToDisplay.map((e) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.bar_chart_rounded, size: 14, color: colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                '${keyMap[e.key]}: ${_formatCount(e.value)}',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -943,6 +1145,10 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                 ),
               const SizedBox(height: 48),
               _buildUnifiedStats(context, detail),
+              if (detail.isZhihuQuestion) ...[
+                const SizedBox(height: 16),
+                _buildZhihuQuestionStats(context, detail.extraStats),
+              ],
               const SizedBox(height: 48),
               Text(
                 '关联标签',
@@ -1167,6 +1373,10 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                   ),
                 const SizedBox(height: 24),
                 _buildUnifiedStats(context, detail),
+                if (detail.isZhihuQuestion) ...[
+                  const SizedBox(height: 16),
+                  _buildZhihuQuestionStats(context, detail.extraStats),
+                ],
                 const SizedBox(height: 16),
                 if (detail.isBilibili && detail.platformId != null)
                   _buildBvidCard(context, detail),
@@ -1413,24 +1623,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         : null;
 
     return GestureDetector(
-      onTap: () {
-        // Construct user profile URL if authorId is available
-        if (detail.authorId != null && detail.authorId!.isNotEmpty) {
-          String url;
-          if (detail.isZhihu) {
-            url = "https://www.zhihu.com/people/${detail.authorId}";
-          } else if (detail.isBilibili) {
-            url = "https://space.bilibili.com/${detail.authorId}";
-          } else if (detail.isTwitter) {
-            url = "https://twitter.com/i/user/${detail.authorId}";
-          } else if (detail.isWeibo) {
-            url = "https://weibo.com/u/${detail.authorId}";
-          } else {
-            return;
-          }
-          launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-        }
-      },
+      onTap: () => _launchAuthorProfile(detail),
       child: Row(
         children: [
           Container(
@@ -1510,135 +1703,68 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     final stats = detail.extraStats;
     final bool isBilibili = detail.isBilibili;
     final bool isWeibo = detail.platform.toLowerCase() == 'weibo';
+    final bool isZhihu = detail.isZhihu;
     final bool isUserProfile = detail.contentType == 'user_profile';
 
     final List<Widget> items = [];
 
     if (isUserProfile) {
-      // Weibo User Profile Stats
-      items.add(
-        _buildUnifiedStatItem(
-          context,
-          Icons.people_outline,
-          '粉丝',
-          (stats['followers'] ?? 0).toString(),
-        ),
-      );
-      items.add(
-        _buildUnifiedStatItem(
-          context,
-          Icons.person_add_alt_1_outlined,
-          '关注',
-          (stats['following'] ?? stats['friends'] ?? 0).toString(),
-        ),
-      );
-      items.add(
-        _buildUnifiedStatItem(
-          context,
-          Icons.article_outlined,
-          '微博',
-          (stats['statuses'] ?? 0).toString(),
-        ),
-      );
+      if (isWeibo) {
+        // Weibo User Profile Stats
+        items.add(_buildUnifiedStatItem(context, Icons.people_outline, '粉丝', _formatCount(detail.viewCount)));
+        items.add(_buildUnifiedStatItem(context, Icons.person_add_alt_1_outlined, '关注', _formatCount(detail.shareCount)));
+        items.add(_buildUnifiedStatItem(context, Icons.article_outlined, '微博', _formatCount(detail.commentCount)));
+      } else if (isZhihu) {
+        // Zhihu User Profile Stats
+        items.add(_buildUnifiedStatItem(context, Icons.people_outline, '粉丝', _formatCount(detail.viewCount)));
+        items.add(_buildUnifiedStatItem(context, Icons.person_add_alt_1_outlined, '关注', _formatCount(detail.shareCount)));
+        items.add(_buildUnifiedStatItem(context, Icons.thumb_up_alt_outlined, '获赞', _formatCount(detail.likeCount)));
+        items.add(_buildUnifiedStatItem(context, Icons.star_border, '收藏', _formatCount(detail.collectCount)));
+      }
     } else {
-      // Standard Post Stats (Weibo / Twitter / Bilibili)
-      // Reposts (Weibo uses share_count as Repost count)
-      if (detail.shareCount > 0 || isWeibo) {
-        items.add(
-          _buildUnifiedStatItem(
-            context,
-            Icons.repeat_rounded, // Repost icon
-            '转发',
-            detail.shareCount.toString(),
-          ),
-        );
+      // Standard Post Stats
+      if (detail.viewCount > 0 || isBilibili || (isZhihu && detail.isZhihuQuestion)) {
+        items.add(_buildUnifiedStatItem(context, Icons.remove_red_eye_outlined, '查看', _formatCount(detail.viewCount)));
       }
 
-      // Views
-      if (detail.viewCount > 0 || !isWeibo) {
-        items.add(
-          _buildUnifiedStatItem(
-            context,
-            Icons.visibility_outlined,
-            '查看',
-            detail.viewCount.toString(),
-          ),
-        );
+      if (detail.likeCount > 0 || isZhihu || isBilibili) {
+        items.add(_buildUnifiedStatItem(context, isZhihu ? Icons.thumb_up_alt_outlined : Icons.favorite_border, isZhihu ? '赞同' : '点赞', _formatCount(detail.likeCount)));
       }
 
-      // Likes
-      items.add(
-        _buildUnifiedStatItem(
-          context,
-          Icons.favorite_border,
-          '点赞',
-          detail.likeCount.toString(),
-        ),
-      );
-
-      // Collects
-      if (detail.collectCount > 0 || isBilibili) {
-        items.add(
-          _buildUnifiedStatItem(
-            context,
-            Icons.star_border,
-            '收藏',
-            (detail.collectCount > 0
-                    ? detail.collectCount
-                    : (stats['favorite'] ?? 0))
-                .toString(),
-          ),
-        );
+      if (detail.collectCount > 0 || isBilibili || isZhihu) {
+        items.add(_buildUnifiedStatItem(context, Icons.star_border, '收藏', _formatCount(detail.collectCount)));
       }
 
-      // Comments / Replies
-      if (detail.commentCount > 0 || isBilibili || isWeibo) {
-        items.add(
-          _buildUnifiedStatItem(
-            context,
-            Icons.chat_bubble_outline,
-            '评论',
-            (detail.commentCount > 0
-                    ? detail.commentCount
-                    : (stats['reply'] ?? 0))
-                .toString(),
-          ),
-        );
+      if (detail.commentCount > 0 || isBilibili || isWeibo || isZhihu) {
+        items.add(_buildUnifiedStatItem(context, Icons.chat_bubble_outline, '评论', _formatCount(detail.commentCount)));
+      }
+      
+      if (detail.shareCount > 0 || isWeibo || isBilibili) {
+        items.add(_buildUnifiedStatItem(context, Icons.repeat_rounded, isWeibo ? '转发' : '分享', _formatCount(detail.shareCount)));
       }
     }
 
-    // Bilibili specific (Common for both types if applicable, but usually only posts)
+    // Bilibili specific
     if (isBilibili && !isUserProfile) {
-      if (stats['coin'] != null) {
-        items.add(
-          _buildUnifiedStatItem(
-            context,
-            Icons.monetization_on_rounded,
-            '投币',
-            stats['coin'].toString(),
-          ),
-        );
-      }
-      if (stats['danmaku'] != null) {
-        items.add(
-          _buildUnifiedStatItem(
-            context,
-            Icons.subtitles_rounded,
-            '弹幕',
-            stats['danmaku'].toString(),
-          ),
-        );
-      }
+      if (stats['coin'] != null) items.add(_buildUnifiedStatItem(context, Icons.monetization_on_rounded, '投币', _formatCount(stats['coin'])));
+      if (stats['danmaku'] != null) items.add(_buildUnifiedStatItem(context, Icons.subtitles_rounded, '弹幕', _formatCount(stats['danmaku'])));
+    }
+    
+    // Zhihu specific extra stats for Question
+    if (detail.isZhihuQuestion) {
+       if (stats['follower_count'] != null && detail.collectCount == 0) {
+         items.add(_buildUnifiedStatItem(context, Icons.person_add_alt, '关注', _formatCount(stats['follower_count'])));
+       }
     }
 
     if (items.isEmpty) return const SizedBox.shrink();
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(32), // M3E Expressive: Large radius
+        borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
             color: colorScheme.shadow.withValues(alpha: 0.05),
@@ -1649,23 +1775,69 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // Target 3 columns for 6 items (2x3), but responsive fallback to 2
-          final int crossAxisCount = constraints.maxWidth > 360 ? 3 : 2;
-          const double horizontalSpacing = 20.0;
-          final double itemWidth =
-              (constraints.maxWidth -
-                  (horizontalSpacing * (crossAxisCount - 1))) /
-              crossAxisCount;
+          final int crossAxisCount = constraints.maxWidth > 600 ? 4 : (constraints.maxWidth > 360 ? 3 : 2);
+          const double horizontalSpacing = 16.0;
+          final double itemWidth = (constraints.maxWidth - (horizontalSpacing * (crossAxisCount - 1))) / crossAxisCount;
 
           return Wrap(
             spacing: horizontalSpacing,
             runSpacing: 24,
-            children: items
-                .map((item) => SizedBox(width: itemWidth, child: item))
-                .toList(),
+            children: items.map((item) => SizedBox(width: itemWidth, child: item)).toList(),
           );
         },
       ),
+    );
+  }
+
+  String _formatCount(dynamic count) {
+    if (count == null) {
+      return '0';
+    }
+    int val = 0;
+    if (count is int) {
+      val = count;
+    } else if (count is String) {
+      val = int.tryParse(count) ?? 0;
+    } else {
+      val = (count as num).toInt();
+    }
+
+    if (val >= 10000) {
+      return '${(val / 10000).toStringAsFixed(1)}w';
+    }
+    if (val >= 1000) {
+      return '${(val / 1000).toStringAsFixed(1)}k';
+    }
+    return val.toString();
+  }
+
+  Widget _buildZhihuQuestionStats(BuildContext context, Map<String, dynamic> stats) {
+    // final theme = Theme.of(context);
+    
+    return Wrap(
+      spacing: 16,
+      runSpacing: 8,
+      children: [
+        _buildSmallStatItem(context, Icons.person_add_alt, '关注', _formatCount(stats['follower_count'])),
+        _buildSmallStatItem(context, Icons.question_answer_outlined, '回答', _formatCount(stats['answer_count'])),
+        _buildSmallStatItem(context, Icons.remove_red_eye_outlined, '浏览', _formatCount(stats['visit_count'])),
+      ],
+    );
+  }
+
+  Widget _buildSmallStatItem(BuildContext context, IconData icon, String label, String value) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: colorScheme.outline),
+        const SizedBox(width: 4),
+        Text(
+          '$value $label',
+          style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline),
+        ),
+      ],
     );
   }
 
@@ -1775,7 +1947,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   }
 
   Widget _buildTags(BuildContext context, ContentDetail detail) {
-    if (detail.tags.isEmpty) return const SizedBox.shrink();
+    if (detail.tags.isEmpty) {
+      return const SizedBox.shrink();
+    }
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -1814,9 +1988,40 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
     if (markdown.isNotEmpty) {
       final style = _getMarkdownStyle(theme);
+      final questionInfo = detail.isZhihuAnswer
+          ? (detail.rawMetadata?['associated_question'])
+          : null;
+
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (detail.isZhihuAnswer && questionInfo != null) ...[
+            GestureDetector(
+              onTap: () {
+                if (questionInfo['url'] != null) {
+                  launchUrl(Uri.parse(questionInfo['url']), mode: LaunchMode.externalApplication);
+                }
+              },
+              child: Text(
+                questionInfo['title'] ?? '未知问题',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: theme.colorScheme.primary,
+                  height: 1.3,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildZhihuQuestionStats(context, questionInfo),
+            const SizedBox(height: 24),
+            _buildAuthorHeader(context, detail),
+            const SizedBox(height: 12),
+            _buildUnifiedStats(context, detail),
+            const SizedBox(height: 32),
+            const Divider(),
+            const SizedBox(height: 32),
+          ],
+          
           MarkdownBody(
             data: markdown,
             selectable: true,
@@ -1848,15 +2053,14 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               usedHeroTags: usedHeroTags,
             ),
           ),
-          if (detail.platform.toLowerCase() == 'bilibili')
-            _buildBilibiliStats(context, detail),
 
           // Zhihu Top Answers
           if (detail.isZhihuQuestion &&
-              detail.rawMetadata?['top_answers'] != null)
+              detail.rawMetadata != null &&
+              detail.rawMetadata!['top_answers'] != null)
             _buildZhihuTopAnswers(
               context,
-              detail.rawMetadata!['top_answers'] as List,
+              detail.rawMetadata!['top_answers'] as List<dynamic>,
             ),
         ],
       );
@@ -1938,7 +2142,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
                 mainAxisSpacing: 12,
                 crossAxisSpacing: 12,
@@ -2015,11 +2219,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                 );
               },
             ),
-        if (detail.platform.toLowerCase() == 'bilibili')
-          _buildBilibiliStats(context, detail),
-      ],
-    );
-  }
+        ],
+      );
+    }
 
   MarkdownStyleSheet _getMarkdownStyle(ThemeData theme) {
     return MarkdownStyleSheet.fromTheme(theme).copyWith(
@@ -2196,70 +2398,125 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     );
   }
 
-  Widget _buildBilibiliStats(BuildContext context, ContentDetail detail) {
-    return const SizedBox.shrink(); // Integrated into _buildUnifiedStats
-  }
-
   Widget _buildZhihuTopAnswers(BuildContext context, List topAnswers) {
     if (topAnswers.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final dio = ref.read(apiClientProvider);
+    final apiBaseUrl = dio.options.baseUrl;
+    final apiToken = dio.options.headers['X-API-Token']?.toString();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 32),
-        Text(
-          "精选回答",
-          style: Theme.of(
-            context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+        const SizedBox(height: 48),
+        Row(
+          children: [
+            Icon(Icons.auto_awesome, size: 20, color: colorScheme.primary),
+            const SizedBox(width: 12),
+            Text(
+              "精选回答",
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
         ...topAnswers.map((ans) {
           if (ans == null) return const SizedBox.shrink();
-          final authorName = ans['author']?['name'] ?? 'Unknown';
+          final authorName = ans['author_name'] ?? 'Unknown';
+          final authorAvatar = ans['author_avatar_url'];
           final excerpt = ans['excerpt'] ?? '';
-          final voteup = ans['voteup_count'] ?? 0;
+          final likeCount = ans['like_count'] ?? 0;
+          final commentCount = ans['comment_count'] ?? 0;
           final url = ans['url'];
+          final coverUrl = ans['cover_url'];
 
           return Card(
-            margin: const EdgeInsets.only(bottom: 12),
+            margin: const EdgeInsets.only(bottom: 16),
             elevation: 0,
-            color: Theme.of(context).colorScheme.surfaceContainer,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+            ),
+            color: colorScheme.surfaceContainerLow,
             child: InkWell(
               onTap: () {
-                if (url != null)
-                  launchUrl(
-                    Uri.parse(url),
-                    mode: LaunchMode.externalApplication,
-                  );
+                if (url != null) {
+                  launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                }
               },
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(20),
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        Text(
-                          authorName,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        if (authorAvatar != null) ...[
+                          CircleAvatar(
+                            radius: 12,
+                            backgroundImage: CachedNetworkImageProvider(
+                              _mapUrl(authorAvatar, apiBaseUrl),
+                              headers: buildImageHeaders(
+                                imageUrl: _mapUrl(authorAvatar, apiBaseUrl),
+                                baseUrl: apiBaseUrl,
+                                apiToken: apiToken,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        Expanded(
+                          child: Text(
+                            authorName,
+                            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                        const Spacer(),
-                        Icon(
-                          Icons.thumb_up_alt_outlined,
-                          size: 14,
-                          color: Theme.of(context).colorScheme.outline,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '$voteup',
-                          style: Theme.of(context).textTheme.labelSmall,
-                        ),
+                        const SizedBox(width: 12),
+                        _buildSmallStatItem(context, Icons.thumb_up_alt_outlined, '', _formatCount(likeCount)),
+                        if (commentCount > 0) ...[
+                          const SizedBox(width: 12),
+                          _buildSmallStatItem(context, Icons.chat_bubble_outline, '', _formatCount(commentCount)),
+                        ],
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    Text(excerpt, maxLines: 3, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            excerpt,
+                            style: theme.textTheme.bodyMedium?.copyWith(height: 1.5, color: colorScheme.onSurfaceVariant),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (coverUrl != null) ...[
+                          const SizedBox(width: 12),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: CachedNetworkImage(
+                              imageUrl: _mapUrl(coverUrl, apiBaseUrl),
+                              httpHeaders: buildImageHeaders(
+                                imageUrl: _mapUrl(coverUrl, apiBaseUrl),
+                                baseUrl: apiBaseUrl,
+                                apiToken: apiToken,
+                              ),
+                              width: 80,
+                              height: 60,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ],
                 ),
               ),

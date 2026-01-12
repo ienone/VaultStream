@@ -60,10 +60,14 @@ def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
 
     # Stats
     stats = {
+        "view": question_data.get('visitCount', 0),
+        "reply": question_data.get('answerCount', 0),
+        "favorite": question_data.get('followerCount', 0),
+        "like": question_data.get('voteupCount', 0) or 0,
+        "comment_count": question_data.get('commentCount', 0),
         "visit_count": question_data.get('visitCount', 0),
         "answer_count": question_data.get('answerCount', 0),
         "follower_count": question_data.get('followerCount', 0),
-        "comment_count": question_data.get('commentCount', 0),
     }
 
     # Answers Preview - Structure them for Cards!
@@ -72,12 +76,15 @@ def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
     
     # Try to find the order if possible, otherwise just take first few
     # Usually 'question_data' might have an 'answers' list of IDs?
-    # Or just use the map.
     
     count = 0
     for aid, ans in answers_map.items():
         if count >= 10: break
         
+        # Ensure answer belongs to this question
+        if str(ans.get('question', {}).get('id')) != str(question_id):
+            continue
+
         a_author_data = ans.get('author', {})
         if isinstance(a_author_data, str):
             a_author_data = entities.get('users', {}).get(a_author_data, {})
@@ -92,13 +99,11 @@ def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
 
         top_answers.append({
             "id": aid,
-            "author": {
-                "name": a_author_data.get('name', 'Unknown'),
-                "avatar_url": a_author_data.get('avatarUrl'),
-                "headline": a_author_data.get('headline'),
-            },
+            "author_name": a_author_data.get('name', 'Unknown'),
+            "author_avatar_url": a_author_data.get('avatarUrl'),
+            "author_headline": a_author_data.get('headline'),
             "excerpt": a_excerpt,
-            "voteup_count": ans.get('voteupCount', 0),
+            "like_count": ans.get('voteupCount', 0),
             "comment_count": ans.get('commentCount', 0),
             "cover_url": a_cover,
             "url": f"https://www.zhihu.com/question/{question_id}/answer/{aid}",
@@ -107,13 +112,17 @@ def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
         })
         count += 1
     
-    # Sort top answers by voteup_count if we just grabbed them randomly
-    top_answers.sort(key=lambda x: x['voteup_count'], reverse=True)
+    # Sort top answers by like_count if we just grabbed them randomly
+    top_answers.sort(key=lambda x: x.get('like_count', 0), reverse=True)
 
     # Remove images from markdown if they are in media_urls (since we show them in gallery)
-    # Markdownify converts img to ![alt](src). We can regex replace them.
+    # Using a more robust regex to remove markdown images and links to images
     import re
-    full_description = re.sub(r'!\[.*?\]\(.*?\)', '', markdown_detail).strip()
+    full_description = re.sub(r'!\[.*?\]\(.*?\)', '', markdown_detail)
+    # Also remove raw image links that might be left over
+    full_description = re.sub(r'https?://\S+\.(?:jpg|jpeg|png|gif|webp)(?:\?\S+)?', '', full_description)
+    full_description = full_description.strip()
+    
     # Also clean up excessive newlines
     full_description = re.sub(r'\n{3,}', '\n\n', full_description) 
 
@@ -133,7 +142,7 @@ def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
         description=full_description,
         author_name=author.name,
         author_id=author.url_token or str(author.id),
-        cover_url=None, 
+        cover_url=media_urls[0] if media_urls else None, 
         media_urls=media_urls,
         published_at=published_at,
         raw_metadata=question_data,

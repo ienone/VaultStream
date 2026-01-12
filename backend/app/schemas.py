@@ -149,6 +149,7 @@ class ContentUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     author_name: Optional[str] = None
+    cover_url: Optional[str] = None
     is_nsfw: Optional[bool] = None
     status: Optional[ContentStatus] = None
 

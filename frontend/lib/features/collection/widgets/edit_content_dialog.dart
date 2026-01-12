@@ -18,6 +18,7 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
   late TextEditingController _descriptionController;
   late TextEditingController _authorController;
   late TextEditingController _tagsController;
+  late TextEditingController _coverUrlController;
   late bool _isNsfw;
   bool _isLoading = false;
   String? _errorMessage;
@@ -33,6 +34,7 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
     _tagsController = TextEditingController(
       text: widget.content.tags.join(' '),
     );
+    _coverUrlController = TextEditingController(text: widget.content.coverUrl);
     _isNsfw = widget.content.isNsfw;
   }
 
@@ -42,6 +44,7 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
     _descriptionController.dispose();
     _authorController.dispose();
     _tagsController.dispose();
+    _coverUrlController.dispose();
     super.dispose();
   }
 
@@ -64,6 +67,7 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
           'title': _titleController.text.trim(),
           'description': _descriptionController.text.trim(),
           'author_name': _authorController.text.trim(),
+          'cover_url': _coverUrlController.text.trim(),
           'tags': tags,
           'is_nsfw': _isNsfw,
         },
@@ -107,6 +111,15 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
               controller: _authorController,
               decoration: const InputDecoration(
                 labelText: '作者',
+                border: OutlineInputBorder(),
+              ),
+              enabled: !_isLoading,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _coverUrlController,
+              decoration: const InputDecoration(
+                labelText: '封面图 URL',
                 border: OutlineInputBorder(),
               ),
               enabled: !_isLoading,

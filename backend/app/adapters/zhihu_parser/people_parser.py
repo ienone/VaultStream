@@ -39,6 +39,10 @@ def parse_people(html_content: str, url: str) -> Optional[ParsedContent]:
     avatar_url = user_data.get('avatarUrl')
     
     stats = {
+        "view": user_data.get('followerCount', 0), # Mapping follower to view for consistency with weibo user profile mapping
+        "share": user_data.get('followingCount', 0), 
+        "like": user_data.get('thankedCount', 0),
+        "favorite": user_data.get('favoritedCount', 0),
         "follower_count": user_data.get('followerCount', 0),
         "following_count": user_data.get('followingCount', 0),
         "voteup_count": user_data.get('voteupCount', 0),
@@ -49,6 +53,10 @@ def parse_people(html_content: str, url: str) -> Optional[ParsedContent]:
         "following_topic_count": user_data.get('followingTopicCount', 0),
         "following_question_count": user_data.get('followingQuestionCount', 0),
         "following_favlists_count": user_data.get('followingFavlistsCount', 0),
+        "answer_count": user_data.get('answerCount', 0),
+        "articles_count": user_data.get('articlesCount', 0),
+        "pins_count": user_data.get('pinsCount', 0),
+        "question_count": user_data.get('questionCount', 0),
     }
     
     description = headline if headline else ""

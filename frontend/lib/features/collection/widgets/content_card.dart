@@ -473,8 +473,35 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                                                 ),
                                           ),
                                         ],
-                                        if (content.likeCount > 0) ...[
+                                        if (content.commentCount > 0) ...[
                                           if (content.viewCount > 0)
+                                            const SizedBox(width: 6),
+                                          Icon(
+                                            Icons.chat_bubble_outline,
+                                            size: 11,
+                                            color:
+                                                _isHovered &&
+                                                    _extractedColor != null
+                                                ? _extractedColor
+                                                : colorScheme.outline,
+                                          ),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            _formatCount(content.commentCount),
+                                            style: theme.textTheme.labelSmall
+                                                ?.copyWith(
+                                                  color:
+                                                      _isHovered &&
+                                                          _extractedColor !=
+                                                              null
+                                                      ? _extractedColor
+                                                      : colorScheme.outline,
+                                                  fontSize: 10,
+                                                ),
+                                          ),
+                                        ],
+                                        if (content.likeCount > 0) ...[
+                                          if (content.viewCount > 0 || content.commentCount > 0)
                                             const SizedBox(width: 6),
                                           Icon(
                                             Icons.favorite_border,

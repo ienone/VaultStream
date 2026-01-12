@@ -519,8 +519,6 @@ class ContentDetailSheet extends ConsumerWidget {
               );
             },
           ),
-          if (detail.platform.toLowerCase() == 'bilibili')
-            _buildBilibiliStats(context, detail),
         ],
       );
     }
@@ -583,34 +581,7 @@ class ContentDetailSheet extends ConsumerWidget {
             },
           ),
         ],
-
-        // Bilibili specific Extra Stats
-        if (detail.platform.toLowerCase() == 'bilibili')
-          _buildBilibiliStats(context, detail),
       ],
-    );
-  }
-
-  Widget _buildBilibiliStats(BuildContext context, ContentDetail detail) {
-    final stats = detail.extraStats;
-    if (stats.isEmpty) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 20),
-      child: Wrap(
-        spacing: 20,
-        runSpacing: 12,
-        children: [
-          if (stats['coin'] != null)
-            _LabelStat(label: '投币', value: stats['coin']),
-          if (stats['danmaku'] != null)
-            _LabelStat(label: '弹幕', value: stats['danmaku']),
-          if (stats['favorite'] != null)
-            _LabelStat(label: '收藏', value: stats['favorite']),
-          if (stats['reply'] != null)
-            _LabelStat(label: '评论', value: stats['reply']),
-        ],
-      ),
     );
   }
 

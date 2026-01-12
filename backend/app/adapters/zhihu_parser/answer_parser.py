@@ -74,32 +74,33 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
     
     markdown_content = md(processed_html, heading_style="ATX")
     
-    # Prepend Question Title link if available
-    # We store the question info in raw_metadata for the frontend to render a proper link/card
-    # But adding it to markdown is a good fallback
+    # The frontend now handles question title and layout separately
     full_description = markdown_content
-    if question_title and question_id:
-        question_link = f"https://www.zhihu.com/question/{question_id}"
-        full_description = f"# [{question_title}]({question_link})\n\n{markdown_content}"
 
     created = answer_data.get('created_time') or answer_data.get('created')
     updated = answer_data.get('updated_time') or answer_data.get('updatedTime')
     published_at = datetime.fromtimestamp(created) if created else None
     updated_at = datetime.fromtimestamp(updated) if updated else None
 
+    # Standardize stats for universal mapping
     stats = {
+        "like": answer_data.get('voteupCount', 0),
+        "reply": answer_data.get('commentCount', 0),
+        "thanks_count": answer_data.get('thanksCount', 0),
         "voteup_count": answer_data.get('voteupCount', 0),
         "comment_count": answer_data.get('commentCount', 0),
-        "thanks_count": answer_data.get('thanksCount', 0),
-        # "collect_count": 0, # Difficult to get for answer directly from initialData sometimes
     }
 
-    # Enrich raw_metadata with question info for frontend
+    # Enrich raw_metadata with question info and stats for frontend
     if isinstance(answer_data, dict):
         answer_data['associated_question'] = {
             "id": question_id,
             "title": question_title,
-            "url": f"https://www.zhihu.com/question/{question_id}" if question_id else None
+            "url": f"https://www.zhihu.com/question/{question_id}" if question_id else None,
+            "visit_count": question_data.get('visitCount', 0) if isinstance(question_data, dict) else 0,
+            "answer_count": question_data.get('answerCount', 0) if isinstance(question_data, dict) else 0,
+            "follower_count": question_data.get('followerCount', 0) if isinstance(question_data, dict) else 0,
+            "comment_count": question_data.get('commentCount', 0) if isinstance(question_data, dict) else 0,
         }
 
     return ParsedContent(
