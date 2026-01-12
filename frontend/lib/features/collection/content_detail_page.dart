@@ -16,7 +16,81 @@ import 'widgets/video_player_widget.dart';
 import '../../theme/app_theme.dart';
 
 import '../../core/network/api_client.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import '../../core/network/image_headers.dart';
+
+class _CodeElementBuilder extends MarkdownElementBuilder {
+  final BuildContext context;
+
+  _CodeElementBuilder(this.context);
+
+  @override
+  Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    var language = '';
+    if (element.attributes['class'] != null) {
+      String lg = element.attributes['class'] as String;
+      language = lg.substring(9);
+    }
+
+    if (language == 'latex') {
+      // Render LaTeX
+      return Container(
+        padding: const EdgeInsets.all(16),
+        alignment: Alignment.center,
+        child: Math.tex(
+          element.textContent,
+          textStyle: preferredStyle?.copyWith(fontSize: 16),
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(
+          context,
+        ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(
+            context,
+          ).colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Stack(
+        children: [
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SelectableText(
+              element.textContent,
+              style: preferredStyle?.copyWith(
+                fontFamily: 'monospace',
+                fontSize: 13,
+              ),
+            ),
+          ),
+          Positioned(
+            right: 0,
+            top: 0,
+            child: IconButton(
+              icon: const Icon(Icons.copy, size: 16),
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: element.textContent));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('已复制代码'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class ContentDetailPage extends ConsumerStatefulWidget {
   final int contentId;
@@ -328,7 +402,14 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           return _buildPortraitLayout(context, detail, apiBaseUrl, apiToken);
         }
 
-        if (detail.isTwitter || detail.isWeibo) {
+        if (detail.contentType == 'user_profile') {
+          return _buildUserProfileLayout(context, detail, apiBaseUrl, apiToken);
+        }
+
+        if (detail.isTwitter ||
+            detail.isWeibo ||
+            detail.isZhihuPin ||
+            detail.isZhihuQuestion) {
           return _buildTwitterLandscape(context, detail, apiBaseUrl, apiToken);
         }
 
@@ -346,12 +427,134 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   }
 
   bool _hasMarkdown(ContentDetail detail) {
+    if (detail.isZhihuArticle || detail.isZhihuAnswer) return true;
     final archive = detail.rawMetadata?['archive'];
     if (archive != null) {
       final md = archive['markdown'];
       if (md != null && md.toString().isNotEmpty) return true;
     }
     return detail.isBilibili && (detail.description?.contains('![') ?? false);
+  }
+
+  Widget _buildUserProfileLayout(
+    BuildContext context,
+    ContentDetail detail,
+    String apiBaseUrl,
+    String? apiToken,
+  ) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isLandscape = MediaQuery.of(context).size.width > 800;
+
+    if (!isLandscape) {
+      return _buildPortraitLayout(context, detail, apiBaseUrl, apiToken);
+    }
+
+    // Use avatar URL for the main image in this layout
+    final String imageUrl = detail.authorAvatarUrl ?? detail.coverUrl ?? '';
+
+    return Row(
+      children: [
+        // Left: Avatar / Cover
+        Expanded(
+          flex: 4,
+          child: Container(
+            color: colorScheme.surfaceContainerHigh,
+            child: Center(
+              child: Hero(
+                tag: 'content-image-${detail.id}',
+                child: ClipOval(
+                  child: CachedNetworkImage(
+                    imageUrl: _mapUrl(imageUrl, apiBaseUrl),
+                    httpHeaders: buildImageHeaders(
+                      imageUrl: _mapUrl(imageUrl, apiBaseUrl),
+                      baseUrl: apiBaseUrl,
+                      apiToken: apiToken,
+                    ),
+                    width: 240,
+                    height: 240,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) =>
+                        const CircularProgressIndicator(),
+                    errorWidget: (context, url, error) =>
+                        const Icon(Icons.person, size: 80),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        // Right: Stats & Info
+        Expanded(
+          flex: 6,
+          child: Container(
+            color: colorScheme.surface,
+            padding: const EdgeInsets.all(48),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  detail.authorName ?? 'Unknown',
+                  style: theme.textTheme.displaySmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (detail.description != null)
+                  Text(
+                    detail.description!,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                const SizedBox(height: 48),
+                _buildUnifiedStats(context, detail),
+                const SizedBox(height: 48),
+                // Extra metadata from raw_metadata
+                if (detail.rawMetadata != null)
+                  _buildDetailedUserStats(context, detail.rawMetadata!),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDetailedUserStats(
+    BuildContext context,
+    Map<String, dynamic> metadata,
+  ) {
+    // Render additional stats like logs_count, following_columns etc.
+    final Map<String, String> keyMap = {
+      'followerCount': '粉丝',
+      'followingCount': '关注',
+      'voteupCount': '获赞',
+      'thankedCount': '获谢',
+      'favoritedCount': '被收藏',
+      'logsCount': '公共编辑',
+      'followingColumnsCount': '关注专栏',
+      'followingTopicCount': '关注话题',
+      'followingQuestionCount': '关注问题',
+      'followingFavlistsCount': '关注收藏夹',
+    };
+
+    return Wrap(
+      spacing: 16,
+      runSpacing: 16,
+      children: metadata.entries
+          .where(
+            (e) => keyMap.containsKey(e.key) && (e.value is int && e.value > 0),
+          )
+          .map((e) {
+            return Chip(
+              avatar: const Icon(Icons.bar_chart, size: 16),
+              label: Text('${keyMap[e.key]}: ${e.value}'),
+            );
+          })
+          .toList(),
+    );
   }
 
   // --- Twitter Red-style Layout ---
@@ -705,6 +908,21 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             children: [
               _buildAuthorHeader(context, detail),
               const SizedBox(height: 32),
+              // Show Title for Zhihu Questions/Articles if using this layout
+              if (detail.title != null &&
+                  detail.title!.isNotEmpty &&
+                  !detail.isTwitter &&
+                  !detail.isWeibo &&
+                  !detail.isZhihuPin) ...[
+                Text(
+                  detail.title!,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
               if (detail.description != null)
                 SelectableText(
                   detail.description!,
@@ -767,7 +985,30 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             child: SingleChildScrollView(
               controller: _contentScrollController,
               padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
-              child: _buildRichContent(context, detail, apiBaseUrl, apiToken),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header Info for Landscape
+                  _buildAuthorHeader(context, detail),
+                  const SizedBox(height: 24),
+                  if (detail.title != null && detail.title!.isNotEmpty)
+                    Text(
+                      detail.title!,
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                  const SizedBox(height: 24),
+                  _buildUnifiedStats(context, detail),
+                  const SizedBox(height: 32),
+                  const Divider(height: 1),
+                  const SizedBox(height: 32),
+
+                  // Main Rich Content
+                  _buildRichContent(context, detail, apiBaseUrl, apiToken),
+                ],
+              ),
             ),
           ),
         ),
@@ -1147,10 +1388,20 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     if (detail.contentType == 'user_profile') {
       avatarUrl = detail.coverUrl;
     } else {
-      avatarUrl =
-          detail.rawMetadata?['user']?['avatar_hd'] ??
-          detail.rawMetadata?['user']?['profile_image_url'] ??
-          detail.rawMetadata?['author']?['face'];
+      // Prioritize normalized field
+      if (detail.authorAvatarUrl != null) {
+        avatarUrl = detail.authorAvatarUrl;
+      } else {
+        // Fallback to rawMetadata with safety checks
+        final rawAuthor = detail.rawMetadata?['author'];
+        final rawUser = detail.rawMetadata?['user'];
+
+        if (rawUser is Map) {
+          avatarUrl = rawUser['avatar_hd'] ?? rawUser['profile_image_url'];
+        } else if (rawAuthor is Map) {
+          avatarUrl = rawAuthor['face'] ?? rawAuthor['avatarUrl'];
+        }
+      }
     }
 
     // 处理 API Base URL 和 Token 用于代理头像
@@ -1161,75 +1412,95 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         ? _mapUrl(avatarUrl, apiBaseUrl)
         : null;
 
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(2),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              colors: isBilibili
-                  ? [const Color(0xFFFB7299), const Color(0xFFFF9DB5)]
-                  : [colorScheme.primary, colorScheme.tertiary],
+    return GestureDetector(
+      onTap: () {
+        // Construct user profile URL if authorId is available
+        if (detail.authorId != null && detail.authorId!.isNotEmpty) {
+          String url;
+          if (detail.isZhihu) {
+            url = "https://www.zhihu.com/people/${detail.authorId}";
+          } else if (detail.isBilibili) {
+            url = "https://space.bilibili.com/${detail.authorId}";
+          } else if (detail.isTwitter) {
+            url = "https://twitter.com/i/user/${detail.authorId}";
+          } else if (detail.isWeibo) {
+            url = "https://weibo.com/u/${detail.authorId}";
+          } else {
+            return;
+          }
+          launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+        }
+      },
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: isBilibili
+                    ? [const Color(0xFFFB7299), const Color(0xFFFF9DB5)]
+                    : [colorScheme.primary, colorScheme.tertiary],
+              ),
+            ),
+            child: CircleAvatar(
+              radius: 20,
+              backgroundColor: colorScheme.surface,
+              backgroundImage: mappedAvatarUrl != null
+                  ? CachedNetworkImageProvider(
+                      mappedAvatarUrl,
+                      headers: buildImageHeaders(
+                        imageUrl: mappedAvatarUrl,
+                        baseUrl: apiBaseUrl,
+                        apiToken: apiToken,
+                      ),
+                    )
+                  : null,
+              child: mappedAvatarUrl == null
+                  ? Text(
+                      (detail.authorName ?? '?').substring(0, 1).toUpperCase(),
+                      style: TextStyle(
+                        color: isBilibili
+                            ? const Color(0xFFFB7299)
+                            : colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    )
+                  : null,
             ),
           ),
-          child: CircleAvatar(
-            radius: 20,
-            backgroundColor: colorScheme.surface,
-            backgroundImage: mappedAvatarUrl != null
-                ? CachedNetworkImageProvider(
-                    mappedAvatarUrl,
-                    headers: buildImageHeaders(
-                      imageUrl: mappedAvatarUrl,
-                      baseUrl: apiBaseUrl,
-                      apiToken: apiToken,
-                    ),
-                  )
-                : null,
-            child: mappedAvatarUrl == null
-                ? Text(
-                    (detail.authorName ?? '?').substring(0, 1).toUpperCase(),
-                    style: TextStyle(
-                      color: isBilibili
-                          ? const Color(0xFFFB7299)
-                          : colorScheme.primary,
+          const SizedBox(width: 14),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    detail.authorName ?? '未知作者',
+                    style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
+                      letterSpacing: 0.3,
                     ),
-                  )
-                : null,
-          ),
-        ),
-        const SizedBox(width: 14),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
+                  ),
+                  const SizedBox(width: 8),
+                  _getPlatformIcon(detail.platform, 14),
+                ],
+              ),
+              const SizedBox(height: 2),
+              if (detail.publishedAt != null)
                 Text(
-                  detail.authorName ?? '未知作者',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.3,
+                  DateFormat(
+                    'yyyy-MM-dd HH:mm',
+                  ).format(detail.publishedAt!.toLocal()),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colorScheme.outline,
+                    letterSpacing: 0.5,
                   ),
                 ),
-                const SizedBox(width: 8),
-                _getPlatformIcon(detail.platform, 14),
-              ],
-            ),
-            const SizedBox(height: 2),
-            if (detail.publishedAt != null)
-              Text(
-                DateFormat(
-                  'yyyy-MM-dd HH:mm',
-                ).format(detail.publishedAt!.toLocal()),
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: colorScheme.outline,
-                  letterSpacing: 0.5,
-                ),
-              ),
-          ],
-        ),
-      ],
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -1562,6 +1833,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               'h1': _HeaderBuilder(_headerKeys, style.h1),
               'h2': _HeaderBuilder(_headerKeys, style.h2),
               'h3': _HeaderBuilder(_headerKeys, style.h3),
+              'code': _CodeElementBuilder(context),
             },
             // ignore: deprecated_member_use
             imageBuilder: (uri, title, alt) => _buildMarkdownImage(
@@ -1578,6 +1850,14 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           ),
           if (detail.platform.toLowerCase() == 'bilibili')
             _buildBilibiliStats(context, detail),
+
+          // Zhihu Top Answers
+          if (detail.isZhihuQuestion &&
+              detail.rawMetadata?['top_answers'] != null)
+            _buildZhihuTopAnswers(
+              context,
+              detail.rawMetadata!['top_answers'] as List,
+            ),
         ],
       );
     }
@@ -1744,11 +2024,11 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   MarkdownStyleSheet _getMarkdownStyle(ThemeData theme) {
     return MarkdownStyleSheet.fromTheme(theme).copyWith(
       p: theme.textTheme.bodyLarge?.copyWith(
-        height: 1.8, // Increased line height for better reading
-        fontSize: 18,
-        letterSpacing: 0.1,
-        color: theme.colorScheme.onSurface.withValues(alpha: 0.95),
+        height: 1.6,
+        fontSize: 16,
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
       ),
+      pPadding: const EdgeInsets.symmetric(vertical: 4),
       h1: theme.textTheme.headlineSmall?.copyWith(
         fontWeight: FontWeight.w900,
         letterSpacing: -0.5,
@@ -1920,15 +2200,88 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     return const SizedBox.shrink(); // Integrated into _buildUnifiedStats
   }
 
+  Widget _buildZhihuTopAnswers(BuildContext context, List topAnswers) {
+    if (topAnswers.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 32),
+        Text(
+          "精选回答",
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 16),
+        ...topAnswers.map((ans) {
+          if (ans == null) return const SizedBox.shrink();
+          final authorName = ans['author']?['name'] ?? 'Unknown';
+          final excerpt = ans['excerpt'] ?? '';
+          final voteup = ans['voteup_count'] ?? 0;
+          final url = ans['url'];
+
+          return Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            elevation: 0,
+            color: Theme.of(context).colorScheme.surfaceContainer,
+            child: InkWell(
+              onTap: () {
+                if (url != null)
+                  launchUrl(
+                    Uri.parse(url),
+                    mode: LaunchMode.externalApplication,
+                  );
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          authorName,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const Spacer(),
+                        Icon(
+                          Icons.thumb_up_alt_outlined,
+                          size: 14,
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$voteup',
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(excerpt, maxLines: 3, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
   // --- Helper Methods ---
 
   String _getMarkdownContent(ContentDetail detail) {
     if (detail.rawMetadata != null && detail.rawMetadata!['archive'] != null) {
       return detail.rawMetadata!['archive']['markdown']?.toString() ?? '';
     }
-    if (detail.platform.toLowerCase() == 'bilibili' &&
-        (detail.description?.contains('![') ?? false)) {
+    if (detail.isBilibili && (detail.description?.contains('![') ?? false)) {
       return detail.description ?? '';
+    }
+    if ((detail.isZhihuArticle || detail.isZhihuAnswer) &&
+        detail.description != null) {
+      return detail.description!;
     }
     return '';
   }
@@ -1964,7 +2317,8 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     final list = <String>{};
     final storedMap = _getStoredMap(detail);
     if (detail.mediaUrls.isNotEmpty) {
-      for (var url in detail.mediaUrls) {
+      for (var item in detail.mediaUrls) {
+        final String url = item.toString(); // Ensure it's a string
         if (url.isEmpty || _isVideo(url)) continue;
         if (storedMap.containsKey(url)) {
           list.add(_mapUrl(storedMap[url]!, apiBaseUrl));
@@ -1989,7 +2343,8 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     final list = <String>{};
     final storedMap = _getStoredMap(detail);
     if (detail.mediaUrls.isNotEmpty) {
-      for (var url in detail.mediaUrls) {
+      for (var item in detail.mediaUrls) {
+        final String url = item.toString(); // Ensure it's a string
         if (url.isEmpty) continue;
         if (storedMap.containsKey(url)) {
           list.add(_mapUrl(storedMap[url]!, apiBaseUrl));

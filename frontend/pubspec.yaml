@@ -52,6 +52,7 @@ dependencies:
   shared_preferences: ^2.5.4
   video_player: ^2.10.1
   chewie: ^1.13.0
+  flutter_math_fork: ^0.7.4
 
 dev_dependencies:
   flutter_test:

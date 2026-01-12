@@ -1,13 +1,18 @@
 """
 配置管理
 """
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import SecretStr
 from typing import Optional, Literal
 
 
 class Settings(BaseSettings):
     """应用配置"""
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
     # 运行环境
     app_env: Literal["dev", "prod"] = "dev"
@@ -86,10 +91,6 @@ class Settings(BaseSettings):
     archive_image_webp_quality: int = 80
     archive_image_max_count: Optional[int] = None
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
-
 
 settings = Settings()
 

@@ -28,6 +28,10 @@ python-telegram-bot
 python-dotenv
 loguru
 
+# 测试
+pytest
+pytest-asyncio
+
 # 图片转码（可选：用于导出/归档时将图片转为 WebP）
 Pillow
 

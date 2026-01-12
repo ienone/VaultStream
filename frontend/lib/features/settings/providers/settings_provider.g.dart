@@ -33,7 +33,7 @@ final class SystemSettingsProvider
   SystemSettings create() => SystemSettings();
 }
 
-String _$systemSettingsHash() => r'479a712b5f605c6dec62d4d309378f8e78722525';
+String _$systemSettingsHash() => r'9467a1e7d0f51037c7c41424bfc40898d96eb2b5';
 
 abstract class _$SystemSettings extends $AsyncNotifier<List<SystemSetting>> {
   FutureOr<List<SystemSetting>> build();

@@ -348,6 +348,21 @@ class TaskWorker:
                                 content.extra_stats = {
                                     "repost": parsed.stats.get('share', 0),
                                 }
+                        elif content.platform == Platform.ZHIHU:
+                            # 知乎特有数据映射
+                            # Map voteup to like if like is 0
+                            if content.like_count == 0:
+                                content.like_count = parsed.stats.get('voteup_count', 0)
+                            
+                            content.extra_stats = {
+                                "voteup_count": parsed.stats.get('voteup_count', 0),
+                                "thanks_count": parsed.stats.get('thanks_count', 0),
+                                "follower_count": parsed.stats.get('follower_count', 0),
+                                "visit_count": parsed.stats.get('visit_count', 0),
+                                "answer_count": parsed.stats.get('answer_count', 0),
+                                "reaction_count": parsed.stats.get('reaction_count', 0), # Pin
+                                "repin_count": parsed.stats.get('repin_count', 0), # Pin
+                            }
                         else:
                             # 其他平台：保留所有非通用字段
                             extra_keys = set(parsed.stats.keys()) - {'view', 'like', 'favorite', 'share', 'reply'}

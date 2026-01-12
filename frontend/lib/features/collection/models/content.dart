@@ -83,6 +83,7 @@ abstract class ContentDetail with _$ContentDetail {
     String? title,
     String? description,
     @JsonKey(name: 'author_name') String? authorName,
+    @JsonKey(name: 'author_id') String? authorId,
     @JsonKey(name: 'author_avatar_url') String? authorAvatarUrl,
     @JsonKey(name: 'cover_url') String? coverUrl,
     @JsonKey(name: 'cover_color') String? coverColor,
@@ -107,6 +108,11 @@ abstract class ContentDetail with _$ContentDetail {
   bool get isXiaohongshu => platform.toLowerCase() == 'xiaohongshu';
   bool get isWeibo => platform.toLowerCase() == 'weibo';
   bool get isZhihu => platform.toLowerCase() == 'zhihu';
+
+  bool get isZhihuArticle => isZhihu && contentType == 'article';
+  bool get isZhihuAnswer => isZhihu && contentType == 'answer';
+  bool get isZhihuPin => isZhihu && contentType == 'pin';
+  bool get isZhihuQuestion => isZhihu && contentType == 'question';
 
   factory ContentDetail.fromJson(Map<String, dynamic> json) =>
       _$ContentDetailFromJson(json);
