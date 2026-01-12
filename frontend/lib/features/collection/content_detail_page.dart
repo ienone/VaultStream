@@ -511,28 +511,40 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
     return Row(
       children: [
-        // Left: Large Square Avatar Section
+        // Left: Large Image Section
         Expanded(
           flex: 4,
           child: Container(
-            color: colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
+            color: colorScheme.surfaceContainerHigh.withValues(alpha: 0.3),
             child: Center(
               child: GestureDetector(
-                onTap: () => _launchAuthorProfile(detail),
+                onTap: () {
+                   if (mappedAvatarUrl.isNotEmpty) {
+                      _showFullScreenImage(
+                        context,
+                        [mappedAvatarUrl],
+                        0,
+                        apiBaseUrl,
+                        apiToken,
+                        detail.id,
+                      );
+                   }
+                },
                 child: Hero(
                   tag: 'content-image-${detail.id}',
                   child: Container(
+                    margin: const EdgeInsets.all(48),
                     decoration: BoxDecoration(
                       boxShadow: [
                         BoxShadow(
-                          color: colorScheme.shadow.withValues(alpha: 0.1),
-                          blurRadius: 40,
-                          offset: const Offset(0, 20),
+                          color: colorScheme.shadow.withValues(alpha: 0.15),
+                          blurRadius: 60,
+                          offset: const Offset(0, 30),
                         ),
                       ],
                     ),
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(32),
+                      borderRadius: BorderRadius.circular(48),
                       child: CachedNetworkImage(
                         imageUrl: mappedAvatarUrl,
                         httpHeaders: buildImageHeaders(
@@ -540,13 +552,13 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                           baseUrl: apiBaseUrl,
                           apiToken: apiToken,
                         ),
-                        width: 320,
-                        height: 320,
+                        width: 480,
+                        height: 480,
                         fit: BoxFit.cover,
                         placeholder: (context, url) =>
                             const CircularProgressIndicator(),
                         errorWidget: (context, url, error) =>
-                            const Icon(Icons.person, size: 80),
+                            const Icon(Icons.person, size: 120),
                       ),
                     ),
                   ),
@@ -559,111 +571,131 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         Expanded(
           flex: 6,
           child: Container(
-            color: colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
-            padding: const EdgeInsets.all(40),
+            color: colorScheme.surfaceContainerHigh.withValues(alpha: 0.3),
+            padding: const EdgeInsets.fromLTRB(0, 40, 40, 40),
             child: Container(
               decoration: BoxDecoration(
                 color: colorScheme.surface,
-                borderRadius: BorderRadius.circular(36),
+                borderRadius: BorderRadius.circular(40),
                 boxShadow: [
                   BoxShadow(
-                    color: colorScheme.shadow.withValues(alpha: 0.08),
-                    blurRadius: 30,
-                    offset: const Offset(0, 10),
+                    color: colorScheme.shadow.withValues(alpha: 0.1),
+                    blurRadius: 40,
+                    offset: const Offset(0, 15),
                   ),
                 ],
               ),
-              padding: const EdgeInsets.all(48),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header with Small Avatar and Nickname
-                  Row(
-                    children: [
-                      // Small circular avatar inside the card
-                      ClipOval(
-                        child: CachedNetworkImage(
-                          imageUrl: mappedAvatarUrl,
-                          httpHeaders: buildImageHeaders(
+              clipBehavior: Clip.antiAlias,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(48),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header with Small Avatar and Nickname
+                    Row(
+                      children: [
+                        // Small circular avatar inside the card
+                        ClipOval(
+                          child: CachedNetworkImage(
                             imageUrl: mappedAvatarUrl,
-                            baseUrl: apiBaseUrl,
-                            apiToken: apiToken,
-                          ),
-                          width: 48,
-                          height: 48,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                      const SizedBox(width: 20),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            GestureDetector(
-                              onTap: () => _launchAuthorProfile(detail),
-                              child: Text(
-                                detail.authorName ?? 'Unknown',
-                                style: theme.textTheme.displaySmall?.copyWith(
-                                  fontWeight: FontWeight.w900,
-                                  color: colorScheme.onSurface,
-                                  fontSize: 36,
-                                  letterSpacing: -0.5,
-                                ),
-                              ),
+                            httpHeaders: buildImageHeaders(
+                              imageUrl: mappedAvatarUrl,
+                              baseUrl: apiBaseUrl,
+                              apiToken: apiToken,
                             ),
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                _getPlatformIcon(detail.platform, 16),
-                                const SizedBox(width: 8),
-                                Text(
-                                  detail.platform.toUpperCase(),
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    color: colorScheme.outline,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1.5,
+                            width: 64,
+                            height: 64,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        const SizedBox(width: 24),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              GestureDetector(
+                                onTap: () => _launchAuthorProfile(detail),
+                                child: Text(
+                                  detail.authorName ?? 'Unknown',
+                                  style: theme.textTheme.displaySmall?.copyWith(
+                                    fontWeight: FontWeight.w900,
+                                    color: colorScheme.onSurface,
+                                    fontSize: 40,
+                                    letterSpacing: -0.8,
                                   ),
                                 ),
-                              ],
-                            ),
-                          ],
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  _getPlatformIcon(detail.platform, 18),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    detail.platform.toUpperCase(),
+                                    style: theme.textTheme.labelLarge?.copyWith(
+                                      color: colorScheme.outline,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 2.0,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 40),
+                    // Description
+                    if (detail.description != null && detail.description!.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Text(
+                          detail.description!,
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            height: 1.6,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 0.2,
+                          ),
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 32),
-                  // Description
-                  if (detail.description != null && detail.description!.isNotEmpty)
+                    const SizedBox(height: 48),
+                    // Unified Stats Grid
+                    _buildUnifiedStats(context, detail),
+                    const SizedBox(height: 48),
+                    // Detailed Platform-specific Stats
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                      child: Text(
-                        detail.description!,
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                          height: 1.6,
-                          fontWeight: FontWeight.w500,
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(32),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(28),
+                        border: Border.all(
+                          color: colorScheme.outlineVariant.withValues(alpha: 0.4),
                         ),
                       ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '详细数据',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              color: colorScheme.primary,
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          _buildDetailedUserStats(context, {
+                            ...detail.extraStats,
+                            ...(detail.rawMetadata ?? {}),
+                          }),
+                        ],
+                      ),
                     ),
-                  const SizedBox(height: 48),
-                  // Unified Stats Grid
-                  _buildUnifiedStats(context, detail),
-                  const SizedBox(height: 40),
-                  // Detailed Platform-specific Stats
-                  Text(
-                    '详细数据',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.primary,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildDetailedUserStats(context, {
-                    ...detail.extraStats,
-                    ...(detail.rawMetadata ?? {}),
-                  }),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -1145,10 +1177,6 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                 ),
               const SizedBox(height: 48),
               _buildUnifiedStats(context, detail),
-              if (detail.isZhihuQuestion) ...[
-                const SizedBox(height: 16),
-                _buildZhihuQuestionStats(context, detail.extraStats),
-              ],
               const SizedBox(height: 48),
               Text(
                 '关联标签',
@@ -1194,22 +1222,24 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header Info for Landscape
-                  _buildAuthorHeader(context, detail),
-                  const SizedBox(height: 24),
-                  if (detail.title != null && detail.title!.isNotEmpty)
-                    Text(
-                      detail.title!,
-                      style: theme.textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w900,
-                        color: colorScheme.onSurface,
+                  if (!detail.isZhihuAnswer) ...[
+                    // Header Info for Landscape
+                    _buildAuthorHeader(context, detail),
+                    const SizedBox(height: 24),
+                    if (detail.title != null && detail.title!.isNotEmpty)
+                      Text(
+                        detail.title!,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: colorScheme.onSurface,
+                        ),
                       ),
-                    ),
-                  const SizedBox(height: 24),
-                  _buildUnifiedStats(context, detail),
-                  const SizedBox(height: 32),
-                  const Divider(height: 1),
-                  const SizedBox(height: 32),
+                    const SizedBox(height: 24),
+                    _buildUnifiedStats(context, detail),
+                    const SizedBox(height: 32),
+                    const Divider(height: 1),
+                    const SizedBox(height: 32),
+                  ],
 
                   // Main Rich Content
                   _buildRichContent(context, detail, apiBaseUrl, apiToken),
@@ -1332,59 +1362,56 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            decoration: BoxDecoration(
-              color: isDark
-                  ? colorScheme.surfaceContainer
-                  : colorScheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(28),
-              border: isDark
-                  ? Border.all(
-                      color: Colors.white.withValues(alpha: 0.05),
-                      width: 1,
-                    )
-                  : null,
-              boxShadow: isDark
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
+          if (!detail.isZhihuAnswer)
+            Container(
+              decoration: BoxDecoration(
+                color: isDark
+                    ? colorScheme.surfaceContainer
+                    : colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(28),
+                border: isDark
+                    ? Border.all(
+                        color: Colors.white.withValues(alpha: 0.05),
+                        width: 1,
+                      )
+                    : null,
+                boxShadow: isDark
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : null,
+              ),
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildAuthorHeader(context, detail),
+                  const SizedBox(height: 24),
+                  if (!detail.isTwitter &&
+                      (detail.title != null && detail.title!.isNotEmpty))
+                    Text(
+                      detail.title ?? '无标题内容',
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        height: 1.2,
+                        letterSpacing: -0.5,
+                        color: colorScheme.onSurface,
                       ),
-                    ]
-                  : null,
-            ),
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildAuthorHeader(context, detail),
-                const SizedBox(height: 24),
-                if (!detail.isTwitter &&
-                    (detail.title != null && detail.title!.isNotEmpty))
-                  Text(
-                    detail.title ?? '无标题内容',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      height: 1.2,
-                      letterSpacing: -0.5,
-                      color: colorScheme.onSurface,
                     ),
-                  ),
-                const SizedBox(height: 24),
-                _buildUnifiedStats(context, detail),
-                if (detail.isZhihuQuestion) ...[
+                  const SizedBox(height: 24),
+                  _buildUnifiedStats(context, detail),
                   const SizedBox(height: 16),
-                  _buildZhihuQuestionStats(context, detail.extraStats),
+                  if (detail.isBilibili && detail.platformId != null)
+                    _buildBvidCard(context, detail),
+                  const SizedBox(height: 16),
+                  _buildTags(context, detail),
                 ],
-                const SizedBox(height: 16),
-                if (detail.isBilibili && detail.platformId != null)
-                  _buildBvidCard(context, detail),
-                const SizedBox(height: 16),
-                _buildTags(context, detail),
-              ],
+              ),
             ),
-          ),
           const SizedBox(height: 32),
           _buildRichContent(context, detail, apiBaseUrl, apiToken),
           const SizedBox(height: 48),
@@ -1723,7 +1750,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       }
     } else {
       // Standard Post Stats
-      if (detail.viewCount > 0 || isBilibili || (isZhihu && detail.isZhihuQuestion)) {
+      if (detail.viewCount > 0 || isBilibili) {
         items.add(_buildUnifiedStatItem(context, Icons.remove_red_eye_outlined, '查看', _formatCount(detail.viewCount)));
       }
 
@@ -1742,19 +1769,25 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       if (detail.shareCount > 0 || isWeibo || isBilibili) {
         items.add(_buildUnifiedStatItem(context, Icons.repeat_rounded, isWeibo ? '转发' : '分享', _formatCount(detail.shareCount)));
       }
+
+      // Zhihu specific extra stats for Question
+      if (detail.isZhihuQuestion) {
+        if (stats['follower_count'] != null) {
+          items.add(_buildUnifiedStatItem(context, Icons.person_add_alt, '关注', _formatCount(stats['follower_count'])));
+        }
+        if (stats['visit_count'] != null) {
+          items.add(_buildUnifiedStatItem(context, Icons.remove_red_eye_outlined, '浏览', _formatCount(stats['visit_count'])));
+        }
+        if (stats['answer_count'] != null) {
+          items.add(_buildUnifiedStatItem(context, Icons.question_answer_outlined, '回答', _formatCount(stats['answer_count'])));
+        }
+      }
     }
 
     // Bilibili specific
     if (isBilibili && !isUserProfile) {
       if (stats['coin'] != null) items.add(_buildUnifiedStatItem(context, Icons.monetization_on_rounded, '投币', _formatCount(stats['coin'])));
       if (stats['danmaku'] != null) items.add(_buildUnifiedStatItem(context, Icons.subtitles_rounded, '弹幕', _formatCount(stats['danmaku'])));
-    }
-    
-    // Zhihu specific extra stats for Question
-    if (detail.isZhihuQuestion) {
-       if (stats['follower_count'] != null && detail.collectCount == 0) {
-         items.add(_buildUnifiedStatItem(context, Icons.person_add_alt, '关注', _formatCount(stats['follower_count'])));
-       }
     }
 
     if (items.isEmpty) return const SizedBox.shrink();
@@ -1812,16 +1845,25 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   }
 
   Widget _buildZhihuQuestionStats(BuildContext context, Map<String, dynamic> stats) {
-    // final theme = Theme.of(context);
-    
-    return Wrap(
-      spacing: 16,
-      runSpacing: 8,
-      children: [
-        _buildSmallStatItem(context, Icons.person_add_alt, '关注', _formatCount(stats['follower_count'])),
-        _buildSmallStatItem(context, Icons.question_answer_outlined, '回答', _formatCount(stats['answer_count'])),
-        _buildSmallStatItem(context, Icons.remove_red_eye_outlined, '浏览', _formatCount(stats['visit_count'])),
-      ],
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Wrap(
+        spacing: 16,
+        runSpacing: 16,
+        children: [
+          _buildUnifiedStatItem(context, Icons.person_add_alt, '关注', _formatCount(stats['follower_count'])),
+          _buildUnifiedStatItem(context, Icons.remove_red_eye_outlined, '浏览', _formatCount(stats['visit_count'])),
+          _buildUnifiedStatItem(context, Icons.question_answer_outlined, '回答', _formatCount(stats['answer_count'])),
+        ],
+      ),
     );
   }
 
@@ -2004,7 +2046,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               },
               child: Text(
                 questionInfo['title'] ?? '未知问题',
-                style: theme.textTheme.headlineSmall?.copyWith(
+                style: theme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w900,
                   color: theme.colorScheme.primary,
                   height: 1.3,
@@ -2225,28 +2267,28 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
   MarkdownStyleSheet _getMarkdownStyle(ThemeData theme) {
     return MarkdownStyleSheet.fromTheme(theme).copyWith(
-      p: theme.textTheme.bodyLarge?.copyWith(
-        height: 1.6,
-        fontSize: 16,
+      p: theme.textTheme.bodyMedium?.copyWith(
+        height: 1.7,
+        fontSize: 15,
         color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
       ),
-      pPadding: const EdgeInsets.symmetric(vertical: 4),
-      h1: theme.textTheme.headlineSmall?.copyWith(
+      pPadding: const EdgeInsets.symmetric(vertical: 6),
+      h1: theme.textTheme.titleLarge?.copyWith(
         fontWeight: FontWeight.w900,
         letterSpacing: -0.5,
         color: theme.colorScheme.primary,
         height: 1.4,
       ),
-      h2: theme.textTheme.titleLarge?.copyWith(
+      h2: theme.textTheme.titleMedium?.copyWith(
         fontWeight: FontWeight.w900,
         color: theme.colorScheme.secondary,
         height: 1.4,
       ),
-      h3: theme.textTheme.titleMedium?.copyWith(
+      h3: theme.textTheme.titleSmall?.copyWith(
         fontWeight: FontWeight.w900,
         height: 1.4,
       ),
-      blockSpacing: 28,
+      blockSpacing: 24,
       listBullet: theme.textTheme.bodyLarge?.copyWith(
         color: theme.colorScheme.primary,
         fontWeight: FontWeight.bold,
@@ -2548,11 +2590,30 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     final List<_HeaderLine> headers = [];
     final headerRegExp = RegExp(r'^(#{1,6})\s+(.*)$');
     final Map<String, int> counts = {};
+    bool inCodeBlock = false;
 
     for (var line in lines) {
-      final match = headerRegExp.firstMatch(line.trim());
+      final trimmed = line.trim();
+      if (trimmed.startsWith('```')) {
+        inCodeBlock = !inCodeBlock;
+        continue;
+      }
+      if (inCodeBlock) continue;
+
+      final match = headerRegExp.firstMatch(trimmed);
       if (match != null) {
-        final text = match.group(2)!;
+        String text = match.group(2)!;
+        
+        // Strip Markdown links [Text](URL) -> Text
+        text = text.replaceAllMapped(
+          RegExp(r'\[(.*?)\]\(.*?\)') , 
+          (m) => m.group(1)!
+        );
+        // Strip other markdown formatting
+        text = text.replaceAll(RegExp(r'[*_`~]'), '');
+        
+        if (text.trim().isEmpty) continue;
+
         final count = counts[text] ?? 0;
         counts[text] = count + 1;
         final uniqueId = count == 0 ? text : '$text-$count';

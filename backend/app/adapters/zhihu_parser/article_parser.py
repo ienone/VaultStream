@@ -68,7 +68,11 @@ def parse_article(html_content: str, url: str) -> Optional[ParsedContent]:
         "favorite": article_data.get('favoritedCount', 0),
         "voteup_count": article_data.get('voteupCount', 0),
         "comment_count": article_data.get('commentCount', 0),
+        "favorited_count": article_data.get('favoritedCount', 0),
     }
+
+    if isinstance(article_data, dict):
+        article_data['stats'] = stats
     
     # Cover URL logic: titleImage -> imageUrl -> first image in content
     cover_url = article_data.get('titleImage') or article_data.get('imageUrl')

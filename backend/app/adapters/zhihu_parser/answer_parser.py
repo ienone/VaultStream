@@ -101,7 +101,11 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
             "answer_count": question_data.get('answerCount', 0) if isinstance(question_data, dict) else 0,
             "follower_count": question_data.get('followerCount', 0) if isinstance(question_data, dict) else 0,
             "comment_count": question_data.get('commentCount', 0) if isinstance(question_data, dict) else 0,
+            "view_count": question_data.get('visitCount', 0) if isinstance(question_data, dict) else 0,
+            "like_count": question_data.get('voteupCount', 0) if isinstance(question_data, dict) else 0,
         }
+        # Also include answer's own stats in metadata for easier access
+        answer_data['stats'] = stats
 
     return ParsedContent(
         platform="zhihu",

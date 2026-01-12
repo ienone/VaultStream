@@ -339,18 +339,29 @@ class TaskWorker:
                         elif content.platform == Platform.WEIBO:
                             # 微博特有数据
                             if content.content_type == "user_profile":
+                                content.view_count = parsed.stats.get('followers', parsed.stats.get('view', 0))
+                                content.share_count = parsed.stats.get('friends', parsed.stats.get('share', 0))
+                                content.comment_count = parsed.stats.get('statuses', parsed.stats.get('reply', 0))
                                 content.extra_stats = {
-                                    "followers": parsed.stats.get('view', 0),
-                                    "following": parsed.stats.get('share', 0),
-                                    "statuses": parsed.stats.get('reply', 0),
+                                    "followers": content.view_count,
+                                    "friends": content.share_count,
+                                    "statuses": content.comment_count,
                                 }
                             else:
                                 content.extra_stats = {
                                     "repost": parsed.stats.get('share', 0),
+                                    "attitudes": parsed.stats.get('like', 0),
+                                    "comments": parsed.stats.get('reply', 0),
                                 }
                         elif content.platform == Platform.ZHIHU:
                             # 知乎数据映射
                             if content.content_type == "user_profile":
+                                # 将知乎用户数据映射到通用字段，以便 _buildUnifiedStats 使用
+                                content.view_count = parsed.stats.get('follower_count', 0)
+                                content.share_count = parsed.stats.get('following_count', 0)
+                                content.like_count = parsed.stats.get('voteup_count', 0)
+                                content.collect_count = parsed.stats.get('favorited_count', 0)
+                                
                                 content.extra_stats = {
                                     "follower_count": parsed.stats.get('follower_count', 0),
                                     "following_count": parsed.stats.get('following_count', 0),
@@ -362,6 +373,10 @@ class TaskWorker:
                                     "articles_count": parsed.stats.get('articles_count', 0),
                                     "pins_count": parsed.stats.get('pins_count', 0),
                                     "question_count": parsed.stats.get('question_count', 0),
+                                    "following_columns_count": parsed.stats.get('following_columns_count', 0),
+                                    "following_topic_count": parsed.stats.get('following_topic_count', 0),
+                                    "following_question_count": parsed.stats.get('following_question_count', 0),
+                                    "following_favlists_count": parsed.stats.get('following_favlists_count', 0),
                                 }
                             else:
                                 content.extra_stats = {
@@ -373,6 +388,16 @@ class TaskWorker:
                                     "reaction_count": parsed.stats.get('reaction_count', 0), # Pin
                                     "repin_count": parsed.stats.get('repin_count', 0), # Pin
                                 }
+                                # For Questions, favorited_count might be follower_count
+                                if content.content_type == "question":
+                                    content.collect_count = parsed.stats.get('follower_count', content.collect_count)
+                                    content.view_count = parsed.stats.get('visit_count', content.view_count)
+                                    content.comment_count = parsed.stats.get('answer_count', content.comment_count)
+                                elif content.content_type == "pin":
+                                    content.collect_count = parsed.stats.get('favorite', 0)
+                                    content.share_count = parsed.stats.get('share', 0)
+                                elif content.content_type == "article":
+                                    content.collect_count = parsed.stats.get('favorited_count', 0)
                         else:
                             # 其他平台：保留所有非通用字段
                             extra_keys = set(parsed.stats.keys()) - {'view', 'like', 'favorite', 'share', 'reply'}
@@ -620,15 +645,63 @@ class TaskWorker:
             elif content.platform == Platform.WEIBO:
                 # 微博特有数据
                 if content.content_type == "user_profile":
+                    content.view_count = parsed.stats.get('followers', parsed.stats.get('view', 0))
+                    content.share_count = parsed.stats.get('friends', parsed.stats.get('share', 0))
+                    content.comment_count = parsed.stats.get('statuses', parsed.stats.get('reply', 0))
                     content.extra_stats = {
-                        "followers": parsed.stats.get('view', 0),
-                        "following": parsed.stats.get('share', 0),
-                        "statuses": parsed.stats.get('reply', 0),
+                        "followers": content.view_count,
+                        "friends": content.share_count,
+                        "statuses": content.comment_count,
                     }
                 else:
                     content.extra_stats = {
                         "repost": parsed.stats.get('share', 0),
+                        "attitudes": parsed.stats.get('like', 0),
+                        "comments": parsed.stats.get('reply', 0),
                     }
+            elif content.platform == Platform.ZHIHU:
+                # 知乎数据映射
+                if content.content_type == "user_profile":
+                    content.view_count = parsed.stats.get('follower_count', 0)
+                    content.share_count = parsed.stats.get('following_count', 0)
+                    content.like_count = parsed.stats.get('voteup_count', 0)
+                    content.collect_count = parsed.stats.get('favorited_count', 0)
+                    
+                    content.extra_stats = {
+                        "follower_count": parsed.stats.get('follower_count', 0),
+                        "following_count": parsed.stats.get('following_count', 0),
+                        "voteup_count": parsed.stats.get('voteup_count', 0),
+                        "thanked_count": parsed.stats.get('thanked_count', 0),
+                        "favorited_count": parsed.stats.get('favorited_count', 0),
+                        "logs_count": parsed.stats.get('logs_count', 0),
+                        "answer_count": parsed.stats.get('answer_count', 0),
+                        "articles_count": parsed.stats.get('articles_count', 0),
+                        "pins_count": parsed.stats.get('pins_count', 0),
+                        "question_count": parsed.stats.get('question_count', 0),
+                        "following_columns_count": parsed.stats.get('following_columns_count', 0),
+                        "following_topic_count": parsed.stats.get('following_topic_count', 0),
+                        "following_question_count": parsed.stats.get('following_question_count', 0),
+                        "following_favlists_count": parsed.stats.get('following_favlists_count', 0),
+                    }
+                else:
+                    content.extra_stats = {
+                        "voteup_count": parsed.stats.get('voteup_count', 0),
+                        "thanks_count": parsed.stats.get('thanks_count', 0),
+                        "follower_count": parsed.stats.get('follower_count', 0),
+                        "visit_count": parsed.stats.get('visit_count', 0),
+                        "answer_count": parsed.stats.get('answer_count', 0),
+                        "reaction_count": parsed.stats.get('reaction_count', 0), # Pin
+                        "repin_count": parsed.stats.get('repin_count', 0), # Pin
+                    }
+                    if content.content_type == "question":
+                        content.collect_count = parsed.stats.get('follower_count', content.collect_count)
+                        content.view_count = parsed.stats.get('visit_count', content.view_count)
+                        content.comment_count = parsed.stats.get('answer_count', content.comment_count)
+                    elif content.content_type == "pin":
+                        content.collect_count = parsed.stats.get('favorite', 0)
+                        content.share_count = parsed.stats.get('share', 0)
+                    elif content.content_type == "article":
+                        content.collect_count = parsed.stats.get('favorited_count', 0)
             else:
                 # 其他平台：保留所有非通用字段
                 extra_keys = set(parsed.stats.keys()) - {'view', 'like', 'favorite', 'share', 'reply'}

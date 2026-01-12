@@ -118,9 +118,19 @@ def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
     # Remove images from markdown if they are in media_urls (since we show them in gallery)
     # Using a more robust regex to remove markdown images and links to images
     import re
+    # 1. Remove markdown images ![alt](url)
     full_description = re.sub(r'!\[.*?\]\(.*?\)', '', markdown_detail)
-    # Also remove raw image links that might be left over
-    full_description = re.sub(r'https?://\S+\.(?:jpg|jpeg|png|gif|webp)(?:\?\S+)?', '', full_description)
+    # 2. Remove raw image URLs that are likely the same as media_urls
+    # Only remove if it's a standalone line or followed by space/newline to avoid partial matching
+    for m_url in media_urls:
+        full_description = full_description.replace(m_url, '')
+
+    # 3. Clean up leftover empty links or malformed markdown from images
+    full_description = re.sub(r'\[\]\(\)', '', full_description)
+    
+    # 4. Also remove any remaining suspected image URLs (optional, but keep it safe)
+    # full_description = re.sub(r'https?://\S+\.(?:jpg|jpeg|png|gif|webp)(?:\?\S+)?', '', full_description)
+    
     full_description = full_description.strip()
     
     # Also clean up excessive newlines
@@ -132,6 +142,8 @@ def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
     # Add answers to metadata
     if isinstance(question_data, dict):
         question_data['top_answers'] = top_answers
+        # Ensure stats are also in raw_metadata for frontend to find them if it looks there
+        question_data['stats'] = stats
 
     return ParsedContent(
         platform="zhihu",
@@ -142,7 +154,7 @@ def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
         description=full_description,
         author_name=author.name,
         author_id=author.url_token or str(author.id),
-        cover_url=media_urls[0] if media_urls else None, 
+        cover_url=media_urls[0] if media_urls else (top_answers[0]['cover_url'] if top_answers and top_answers[0].get('cover_url') else None), 
         media_urls=media_urls,
         published_at=published_at,
         raw_metadata=question_data,

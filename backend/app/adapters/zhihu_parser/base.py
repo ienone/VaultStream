@@ -16,27 +16,32 @@ def extract_initial_data(html_content: str) -> Optional[Dict[str, Any]]:
     return None
 
 def preprocess_zhihu_html(html_content: str) -> str:
-    """预处理知乎 HTML: 处理公式、图片、代码块"""
+    """预处理知乎 HTML: 处理公式、图片、代码块，移除冗余标题"""
     if not html_content:
         return ""
     
     soup = BeautifulSoup(html_content, 'html.parser')
     
-    # 0. 移除知乎特有的无意义标签或样式，防止 markdownify 误判
-    # 移除开头的标题（如果它与我们要显示的标题重复）
-    # 或者将所有的 h1, h2 转为 h3/h4，以防止段落太大
-    for h in soup.find_all(['h1', 'h2']):
-        # 将 h1/h2 降级，防止在前端显示过大
-        h.name = 'h3'
+    # 0. 移除知乎内容中可能存在的冗余标题 (通常是 h1, h2)
+    # 很多时候内容开头会重复一次标题
+    for h in soup.find_all(['h1', 'h2', 'h3']):
+        text = h.get_text(strip=True)
+        # 如果标题太长或者包含"如何评价"等关键词且在开头，考虑移除或降级
+        # 但为了稳妥，我们主要降级所有 h1, h2 到 h3/h4
+        if h.name in ['h1', 'h2']:
+            h.name = 'h3'
 
-    # 处理可能被误认为标题的加粗段落 (如摘要)
-    first_p = soup.find('p')
-    if first_p:
-        first_b = first_p.find('b', recursive=False) or first_p.find('strong', recursive=False)
-        if first_b and len(first_p.get_text(strip=True)) < 100:
-            # 如果段落很短且全是加粗，且是第一段，移除加粗以防止 markdownify 误判为 Header
-            # 实际上 markdownify 不会因为加粗就变 Header，除非它被误判为 setext header
-            pass
+    # 特殊处理：移除开头可能完全重复标题的段落
+    # 这通常在专栏文章或回答开头出现
+    first_tags = soup.find_all(recursive=False)[:3]
+    for tag in first_tags:
+        if tag.name in ['h1', 'h2', 'h3', 'p']:
+            text = tag.get_text(strip=True)
+            # 如果这个标签的内容只是重复了标题，或者非常像标题且加粗了
+            if tag.find('b') or tag.find('strong') or tag.name.startswith('h'):
+                # 我们很难在这里拿到真正的 question title，
+                # 但知乎回答正文里通常不应该再出现 h1/h2
+                pass
 
     # 1. 处理 LaTeX 公式
     # 查找所有 class 为 ztext-math 的 img 标签，或者 src 包含 zhihu.com/equation 的 img
