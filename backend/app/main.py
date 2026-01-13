@@ -16,9 +16,10 @@ from app.config import settings, validate_settings
 from app.database import init_db, db_ping
 from app.queue import task_queue
 from app.worker import worker
-from app.api import router
 from app.distribution_scheduler import get_distribution_scheduler
 
+# Import new routers
+from app.routers import contents, distribution, system, media
 
 setup_logging(level=settings.log_level, fmt=settings.log_format, debug=settings.debug)
 
@@ -119,7 +120,10 @@ app.add_middleware(
 )
 
 # 注册路由
-app.include_router(router, prefix="/api/v1", tags=["api"])
+app.include_router(contents.router, prefix="/api/v1", tags=["contents"])
+app.include_router(distribution.router, prefix="/api/v1", tags=["distribution"])
+app.include_router(system.router, prefix="/api/v1", tags=["system"])
+app.include_router(media.router, prefix="/api/v1", tags=["media"])
 
 
 @app.get("/api")

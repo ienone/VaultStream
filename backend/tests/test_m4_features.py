@@ -1,175 +1,106 @@
 """
-M4 功能测试脚本
+M4 功能测试脚本 (Pytest Refactored)
 测试分发规则、审批流程和推送记录功能
 """
-import asyncio
-import httpx
-import json
+import pytest
+from sqlalchemy import select, desc
+from app.models import Content, ContentStatus, DistributionRule, ReviewStatus
+from app.schemas import DistributionRuleCreate, ReviewAction
 
-BASE_URL = "http://localhost:8000/api/v1"
-API_TOKEN = "dev-token-12345"  # 从 .env 中获取
+import random
 
-async def test_m4_features():
-    """测试 M4 核心功能"""
+@pytest.mark.asyncio
+async def test_distribution_rules_crud(client, db_session):
+    """测试分发规则的创建、查询和删除"""
+    rule_name = f"TestRule-{random.randint(1000, 9999)}"
     
-    headers = {"X-API-Token": API_TOKEN}
+    # 1. Create
+    payload = {
+        "name": rule_name,
+        "description": "Integration Test Rule",
+        "match_conditions": {"tags": ["test"], "is_nsfw": False},
+        "targets": [{"platform": "telegram", "target_id": "@test_channel", "enabled": True}],
+        "enabled": True,
+        "priority": 5,
+        "nsfw_policy": "block",
+        "approval_required": True
+    }
     
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        print("=" * 60)
-        print("M4 功能测试")
-        print("=" * 60)
-        
-        # 1. 创建分发规则
-        print("\n1. 创建分发规则...")
-        rule_data = {
-            "name": "测试规则-Tech内容推送",
-            "description": "将tech标签的内容推送到测试频道",
-            "match_conditions": {
-                "tags": ["tech", "programming"],
-                "is_nsfw": False
-            },
-            "targets": [
-                {
-                    "platform": "telegram",
-                    "target_id": "@test_channel",
-                    "enabled": True
-                }
-            ],
-            "enabled": True,
-            "priority": 10,
-            "nsfw_policy": "block",
-            "approval_required": False,
-            "auto_approve_conditions": {
-                "is_nsfw": False
-            },
-            "rate_limit": 10,
-            "time_window": 3600
-        }
-        
-        try:
-            response = await client.post(
-                f"{BASE_URL}/distribution-rules",
-                json=rule_data,
-                headers=headers
-            )
-            if response.status_code == 200:
-                rule = response.json()
-                print(f"✓ 规则创建成功: {rule['name']} (ID: {rule['id']})")
-                rule_id = rule['id']
-            else:
-                print(f"✗ 规则创建失败: {response.status_code} - {response.text}")
-                return
-        except Exception as e:
-            print(f"✗ 请求失败: {e}")
-            return
-        
-        # 2. 获取所有规则
-        print("\n2. 获取所有分发规则...")
-        try:
-            response = await client.get(
-                f"{BASE_URL}/distribution-rules",
-                headers=headers
-            )
-            if response.status_code == 200:
-                rules = response.json()
-                print(f"✓ 共有 {len(rules)} 条规则")
-                for r in rules:
-                    print(f"  - {r['name']} (优先级: {r['priority']}, 启用: {r['enabled']})")
-            else:
-                print(f"✗ 获取规则失败: {response.status_code}")
-        except Exception as e:
-            print(f"✗ 请求失败: {e}")
-        
-        # 3. 获取待审批内容
-        print("\n3. 获取待审批内容...")
-        try:
-            response = await client.get(
-                f"{BASE_URL}/contents/pending-review",
-                headers=headers,
-                params={"page": 1, "size": 5}
-            )
-            if response.status_code == 200:
-                result = response.json()
-                print(f"✓ 待审批内容: {result['total']} 条")
-                for item in result['items']:
-                    print(f"  - ID:{item['id']} - {item.get('title', 'N/A')} (状态: {item.get('review_status')})")
-            else:
-                print(f"✗ 获取待审批内容失败: {response.status_code}")
-        except Exception as e:
-            print(f"✗ 请求失败: {e}")
-        
-        # 4. 测试内容预览（假设有内容ID=1）
-        print("\n4. 测试内容预览...")
-        try:
-            response = await client.get(
-                f"{BASE_URL}/contents/1/preview",
-                headers=headers
-            )
-            if response.status_code == 200:
-                preview = response.json()
-                print(f"✓ 预览成功:")
-                print(f"  标题: {preview.get('title')}")
-                print(f"  摘要: {preview.get('summary', 'N/A')[:50]}...")
-                print(f"  媒体数量: {len(preview.get('optimized_media', []))}")
-            elif response.status_code == 404:
-                print("✗ 内容不存在（ID=1），跳过预览测试")
-            else:
-                print(f"✗ 预览失败: {response.status_code}")
-        except Exception as e:
-            print(f"✗ 请求失败: {e}")
-        
-        # 5. 查询推送记录
-        print("\n5. 查询推送记录...")
-        try:
-            response = await client.get(
-                f"{BASE_URL}/pushed-records",
-                headers=headers,
-                params={"limit": 5}
-            )
-            if response.status_code == 200:
-                records = response.json()
-                print(f"✓ 推送记录: {len(records)} 条")
-                for r in records:
-                    print(f"  - 内容ID:{r['content_id']} -> {r['target_id']} (状态: {r['push_status']})")
-            else:
-                print(f"✗ 查询推送记录失败: {response.status_code}")
-        except Exception as e:
-            print(f"✗ 请求失败: {e}")
-        
-        # 6. 更新规则（禁用）
-        print(f"\n6. 禁用规则 ID={rule_id}...")
-        try:
-            response = await client.patch(
-                f"{BASE_URL}/distribution-rules/{rule_id}",
-                json={"enabled": False},
-                headers=headers
-            )
-            if response.status_code == 200:
-                updated_rule = response.json()
-                print(f"✓ 规则已禁用: {updated_rule['name']}")
-            else:
-                print(f"✗ 更新规则失败: {response.status_code}")
-        except Exception as e:
-            print(f"✗ 请求失败: {e}")
-        
-        # 7. 删除测试规则
-        print(f"\n7. 删除测试规则 ID={rule_id}...")
-        try:
-            response = await client.delete(
-                f"{BASE_URL}/distribution-rules/{rule_id}",
-                headers=headers
-            )
-            if response.status_code == 200:
-                print("✓ 规则已删除")
-            else:
-                print(f"✗ 删除规则失败: {response.status_code}")
-        except Exception as e:
-            print(f"✗ 请求失败: {e}")
-        
-        print("\n" + "=" * 60)
-        print("M4 功能测试完成")
-        print("=" * 60)
+    resp = await client.post("/api/v1/distribution-rules", json=payload)
+    assert resp.status_code == 200, f"Create failed: {resp.text}"
+    rule_id = resp.json()["id"]
+    
+    # 2. List
+    resp = await client.get("/api/v1/distribution-rules")
+    assert resp.status_code == 200
+    rules = resp.json()
+    assert any(r["id"] == rule_id for r in rules)
+    
+    # 3. Delete
+    resp = await client.delete(f"/api/v1/distribution-rules/{rule_id}")
+    assert resp.status_code == 200
 
+@pytest.mark.asyncio
+async def test_review_flow(client, db_session):
+    """测试内容审批流程 (使用真实数据库中的内容)"""
+    # 1. Find a content item to review
+    # We look for ANY content, or create a dummy one if empty?
+    # Requirement: "Query existing records"
+    result = await db_session.execute(
+        select(Content).limit(1)
+    )
+    content = result.scalar_one_or_none()
+    
+    if not content:
+        pytest.skip("Database is empty, skipping review test")
+    
+    content_id = content.id
+    original_status = content.review_status
+    
+    print(f"Testing review on Content ID: {content_id}")
+    
+    # 2. Submit Review (Approve)
+    payload = {
+        "action": "approve",
+        "reviewed_by": "pytest_bot",
+        "note": "Automated test approval"
+    }
+    resp = await client.post(f"/api/v1/contents/{content_id}/review", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["review_status"] == ReviewStatus.APPROVED
+    
+    # 3. Verify in DB
+    await db_session.refresh(content)
+    assert content.review_status == ReviewStatus.APPROVED
+    
+    # Restore status (Optional, but good for "real data" hygiene)
+    # content.review_status = original_status
+    # await db_session.commit()
 
-if __name__ == "__main__":
-    asyncio.run(test_m4_features())
+@pytest.mark.asyncio
+async def test_bot_get_content(client, db_session):
+    """测试机器人拉取内容接口"""
+    # Find a content that is PULLED or DISTRIBUTED
+    result = await db_session.execute(
+        select(Content).where(
+            Content.status.in_([ContentStatus.PULLED, ContentStatus.DISTRIBUTED])
+        ).limit(1)
+    )
+    content = result.scalar_one_or_none()
+    
+    if not content:
+        pytest.skip("No suitable content for bot pull test")
+        
+    payload = {
+        "target_platform": "telegram",
+        "limit": 5,
+        "tag": None # Optional
+    }
+    
+    resp = await client.post("/api/v1/bot/get-content", json=payload)
+    assert resp.status_code == 200
+    items = resp.json()
+    assert isinstance(items, list)
+    # Note: It might return empty list if all contents are already pushed to telegram
+    # But the API call itself should succeed.
