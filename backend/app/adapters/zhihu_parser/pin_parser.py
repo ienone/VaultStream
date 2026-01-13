@@ -67,7 +67,13 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
          for item in pin_data['content']:
              if isinstance(item, dict):
                  if item.get('type') == 'text':
-                     parts.append(item.get('content', ''))
+                     # Handle simple HTML in text if present (like <br>)
+                     text_content = item.get('content', '')
+                     # If text contains HTML tags (like <a>), parse it to markdown
+                     if '<a' in text_content or '<br' in text_content:
+                         from markdownify import markdownify as md
+                         text_content = md(text_content)
+                     parts.append(text_content)
                  elif item.get('type') == 'link':
                      # Convert to Markdown link
                      url = item.get('url', '')

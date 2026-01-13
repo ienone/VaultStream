@@ -71,9 +71,15 @@ def preprocess_zhihu_html(html_content: str) -> str:
             # If still no tex, check alt but be very careful
             if not tex:
                 alt = img.get('alt', '')
-                # Only use alt if it looks like latex (e.g. contains backslash or special chars) 
-                # AND the image was identified as equation via class/src
-                if alt and len(alt) > 1 and ('\\' in alt or '{' in alt or '_' in alt or '^' in alt or '=' in alt):
+                # Only use alt if it looks like latex.
+                # It MUST contain a backslash to be considered strictly LaTeX if coming from alt,
+                # unless it is very short and contains math symbols.
+                # We want to avoid normal text being treated as latex.
+                if alt and len(alt) > 1 and ('\\' in alt):
+                     tex = alt
+                # If it's short and has =, ^, _, it might be math too, but let's be conservative
+                # to avoid false positives with normal text.
+                elif alt and len(alt) < 20 and ('=' in alt or '^' in alt):
                      tex = alt
 
             if tex:

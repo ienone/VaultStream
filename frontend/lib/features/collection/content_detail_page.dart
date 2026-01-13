@@ -1146,7 +1146,13 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         Expanded(
           flex: 7,
           child: Container(
-            color: colorScheme.surface,
+            margin: const EdgeInsets.fromLTRB(24, 24, 0, 24), // Add margin
+            decoration: BoxDecoration(
+               color: colorScheme.surface,
+               borderRadius: BorderRadius.circular(32), // Big rounded corners
+               border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.2)),
+            ),
+            clipBehavior: Clip.antiAlias, // Clip content
             child: SingleChildScrollView(
               controller: _contentScrollController,
               padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
@@ -1164,14 +1170,13 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         Expanded(
           flex: 3,
           child: Container(
+            margin: const EdgeInsets.all(24), // Add margin to separate from edges
             decoration: BoxDecoration(
               color: colorScheme.surfaceContainerLow,
-              border: Border(
-                left: BorderSide(
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-                ),
-              ),
+              borderRadius: BorderRadius.circular(32), // Match rounded corners
+              // Removed border from left side as we are now floating
             ),
+            clipBehavior: Clip.antiAlias,
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: Column(
@@ -1346,7 +1351,13 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         Expanded(
           flex: 7,
           child: Container(
-            color: colorScheme.surface,
+            margin: const EdgeInsets.fromLTRB(24, 24, 0, 24),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: BorderRadius.circular(32),
+              border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.2)),
+            ),
+            clipBehavior: Clip.antiAlias,
             child: SingleChildScrollView(
               controller: _contentScrollController,
               padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
@@ -1383,14 +1394,12 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         if (headers.isNotEmpty)
           Container(
             width: 320,
+            margin: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               color: colorScheme.surfaceContainerLow,
-              border: Border(
-                left: BorderSide(
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-                ),
-              ),
+              borderRadius: BorderRadius.circular(32),
             ),
+            clipBehavior: Clip.antiAlias,
             child: _buildTOC(context, headers),
           ),
       ],
