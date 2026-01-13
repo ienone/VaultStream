@@ -35,19 +35,26 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
 
     # Related Question
     question_data = answer_data.get('question', {})
-    if not question_data and 'questions' in entities:
-         # Try to find the question in entities if not embedded
-         qid = answer_data.get('question', {}).get('id') 
-         # Wait, sometimes answer_data['question'] is a dict with minimal info
-         if isinstance(question_data, dict) and 'id' in question_data:
-             qid = question_data['id']
-             if str(qid) in entities['questions']:
-                 question_data = entities['questions'][str(qid)]
-             elif int(qid) in entities['questions']: # check int key
-                 question_data = entities['questions'][int(qid)]
+    
+    # Try to resolve full question entity if current data is just a reference
+    qid = None
+    if isinstance(question_data, dict):
+        qid = question_data.get('id')
+    elif isinstance(question_data, (str, int)):
+        qid = question_data
+        question_data = {}
 
+    if qid:
+        # Check entities['questions'] for full data
+        # Zhihu entities keys are usually strings, but let's be safe
+        q_entities = entities.get('questions', {})
+        if str(qid) in q_entities:
+            question_data = q_entities[str(qid)]
+        elif int(qid) in q_entities:
+            question_data = q_entities[int(qid)]
+        
     question_title = question_data.get('title') if isinstance(question_data, dict) else ""
-    question_id = question_data.get('id') if isinstance(question_data, dict) else None
+    question_id = question_data.get('id') if isinstance(question_data, dict) else qid
 
     # Author
     author_data = answer_data.get('author', {})
@@ -107,6 +114,23 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
         # Also include answer's own stats in metadata for easier access
         answer_data['stats'] = stats
 
+        # Construct Archive
+        archive_images = [{"url": u} for u in media_urls]
+        if author.avatar_url:
+            archive_images.append({"url": author.avatar_url, "type": "avatar"})
+
+        archive = {
+            "version": 2,
+            "type": "zhihu_answer",
+            "title": f"回答：{question_title}" if question_title else f"知乎回答 {answer_id}",
+            "plain_text": BeautifulSoup(processed_html, 'html.parser').get_text("\n"),
+            "markdown": markdown_content,
+            "images": archive_images,
+            "links": [],
+            "stored_images": []
+        }
+        answer_data['archive'] = archive
+
     return ParsedContent(
         platform="zhihu",
         content_type="answer",
@@ -116,6 +140,7 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
         description=full_description,
         author_name=author.name,
         author_id=author.url_token or str(author.id),
+        author_avatar_url=author.avatar_url,
         cover_url=answer_data.get('thumbnail') or (media_urls[0] if media_urls else None),
         media_urls=media_urls,
         published_at=published_at,

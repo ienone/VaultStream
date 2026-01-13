@@ -58,16 +58,29 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
     media_urls = list(dict.fromkeys(media_urls))
 
     # Convert HTML to text for description (Pins are short)
+    # Use Markdown for description to support links
+    
     description = ""
-    if processed_html:
-        description = BeautifulSoup(processed_html, 'html.parser').get_text("\n")
-    elif 'content' in pin_data and isinstance(pin_data['content'], list):
-         # Extract text from content nodes
+    if 'content' in pin_data and isinstance(pin_data['content'], list):
+         # Extract text from content nodes directly (preferred)
          parts = []
          for item in pin_data['content']:
-             if isinstance(item, dict) and item.get('type') == 'text':
-                 parts.append(item.get('content', ''))
-         description = "\n".join(parts)
+             if isinstance(item, dict):
+                 if item.get('type') == 'text':
+                     parts.append(item.get('content', ''))
+                 elif item.get('type') == 'link':
+                     # Convert to Markdown link
+                     url = item.get('url', '')
+                     title = item.get('title', 'Link')
+                     parts.append(f"[{title}]({url})")
+                 elif item.get('type') == 'hashtag':
+                      parts.append(f" #{item.get('title')} ")
+         description = "".join(parts)
+    
+    if not description and processed_html:
+        # Fallback to HTML text extraction, trying to preserve links via Markdown conversion
+        from markdownify import markdownify as md
+        description = md(processed_html)
 
     created = pin_data.get('created')
     published_at = datetime.fromtimestamp(created) if created else None
@@ -81,6 +94,25 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
         "repin_count": pin_data.get('repinCount', 0),
     }
 
+    # Construct Archive
+    if isinstance(pin_data, dict):
+        archive_images = [{"url": u} for u in media_urls]
+        if author.avatar_url:
+            archive_images.append({"url": author.avatar_url, "type": "avatar"})
+            
+        archive = {
+            "version": 2,
+            "type": "zhihu_pin",
+            "title": description[:50] + "..." if description else "Zhihu Pin",
+            "plain_text": description,
+            "markdown": description, # Pins are simple, just use plain text as markdown
+            "images": archive_images,
+            "links": [],
+            "stored_images": [],
+            "stored_videos": []
+        }
+        pin_data['archive'] = archive
+
     return ParsedContent(
         platform="zhihu",
         content_type="pin",
@@ -90,6 +122,7 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
         description=description,
         author_name=author.name,
         author_id=author.url_token or str(author.id),
+        author_avatar_url=author.avatar_url,
         cover_url=media_urls[0] if media_urls else None,
         media_urls=media_urls,
         published_at=published_at,

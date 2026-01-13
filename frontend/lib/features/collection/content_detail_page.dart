@@ -49,7 +49,9 @@ class _CodeElementBuilder extends MarkdownElementBuilder {
         decoration: BoxDecoration(
           color: appTheme.colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: appTheme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
+          border: Border.all(
+            color: appTheme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
         ),
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -80,8 +82,12 @@ class _CodeElementBuilder extends MarkdownElementBuilder {
           Container(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             decoration: BoxDecoration(
-              color: appTheme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              color: appTheme.colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.3,
+              ),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(16),
+              ),
             ),
             child: Row(
               children: [
@@ -101,7 +107,9 @@ class _CodeElementBuilder extends MarkdownElementBuilder {
                   color: Colors.transparent,
                   child: InkWell(
                     onTap: () {
-                      Clipboard.setData(ClipboardData(text: element.textContent));
+                      Clipboard.setData(
+                        ClipboardData(text: element.textContent),
+                      );
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('已复制代码'),
@@ -130,13 +138,15 @@ class _CodeElementBuilder extends MarkdownElementBuilder {
             padding: const EdgeInsets.all(16),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: SelectableText(
+              child: Text(
                 element.textContent,
                 style: GoogleFonts.firaCode(
                   textStyle: TextStyle(
                     fontSize: 14,
                     height: 1.5,
-                    color: isDark ? const Color(0xFFD4D4D4) : const Color(0xFF333333),
+                    color: isDark
+                        ? const Color(0xFFD4D4D4)
+                        : const Color(0xFF333333),
                   ),
                 ),
               ),
@@ -380,7 +390,14 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                 const SizedBox(width: 16),
               ],
             ),
-            body: _buildResponsiveLayout(context, detail, apiBaseUrl, apiToken),
+            body: SelectionArea(
+              child: _buildResponsiveLayout(
+                context,
+                detail,
+                apiBaseUrl,
+                apiToken,
+              ),
+            ),
           ),
         );
       },
@@ -462,6 +479,15 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           return _buildUserProfileLayout(context, detail, apiBaseUrl, apiToken);
         }
 
+        if (detail.isZhihuAnswer) {
+          return _buildZhihuAnswerLandscape(
+            context,
+            detail,
+            apiBaseUrl,
+            apiToken,
+          );
+        }
+
         if (detail.isTwitter ||
             detail.isWeibo ||
             detail.isZhihuPin ||
@@ -511,54 +537,49 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
     return Row(
       children: [
-        // Left: Large Image Section
+        // Left: Large Image Section (Simplified)
         Expanded(
           flex: 4,
           child: Container(
-            color: colorScheme.surfaceContainerHigh.withValues(alpha: 0.3),
+            // Match the right side's background (Scaffold background, i.e., colorScheme.surface)
+            // or keep it transparent if the Scaffold handles it.
+            // If we want "consistency", we should probably remove the "surfaceContainerHigh" tint here too.
+            color: colorScheme.surface,
             child: Center(
               child: GestureDetector(
                 onTap: () {
-                   if (mappedAvatarUrl.isNotEmpty) {
-                      _showFullScreenImage(
-                        context,
-                        [mappedAvatarUrl],
-                        0,
-                        apiBaseUrl,
-                        apiToken,
-                        detail.id,
-                      );
-                   }
+                  if (mappedAvatarUrl.isNotEmpty) {
+                    _showFullScreenImage(
+                      context,
+                      [mappedAvatarUrl],
+                      0,
+                      apiBaseUrl,
+                      apiToken,
+                      detail.id,
+                    );
+                  }
                 },
                 child: Hero(
                   tag: 'content-image-${detail.id}',
-                  child: Container(
-                    margin: const EdgeInsets.all(48),
-                    decoration: BoxDecoration(
-                      boxShadow: [
-                        BoxShadow(
-                          color: colorScheme.shadow.withValues(alpha: 0.15),
-                          blurRadius: 60,
-                          offset: const Offset(0, 30),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(48),
-                      child: CachedNetworkImage(
-                        imageUrl: mappedAvatarUrl,
-                        httpHeaders: buildImageHeaders(
+                  child: Padding(
+                    padding: const EdgeInsets.all(48),
+                    child: AspectRatio(
+                      aspectRatio: 1,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(24),
+                        child: CachedNetworkImage(
                           imageUrl: mappedAvatarUrl,
-                          baseUrl: apiBaseUrl,
-                          apiToken: apiToken,
+                          httpHeaders: buildImageHeaders(
+                            imageUrl: mappedAvatarUrl,
+                            baseUrl: apiBaseUrl,
+                            apiToken: apiToken,
+                          ),
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) =>
+                              const CircularProgressIndicator(),
+                          errorWidget: (context, url, error) =>
+                              const Icon(Icons.person, size: 120),
                         ),
-                        width: 480,
-                        height: 480,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) =>
-                            const CircularProgressIndicator(),
-                        errorWidget: (context, url, error) =>
-                            const Icon(Icons.person, size: 120),
                       ),
                     ),
                   ),
@@ -571,7 +592,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         Expanded(
           flex: 6,
           child: Container(
-            color: colorScheme.surfaceContainerHigh.withValues(alpha: 0.3),
+            // Removed explicit color to fix "white empty block" issue
             padding: const EdgeInsets.fromLTRB(0, 40, 40, 40),
             child: Container(
               decoration: BoxDecoration(
@@ -647,7 +668,8 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                     ),
                     const SizedBox(height: 40),
                     // Description
-                    if (detail.description != null && detail.description!.isNotEmpty)
+                    if (detail.description != null &&
+                        detail.description!.isNotEmpty)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                         child: Text(
@@ -661,39 +683,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                         ),
                       ),
                     const SizedBox(height: 48),
-                    // Unified Stats Grid
-                    _buildUnifiedStats(context, detail),
-                    const SizedBox(height: 48),
-                    // Detailed Platform-specific Stats
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(32),
-                      decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(28),
-                        border: Border.all(
-                          color: colorScheme.outlineVariant.withValues(alpha: 0.4),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '详细数据',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w900,
-                              color: colorScheme.primary,
-                              letterSpacing: 1.5,
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          _buildDetailedUserStats(context, {
-                            ...detail.extraStats,
-                            ...(detail.rawMetadata ?? {}),
-                          }),
-                        ],
-                      ),
-                    ),
+
+                    // Unified Stats Container (Merging basic and detailed)
+                    _buildUnifiedStats(context, detail, useContainer: true),
                   ],
                 ),
               ),
@@ -720,75 +712,6 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       }
       launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     }
-  }
-
-  Widget _buildDetailedUserStats(
-    BuildContext context,
-    Map<String, dynamic> metadata,
-  ) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    
-    // Render additional stats like logs_count, following_columns etc.
-    final Map<String, String> keyMap = {
-      // Zhihu
-      'follower_count': '粉丝',
-      'following_count': '关注',
-      'voteup_count': '获赞',
-      'thanked_count': '获谢',
-      'favorited_count': '被收藏',
-      'logs_count': '公共编辑',
-      'answer_count': '回答',
-      'articles_count': '文章',
-      'pins_count': '想法',
-      'question_count': '提问',
-      'following_columns_count': '关注专栏',
-      'following_topic_count': '关注话题',
-      'following_question_count': '关注问题',
-      'following_favlists_count': '关注收藏夹',
-      // Weibo (from extra_stats)
-      'followers': '粉丝',
-      'friends': '关注',
-      'following': '关注',
-      'statuses': '微博',
-      'credit_score': '信用分',
-      'urank': '等级',
-    };
-
-    final statsToDisplay = metadata.entries
-        .where((e) => keyMap.containsKey(e.key) && (e.value is num && e.value > 0))
-        .toList();
-
-    if (statsToDisplay.isEmpty) return const SizedBox.shrink();
-
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: statsToDisplay.map((e) {
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.bar_chart_rounded, size: 14, color: colorScheme.primary),
-              const SizedBox(width: 8),
-              Text(
-                '${keyMap[e.key]}: ${_formatCount(e.value)}',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.onSurface,
-                ),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
-    );
   }
 
   // --- Twitter Red-style Layout ---
@@ -1158,21 +1081,23 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                 const SizedBox(height: 24),
               ],
               if (detail.description != null)
-                SelectableText(
-                  detail.description!,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    height: 1.5,
-                    letterSpacing: 0.1,
-                  ),
-                ),
-              const SizedBox(height: 32),
-              if (detail.publishedAt != null)
-                Text(
-                  DateFormat(
-                    'a hh:mm · yyyy年MM月dd日',
-                  ).format(detail.publishedAt!.toLocal()),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.outline,
+                MarkdownBody(
+                  data: detail.description!,
+                  selectable: true,
+                  onTapLink: (text, href, title) {
+                    if (href != null) {
+                      launchUrl(
+                        Uri.parse(href),
+                        mode: LaunchMode.externalApplication,
+                      );
+                    }
+                  },
+                  styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                    p: theme.textTheme.headlineSmall?.copyWith(
+                      height: 1.5,
+                      letterSpacing: 0.1,
+                      fontSize: 20, // Match previous header style
+                    ),
                   ),
                 ),
               const SizedBox(height: 48),
@@ -1188,10 +1113,216 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               ),
               const SizedBox(height: 16),
               _buildTags(context, detail),
+              if (detail.isZhihuQuestion &&
+                  detail.rawMetadata != null &&
+                  detail.rawMetadata!['top_answers'] != null)
+                _buildZhihuTopAnswers(
+                  context,
+                  detail.rawMetadata!['top_answers'] as List<dynamic>,
+                ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  // --- Zhihu Answer Landscape Layout ---
+
+  Widget _buildZhihuAnswerLandscape(
+    BuildContext context,
+    ContentDetail detail,
+    String apiBaseUrl,
+    String? apiToken,
+  ) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final questionInfo = detail.rawMetadata?['associated_question'];
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Left: Markdown Content (70%)
+        Expanded(
+          flex: 7,
+          child: Container(
+            color: colorScheme.surface,
+            child: SingleChildScrollView(
+              controller: _contentScrollController,
+              padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
+              child: _buildRichContent(
+                context,
+                detail,
+                apiBaseUrl,
+                apiToken,
+                hideZhihuHeader: true,
+              ),
+            ),
+          ),
+        ),
+        // Right: Question Info & Author Stats (30%)
+        Expanded(
+          flex: 3,
+          child: Container(
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerLow,
+              border: Border(
+                left: BorderSide(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+                ),
+              ),
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 1. Question Info Block
+                  if (questionInfo != null) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surface,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: colorScheme.shadow.withValues(alpha: 0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.help_outline_rounded,
+                                size: 20,
+                                color: colorScheme.primary,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '所属问题',
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                  color: colorScheme.primary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          InkWell(
+                            onTap: () {
+                              if (questionInfo['url'] != null) {
+                                launchUrl(
+                                  Uri.parse(questionInfo['url']),
+                                  mode: LaunchMode.externalApplication,
+                                );
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: Text(
+                              questionInfo['title'] ?? '未知问题',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w900,
+                                height: 1.4,
+                                decoration: TextDecoration.underline,
+                                decorationColor: colorScheme.outlineVariant,
+                                decorationStyle: TextDecorationStyle.dashed,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          Wrap(
+                            spacing: 16,
+                            runSpacing: 8,
+                            children: [
+                              _buildSmallStatItem(
+                                context,
+                                Icons.person_add_alt,
+                                '关注',
+                                _formatCount(questionInfo['follower_count']),
+                              ),
+                              _buildSmallStatItem(
+                                context,
+                                Icons.remove_red_eye_outlined,
+                                '浏览',
+                                _formatCount(questionInfo['view_count']),
+                              ),
+                              _buildSmallStatItem(
+                                context,
+                                Icons.question_answer_outlined,
+                                '回答',
+                                _formatCount(questionInfo['answer_count']),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
+                  // 2. Author & Stats & Tags Block
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surface,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: colorScheme.shadow.withValues(alpha: 0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '作者与数据',
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: colorScheme.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildAuthorHeader(context, detail),
+                        const SizedBox(height: 24),
+                        _buildUnifiedStats(
+                          context,
+                          detail,
+                          useContainer: false,
+                        ),
+
+                        if (detail.tags.isNotEmpty) ...[
+                          const SizedBox(height: 24),
+                          const Divider(height: 1),
+                          const SizedBox(height: 24),
+                          Text(
+                            '标签',
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              color: colorScheme.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildTags(context, detail),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1649,9 +1780,24 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         ? _mapUrl(avatarUrl, apiBaseUrl)
         : null;
 
+    final String publishedStr = detail.publishedAt != null
+        ? DateFormat('yyyy-MM-dd HH:mm').format(detail.publishedAt!.toLocal())
+        : DateFormat('yyyy-MM-dd HH:mm').format(detail.createdAt.toLocal());
+
+    final bool isEdited =
+        detail.updatedAt
+            .difference(detail.publishedAt ?? detail.createdAt)
+            .inMinutes
+            .abs() >
+        60;
+    final String editedStr = isEdited
+        ? DateFormat('yyyy-MM-dd HH:mm').format(detail.updatedAt.toLocal())
+        : '';
+
     return GestureDetector(
       onTap: () => _launchAuthorProfile(detail),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
             padding: const EdgeInsets.all(2),
@@ -1664,7 +1810,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               ),
             ),
             child: CircleAvatar(
-              radius: 20,
+              radius: 22,
               backgroundColor: colorScheme.surface,
               backgroundImage: mappedAvatarUrl != null
                   ? CachedNetworkImageProvider(
@@ -1689,42 +1835,60 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                   : null,
             ),
           ),
-          const SizedBox(width: 14),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    detail.authorName ?? '未知作者',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.3,
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      detail.authorName ?? '未知作者',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.3,
+                        color: colorScheme.onSurface,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  _getPlatformIcon(detail.platform, 14),
-                ],
-              ),
-              const SizedBox(height: 2),
-              if (detail.publishedAt != null)
-                Text(
-                  DateFormat(
-                    'yyyy-MM-dd HH:mm',
-                  ).format(detail.publishedAt!.toLocal()),
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: colorScheme.outline,
-                    letterSpacing: 0.5,
-                  ),
+                    const SizedBox(width: 8),
+                    _getPlatformIcon(detail.platform, 14),
+                  ],
                 ),
-            ],
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 12,
+                  children: [
+                    Text(
+                      '发布于 $publishedStr',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: colorScheme.outline,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    if (isEdited)
+                      Text(
+                        '编辑于 $editedStr',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: colorScheme.outline.withValues(alpha: 0.8),
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildUnifiedStats(BuildContext context, ContentDetail detail) {
+  Widget _buildUnifiedStats(
+    BuildContext context,
+    ContentDetail detail, {
+    bool useContainer = true,
+  }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final stats = detail.extraStats;
@@ -1737,60 +1901,214 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
     if (isUserProfile) {
       if (isWeibo) {
-        // Weibo User Profile Stats
-        items.add(_buildUnifiedStatItem(context, Icons.people_outline, '粉丝', _formatCount(detail.viewCount)));
-        items.add(_buildUnifiedStatItem(context, Icons.person_add_alt_1_outlined, '关注', _formatCount(detail.shareCount)));
-        items.add(_buildUnifiedStatItem(context, Icons.article_outlined, '微博', _formatCount(detail.commentCount)));
+        items.add(
+          _buildUnifiedStatItem(
+            context,
+            Icons.people_outline,
+            '粉丝',
+            _formatCount(detail.viewCount),
+          ),
+        );
+        items.add(
+          _buildUnifiedStatItem(
+            context,
+            Icons.person_add_alt_1_outlined,
+            '关注',
+            _formatCount(detail.shareCount),
+          ),
+        );
+        items.add(
+          _buildUnifiedStatItem(
+            context,
+            Icons.article_outlined,
+            '微博',
+            _formatCount(detail.commentCount),
+          ),
+        );
       } else if (isZhihu) {
-        // Zhihu User Profile Stats
-        items.add(_buildUnifiedStatItem(context, Icons.people_outline, '粉丝', _formatCount(detail.viewCount)));
-        items.add(_buildUnifiedStatItem(context, Icons.person_add_alt_1_outlined, '关注', _formatCount(detail.shareCount)));
-        items.add(_buildUnifiedStatItem(context, Icons.thumb_up_alt_outlined, '获赞', _formatCount(detail.likeCount)));
-        items.add(_buildUnifiedStatItem(context, Icons.star_border, '收藏', _formatCount(detail.collectCount)));
+        items.add(
+          _buildUnifiedStatItem(
+            context,
+            Icons.people_outline,
+            '粉丝',
+            _formatCount(detail.viewCount),
+          ),
+        );
+        items.add(
+          _buildUnifiedStatItem(
+            context,
+            Icons.person_add_alt_1_outlined,
+            '关注',
+            _formatCount(detail.shareCount),
+          ),
+        );
+        items.add(
+          _buildUnifiedStatItem(
+            context,
+            Icons.thumb_up_alt_outlined,
+            '获赞',
+            _formatCount(detail.likeCount),
+          ),
+        );
+        items.add(
+          _buildUnifiedStatItem(
+            context,
+            Icons.star_border,
+            '收藏',
+            _formatCount(detail.collectCount),
+          ),
+        );
+      }
+
+      // Merge extra stats for User Profile
+      final Map<String, String> keyMap = {
+        'thanked_count': '获谢',
+        'answer_count': '回答',
+        'articles_count': '文章',
+        'pins_count': '想法',
+        'question_count': '提问',
+        'following_columns_count': '关注专栏',
+        'following_topic_count': '关注话题',
+        'following_favlists_count': '关注收藏夹',
+        'statuses': '动态',
+        'credit_score': '信用',
+        'urank': '等级',
+      };
+
+      final Map<String, dynamic> combinedMetadata = {
+        ...detail.extraStats,
+        ...(detail.rawMetadata ?? {}),
+      };
+
+      for (var entry in combinedMetadata.entries) {
+        if (keyMap.containsKey(entry.key) &&
+            (entry.value is num && entry.value > 0)) {
+          items.add(
+            _buildUnifiedStatItem(
+              context,
+              Icons.analytics_outlined,
+              keyMap[entry.key]!,
+              _formatCount(entry.value),
+            ),
+          );
+        }
       }
     } else {
       // Standard Post Stats
       if (detail.viewCount > 0 || isBilibili) {
-        items.add(_buildUnifiedStatItem(context, Icons.remove_red_eye_outlined, '查看', _formatCount(detail.viewCount)));
+        items.add(
+          _buildUnifiedStatItem(
+            context,
+            Icons.remove_red_eye_outlined,
+            '浏览',
+            _formatCount(detail.viewCount),
+          ),
+        );
       }
 
       if (detail.likeCount > 0 || isZhihu || isBilibili) {
-        items.add(_buildUnifiedStatItem(context, isZhihu ? Icons.thumb_up_alt_outlined : Icons.favorite_border, isZhihu ? '赞同' : '点赞', _formatCount(detail.likeCount)));
+        items.add(
+          _buildUnifiedStatItem(
+            context,
+            isZhihu ? Icons.thumb_up_alt_outlined : Icons.favorite_border,
+            isZhihu ? '赞同' : '点赞',
+            _formatCount(detail.likeCount),
+          ),
+        );
       }
 
       if (detail.collectCount > 0 || isBilibili || isZhihu) {
-        items.add(_buildUnifiedStatItem(context, Icons.star_border, '收藏', _formatCount(detail.collectCount)));
+        items.add(
+          _buildUnifiedStatItem(
+            context,
+            Icons.star_border,
+            '收藏',
+            _formatCount(detail.collectCount),
+          ),
+        );
       }
 
       if (detail.commentCount > 0 || isBilibili || isWeibo || isZhihu) {
-        items.add(_buildUnifiedStatItem(context, Icons.chat_bubble_outline, '评论', _formatCount(detail.commentCount)));
+        items.add(
+          _buildUnifiedStatItem(
+            context,
+            Icons.chat_bubble_outline,
+            '评论',
+            _formatCount(detail.commentCount),
+          ),
+        );
       }
-      
+
       if (detail.shareCount > 0 || isWeibo || isBilibili) {
-        items.add(_buildUnifiedStatItem(context, Icons.repeat_rounded, isWeibo ? '转发' : '分享', _formatCount(detail.shareCount)));
+        items.add(
+          _buildUnifiedStatItem(
+            context,
+            Icons.repeat_rounded,
+            isWeibo ? '转发' : '分享',
+            _formatCount(detail.shareCount),
+          ),
+        );
       }
 
       // Zhihu specific extra stats for Question
       if (detail.isZhihuQuestion) {
         if (stats['follower_count'] != null) {
-          items.add(_buildUnifiedStatItem(context, Icons.person_add_alt, '关注', _formatCount(stats['follower_count'])));
+          items.add(
+            _buildUnifiedStatItem(
+              context,
+              Icons.person_add_alt,
+              '关注',
+              _formatCount(stats['follower_count']),
+            ),
+          );
         }
-        if (stats['visit_count'] != null) {
-          items.add(_buildUnifiedStatItem(context, Icons.remove_red_eye_outlined, '浏览', _formatCount(stats['visit_count'])));
+        if (stats['visit_count'] != null && detail.viewCount == 0) {
+          items.add(
+            _buildUnifiedStatItem(
+              context,
+              Icons.remove_red_eye_outlined,
+              '浏览',
+              _formatCount(stats['visit_count']),
+            ),
+          );
         }
         if (stats['answer_count'] != null) {
-          items.add(_buildUnifiedStatItem(context, Icons.question_answer_outlined, '回答', _formatCount(stats['answer_count'])));
+          items.add(
+            _buildUnifiedStatItem(
+              context,
+              Icons.question_answer_outlined,
+              '回答',
+              _formatCount(stats['answer_count']),
+            ),
+          );
         }
       }
     }
 
-    // Bilibili specific
-    if (isBilibili && !isUserProfile) {
-      if (stats['coin'] != null) items.add(_buildUnifiedStatItem(context, Icons.monetization_on_rounded, '投币', _formatCount(stats['coin'])));
-      if (stats['danmaku'] != null) items.add(_buildUnifiedStatItem(context, Icons.subtitles_rounded, '弹幕', _formatCount(stats['danmaku'])));
-    }
-
     if (items.isEmpty) return const SizedBox.shrink();
+
+    final contentWidget = LayoutBuilder(
+      builder: (context, constraints) {
+        final int crossAxisCount = constraints.maxWidth > 600
+            ? 4
+            : (constraints.maxWidth > 360 ? 3 : 2);
+        const double horizontalSpacing = 16.0;
+        final double itemWidth =
+            (constraints.maxWidth -
+                (horizontalSpacing * (crossAxisCount - 1))) /
+            crossAxisCount;
+
+        return Wrap(
+          spacing: horizontalSpacing,
+          runSpacing: 24,
+          children: items
+              .map((item) => SizedBox(width: itemWidth, child: item))
+              .toList(),
+        );
+      },
+    );
+
+    if (!useContainer) return contentWidget;
 
     return Container(
       width: double.infinity,
@@ -1806,19 +2124,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           ),
         ],
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final int crossAxisCount = constraints.maxWidth > 600 ? 4 : (constraints.maxWidth > 360 ? 3 : 2);
-          const double horizontalSpacing = 16.0;
-          final double itemWidth = (constraints.maxWidth - (horizontalSpacing * (crossAxisCount - 1))) / crossAxisCount;
-
-          return Wrap(
-            spacing: horizontalSpacing,
-            runSpacing: 24,
-            children: items.map((item) => SizedBox(width: itemWidth, child: item)).toList(),
-          );
-        },
-      ),
+      child: contentWidget,
     );
   }
 
@@ -1844,30 +2150,57 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     return val.toString();
   }
 
-  Widget _buildZhihuQuestionStats(BuildContext context, Map<String, dynamic> stats) {
+  Widget _buildZhihuQuestionStats(
+    BuildContext context,
+    Map<String, dynamic> stats,
+  ) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
+        color: Theme.of(
+          context,
+        ).colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.3),
+          color: Theme.of(
+            context,
+          ).colorScheme.outlineVariant.withValues(alpha: 0.3),
         ),
       ),
       child: Wrap(
         spacing: 16,
         runSpacing: 16,
         children: [
-          _buildUnifiedStatItem(context, Icons.person_add_alt, '关注', _formatCount(stats['follower_count'])),
-          _buildUnifiedStatItem(context, Icons.remove_red_eye_outlined, '浏览', _formatCount(stats['visit_count'])),
-          _buildUnifiedStatItem(context, Icons.question_answer_outlined, '回答', _formatCount(stats['answer_count'])),
+          _buildUnifiedStatItem(
+            context,
+            Icons.person_add_alt,
+            '关注',
+            _formatCount(stats['follower_count']),
+          ),
+          _buildUnifiedStatItem(
+            context,
+            Icons.remove_red_eye_outlined,
+            '浏览',
+            _formatCount(stats['visit_count']),
+          ),
+          _buildUnifiedStatItem(
+            context,
+            Icons.question_answer_outlined,
+            '回答',
+            _formatCount(stats['answer_count']),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildSmallStatItem(BuildContext context, IconData icon, String label, String value) {
+  Widget _buildSmallStatItem(
+    BuildContext context,
+    IconData icon,
+    String label,
+    String value,
+  ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     return Row(
@@ -1877,7 +2210,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         const SizedBox(width: 4),
         Text(
           '$value $label',
-          style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: colorScheme.outline,
+          ),
         ),
       ],
     );
@@ -2019,6 +2354,8 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     String apiBaseUrl,
     String? apiToken, {
     bool useHero = true,
+    bool hideZhihuHeader = false,
+    bool hideTopAnswers = false,
   }) {
     final theme = Theme.of(context);
     final storedMap = _getStoredMap(detail);
@@ -2027,6 +2364,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
     // 用于跟踪 Hero 标签是否已被使用，防止重复导致卡死
     final Set<String> usedHeroTags = {};
+    final List<Widget> children = [];
 
     if (markdown.isNotEmpty) {
       final style = _getMarkdownStyle(theme);
@@ -2034,85 +2372,85 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           ? (detail.rawMetadata?['associated_question'])
           : null;
 
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (detail.isZhihuAnswer && questionInfo != null) ...[
-            GestureDetector(
-              onTap: () {
-                if (questionInfo['url'] != null) {
-                  launchUrl(Uri.parse(questionInfo['url']), mode: LaunchMode.externalApplication);
-                }
-              },
-              child: Text(
-                questionInfo['title'] ?? '未知问题',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w900,
-                  color: theme.colorScheme.primary,
-                  height: 1.3,
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildZhihuQuestionStats(context, questionInfo),
-            const SizedBox(height: 24),
-            _buildAuthorHeader(context, detail),
-            const SizedBox(height: 12),
-            _buildUnifiedStats(context, detail),
-            const SizedBox(height: 32),
-            const Divider(),
-            const SizedBox(height: 32),
-          ],
-          
-          MarkdownBody(
-            data: markdown,
-            selectable: true,
-            onTapLink: (text, href, title) {
-              if (href != null) {
+      if (!hideZhihuHeader && detail.isZhihuAnswer && questionInfo != null) {
+        children.addAll([
+          GestureDetector(
+            onTap: () {
+              if (questionInfo['url'] != null) {
                 launchUrl(
-                  Uri.parse(href),
+                  Uri.parse(questionInfo['url']),
                   mode: LaunchMode.externalApplication,
                 );
               }
             },
-            styleSheet: style,
-            builders: {
-              'h1': _HeaderBuilder(_headerKeys, style.h1),
-              'h2': _HeaderBuilder(_headerKeys, style.h2),
-              'h3': _HeaderBuilder(_headerKeys, style.h3),
-              'code': _CodeElementBuilder(context),
-            },
-            // ignore: deprecated_member_use
-            imageBuilder: (uri, title, alt) => _buildMarkdownImage(
-              context,
-              detail,
-              uri,
-              alt,
-              storedMap,
-              apiBaseUrl,
-              apiToken,
-              useHero: useHero,
-              usedHeroTags: usedHeroTags,
+            child: Text(
+              questionInfo['title'] ?? '未知问题',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+                color: theme.colorScheme.primary,
+                height: 1.3,
+              ),
             ),
           ),
+          const SizedBox(height: 16),
+          _buildZhihuQuestionStats(context, questionInfo),
+          const SizedBox(height: 24),
+          _buildAuthorHeader(context, detail),
+          const SizedBox(height: 12),
+          _buildUnifiedStats(context, detail),
+          const SizedBox(height: 32),
+          const Divider(),
+          const SizedBox(height: 32),
+        ]);
+      }
 
-          // Zhihu Top Answers
-          if (detail.isZhihuQuestion &&
-              detail.rawMetadata != null &&
-              detail.rawMetadata!['top_answers'] != null)
-            _buildZhihuTopAnswers(
-              context,
-              detail.rawMetadata!['top_answers'] as List<dynamic>,
-            ),
-        ],
+      children.add(
+        MarkdownBody(
+          data: markdown,
+          selectable: true,
+          onTapLink: (text, href, title) {
+            if (href != null) {
+              launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
+            }
+          },
+          styleSheet: style,
+          builders: {
+            'h1': _HeaderBuilder(_headerKeys, style.h1),
+            'h2': _HeaderBuilder(_headerKeys, style.h2),
+            'h3': _HeaderBuilder(_headerKeys, style.h3),
+            'code': _CodeElementBuilder(context),
+          },
+          // ignore: deprecated_member_use
+          imageBuilder: (uri, title, alt) => _buildMarkdownImage(
+            context,
+            detail,
+            uri,
+            alt,
+            storedMap,
+            apiBaseUrl,
+            apiToken,
+            useHero: useHero,
+            usedHeroTags: usedHeroTags,
+          ),
+        ),
       );
-    }
 
-    // Default: Description + Grid
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (detail.description != null && detail.description!.isNotEmpty) ...[
+      // Zhihu Top Answers
+      if (!hideTopAnswers &&
+          detail.isZhihuQuestion &&
+          detail.rawMetadata != null &&
+          detail.rawMetadata!['top_answers'] != null) {
+        children.add(
+          _buildZhihuTopAnswers(
+            context,
+            detail.rawMetadata!['top_answers'] as List<dynamic>,
+          ),
+        );
+      }
+    } else {
+      // Default Description
+      if (detail.description != null && detail.description!.isNotEmpty) {
+        children.add(
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -2125,145 +2463,201 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               style: theme.textTheme.bodyLarge?.copyWith(height: 1.6),
             ),
           ),
-          const SizedBox(height: 24),
-        ],
-        if (mediaUrls.isNotEmpty)
-          if (mediaUrls.length == 1)
-            Builder(
-              builder: (context) {
-                final url = mediaUrls.first;
-                if (_isVideo(url)) {
-                  return ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
-                    child: VideoPlayerWidget(
-                      videoUrl: url,
-                      headers: buildImageHeaders(
+        );
+
+        // Add Top Answers here too for cases without markdown (rare for Question, but possible if description is empty)
+        if (!hideTopAnswers &&
+            detail.isZhihuQuestion &&
+            detail.rawMetadata != null &&
+            detail.rawMetadata!['top_answers'] != null) {
+          children.add(
+            _buildZhihuTopAnswers(
+              context,
+              detail.rawMetadata!['top_answers'] as List<dynamic>,
+            ),
+          );
+        }
+
+        children.add(const SizedBox(height: 24));
+      } else {
+        // Even if description is empty/null, we might have Top Answers
+        if (!hideTopAnswers &&
+            detail.isZhihuQuestion &&
+            detail.rawMetadata != null &&
+            detail.rawMetadata!['top_answers'] != null) {
+          children.add(
+            _buildZhihuTopAnswers(
+              context,
+              detail.rawMetadata!['top_answers'] as List<dynamic>,
+            ),
+          );
+        }
+      }
+    }
+
+    // Media Grid (Show if Pin, or if media exists and wasn't fully consumed by markdown)
+    // For Pins/Tweets, we typically always want to show the gallery if media exists.
+    // For markdown articles, images are usually inline.
+    bool showMediaGrid = false;
+    if (detail.isZhihuPin || detail.isTwitter || detail.isWeibo) {
+      showMediaGrid = mediaUrls.isNotEmpty;
+    } else {
+      // For others, if we have media URLs but they weren't used in markdown
+      // (This is a heuristic. usedHeroTags tracks inline images)
+      // If markdown is empty, we definitely show it (covered by else block logic above)
+      // If markdown is NOT empty, we check if we should append.
+      if (markdown.isEmpty && mediaUrls.isNotEmpty) {
+        showMediaGrid = true;
+      }
+      // TODO: Enhance detection of "unused" media
+    }
+
+    if (showMediaGrid) {
+      if (children.isNotEmpty) children.add(const SizedBox(height: 24));
+
+      if (mediaUrls.length == 1) {
+        children.add(
+          Builder(
+            builder: (context) {
+              final url = mediaUrls.first;
+              if (_isVideo(url)) {
+                return ClipRRect(
+                  borderRadius: BorderRadius.circular(28),
+                  child: VideoPlayerWidget(
+                    videoUrl: url,
+                    headers: buildImageHeaders(
+                      imageUrl: url,
+                      baseUrl: apiBaseUrl,
+                      apiToken: apiToken,
+                    ),
+                  ),
+                );
+              }
+              return GestureDetector(
+                onTap: () => _showFullScreenImage(
+                  context,
+                  mediaUrls,
+                  0,
+                  apiBaseUrl,
+                  apiToken,
+                  detail.id,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(28),
+                  child: Hero(
+                    tag: 'content-image-${detail.id}',
+                    child: CachedNetworkImage(
+                      imageUrl: url,
+                      httpHeaders: buildImageHeaders(
                         imageUrl: url,
                         baseUrl: apiBaseUrl,
                         apiToken: apiToken,
                       ),
-                    ),
-                  );
-                }
-                return GestureDetector(
-                  onTap: () => _showFullScreenImage(
-                    context,
-                    mediaUrls,
-                    0,
-                    apiBaseUrl,
-                    apiToken,
-                    detail.id,
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
-                    child: Hero(
-                      tag: 'content-image-${detail.id}',
-                      child: CachedNetworkImage(
-                        imageUrl: url,
-                        httpHeaders: buildImageHeaders(
-                          imageUrl: url,
-                          baseUrl: apiBaseUrl,
-                          apiToken: apiToken,
-                        ),
-                        fit: BoxFit.contain,
-                        placeholder: (c, u) => Container(
-                          height: 240,
-                          width: double.infinity,
-                          color: theme.colorScheme.surfaceContainerHighest,
-                          child: const Center(
-                            child: CircularProgressIndicator(),
-                          ),
-                        ),
+                      fit: BoxFit.contain,
+                      placeholder: (c, u) => Container(
+                        height: 240,
+                        width: double.infinity,
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        child: const Center(child: CircularProgressIndicator()),
                       ),
                     ),
                   ),
-                );
-              },
-            )
-          else
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 1.0,
-              ),
-              itemCount: mediaUrls.length,
-              itemBuilder: (context, index) {
-                final url = mediaUrls[index];
-                if (_isVideo(url)) {
-                  return ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
-                    child: Stack(
-                      children: [
-                        Container(color: Colors.black),
-                        const Center(
-                          child: Icon(
-                            Icons.play_circle_outline,
-                            color: Colors.white,
-                            size: 48,
-                          ),
+                ),
+              );
+            },
+          ),
+        );
+      } else {
+        children.add(
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 1.0,
+            ),
+            itemCount: mediaUrls.length,
+            itemBuilder: (context, index) {
+              final url = mediaUrls[index];
+              if (_isVideo(url)) {
+                return ClipRRect(
+                  borderRadius: BorderRadius.circular(28),
+                  child: Stack(
+                    children: [
+                      Container(color: Colors.black),
+                      const Center(
+                        child: Icon(
+                          Icons.play_circle_outline,
+                          color: Colors.white,
+                          size: 48,
                         ),
-                        Positioned.fill(
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: () {
-                                // TODO: Open video player dialog
-                              },
-                              child: const Center(
-                                child: Text(
-                                  "VIDEO",
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                  ),
+                      ),
+                      Positioned.fill(
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              // TODO: Open video player dialog
+                            },
+                            child: const Center(
+                              child: Text(
+                                "VIDEO",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                  );
-                }
-                return GestureDetector(
-                  onTap: () => _showFullScreenImage(
-                    context,
-                    mediaUrls,
-                    index,
-                    apiBaseUrl,
-                    apiToken,
-                    detail.id,
+                      ),
+                    ],
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
-                    child: Hero(
-                      tag: index == 0
-                          ? 'content-image-${detail.id}'
-                          : 'image-$index-${detail.id}',
-                      child: CachedNetworkImage(
+                );
+              }
+              return GestureDetector(
+                onTap: () => _showFullScreenImage(
+                  context,
+                  mediaUrls,
+                  index,
+                  apiBaseUrl,
+                  apiToken,
+                  detail.id,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(28),
+                  child: Hero(
+                    tag: index == 0
+                        ? 'content-image-${detail.id}'
+                        : 'image-$index-${detail.id}',
+                    child: CachedNetworkImage(
+                      imageUrl: url,
+                      httpHeaders: buildImageHeaders(
                         imageUrl: url,
-                        httpHeaders: buildImageHeaders(
-                          imageUrl: url,
-                          baseUrl: apiBaseUrl,
-                          apiToken: apiToken,
-                        ),
-                        fit: BoxFit.cover,
-                        placeholder: (c, u) => Container(
-                          color: theme.colorScheme.surfaceContainerHighest,
-                        ),
+                        baseUrl: apiBaseUrl,
+                        apiToken: apiToken,
+                      ),
+                      fit: BoxFit.cover,
+                      placeholder: (c, u) => Container(
+                        color: theme.colorScheme.surfaceContainerHighest,
                       ),
                     ),
                   ),
-                );
-              },
-            ),
-        ],
-      );
+                ),
+              );
+            },
+          ),
+        );
+      }
     }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
+  }
 
   MarkdownStyleSheet _getMarkdownStyle(ThemeData theme) {
     return MarkdownStyleSheet.fromTheme(theme).copyWith(
@@ -2461,6 +2855,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w900,
                 letterSpacing: 0.5,
+                color: colorScheme.onSurface,
               ),
             ),
           ],
@@ -2476,90 +2871,129 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           final url = ans['url'];
           final coverUrl = ans['cover_url'];
 
-          return Card(
+          return Container(
             margin: const EdgeInsets.only(bottom: 16),
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-              side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainer,
+              borderRadius: BorderRadius.circular(
+                24,
+              ), // Large corners (Expressive)
+              border: Border.all(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: colorScheme.shadow.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-            color: colorScheme.surfaceContainerLow,
-            child: InkWell(
-              onTap: () {
-                if (url != null) {
-                  launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-                }
-              },
-              borderRadius: BorderRadius.circular(20),
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        if (authorAvatar != null) ...[
-                          CircleAvatar(
-                            radius: 12,
-                            backgroundImage: CachedNetworkImageProvider(
-                              _mapUrl(authorAvatar, apiBaseUrl),
-                              headers: buildImageHeaders(
-                                imageUrl: _mapUrl(authorAvatar, apiBaseUrl),
-                                baseUrl: apiBaseUrl,
-                                apiToken: apiToken,
+            clipBehavior: Clip.antiAlias,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  if (url != null) {
+                    launchUrl(
+                      Uri.parse(url),
+                      mode: LaunchMode.externalApplication,
+                    );
+                  }
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          if (authorAvatar != null) ...[
+                            CircleAvatar(
+                              radius: 16,
+                              backgroundImage: CachedNetworkImageProvider(
+                                _mapUrl(authorAvatar, apiBaseUrl),
+                                headers: buildImageHeaders(
+                                  imageUrl: _mapUrl(authorAvatar, apiBaseUrl),
+                                  baseUrl: apiBaseUrl,
+                                  apiToken: apiToken,
+                                ),
                               ),
                             ),
+                            const SizedBox(width: 12),
+                          ],
+                          Expanded(
+                            child: Text(
+                              authorName,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.onSurface,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                          const SizedBox(width: 8),
                         ],
-                        Expanded(
-                          child: Text(
-                            authorName,
-                            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  excerpt,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    height: 1.6,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 16),
+                                Row(
+                                  children: [
+                                    _buildSmallStatItem(
+                                      context,
+                                      Icons.thumb_up_alt_outlined,
+                                      '赞同',
+                                      _formatCount(likeCount),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    _buildSmallStatItem(
+                                      context,
+                                      Icons.chat_bubble_outline,
+                                      '评论',
+                                      _formatCount(commentCount),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        _buildSmallStatItem(context, Icons.thumb_up_alt_outlined, '', _formatCount(likeCount)),
-                        if (commentCount > 0) ...[
-                          const SizedBox(width: 12),
-                          _buildSmallStatItem(context, Icons.chat_bubble_outline, '', _formatCount(commentCount)),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            excerpt,
-                            style: theme.textTheme.bodyMedium?.copyWith(height: 1.5, color: colorScheme.onSurfaceVariant),
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (coverUrl != null) ...[
-                          const SizedBox(width: 12),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: CachedNetworkImage(
-                              imageUrl: _mapUrl(coverUrl, apiBaseUrl),
-                              httpHeaders: buildImageHeaders(
+                          if (coverUrl != null) ...[
+                            const SizedBox(width: 16),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(16),
+                              child: CachedNetworkImage(
                                 imageUrl: _mapUrl(coverUrl, apiBaseUrl),
-                                baseUrl: apiBaseUrl,
-                                apiToken: apiToken,
+                                httpHeaders: buildImageHeaders(
+                                  imageUrl: _mapUrl(coverUrl, apiBaseUrl),
+                                  baseUrl: apiBaseUrl,
+                                  apiToken: apiToken,
+                                ),
+                                width: 96,
+                                height: 72,
+                                fit: BoxFit.cover,
                               ),
-                              width: 80,
-                              height: 60,
-                              fit: BoxFit.cover,
                             ),
-                          ),
+                          ],
                         ],
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -2603,15 +3037,15 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       final match = headerRegExp.firstMatch(trimmed);
       if (match != null) {
         String text = match.group(2)!;
-        
+
         // Strip Markdown links [Text](URL) -> Text
         text = text.replaceAllMapped(
-          RegExp(r'\[(.*?)\]\(.*?\)') , 
-          (m) => m.group(1)!
+          RegExp(r'\[(.*?)\]\(.*?\)'),
+          (m) => m.group(1)!,
         );
         // Strip other markdown formatting
         text = text.replaceAll(RegExp(r'[*_`~]'), '');
-        
+
         if (text.trim().isEmpty) continue;
 
         final count = counts[text] ?? 0;
@@ -2769,6 +3203,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             ? url.substring(url.indexOf('/media/'))
             : url;
         final cleanPath = path.startsWith('/') ? path : '/$path';
+        if (cleanPath == '/media' || cleanPath == '/media/') return '';
         return '$apiBaseUrl$cleanPath';
       }
 
@@ -2779,6 +3214,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
       // 3.3 纯相对路径的情况
       final cleanKey = url.startsWith('/') ? url.substring(1) : url;
+      if (cleanKey.isEmpty) return '';
       return '$apiBaseUrl/media/$cleanKey';
     }
 
@@ -2788,6 +3224,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           ? url.substring(url.indexOf('/media/'))
           : url;
       final cleanPath = path.startsWith('/') ? path : '/$path';
+      if (cleanPath == '/media' || cleanPath == '/media/') return '';
       return '$apiBaseUrl$cleanPath';
     }
 

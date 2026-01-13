@@ -2,7 +2,7 @@ import json
 from typing import Optional, Dict, Any, List
 from bs4 import BeautifulSoup
 import re
-from urllib.parse import unquote
+from urllib.parse import unquote, unquote_plus
 
 def extract_initial_data(html_content: str) -> Optional[Dict[str, Any]]:
     """从 HTML 中提取 js-initialData JSON 数据"""
@@ -47,20 +47,33 @@ def preprocess_zhihu_html(html_content: str) -> str:
     # 查找所有 class 为 ztext-math 的 img 标签，或者 src 包含 zhihu.com/equation 的 img
     for img in soup.find_all('img'):
         src = img.get('src') or ""
-        is_equation = "zhihu.com/equation" in src or "eeimg.com/tex" in src or "ztext-math" in (img.get('class') or [])
+        # Stricter check: must have specific class or specific domain patterns
+        classes = img.get('class') or []
+        is_equation = "ztext-math" in classes or \
+                      "zhihu.com/equation" in src or \
+                      "eeimg.com/tex" in src
         
         if is_equation:
             # 尝试从 data-formula 获取 tex (较新版)，或者从 src 的 tex 参数获取
             tex = img.get('data-formula')
-            if not tex and 'tex=' in src:
+            if tex:
                 try:
-                    tex = unquote(src.split('tex=')[1].split('&')[0])
+                    tex = unquote_plus(tex)
                 except:
                     pass
             
+            if not tex and 'tex=' in src:
+                try:
+                    tex = unquote_plus(src.split('tex=')[1].split('&')[0])
+                except:
+                    pass
+            
+            # If still no tex, check alt but be very careful
             if not tex:
                 alt = img.get('alt', '')
-                if alt and len(alt) > 0 and not alt.startswith('Look'):
+                # Only use alt if it looks like latex (e.g. contains backslash or special chars) 
+                # AND the image was identified as equation via class/src
+                if alt and len(alt) > 1 and ('\\' in alt or '{' in alt or '_' in alt or '^' in alt or '=' in alt):
                      tex = alt
 
             if tex:

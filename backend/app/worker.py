@@ -224,10 +224,20 @@ class TaskWorker:
                                 try:
                                     # Reuse the same processing logic by emulating ParsedContent shape.
                                     class _ParsedLike:
-                                        raw_metadata = meta
+                                        def __init__(self):
+                                            self.raw_metadata = meta
+                                            self.cover_url = None
+                                            self.media_urls = []
 
-                                    await self._maybe_process_private_archive_media(_ParsedLike())
+                                    parsed_like = _ParsedLike()
+                                    await self._maybe_process_private_archive_media(parsed_like)
+                                    
                                     content.raw_metadata = meta
+                                    if parsed_like.cover_url:
+                                        content.cover_url = parsed_like.cover_url
+                                    if parsed_like.media_urls:
+                                        content.media_urls = parsed_like.media_urls
+                                        
                                     await session.commit()
                                     logger.info("补处理归档媒体完成")
                                 except Exception as e:
@@ -510,6 +520,10 @@ class TaskWorker:
             quality=quality,
             max_images=max_count,
         )
+        
+        # Sync updated markdown (with local URLs) back to parsed.description
+        if archive.get("markdown"):
+            parsed.description = archive["markdown"]
         
         # 将本地化后的图片 URL 同步回 ParsedContent，供外部展示使用
         stored_images = archive.get("stored_images", [])
