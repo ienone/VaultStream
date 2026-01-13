@@ -410,6 +410,23 @@ class BilibiliAdapter(PlatformAdapter):
                 'reply': stat.get('reply', 0),
                 'danmaku': stat.get('danmaku', 0)
             }
+
+            # 构建 Archive 结构 (用于媒体存档)
+            archive = {
+                "version": 2,
+                "type": "bilibili_video",
+                "title": item.get('title', ''),
+                "plain_text": item.get('desc', ''),
+                "markdown": item.get('desc', ''),
+                "images": [{"url": item.get('pic')}] if item.get('pic') else [],
+                "videos": [], # TODO: 支持视频下载
+                "links": [],
+                "stored_images": [],
+                "stored_videos": []
+            }
+            # 保留原始元数据并附加 archive
+            raw_metadata = self._prune_metadata(item)
+            raw_metadata['archive'] = archive
             
             return ParsedContent(
                 platform='bilibili',
@@ -423,7 +440,7 @@ class BilibiliAdapter(PlatformAdapter):
                 cover_url=item.get('pic'),
                 media_urls=[item.get('pic')] if item.get('pic') else [],
                 published_at=datetime.fromtimestamp(item.get('pubdate')),
-                raw_metadata=self._prune_metadata(item),
+                raw_metadata=raw_metadata,
                 stats=stats
             )
 
@@ -458,6 +475,22 @@ class BilibiliAdapter(PlatformAdapter):
                 'reply': item.get('stats', {}).get('reply', 0),
                 'share': item.get('stats', {}).get('share', 0),
             }
+
+            # 构建 Archive 结构
+            image_urls = item.get('image_urls', [])
+            archive = {
+                "version": 2,
+                "type": "bilibili_article",
+                "title": item.get('title', ''),
+                "plain_text": item.get('summary', ''),
+                "markdown": item.get('summary', ''), # 暂无全文 Markdown，仅摘要
+                "images": [{"url": u} for u in image_urls],
+                "links": [],
+                "stored_images": []
+            }
+            # 保留原始元数据并附加 archive
+            raw_metadata = dict(item)
+            raw_metadata['archive'] = archive
             
             return ParsedContent(
                 platform='bilibili',
@@ -468,10 +501,10 @@ class BilibiliAdapter(PlatformAdapter):
                 description=item.get('summary'),
                 author_name=item.get('author_name'),
                 author_id=str(item.get('mid')),
-                cover_url=item.get('banner_url') or (item.get('image_urls')[0] if item.get('image_urls') else None),
-                media_urls=item.get('image_urls', []),
+                cover_url=item.get('banner_url') or (image_urls[0] if image_urls else None),
+                media_urls=image_urls,
                 published_at=datetime.fromtimestamp(item.get('publish_time')) if item.get('publish_time') else None,
-                raw_metadata=item,
+                raw_metadata=raw_metadata,
                 stats=stats
             )
 

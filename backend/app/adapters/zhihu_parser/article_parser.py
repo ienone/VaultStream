@@ -73,6 +73,23 @@ def parse_article(html_content: str, url: str) -> Optional[ParsedContent]:
 
     if isinstance(article_data, dict):
         article_data['stats'] = stats
+
+        # Construct Archive
+        archive_images = [{"url": u} for u in media_urls]
+        if author.avatar_url:
+            archive_images.append({"url": author.avatar_url, "type": "avatar"})
+
+        archive = {
+            "version": 2,
+            "type": "zhihu_article",
+            "title": article_data.get('title', ''),
+            "plain_text": BeautifulSoup(processed_html, 'html.parser').get_text("\n"),
+            "markdown": markdown_content,
+            "images": archive_images,
+            "links": [],
+            "stored_images": []
+        }
+        article_data['archive'] = archive
     
     # Cover URL logic: titleImage -> imageUrl -> first image in content
     cover_url = article_data.get('titleImage') or article_data.get('imageUrl')
@@ -88,6 +105,7 @@ def parse_article(html_content: str, url: str) -> Optional[ParsedContent]:
         description=markdown_content,
         author_name=author.name,
         author_id=author.url_token or str(author.id),
+        author_avatar_url=author.avatar_url,
         cover_url=cover_url,
         media_urls=media_urls,
         published_at=published_at,

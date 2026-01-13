@@ -19,6 +19,7 @@ class ParsedContent:
     description: Optional[str] = None
     author_name: Optional[str] = None
     author_id: Optional[str] = None
+    author_avatar_url: Optional[str] = None
     cover_url: Optional[str] = None
     cover_color: Optional[str] = None
     media_urls: list = None

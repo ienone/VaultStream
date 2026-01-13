@@ -72,17 +72,38 @@ def preprocess_zhihu_html(html_content: str) -> str:
             if not tex:
                 alt = img.get('alt', '')
                 # Only use alt if it looks like latex.
-                # It MUST contain a backslash to be considered strictly LaTeX if coming from alt,
-                # unless it is very short and contains math symbols.
-                # We want to avoid normal text being treated as latex.
-                if alt and len(alt) > 1 and ('\\' in alt):
-                     tex = alt
-                # If it's short and has =, ^, _, it might be math too, but let's be conservative
-                # to avoid false positives with normal text.
-                elif alt and len(alt) < 20 and ('=' in alt or '^' in alt):
-                     tex = alt
+                # It MUST contain a backslash AND common latex structure/symbols
+                if alt and ('\\' in alt):
+                     # Check for explicit latex commands or environments
+                     if any(k in alt for k in ['\\begin{', '\\(', '\\[', '\\frac', '\\sum', '\\int', '\\cdot']):
+                         tex = alt
+                     # Or check for math operators if it's short
+                     elif len(alt) < 50 and any(op in alt for op in ['=', '^', '_', '\\leq', '\\geq']):
+                         tex = alt
 
             if tex:
+                # 尝试分离中文前缀 (例如 "解：\\")
+                # 很多时候知乎会把 "解：" 放进公式里
+                prefix_text = ""
+                # Simple heuristic for common starts
+                for label in ["解：", "证明：", "答："]:
+                    if tex.startswith(label):
+                        # Check if followed by newline or purely math
+                        remainder = tex[len(label):].strip()
+                        # If remainder starts with \\, it's definitely a split
+                        if remainder.startswith(r"\\"):
+                            prefix_text = label
+                            tex = remainder[2:].strip()
+                            # Clean up leading plus/space if present (url decode artifact)
+                            if tex.startswith('+'):
+                                tex = tex[1:].strip()
+                            break
+                        # If remainder starts with \begin, it's also a split
+                        elif remainder.startswith(r"\begin"):
+                            prefix_text = label
+                            tex = remainder
+                            break
+                
                 # 替换为 LaTeX 代码块
                 # 使用 $$ 为块级， $ 为行内。但为了前端统一处理，暂时还是用 ```latex
                 # 如果 img 在 p 标签中且是唯一内容，认为是块级
@@ -90,9 +111,16 @@ def preprocess_zhihu_html(html_content: str) -> str:
                 is_block = parent.name == 'p' and len(parent.find_all(recursive=False)) == 1
                 
                 if is_block:
-                    new_string = f"\n\n```latex\n{tex}\n```\n\n"
+                    # If we extracted a prefix, put it before the block
+                    if prefix_text:
+                        new_string = f"{prefix_text}\n\n```latex\n{tex}\n```\n\n"
+                    else:
+                        new_string = f"\n\n```latex\n{tex}\n```\n\n"
                 else:
-                    new_string = f" $ {tex} $ "
+                    if prefix_text:
+                        new_string = f"{prefix_text} $ {tex} $ "
+                    else:
+                        new_string = f" $ {tex} $ "
                 
                 img.replace_with(new_string)
                 continue

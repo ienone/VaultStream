@@ -5,6 +5,8 @@ from .base import extract_initial_data, preprocess_zhihu_html, extract_images
 from app.adapters.base import ParsedContent
 from datetime import datetime
 
+from urllib.parse import unquote, urlparse, parse_qs
+
 def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
     data = extract_initial_data(html_content)
     if not data:
@@ -57,6 +59,10 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
     # Deduplicate preserving order
     media_urls = list(dict.fromkeys(media_urls))
 
+    # Remove author avatar from media_urls if present (exact match)
+    if author.avatar_url and author.avatar_url in media_urls:
+        media_urls.remove(author.avatar_url)
+
     # Convert HTML to text for description (Pins are short)
     # Use Markdown for description to support links
     
@@ -77,6 +83,16 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
                  elif item.get('type') == 'link':
                      # Convert to Markdown link
                      url = item.get('url', '')
+                     # Handle Zhihu redirect links
+                     if 'link.zhihu.com' in url:
+                         try:
+                             parsed = urlparse(url)
+                             query = parse_qs(parsed.query)
+                             if 'target' in query:
+                                 url = query['target'][0]
+                         except:
+                             pass
+                     
                      title = item.get('title', 'Link')
                      parts.append(f"[{title}]({url})")
                  elif item.get('type') == 'hashtag':

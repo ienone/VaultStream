@@ -85,6 +85,9 @@ class _ContentCardState extends ConsumerState<ContentCard> {
     await Future.delayed(const Duration(milliseconds: 400));
     if (!mounted) return;
 
+    // Safety check: ensure URL is still valid and not empty
+    if (imageUrl.isEmpty) return;
+
     final imageHeaders = buildImageHeaders(
       imageUrl: imageUrl,
       baseUrl: apiBaseUrl,
@@ -684,12 +687,14 @@ class _ContentCardState extends ConsumerState<ContentCard> {
             ? url.substring(url.indexOf('/media/'))
             : url;
         final cleanPath = path.startsWith('/') ? path : '/$path';
+        if (cleanPath == '/media' || cleanPath == '/media/') return '';
         return '$apiBaseUrl$cleanPath';
       }
       if (url.contains('/api/v1/')) {
         return url.replaceFirst('/api/v1/', '/api/v1/media/');
       }
       final cleanKey = url.startsWith('/') ? url.substring(1) : url;
+      if (cleanKey.isEmpty) return '';
       return '$apiBaseUrl/media/$cleanKey';
     }
 
@@ -698,6 +703,7 @@ class _ContentCardState extends ConsumerState<ContentCard> {
           ? url.substring(url.indexOf('/media/'))
           : url;
       final cleanPath = path.startsWith('/') ? path : '/$path';
+      if (cleanPath == '/media' || cleanPath == '/media/') return '';
       return '$apiBaseUrl$cleanPath';
     }
 
