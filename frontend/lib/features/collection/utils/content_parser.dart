@@ -161,10 +161,18 @@ class ContentParser {
   ) {
     final list = <String>{};
     final storedMap = getStoredMap(detail);
+    
+    // 获取作者头像 URL，用于排除
+    final authorAvatar = detail.authorAvatarUrl;
+
     if (detail.mediaUrls.isNotEmpty) {
       for (var item in detail.mediaUrls) {
         final String url = item.toString();
         if (url.isEmpty) continue;
+        
+        // 如果该媒体是作者头像，则跳过（防止在正文大图/网格中显示）
+        if (authorAvatar != null && url.contains(authorAvatar)) continue;
+
         if (storedMap.containsKey(url)) {
           list.add(mapUrl(storedMap[url]!, apiBaseUrl));
         } else {
@@ -209,12 +217,14 @@ class ContentParser {
   }
 
   static List<HeaderLine> extractHeaders(String markdown) {
-    final lines = markdown.split('\n');
+    // 移除代码块，防止代码块内的 ### 被识别为标题
+    final cleanedMarkdown = markdown.replaceAll(RegExp(r'```[\s\S]*?```'), '');
+    final lines = cleanedMarkdown.split('\n');
     final List<HeaderLine> headers = [];
     final Map<String, int> counts = {};
 
     for (var line in lines) {
-      final match = RegExp(r'^(#{1,6})\s+(.+)$').firstMatch(line);
+      final match = RegExp(r'^(#{1,6})\s+(.+)$').firstMatch(line.trim());
       if (match != null) {
         var text = match.group(2)!;
         text = text.replaceAll(RegExp(r'[*_`~]'), '');

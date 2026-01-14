@@ -48,7 +48,6 @@ dependencies:
   flutter_markdown: ^0.7.7+1
   markdown: ^7.3.0
   auto_size_text: ^3.0.0
-  palette_generator: ^0.3.3+7
   shared_preferences: ^2.5.4
   video_player: ^2.10.1
   chewie: ^1.13.0

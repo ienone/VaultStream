@@ -41,13 +41,16 @@ class RichContent extends StatelessWidget {
     final theme = Theme.of(context);
     final storedMap = ContentParser.getStoredMap(detail);
     final mediaUrls = ContentParser.extractAllMedia(detail, apiBaseUrl);
-    final markdown = _getMarkdownContent(detail);
+    final rawMarkdown = _getMarkdownContent(detail);
+    final markdown = _preprocessMarkdown(rawMarkdown);
 
     final Set<String> usedHeroTags = {};
     final List<Widget> children = [];
 
     if (markdown.isNotEmpty) {
       final style = _getMarkdownStyle(theme);
+      // ... 其余逻辑保持一致
+
       final questionInfo = detail.isZhihuAnswer
           ? (detail.rawMetadata?['associated_question'])
           : null;
@@ -366,8 +369,37 @@ class RichContent extends StatelessWidget {
     return '';
   }
 
+  String _preprocessMarkdown(String markdown) {
+    if (markdown.isEmpty) return markdown;
+
+    // 1. 处理 Latex: 将 $$ ... $$ 转换为 ```latex ... ```
+    // 注意：这里的正则比较简单，复杂的后端应该处理好。
+    var processed = markdown.replaceAllMapped(
+      RegExp(r'\$\$\s*([\s\S]+?)\s*\$\$'),
+      (match) => '\n```latex\n${match.group(1)}\n```\n',
+    );
+
+    // 2. 处理 Latex: 将 \begin{...} ... \end{...} 转换为 ```latex ... ```
+    // 如果它还没有被代码块包裹
+    processed = processed.replaceAllMapped(
+      RegExp(
+        r'(?<!```\n|```latex\n)\\begin\{([a-z*]+)\}([\s\S]+?)\\end\{\1\}',
+        caseSensitive: false,
+      ),
+      (match) => '\n```latex\n\\begin{${match.group(1)}}${match.group(2)}\\end{${match.group(1)}}\n```\n',
+    );
+
+    return processed;
+  }
+
+  static final Map<Brightness, MarkdownStyleSheet> _styleCache = {};
+
   MarkdownStyleSheet _getMarkdownStyle(ThemeData theme) {
-    return MarkdownStyleSheet.fromTheme(theme).copyWith(
+    if (_styleCache.containsKey(theme.brightness)) {
+      return _styleCache[theme.brightness]!;
+    }
+
+    final style = MarkdownStyleSheet.fromTheme(theme).copyWith(
       p: theme.textTheme.bodyLarge?.copyWith(
         height: 1.8,
         fontSize: 18,
@@ -417,6 +449,9 @@ class RichContent extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
       ),
     );
+
+    _styleCache[theme.brightness] = style;
+    return style;
   }
 
   Widget _buildMarkdownImage(

@@ -1,13 +1,27 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/network/api_client.dart';
 import '../models/content.dart';
+import 'collection_filter_provider.dart';
 
 part 'collection_provider.g.dart';
 
 @riverpod
 class Collection extends _$Collection {
   @override
-  FutureOr<ShareCardListResponse> build({
+  FutureOr<ShareCardListResponse> build() async {
+    final filter = ref.watch(collectionFilterProvider);
+    return _fetch(
+      page: 1,
+      query: filter.searchQuery.isEmpty ? null : filter.searchQuery,
+      platform: filter.platform,
+      status: filter.status,
+      author: filter.author,
+      startDate: filter.dateRange?.start,
+      endDate: filter.dateRange?.end,
+    );
+  }
+
+  Future<ShareCardListResponse> _fetch({
     int page = 1,
     int size = 20,
     String? tag,
@@ -36,6 +50,36 @@ class Collection extends _$Collection {
     );
 
     return ShareCardListResponse.fromJson(response.data);
+  }
+
+  Future<void> fetchMore() async {
+    if (state.isLoading || state.isRefreshing || state.isReloading) return;
+
+    final currentData = state.value;
+    if (currentData == null || !currentData.hasMore) return;
+
+    // ignore: invalid_use_of_internal_member
+    state = const AsyncLoading<ShareCardListResponse>().copyWithPrevious(state);
+
+    try {
+      final filter = ref.read(collectionFilterProvider);
+      final nextData = await _fetch(
+        page: currentData.page + 1,
+        query: filter.searchQuery.isEmpty ? null : filter.searchQuery,
+        platform: filter.platform,
+        status: filter.status,
+        author: filter.author,
+        startDate: filter.dateRange?.start,
+        endDate: filter.dateRange?.end,
+      );
+
+      state = AsyncData(
+        nextData.copyWith(items: [...currentData.items, ...nextData.items]),
+      );
+    } catch (e, st) {
+      // ignore: invalid_use_of_internal_member
+      state = AsyncError<ShareCardListResponse>(e, st).copyWithPrevious(state);
+    }
   }
 }
 

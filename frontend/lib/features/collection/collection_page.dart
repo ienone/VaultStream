@@ -1,16 +1,14 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
-import 'package:go_router/go_router.dart';
-import '../../core/layout/responsive_layout.dart';
 import 'providers/collection_provider.dart';
 import 'providers/search_history_provider.dart';
 import 'providers/collection_filter_provider.dart';
-import 'widgets/content_card.dart';
 import 'widgets/add_content_dialog.dart';
 import 'widgets/filter_dialog.dart';
-import 'models/content.dart';
+import 'widgets/collection_grid.dart';
+import 'widgets/collection_error_view.dart';
+import 'widgets/collection_skeleton.dart';
 
 class CollectionPage extends ConsumerStatefulWidget {
   const CollectionPage({super.key});
@@ -26,11 +24,25 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   DateTime? _lastScrollTime;
 
   @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _isFabExtended.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      ref.read(collectionProvider.notifier).fetchMore();
+    }
   }
 
   void _performSearch(String query) {
@@ -43,48 +55,46 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     }
   }
 
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollUpdateNotification) {
+      if (_isFabExtended.value) _isFabExtended.value = false;
+      _lastScrollTime = DateTime.now();
+    } else if (notification is ScrollEndNotification) {
+      final scrollTime = DateTime.now();
+      _lastScrollTime = scrollTime;
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted && _lastScrollTime == scrollTime) {
+          _isFabExtended.value = true;
+        }
+      });
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final filterState = ref.watch(collectionFilterProvider);
-    final collectionAsync = ref.watch(
-      collectionProvider(
-        query: filterState.searchQuery.isEmpty ? null : filterState.searchQuery,
-        platform: filterState.platform,
-        status: filterState.status,
-        author: filterState.author,
-        startDate: filterState.dateRange?.start,
-        endDate: filterState.dateRange?.end,
-      ),
-    );
-
+    final collectionAsync = ref.watch(collectionProvider);
     final theme = Theme.of(context);
 
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: _buildAppBar(context, theme, filterState),
       body: NotificationListener<ScrollNotification>(
-        onNotification: (notification) {
-          if (notification is ScrollUpdateNotification) {
-            if (_isFabExtended.value) _isFabExtended.value = false;
-            _lastScrollTime = DateTime.now();
-          } else if (notification is ScrollEndNotification) {
-            final scrollTime = DateTime.now();
-            _lastScrollTime = scrollTime;
-            Future.delayed(const Duration(milliseconds: 600), () {
-              if (mounted && _lastScrollTime == scrollTime) {
-                _isFabExtended.value = true;
-              }
-            });
-          }
-          return false;
-        },
+        onNotification: _handleScrollNotification,
         child: collectionAsync.when(
-          data: (response) => _CollectionGrid(
+          data: (response) => CollectionGrid(
             items: response.items,
             scrollController: _scrollController,
+            hasMore: response.hasMore,
+            isLoadingMore: collectionAsync.isLoading && response.items.isNotEmpty,
+            onRefresh: () => ref.refresh(collectionProvider.future),
           ),
-          loading: () => const _CollectionSkeleton(),
-          error: (err, stack) => _ErrorView(error: err.toString()),
+          loading: () => const CollectionSkeleton(),
+          error: (err, stack) => CollectionErrorView(
+            error: err.toString(),
+            onRetry: () => ref.invalidate(collectionProvider),
+          ),
         ),
       ),
       floatingActionButton: _AddContentFab(isExtended: _isFabExtended),
@@ -242,127 +252,3 @@ class _AddContentFab extends StatelessWidget {
   }
 }
 
-class _ErrorView extends ConsumerWidget {
-  final String error;
-  const _ErrorView({required this.error});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.error_outline,
-            size: 48,
-            color: Theme.of(context).colorScheme.error,
-          ),
-          const SizedBox(height: 16),
-          Text('加载失败: $error'),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () => ref.invalidate(collectionProvider),
-            child: const Text('重试'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CollectionSkeleton extends StatelessWidget {
-  const _CollectionSkeleton();
-
-  @override
-  Widget build(BuildContext context) {
-    final topPadding = MediaQuery.of(context).padding.top + 15;
-    return MasonryGridView.count(
-      physics: const NeverScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(24, topPadding, 24, 100),
-      crossAxisCount: ResponsiveLayout.getColumnCount(context),
-      mainAxisSpacing: 20,
-      crossAxisSpacing: 20,
-      itemCount: 8,
-      itemBuilder: (context, index) => _SkeletonItem(index: index),
-    );
-  }
-}
-
-class _SkeletonItem extends StatefulWidget {
-  final int index;
-  const _SkeletonItem({required this.index});
-
-  @override
-  State<_SkeletonItem> createState() => _SkeletonItemState();
-}
-
-class _SkeletonItemState extends State<_SkeletonItem>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final height = 180.0 + (widget.index % 3) * 40;
-    return FadeTransition(
-      opacity: Tween(begin: 0.3, end: 0.6).animate(_controller),
-      child: Container(
-        height: height,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(16),
-        ),
-      ),
-    );
-  }
-}
-
-class _CollectionGrid extends StatelessWidget {
-  final List<ShareCard> items;
-  final ScrollController scrollController;
-
-  const _CollectionGrid({
-    required this.items,
-    required this.scrollController,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final topPadding = MediaQuery.of(context).padding.top + 15;
-    return MasonryGridView.count(
-      controller: scrollController,
-      padding: EdgeInsets.fromLTRB(24, topPadding, 24, 100),
-      crossAxisCount: ResponsiveLayout.getColumnCount(context),
-      mainAxisSpacing: 20,
-      crossAxisSpacing: 20,
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        final item = items[index];
-        return ContentCard(
-          content: item,
-          onTap: () {
-            final colorParam =
-                item.coverColor != null
-                    ? '?color=${Uri.encodeComponent(item.coverColor!)}'
-                    : '';
-            context.push('/collection/${item.id}$colorParam');
-          },
-        );
-      },
-    );
-  }
-}

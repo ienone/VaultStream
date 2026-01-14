@@ -79,38 +79,52 @@ class CodeElementBuilder extends MarkdownElementBuilder {
       margin: const EdgeInsets.symmetric(vertical: 16),
       width: double.infinity,
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF8F8F8),
+        color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF9F9F9),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: appTheme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          color: isDark 
+              ? Colors.white.withValues(alpha: 0.1)
+              : Colors.black.withValues(alpha: 0.05),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
             decoration: BoxDecoration(
-              color: appTheme.colorScheme.surfaceContainerHighest.withValues(
-                alpha: 0.3,
-              ),
+              color: isDark 
+                  ? Colors.white.withValues(alpha: 0.03)
+                  : Colors.black.withValues(alpha: 0.02),
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(16),
               ),
             ),
             child: Row(
               children: [
+                Icon(
+                  language == 'latex' ? Icons.functions : Icons.code_rounded, 
+                  size: 14,
+                  color: appTheme.colorScheme.primary.withValues(alpha: 0.8),
+                ),
+                const SizedBox(width: 8),
                 if (language.isNotEmpty)
                   Text(
                     language.toUpperCase(),
                     style: appTheme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
-                      color: appTheme.colorScheme.primary,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.0,
+                      fontSize: 10,
+                      color: appTheme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                     ),
-                  )
-                else
-                  const Icon(Icons.code, size: 14),
+                  ),
                 const Spacer(),
                 Material(
                   color: Colors.transparent,
@@ -128,13 +142,24 @@ class CodeElementBuilder extends MarkdownElementBuilder {
                       );
                     },
                     borderRadius: BorderRadius.circular(8),
-                    child: const Padding(
-                      padding: EdgeInsets.all(4.0),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       child: Row(
                         children: [
-                          Icon(Icons.copy_rounded, size: 14),
-                          SizedBox(width: 4),
-                          Text('复制', style: TextStyle(fontSize: 12)),
+                          Icon(
+                            Icons.copy_all_rounded, 
+                            size: 14,
+                            color: appTheme.colorScheme.primary,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '复制', 
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: appTheme.colorScheme.primary,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -151,11 +176,11 @@ class CodeElementBuilder extends MarkdownElementBuilder {
                 element.textContent,
                 style: GoogleFonts.firaCode(
                   textStyle: TextStyle(
-                    fontSize: 14,
-                    height: 1.5,
+                    fontSize: 13,
+                    height: 1.6,
                     color: isDark
-                        ? const Color(0xFFD4D4D4)
-                        : const Color(0xFF333333),
+                        ? const Color(0xFFE0E0E0)
+                        : const Color(0xFF2D2D2D),
                   ),
                 ),
               ),
