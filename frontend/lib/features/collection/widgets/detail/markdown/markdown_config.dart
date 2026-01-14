@@ -1,0 +1,168 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
+import 'package:markdown/markdown.dart' as md;
+
+
+class HeaderBuilder extends MarkdownElementBuilder {
+  final Map<String, GlobalKey> keys;
+  final TextStyle? style;
+  final Map<String, int> _occurrenceCount = {};
+
+  HeaderBuilder(this.keys, this.style);
+
+  @override
+  Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    final text = element.textContent;
+    // 为重复的标题生成唯一标识符，防止 GlobalKey 冲突
+    final count = _occurrenceCount[text] ?? 0;
+    _occurrenceCount[text] = count + 1;
+    final uniqueKey = count == 0 ? text : '$text-$count';
+
+    final key = keys.putIfAbsent(uniqueKey, () => GlobalKey());
+    return Container(
+      key: key,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Text(text, style: style ?? preferredStyle),
+    );
+  }
+}
+
+class CodeElementBuilder extends MarkdownElementBuilder {
+  final BuildContext context;
+
+  CodeElementBuilder(this.context);
+
+  @override
+  Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    var language = '';
+    if (element.attributes['class'] != null) {
+      String lg = element.attributes['class'] as String;
+      if (lg.startsWith('language-')) {
+        language = lg.substring(9);
+      }
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final appTheme = Theme.of(context);
+
+    if (language == 'latex') {
+      // Render LaTeX
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 16),
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: appTheme.colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: appTheme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Math.tex(
+            element.textContent,
+            textStyle: preferredStyle?.copyWith(
+              fontSize: 20,
+              color: appTheme.colorScheme.onSurface,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 16),
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF8F8F8),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: appTheme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            decoration: BoxDecoration(
+              color: appTheme.colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.3,
+              ),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(16),
+              ),
+            ),
+            child: Row(
+              children: [
+                if (language.isNotEmpty)
+                  Text(
+                    language.toUpperCase(),
+                    style: appTheme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                      color: appTheme.colorScheme.primary,
+                    ),
+                  )
+                else
+                  const Icon(Icons.code, size: 14),
+                const Spacer(),
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {
+                      Clipboard.setData(
+                        ClipboardData(text: element.textContent),
+                      );
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('已复制代码'),
+                          duration: Duration(seconds: 1),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4.0),
+                      child: Row(
+                        children: [
+                          Icon(Icons.copy_rounded, size: 14),
+                          SizedBox(width: 4),
+                          Text('复制', style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Text(
+                element.textContent,
+                style: GoogleFonts.firaCode(
+                  textStyle: TextStyle(
+                    fontSize: 14,
+                    height: 1.5,
+                    color: isDark
+                        ? const Color(0xFFD4D4D4)
+                        : const Color(0xFF333333),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

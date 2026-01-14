@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
 import '../models/content.dart';
 import '../providers/collection_provider.dart';
+import '../utils/content_parser.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/image_headers.dart';
@@ -97,7 +97,7 @@ class ContentDetailSheet extends ConsumerWidget {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _getPlatformIcon(detail.platform, 24),
+                          ContentParser.getPlatformIcon(detail.platform, 24),
                           const SizedBox(width: 12),
                           if (detail.platform.toLowerCase() != 'twitter' &&
                               detail.platform.toLowerCase() != 'x')
@@ -138,7 +138,7 @@ class ContentDetailSheet extends ConsumerWidget {
                                     detail.rawMetadata?['author']?['face'];
                               }
                               final mappedAvatarUrl = avatarUrl != null
-                                  ? _mapUrl(avatarUrl, apiBaseUrl)
+                                  ? ContentParser.mapUrl(avatarUrl, apiBaseUrl)
                                   : null;
 
                               return CircleAvatar(
@@ -311,8 +311,8 @@ class ContentDetailSheet extends ConsumerWidget {
     String? apiToken,
   ) {
     final theme = Theme.of(context);
-    final storedMap = _getStoredMap(detail);
-    final images = _extractAllMedia(detail, apiBaseUrl);
+    final storedMap = ContentParser.getStoredMap(detail);
+    final images = ContentParser.extractAllMedia(detail, apiBaseUrl);
 
     // Try to get Markdown content
     String? markdown;
@@ -407,7 +407,7 @@ class ContentDetailSheet extends ConsumerWidget {
 
               // 尝试在 storedMap 中寻找本地匹配
               if (storedMap.containsKey(url)) {
-                url = _mapUrl(storedMap[url]!, apiBaseUrl);
+                url = ContentParser.mapUrl(storedMap[url]!, apiBaseUrl);
               } else {
                 // 尝试去参匹配
                 final cleanUrl = url.split('?').first;
@@ -416,10 +416,10 @@ class ContentDetailSheet extends ConsumerWidget {
                   orElse: () => const MapEntry('', ''),
                 );
                 if (match.key.isNotEmpty) {
-                  url = _mapUrl(match.value, apiBaseUrl);
+                  url = ContentParser.mapUrl(match.value, apiBaseUrl);
                 } else {
                   // 兜底：处理原始链接（通常走代理）
-                  url = _mapUrl(url, apiBaseUrl);
+                  url = ContentParser.mapUrl(url, apiBaseUrl);
                 }
               }
 
@@ -583,162 +583,6 @@ class ContentDetailSheet extends ConsumerWidget {
         ],
       ],
     );
-  }
-
-  List<String> _extractAllMedia(ContentDetail detail, String apiBaseUrl) {
-    final list = <String>{};
-    final storedMap = _getStoredMap(detail);
-
-    if (detail.mediaUrls.isNotEmpty) {
-      for (var url in detail.mediaUrls) {
-        if (url.isEmpty) continue;
-
-        if (storedMap.containsKey(url)) {
-          list.add(_mapUrl(storedMap[url]!, apiBaseUrl));
-        } else {
-          final cleanUrl = url.split('?').first;
-          final match = storedMap.entries.firstWhere(
-            (e) => e.key.split('?').first == cleanUrl,
-            orElse: () => const MapEntry('', ''),
-          );
-
-          if (match.key.isNotEmpty) {
-            list.add(_mapUrl(match.value, apiBaseUrl));
-          } else {
-            list.add(_mapUrl(url, apiBaseUrl));
-          }
-        }
-      }
-    }
-
-    return list.toList();
-  }
-
-  Map<String, String> _getStoredMap(ContentDetail detail) {
-    Map<String, String> storedMap = {};
-    try {
-      if (detail.rawMetadata != null &&
-          detail.rawMetadata!['archive'] != null) {
-        final archive = detail.rawMetadata!['archive'];
-
-        // 1. Images
-        final storedImages = archive['stored_images'];
-        if (storedImages is List) {
-          for (var img in storedImages) {
-            if (img is Map && img['orig_url'] != null) {
-              String? localPath = img['url'];
-              final String? key = img['key'];
-              if (key != null) {
-                if (key.startsWith('sha256:')) {
-                  final hashVal = key.split(':')[1];
-                  localPath =
-                      'vaultstream/blobs/sha256/${hashVal.substring(0, 2)}/${hashVal.substring(2, 4)}/$hashVal.webp';
-                } else {
-                  localPath = key;
-                }
-              }
-              if (localPath != null) storedMap[img['orig_url']] = localPath;
-            }
-          }
-        }
-
-        // 2. Videos
-        final storedVideos = archive['stored_videos'];
-        if (storedVideos is List) {
-          for (var vid in storedVideos) {
-            if (vid is Map && vid['orig_url'] != null) {
-              String? localPath = vid['url'];
-              final String? key = vid['key'];
-              if (key != null) {
-                if (key.startsWith('sha256:')) {
-                  final hashVal = key.split(':')[1];
-                  final ext = key.split('.').last;
-                  localPath =
-                      'vaultstream/blobs/sha256/${hashVal.substring(0, 2)}/${hashVal.substring(2, 4)}/$hashVal.$ext';
-                } else {
-                  localPath = key;
-                }
-              }
-              if (localPath != null) storedMap[vid['orig_url']] = localPath;
-            }
-          }
-        }
-      }
-    } catch (_) {}
-    return storedMap;
-  }
-
-  String _mapUrl(String url, String apiBaseUrl) {
-    if (url.isEmpty) return url;
-
-    // 0. 处理协议相对路径
-    if (url.startsWith('//')) {
-      url = 'https:$url';
-    }
-
-    // 1. 处理需要代理的外部域名 (针对 B 站、Twitter 图片反盗链)
-    if (url.contains('pbs.twimg.com') ||
-        url.contains('hdslb.com') ||
-        url.contains('bilibili.com') ||
-        url.contains('xhscdn.com') ||
-        url.contains('sinaimg.cn') ||
-        url.contains('zhimg.com')) {
-      // 避免重复代理
-      if (url.contains('/proxy/image?url=')) return url;
-      return '$apiBaseUrl/proxy/image?url=${Uri.encodeComponent(url)}';
-    }
-
-    // 2. 核心修复：防止重复添加 /media/ 前缀
-    // 如果 URL 已经包含 /api/v1/media/，直接返回
-    if (url.contains('/api/v1/media/')) return url;
-
-    // 3. 处理本地存储路径 (归档的 blobs)
-    if (url.contains('blobs/sha256/')) {
-      // 3.1 如果已经包含了 /media/ 但没有 /api/v1/
-      if (url.startsWith('/media/') || url.contains('/media/')) {
-        final path = url.contains('http')
-            ? url.substring(url.indexOf('/media/'))
-            : url;
-        final cleanPath = path.startsWith('/') ? path : '/$path';
-        return '$apiBaseUrl$cleanPath';
-      }
-
-      // 3.2 如果包含了 /api/v1/ 但没有 /media/
-      if (url.contains('/api/v1/')) {
-        return url.replaceFirst('/api/v1/', '/api/v1/media/');
-      }
-
-      // 3.3 纯相对路径的情况
-      final cleanKey = url.startsWith('/') ? url.substring(1) : url;
-      return '$apiBaseUrl/media/$cleanKey';
-    }
-
-    // 4. 处理其他原本就在 /media 下的路径
-    if (url.startsWith('/media') || url.contains('/media/')) {
-      final path = url.contains('http')
-          ? url.substring(url.indexOf('/media/'))
-          : url;
-      final cleanPath = path.startsWith('/') ? path : '/$path';
-      return '$apiBaseUrl$cleanPath';
-    }
-
-    return url;
-  }
-
-  Widget _getPlatformIcon(String platform, double size) {
-    switch (platform.toLowerCase()) {
-      case 'twitter':
-      case 'x':
-        return FaIcon(FontAwesomeIcons.xTwitter, size: size);
-      case 'bilibili':
-        return FaIcon(
-          FontAwesomeIcons.bilibili,
-          size: size,
-          color: const Color(0xFFFB7299),
-        );
-      default:
-        return Icon(Icons.link, size: size);
-    }
   }
 }
 
