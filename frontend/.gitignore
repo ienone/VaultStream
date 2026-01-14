@@ -33,6 +33,13 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Generated files
+*.g.dart
+*.freezed.dart
+
+# Linux generated files
+linux/flutter/generated_*
+
 # Symbolication related
 app.*.symbols
 
