@@ -129,7 +129,10 @@ class UserProfileLayout extends StatelessWidget {
                               const SizedBox(height: 4),
                               Row(
                                 children: [
-                                  ContentParser.getPlatformIcon(detail.platform, 18),
+                                  ContentParser.getPlatformIcon(
+                                    detail.platform,
+                                    18,
+                                  ),
                                   const SizedBox(width: 8),
                                   Text(
                                     detail.platform.toUpperCase(),

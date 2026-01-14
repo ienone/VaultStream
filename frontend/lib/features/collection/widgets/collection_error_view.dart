@@ -24,10 +24,7 @@ class CollectionErrorView extends StatelessWidget {
           const SizedBox(height: 16),
           Text('加载失败: $error'),
           const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: onRetry,
-            child: const Text('重试'),
-          ),
+          ElevatedButton(onPressed: onRetry, child: const Text('重试')),
         ],
       ),
     );

@@ -43,7 +43,9 @@ class MarkdownLandscapeLayout extends StatelessWidget {
             decoration: BoxDecoration(
               color: colorScheme.surface,
               borderRadius: BorderRadius.circular(32),
-              border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.2)),
+              border: Border.all(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.2),
+              ),
             ),
             clipBehavior: Clip.antiAlias,
             child: SingleChildScrollView(

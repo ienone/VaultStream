@@ -22,7 +22,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('设置中心'),
-        backgroundColor: Theme.of(context).colorScheme.surface.withValues(alpha: 0.8),
+        backgroundColor: Theme.of(
+          context,
+        ).colorScheme.surface.withValues(alpha: 0.8),
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         flexibleSpace: ClipRect(
@@ -60,15 +62,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       child: Text(
         title,
         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.2,
-            ),
+          color: Theme.of(context).colorScheme.primary,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.2,
+        ),
       ),
     );
   }
 
-  Widget _buildThemeSettings(BuildContext context, WidgetRef ref, ThemeMode themeMode) {
+  Widget _buildThemeSettings(
+    BuildContext context,
+    WidgetRef ref,
+    ThemeMode themeMode,
+  ) {
     return Column(
       children: [
         _buildSettingTile(
@@ -84,13 +90,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   String _getThemeModeName(ThemeMode mode) {
     switch (mode) {
-      case ThemeMode.system: return '跟随系统';
-      case ThemeMode.light: return '浅色模式';
-      case ThemeMode.dark: return '深色模式';
+      case ThemeMode.system:
+        return '跟随系统';
+      case ThemeMode.light:
+        return '浅色模式';
+      case ThemeMode.dark:
+        return '深色模式';
     }
   }
 
-  void _showThemePicker(BuildContext context, WidgetRef ref, ThemeMode currentMode) {
+  void _showThemePicker(
+    BuildContext context,
+    WidgetRef ref,
+    ThemeMode currentMode,
+  ) {
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
@@ -100,7 +113,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ListTile(
               title: const Text('跟随系统'),
               leading: const Icon(Icons.brightness_auto),
-              trailing: currentMode == ThemeMode.system ? const Icon(Icons.check) : null,
+              trailing: currentMode == ThemeMode.system
+                  ? const Icon(Icons.check)
+                  : null,
               onTap: () {
                 ref.read(themeModeProvider.notifier).set(ThemeMode.system);
                 Navigator.pop(context);
@@ -109,7 +124,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ListTile(
               title: const Text('浅色模式'),
               leading: const Icon(Icons.light_mode),
-              trailing: currentMode == ThemeMode.light ? const Icon(Icons.check) : null,
+              trailing: currentMode == ThemeMode.light
+                  ? const Icon(Icons.check)
+                  : null,
               onTap: () {
                 ref.read(themeModeProvider.notifier).set(ThemeMode.light);
                 Navigator.pop(context);
@@ -118,7 +135,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ListTile(
               title: const Text('深色模式'),
               leading: const Icon(Icons.dark_mode),
-              trailing: currentMode == ThemeMode.dark ? const Icon(Icons.check) : null,
+              trailing: currentMode == ThemeMode.dark
+                  ? const Icon(Icons.check)
+                  : null,
               onTap: () {
                 ref.read(themeModeProvider.notifier).set(ThemeMode.dark);
                 Navigator.pop(context);
@@ -130,17 +149,29 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
-  Widget _buildPlatformSettings(BuildContext context, List<SystemSetting> settings) {
+  Widget _buildPlatformSettings(
+    BuildContext context,
+    List<SystemSetting> settings,
+  ) {
     final platforms = [
-      {'key': 'weibo_cookie', 'name': '微博', 'icon': Icons.wechat}, // Placeholder icon
-      {'key': 'bilibili_cookie', 'name': 'Bilibili', 'icon': Icons.video_library},
+      {
+        'key': 'weibo_cookie',
+        'name': '微博',
+        'icon': Icons.wechat,
+      }, // Placeholder icon
+      {
+        'key': 'bilibili_cookie',
+        'name': 'Bilibili',
+        'icon': Icons.video_library,
+      },
       {'key': 'x_cookie', 'name': 'X (Twitter)', 'icon': Icons.close},
     ];
 
     return Column(
       children: platforms.map((p) {
         final setting = settings.where((s) => s.key == p['key']).firstOrNull;
-        final isConfigured = setting != null && setting.value.toString().isNotEmpty;
+        final isConfigured =
+            setting != null && setting.value.toString().isNotEmpty;
 
         return _buildSettingTile(
           context,
@@ -152,13 +183,23 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             color: isConfigured ? Colors.green : Colors.orange,
             size: 20,
           ),
-          onTap: () => _showCookieEditor(context, p['key'] as String, p['name'] as String, setting?.value?.toString() ?? ''),
+          onTap: () => _showCookieEditor(
+            context,
+            p['key'] as String,
+            p['name'] as String,
+            setting?.value?.toString() ?? '',
+          ),
         );
       }).toList(),
     );
   }
 
-  void _showCookieEditor(BuildContext context, String key, String name, String currentValue) {
+  void _showCookieEditor(
+    BuildContext context,
+    String key,
+    String name,
+    String currentValue,
+  ) {
     final controller = TextEditingController(text: currentValue);
     showDialog(
       context: context,
@@ -167,7 +208,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('请粘贴对应平台的 Cookie 字符串，这通常包含登录信息。', style: TextStyle(fontSize: 12)),
+            const Text(
+              '请粘贴对应平台的 Cookie 字符串，这通常包含登录信息。',
+              style: TextStyle(fontSize: 12),
+            ),
             const SizedBox(height: 16),
             TextField(
               controller: controller,
@@ -180,24 +224,29 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
           FilledButton(
             onPressed: () async {
               final messenger = ScaffoldMessenger.of(context);
               final navigator = Navigator.of(context);
-              
-              await ref.read(systemSettingsProvider.notifier).updateSetting(
-                key, 
-                controller.text,
-                category: 'platform',
-                description: '$name 登录凭证',
-              );
-              
+
+              await ref
+                  .read(systemSettingsProvider.notifier)
+                  .updateSetting(
+                    key,
+                    controller.text,
+                    category: 'platform',
+                    description: '$name 登录凭证',
+                  );
+
               if (mounted) {
                 navigator.pop();
                 messenger.showSnackBar(SnackBar(content: Text('$name 配置已更新')));
               }
-            }, 
+            },
             child: const Text('保存'),
           ),
         ],
@@ -215,7 +264,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           icon: Icons.cleaning_services_outlined,
           onTap: () {
             // TODO: Implement cache cleanup
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('缓存已清理 (模拟)')));
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('缓存已清理 (模拟)')));
           },
         ),
         _buildSettingTile(
@@ -224,7 +275,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           subtitle: '配置 HTTP 代理服务器',
           icon: Icons.network_ping,
           onTap: () {
-             _showCookieEditor(context, 'http_proxy', 'HTTP 代理', '');
+            _showCookieEditor(context, 'http_proxy', 'HTTP 代理', '');
           },
         ),
       ],
@@ -243,10 +294,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+          color: Theme.of(
+            context,
+          ).colorScheme.primaryContainer.withValues(alpha: 0.3),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Icon(icon, color: Theme.of(context).colorScheme.primary, size: 20),
+        child: Icon(
+          icon,
+          color: Theme.of(context).colorScheme.primary,
+          size: 20,
+        ),
       ),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
       subtitle: Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
@@ -266,8 +323,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           Text(
             'v0.1.0 (Alpha)',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
+              color: Theme.of(context).colorScheme.outline,
+            ),
           ),
         ],
       ),

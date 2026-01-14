@@ -42,10 +42,9 @@ class CollectionGrid extends StatelessWidget {
                 return ContentCard(
                   content: item,
                   onTap: () {
-                    final colorParam =
-                        item.coverColor != null
-                            ? '?color=${Uri.encodeComponent(item.coverColor!)}'
-                            : '';
+                    final colorParam = item.coverColor != null
+                        ? '?color=${Uri.encodeComponent(item.coverColor!)}'
+                        : '';
                     context.push('/collection/${item.id}$colorParam');
                   },
                 );
@@ -58,10 +57,9 @@ class CollectionGrid extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 120, top: 20),
                 child: Center(
-                  child:
-                      isLoadingMore
-                          ? const CircularProgressIndicator()
-                          : const SizedBox.shrink(),
+                  child: isLoadingMore
+                      ? const CircularProgressIndicator()
+                      : const SizedBox.shrink(),
                 ),
               ),
             )

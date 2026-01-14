@@ -267,18 +267,23 @@ async def store_archive_images_as_webp(
             img["stored_height"] = info.height
             img["stored_content_type"] = info.content_type
 
-            stored_images.append(
-                {
-                    "orig_url": info.orig_url,
-                    "key": info.key,
-                    "url": info.url,
-                    "sha256": info.sha256,
-                    "size": info.size,
-                    "width": info.width,
-                    "height": info.height,
-                    "content_type": info.content_type,
-                }
-            )
+            # 构建存储条目，透传原始字典中的元数据 (如 type: "avatar")
+            stored_item = {
+                "orig_url": info.orig_url,
+                "key": info.key,
+                "url": info.url,
+                "sha256": info.sha256,
+                "size": info.size,
+                "width": info.width,
+                "height": info.height,
+                "content_type": info.content_type,
+            }
+            # 将原始字典中除 url 以外的所有自定义键值对也存入 stored_images
+            for k, v in img.items():
+                if k not in stored_item and not k.startswith("stored_"):
+                    stored_item[k] = v
+
+            stored_images.append(stored_item)
 
             if info.url:
                 url_to_stored_url[orig_url] = info.url

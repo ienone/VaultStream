@@ -60,6 +60,9 @@ class ContentParser {
 
     // 4. 处理其他原本就在 /media 下的普通路径
     if (url.startsWith('/media') || url.contains('/media/')) {
+      // 如果 URL 已经是当前的 apiBaseUrl 开头，直接返回
+      if (url.startsWith(apiBaseUrl)) return url;
+
       final path = url.contains('http')
           ? url.substring(url.indexOf('/media/'))
           : url;
@@ -132,16 +135,24 @@ class ContentParser {
   ) {
     final list = <String>{};
     final storedMap = getStoredMap(detail);
+
+    // 获取作者头像以便过滤
+    final authorAvatar = detail.authorAvatarUrl;
+
     if (detail.mediaUrls.isNotEmpty) {
       for (var item in detail.mediaUrls) {
         final String url = item.toString();
         if (url.isEmpty || isVideo(url)) continue;
+
+        // 过滤头像
+        if (authorAvatar != null && url.contains(authorAvatar)) continue;
+
         if (storedMap.containsKey(url)) {
           list.add(mapUrl(storedMap[url]!, apiBaseUrl));
         } else {
-          final cleanUrl = url.split('?').first;
+          final cleanUrl = url.split('?')[0];
           final match = storedMap.entries.firstWhere(
-            (e) => e.key.split('?').first == cleanUrl,
+            (e) => e.key.split('?')[0] == cleanUrl,
             orElse: () => const MapEntry('', ''),
           );
           list.add(
@@ -155,13 +166,10 @@ class ContentParser {
     return list.toList();
   }
 
-  static List<String> extractAllMedia(
-    ContentDetail detail,
-    String apiBaseUrl,
-  ) {
+  static List<String> extractAllMedia(ContentDetail detail, String apiBaseUrl) {
     final list = <String>{};
     final storedMap = getStoredMap(detail);
-    
+
     // 获取作者头像 URL，用于排除
     final authorAvatar = detail.authorAvatarUrl;
 
@@ -169,7 +177,7 @@ class ContentParser {
       for (var item in detail.mediaUrls) {
         final String url = item.toString();
         if (url.isEmpty) continue;
-        
+
         // 如果该媒体是作者头像，则跳过（防止在正文大图/网格中显示）
         if (authorAvatar != null && url.contains(authorAvatar)) continue;
 
@@ -232,11 +240,13 @@ class ContentParser {
         final count = counts[text] ?? 0;
         counts[text] = count + 1;
         final uniqueId = count == 0 ? text : '$text-$count';
-        headers.add(HeaderLine(
-          level: match.group(1)!.length,
-          text: text,
-          uniqueId: uniqueId,
-        ));
+        headers.add(
+          HeaderLine(
+            level: match.group(1)!.length,
+            text: text,
+            uniqueId: uniqueId,
+          ),
+        );
       }
     }
     return headers;

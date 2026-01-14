@@ -62,10 +62,7 @@ class TwitterLandscapeLayout extends StatelessWidget {
           ),
         ),
         // Right: Content Info Area (Supporting Pane)
-        Expanded(
-          flex: 4,
-          child: _buildSideInfo(context),
-        ),
+        Expanded(flex: 4, child: _buildSideInfo(context)),
       ],
     );
   }
@@ -362,7 +359,8 @@ class TwitterLandscapeLayout extends StatelessWidget {
                   detail.rawMetadata != null &&
                   detail.rawMetadata!['top_answers'] != null)
                 ZhihuTopAnswers(
-                  topAnswers: detail.rawMetadata!['top_answers'] as List<dynamic>,
+                  topAnswers:
+                      detail.rawMetadata!['top_answers'] as List<dynamic>,
                 ),
             ],
           ),

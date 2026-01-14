@@ -297,6 +297,7 @@ class TaskWorker:
                     content.description = parsed.description
                     content.author_name = parsed.author_name
                     content.author_id = parsed.author_id
+                    content.author_avatar_url = parsed.author_avatar_url
                     content.published_at = parsed.published_at
                     # 可选：对私有归档中的媒体进行处理（下载/转码/存储），不影响对外分享字段。
                     if settings.enable_archive_media_processing:
@@ -313,6 +314,7 @@ class TaskWorker:
                     # 将（可能被本地化的）媒体字段同步回内容记录
                     content.cover_url = parsed.cover_url
                     content.media_urls = parsed.media_urls
+                    content.author_avatar_url = parsed.author_avatar_url
 
                     content.raw_metadata = parsed.raw_metadata
                     
@@ -529,8 +531,11 @@ class TaskWorker:
         stored_images = archive.get("stored_images", [])
         if stored_images:
             # 提取所有本地化后的 URL (优先使用 url，否则使用 local://key)
+            # 注意：排除头像，防止头像进入正文媒体列表
             local_urls = []
             for img in stored_images:
+                if img.get("type") == "avatar" or img.get("is_avatar"):
+                    continue
                 u = img.get("url")
                 k = img.get("key")
                 if u:
@@ -547,6 +552,28 @@ class TaskWorker:
                 
                 # 同步更新封面
                 parsed.cover_url = unique_local_urls[0]
+
+            # 同步更新头像 (如果 stored_images 中标记了 type="avatar")
+            for img in stored_images:
+                if img.get("type") == "avatar" or img.get("is_avatar"):
+                    u = img.get("url")
+                    k = img.get("key")
+                    if u:
+                        parsed.author_avatar_url = u
+                    elif k:
+                        parsed.author_avatar_url = f"local://{k}"
+                    break
+        
+        # 兼容性处理/二次确保：如果 images 列表中有 avatar 且已有本地化信息
+        if isinstance(archive.get("images"), list):
+            for img in archive["images"]:
+                if img.get("type") == "avatar":
+                    if img.get("stored_url"):
+                        parsed.author_avatar_url = img["stored_url"]
+                        break
+                    elif img.get("stored_key"):
+                        parsed.author_avatar_url = f"local://{img['stored_key']}"
+                        break
 
         # 处理视频（如果存档中有视频）
         if archive.get("videos"):
@@ -610,6 +637,7 @@ class TaskWorker:
         content.description = parsed.description
         content.author_name = parsed.author_name
         content.author_id = parsed.author_id
+        content.author_avatar_url = parsed.author_avatar_url
         content.published_at = parsed.published_at
 
         if settings.enable_archive_media_processing:
@@ -625,6 +653,7 @@ class TaskWorker:
 
         content.cover_url = parsed.cover_url
         content.media_urls = parsed.media_urls
+        content.author_avatar_url = parsed.author_avatar_url
         content.raw_metadata = parsed.raw_metadata
         
         # 同步封面主色调

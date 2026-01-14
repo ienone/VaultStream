@@ -32,7 +32,23 @@ class AuthorHeader extends ConsumerWidget {
         if (rawUser is Map) {
           avatarUrl = rawUser['avatar_hd'] ?? rawUser['profile_image_url'];
         } else if (rawAuthor is Map) {
-          avatarUrl = rawAuthor['face'] ?? rawAuthor['avatarUrl'];
+          avatarUrl = rawAuthor['avatar_url'] ??
+              rawAuthor['avatarUrl'] ??
+              rawAuthor['face'];
+        }
+      }
+    }
+
+    // 特殊处理知乎：如果还没有头像，检查 archive 节点
+    if (avatarUrl == null && detail.isZhihu) {
+      final archive = detail.rawMetadata?['archive'];
+      if (archive is Map && archive['images'] is List) {
+        final avatarImg = (archive['images'] as List).firstWhere(
+          (img) => img is Map && img['type'] == 'avatar',
+          orElse: () => null,
+        );
+        if (avatarImg != null) {
+          avatarUrl = avatarImg['url'];
         }
       }
     }

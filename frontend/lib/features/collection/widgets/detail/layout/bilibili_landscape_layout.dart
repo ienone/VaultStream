@@ -124,8 +124,7 @@ class BilibiliLandscapeLayout extends StatelessWidget {
                     const SizedBox(height: 24),
                     UnifiedStats(detail: detail),
                     const SizedBox(height: 16),
-                    if (detail.platformId != null)
-                      BvidCard(detail: detail),
+                    if (detail.platformId != null) BvidCard(detail: detail),
                     const SizedBox(height: 24),
                     TagsSection(detail: detail),
                     const SizedBox(height: 40),

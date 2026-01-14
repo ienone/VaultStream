@@ -46,10 +46,23 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     _contentScrollController.addListener(_onScroll);
   }
 
+  DateTime _lastScrollCheck = DateTime.now();
+
   void _onScroll() {
     if (!mounted) return;
+
+    // Throttle checks to every 100ms to reduce CPU load from localToGlobal
+    final now = DateTime.now();
+    if (now.difference(_lastScrollCheck).inMilliseconds < 100) return;
+    _lastScrollCheck = now;
+
     String? currentVisible;
-    for (var entry in _headerKeys.entries) {
+    final List<MapEntry<String, GlobalKey>> entries = _headerKeys.entries
+        .toList();
+
+    // Reverse search often finds the currently active header faster for top-down scrolling
+    for (var i = 0; i < entries.length; i++) {
+      final entry = entries[i];
       final context = entry.value.currentContext;
       if (context != null) {
         final box = context.findRenderObject() as RenderBox?;
@@ -57,12 +70,20 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
         try {
           final offset = box.localToGlobal(Offset.zero).dy;
+          // Consider a header "active" when it's near the top of the viewport
           if (offset < 200) {
             currentVisible = entry.key;
+          } else {
+            // Since headers are sequential, once we find one that's below 200,
+            // we don't need to check further ones if we were searching top-down.
+            // But wait, the loop is top-down, so we keep updating currentVisible
+            // until we hit one that is > 200.
+            break;
           }
         } catch (_) {}
       }
     }
+
     if (currentVisible != null && currentVisible != _activeHeader) {
       setState(() => _activeHeader = currentVisible);
     }
@@ -73,11 +94,15 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       final dio = ref.read(apiClientProvider);
       await dio.post('/contents/$contentId/re-parse');
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已触发重新解析')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已触发重新解析')));
       ref.invalidate(contentDetailProvider(contentId));
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('重新解析请求失败: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('重新解析请求失败: $e')));
     }
   }
 
@@ -133,7 +158,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                   color: colorScheme.onSurface,
                 ),
               ),
-              backgroundColor: colorScheme.surfaceContainer.withValues(alpha: 0.8),
+              backgroundColor: colorScheme.surfaceContainer.withValues(
+                alpha: 0.8,
+              ),
               elevation: 0,
               surfaceTintColor: Colors.transparent,
               flexibleSpace: ClipRect(
@@ -165,7 +192,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                     );
                     if (result == true) {
                       if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已更新内容')));
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(const SnackBar(content: Text('已更新内容')));
                     }
                   },
                 ),
@@ -187,7 +216,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                           ),
                           TextButton(
                             onPressed: () => Navigator.pop(context, true),
-                            style: TextButton.styleFrom(foregroundColor: colorScheme.error),
+                            style: TextButton.styleFrom(
+                              foregroundColor: colorScheme.error,
+                            ),
                             child: const Text('删除'),
                           ),
                         ],
@@ -202,10 +233,14 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                         if (!context.mounted) return;
                         ref.invalidate(collectionProvider);
                         Navigator.of(context).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已删除内容')));
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(const SnackBar(content: Text('已删除内容')));
                       } catch (e) {
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('删除失败: $e')));
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text('删除失败: $e')));
                       }
                     }
                   },
@@ -223,13 +258,21 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               ],
             ),
             body: SelectionArea(
-              child: _buildResponsiveLayout(context, detail, apiBaseUrl, apiToken),
+              child: _buildResponsiveLayout(
+                context,
+                detail,
+                apiBaseUrl,
+                apiToken,
+              ),
             ),
           ),
         );
       },
       loading: () {
-        final customTheme = _getCustomTheme(widget.initialColor, theme.brightness);
+        final customTheme = _getCustomTheme(
+          widget.initialColor,
+          theme.brightness,
+        );
         final colorScheme = customTheme.colorScheme;
         return Theme(
           data: customTheme,
@@ -260,7 +303,8 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               const SizedBox(height: 16),
               Text('加载失败: $err'),
               ElevatedButton(
-                onPressed: () => ref.invalidate(contentDetailProvider(widget.contentId)),
+                onPressed: () =>
+                    ref.invalidate(contentDetailProvider(widget.contentId)),
                 child: const Text('重试'),
               ),
             ],
@@ -296,7 +340,14 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             detail: detail,
             apiBaseUrl: apiBaseUrl,
             apiToken: apiToken,
-            onImageTap: (imgs, idx) => _showFullScreenImage(context, imgs, idx, apiBaseUrl, apiToken, detail.id),
+            onImageTap: (imgs, idx) => _showFullScreenImage(
+              context,
+              imgs,
+              idx,
+              apiBaseUrl,
+              apiToken,
+              detail.id,
+            ),
           );
         }
 
@@ -311,7 +362,10 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           );
         }
 
-        if (detail.isTwitter || detail.isWeibo || detail.isZhihuPin || detail.isZhihuQuestion) {
+        if (detail.isTwitter ||
+            detail.isWeibo ||
+            detail.isZhihuPin ||
+            detail.isZhihuQuestion) {
           return TwitterLandscapeLayout(
             detail: detail,
             apiBaseUrl: apiBaseUrl,
@@ -319,7 +373,14 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             images: ContentParser.extractAllImages(detail, apiBaseUrl),
             imagePageController: _imagePageController,
             currentImageIndex: _currentImageIndex,
-            onImageTap: (idx) => _showFullScreenImage(context, ContentParser.extractAllImages(detail, apiBaseUrl), idx, apiBaseUrl, apiToken, detail.id),
+            onImageTap: (idx) => _showFullScreenImage(
+              context,
+              ContentParser.extractAllImages(detail, apiBaseUrl),
+              idx,
+              apiBaseUrl,
+              apiToken,
+              detail.id,
+            ),
             onPageChanged: (idx) {
               setState(() {
                 _currentImageIndex = idx;
@@ -349,7 +410,14 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             detail: detail,
             apiBaseUrl: apiBaseUrl,
             apiToken: apiToken,
-            onImageTap: (imgs, idx) => _showFullScreenImage(context, imgs, idx, apiBaseUrl, apiToken, detail.id),
+            onImageTap: (imgs, idx) => _showFullScreenImage(
+              context,
+              imgs,
+              idx,
+              apiBaseUrl,
+              apiToken,
+              detail.id,
+            ),
           );
         }
 

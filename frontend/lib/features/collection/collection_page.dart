@@ -87,7 +87,8 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
             items: response.items,
             scrollController: _scrollController,
             hasMore: response.hasMore,
-            isLoadingMore: collectionAsync.isLoading && response.items.isNotEmpty,
+            isLoadingMore:
+                collectionAsync.isLoading && response.items.isNotEmpty,
             onRefresh: () => ref.refresh(collectionProvider.future),
           ),
           loading: () => const CollectionSkeleton(),
@@ -251,4 +252,3 @@ class _AddContentFab extends StatelessWidget {
     );
   }
 }
-

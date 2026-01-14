@@ -1,3 +1,4 @@
+import re
 from typing import Optional, Dict, Any
 from bs4 import BeautifulSoup
 from .models import ZhihuPin, ZhihuAuthor
@@ -33,6 +34,9 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
         headline=author_data.get('headline'),
         gender=author_data.get('gender')
     )
+    
+    # 确保 pin_data['author'] 包含完整的作者信息，以便前端回退逻辑生效
+    pin_data['author'] = author.model_dump()
 
     content_html = pin_data.get('contentHtml', '') or pin_data.get('content', '')
     if isinstance(content_html, list):
@@ -56,12 +60,44 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
                 if url and isinstance(url, str):
                     media_urls.append(url)
                     
-    # Deduplicate preserving order
-    media_urls = list(dict.fromkeys(media_urls))
+    # --- 强力去重逻辑 (针对知乎不同尺寸后缀的同一图片) ---
+    def get_zhihu_img_id(url):
+        # 提取核心标识符，例如 v2-b93ed6e308f35de5c416930827326bf1
+        match = re.search(r'(v2-[a-f0-9]+)', url)
+        return match.group(1) if match else url
 
-    # Remove author avatar from media_urls if present (exact match)
-    if author.avatar_url and author.avatar_url in media_urls:
-        media_urls.remove(author.avatar_url)
+    unique_media = {}
+    for u in media_urls:
+        img_id = get_zhihu_img_id(u)
+        # 如果已经有这个 ID 了，优先保留高清的 (通常带 720w 或 r)
+        if img_id not in unique_media or ("720w" in u or "_r" in u):
+            unique_media[img_id] = u
+    
+    media_urls = list(unique_media.values())
+
+    # Remove author avatar from media_urls if present (exact match or similar pattern)
+    if author.avatar_url or author.url_token:
+        # 知乎头像通常包含用户 ID 或特定的 v2-xxx 标识
+        avatar_identifiers = []
+        if author.avatar_url:
+            avatar_clean = author.avatar_url.split('?')[0]
+            avatar_hash = re.search(r'v2-([a-f0-9]+)', avatar_clean)
+            if avatar_hash:
+                avatar_identifiers.append(avatar_hash.group(1))
+        
+        if author.url_token:
+            avatar_identifiers.append(author.url_token)
+
+        filtered_urls = []
+        for u in media_urls:
+            u_clean = u.split('?')[0]
+            # 检查 URL 是否包含已知的头像标识符，或者具有明显的头像路径特征
+            is_avatar = any(ident in u_clean for ident in avatar_identifiers if ident)
+            if is_avatar and ("zhimg.com" in u_clean or "zhihu.com" in u_clean):
+                if "/people/" in u_clean or "/v2-" in u_clean or "avatar" in u_clean.lower():
+                    continue
+            filtered_urls.append(u)
+        media_urls = filtered_urls
 
     # Convert HTML to text for description (Pins are short)
     # Use Markdown for description to support links

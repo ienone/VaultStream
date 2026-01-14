@@ -41,9 +41,11 @@ class ZhihuLandscapeLayout extends StatelessWidget {
           child: Container(
             margin: const EdgeInsets.fromLTRB(24, 24, 0, 24),
             decoration: BoxDecoration(
-               color: colorScheme.surface,
-               borderRadius: BorderRadius.circular(32),
-               border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.2)),
+              color: colorScheme.surface,
+              borderRadius: BorderRadius.circular(32),
+              border: Border.all(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.2),
+              ),
             ),
             clipBehavior: Clip.antiAlias,
             child: SingleChildScrollView(
@@ -140,17 +142,23 @@ class ZhihuLandscapeLayout extends StatelessWidget {
                               SmallStatItem(
                                 icon: Icons.person_add_alt,
                                 label: '关注',
-                                value: FormatUtils.formatCount(questionInfo['follower_count']),
+                                value: FormatUtils.formatCount(
+                                  questionInfo['follower_count'],
+                                ),
                               ),
                               SmallStatItem(
                                 icon: Icons.remove_red_eye_outlined,
                                 label: '浏览',
-                                value: FormatUtils.formatCount(questionInfo['view_count']),
+                                value: FormatUtils.formatCount(
+                                  questionInfo['view_count'],
+                                ),
                               ),
                               SmallStatItem(
                                 icon: Icons.question_answer_outlined,
                                 label: '回答',
-                                value: FormatUtils.formatCount(questionInfo['answer_count']),
+                                value: FormatUtils.formatCount(
+                                  questionInfo['answer_count'],
+                                ),
                               ),
                             ],
                           ),
@@ -187,10 +195,7 @@ class ZhihuLandscapeLayout extends StatelessWidget {
                         const SizedBox(height: 16),
                         AuthorHeader(detail: detail),
                         const SizedBox(height: 24),
-                        UnifiedStats(
-                          detail: detail,
-                          useContainer: false,
-                        ),
+                        UnifiedStats(detail: detail, useContainer: false),
 
                         if (detail.tags.isNotEmpty) ...[
                           const SizedBox(height: 24),

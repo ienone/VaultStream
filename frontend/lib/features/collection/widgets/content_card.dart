@@ -134,8 +134,9 @@ class _ContentCardInternalState extends State<_ContentCardInternal> {
               boxShadow: _isHovered
                   ? [
                       BoxShadow(
-                        color: (displayColor ?? colorScheme.primary)
-                            .withAlpha(40),
+                        color: (displayColor ?? colorScheme.primary).withAlpha(
+                          40,
+                        ),
                         blurRadius: 15,
                         spreadRadius: 1,
                         offset: const Offset(0, 6),
@@ -412,7 +413,8 @@ class _ContentCardInternalState extends State<_ContentCardInternal> {
                                             Icons.remove_red_eye_outlined,
                                             size: 12,
                                             color:
-                                                _isHovered && displayColor != null
+                                                _isHovered &&
+                                                    displayColor != null
                                                 ? displayColor
                                                 : colorScheme.outline,
                                           ),
@@ -439,7 +441,8 @@ class _ContentCardInternalState extends State<_ContentCardInternal> {
                                             Icons.chat_bubble_outline,
                                             size: 11,
                                             color:
-                                                _isHovered && displayColor != null
+                                                _isHovered &&
+                                                    displayColor != null
                                                 ? displayColor
                                                 : colorScheme.outline,
                                           ),
@@ -460,13 +463,15 @@ class _ContentCardInternalState extends State<_ContentCardInternal> {
                                           ),
                                         ],
                                         if (content.likeCount > 0) ...[
-                                          if (content.viewCount > 0 || content.commentCount > 0)
+                                          if (content.viewCount > 0 ||
+                                              content.commentCount > 0)
                                             const SizedBox(width: 6),
                                           Icon(
                                             Icons.favorite_border,
                                             size: 11,
                                             color:
-                                                _isHovered && displayColor != null
+                                                _isHovered &&
+                                                    displayColor != null
                                                 ? displayColor
                                                 : colorScheme.outline,
                                           ),

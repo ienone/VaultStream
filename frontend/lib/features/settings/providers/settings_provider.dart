@@ -13,15 +13,19 @@ class SystemSettings extends _$SystemSettings {
     return data.map((json) => SystemSetting.fromJson(json)).toList();
   }
 
-  Future<void> updateSetting(String key, dynamic value, {String? category, String? description}) async {
-    await ref.read(apiClientProvider).put(
-      '/settings/$key',
-      data: {
-        'value': value,
-        'description': description,
-      },
-      queryParameters: category != null ? {'category': category} : null,
-    );
+  Future<void> updateSetting(
+    String key,
+    dynamic value, {
+    String? category,
+    String? description,
+  }) async {
+    await ref
+        .read(apiClientProvider)
+        .put(
+          '/settings/$key',
+          data: {'value': value, 'description': description},
+          queryParameters: category != null ? {'category': category} : null,
+        );
     ref.invalidateSelf();
   }
 

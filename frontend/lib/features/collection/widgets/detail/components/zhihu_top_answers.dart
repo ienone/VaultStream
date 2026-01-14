@@ -94,7 +94,10 @@ class ZhihuTopAnswers extends ConsumerWidget {
                               backgroundImage: CachedNetworkImageProvider(
                                 ContentParser.mapUrl(authorAvatar, apiBaseUrl),
                                 headers: buildImageHeaders(
-                                  imageUrl: ContentParser.mapUrl(authorAvatar, apiBaseUrl),
+                                  imageUrl: ContentParser.mapUrl(
+                                    authorAvatar,
+                                    apiBaseUrl,
+                                  ),
                                   baseUrl: apiBaseUrl,
                                   apiToken: apiToken,
                                 ),
@@ -144,7 +147,9 @@ class ZhihuTopAnswers extends ConsumerWidget {
                                     SmallStatItem(
                                       icon: Icons.chat_bubble_outline,
                                       label: '评论',
-                                      value: FormatUtils.formatCount(commentCount),
+                                      value: FormatUtils.formatCount(
+                                        commentCount,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -156,9 +161,15 @@ class ZhihuTopAnswers extends ConsumerWidget {
                             ClipRRect(
                               borderRadius: BorderRadius.circular(16),
                               child: CachedNetworkImage(
-                                imageUrl: ContentParser.mapUrl(coverUrl, apiBaseUrl),
+                                imageUrl: ContentParser.mapUrl(
+                                  coverUrl,
+                                  apiBaseUrl,
+                                ),
                                 httpHeaders: buildImageHeaders(
-                                  imageUrl: ContentParser.mapUrl(coverUrl, apiBaseUrl),
+                                  imageUrl: ContentParser.mapUrl(
+                                    coverUrl,
+                                    apiBaseUrl,
+                                  ),
                                   baseUrl: apiBaseUrl,
                                   apiToken: apiToken,
                                 ),

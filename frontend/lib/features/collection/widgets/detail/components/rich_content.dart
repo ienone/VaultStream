@@ -88,32 +88,37 @@ class RichContent extends StatelessWidget {
       }
 
       children.add(
-        MarkdownBody(
-          data: markdown,
-          selectable: true,
-          onTapLink: (text, href, title) {
-            if (href != null) {
-              launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
-            }
-          },
-          styleSheet: style,
-          builders: {
-            'h1': HeaderBuilder(headerKeys, style.h1),
-            'h2': HeaderBuilder(headerKeys, style.h2),
-            'h3': HeaderBuilder(headerKeys, style.h3),
-            'code': CodeElementBuilder(context),
-          },
-          // ignore: deprecated_member_use
-          imageBuilder: (uri, title, alt) => _buildMarkdownImage(
-            context,
-            detail,
-            uri,
-            alt,
-            storedMap,
-            apiBaseUrl,
-            apiToken,
-            useHero: useHero,
-            usedHeroTags: usedHeroTags,
+        RepaintBoundary(
+          child: MarkdownBody(
+            data: markdown,
+            selectable: true,
+            onTapLink: (text, href, title) {
+              if (href != null) {
+                launchUrl(
+                  Uri.parse(href),
+                  mode: LaunchMode.externalApplication,
+                );
+              }
+            },
+            styleSheet: style,
+            builders: {
+              'h1': HeaderBuilder(headerKeys, style.h1),
+              'h2': HeaderBuilder(headerKeys, style.h2),
+              'h3': HeaderBuilder(headerKeys, style.h3),
+              'code': CodeElementBuilder(context),
+            },
+            // ignore: deprecated_member_use
+            imageBuilder: (uri, title, alt) => _buildMarkdownImage(
+              context,
+              detail,
+              uri,
+              alt,
+              storedMap,
+              apiBaseUrl,
+              apiToken,
+              useHero: useHero,
+              usedHeroTags: usedHeroTags,
+            ),
           ),
         ),
       );
@@ -372,21 +377,35 @@ class RichContent extends StatelessWidget {
   String _preprocessMarkdown(String markdown) {
     if (markdown.isEmpty) return markdown;
 
-    // 1. 处理 Latex: 将 $$ ... $$ 转换为 ```latex ... ```
-    // 注意：这里的正则比较简单，复杂的后端应该处理好。
+    // 1. 处理 Latex 块: 将 $$ ... $$ 转换为 ```latex ... ```
     var processed = markdown.replaceAllMapped(
-      RegExp(r'\$\$\s*([\s\S]+?)\s*\$\$'),
-      (match) => '\n```latex\n${match.group(1)}\n```\n',
+      RegExp(r'(?:\n|^)\$\$\s*([\s\S]+?)\s*\$\$(?:\n|$)'),
+      (match) => '\n\n```latex\n${match.group(1)!.trim()}\n```\n\n',
     );
 
-    // 2. 处理 Latex: 将 \begin{...} ... \end{...} 转换为 ```latex ... ```
-    // 如果它还没有被代码块包裹
+    // 2. 处理 Latex 行内: 将 $ ... $ 转换为 ```latex-inline ... ```
+    processed = processed.replaceAllMapped(
+      RegExp(r'(?<![\d\w])\$([^\$\n]+?)\$(?![\d\w])'),
+      (match) {
+        final content = match.group(1)!;
+        // 只有包含 LaTeX 关键字（反斜杠）或者明显的数学结构时才渲染为 LaTeX
+        // 这样可以避免误伤类似 $100$ 这种表示价格或强调的文字
+        if (content.contains('\\') ||
+            (content.length > 3 && RegExp(r'[=+\-^_{}]').hasMatch(content))) {
+          return '```latex-inline\n$content```';
+        }
+        return '\$$content\$';
+      },
+    );
+
+    // 3. 处理 Latex 环境: 将 \begin{...} ... \end{...} 转换为 ```latex ... ```
     processed = processed.replaceAllMapped(
       RegExp(
         r'(?<!```\n|```latex\n)\\begin\{([a-z*]+)\}([\s\S]+?)\\end\{\1\}',
         caseSensitive: false,
       ),
-      (match) => '\n```latex\n\\begin{${match.group(1)}}${match.group(2)}\\end{${match.group(1)}}\n```\n',
+      (match) =>
+          '\n\n```latex\n\\begin{${match.group(1)}}${match.group(2)}\\end{${match.group(1)}}\n```\n\n',
     );
 
     return processed;
@@ -480,9 +499,8 @@ class RichContent extends StatelessWidget {
     }
 
     final String heroTag = 'markdown-image-$url-${detail.id}';
-    final bool canUseHero = useHero &&
-        usedHeroTags != null &&
-        !usedHeroTags.contains(heroTag);
+    final bool canUseHero =
+        useHero && usedHeroTags != null && !usedHeroTags.contains(heroTag);
     if (canUseHero) usedHeroTags.add(heroTag);
 
     return Padding(
@@ -504,9 +522,9 @@ class RichContent extends StatelessWidget {
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: Theme.of(context).colorScheme.shadow.withValues(
-                      alpha: 0.1,
-                    ),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.shadow.withValues(alpha: 0.1),
                     blurRadius: 30,
                     offset: const Offset(0, 12),
                   ),
@@ -525,7 +543,9 @@ class RichContent extends StatelessWidget {
                   placeholder: (c, u) => Container(
                     height: 200,
                     width: double.infinity,
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
                     child: const Center(child: CircularProgressIndicator()),
                   ),
                 ),

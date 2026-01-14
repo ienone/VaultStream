@@ -132,32 +132,6 @@ class Content(Base):
             return self.content_type
         return None
     
-    @property
-    def author_avatar_url(self) -> Optional[str]:
-        """从 raw_metadata 中提取作者头像 URL"""
-        try:
-            if not self.raw_metadata:
-                return None
-            
-            if self.platform == Platform.WEIBO:
-                # 微博博主主页
-                if self.content_type == "user_profile":
-                    return self.raw_metadata.get("avatar_hd")
-                # 微博正文
-                return self.raw_metadata.get("user", {}).get("avatar_hd") or \
-                       self.raw_metadata.get("user", {}).get("profile_image_url")
-            
-            if self.platform == Platform.BILIBILI:
-                return self.raw_metadata.get("author", {}).get("face") or \
-                       self.raw_metadata.get("owner", {}).get("face")
-            
-            if self.platform == Platform.TWITTER:
-                return self.raw_metadata.get("user", {}).get("profile_image_url_https")
-                
-        except Exception:
-            pass
-        return None
-    
     # 通用互动数据
     view_count = Column(Integer, default=0)
     like_count = Column(Integer, default=0)
@@ -176,7 +150,43 @@ class Content(Base):
     description = Column(Text)
     author_name = Column(String(200))
     author_id = Column(String(100))
+    _author_avatar_url = Column("author_avatar_url", Text)
     cover_url = Column(Text)
+
+    @property
+    def author_avatar_url(self) -> Optional[str]:
+        """获取作者头像 URL，如果数据库字段为空则尝试从元数据中动态提取"""
+        if self._author_avatar_url:
+            return self._author_avatar_url
+            
+        try:
+            if not self.raw_metadata:
+                return None
+            
+            # 这里的逻辑与旧 property 一致，作为存量数据的回退
+            if self.platform == Platform.WEIBO:
+                if self.content_type == "user_profile":
+                    return self.raw_metadata.get("avatar_hd")
+                return self.raw_metadata.get("user", {}).get("avatar_hd") or \
+                       self.raw_metadata.get("user", {}).get("profile_image_url")
+            
+            if self.platform == Platform.BILIBILI:
+                return self.raw_metadata.get("author", {}).get("face") or \
+                       self.raw_metadata.get("owner", {}).get("face")
+            
+            if self.platform == Platform.TWITTER:
+                return self.raw_metadata.get("user", {}).get("profile_image_url_https")
+                
+            if self.platform == Platform.ZHIHU:
+                return self.raw_metadata.get("author", {}).get("avatarUrl") or \
+                       self.raw_metadata.get("author", {}).get("avatar_url")
+        except Exception:
+            pass
+        return None
+
+    @author_avatar_url.setter
+    def author_avatar_url(self, value: str):
+        self._author_avatar_url = value
     cover_color = Column(String(20))  # M5: 封面主色调 (Hex)
     media_urls = Column(JSON, default=list)  # 媒体资源URL列表
     

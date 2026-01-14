@@ -58,62 +58,43 @@ def preprocess_zhihu_html(html_content: str) -> str:
             tex = img.get('data-formula')
             if tex:
                 try:
-                    tex = unquote_plus(tex)
+                    # 使用 unquote 而不是 unquote_plus，防止 + 号变成空格
+                    tex = unquote(tex)
                 except:
                     pass
             
             if not tex and 'tex=' in src:
                 try:
-                    tex = unquote_plus(src.split('tex=')[1].split('&')[0])
+                    tex = unquote(src.split('tex=')[1].split('&')[0])
                 except:
                     pass
             
-            # If still no tex, check alt but be very careful
-            if not tex:
-                alt = img.get('alt', '')
-                # Only use alt if it looks like latex.
-                # It MUST contain a backslash AND common latex structure/symbols
-                if alt and ('\\' in alt):
-                     # Check for explicit latex commands or environments
-                     if any(k in alt for k in ['\\begin{', '\\(', '\\[', '\\frac', '\\sum', '\\int', '\\cdot']):
-                         tex = alt
-                     # Or check for math operators if it's short
-                     elif len(alt) < 50 and any(op in alt for op in ['=', '^', '_', '\\leq', '\\geq']):
-                         tex = alt
-
             if tex:
+                # 修复知乎特有的转义：将 \* 还原为 *
+                tex = tex.replace(r'\*', '*')
+                
                 # 尝试分离中文前缀 (例如 "解：\\")
-                # 很多时候知乎会把 "解：" 放进公式里
                 prefix_text = ""
-                # Simple heuristic for common starts
                 for label in ["解：", "证明：", "答："]:
                     if tex.startswith(label):
-                        # Check if followed by newline or purely math
                         remainder = tex[len(label):].strip()
-                        # If remainder starts with \\, it's definitely a split
                         if remainder.startswith(r"\\"):
                             prefix_text = label
                             tex = remainder[2:].strip()
-                            # Clean up leading plus/space if present (url decode artifact)
-                            if tex.startswith('+'):
-                                tex = tex[1:].strip()
                             break
-                        # If remainder starts with \begin, it's also a split
                         elif remainder.startswith(r"\begin"):
                             prefix_text = label
                             tex = remainder
                             break
                 
-                # 替换为 LaTeX 代码块
-                # 使用 $$ 为块级， $ 为行内。但为了前端统一处理，暂时还是用 ```latex
-                # 如果 img 在 p 标签中且是唯一内容，认为是块级
+                # 增强块级判定：如果是 p 的唯一子元素，或者父容器设置了居中
                 parent = img.parent
-                is_block = parent.name == 'p' and len(parent.find_all(recursive=False)) == 1
+                is_centered = "text-align:center" in (parent.get('style', '') or "").replace(" ", "")
+                is_block = (parent.name == 'p' and len(parent.find_all(recursive=False)) == 1) or is_centered
                 
                 if is_block:
-                    # If we extracted a prefix, put it before the block
                     if prefix_text:
-                        new_string = f"{prefix_text}\n\n```latex\n{tex}\n```\n\n"
+                        new_string = f"\n\n{prefix_text}\n```latex\n{tex}\n```\n\n"
                     else:
                         new_string = f"\n\n```latex\n{tex}\n```\n\n"
                 else:
