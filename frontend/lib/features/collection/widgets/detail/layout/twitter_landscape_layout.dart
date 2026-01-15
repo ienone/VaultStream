@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:frontend/core/utils/media_utils.dart';
 import '../../../../../core/network/image_headers.dart';
 import '../../../models/content.dart';
-import '../../../utils/content_parser.dart';
 import '../components/author_header.dart';
 
 import '../components/tags_section.dart';
@@ -79,7 +79,7 @@ class TwitterLandscapeLayout extends StatelessWidget {
                 onPageChanged: onPageChanged,
                 itemBuilder: (context, index) {
                   final img = images[index];
-                  if (ContentParser.isVideo(img)) {
+                  if (isVideo(img)) {
                     return Center(
                       child: VideoPlayerWidget(
                         videoUrl: img,
@@ -229,7 +229,7 @@ class TwitterLandscapeLayout extends StatelessWidget {
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(13),
-                      child: ContentParser.isVideo(img)
+                      child: isVideo(img)
                           ? Container(
                               color: Colors.black,
                               child: const Center(

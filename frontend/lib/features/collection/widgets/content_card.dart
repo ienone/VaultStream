@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
+import 'package:frontend/core/utils/media_utils.dart';
 import '../../../core/layout/responsive_layout.dart';
 import '../../../theme/app_theme.dart';
 import '../models/content.dart';
@@ -257,12 +258,12 @@ class _ContentCardInternalState extends State<_ContentCardInternal> {
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(8),
                                     child: CachedNetworkImage(
-                                      imageUrl: ContentMediaHelper.mapUrl(
+                                      imageUrl: mapUrl(
                                         content.authorAvatarUrl!,
                                         widget.apiBaseUrl,
                                       ),
                                       httpHeaders: buildImageHeaders(
-                                        imageUrl: ContentMediaHelper.mapUrl(
+                                        imageUrl: mapUrl(
                                           content.authorAvatarUrl!,
                                           widget.apiBaseUrl,
                                         ),

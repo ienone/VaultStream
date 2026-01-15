@@ -1,7 +1,7 @@
-import 'dart:ui';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/widgets/frosted_app_bar.dart';
 import 'providers/dashboard_provider.dart';
 import 'models/stats.dart';
 
@@ -15,17 +15,8 @@ class DashboardPage extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: FrostedAppBar(
         title: const Text('仪表盘'),
-        backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.8),
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        flexibleSpace: ClipRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(color: Colors.transparent),
-          ),
-        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),

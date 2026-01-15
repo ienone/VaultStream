@@ -108,25 +108,6 @@ class LocalStorageBackend(StorageBackend):
         return StoredObject(key=key, size=len(data), content_type=content_type, url=self.get_url(key=key))
 
 
-# ============================================================================
-# S3/MinIO 存储后端已移除
-# ============================================================================
-# 如需使用 S3/MinIO，请参考 git 历史或文档重新实现以下类：
-#
-# class S3StorageBackend(StorageBackend):
-#     """S3兼容存储后端（支持MinIO等）"""
-#     def __init__(self, *, endpoint_url, bucket, access_key, secret_key, ...):
-#         # 使用 boto3 实现
-#         pass
-#
-# 实现要点：
-# - 使用 boto3 客户端
-# - 支持预签名 URL
-# - 支持桶自动创建
-# - 异步包装同步 boto3 调用
-# ============================================================================
-
-
 _backend_singleton: StorageBackend | None = None
 
 

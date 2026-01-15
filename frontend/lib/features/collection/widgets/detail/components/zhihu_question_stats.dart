@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../utils/format_utils.dart';
+import 'package:frontend/core/utils/media_utils.dart';
 import 'unified_stat_item.dart';
 
 class ZhihuQuestionStats extends StatelessWidget {
@@ -30,17 +30,17 @@ class ZhihuQuestionStats extends StatelessWidget {
           UnifiedStatItem(
             icon: Icons.person_add_alt,
             label: '关注',
-            value: FormatUtils.formatCount(stats['follower_count']),
+            value: formatCount(stats['follower_count']),
           ),
           UnifiedStatItem(
             icon: Icons.remove_red_eye_outlined,
             label: '浏览',
-            value: FormatUtils.formatCount(stats['visit_count']),
+            value: formatCount(stats['visit_count']),
           ),
           UnifiedStatItem(
             icon: Icons.question_answer_outlined,
             label: '回答',
-            value: FormatUtils.formatCount(stats['answer_count']),
+            value: formatCount(stats['answer_count']),
           ),
         ],
       ),

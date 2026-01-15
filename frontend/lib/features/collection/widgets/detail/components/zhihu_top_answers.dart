@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:frontend/core/utils/media_utils.dart';
 import '../../../../../core/network/api_client.dart';
 import '../../../../../core/network/image_headers.dart';
-import '../../../utils/content_parser.dart';
-import '../../../utils/format_utils.dart';
 import 'small_stat_item.dart';
 
 class ZhihuTopAnswers extends ConsumerWidget {
@@ -92,9 +91,9 @@ class ZhihuTopAnswers extends ConsumerWidget {
                             CircleAvatar(
                               radius: 16,
                               backgroundImage: CachedNetworkImageProvider(
-                                ContentParser.mapUrl(authorAvatar, apiBaseUrl),
+                                mapUrl(authorAvatar, apiBaseUrl),
                                 headers: buildImageHeaders(
-                                  imageUrl: ContentParser.mapUrl(
+                                  imageUrl: mapUrl(
                                     authorAvatar,
                                     apiBaseUrl,
                                   ),
@@ -141,13 +140,13 @@ class ZhihuTopAnswers extends ConsumerWidget {
                                     SmallStatItem(
                                       icon: Icons.thumb_up_alt_outlined,
                                       label: '赞同',
-                                      value: FormatUtils.formatCount(likeCount),
+                                      value: formatCount(likeCount),
                                     ),
                                     const SizedBox(width: 16),
                                     SmallStatItem(
                                       icon: Icons.chat_bubble_outline,
                                       label: '评论',
-                                      value: FormatUtils.formatCount(
+                                      value: formatCount(
                                         commentCount,
                                       ),
                                     ),
@@ -161,12 +160,12 @@ class ZhihuTopAnswers extends ConsumerWidget {
                             ClipRRect(
                               borderRadius: BorderRadius.circular(16),
                               child: CachedNetworkImage(
-                                imageUrl: ContentParser.mapUrl(
+                                imageUrl: mapUrl(
                                   coverUrl,
                                   apiBaseUrl,
                                 ),
                                 httpHeaders: buildImageHeaders(
-                                  imageUrl: ContentParser.mapUrl(
+                                  imageUrl: mapUrl(
                                     coverUrl,
                                     apiBaseUrl,
                                   ),

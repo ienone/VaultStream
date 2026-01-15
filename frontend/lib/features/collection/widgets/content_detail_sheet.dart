@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
+import 'package:frontend/core/utils/media_utils.dart';
 import '../models/content.dart';
 import '../providers/collection_provider.dart';
 import '../utils/content_parser.dart';
@@ -138,7 +139,7 @@ class ContentDetailSheet extends ConsumerWidget {
                                     detail.rawMetadata?['author']?['face'];
                               }
                               final mappedAvatarUrl = avatarUrl != null
-                                  ? ContentParser.mapUrl(avatarUrl, apiBaseUrl)
+                                  ? mapUrl(avatarUrl, apiBaseUrl)
                                   : null;
 
                               return CircleAvatar(
@@ -407,7 +408,7 @@ class ContentDetailSheet extends ConsumerWidget {
 
               // 尝试在 storedMap 中寻找本地匹配
               if (storedMap.containsKey(url)) {
-                url = ContentParser.mapUrl(storedMap[url]!, apiBaseUrl);
+                url = mapUrl(storedMap[url]!, apiBaseUrl);
               } else {
                 // 尝试去参匹配
                 final cleanUrl = url.split('?').first;
@@ -416,10 +417,10 @@ class ContentDetailSheet extends ConsumerWidget {
                   orElse: () => const MapEntry('', ''),
                 );
                 if (match.key.isNotEmpty) {
-                  url = ContentParser.mapUrl(match.value, apiBaseUrl);
+                  url = mapUrl(match.value, apiBaseUrl);
                 } else {
                   // 兜底：处理原始链接（通常走代理）
-                  url = ContentParser.mapUrl(url, apiBaseUrl);
+                  url = mapUrl(url, apiBaseUrl);
                 }
               }
 

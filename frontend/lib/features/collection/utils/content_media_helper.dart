@@ -1,3 +1,4 @@
+import '../../../core/utils/media_utils.dart' as media_utils;
 import '../models/content.dart';
 
 class ContentMediaHelper {
@@ -6,12 +7,12 @@ class ContentMediaHelper {
     // 封面优先，B站Opus等特殊场景回退到首张媒体图
     if (content.coverUrl != null &&
         content.coverUrl!.isNotEmpty &&
-        !isVideo(content.coverUrl!)) {
+        !media_utils.isVideo(content.coverUrl!)) {
       url = content.coverUrl!;
     } else if (content.mediaUrls.isNotEmpty) {
       // 找第一个不是视频的媒体
       try {
-        url = content.mediaUrls.firstWhere((u) => !isVideo(u));
+        url = content.mediaUrls.firstWhere((u) => !media_utils.isVideo(u));
       } catch (_) {
         url = '';
       }
@@ -51,7 +52,7 @@ class ContentMediaHelper {
               }
 
               if (localPath != null) {
-                return mapUrl(localPath, apiBaseUrl);
+                return media_utils.mapUrl(localPath, apiBaseUrl);
               }
             }
 
@@ -71,7 +72,7 @@ class ContentMediaHelper {
                   }
                 }
                 if (localPath != null) {
-                  return mapUrl(localPath, apiBaseUrl);
+                  return media_utils.mapUrl(localPath, apiBaseUrl);
                 }
               }
             }
@@ -80,65 +81,7 @@ class ContentMediaHelper {
       }
     } catch (_) {}
 
-    return mapUrl(url, apiBaseUrl);
-  }
-
-  static String mapUrl(String url, String apiBaseUrl) {
-    if (url.isEmpty) return url;
-    if (url.startsWith('//')) url = 'https:$url';
-
-    // 1. 处理需要代理的外部域名
-    if (url.contains('pbs.twimg.com') ||
-        url.contains('hdslb.com') ||
-        url.contains('bilibili.com') ||
-        url.contains('xhscdn.com') || // 小红书
-        url.contains('sinaimg.cn') || // 微博
-        url.contains('zhimg.com')) {
-      // 知乎
-      if (url.contains('/proxy/image?url=')) return url;
-      return '$apiBaseUrl/proxy/image?url=${Uri.encodeComponent(url)}';
-    }
-
-    // 2. 防止重复添加 /media/
-    if (url.contains('/api/v1/media/')) return url;
-
-    // 3. 处理本地存储路径
-    if (url.contains('blobs/sha256/')) {
-      if (url.startsWith('/media/') || url.contains('/media/')) {
-        final path = url.contains('http')
-            ? url.substring(url.indexOf('/media/'))
-            : url;
-        final cleanPath = path.startsWith('/') ? path : '/$path';
-        if (cleanPath == '/media' || cleanPath == '/media/') return '';
-        return '$apiBaseUrl$cleanPath';
-      }
-      if (url.contains('/api/v1/')) {
-        return url.replaceFirst('/api/v1/', '/api/v1/media/');
-      }
-      final cleanKey = url.startsWith('/') ? url.substring(1) : url;
-      if (cleanKey.isEmpty) return '';
-      return '$apiBaseUrl/media/$cleanKey';
-    }
-
-    if (url.startsWith('/media') || url.contains('/media/')) {
-      final path = url.contains('http')
-          ? url.substring(url.indexOf('/media/'))
-          : url;
-      final cleanPath = path.startsWith('/') ? path : '/$path';
-      if (cleanPath == '/media' || cleanPath == '/media/') return '';
-      return '$apiBaseUrl$cleanPath';
-    }
-
-    return url;
-  }
-
-  static bool isVideo(String url) {
-    if (url.isEmpty) return false;
-    final lower = url.toLowerCase().split('?').first;
-    return lower.endsWith('.mp4') ||
-        lower.endsWith('.mov') ||
-        lower.endsWith('.webm') ||
-        lower.endsWith('.mkv');
+    return media_utils.mapUrl(url, apiBaseUrl);
   }
 
   static bool _compareUrls(dynamic url1, String? url2) {
@@ -148,12 +91,5 @@ class ContentMediaHelper {
     return s1 == s2;
   }
 
-  static String formatCount(int count) {
-    if (count >= 10000) {
-      return '${(count / 10000).toStringAsFixed(1)}w';
-    } else if (count >= 1000) {
-      return '${(count / 1000).toStringAsFixed(1)}k';
-    }
-    return count.toString();
-  }
+  static String formatCount(dynamic count) => media_utils.formatCount(count);
 }

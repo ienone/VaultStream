@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:frontend/core/utils/media_utils.dart';
 import '../../../../../core/network/image_headers.dart';
 import '../../../models/content.dart';
 import '../../../utils/content_parser.dart';
@@ -26,7 +27,7 @@ class UserProfileLayout extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     final String imageUrl = detail.authorAvatarUrl ?? detail.coverUrl ?? '';
-    final mappedAvatarUrl = ContentParser.mapUrl(imageUrl, apiBaseUrl);
+    final mappedAvatarUrl = mapUrl(imageUrl, apiBaseUrl);
 
     return Row(
       children: [

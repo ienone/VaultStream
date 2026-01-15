@@ -4,7 +4,7 @@ Telegram Bot - 改进版
 import asyncio
 import httpx
 from typing import Optional, List, Dict, Any
-from telegram import Update, BotCommand, InputMediaPhoto, InputMediaVideo, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -14,8 +14,8 @@ from telegram.ext import (
 from app.logging import logger
 
 from app.config import settings
-from app.utils import normalize_bilibili_url, format_content_for_tg
-from app.media_utils import extract_media_urls
+from app.utils import normalize_bilibili_url
+from app.telegram_sender import build_telegram_payload, send_to_telegram
 
 
 class VaultStreamBot:
@@ -504,6 +504,7 @@ class VaultStreamBot:
     async def send_content_to_channel(self, content: dict, context: ContextTypes.DEFAULT_TYPE):
         """发送内容到频道"""
         import time
+        
         if not content:
             raise ValueError("内容为空")
             
@@ -511,12 +512,9 @@ class VaultStreamBot:
         
         try:
             format_start = time.time()
-            text = format_content_for_tg(content)
+            text, media_items = build_telegram_payload(content)
             format_time = time.time() - format_start
             logger.debug(f"格式化文本耗时: {format_time:.3f}秒")
-            
-            max_caption_length = 1024
-            max_message_length = 4096
             
             # 创建 InlineKeyboard 按钮（仅保留删除功能）
             keyboard = [
@@ -526,107 +524,16 @@ class VaultStreamBot:
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            # 提取媒体URL（使用优化后的工具函数）
-            raw_metadata = content.get('raw_metadata', {})
-            cover_url = content.get('cover_url')
-            media_items = extract_media_urls(raw_metadata, cover_url)
-            
-            # 处理文本长度
-            if media_items and len(text) > max_caption_length:
-                text = text[:max_caption_length-3] + "..."
-            elif not media_items and len(text) > max_message_length:
-                text = text[:max_message_length-3] + "..."
-            
-            # 如果有多个媒体，使用 media group
-            if len(media_items) > 1:
-                media_group = []
-                for idx, item in enumerate(media_items[:10]):  # Telegram 限制最多10个媒体
-                    if item['type'] == 'photo':
-                        # 第一个媒体附带文本说明
-                        if idx == 0:
-                            media_group.append(InputMediaPhoto(media=item['url'], caption=text, parse_mode='HTML'))
-                        else:
-                            media_group.append(InputMediaPhoto(media=item['url']))
-                    elif item['type'] == 'video':
-                        if idx == 0:
-                            media_group.append(InputMediaVideo(media=item['url'], caption=text, parse_mode='HTML'))
-                        else:
-                            media_group.append(InputMediaVideo(media=item['url']))
-                
-                try:
-                    messages = await context.bot.send_media_group(
-                        chat_id=settings.telegram_channel_id,
-                        media=media_group,
-                        read_timeout=60,
-                        write_timeout=60
-                    )
-                    # Media group 不支持 reply_markup，需要单独发送按钮
-                    if messages:
-                        await context.bot.send_message(
-                            chat_id=settings.telegram_channel_id,
-                            text="管理操作:",
-                            reply_to_message_id=messages[0].message_id,
-                            reply_markup=reply_markup
-                        )
-                except Exception as media_error:
-                    logger.warning(f"发送媒体组失败，降级为单个媒体: {media_error}")
-                    # 降级：只发送第一个媒体
-                    await self._send_single_media(media_items[0], text, context, reply_markup)
-                    
-            elif len(media_items) == 1:
-                # 只有一个媒体
-                await self._send_single_media(media_items[0], text, context, reply_markup)
-            else:
-                # 没有媒体，纯文本
-                await context.bot.send_message(
-                    chat_id=settings.telegram_channel_id,
-                    text=text,
-                    parse_mode='HTML',
-                    disable_web_page_preview=False,
-                    reply_markup=reply_markup
-                )
+            await send_to_telegram(
+                context.bot,
+                settings.telegram_channel_id,
+                text,
+                media_items,
+                reply_markup=reply_markup
+            )
         except Exception as e:
             logger.exception("发送到频道失败")
             raise
-    
-    async def _send_single_media(
-        self, 
-        media_item: dict, 
-        caption: str, 
-        context: ContextTypes.DEFAULT_TYPE,
-        reply_markup: Optional[InlineKeyboardMarkup] = None
-    ):
-        """发送单个媒体"""
-        try:
-            if media_item['type'] == 'photo':
-                await context.bot.send_photo(
-                    chat_id=settings.telegram_channel_id,
-                    photo=media_item['url'],
-                    caption=caption,
-                    parse_mode='HTML',
-                    read_timeout=30,
-                    write_timeout=30,
-                    reply_markup=reply_markup
-                )
-            elif media_item['type'] == 'video':
-                await context.bot.send_video(
-                    chat_id=settings.telegram_channel_id,
-                    video=media_item['url'],
-                    caption=caption,
-                    parse_mode='HTML',
-                    read_timeout=60,
-                    write_timeout=60,
-                    reply_markup=reply_markup
-                )
-        except Exception as e:
-            logger.warning(f"发送单个媒体失败，降级为文本: {e}")
-            await context.bot.send_message(
-                chat_id=settings.telegram_channel_id,
-                text=caption,
-                parse_mode='HTML',
-                disable_web_page_preview=False,
-                reply_markup=reply_markup
-            )
 
     async def post_init(self, application: Application) -> None:
         """应用启动后的初始化回调"""

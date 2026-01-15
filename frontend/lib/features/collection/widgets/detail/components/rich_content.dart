@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:frontend/core/utils/media_utils.dart';
 import '../../../../../core/network/image_headers.dart';
 import '../../../models/content.dart';
 import '../../../utils/content_parser.dart';
@@ -193,7 +194,7 @@ class RichContent extends StatelessWidget {
           Builder(
             builder: (context) {
               final url = mediaUrls.first;
-              if (ContentParser.isVideo(url)) {
+              if (isVideo(url)) {
                 return ClipRRect(
                   borderRadius: BorderRadius.circular(28),
                   child: VideoPlayerWidget(
@@ -254,7 +255,7 @@ class RichContent extends StatelessWidget {
             itemCount: mediaUrls.length,
             itemBuilder: (context, index) {
               final url = mediaUrls[index];
-              if (ContentParser.isVideo(url)) {
+              if (isVideo(url)) {
                 return ClipRRect(
                   borderRadius: BorderRadius.circular(28),
                   child: Stack(
@@ -486,7 +487,7 @@ class RichContent extends StatelessWidget {
   }) {
     String url = uri.toString();
     if (storedMap.containsKey(url)) {
-      url = ContentParser.mapUrl(storedMap[url]!, apiBaseUrl);
+      url = mapUrl(storedMap[url]!, apiBaseUrl);
     } else {
       final cleanUrl = url.split('?').first;
       final match = storedMap.entries.firstWhere(
@@ -494,8 +495,8 @@ class RichContent extends StatelessWidget {
         orElse: () => const MapEntry('', ''),
       );
       url = match.key.isNotEmpty
-          ? ContentParser.mapUrl(match.value, apiBaseUrl)
-          : ContentParser.mapUrl(url, apiBaseUrl);
+          ? mapUrl(match.value, apiBaseUrl)
+          : mapUrl(url, apiBaseUrl);
     }
 
     final String heroTag = 'markdown-image-$url-${detail.id}';

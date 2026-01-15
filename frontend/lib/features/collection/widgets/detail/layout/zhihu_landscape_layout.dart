@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:frontend/core/utils/media_utils.dart';
 import '../../../models/content.dart';
-import '../../../utils/format_utils.dart';
 import '../components/author_header.dart';
 import '../components/rich_content.dart';
 import '../components/small_stat_item.dart';
@@ -142,21 +142,21 @@ class ZhihuLandscapeLayout extends StatelessWidget {
                               SmallStatItem(
                                 icon: Icons.person_add_alt,
                                 label: '关注',
-                                value: FormatUtils.formatCount(
+                                value: formatCount(
                                   questionInfo['follower_count'],
                                 ),
                               ),
                               SmallStatItem(
                                 icon: Icons.remove_red_eye_outlined,
                                 label: '浏览',
-                                value: FormatUtils.formatCount(
+                                value: formatCount(
                                   questionInfo['view_count'],
                                 ),
                               ),
                               SmallStatItem(
                                 icon: Icons.question_answer_outlined,
                                 label: '回答',
-                                value: FormatUtils.formatCount(
+                                value: formatCount(
                                   questionInfo['answer_count'],
                                 ),
                               ),

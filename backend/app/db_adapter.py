@@ -83,12 +83,6 @@ class SQLiteAdapter(DatabaseAdapter):
         return self._session_maker
 
 
-# PostgreSQL 适配器已移除，如需使用请参考 git 历史或文档重新实现
-# class PostgreSQLAdapter(DatabaseAdapter):
-#     """PostgreSQL 适配器（生产模式 - 已废弃）"""
-#     pass
-
-
 def get_database_adapter() -> DatabaseAdapter:
     """根据配置获取数据库适配器"""
     db_type = settings.database_type

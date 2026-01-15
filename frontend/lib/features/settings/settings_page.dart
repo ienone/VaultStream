@@ -1,8 +1,8 @@
 // ignore_for_file: deprecated_member_use
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers/theme_provider.dart';
+import '../../core/widgets/frosted_app_bar.dart';
 import 'providers/settings_provider.dart';
 import 'models/system_setting.dart';
 
@@ -20,19 +20,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final settingsAsync = ref.watch(systemSettingsProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('设置中心'),
-        backgroundColor: Theme.of(
-          context,
-        ).colorScheme.surface.withValues(alpha: 0.8),
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        flexibleSpace: ClipRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(color: Colors.transparent),
-          ),
-        ),
+      appBar: const FrostedAppBar(
+        title: Text('设置中心'),
       ),
       body: settingsAsync.when(
         data: (settings) => ListView(

@@ -8,12 +8,9 @@ from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Foreign
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, relationship
 
+from app.time_utils import utcnow
+
 Base = declarative_base()
-
-
-def utcnow() -> datetime:
-    """返回UTC 时间的当前时间戳。"""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 # JSON 类型适配器：PostgreSQL 用 JSONB，SQLite 用 JSON

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/core/utils/media_utils.dart';
 import '../../../models/content.dart';
-import '../../../utils/format_utils.dart';
 import 'unified_stat_item.dart';
 
 class UnifiedStats extends StatelessWidget {
@@ -31,21 +31,21 @@ class UnifiedStats extends StatelessWidget {
           UnifiedStatItem(
             icon: Icons.people_outline,
             label: '粉丝',
-            value: FormatUtils.formatCount(detail.viewCount),
+            value: formatCount(detail.viewCount),
           ),
         );
         items.add(
           UnifiedStatItem(
             icon: Icons.person_add_alt_1_outlined,
             label: '关注',
-            value: FormatUtils.formatCount(detail.shareCount),
+            value: formatCount(detail.shareCount),
           ),
         );
         items.add(
           UnifiedStatItem(
             icon: Icons.article_outlined,
             label: '微博',
-            value: FormatUtils.formatCount(detail.commentCount),
+            value: formatCount(detail.commentCount),
           ),
         );
       } else if (isZhihu) {
@@ -53,28 +53,28 @@ class UnifiedStats extends StatelessWidget {
           UnifiedStatItem(
             icon: Icons.people_outline,
             label: '粉丝',
-            value: FormatUtils.formatCount(detail.viewCount),
+            value: formatCount(detail.viewCount),
           ),
         );
         items.add(
           UnifiedStatItem(
             icon: Icons.person_add_alt_1_outlined,
             label: '关注',
-            value: FormatUtils.formatCount(detail.shareCount),
+            value: formatCount(detail.shareCount),
           ),
         );
         items.add(
           UnifiedStatItem(
             icon: Icons.thumb_up_alt_outlined,
             label: '获赞',
-            value: FormatUtils.formatCount(detail.likeCount),
+            value: formatCount(detail.likeCount),
           ),
         );
         items.add(
           UnifiedStatItem(
             icon: Icons.star_border,
             label: '收藏',
-            value: FormatUtils.formatCount(detail.collectCount),
+            value: formatCount(detail.collectCount),
           ),
         );
       }
@@ -105,7 +105,7 @@ class UnifiedStats extends StatelessWidget {
             UnifiedStatItem(
               icon: Icons.analytics_outlined,
               label: keyMap[entry.key]!,
-              value: FormatUtils.formatCount(entry.value),
+              value: formatCount(entry.value),
             ),
           );
         }
@@ -116,7 +116,7 @@ class UnifiedStats extends StatelessWidget {
           UnifiedStatItem(
             icon: Icons.remove_red_eye_outlined,
             label: '浏览',
-            value: FormatUtils.formatCount(detail.viewCount),
+            value: formatCount(detail.viewCount),
           ),
         );
       }
@@ -126,7 +126,7 @@ class UnifiedStats extends StatelessWidget {
           UnifiedStatItem(
             icon: isZhihu ? Icons.thumb_up_alt_outlined : Icons.favorite_border,
             label: isZhihu ? '赞同' : '点赞',
-            value: FormatUtils.formatCount(detail.likeCount),
+            value: formatCount(detail.likeCount),
           ),
         );
       }
@@ -136,7 +136,7 @@ class UnifiedStats extends StatelessWidget {
           UnifiedStatItem(
             icon: Icons.star_border,
             label: '收藏',
-            value: FormatUtils.formatCount(detail.collectCount),
+            value: formatCount(detail.collectCount),
           ),
         );
       }
@@ -146,7 +146,7 @@ class UnifiedStats extends StatelessWidget {
           UnifiedStatItem(
             icon: Icons.chat_bubble_outline,
             label: '评论',
-            value: FormatUtils.formatCount(detail.commentCount),
+            value: formatCount(detail.commentCount),
           ),
         );
       }
@@ -156,7 +156,7 @@ class UnifiedStats extends StatelessWidget {
           UnifiedStatItem(
             icon: Icons.repeat_rounded,
             label: isWeibo ? '转发' : '分享',
-            value: FormatUtils.formatCount(detail.shareCount),
+            value: formatCount(detail.shareCount),
           ),
         );
       }
@@ -167,7 +167,7 @@ class UnifiedStats extends StatelessWidget {
             UnifiedStatItem(
               icon: Icons.person_add_alt,
               label: '关注',
-              value: FormatUtils.formatCount(stats['follower_count']),
+              value: formatCount(stats['follower_count']),
             ),
           );
         }
@@ -176,7 +176,7 @@ class UnifiedStats extends StatelessWidget {
             UnifiedStatItem(
               icon: Icons.remove_red_eye_outlined,
               label: '浏览',
-              value: FormatUtils.formatCount(stats['visit_count']),
+              value: formatCount(stats['visit_count']),
             ),
           );
         }
@@ -185,7 +185,7 @@ class UnifiedStats extends StatelessWidget {
             UnifiedStatItem(
               icon: Icons.question_answer_outlined,
               label: '回答',
-              value: FormatUtils.formatCount(stats['answer_count']),
+              value: formatCount(stats['answer_count']),
             ),
           );
         }

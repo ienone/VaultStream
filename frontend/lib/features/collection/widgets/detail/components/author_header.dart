@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:frontend/core/utils/media_utils.dart';
 import '../../../../../core/network/api_client.dart';
 import '../../../../../core/network/image_headers.dart';
 import '../../../models/content.dart';
@@ -57,7 +58,7 @@ class AuthorHeader extends ConsumerWidget {
     final apiBaseUrl = dio.options.baseUrl;
     final apiToken = dio.options.headers['X-API-Token']?.toString();
     final mappedAvatarUrl = avatarUrl != null
-        ? ContentParser.mapUrl(avatarUrl, apiBaseUrl)
+        ? mapUrl(avatarUrl, apiBaseUrl)
         : null;
 
     final String publishedStr = detail.publishedAt != null

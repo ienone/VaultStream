@@ -1,6 +1,6 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/widgets/frosted_app_bar.dart';
 import 'providers/collection_provider.dart';
 import 'providers/search_history_provider.dart';
 import 'providers/collection_filter_provider.dart';
@@ -107,7 +107,8 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     ThemeData theme,
     CollectionFilterState filterState,
   ) {
-    return AppBar(
+    return FrostedAppBar(
+      blurSigma: 12,
       title: filterState.searchQuery.isNotEmpty
           ? GestureDetector(
               onTap: () => _searchController.openView(),
@@ -117,15 +118,6 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
               ),
             )
           : const Text('收藏库'),
-      backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.8),
-      elevation: 0,
-      surfaceTintColor: Colors.transparent,
-      flexibleSpace: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(color: Colors.transparent),
-        ),
-      ),
       actions: [
         _buildSearchAnchor(context, theme),
         if (filterState.searchQuery.isNotEmpty)

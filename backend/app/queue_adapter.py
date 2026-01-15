@@ -9,11 +9,7 @@ from sqlalchemy import select, update, and_
 
 from app.config import settings
 from app.logging import logger, log_context, ensure_task_id
-
-
-def utcnow() -> datetime:
-    """返回UTC时间的当前时间戳"""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+from app.time_utils import utcnow
 
 
 class QueueAdapter(ABC):
@@ -240,12 +236,6 @@ class SQLiteQueueAdapter(QueueAdapter):
         except Exception as e:
             logger.error(f"获取队列大小失败 (SQLite): {e}")
             return 0
-
-
-# Redis 队列适配器已移除，如需使用请参考 git 历史或文档重新实现
-# class RedisQueueAdapter(QueueAdapter):
-#     """基于 Redis 的队列（生产模式 - 已废弃）"""
-#     pass
 
 
 def get_queue_adapter() -> QueueAdapter:

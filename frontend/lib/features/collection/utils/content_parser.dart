@@ -1,78 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import '../../../core/utils/media_utils.dart' as media_utils;
 import '../models/content.dart';
 import '../models/header_line.dart';
 
 class ContentParser {
-  static bool isVideo(String url) {
-    final lower = url.toLowerCase().split('?').first;
-    return lower.endsWith('.mp4') ||
-        lower.endsWith('.mov') ||
-        lower.endsWith('.webm') ||
-        lower.endsWith('.mkv');
-  }
-
-  static String mapUrl(String url, String apiBaseUrl) {
-    if (url.isEmpty) return url;
-
-    // 0. 处理协议相对路径
-    if (url.startsWith('//')) {
-      url = 'https:$url';
-    }
-
-    // 1. 处理需要代理的外部域名 (针对 B 站、Twitter 图片反盗链)
-    if (url.contains('pbs.twimg.com') ||
-        url.contains('hdslb.com') ||
-        url.contains('bilibili.com') ||
-        url.contains('xhscdn.com') ||
-        url.contains('sinaimg.cn') ||
-        url.contains('zhimg.com')) {
-      if (url.contains('/proxy/image?url=')) return url;
-      return '$apiBaseUrl/proxy/image?url=${Uri.encodeComponent(url)}';
-    }
-
-    // 2. 核心修复：防止重复添加 /media/ 前缀
-    // 如果 URL 已经包含 /api/v1/media/，直接返回
-    if (url.contains('/api/v1/media/')) return url;
-
-    // 3. 处理包含本地存储路径的情况 (归档的 blobs)
-    if (url.contains('blobs/sha256/')) {
-      // 3.1 如果已经包含了 /media/ 但没有 /api/v1/
-      if (url.startsWith('/media/') || url.contains('/media/')) {
-        final path = url.contains('http')
-            ? url.substring(url.indexOf('/media/'))
-            : url;
-        final cleanPath = path.startsWith('/') ? path : '/$path';
-        if (cleanPath == '/media' || cleanPath == '/media/') return '';
-        return '$apiBaseUrl$cleanPath';
-      }
-
-      // 3.2 如果包含了 /api/v1/ 但没有 /media/
-      if (url.contains('/api/v1/')) {
-        return url.replaceFirst('/api/v1/', '/api/v1/media/');
-      }
-
-      // 3.3 纯相对路径的情况
-      final cleanKey = url.startsWith('/') ? url.substring(1) : url;
-      if (cleanKey.isEmpty) return '';
-      return '$apiBaseUrl/media/$cleanKey';
-    }
-
-    // 4. 处理其他原本就在 /media 下的普通路径
-    if (url.startsWith('/media') || url.contains('/media/')) {
-      // 如果 URL 已经是当前的 apiBaseUrl 开头，直接返回
-      if (url.startsWith(apiBaseUrl)) return url;
-
-      final path = url.contains('http')
-          ? url.substring(url.indexOf('/media/'))
-          : url;
-      final cleanPath = path.startsWith('/') ? path : '/$path';
-      if (cleanPath == '/media' || cleanPath == '/media/') return '';
-      return '$apiBaseUrl$cleanPath';
-    }
-
-    return url;
-  }
 
   static Map<String, String> getStoredMap(ContentDetail detail) {
     Map<String, String> storedMap = {};
@@ -142,13 +74,13 @@ class ContentParser {
     if (detail.mediaUrls.isNotEmpty) {
       for (var item in detail.mediaUrls) {
         final String url = item.toString();
-        if (url.isEmpty || isVideo(url)) continue;
+        if (url.isEmpty || media_utils.isVideo(url)) continue;
 
         // 过滤头像
         if (authorAvatar != null && url.contains(authorAvatar)) continue;
 
         if (storedMap.containsKey(url)) {
-          list.add(mapUrl(storedMap[url]!, apiBaseUrl));
+          list.add(media_utils.mapUrl(storedMap[url]!, apiBaseUrl));
         } else {
           final cleanUrl = url.split('?')[0];
           final match = storedMap.entries.firstWhere(
@@ -157,8 +89,8 @@ class ContentParser {
           );
           list.add(
             match.key.isNotEmpty
-                ? mapUrl(match.value, apiBaseUrl)
-                : mapUrl(url, apiBaseUrl),
+                ? media_utils.mapUrl(match.value, apiBaseUrl)
+                : media_utils.mapUrl(url, apiBaseUrl),
           );
         }
       }
@@ -182,7 +114,7 @@ class ContentParser {
         if (authorAvatar != null && url.contains(authorAvatar)) continue;
 
         if (storedMap.containsKey(url)) {
-          list.add(mapUrl(storedMap[url]!, apiBaseUrl));
+          list.add(media_utils.mapUrl(storedMap[url]!, apiBaseUrl));
         } else {
           final cleanUrl = url.split('?').first;
           final match = storedMap.entries.firstWhere(
@@ -191,8 +123,8 @@ class ContentParser {
           );
           list.add(
             match.key.isNotEmpty
-                ? mapUrl(match.value, apiBaseUrl)
-                : mapUrl(url, apiBaseUrl),
+                ? media_utils.mapUrl(match.value, apiBaseUrl)
+                : media_utils.mapUrl(url, apiBaseUrl),
           );
         }
       }
