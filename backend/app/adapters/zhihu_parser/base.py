@@ -1,8 +1,9 @@
 import json
+import html
 from typing import Optional, Dict, Any, List
 from bs4 import BeautifulSoup
 import re
-from urllib.parse import unquote, unquote_plus
+
 
 def extract_initial_data(html_content: str) -> Optional[Dict[str, Any]]:
     """从 HTML 中提取 js-initialData JSON 数据"""
@@ -15,6 +16,51 @@ def extract_initial_data(html_content: str) -> Optional[Dict[str, Any]]:
             return None
     return None
 
+
+def _process_latex_formulas(soup: BeautifulSoup) -> None:
+    """
+    处理知乎 LaTeX 公式，将 <img eeimg="1"> 转换为 Markdown 格式
+    
+    知乎公式格式:
+    <img src="https://www.zhihu.com/equation?tex=..." alt="LaTeX源码" eeimg="1"/>
+    
+    - 块公式: LaTeX 以 \\ 结尾，或 img 是 <p> 的唯一主要内容
+    - 行内公式: 与文字混排
+    """
+    for img in soup.find_all('img', attrs={'eeimg': '1'}):
+        latex_raw = img.get('alt', '')
+        if not latex_raw:
+            continue
+        
+        latex = html.unescape(latex_raw)
+        
+        is_block = latex.rstrip().endswith('\\\\')
+        
+        if not is_block:
+            parent = img.parent
+            if parent and parent.name == 'p':
+                direct_texts = []
+                for child in parent.children:
+                    if isinstance(child, str):
+                        text = child.strip()
+                        if text:
+                            direct_texts.append(text)
+                if not direct_texts:
+                    is_block = True
+        
+        clean_latex = latex.rstrip('\\').rstrip()
+        if clean_latex.endswith('\\'):
+            clean_latex = clean_latex[:-1]
+        
+        if is_block:
+            replacement = f'\n$$\n{clean_latex}\n$$\n'
+        else:
+            replacement = f'${clean_latex}$'
+        
+        new_tag = soup.new_string(replacement)
+        img.replace_with(new_tag)
+
+
 def preprocess_zhihu_html(html_content: str) -> str:
     """预处理知乎 HTML: 处理公式、图片、代码块，移除冗余标题"""
     if not html_content:
@@ -23,97 +69,30 @@ def preprocess_zhihu_html(html_content: str) -> str:
     soup = BeautifulSoup(html_content, 'html.parser')
     
     # 0. 移除知乎内容中可能存在的冗余标题 (通常是 h1, h2)
-    # 很多时候内容开头会重复一次标题
     for h in soup.find_all(['h1', 'h2', 'h3']):
-        text = h.get_text(strip=True)
-        # 如果标题太长或者包含"如何评价"等关键词且在开头，考虑移除或降级
-        # 但为了稳妥，我们主要降级所有 h1, h2 到 h3/h4
         if h.name in ['h1', 'h2']:
             h.name = 'h3'
 
     # 特殊处理：移除开头可能完全重复标题的段落
-    # 这通常在专栏文章或回答开头出现
     first_tags = soup.find_all(recursive=False)[:3]
     for tag in first_tags:
         if tag.name in ['h1', 'h2', 'h3', 'p']:
-            text = tag.get_text(strip=True)
-            # 如果这个标签的内容只是重复了标题，或者非常像标题且加粗了
             if tag.find('b') or tag.find('strong') or tag.name.startswith('h'):
-                # 我们很难在这里拿到真正的 question title，
-                # 但知乎回答正文里通常不应该再出现 h1/h2
                 pass
 
-    # 1. 处理 LaTeX 公式
-    # 查找所有 class 为 ztext-math 的 img 标签，或者 src 包含 zhihu.com/equation 的 img
+    # 1. LaTeX 公式处理
+    _process_latex_formulas(soup)
+
+    # 2. 处理图片 (使用高清图，跳过公式图片)
     for img in soup.find_all('img'):
         src = img.get('src') or ""
-        # Stricter check: must have specific class or specific domain patterns
-        classes = img.get('class') or []
-        is_equation = "ztext-math" in classes or \
-                      "zhihu.com/equation" in src or \
-                      "eeimg.com/tex" in src
-        
-        if is_equation:
-            # 尝试从 data-formula 获取 tex (较新版)，或者从 src 的 tex 参数获取
-            tex = img.get('data-formula')
-            if tex:
-                try:
-                    # 使用 unquote 而不是 unquote_plus，防止 + 号变成空格
-                    tex = unquote(tex)
-                except:
-                    pass
-            
-            if not tex and 'tex=' in src:
-                try:
-                    tex = unquote(src.split('tex=')[1].split('&')[0])
-                except:
-                    pass
-            
-            if tex:
-                # 修复知乎特有的转义：将 \* 还原为 *
-                tex = tex.replace(r'\*', '*')
-                
-                # 尝试分离中文前缀 (例如 "解：\\")
-                prefix_text = ""
-                for label in ["解：", "证明：", "答："]:
-                    if tex.startswith(label):
-                        remainder = tex[len(label):].strip()
-                        if remainder.startswith(r"\\"):
-                            prefix_text = label
-                            tex = remainder[2:].strip()
-                            break
-                        elif remainder.startswith(r"\begin"):
-                            prefix_text = label
-                            tex = remainder
-                            break
-                
-                # 增强块级判定：如果是 p 的唯一子元素，或者父容器设置了居中
-                parent = img.parent
-                is_centered = "text-align:center" in (parent.get('style', '') or "").replace(" ", "")
-                is_block = (parent.name == 'p' and len(parent.find_all(recursive=False)) == 1) or is_centered
-                
-                if is_block:
-                    if prefix_text:
-                        new_string = f"\n\n{prefix_text}\n```latex\n{tex}\n```\n\n"
-                    else:
-                        new_string = f"\n\n```latex\n{tex}\n```\n\n"
-                else:
-                    if prefix_text:
-                        new_string = f"{prefix_text} $ {tex} $ "
-                    else:
-                        new_string = f" $ {tex} $ "
-                
-                img.replace_with(new_string)
-                continue
-
-    # 2. 处理图片 (使用高清图)
-    for img in soup.find_all('img'):
+        if "equation" in src or "tex=" in src:
+            continue
         actual_src = img.get('data-original') or img.get('data-actualsrc') or img.get('src')
         if actual_src:
             img['src'] = actual_src
     
     # 3. 处理代码块
-    # 知乎的代码块通常在 <div class="highlight"><pre><code>...
     for div in soup.find_all('div', class_='highlight'):
         code_tag = div.find('code')
         if code_tag:

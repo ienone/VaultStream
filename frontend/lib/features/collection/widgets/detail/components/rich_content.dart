@@ -375,8 +375,15 @@ class RichContent extends StatelessWidget {
     return '';
   }
 
+  static final Map<String, String> _markdownCache = {};
+
   String _preprocessMarkdown(String markdown) {
     if (markdown.isEmpty) return markdown;
+
+    final cacheKey = markdown.hashCode.toString();
+    if (_markdownCache.containsKey(cacheKey)) {
+      return _markdownCache[cacheKey]!;
+    }
 
     // 1. 处理 Latex 块: 将 $$ ... $$ 转换为 ```latex ... ```
     var processed = markdown.replaceAllMapped(
@@ -384,16 +391,16 @@ class RichContent extends StatelessWidget {
       (match) => '\n\n```latex\n${match.group(1)!.trim()}\n```\n\n',
     );
 
-    // 2. 处理 Latex 行内: 将 $ ... $ 转换为 ```latex-inline ... ```
+    // 2. 处理行内 LaTeX: 使用特殊占位符标记，后续在 builder 中处理
+    // 格式: ‹LATEX:base64content›
     processed = processed.replaceAllMapped(
-      RegExp(r'(?<![\d\w])\$([^\$\n]+?)\$(?![\d\w])'),
+      RegExp(r'(?<![`\d\w])\$([^\$\n]+?)\$(?![`\d\w])'),
       (match) {
         final content = match.group(1)!;
-        // 只有包含 LaTeX 关键字（反斜杠）或者明显的数学结构时才渲染为 LaTeX
-        // 这样可以避免误伤类似 $100$ 这种表示价格或强调的文字
         if (content.contains('\\') ||
-            (content.length > 3 && RegExp(r'[=+\-^_{}]').hasMatch(content))) {
-          return '```latex-inline\n$content```';
+            (content.length > 2 && RegExp(r'[=+\-^_{}]').hasMatch(content))) {
+          final encoded = Uri.encodeComponent(content);
+          return '`‹LATEX:$encoded›`';
         }
         return '\$$content\$';
       },
@@ -408,6 +415,11 @@ class RichContent extends StatelessWidget {
       (match) =>
           '\n\n```latex\n\\begin{${match.group(1)}}${match.group(2)}\\end{${match.group(1)}}\n```\n\n',
     );
+
+    if (_markdownCache.length > 50) {
+      _markdownCache.clear();
+    }
+    _markdownCache[cacheKey] = processed;
 
     return processed;
   }
@@ -464,10 +476,8 @@ class RichContent extends StatelessWidget {
         backgroundColor: Colors.transparent,
         fontFamily: 'monospace',
       ),
-      codeblockDecoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(16),
-      ),
+      codeblockPadding: EdgeInsets.zero,
+      codeblockDecoration: const BoxDecoration(),
     );
 
     _styleCache[theme.brightness] = style;
