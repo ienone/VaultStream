@@ -1,6 +1,10 @@
 import re
 import httpx
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
+from datetime import datetime
+from markdownify import markdownify as md
+from bs4 import BeautifulSoup
+from loguru import logger
 from app.adapters.base import PlatformAdapter, ParsedContent
 from app.adapters.errors import NonRetryableAdapterError, RetryableAdapterError, AuthRequiredAdapterError
 from app.adapters.zhihu_parser import (
@@ -10,38 +14,64 @@ from app.adapters.zhihu_parser import (
     parse_pin,
     parse_people
 )
+from app.adapters.zhihu_parser.base import preprocess_zhihu_html, extract_images
+from app.adapters.zhihu_parser.models import ZhihuAuthor
 from app.config import settings
 
+
 class ZhihuAdapter(PlatformAdapter):
-    """知乎平台适配器"""
+    """知乎平台适配器 - API优先策略，失败时回退HTML解析"""
     
     HEADERS = {
         "authority": "zhuanlan.zhihu.com",
-        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
         "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
         "cache-control": "no-cache",
         "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
+    
+    API_HEADERS = {
+        "accept": "application/json",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+
+    # API端点模板
+    API_ENDPOINTS = {
+        "answer": "https://www.zhihu.com/api/v4/answers/{id}?include=content",
+        "article": "https://api.zhihu.com/articles/{id}",
+        "question": "https://www.zhihu.com/api/v4/questions/{id}?include=detail",
+        "user": "https://www.zhihu.com/api/v4/members/{id}?include=allow_message,answer_count,articles_count,follower_count,following_count,voteup_count,thanked_count,favorited_count,pins_count,question_count,following_topic_count,following_question_count,following_favlists_count,following_columns_count",
+        "column": "https://www.zhihu.com/api/v4/columns/{id}?include=title,intro,articles_count,followers",
+        "collection": "https://api.zhihu.com/collections/{id}",
+    }
 
     def __init__(self, cookies: Optional[Dict[str, str]] = None):
         self.cookies = cookies or {}
-        # 如果传入的 cookies 为空，尝试从 settings 加载
         if not self.cookies and settings.zhihu_cookie:
-             # 解析 cookie 字符串
-             cookie_str = settings.zhihu_cookie.get_secret_value()
-             for item in cookie_str.split(';'):
-                 if '=' in item:
-                     k, v = item.strip().split('=', 1)
-                     self.cookies[k] = v
+            cookie_str = settings.zhihu_cookie.get_secret_value()
+            for item in cookie_str.split(';'):
+                if '=' in item:
+                    k, v = item.strip().split('=', 1)
+                    self.cookies[k] = v
 
     async def detect_content_type(self, url: str) -> Optional[str]:
         if "zhuanlan.zhihu.com/p/" in url:
             return "article"
+        elif "/column/" in url or "zhuanlan.zhihu.com" in url and "/p/" not in url:
+            # 专栏主页: zhuanlan.zhihu.com/column-id 或 zhihu.com/column/xxx
+            if re.search(r'zhihu\.com/column/(\w+)', url):
+                return "column"
+            # zhuanlan.zhihu.com/learning-to-learn 形式
+            match = re.search(r'zhuanlan\.zhihu\.com/(\w[\w-]+)$', url)
+            if match and match.group(1) != 'p':
+                return "column"
+        if "/collection/" in url:
+            return "collection"
         elif "zhihu.com/question/" in url and "answer" not in url:
             return "question"
         elif "zhihu.com/question/" in url and "answer" in url:
             return "answer"
-        elif "zhihu.com/answer/" in url: # Direct answer link
+        elif "zhihu.com/answer/" in url:
             return "answer"
         elif "zhihu.com/pin/" in url:
             return "pin"
@@ -50,9 +80,466 @@ class ZhihuAdapter(PlatformAdapter):
         return None
 
     async def clean_url(self, url: str) -> str:
-        # Simple cleanup: remove query params that are likely tracking
-        # But keep URL clean.
         return url.split('?')[0]
+
+    def _get_proxy_url(self) -> Optional[str]:
+        proxy_url = None
+        if settings.https_proxy:
+            proxy_url = settings.https_proxy
+        elif settings.http_proxy:
+            proxy_url = settings.http_proxy
+        if proxy_url and proxy_url.startswith("socks://"):
+            proxy_url = proxy_url.replace("socks://", "socks5://")
+        return proxy_url
+
+    def _extract_id_from_url(self, url: str, content_type: str) -> Optional[str]:
+        """从URL中提取内容ID"""
+        patterns = {
+            "answer": [
+                r'zhihu\.com/question/\d+/answer/(\d+)',
+                r'zhihu\.com/answer/(\d+)',
+            ],
+            "article": [
+                r'zhuanlan\.zhihu\.com/p/(\d+)',
+            ],
+            "question": [
+                r'zhihu\.com/question/(\d+)',
+            ],
+            "user_profile": [
+                r'zhihu\.com/people/([\w-]+)',
+            ],
+            "column": [
+                r'zhihu\.com/column/([\w-]+)',
+                r'zhuanlan\.zhihu\.com/([\w-]+)$',
+            ],
+            "collection": [
+                r'zhihu\.com/collection/(\d+)',
+            ],
+            "pin": [
+                r'zhihu\.com/pin/(\d+)',
+            ],
+        }
+        
+        for pattern in patterns.get(content_type, []):
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        return None
+
+    async def _api_request(self, api_url: str, use_cookies: bool = False) -> Optional[Dict[str, Any]]:
+        """通用API请求方法"""
+        proxy_url = self._get_proxy_url()
+        cookies = self.cookies if use_cookies else {}
+        
+        async with httpx.AsyncClient(
+            headers=self.API_HEADERS,
+            cookies=cookies,
+            follow_redirects=True,
+            timeout=15.0,
+            proxy=proxy_url
+        ) as client:
+            try:
+                response = await client.get(api_url)
+                
+                if response.status_code == 404:
+                    return {"_error": "not_found"}
+                if response.status_code in (401, 403):
+                    return {"_error": "auth_required", "_status": response.status_code}
+                if response.status_code != 200:
+                    return {"_error": "request_failed", "_status": response.status_code}
+                
+                data = response.json()
+                if "error" in data:
+                    return {"_error": "api_error", "_message": data["error"].get("message", "")}
+                
+                return data
+                
+            except httpx.RequestError as e:
+                logger.warning(f"API请求异常: {e}")
+                return None
+            except Exception as e:
+                logger.warning(f"API解析异常: {e}")
+                return None
+
+    # ==================== API解析方法 ====================
+
+    async def _parse_answer_via_api(self, answer_id: str, url: str) -> Optional[ParsedContent]:
+        """通过API解析回答"""
+        api_url = self.API_ENDPOINTS["answer"].format(id=answer_id)
+        data = await self._api_request(api_url)
+        
+        if not data or "_error" in data:
+            return None
+        
+        return self._build_answer_from_api(data, url)
+
+    async def _parse_article_via_api(self, article_id: str, url: str) -> Optional[ParsedContent]:
+        """通过API解析文章"""
+        api_url = self.API_ENDPOINTS["article"].format(id=article_id)
+        data = await self._api_request(api_url, use_cookies=True)
+        
+        if not data or "_error" in data:
+            return None
+        
+        return self._build_article_from_api(data, url)
+
+    async def _parse_question_via_api(self, question_id: str, url: str) -> Optional[ParsedContent]:
+        """通过API解析问题"""
+        api_url = self.API_ENDPOINTS["question"].format(id=question_id)
+        data = await self._api_request(api_url, use_cookies=True)
+        
+        if not data or "_error" in data:
+            return None
+        
+        return self._build_question_from_api(data, url)
+
+    async def _parse_user_via_api(self, user_id: str, url: str) -> Optional[ParsedContent]:
+        """通过API解析用户信息"""
+        api_url = self.API_ENDPOINTS["user"].format(id=user_id)
+        data = await self._api_request(api_url)
+        
+        if not data or "_error" in data:
+            return None
+        
+        return self._build_user_from_api(data, url)
+
+    async def _parse_column_via_api(self, column_id: str, url: str) -> Optional[ParsedContent]:
+        """通过API解析专栏"""
+        api_url = self.API_ENDPOINTS["column"].format(id=column_id)
+        data = await self._api_request(api_url)
+        
+        if not data or "_error" in data:
+            return None
+        
+        return self._build_column_from_api(data, url)
+
+    async def _parse_collection_via_api(self, collection_id: str, url: str) -> Optional[ParsedContent]:
+        """通过API解析收藏夹"""
+        api_url = self.API_ENDPOINTS["collection"].format(id=collection_id)
+        data = await self._api_request(api_url)
+        
+        if not data or "_error" in data:
+            return None
+        
+        return self._build_collection_from_api(data, url)
+
+    # ==================== 构建ParsedContent ====================
+
+    def _build_answer_from_api(self, data: Dict, url: str) -> ParsedContent:
+        """从API响应构建回答ParsedContent"""
+        answer_id = str(data.get('id', ''))
+        
+        question_data = data.get('question', {})
+        question_id = question_data.get('id')
+        question_title = question_data.get('title', '')
+        
+        author_data = data.get('author', {})
+        author = ZhihuAuthor(
+            id=author_data.get('id'),
+            urlToken=author_data.get('url_token'),
+            name=author_data.get('name', 'Unknown'),
+            avatarUrl=author_data.get('avatar_url'),
+            headline=author_data.get('headline'),
+            gender=author_data.get('gender')
+        )
+        
+        content_html = data.get('content', '')
+        processed_html = preprocess_zhihu_html(content_html)
+        media_urls = extract_images(processed_html)
+        markdown_content = md(processed_html, heading_style="ATX")
+        
+        created = data.get('created_time')
+        published_at = datetime.fromtimestamp(created) if created else None
+        
+        stats = {
+            "like": data.get('voteup_count', 0),
+            "reply": data.get('comment_count', 0),
+            "thanks_count": data.get('thanks_count', 0),
+            "voteup_count": data.get('voteup_count', 0),
+            "comment_count": data.get('comment_count', 0),
+        }
+        
+        raw_metadata = dict(data)
+        raw_metadata['associated_question'] = {
+            "id": question_id,
+            "title": question_title,
+            "url": f"https://www.zhihu.com/question/{question_id}" if question_id else None,
+        }
+        raw_metadata['stats'] = stats
+        raw_metadata['archive'] = self._build_archive("zhihu_answer", 
+            f"回答：{question_title}" if question_title else f"知乎回答 {answer_id}",
+            processed_html, markdown_content, media_urls, author.avatar_url)
+        
+        return ParsedContent(
+            platform="zhihu",
+            content_type="answer",
+            content_id=answer_id,
+            clean_url=url.split('?')[0],
+            title=f"回答：{question_title}" if question_title else f"知乎回答 {answer_id}",
+            description=markdown_content,
+            author_name=author.name,
+            author_id=author.url_token or str(author.id),
+            author_avatar_url=author.avatar_url,
+            cover_url=data.get('thumbnail') or (media_urls[0] if media_urls else None),
+            media_urls=media_urls,
+            published_at=published_at,
+            raw_metadata=raw_metadata,
+            stats=stats
+        )
+
+    def _build_article_from_api(self, data: Dict, url: str) -> ParsedContent:
+        """从API响应构建文章ParsedContent"""
+        article_id = str(data.get('id', ''))
+        title = data.get('title', '')
+        
+        author_data = data.get('author', {})
+        author = ZhihuAuthor(
+            id=author_data.get('id'),
+            urlToken=author_data.get('url_token'),
+            name=author_data.get('name', 'Unknown'),
+            avatarUrl=author_data.get('avatar_url'),
+            headline=author_data.get('headline'),
+            gender=author_data.get('gender')
+        )
+        
+        content_html = data.get('content', '')
+        processed_html = preprocess_zhihu_html(content_html)
+        media_urls = extract_images(processed_html)
+        markdown_content = md(processed_html, heading_style="ATX")
+        
+        created = data.get('created')
+        published_at = datetime.fromtimestamp(created) if created else None
+        
+        stats = {
+            "like": data.get('voteup_count', 0),
+            "reply": data.get('comment_count', 0),
+            "favorite": data.get('collected_count', 0),
+            "voteup_count": data.get('voteup_count', 0),
+            "comment_count": data.get('comment_count', 0),
+        }
+        
+        raw_metadata = dict(data)
+        raw_metadata['stats'] = stats
+        raw_metadata['archive'] = self._build_archive("zhihu_article", title, 
+            processed_html, markdown_content, media_urls, author.avatar_url)
+        
+        cover_url = data.get('title_image') or data.get('image_url')
+        if not cover_url and media_urls:
+            cover_url = media_urls[0]
+        
+        return ParsedContent(
+            platform="zhihu",
+            content_type="article",
+            content_id=article_id,
+            clean_url=url.split('?')[0],
+            title=title,
+            description=markdown_content,
+            author_name=author.name,
+            author_id=author.url_token or str(author.id),
+            author_avatar_url=author.avatar_url,
+            cover_url=cover_url,
+            media_urls=media_urls,
+            published_at=published_at,
+            raw_metadata=raw_metadata,
+            stats=stats
+        )
+
+    def _build_question_from_api(self, data: Dict, url: str) -> ParsedContent:
+        """从API响应构建问题ParsedContent"""
+        question_id = str(data.get('id', ''))
+        title = data.get('title', '')
+        
+        author_data = data.get('author', {})
+        author_name = author_data.get('name', 'Anonymous') if author_data else 'Anonymous'
+        author_id = author_data.get('url_token', '') if author_data else ''
+        
+        detail_html = data.get('detail', '') or data.get('excerpt', '')
+        processed_html = preprocess_zhihu_html(detail_html)
+        media_urls = extract_images(processed_html)
+        markdown_content = md(processed_html, heading_style="ATX")
+        
+        created = data.get('created')
+        published_at = datetime.fromtimestamp(created) if created else None
+        
+        stats = {
+            "view": data.get('visit_count', 0),
+            "reply": data.get('answer_count', 0),
+            "favorite": data.get('follower_count', 0),
+            "like": data.get('voteup_count', 0) or 0,
+            "comment_count": data.get('comment_count', 0),
+            "visit_count": data.get('visit_count', 0),
+            "answer_count": data.get('answer_count', 0),
+            "follower_count": data.get('follower_count', 0),
+        }
+        
+        raw_metadata = dict(data)
+        raw_metadata['stats'] = stats
+        
+        return ParsedContent(
+            platform="zhihu",
+            content_type="question",
+            content_id=question_id,
+            clean_url=url.split('?')[0],
+            title=title,
+            description=markdown_content,
+            author_name=author_name,
+            author_id=author_id,
+            cover_url=media_urls[0] if media_urls else None,
+            media_urls=media_urls,
+            published_at=published_at,
+            raw_metadata=raw_metadata,
+            stats=stats
+        )
+
+    def _build_user_from_api(self, data: Dict, url: str) -> ParsedContent:
+        """从API响应构建用户ParsedContent"""
+        user_id = data.get('id', '')
+        url_token = data.get('url_token', '')
+        name = data.get('name', 'Unknown')
+        headline = data.get('headline', '')
+        avatar_url = data.get('avatar_url', '')
+        
+        stats = {
+            "view": data.get('follower_count', 0),
+            "share": data.get('following_count', 0),
+            "like": data.get('thanked_count', 0),
+            "favorite": data.get('favorited_count', 0),
+            "follower_count": data.get('follower_count', 0),
+            "following_count": data.get('following_count', 0),
+            "voteup_count": data.get('voteup_count', 0),
+            "thanked_count": data.get('thanked_count', 0),
+            "answer_count": data.get('answer_count', 0),
+            "articles_count": data.get('articles_count', 0),
+            "pins_count": data.get('pins_count', 0),
+            "question_count": data.get('question_count', 0),
+        }
+        
+        raw_metadata = dict(data)
+        raw_metadata['stats'] = stats
+        
+        return ParsedContent(
+            platform="zhihu",
+            content_type="user_profile",
+            content_id=str(user_id),
+            clean_url=url.split('?')[0],
+            title=f"{name} 的知乎主页",
+            description=headline,
+            author_name=name,
+            author_id=url_token,
+            cover_url=avatar_url,
+            media_urls=[avatar_url] if avatar_url else [],
+            published_at=datetime.now(),
+            raw_metadata=raw_metadata,
+            stats=stats
+        )
+
+    def _build_column_from_api(self, data: Dict, url: str) -> ParsedContent:
+        """从API响应构建专栏ParsedContent"""
+        column_id = data.get('id', '')
+        title = data.get('title', '')
+        intro = data.get('intro', '') or data.get('description', '')
+        image_url = data.get('image_url', '')
+        
+        author_data = data.get('author', {})
+        author_name = author_data.get('name', 'Unknown') if author_data else 'Unknown'
+        author_id = author_data.get('url_token', '') if author_data else ''
+        author_avatar = author_data.get('avatar_url', '') if author_data else ''
+        
+        stats = {
+            "view": data.get('followers', 0),
+            "reply": data.get('articles_count', 0) or data.get('items_count', 0),
+            "like": data.get('voteup_count', 0),
+            "followers": data.get('followers', 0),
+            "articles_count": data.get('articles_count', 0) or data.get('items_count', 0),
+        }
+        
+        raw_metadata = dict(data)
+        raw_metadata['stats'] = stats
+        
+        updated = data.get('updated')
+        published_at = datetime.fromtimestamp(updated) if updated else datetime.now()
+        
+        return ParsedContent(
+            platform="zhihu",
+            content_type="column",
+            content_id=str(column_id),
+            clean_url=url.split('?')[0],
+            title=f"专栏：{title}" if title else f"知乎专栏 {column_id}",
+            description=intro,
+            author_name=author_name,
+            author_id=author_id,
+            author_avatar_url=author_avatar,
+            cover_url=image_url,
+            media_urls=[image_url] if image_url else [],
+            published_at=published_at,
+            raw_metadata=raw_metadata,
+            stats=stats
+        )
+
+    def _build_collection_from_api(self, data: Dict, url: str) -> ParsedContent:
+        """从API响应构建收藏夹ParsedContent"""
+        collection_data = data.get('collection', data)
+        
+        collection_id = collection_data.get('id', '')
+        title = collection_data.get('title', '')
+        description = collection_data.get('description', '')
+        
+        creator = collection_data.get('creator', {})
+        creator_name = creator.get('name', 'Unknown') if creator else 'Unknown'
+        creator_id = creator.get('url_token', '') if creator else ''
+        creator_avatar = creator.get('avatar_url', '') if creator else ''
+        
+        stats = {
+            "view": collection_data.get('view_count', 0),
+            "reply": collection_data.get('comment_count', 0),
+            "like": collection_data.get('like_count', 0),
+            "favorite": collection_data.get('follower_count', 0),
+            "item_count": collection_data.get('item_count', 0) or collection_data.get('answer_count', 0),
+            "follower_count": collection_data.get('follower_count', 0),
+        }
+        
+        raw_metadata = dict(data)
+        raw_metadata['stats'] = stats
+        
+        created = collection_data.get('created_time')
+        published_at = datetime.fromtimestamp(created) if created else datetime.now()
+        
+        return ParsedContent(
+            platform="zhihu",
+            content_type="collection",
+            content_id=str(collection_id),
+            clean_url=url.split('?')[0],
+            title=f"收藏夹：{title}" if title else f"知乎收藏夹 {collection_id}",
+            description=description,
+            author_name=creator_name,
+            author_id=creator_id,
+            author_avatar_url=creator_avatar,
+            cover_url=creator_avatar,
+            media_urls=[],
+            published_at=published_at,
+            raw_metadata=raw_metadata,
+            stats=stats
+        )
+
+    def _build_archive(self, content_type: str, title: str, processed_html: str, 
+                       markdown: str, media_urls: list, avatar_url: Optional[str] = None) -> Dict:
+        """构建归档数据"""
+        archive_images = [{"url": u} for u in media_urls]
+        if avatar_url:
+            archive_images.append({"url": avatar_url, "type": "avatar"})
+        
+        return {
+            "version": 2,
+            "type": content_type,
+            "title": title,
+            "plain_text": BeautifulSoup(processed_html, 'html.parser').get_text("\n"),
+            "markdown": markdown,
+            "images": archive_images,
+            "links": [],
+            "stored_images": []
+        }
+
+    # ==================== 主解析方法 ====================
 
     async def parse(self, url: str) -> ParsedContent:
         content_type = await self.detect_content_type(url)
@@ -60,16 +547,32 @@ class ZhihuAdapter(PlatformAdapter):
             raise NonRetryableAdapterError(f"不支持的知乎 URL: {url}")
 
         clean_url = await self.clean_url(url)
+        content_id = self._extract_id_from_url(url, content_type)
         
-        # Proxy configuration
-        proxy_url = None
-        if settings.https_proxy:
-            proxy_url = settings.https_proxy
-        elif settings.http_proxy:
-            proxy_url = settings.http_proxy
-            
-        if proxy_url and proxy_url.startswith("socks://"):
-            proxy_url = proxy_url.replace("socks://", "socks5://")
+        # API优先策略
+        api_parsers = {
+            "answer": self._parse_answer_via_api,
+            "article": self._parse_article_via_api,
+            "question": self._parse_question_via_api,
+            "user_profile": self._parse_user_via_api,
+            "column": self._parse_column_via_api,
+            "collection": self._parse_collection_via_api,
+        }
+        
+        if content_id and content_type in api_parsers:
+            logger.info(f"尝试通过API解析 {content_type}: {content_id}")
+            result = await api_parsers[content_type](content_id, url)
+            if result:
+                logger.info(f"API解析成功: {content_type}/{content_id}")
+                return result
+            logger.info(f"API解析失败，回退到HTML解析: {content_type}/{content_id}")
+        
+        # HTML解析回退 (pin类型仅支持HTML)
+        return await self._parse_via_html(url, clean_url, content_type)
+
+    async def _parse_via_html(self, url: str, clean_url: str, content_type: str) -> ParsedContent:
+        """通过HTML页面解析"""
+        proxy_url = self._get_proxy_url()
     
         async with httpx.AsyncClient(
             headers=self.HEADERS, 
@@ -83,32 +586,32 @@ class ZhihuAdapter(PlatformAdapter):
                 if response.status_code == 404:
                     raise NonRetryableAdapterError(f"内容不存在: {url}")
                 if response.status_code in (401, 403):
-                     # Check if it's really auth issue or just anti-bot
-                     if "安全验证" in response.text:
-                         raise RetryableAdapterError("触发知乎安全验证，请稍后重试或更新 Cookie")
-                     raise AuthRequiredAdapterError("访问知乎需要登录或权限不足")
+                    if "安全验证" in response.text:
+                        raise RetryableAdapterError("触发知乎安全验证，请稍后重试或更新 Cookie")
+                    raise AuthRequiredAdapterError("访问知乎需要登录或权限不足")
                 if response.status_code != 200:
                     raise RetryableAdapterError(f"知乎请求失败: {response.status_code}")
                 
                 html = response.text
                 
-                parsed_content = None
-                if content_type == "article":
-                    parsed_content = parse_article(html, clean_url)
-                elif content_type == "question":
-                    parsed_content = parse_question(html, clean_url)
-                elif content_type == "answer":
-                    parsed_content = parse_answer(html, clean_url)
-                elif content_type == "pin":
-                    parsed_content = parse_pin(html, clean_url)
-                elif content_type == "user_profile":
-                    parsed_content = parse_people(html, clean_url)
+                html_parsers = {
+                    "article": parse_article,
+                    "question": parse_question,
+                    "answer": parse_answer,
+                    "pin": parse_pin,
+                    "user_profile": parse_people,
+                }
+                
+                parser = html_parsers.get(content_type)
+                if not parser:
+                    raise NonRetryableAdapterError(f"不支持的内容类型: {content_type}")
+                
+                parsed_content = parser(html, clean_url)
 
                 if not parsed_content:
-                     # Check if it was a redirect to login or verification
-                     if "登录" in html or "验证" in html:
-                         raise AuthRequiredAdapterError("可能需要更新 Cookie")
-                     raise NonRetryableAdapterError(f"解析失败，未找到数据: {url}")
+                    if "登录" in html or "验证" in html:
+                        raise AuthRequiredAdapterError("可能需要更新 Cookie")
+                    raise NonRetryableAdapterError(f"解析失败，未找到数据: {url}")
                 
                 return parsed_content
 

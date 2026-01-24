@@ -15,6 +15,8 @@ async def test_detect_content_type():
     assert await adapter.detect_content_type("https://www.zhihu.com/question/123456/answer/7890") == "answer"
     assert await adapter.detect_content_type("https://www.zhihu.com/pin/123456") == "pin"
     assert await adapter.detect_content_type("https://www.zhihu.com/people/someuser") == "user_profile"
+    assert await adapter.detect_content_type("https://www.zhihu.com/column/learning-to-learn") == "column"
+    assert await adapter.detect_content_type("https://www.zhihu.com/collection/123456") == "collection"
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(not os.getenv("ZHIHU_COOKIE") and not settings.zhihu_cookie, reason="Need Zhihu Cookie")
@@ -69,3 +71,25 @@ async def test_parse_people():
     assert result.platform == "zhihu"
     assert result.content_type == "user_profile"
     assert result.author_name == "田渊栋"
+
+@pytest.mark.asyncio
+async def test_parse_column():
+    """测试专栏解析 - 无需cookie"""
+    adapter = ZhihuAdapter()
+    url = "https://www.zhihu.com/column/learning-to-learn"
+    result = await adapter.parse(url)
+    assert result.platform == "zhihu"
+    assert result.content_type == "column"
+    assert result.title is not None
+    assert result.stats.get("articles_count", 0) >= 0
+
+@pytest.mark.asyncio
+async def test_parse_collection():
+    """测试收藏夹解析 - 无需cookie"""
+    adapter = ZhihuAdapter()
+    url = "https://www.zhihu.com/collection/158014176"
+    result = await adapter.parse(url)
+    assert result.platform == "zhihu"
+    assert result.content_type == "collection"
+    assert result.title is not None
+    assert result.stats.get("item_count", 0) >= 0

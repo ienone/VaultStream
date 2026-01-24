@@ -22,6 +22,8 @@ class UnifiedStats extends StatelessWidget {
     final bool isWeibo = detail.platform.toLowerCase() == 'weibo';
     final bool isZhihu = detail.isZhihu;
     final bool isUserProfile = detail.contentType == 'user_profile';
+    final bool isColumn = detail.contentType == 'column';
+    final bool isCollection = detail.contentType == 'collection';
 
     final List<Widget> items = [];
 
@@ -109,6 +111,67 @@ class UnifiedStats extends StatelessWidget {
             ),
           );
         }
+      }
+    } else if (isColumn) {
+      // 专栏统计
+      items.add(
+        UnifiedStatItem(
+          icon: Icons.people_outline,
+          label: '关注者',
+          value: formatCount(detail.viewCount),
+        ),
+      );
+      items.add(
+        UnifiedStatItem(
+          icon: Icons.article_outlined,
+          label: '文章数',
+          value: formatCount(detail.commentCount),
+        ),
+      );
+      if (detail.likeCount > 0) {
+        items.add(
+          UnifiedStatItem(
+            icon: Icons.thumb_up_alt_outlined,
+            label: '获赞',
+            value: formatCount(detail.likeCount),
+          ),
+        );
+      }
+    } else if (isCollection) {
+      // 收藏夹统计
+      items.add(
+        UnifiedStatItem(
+          icon: Icons.people_outline,
+          label: '关注者',
+          value: formatCount(detail.collectCount),
+        ),
+      );
+      if (stats['item_count'] != null) {
+        items.add(
+          UnifiedStatItem(
+            icon: Icons.bookmark_border,
+            label: '内容数',
+            value: formatCount(stats['item_count']),
+          ),
+        );
+      }
+      if (detail.viewCount > 0) {
+        items.add(
+          UnifiedStatItem(
+            icon: Icons.remove_red_eye_outlined,
+            label: '浏览',
+            value: formatCount(detail.viewCount),
+          ),
+        );
+      }
+      if (detail.likeCount > 0) {
+        items.add(
+          UnifiedStatItem(
+            icon: Icons.thumb_up_alt_outlined,
+            label: '点赞',
+            value: formatCount(detail.likeCount),
+          ),
+        );
       }
     } else {
       if (detail.viewCount > 0 || isBilibili) {

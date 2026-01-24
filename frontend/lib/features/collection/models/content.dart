@@ -118,6 +118,8 @@ abstract class ContentDetail with _$ContentDetail {
   bool get isZhihuAnswer => isZhihu && contentType == 'answer';
   bool get isZhihuPin => isZhihu && contentType == 'pin';
   bool get isZhihuQuestion => isZhihu && contentType == 'question';
+  bool get isZhihuColumn => isZhihu && contentType == 'column';
+  bool get isZhihuCollection => isZhihu && contentType == 'collection';
 
   factory ContentDetail.fromJson(Map<String, dynamic> json) =>
       _$ContentDetailFromJson(json);
