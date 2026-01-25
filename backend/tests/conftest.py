@@ -3,14 +3,16 @@ Pytest Fixtures for Backend Tests
 """
 import pytest
 import asyncio
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Dict, List
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy import select
 
 from app.main import app
 from app.config import settings
 from app.database import Base
+from app.models import Content
 
 # Override the database URL for testing if needed
 # For now, we use the existing SQLite DB (as per user request to test with real data)
@@ -48,3 +50,33 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
     headers = {"X-API-Token": settings.api_token.get_secret_value() if settings.api_token else ""}
     async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as c:
         yield c
+
+@pytest.fixture(scope="function")
+async def get_platform_urls(db_session: AsyncSession):
+    """
+    Query database for real test URLs by platform
+    
+    Usage:
+        urls = await get_platform_urls("bilibili", limit=3)
+        # Returns: {"video": "https://...", "article": "https://..."}
+    """
+    async def _query(platform: str, limit: int = 5) -> Dict[str, str]:
+        """Fetch URLs grouped by content_type"""
+        stmt = (
+            select(Content.url, Content.content_type)
+            .where(Content.platform == platform)
+            .distinct(Content.content_type)
+            .limit(limit)
+        )
+        result = await db_session.execute(stmt)
+        rows = result.all()
+        
+        # Return first URL for each content_type
+        url_map = {}
+        for row in rows:
+            if row.content_type not in url_map:
+                url_map[row.content_type] = row.url
+        
+        return url_map
+    
+    return _query

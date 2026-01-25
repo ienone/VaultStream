@@ -297,6 +297,7 @@ class TwitterFxAdapter(PlatformAdapter):
             # "original_api_response": tweet,  # 移除冗余字段
             # 私有存档结构（用于媒体处理）
             "archive": {
+                "type": "twitter_status",
                 "version": "1",
                 "images": archive_images,
                 "videos": archive_videos,

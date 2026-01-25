@@ -110,7 +110,7 @@ class WeiboAdapter(PlatformAdapter):
         }
         
         if settings.weibo_cookie:
-             headers["Cookie"] = settings.weibo_cookie.get_secret_value()
+             headers["Cookie"] = settings.weibo_cookie.get_secret_value().strip()
         
         request_cookies = None
         if "Cookie" not in headers and self.cookies:
@@ -177,8 +177,18 @@ class WeiboAdapter(PlatformAdapter):
         
         api_url = f"https://weibo.com/ajax/statuses/show?id={bid}"
         
+        # Use proxy if configured
+        proxies = None
+        global_proxy = settings.http_proxy or settings.https_proxy
+        if global_proxy:
+            global_proxy = global_proxy.strip()
+            proxies = {
+                "http": global_proxy,
+                "https": global_proxy
+            }
+
         try:
-            response = requests.get(api_url, headers=headers, cookies=request_cookies, timeout=10)
+            response = requests.get(api_url, headers=headers, cookies=request_cookies, proxies=proxies, timeout=10)
             if response.status_code == 404:
                 raise NonRetryableAdapterError(f"Weibo not found: {bid}")
             if response.status_code != 200:
@@ -315,14 +325,24 @@ class WeiboAdapter(PlatformAdapter):
             "Accept": "application/json, text/plain, */*",
         }
         if settings.weibo_cookie:
-             headers["Cookie"] = settings.weibo_cookie.get_secret_value()
+             headers["Cookie"] = settings.weibo_cookie.get_secret_value().strip()
         
         cookies = self.cookies or {}
+
+        # Use proxy if configured
+        proxies = None
+        global_proxy = settings.http_proxy or settings.https_proxy
+        if global_proxy:
+            global_proxy = global_proxy.strip()
+            proxies = {
+                "http": global_proxy,
+                "https": global_proxy
+            }
 
         # 1. Basic Info
         info_url = f"https://weibo.com/ajax/profile/info?uid={uid}"
         try:
-            resp_info = requests.get(info_url, headers=headers, cookies=cookies, timeout=10)
+            resp_info = requests.get(info_url, headers=headers, cookies=cookies, proxies=proxies, timeout=10)
             resp_info.raise_for_status()
             info_data = resp_info.json()
             user_base = self._parse_user_info_spider(info_data.get('data', {}).get('user', {}))
@@ -333,7 +353,7 @@ class WeiboAdapter(PlatformAdapter):
         # 2. Detail Info
         detail_url = f"https://weibo.com/ajax/profile/detail?uid={uid}"
         try:
-            resp_detail = requests.get(detail_url, headers=headers, cookies=cookies, timeout=10)
+            resp_detail = requests.get(detail_url, headers=headers, cookies=cookies, proxies=proxies, timeout=10)
             resp_detail.raise_for_status()
             detail_data = resp_detail.json()
             user_detail = self._parse_user_detail_spider(user_base, detail_data.get('data', {}))
@@ -387,18 +407,19 @@ class WeiboAdapter(PlatformAdapter):
 
     def _build_weibo_archive(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """构建标准化存档结构"""
+        from app.adapters.utils.archive_builder import ArchiveBuilder
+        
         text_html = data.get("text", "")
         # 简单清洗 HTML
         plain_text = re.sub(r'<[^>]+>', '', text_html).strip()
         
-        archive = {
-            "type": "weibo_status",
-            "title": plain_text[:50] if plain_text else "微博内容",
-            "plain_text": plain_text,
-            "images": [],
-            "videos": [],
-            "markdown": plain_text # 暂且直接用纯文本作为 markdown
-        }
+        archive = ArchiveBuilder.create_base_archive(
+            content_type="weibo_status",
+            title=plain_text[:50] if plain_text else "微博内容",
+            plain_text=plain_text,
+            markdown=plain_text,  # 暂且直接用纯文本作为 markdown
+            version=2
+        )
         
         # 图片提取
         pic_infos = data.get("pic_infos", {})
@@ -414,23 +435,17 @@ class WeiboAdapter(PlatformAdapter):
             height = None
             
             if info:
-                largest = info.get("largest", {}).get("url")
-                mw2000 = info.get("mw2000", {}).get("url")
-                url = mw2000 or largest
+                # Use ArchiveBuilder to select best quality image
+                url = ArchiveBuilder.select_best_image_url(info)
                 width = info.get("largest", {}).get("width")
                 height = info.get("largest", {}).get("height")
             else:
                 # Fallback: Construct URL from pid
-                # Usually https://wx1.sinaimg.cn/large/{pid}.jpg works
                 if pid:
                     url = f"https://wx1.sinaimg.cn/large/{pid}.jpg"
             
             if url:
-                archive["images"].append({
-                    "url": url,
-                    "width": width,
-                    "height": height
-                })
+                ArchiveBuilder.add_image(archive, url, width=width, height=height)
 
         # 视频提取
         video_url = None

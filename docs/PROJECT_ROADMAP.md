@@ -22,7 +22,7 @@ VaultStream 是一个私有化内容归档与分发系统，旨在帮助用户�
 | Twitter/X | 推文 (FxTwitter) | [TWITTER_ADAPTER.md](TWITTER_ADAPTER.md) | 免登录获取多图/视频 |
 | 微博 | 博文 (Status/User) | [WEIBO_ADAPTER.md](WEIBO_ADAPTER.md) | 支持长文及移动端链接还原 |
 | 知乎 | 回答/文章 (Article/Answer) | [ZHIHU_ADAPTER.md](ZHIHU_ADAPTER.md) | 优化 API/HTML 差异化解析 |
-| 小红书 | 笔记 | 开发中 | 基础图片获取 |
+| 小红书 | 笔记、视频、用户 | [XIAOHONGSHU_ADAPTER.md](XIAOHONGSHU_ADAPTER.md) | 支持笔记图文和视频 |
 
 ### 2.2 前端功能 (Collection)
 - 瀑布流/网格视图: 自适应布局，支持卡片悬浮效果。

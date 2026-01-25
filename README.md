@@ -322,8 +322,11 @@ TELEGRAM_CHANNEL_ID=@your_channel_id
 - [API文档](docs/API.md) - 详细的API接口说明
 - [数据库设计](docs/DATABASE.md) - 数据模型和索引策略
 - [工作流程](docs/WORKFLOWS.md) - 内容处理流程和状态机
-- [B站适配器](docs/BILIBILI_API.md) - B站平台解析实现
-- [Twitter适配器](docs/TWITTER.md) - Twitter平台解析实现
+- [B站适配器](docs/BILIBILI_ADAPTER.md) - B站平台解析实现
+- [Twitter适配器](docs/TWITTER_ADAPTER.md) - Twitter平台解析实现
+- [微博适配器](docs/WEIBO_ADAPTER.md) - 微博平台解析实现
+- [知乎适配器](docs/ZHIHU_ADAPTER.md) - 知乎平台解析实现
+- [小红书适配器](docs/XIAOHONGSHU_ADAPTER.md) - 小红书平台解析实现
 
 ## 技术栈
 
@@ -342,7 +345,7 @@ TELEGRAM_CHANNEL_ID=@your_channel_id
 当前重点：
 - [x] M0: 基础架构（轻量化完成）
 - [x] M1: 收藏入口与去重
-- [x] M2: 解析流水线（Bilibili/Twitter适配器）
+- [x] M2: 解析流水线（Bilibili/Twitter/Weibo/Zhihu/Xiaohongshu适配器）
 - [x] M3: 媒体存储与转码
 - [ ] M4: 分享卡片与分发规则
 - [ ] M5: Telegram Bot完善
