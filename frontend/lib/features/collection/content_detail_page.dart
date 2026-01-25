@@ -365,7 +365,8 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         if (detail.isTwitter ||
             detail.isWeibo ||
             detail.isZhihuPin ||
-            detail.isZhihuQuestion) {
+            detail.isZhihuQuestion ||
+            detail.isXiaohongshu) {
           return TwitterLandscapeLayout(
             detail: detail,
             apiBaseUrl: apiBaseUrl,

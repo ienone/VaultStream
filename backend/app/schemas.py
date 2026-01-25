@@ -78,9 +78,12 @@ class ContentDetail(BaseModel):
     description: Optional[str] # 内容描述
     author_name: Optional[str] # 作者名称
     author_id: Optional[str] # 作者平台ID
+    author_avatar_url: Optional[str] = None # 作者头像URL
+    author_url: Optional[str] = None # 作者主页链接
     cover_url: Optional[str] # 封面URL
     cover_color: Optional[str] = None # 封面主色调 (Hex)
     media_urls: List[str] # 媒体资源URL列表
+    source_tags: List[str] = Field(default_factory=list) # 平台原生标签
     view_count: int = 0 # 查看次数
     like_count: int = 0 # 点赞次数
     collect_count: int = 0 # 收藏次数

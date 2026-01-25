@@ -195,6 +195,12 @@ class ContentParser {
           size: size,
           color: const Color(0xFFFB7299),
         );
+      case 'xiaohongshu':
+        return Icon(
+          Icons.book_outlined,
+          size: size,
+          color: const Color(0xFFFF2442),
+        );
       default:
         return Icon(Icons.link, size: size);
     }

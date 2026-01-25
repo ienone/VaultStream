@@ -15,8 +15,11 @@ alembic
 # aioredis
 
 # HTTP 客户端
-httpx
+httpx[socks]
 aiohttp
+
+# 小红书签名
+xhshow
 
 # Twitter 爬取
 

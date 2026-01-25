@@ -21,6 +21,7 @@ class UnifiedStats extends StatelessWidget {
     final bool isBilibili = detail.isBilibili;
     final bool isWeibo = detail.platform.toLowerCase() == 'weibo';
     final bool isZhihu = detail.isZhihu;
+    final bool isXiaohongshu = detail.isXiaohongshu;
     final bool isUserProfile = detail.contentType == 'user_profile';
     final bool isColumn = detail.contentType == 'column';
     final bool isCollection = detail.contentType == 'collection';
@@ -184,7 +185,7 @@ class UnifiedStats extends StatelessWidget {
         );
       }
 
-      if (detail.likeCount > 0 || isZhihu || isBilibili) {
+      if (detail.likeCount > 0 || isZhihu || isBilibili || isXiaohongshu) {
         items.add(
           UnifiedStatItem(
             icon: isZhihu ? Icons.thumb_up_alt_outlined : Icons.favorite_border,
@@ -194,34 +195,66 @@ class UnifiedStats extends StatelessWidget {
         );
       }
 
-      if (detail.collectCount > 0 || isBilibili || isZhihu) {
-        items.add(
-          UnifiedStatItem(
-            icon: Icons.star_border,
-            label: '收藏',
-            value: formatCount(detail.collectCount),
-          ),
-        );
-      }
+      // 小红书：只有数值 > 0 才显示
+      if (isXiaohongshu) {
+        if (detail.collectCount > 0) {
+          items.add(
+            UnifiedStatItem(
+              icon: Icons.star_border,
+              label: '收藏',
+              value: formatCount(detail.collectCount),
+            ),
+          );
+        }
+        if (detail.commentCount > 0) {
+          items.add(
+            UnifiedStatItem(
+              icon: Icons.chat_bubble_outline,
+              label: '评论',
+              value: formatCount(detail.commentCount),
+            ),
+          );
+        }
+        if (detail.shareCount > 0) {
+          items.add(
+            UnifiedStatItem(
+              icon: Icons.repeat_rounded,
+              label: '分享',
+              value: formatCount(detail.shareCount),
+            ),
+          );
+        }
+      } else {
+        // 其他平台保持原有逻辑
+        if (detail.collectCount > 0 || isBilibili || isZhihu) {
+          items.add(
+            UnifiedStatItem(
+              icon: Icons.star_border,
+              label: '收藏',
+              value: formatCount(detail.collectCount),
+            ),
+          );
+        }
 
-      if (detail.commentCount > 0 || isBilibili || isWeibo || isZhihu) {
-        items.add(
-          UnifiedStatItem(
-            icon: Icons.chat_bubble_outline,
-            label: '评论',
-            value: formatCount(detail.commentCount),
-          ),
-        );
-      }
+        if (detail.commentCount > 0 || isBilibili || isWeibo || isZhihu) {
+          items.add(
+            UnifiedStatItem(
+              icon: Icons.chat_bubble_outline,
+              label: '评论',
+              value: formatCount(detail.commentCount),
+            ),
+          );
+        }
 
-      if (detail.shareCount > 0 || isWeibo || isBilibili) {
-        items.add(
-          UnifiedStatItem(
-            icon: Icons.repeat_rounded,
-            label: isWeibo ? '转发' : '分享',
-            value: formatCount(detail.shareCount),
-          ),
-        );
+        if (detail.shareCount > 0 || isWeibo || isBilibili) {
+          items.add(
+            UnifiedStatItem(
+              icon: Icons.repeat_rounded,
+              label: isWeibo ? '转发' : '分享',
+              value: formatCount(detail.shareCount),
+            ),
+          );
+        }
       }
 
       if (detail.isZhihuQuestion) {

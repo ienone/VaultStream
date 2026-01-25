@@ -166,6 +166,13 @@ class AuthorHeader extends ConsumerWidget {
   }
 
   void _launchAuthorProfile(ContentDetail detail) {
+    // 优先使用后端返回的 authorUrl
+    if (detail.authorUrl != null && detail.authorUrl!.isNotEmpty) {
+      launchUrl(Uri.parse(detail.authorUrl!), mode: LaunchMode.externalApplication);
+      return;
+    }
+    
+    // 回退：根据平台构造 URL
     if (detail.authorId != null && detail.authorId!.isNotEmpty) {
       String url;
       if (detail.isZhihu) {
@@ -176,6 +183,8 @@ class AuthorHeader extends ConsumerWidget {
         url = "https://twitter.com/i/user/${detail.authorId}";
       } else if (detail.isWeibo) {
         url = "https://weibo.com/u/${detail.authorId}";
+      } else if (detail.isXiaohongshu) {
+        url = "https://www.xiaohongshu.com/user/profile/${detail.authorId}";
       } else {
         return;
       }

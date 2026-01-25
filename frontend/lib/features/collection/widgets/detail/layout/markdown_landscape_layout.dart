@@ -3,6 +3,7 @@ import '../../../models/content.dart';
 import '../../../models/header_line.dart';
 import '../components/author_header.dart';
 import '../components/rich_content.dart';
+import '../components/tags_section.dart';
 import '../components/unified_stats.dart';
 
 class MarkdownLandscapeLayout extends StatelessWidget {
@@ -79,6 +80,14 @@ class MarkdownLandscapeLayout extends StatelessWidget {
                     headerKeys: headerKeys,
                     contentColor: contentColor,
                   ),
+
+                  // 标签部分
+                  if (detail.tags.isNotEmpty || detail.sourceTags.isNotEmpty) ...[
+                    const SizedBox(height: 32),
+                    const Divider(height: 1),
+                    const SizedBox(height: 24),
+                    TagsSection(detail: detail),
+                  ],
                 ],
               ),
             ),

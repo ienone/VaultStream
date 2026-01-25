@@ -298,6 +298,8 @@ class TaskWorker:
                     content.author_name = parsed.author_name
                     content.author_id = parsed.author_id
                     content.author_avatar_url = parsed.author_avatar_url
+                    content.author_url = parsed.author_url
+                    content.source_tags = parsed.source_tags or []
                     content.published_at = parsed.published_at
                     # 可选：对私有归档中的媒体进行处理（下载/转码/存储），不影响对外分享字段。
                     if settings.enable_archive_media_processing:
@@ -638,6 +640,8 @@ class TaskWorker:
         content.author_name = parsed.author_name
         content.author_id = parsed.author_id
         content.author_avatar_url = parsed.author_avatar_url
+        content.author_url = parsed.author_url
+        content.source_tags = parsed.source_tags or []
         content.published_at = parsed.published_at
 
         if settings.enable_archive_media_processing:

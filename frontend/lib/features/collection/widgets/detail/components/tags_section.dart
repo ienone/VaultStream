@@ -8,25 +8,81 @@ class TagsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (detail.tags.isEmpty) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    
+    final bool hasUserTags = detail.tags.isNotEmpty;
+    final bool hasSourceTags = detail.sourceTags.isNotEmpty;
+    
+    if (!hasUserTags && !hasSourceTags) {
       return const SizedBox.shrink();
     }
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: detail.tags
-          .map(
-            (tag) => Chip(
-              label: Text(tag),
-              labelStyle: Theme.of(context).textTheme.labelSmall,
-              visualDensity: VisualDensity.compact,
-              side: BorderSide.none,
-              backgroundColor: Theme.of(
-                context,
-              ).colorScheme.surfaceContainerHigh,
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 平台原生标签（source_tags）
+        if (hasSourceTags) ...[
+          Text(
+            '平台标签',
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: colorScheme.outline,
+              fontWeight: FontWeight.w500,
             ),
-          )
-          .toList(),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: detail.sourceTags
+                .map(
+                  (tag) => Chip(
+                    label: Text('#$tag'),
+                    labelStyle: theme.textTheme.labelSmall?.copyWith(
+                      color: colorScheme.primary,
+                    ),
+                    visualDensity: VisualDensity.compact,
+                    side: BorderSide(
+                      color: colorScheme.primary.withValues(alpha: 0.3),
+                    ),
+                    backgroundColor: colorScheme.primary.withValues(alpha: 0.1),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+        
+        // 间隔
+        if (hasSourceTags && hasUserTags) const SizedBox(height: 16),
+        
+        // 用户自定义标签
+        if (hasUserTags) ...[
+          if (hasSourceTags)
+            Text(
+              '自定义标签',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: colorScheme.outline,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          if (hasSourceTags) const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: detail.tags
+                .map(
+                  (tag) => Chip(
+                    label: Text(tag),
+                    labelStyle: theme.textTheme.labelSmall,
+                    visualDensity: VisualDensity.compact,
+                    side: BorderSide.none,
+                    backgroundColor: colorScheme.surfaceContainerHigh,
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ],
     );
   }
 }

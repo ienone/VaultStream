@@ -428,6 +428,8 @@ class BilibiliAdapter(PlatformAdapter):
             raw_metadata = self._prune_metadata(item)
             raw_metadata['archive'] = archive
             
+            owner = item.get('owner', {})
+            author_mid = owner.get('mid')
             return ParsedContent(
                 platform='bilibili',
                 content_type=BilibiliContentType.VIDEO.value,
@@ -435,8 +437,10 @@ class BilibiliAdapter(PlatformAdapter):
                 clean_url=url,
                 title=item.get('title'),
                 description=item.get('desc'),
-                author_name=item.get('owner', {}).get('name'),
-                author_id=str(item.get('owner', {}).get('mid')),
+                author_name=owner.get('name'),
+                author_id=str(author_mid) if author_mid else None,
+                author_avatar_url=owner.get('face'),
+                author_url=f"https://space.bilibili.com/{author_mid}" if author_mid else None,
                 cover_url=item.get('pic'),
                 media_urls=[item.get('pic')] if item.get('pic') else [],
                 published_at=datetime.fromtimestamp(item.get('pubdate')),
@@ -492,6 +496,7 @@ class BilibiliAdapter(PlatformAdapter):
             raw_metadata = dict(item)
             raw_metadata['archive'] = archive
             
+            author_mid = item.get('mid')
             return ParsedContent(
                 platform='bilibili',
                 content_type=BilibiliContentType.ARTICLE.value,
@@ -500,7 +505,9 @@ class BilibiliAdapter(PlatformAdapter):
                 title=item.get('title'),
                 description=item.get('summary'),
                 author_name=item.get('author_name'),
-                author_id=str(item.get('mid')),
+                author_id=str(author_mid) if author_mid else None,
+                author_avatar_url=item.get('author_face'),
+                author_url=f"https://space.bilibili.com/{author_mid}" if author_mid else None,
                 cover_url=item.get('banner_url') or (image_urls[0] if image_urls else None),
                 media_urls=image_urls,
                 published_at=datetime.fromtimestamp(item.get('publish_time')) if item.get('publish_time') else None,
@@ -605,6 +612,7 @@ class BilibiliAdapter(PlatformAdapter):
                 'live_status': room_info.get('live_status', 0), # 0:未开播, 1:直播中, 2:轮播中
             }
             
+            author_uid = room_info.get('uid')
             return ParsedContent(
                 platform='bilibili',
                 content_type=BilibiliContentType.LIVE.value,
@@ -613,7 +621,9 @@ class BilibiliAdapter(PlatformAdapter):
                 title=room_info.get('title'),
                 description=room_info.get('description'),
                 author_name=room_info.get('uname'),
-                author_id=str(room_info.get('uid')),
+                author_id=str(author_uid) if author_uid else None,
+                author_avatar_url=room_info.get('face'),
+                author_url=f"https://space.bilibili.com/{author_uid}" if author_uid else None,
                 cover_url=room_info.get('cover'),
                 media_urls=[room_info.get('cover')] if room_info.get('cover') else [],
                 published_at=None,
@@ -959,8 +969,11 @@ class BilibiliAdapter(PlatformAdapter):
                 'share': module_stat.get('forward', {}).get('count', 0) if isinstance(module_stat.get('forward'), dict) else 0,
             }
 
-            # 作者 ID 回退
-            author_id = str(module_author.get('mid') or item.get('basic', {}).get('uid') or "")
+            # 作者信息
+            author_mid = module_author.get('mid') or item.get('basic', {}).get('uid')
+            author_id = str(author_mid) if author_mid else None
+            author_face = module_author.get('face')
+            author_url = f"https://space.bilibili.com/{author_mid}" if author_mid else None
 
             # raw_metadata：保留原始 item，并附加 archive（便于后续浏览功能开发）
             raw_metadata = dict(item) if isinstance(item, dict) else {"item": item}
@@ -983,6 +996,8 @@ class BilibiliAdapter(PlatformAdapter):
                 description=summary,
                 author_name=module_author.get('name') or "未知用户",
                 author_id=author_id,
+                author_avatar_url=author_face,
+                author_url=author_url,
                 cover_url=pics[0] if pics else None,
                 media_urls=pics,
                 published_at=datetime.fromtimestamp(module_author.get('pub_ts')) if module_author.get('pub_ts') else None,

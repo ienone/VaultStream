@@ -20,13 +20,15 @@ class ParsedContent:
     author_name: Optional[str] = None
     author_id: Optional[str] = None
     author_avatar_url: Optional[str] = None
+    author_url: Optional[str] = None  # 作者主页链接
     cover_url: Optional[str] = None
     cover_color: Optional[str] = None
     media_urls: list = None
-    published_at: Optional[datetime] = None  # 将 str 改为 datetime
+    published_at: Optional[datetime] = None
     
     raw_metadata: Dict[str, Any] = None
-    stats: Dict[str, int] = None  # 新增：通用互动数据
+    stats: Dict[str, int] = None  # 通用互动数据
+    source_tags: List[str] = None  # 平台原生标签（如小红书 #话题#）
     
     def __post_init__(self):
         if self.media_urls is None:
@@ -35,6 +37,8 @@ class ParsedContent:
             self.raw_metadata = {}
         if self.stats is None:
             self.stats = {}
+        if self.source_tags is None:
+            self.source_tags = []
 
         # 强约束：必需的标识符必须存在
         if not isinstance(self.platform, str) or not self.platform.strip():

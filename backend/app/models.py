@@ -148,7 +148,9 @@ class Content(Base):
     author_name = Column(String(200))
     author_id = Column(String(100))
     _author_avatar_url = Column("author_avatar_url", Text)
+    author_url = Column(Text)  # 作者主页链接
     cover_url = Column(Text)
+    source_tags = Column(JSON, default=list)  # 平台原生标签
 
     @property
     def author_avatar_url(self) -> Optional[str]:
