@@ -17,11 +17,6 @@ def parse_people(html_content: str, url: str) -> Optional[ParsedContent]:
     
     user_data = users.get(url_token)
     if not user_data:
-        # Sometimes key is not url_token but id?
-        # But 'people' page usually loads user by urlToken
-        # Try finding by name match? No.
-        # Just grab the first user if strict match fails?
-        # Usually entities['users'] has the target user + current user + others.
         pass
 
     if not user_data:
