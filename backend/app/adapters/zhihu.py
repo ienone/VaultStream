@@ -35,13 +35,34 @@ class ZhihuAdapter(PlatformAdapter):
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 
+    # API Include 参数配置 (参考 fxzhihu 项目优化)
+    API_INCLUDE_PARAMS = {
+        # Answer: 公开可用，包含完整统计信息
+        "answer": "content,excerpt,voteup_count,comment_count,created_time,updated_time,thanks_count,relationship.is_author,is_thanked,voting",
+        
+        # Article: 风控严格，通常需要 Cookie
+        "article": "content,voteup_count,comment_count,created,updated,excerpt,title_image",
+        
+        # Question: 风控严格
+        "question": "detail,excerpt,content,visit_count,answer_count,follower_count,comment_count,voteup_count",
+        
+        # User: 公开可用
+        "user": "allow_message,answer_count,articles_count,follower_count,following_count,voteup_count,thanked_count,favorited_count,pins_count,question_count,following_topic_count,following_question_count,following_favlists_count,following_columns_count",
+        
+        # Column: 基础信息
+        "column": "title,intro,articles_count,followers",
+        
+        # Collection: 基础信息
+        "collection": "title,description,item_count,follower_count",
+    }
+    
     # API端点模板
     API_ENDPOINTS = {
-        "answer": "https://www.zhihu.com/api/v4/answers/{id}?include=content",
+        "answer": "https://www.zhihu.com/api/v4/answers/{id}",
         "article": "https://api.zhihu.com/articles/{id}",
-        "question": "https://www.zhihu.com/api/v4/questions/{id}?include=detail",
-        "user": "https://www.zhihu.com/api/v4/members/{id}?include=allow_message,answer_count,articles_count,follower_count,following_count,voteup_count,thanked_count,favorited_count,pins_count,question_count,following_topic_count,following_question_count,following_favlists_count,following_columns_count",
-        "column": "https://www.zhihu.com/api/v4/columns/{id}?include=title,intro,articles_count,followers",
+        "question": "https://www.zhihu.com/api/v4/questions/{id}",
+        "user": "https://www.zhihu.com/api/v4/members/{id}",
+        "column": "https://www.zhihu.com/api/v4/columns/{id}",
         "collection": "https://api.zhihu.com/collections/{id}",
     }
 
@@ -126,8 +147,19 @@ class ZhihuAdapter(PlatformAdapter):
                 return match.group(1)
         return None
 
-    async def _api_request(self, api_url: str, use_cookies: bool = False) -> Optional[Dict[str, Any]]:
+    def _build_api_url(self, content_type: str, content_id: str) -> str:
+        """构建带有 include 参数的 API URL"""
+        base_url = self.API_ENDPOINTS.get(content_type, "").format(id=content_id)
+        include_params = self.API_INCLUDE_PARAMS.get(content_type, "")
+        
+        if include_params:
+            separator = "&" if "?" in base_url else "?"
+            return f"{base_url}{separator}include={include_params}"
+        return base_url
+    
+    async def _api_request(self, content_type: str, content_id: str, use_cookies: bool = False) -> Optional[Dict[str, Any]]:
         """通用API请求方法"""
+        api_url = self._build_api_url(content_type, content_id)
         proxy_url = self._get_proxy_url()
         cookies = self.cookies if use_cookies else {}
         
@@ -165,8 +197,7 @@ class ZhihuAdapter(PlatformAdapter):
 
     async def _parse_answer_via_api(self, answer_id: str, url: str) -> Optional[ParsedContent]:
         """通过API解析回答"""
-        api_url = self.API_ENDPOINTS["answer"].format(id=answer_id)
-        data = await self._api_request(api_url)
+        data = await self._api_request("answer", answer_id, use_cookies=False)
         
         if not data or "_error" in data:
             return None
@@ -175,8 +206,7 @@ class ZhihuAdapter(PlatformAdapter):
 
     async def _parse_article_via_api(self, article_id: str, url: str) -> Optional[ParsedContent]:
         """通过API解析文章"""
-        api_url = self.API_ENDPOINTS["article"].format(id=article_id)
-        data = await self._api_request(api_url, use_cookies=True)
+        data = await self._api_request("article", article_id, use_cookies=True)
         
         if not data or "_error" in data:
             return None
@@ -185,8 +215,7 @@ class ZhihuAdapter(PlatformAdapter):
 
     async def _parse_question_via_api(self, question_id: str, url: str) -> Optional[ParsedContent]:
         """通过API解析问题"""
-        api_url = self.API_ENDPOINTS["question"].format(id=question_id)
-        data = await self._api_request(api_url, use_cookies=True)
+        data = await self._api_request("question", question_id, use_cookies=True)
         
         if not data or "_error" in data:
             return None
@@ -195,8 +224,7 @@ class ZhihuAdapter(PlatformAdapter):
 
     async def _parse_user_via_api(self, user_id: str, url: str) -> Optional[ParsedContent]:
         """通过API解析用户信息"""
-        api_url = self.API_ENDPOINTS["user"].format(id=user_id)
-        data = await self._api_request(api_url)
+        data = await self._api_request("user", user_id, use_cookies=False)
         
         if not data or "_error" in data:
             return None
@@ -205,8 +233,7 @@ class ZhihuAdapter(PlatformAdapter):
 
     async def _parse_column_via_api(self, column_id: str, url: str) -> Optional[ParsedContent]:
         """通过API解析专栏"""
-        api_url = self.API_ENDPOINTS["column"].format(id=column_id)
-        data = await self._api_request(api_url)
+        data = await self._api_request("column", column_id, use_cookies=False)
         
         if not data or "_error" in data:
             return None
@@ -215,8 +242,7 @@ class ZhihuAdapter(PlatformAdapter):
 
     async def _parse_collection_via_api(self, collection_id: str, url: str) -> Optional[ParsedContent]:
         """通过API解析收藏夹"""
-        api_url = self.API_ENDPOINTS["collection"].format(id=collection_id)
-        data = await self._api_request(api_url)
+        data = await self._api_request("collection", collection_id, use_cookies=False)
         
         if not data or "_error" in data:
             return None
@@ -549,25 +575,33 @@ class ZhihuAdapter(PlatformAdapter):
         clean_url = await self.clean_url(url)
         content_id = self._extract_id_from_url(url, content_type)
         
-        # API优先策略
-        api_parsers = {
-            "answer": self._parse_answer_via_api,
-            "article": self._parse_article_via_api,
-            "question": self._parse_question_via_api,
-            "user_profile": self._parse_user_via_api,
-            "column": self._parse_column_via_api,
-            "collection": self._parse_collection_via_api,
-        }
+        # 优化解析策略：基于 fxzhihu 研究结果
+        # Answer/User: API 公开可用，优先使用
+        # Article/Question: API 风控严格，直接 HTML 解析
+        # Pin: 仅支持 HTML
         
-        if content_id and content_type in api_parsers:
+        api_preferred_types = {"answer", "user_profile", "column", "collection"}
+        
+        if content_id and content_type in api_preferred_types:
+            api_parsers = {
+                "answer": self._parse_answer_via_api,
+                "user_profile": self._parse_user_via_api,
+                "column": self._parse_column_via_api,
+                "collection": self._parse_collection_via_api,
+            }
+            
             logger.info(f"尝试通过API解析 {content_type}: {content_id}")
             result = await api_parsers[content_type](content_id, url)
             if result:
                 logger.info(f"API解析成功: {content_type}/{content_id}")
                 return result
             logger.info(f"API解析失败，回退到HTML解析: {content_type}/{content_id}")
+        elif content_type in {"article", "question"}:
+            logger.info(f"直接使用HTML解析 {content_type} (风控严格): {content_id}")
+        elif content_type == "pin":
+            logger.info(f"Pin 类型仅支持HTML解析: {content_id}")
         
-        # HTML解析回退 (pin类型仅支持HTML)
+        # HTML解析回退
         return await self._parse_via_html(url, clean_url, content_type)
 
     async def _parse_via_html(self, url: str, clean_url: str, content_type: str) -> ParsedContent:
