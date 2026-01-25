@@ -7,7 +7,7 @@ B站动态解析器
 import httpx
 from datetime import datetime
 from typing import Dict, Any, List, Set
-from app.logging import logger
+from app.core.logging import logger
 from app.adapters.base import ParsedContent
 from app.adapters.errors import (
     AuthRequiredAdapterError,

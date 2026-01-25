@@ -8,7 +8,7 @@ from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Foreign
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, relationship
 
-from app.time_utils import utcnow
+from app.core.time_utils import utcnow
 
 Base = declarative_base()
 
@@ -17,7 +17,7 @@ Base = declarative_base()
 def get_json_type():
     """根据数据库类型返回合适的 JSON 字段类型"""
     try:
-        from app.config import settings
+        from app.core.config import settings
         if settings.database_type == "postgresql":
             return JSONB
     except:

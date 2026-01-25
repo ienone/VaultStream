@@ -15,10 +15,10 @@ from urllib.parse import urlparse, parse_qs, quote
 
 from xhshow import Xhshow
 
-from app.logging import logger
+from app.core.logging import logger
 from app.adapters.base import PlatformAdapter, ParsedContent
 from app.adapters.errors import NonRetryableAdapterError
-from app.config import settings
+from app.core.config import settings
 
 # 导入parser
 from app.adapters.xiaohongshu_parser import parse_note, parse_user

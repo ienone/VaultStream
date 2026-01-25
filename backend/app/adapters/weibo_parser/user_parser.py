@@ -6,10 +6,10 @@
 import requests
 from datetime import datetime
 from typing import Dict, Any
-from app.logging import logger
+from app.core.logging import logger
 from app.adapters.base import ParsedContent
 from app.adapters.errors import RetryableAdapterError
-from app.config import settings
+from app.core.config import settings
 
 
 def fetch_user_profile(uid: str, headers: Dict[str, str], cookies: Dict[str, str], proxies: Dict[str, str] = None) -> Dict[str, Any]:

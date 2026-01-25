@@ -17,8 +17,8 @@ from typing import Any, Optional
 
 import httpx
 
-from app.logging import logger
-from app.storage import StorageBackend
+from app.core.logging import logger
+from app.core.storage import StorageBackend
 
 
 def _request_headers_for_url(url: str) -> dict[str, str]:
@@ -131,7 +131,7 @@ async def extract_cover_color(url: str, timeout_seconds: float = 10.0) -> Option
     if not url:
         return None
     
-    from app.config import settings
+    from app.core.config import settings
     proxy = settings.http_proxy if hasattr(settings, 'http_proxy') and settings.http_proxy else None
     
     headers = _request_headers_for_url(url)
@@ -178,7 +178,7 @@ async def store_archive_images_as_webp(
     count = 0
     
     # 配置代理（如 Twitter 图片需要代理）
-    from app.config import settings
+    from app.core.config import settings
     proxy = settings.http_proxy if hasattr(settings, 'http_proxy') and settings.http_proxy else None
     
     async with httpx.AsyncClient(proxy=proxy, timeout=timeout_seconds, follow_redirects=True) as client:
@@ -344,7 +344,7 @@ async def store_archive_videos(
     count = 0
     
     # 配置代理（如 Twitter 视频需要代理）
-    from app.config import settings
+    from app.core.config import settings
     proxy = settings.http_proxy if hasattr(settings, 'http_proxy') and settings.http_proxy else None
     
     async with httpx.AsyncClient(proxy=proxy, timeout=timeout_seconds, follow_redirects=True) as client:

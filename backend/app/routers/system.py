@@ -10,16 +10,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
+from app.core.database import get_db
 from app.models import SystemSetting, Content, Task, ContentStatus
 from app.schemas import (
     SystemSettingResponse, SystemSettingUpdate, DashboardStats, 
     QueueStats, TagStats
 )
-from app.logging import logger
-from app.dependencies import require_api_token
-from app.storage import get_storage_backend, LocalStorageBackend
-from app.queue import task_queue
+from app.core.logging import logger
+from app.core.dependencies import require_api_token
+from app.core.storage import get_storage_backend, LocalStorageBackend
+from app.core.queue import task_queue
 
 router = APIRouter()
 

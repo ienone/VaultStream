@@ -7,7 +7,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
 
-from app.logging import logger
+from app.core.logging import logger
 from app.models import Content, DistributionRule, PushedRecord, ReviewStatus, Platform
 from app.schemas import ShareCardPreview, OptimizedMedia
 

@@ -7,11 +7,11 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 from sqlalchemy import select
 
-from app.logging import logger
-from app.database import AsyncSessionLocal
+from app.core.logging import logger
+from app.core.database import AsyncSessionLocal
 from app.models import Content, ReviewStatus
-from app.distribution import DistributionEngine
-from app.queue import task_queue
+from app.distribution.engine import DistributionEngine
+from app.core.queue import task_queue
 
 
 class DistributionScheduler:

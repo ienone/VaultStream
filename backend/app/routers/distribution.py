@@ -8,11 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
+from app.core.database import get_db
 from app.models import DistributionRule
 from app.schemas import DistributionRuleCreate, DistributionRuleUpdate, DistributionRuleResponse
-from app.logging import logger
-from app.dependencies import require_api_token
+from app.core.logging import logger
+from app.core.dependencies import require_api_token
 
 router = APIRouter()
 

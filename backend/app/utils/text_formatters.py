@@ -1,105 +1,26 @@
-import re
+"""
+文本格式化工具模块
+
+提供Telegram等平台的内容文本格式化功能
+"""
 import html
-from typing import List, Optional
-from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
-from datetime import datetime, timezone
+from typing import Dict, Any
 
+from .formatters import format_number
 
-def normalize_datetime_for_db(dt: datetime | None) -> datetime | None:
-    """将 datetime 规范化为 UTC 且去除 tzinfo（返回 naive UTC datetime），或返回 None。
-
-    原因：模型中使用的 `utcnow()` 返回的是无时区（naive）的 UTC 时间，为避免
-    将带时区的 datetime 直接写入导致 asyncpg 抛出类型不匹配错误，
-    我们在写入 DB 前将带时区 datetime 转为 UTC 并去除 tzinfo。
-    """
-    if dt is None:
-        return None
-    if not isinstance(dt, datetime):
-        return dt
-    if dt.tzinfo is None:
-        return dt
-    return dt.astimezone(timezone.utc).replace(tzinfo=None)
-
-
-_TRACKING_QUERY_KEYS = {
-    "gclid",
-    "fbclid",
-    "spm_id_from",
-    "from_source",
-    "vd_source",
-}
-
-
-def canonicalize_url(url: str) -> str:
-    """通用 URL 规范化：
-
-    - 去首尾空白
-    - 若缺少 scheme，默认补 https
-    - host 小写
-    - 移除 fragment
-    - 移除常见追踪参数（utm_* + 若干常见 key）
-
-    注意：平台短链解析由 adapter.clean_url 负责。
-    """
-    val = (url or "").strip()
-    if not val:
-        return val
-
-    if not val.startswith(("http://", "https://")):
-        # 对于纯域名/路径等，默认 https
-        val = "https://" + val
-
-    parsed = urlparse(val)
-    host = (parsed.netloc or "").lower()
-
-    query_pairs = parse_qsl(parsed.query, keep_blank_values=True)
-    filtered = []
-    for k, v in query_pairs:
-        lk = k.lower()
-        if lk.startswith("utm_"):
-            continue
-        if lk in _TRACKING_QUERY_KEYS:
-            continue
-        filtered.append((k, v))
-
-    new_query = urlencode(filtered, doseq=True)
-    normalized = parsed._replace(netloc=host, query=new_query, fragment="")
-    return urlunparse(normalized)
-
-def normalize_bilibili_url(url_or_id: str) -> str:
-    """规范化 B 站 URL，支持 BV/av/cv 号"""
-    val = url_or_id.strip()
-    if not val.startswith(('http://', 'https://')):
-        val_lower = val.lower()
-        if val_lower.startswith('bv'):
-            return f"https://www.bilibili.com/video/{val}"
-        elif val_lower.startswith('av'):
-            return f"https://www.bilibili.com/video/{val}"
-        elif val_lower.startswith('cv'):
-            return f"https://www.bilibili.com/read/{val}"
-    return val
-
-def parse_tags(tags_str: str) -> List[str]:
-    """解析标签字符串，支持中英文逗号、顿号分隔"""
-    if not tags_str:
-        return []
-    # 兼容 , ， 、 分隔
-    tags = re.split(r'[,，、]', tags_str)
-    return [t.strip() for t in tags if t.strip()]
-
-def format_number(num) -> str:
-    """格式化数字，超过1万显示为'万'"""
-    if not num: return "0"
-    try:
-        n = int(num)
-        if n >= 10000:
-            return f"{n/10000:.2f}万"
-        return str(n)
-    except:
-        return str(num)
 
 def format_content_for_tg(content_dict: dict) -> str:
-    """为 Telegram 格式化内容文本"""
+    """
+    为 Telegram 格式化内容文本
+    
+    根据不同平台选择合适的格式化方法
+    
+    Args:
+        content_dict: 内容字典，包含platform、title、description等字段
+        
+    Returns:
+        格式化后的Telegram消息文本（支持HTML格式）
+    """
     platform = content_dict.get('platform')
     if platform == 'bilibili':
         return _format_bilibili_message(content_dict)
@@ -107,8 +28,17 @@ def format_content_for_tg(content_dict: dict) -> str:
         return _format_twitter_message(content_dict)
     return _format_default_message(content_dict)
 
+
 def _format_twitter_message(content: dict) -> str:
-    """格式化 Twitter/X 特有的消息内容"""
+    """
+    格式化 Twitter/X 特有的消息内容
+    
+    Args:
+        content: Twitter内容字典
+        
+    Returns:
+        格式化后的消息文本
+    """
     url = content.get('clean_url') or content.get('url') or ""
     
     # 转义标题和作者
@@ -182,8 +112,16 @@ def _format_twitter_message(content: dict) -> str:
 
 
 def _format_bilibili_message(content: dict) -> str:
-    """格式化B站特有的消息内容"""
-    # 分享卡片（ShareCard）不包含 raw_metadata：避免对外泄露“私有存档”信息。
+    """
+    格式化B站特有的消息内容
+    
+    Args:
+        content: B站内容字典
+        
+    Returns:
+        格式化后的消息文本（HTML格式）
+    """
+    # 分享卡片（ShareCard）不包含 raw_metadata：避免对外泄露"私有存档"信息
     url = content.get('clean_url') or content.get('url') or ""
     content_type = content.get('content_type')
     
@@ -259,8 +197,17 @@ def _format_bilibili_message(content: dict) -> str:
         
     return "\n".join(lines)
 
+
 def _format_default_message(content: dict) -> str:
-    """默认的消息格式"""
+    """
+    默认的消息格式（通用平台）
+    
+    Args:
+        content: 内容字典
+        
+    Returns:
+        格式化后的消息文本
+    """
     text_parts = []
     url = content.get('clean_url') or content.get('url') or ""
     
@@ -271,9 +218,12 @@ def _format_default_message(content: dict) -> str:
     
     # 互动数据
     stats = []
-    if content.get('view_count'): stats.append(f"👁️ {format_number(content['view_count'])}")
-    if content.get('like_count'): stats.append(f"👍 {format_number(content['like_count'])}")
-    if content.get('collect_count'): stats.append(f"⭐ {format_number(content['collect_count'])}")
+    if content.get('view_count'): 
+        stats.append(f"👁️ {format_number(content['view_count'])}")
+    if content.get('like_count'): 
+        stats.append(f"👍 {format_number(content['like_count'])}")
+    if content.get('collect_count'): 
+        stats.append(f"⭐ {format_number(content['collect_count'])}")
     if stats:
         text_parts.append(" | ".join(stats))
 

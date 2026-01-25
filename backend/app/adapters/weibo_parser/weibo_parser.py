@@ -6,14 +6,14 @@
 import requests
 from datetime import datetime
 from typing import Dict, Any, List
-from app.logging import logger
+from app.core.logging import logger
 from app.adapters.base import ParsedContent
 from app.adapters.errors import (
     AuthRequiredAdapterError,
     NonRetryableAdapterError,
     RetryableAdapterError,
 )
-from app.config import settings
+from app.core.config import settings
 from .base import clean_html_text, extract_weibo_images, extract_weibo_video
 
 

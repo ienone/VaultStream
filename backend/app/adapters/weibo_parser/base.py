@@ -5,7 +5,7 @@
 """
 import re
 from typing import Any, Dict, List, Optional
-from app.logging import logger
+from app.core.logging import logger
 
 
 def clean_html_text(html_text: str) -> str:

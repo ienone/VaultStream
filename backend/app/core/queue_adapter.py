@@ -7,9 +7,9 @@ import asyncio
 from datetime import datetime, timezone
 from sqlalchemy import select, update, and_
 
-from app.config import settings
-from app.logging import logger, log_context, ensure_task_id
-from app.time_utils import utcnow
+from app.core.config import settings
+from app.core.logging import logger, log_context, ensure_task_id
+from app.core.time_utils import utcnow
 
 
 class QueueAdapter(ABC):
@@ -56,7 +56,7 @@ class SQLiteQueueAdapter(QueueAdapter):
     
     async def connect(self):
         """初始化会话工厂"""
-        from app.database import AsyncSessionLocal
+        from app.core.database import AsyncSessionLocal
         self._session_maker = AsyncSessionLocal
         logger.info("SQLite 队列已连接")
     

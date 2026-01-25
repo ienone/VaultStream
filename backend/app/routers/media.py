@@ -9,9 +9,9 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 
-from app.logging import logger
-from app.config import settings
-from app.storage import get_storage_backend, LocalStorageBackend
+from app.core.logging import logger
+from app.core.config import settings
+from app.core.storage import get_storage_backend, LocalStorageBackend
 
 router = APIRouter()
 

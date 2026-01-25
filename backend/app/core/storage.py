@@ -16,8 +16,8 @@ import os
 from dataclasses import dataclass
 from typing import Optional, Literal
 
-from app.config import settings
-from app.logging import logger
+from app.core.config import settings
+from app.core.logging import logger
 
 
 StorageBackendType = Literal["local"]

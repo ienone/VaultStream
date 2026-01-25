@@ -7,8 +7,8 @@ import os
 from sqlalchemy import event, create_engine
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import StaticPool, NullPool
-from app.config import settings
-from app.logging import logger
+from app.core.config import settings
+from app.core.logging import logger
 
 
 class DatabaseAdapter(ABC):

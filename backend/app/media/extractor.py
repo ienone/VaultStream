@@ -1,6 +1,7 @@
 """
-媒体URL提取工具
-统一处理原始URL和存储URL的优先级逻辑
+媒体URL提取模块
+
+从内容元数据中提取图片、视频等媒体URL
 """
 from typing import List, Dict, Any, Literal
 
@@ -33,7 +34,7 @@ def extract_media_urls(
     Returns:
         媒体项列表，格式: [{"type": "photo|video", "url": "..."}]
     
-    示例:
+    Examples:
         >>> metadata = {
         ...     "archive": {
         ...         "images": [

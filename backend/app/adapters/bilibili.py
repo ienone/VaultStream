@@ -12,7 +12,7 @@ import re
 import httpx
 from typing import Optional, Dict
 from urllib.parse import urlparse, parse_qs, urlencode
-from app.logging import logger
+from app.core.logging import logger
 
 from app.adapters.base import PlatformAdapter, ParsedContent
 from app.models import BilibiliContentType

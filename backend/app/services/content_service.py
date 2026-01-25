@@ -3,9 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from app.models import Content, ContentStatus, ContentSource, Platform
 from app.adapters import AdapterFactory
-from app.utils import normalize_bilibili_url, canonicalize_url
-from app.queue import task_queue
-from app.logging import logger
+from app.utils.url_utils import normalize_bilibili_url, canonicalize_url
+from app.core.queue import task_queue
+from app.core.logging import logger
 
 class ContentService:
     def __init__(self, db: AsyncSession):

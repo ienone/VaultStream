@@ -5,7 +5,7 @@ B站番剧/影视解析器
 """
 import httpx
 from typing import Dict, Any
-from app.logging import logger
+from app.core.logging import logger
 from app.adapters.base import ParsedContent
 from app.adapters.errors import (
     AuthRequiredAdapterError,

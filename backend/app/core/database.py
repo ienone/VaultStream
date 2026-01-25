@@ -3,7 +3,7 @@
 """
 from sqlalchemy import text
 from app.models import Base
-from app.db_adapter import engine, AsyncSessionLocal
+from app.core.db_adapter import engine, AsyncSessionLocal
 
 
 async def init_db():

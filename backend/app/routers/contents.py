@@ -12,7 +12,7 @@ from starlette.concurrency import run_in_threadpool
 import mimetypes
 import os
 
-from app.database import get_db
+from app.core.database import get_db
 from app.models import Content, ContentStatus, PushedRecord, Platform, ReviewStatus, WeiboUser, ContentSource
 from app.schemas import (
     ShareRequest, ShareResponse, ContentDetail,
@@ -20,13 +20,13 @@ from app.schemas import (
     ContentUpdate, ShareCardPreview, OptimizedMedia, ReviewAction, BatchReviewRequest,
     PushedRecordResponse, WeiboUserResponse
 )
-from app.logging import logger
-from app.config import settings
+from app.core.logging import logger
+from app.core.config import settings
 from app.worker import worker
-from app.storage import get_storage_backend, LocalStorageBackend
+from app.core.storage import get_storage_backend, LocalStorageBackend
 from app.adapters import AdapterFactory
 
-from app.dependencies import require_api_token, get_content_service, get_content_repo
+from app.core.dependencies import require_api_token, get_content_service, get_content_repo
 from app.services.content_service import ContentService
 from app.repositories.content_repository import ContentRepository
 
@@ -131,7 +131,7 @@ async def update_content(
     if request.cover_url is not None:
         if content.cover_url != request.cover_url:
             content.cover_url = request.cover_url
-            from app.media_processing import extract_cover_color
+            from app.media.color import extract_cover_color
             content.cover_color = await extract_cover_color(content.cover_url)
     if request.is_nsfw is not None:
         content.is_nsfw = request.is_nsfw

@@ -10,13 +10,13 @@ from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.logging import logger, setup_logging, log_context, new_request_id
+from app.core.logging import logger, setup_logging, log_context, new_request_id
 
-from app.config import settings, validate_settings
-from app.database import init_db, db_ping
-from app.queue import task_queue
+from app.core.config import settings, validate_settings
+from app.core.database import init_db, db_ping
+from app.core.queue import task_queue
 from app.worker import worker
-from app.distribution_scheduler import get_distribution_scheduler
+from app.distribution import get_distribution_scheduler
 
 # Import new routers
 from app.routers import contents, distribution, system, media

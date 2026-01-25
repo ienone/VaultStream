@@ -11,10 +11,10 @@
 import re
 import httpx
 from typing import Optional, Dict, Any
-from app.logging import logger
+from app.core.logging import logger
 from app.adapters.base import PlatformAdapter, ParsedContent
 from app.adapters.errors import NonRetryableAdapterError
-from app.config import settings
+from app.core.config import settings
 
 # 导入parser
 from app.adapters.weibo_parser import parse_weibo, parse_user

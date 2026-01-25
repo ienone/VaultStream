@@ -10,7 +10,7 @@ B站解析器公共工具模块
 import re
 import html as _html
 from typing import Any, Optional, Dict, List
-from app.logging import logger
+from app.core.logging import logger
 
 
 def clean_text(text: Any) -> str:

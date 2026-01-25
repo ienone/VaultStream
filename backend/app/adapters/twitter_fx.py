@@ -5,19 +5,19 @@ Twitter/X 平台适配器 - 使用 FxTwitter API
 import re
 from datetime import datetime
 from datetime import timezone
-from app.utils import normalize_datetime_for_db
+from app.utils.url_utils import normalize_datetime_for_db
 from typing import Optional, Dict, Any
 from urllib.parse import urlparse
 import httpx
 
-from app.logging import logger
+from app.core.logging import logger
 from app.adapters.base import PlatformAdapter, ParsedContent
 from app.adapters.errors import (
     NonRetryableAdapterError,
     RetryableAdapterError,
 )
 from app.models import TwitterContentType
-from app.config import settings
+from app.core.config import settings
 
 
 class TwitterFxAdapter(PlatformAdapter):

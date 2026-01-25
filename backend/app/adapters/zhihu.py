@@ -16,7 +16,7 @@ from app.adapters.zhihu_parser import (
 )
 from app.adapters.zhihu_parser.base import preprocess_zhihu_html, extract_images
 from app.adapters.zhihu_parser.models import ZhihuAuthor
-from app.config import settings
+from app.core.config import settings
 
 
 class ZhihuAdapter(PlatformAdapter):
