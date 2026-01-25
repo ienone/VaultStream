@@ -35,14 +35,21 @@ String mapUrl(String url, String apiBaseUrl) {
           : url;
       final cleanPath = path.startsWith('/') ? path : '/$path';
       if (cleanPath == '/media' || cleanPath == '/media/') return '';
-      return '$apiBaseUrl$cleanPath';
+      
+      // Ensure we use the root of the API base URL (remove /api/v1 suffix)
+      final uri = Uri.parse(apiBaseUrl);
+      final origin = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+      return '$origin$cleanPath';
     }
     if (url.contains('/api/v1/')) {
       return url.replaceFirst('/api/v1/', '/api/v1/media/');
     }
     final cleanKey = url.startsWith('/') ? url.substring(1) : url;
     if (cleanKey.isEmpty) return '';
-    return '$apiBaseUrl/media/$cleanKey';
+    
+    final uri = Uri.parse(apiBaseUrl);
+    final origin = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+    return '$origin/media/$cleanKey';
   }
 
   if (url.startsWith('/media') || url.contains('/media/')) {
@@ -51,7 +58,10 @@ String mapUrl(String url, String apiBaseUrl) {
         : url;
     final cleanPath = path.startsWith('/') ? path : '/$path';
     if (cleanPath == '/media' || cleanPath == '/media/') return '';
-    return '$apiBaseUrl$cleanPath';
+    
+    final uri = Uri.parse(apiBaseUrl);
+    final origin = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+    return '$origin$cleanPath';
   }
 
   return url;

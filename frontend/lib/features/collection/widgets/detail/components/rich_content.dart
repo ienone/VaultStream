@@ -178,7 +178,10 @@ class RichContent extends StatelessWidget {
     }
 
     bool showMediaGrid = false;
-    if (detail.isZhihuPin || detail.isTwitter || detail.isWeibo) {
+    if (detail.isZhihuPin ||
+        detail.isTwitter ||
+        detail.isWeibo ||
+        (detail.isBilibili && detail.contentType == 'video')) {
       showMediaGrid = mediaUrls.isNotEmpty;
     } else {
       if (markdown.isEmpty && mediaUrls.isNotEmpty) {

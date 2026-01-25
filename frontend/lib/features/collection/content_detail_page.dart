@@ -392,20 +392,6 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           );
         }
 
-        if (hasMarkdown) {
-          final markdown = ContentParser.getMarkdownContent(detail);
-          return MarkdownLandscapeLayout(
-            detail: detail,
-            apiBaseUrl: apiBaseUrl,
-            apiToken: apiToken,
-            contentScrollController: _contentScrollController,
-            headerKeys: _headerKeys,
-            headers: ContentParser.extractHeaders(markdown),
-            activeHeader: _activeHeader,
-            contentColor: _contentColor,
-          );
-        }
-
         if (detail.isBilibili) {
           return BilibiliLandscapeLayout(
             detail: detail,
@@ -419,6 +405,20 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               apiToken,
               detail.id,
             ),
+          );
+        }
+
+        if (hasMarkdown) {
+          final markdown = ContentParser.getMarkdownContent(detail);
+          return MarkdownLandscapeLayout(
+            detail: detail,
+            apiBaseUrl: apiBaseUrl,
+            apiToken: apiToken,
+            contentScrollController: _contentScrollController,
+            headerKeys: _headerKeys,
+            headers: ContentParser.extractHeaders(markdown),
+            activeHeader: _activeHeader,
+            contentColor: _contentColor,
           );
         }
 

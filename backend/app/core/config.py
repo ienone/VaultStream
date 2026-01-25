@@ -87,7 +87,7 @@ class Settings(BaseSettings):
     storage_s3_presign_expires: int = 3600
 
     # 媒体处理开关
-    enable_archive_media_processing: bool = False
+    enable_archive_media_processing: bool = True
     archive_image_webp_quality: int = 80
     archive_image_max_count: Optional[int] = None
     

@@ -169,7 +169,18 @@ class ContentParser:
         content.last_error_at = None
 
         await session.commit()
+        await session.commit()
         logger.info("内容解析完成")
+        
+        # 广播更新事件
+        from app.core.events import event_bus
+        await event_bus.publish("content_updated", {
+            "id": content.id,
+            "title": content.title,
+            "status": content.status.value,
+            "platform": content.platform.value if content.platform else None,
+            "cover_url": content.cover_url
+        })
 
     def _map_stats_to_content(self, content: Content, stats: Dict[str, Any]):
         """将解析的统计数据映射到 Content 模型"""
@@ -268,6 +279,17 @@ class ContentParser:
             }
             content.last_error_at = utcnow()
             await session.commit()
+            
+            # 广播失败事件
+            try:
+                from app.core.events import event_bus
+                await event_bus.publish("content_updated", {
+                    "id": content.id,
+                    "status": "FAILED",
+                    "error": str(error)
+                })
+            except Exception:
+                pass
 
         # 判断是否进入死信队列
         reason = "failed"
