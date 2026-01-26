@@ -13,20 +13,21 @@ class Collection extends _$Collection {
     return _fetch(
       page: 1,
       query: filter.searchQuery.isEmpty ? null : filter.searchQuery,
-      platform: filter.platform,
-      status: filter.status,
+      platforms: filter.platforms.isNotEmpty ? filter.platforms : null,
+      statuses: filter.statuses.isNotEmpty ? filter.statuses : null,
       author: filter.author,
       startDate: filter.dateRange?.start,
       endDate: filter.dateRange?.end,
+      tags: filter.tags.isNotEmpty ? filter.tags : null,
     );
   }
 
   Future<ShareCardListResponse> _fetch({
     int page = 1,
     int size = 20,
-    String? tag,
-    String? platform,
-    String? status,
+    List<String>? tags,
+    List<String>? platforms,
+    List<String>? statuses,
     String? author,
     DateTime? startDate,
     DateTime? endDate,
@@ -39,9 +40,11 @@ class Collection extends _$Collection {
       queryParameters: {
         'page': page,
         'size': size,
-        if (tag != null) 'tag': tag,
-        if (platform != null) 'platform': platform,
-        if (status != null) 'status': status,
+        if (tags != null && tags.isNotEmpty) 'tags': tags.join(','),
+        if (platforms != null && platforms.isNotEmpty)
+          'platform': platforms.join(','),
+        if (statuses != null && statuses.isNotEmpty)
+          'status': statuses.join(','),
         if (author != null) 'author': author,
         if (startDate != null) 'start_date': startDate.toIso8601String(),
         if (endDate != null) 'end_date': endDate.toIso8601String(),
@@ -66,11 +69,12 @@ class Collection extends _$Collection {
       final nextData = await _fetch(
         page: currentData.page + 1,
         query: filter.searchQuery.isEmpty ? null : filter.searchQuery,
-        platform: filter.platform,
-        status: filter.status,
+        platforms: filter.platforms.isNotEmpty ? filter.platforms : null,
+        statuses: filter.statuses.isNotEmpty ? filter.statuses : null,
         author: filter.author,
         startDate: filter.dateRange?.start,
         endDate: filter.dateRange?.end,
+        tags: filter.tags.isNotEmpty ? filter.tags : null,
       );
 
       state = AsyncData(

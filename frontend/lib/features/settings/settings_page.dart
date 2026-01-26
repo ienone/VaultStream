@@ -22,27 +22,23 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
     return Scaffold(
       appBar: const FrostedAppBar(title: Text('设置中心')),
-      body: settingsAsync.when(
-        data: (settings) => ListView(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          children: [
-            _buildSectionHeader(context, '外观与偏好'),
-            _buildThemeSettings(context, ref, themeMode),
-            const Divider(height: 32),
-            _buildSectionHeader(context, '平台集成 (Cookies)'),
-            _buildPlatformSettings(context, settings),
-            const Divider(height: 32),
-            _buildSectionHeader(context, '系统与存储'),
-            _buildStorageSettings(context),
-            const Divider(height: 32),
-            _buildSectionHeader(context, '服务器与连接'),
-            _buildNetworkSettings(context),
-            const SizedBox(height: 40),
-            _buildAppInfo(context),
-          ],
-        ),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) => Center(child: Text('加载设置失败: $err')),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        children: [
+          _buildSectionHeader(context, '服务器与连接'),
+          _buildNetworkSettings(context),
+          const Divider(height: 32),
+          _buildSectionHeader(context, '外观与偏好'),
+          _buildThemeSettings(context, ref, themeMode),
+          const Divider(height: 32),
+          _buildSectionHeader(context, '平台集成 (Cookies)'),
+          _buildPlatformSettingsSection(context, settingsAsync),
+          const Divider(height: 32),
+          _buildSectionHeader(context, '系统与存储'),
+          _buildStorageSettings(context),
+          const SizedBox(height: 40),
+          _buildAppInfo(context),
+        ],
       ),
     );
   }
@@ -140,6 +136,26 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
+  Widget _buildPlatformSettingsSection(
+    BuildContext context,
+    AsyncValue<List<SystemSetting>> settingsAsync,
+  ) {
+    return settingsAsync.when(
+      data: (settings) => _buildPlatformSettings(context, settings),
+      loading: () => const Padding(
+        padding: EdgeInsets.all(16),
+        child: Center(child: CircularProgressIndicator()),
+      ),
+      error: (err, _) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text(
+          '无法加载平台设置（请先配置服务器地址）',
+          style: TextStyle(color: Theme.of(context).colorScheme.outline),
+        ),
+      ),
+    );
+  }
+
   Widget _buildPlatformSettings(
     BuildContext context,
     List<SystemSetting> settings,
@@ -149,7 +165,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         'key': 'weibo_cookie',
         'name': '微博',
         'icon': Icons.wechat,
-      }, // Placeholder icon
+      },
       {
         'key': 'bilibili_cookie',
         'name': 'Bilibili',

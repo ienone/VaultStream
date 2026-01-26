@@ -5,26 +5,16 @@ import 'theme/app_theme.dart'; // 引入自定义的应用主题
 import 'routing/app_router.dart'; // 引入自定义的应用路由
 import 'core/providers/theme_provider.dart';
 
-import 'core/providers/local_settings_provider.dart';
 
-void main() async {
+
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final container = ProviderContainer();
-  await container.read(localSettingsProvider.notifier).init();
-
   runApp(
-    UncontrolledProviderScope(
-      container: container,
-      child: const VaultStreamApp(),
+    const ProviderScope(
+      child: VaultStreamApp(),
     ),
   );
-  //启动代码，使用Riverpod的ProviderScope包裹应用
-  // Riverpod是一个状态管理库，ProviderScope是其核心Widget，
-  // ProviderScope提供一个上下文作用域，用于管理和存储应用中的所有提供者（providers）。
-  // 只有在ProviderScope作用域内的providers才能被访问和监听。
-  // 通过将整个应用包裹在ProviderScope中，可以确保应用中的任何位置都可以访问和使用定义的providers。
-  // 因此这段代码表示启动一个使用Riverpod进行状态管理的Flutter应用VaultStreamApp.
 }
 
 class VaultStreamApp extends ConsumerWidget {

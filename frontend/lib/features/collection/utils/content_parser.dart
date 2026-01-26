@@ -62,8 +62,9 @@ class ContentParser {
 
   static List<String> extractAllImages(
     ContentDetail detail,
-    String apiBaseUrl,
-  ) {
+    String apiBaseUrl, {
+    bool includeAvatarFallback = false,
+  }) {
     final list = <String>{};
     final storedMap = getStoredMap(detail);
 
@@ -94,7 +95,31 @@ class ContentParser {
         }
       }
     }
+    
+    // 无图时使用头像作为回退
+    if (list.isEmpty && includeAvatarFallback && authorAvatar != null) {
+      final mappedAvatar = _mapAvatarUrl(authorAvatar, storedMap, apiBaseUrl);
+      if (mappedAvatar.isNotEmpty) {
+        list.add(mappedAvatar);
+      }
+    }
+    
     return list.toList();
+  }
+  
+  /// 映射头像URL到本地存档
+  static String _mapAvatarUrl(String avatarUrl, Map<String, String> storedMap, String apiBaseUrl) {
+    if (storedMap.containsKey(avatarUrl)) {
+      return media_utils.mapUrl(storedMap[avatarUrl]!, apiBaseUrl);
+    }
+    final cleanUrl = avatarUrl.split('?')[0];
+    final match = storedMap.entries.firstWhere(
+      (e) => e.key.split('?')[0] == cleanUrl,
+      orElse: () => const MapEntry('', ''),
+    );
+    return match.key.isNotEmpty
+        ? media_utils.mapUrl(match.value, apiBaseUrl)
+        : media_utils.mapUrl(avatarUrl, apiBaseUrl);
   }
 
   static List<String> extractAllMedia(ContentDetail detail, String apiBaseUrl) {
@@ -206,7 +231,7 @@ class ContentParser {
   }
 
   /// 获取卡片显示的封面图 URL
-  /// 从 ContentMediaHelper 迁移，优先使用封面，回退到首张媒体图
+  /// 从 ContentMediaHelper 迁移，优先使用封面，回退到首张媒体图，最后回退到头像
   static String getDisplayImageUrl(ShareCard content, String apiBaseUrl) {
     String url = '';
     // 封面优先，B站Opus等特殊场景回退到首张媒体图
@@ -221,6 +246,11 @@ class ContentParser {
       } catch (_) {
         url = '';
       }
+    }
+
+    // 无封面无媒体时，回退到作者头像
+    if (url.isEmpty && content.authorAvatarUrl != null && content.authorAvatarUrl!.isNotEmpty) {
+      url = content.authorAvatarUrl!;
     }
 
     if (url.isEmpty) return '';

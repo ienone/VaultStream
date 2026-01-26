@@ -9,12 +9,13 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:frontend/core/utils/media_utils.dart';
 
 /// 详情页侧边栏信息组件
-/// 整合了作者信息、统计数据、标签和（可选的）知乎关联问题
+/// 整合了作者信息、统计数据、标签、正文和（可选的）知乎关联问题
 class ContentSideInfoCard extends StatelessWidget {
   final ContentDetail detail;
   final bool useContainer;
   final EdgeInsetsGeometry? padding;
   final Color? contentColor;
+  final bool showDescription;
 
   const ContentSideInfoCard({
     super.key,
@@ -22,6 +23,7 @@ class ContentSideInfoCard extends StatelessWidget {
     this.useContainer = true,
     this.padding,
     this.contentColor,
+    this.showDescription = false,
   });
 
   @override
@@ -63,7 +65,31 @@ class ContentSideInfoCard extends StatelessWidget {
           TagsSection(detail: detail),
         ],
 
-        // 5. 知乎精选回答（如有）
+        // 5. 正文内容（如开启）
+        if (showDescription &&
+            detail.description != null &&
+            detail.description!.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          const Divider(height: 1),
+          const SizedBox(height: 24),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              detail.description!,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                height: 1.8,
+                fontSize: 16,
+              ),
+            ),
+          ),
+        ],
+
+        // 6. 知乎精选回答（如有）
         if (detail.isZhihuQuestion &&
             detail.rawMetadata != null &&
             detail.rawMetadata!['top_answers'] != null) ...[

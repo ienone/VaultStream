@@ -45,13 +45,7 @@ class TwitterLandscapeLayout extends StatelessWidget {
           child: Container(
             color: colorScheme.surface,
             child: images.isEmpty
-                ? const Center(
-                    child: Icon(
-                      Icons.text_fields,
-                      size: 64,
-                      color: Colors.grey,
-                    ),
-                  )
+                ? _buildAvatarFallback(context)
                 : _buildMediaArea(context),
           ),
         ),
@@ -73,6 +67,7 @@ class TwitterLandscapeLayout extends StatelessWidget {
                 detail: detail,
                 contentColor: contentColor,
                 padding: const EdgeInsets.all(28),
+                showDescription: true,
               ),
             ),
           ),
@@ -250,6 +245,58 @@ class TwitterLandscapeLayout extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildAvatarFallback(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    // 无图片时显示头像作为视觉焦点（正文在右侧ContentSideInfoCard中显示）
+    final avatarUrl = detail.authorAvatarUrl;
+    
+    if (avatarUrl == null || avatarUrl.isEmpty) {
+      return Center(
+        child: Icon(
+          Icons.text_fields,
+          size: 64,
+          color: colorScheme.outline,
+        ),
+      );
+    }
+    
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(48),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(32),
+          child: CachedNetworkImage(
+            imageUrl: mapUrl(avatarUrl, apiBaseUrl),
+            httpHeaders: buildImageHeaders(
+              imageUrl: mapUrl(avatarUrl, apiBaseUrl),
+              baseUrl: apiBaseUrl,
+              apiToken: apiToken,
+            ),
+            width: 200,
+            height: 200,
+            fit: BoxFit.cover,
+            placeholder: (context, url) => Container(
+              width: 200,
+              height: 200,
+              color: colorScheme.surfaceContainerHighest,
+            ),
+            errorWidget: (context, url, error) => Container(
+              width: 200,
+              height: 200,
+              color: colorScheme.surfaceContainerHighest,
+              child: Icon(
+                Icons.person,
+                size: 80,
+                color: colorScheme.outline,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -32,11 +32,11 @@ class CollectionGrid extends StatelessWidget {
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           SliverPadding(
-            padding: EdgeInsets.fromLTRB(24, topPadding, 24, 20),
+            padding: EdgeInsets.fromLTRB(16, topPadding, 16, 20),
             sliver: SliverMasonryGrid.count(
               crossAxisCount: ResponsiveLayout.getColumnCount(context),
-              mainAxisSpacing: 20,
-              crossAxisSpacing: 20,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
               itemBuilder: (context, index) {
                 final item = items[index];
                 return ContentCard(

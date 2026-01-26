@@ -17,6 +17,7 @@ alembic
 # HTTP 客户端
 httpx[socks]
 aiohttp
+requests
 
 # 小红书签名
 xhshow

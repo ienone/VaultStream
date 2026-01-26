@@ -152,6 +152,28 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
         "repin_count": pin_data.get('repinCount', 0),
     }
 
+    # 生成标题：截取到第一个非开头的标点符号
+    def generate_pin_title(text: str, max_len: int = 60) -> str:
+        if not text:
+            return "知乎想法"
+        # 去除开头的空白和标点
+        text = text.strip()
+        # 常见中英文标点
+        punctuations = ['。', '！', '？', '，', '；', '：', '…', '.', '!', '?', ',', ';', ':', '\n']
+        # 从第2个字符开始查找第一个标点
+        cut_pos = -1
+        for i in range(1, min(len(text), max_len)):
+            if text[i] in punctuations:
+                cut_pos = i
+                break
+        if cut_pos > 0:
+            return text[:cut_pos] + "…"
+        elif len(text) > max_len:
+            return text[:max_len] + "…"
+        return text
+
+    pin_title = generate_pin_title(description)
+
     # Construct Archive
     if isinstance(pin_data, dict):
         archive_images = [{"url": u} for u in media_urls]
@@ -161,7 +183,7 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
         archive = {
             "version": 2,
             "type": "zhihu_pin",
-            "title": description[:50] + "..." if description else "Zhihu Pin",
+            "title": pin_title,
             "plain_text": description,
             "markdown": description, # Pins are simple, just use plain text as markdown
             "images": archive_images,
@@ -176,7 +198,7 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
         content_type="pin",
         content_id=str(pin_id),
         clean_url=url,
-        title=description[:50] + "..." if description else "Zhihu Pin",
+        title=pin_title,
         description=description,
         author_name=author.name,
         author_id=author.url_token or str(author.id),

@@ -25,16 +25,14 @@ class LocalSettings extends _$LocalSettings {
 
   @override
   LocalSettingsState build() {
-    // Initial state is taken from sync storage or defaults
-    // Note: SharedPreferences.getInstance() is async, so we might need a future provider for initialization
-    // but for simplicity we can use a provider that starts with defaults and updates later.
+    _initAsync();
     return LocalSettingsState(
       baseUrl: EnvConfig.baseUrl,
       apiToken: EnvConfig.apiToken,
     );
   }
 
-  Future<void> init() async {
+  Future<void> _initAsync() async {
     final prefs = await SharedPreferences.getInstance();
     state = LocalSettingsState(
       baseUrl: prefs.getString(_keyBaseUrl) ?? EnvConfig.baseUrl,

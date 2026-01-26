@@ -336,6 +336,7 @@ class TwitterFxAdapter(PlatformAdapter):
             description=text,
             author_name=author.get('name'),
             author_id=author.get('screen_name'),  # 使用 screen_name 作为 author_id
+            author_avatar_url=author.get('avatar_url'),  # 添加作者头像URL
             cover_url=media_list[0]["url"] if media_list else author.get("avatar_url"),
             media_urls=media_urls,
             published_at=published_at,

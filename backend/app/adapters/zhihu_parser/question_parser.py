@@ -144,6 +144,31 @@ def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
         question_data['top_answers'] = top_answers
         # Ensure stats are also in raw_metadata for frontend to find them if it looks there
         question_data['stats'] = stats
+        
+        # Build archive structure for media processing
+        archive_images = [{"url": u} for u in media_urls]
+        
+        # Add question author avatar
+        if author.avatar_url:
+            archive_images.append({"url": author.avatar_url, "type": "avatar"})
+        
+        # Add top answers' avatars and covers
+        for ans in top_answers:
+            if ans.get('author_avatar_url'):
+                archive_images.append({"url": ans['author_avatar_url'], "type": "answer_avatar"})
+            if ans.get('cover_url'):
+                archive_images.append({"url": ans['cover_url'], "type": "answer_cover"})
+        
+        question_data['archive'] = {
+            "version": 2,
+            "type": "zhihu_question",
+            "title": question_data.get('title'),
+            "plain_text": full_description,
+            "markdown": full_description,
+            "images": archive_images,
+            "links": [],
+            "stored_images": [],
+        }
 
     return ParsedContent(
         platform="zhihu",

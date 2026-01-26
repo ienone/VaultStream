@@ -41,10 +41,10 @@ class ContentCard extends ConsumerWidget {
     final bool isTinyCard = cardWidth < 220;
 
     final bool isLandscapeCover = content.isLandscapeCover;
-    final double imageAspectRatio = isLandscapeCover ? 16 / 9 : 0.8;
+    final double imageAspectRatio = isLandscapeCover ? 16 / 9 : 0.85;
     final double cardAspectRatio = isLandscapeCover
-        ? (isTinyCard ? 16 / 20 : 16 / 18)
-        : (isTinyCard ? 0.46 : 0.52);
+        ? (isTinyCard ? 16 / 19 : 16 / 17)
+        : (isTinyCard ? 0.50 : 0.56);
 
     // 使用 DynamicColorHelper 获取动态颜色
     Color? displayColor;

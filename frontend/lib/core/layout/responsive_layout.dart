@@ -14,8 +14,8 @@ class ResponsiveLayout {
     if (width > 1400) return 5;
     if (width >= 1000) return 4;
     if (width >= 800) return 3;
-    if (width >= 400) return 2;
-    return 1;
+    if (width >= 500) return 2;
+    return 1; // 窄屏显示单列
   }
 
   static double getCardWidth(BuildContext context) {
@@ -32,7 +32,7 @@ class ResponsiveLayout {
     }
 
     int columns = getColumnCount(context);
-    // 左右内边距 24*2 = 48, 间距 20
-    return (availableWidth - 48 - (columns - 1) * 20) / columns;
+    // 左右内边距 16*2 = 32, 间距 12
+    return (availableWidth - 32 - (columns - 1) * 12) / columns;
   }
 }

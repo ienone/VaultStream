@@ -5,41 +5,50 @@ part 'collection_filter_provider.g.dart';
 
 @immutable
 class CollectionFilterState {
-  final String? platform;
-  final String? status;
+  final List<String> platforms;
+  final List<String> statuses;
   final String? author;
   final DateTimeRange? dateRange;
   final String searchQuery;
+  final List<String> tags;
 
   const CollectionFilterState({
-    this.platform,
-    this.status,
+    this.platforms = const [],
+    this.statuses = const [],
     this.author,
     this.dateRange,
     this.searchQuery = '',
+    this.tags = const [],
   });
 
   CollectionFilterState copyWith({
-    String? platform,
-    String? status,
+    List<String>? platforms,
+    List<String>? statuses,
     String? author,
     DateTimeRange? dateRange,
     String? searchQuery,
-    bool clearPlatform = false,
-    bool clearStatus = false,
+    List<String>? tags,
+    bool clearPlatforms = false,
+    bool clearStatuses = false,
     bool clearDateRange = false,
+    bool clearTags = false,
   }) {
     return CollectionFilterState(
-      platform: clearPlatform ? null : (platform ?? this.platform),
-      status: clearStatus ? null : (status ?? this.status),
+      platforms: clearPlatforms ? const [] : (platforms ?? this.platforms),
+      statuses: clearStatuses ? const [] : (statuses ?? this.statuses),
       author: author ?? this.author,
       dateRange: clearDateRange ? null : (dateRange ?? this.dateRange),
       searchQuery: searchQuery ?? this.searchQuery,
+      tags: clearTags ? const [] : (tags ?? this.tags),
     );
   }
 
   bool get hasActiveFilters =>
-      platform != null || status != null || author != null || dateRange != null;
+      platforms.isNotEmpty ||
+      statuses.isNotEmpty ||
+      author != null ||
+      dateRange != null ||
+      tags.isNotEmpty;
 }
 
 @riverpod
@@ -51,17 +60,33 @@ class CollectionFilter extends _$CollectionFilter {
       state = state.copyWith(searchQuery: query);
 
   void setFilters({
-    String? platform,
-    String? status,
+    List<String>? platforms,
+    List<String>? statuses,
     String? author,
     DateTimeRange? dateRange,
+    List<String>? tags,
   }) {
     state = state.copyWith(
-      platform: platform,
-      status: status,
+      platforms: platforms,
+      statuses: statuses,
       author: author,
       dateRange: dateRange,
+      tags: tags,
+      clearPlatforms: platforms == null || platforms.isEmpty,
+      clearStatuses: statuses == null || statuses.isEmpty,
+      clearDateRange: dateRange == null,
+      clearTags: tags == null || tags.isEmpty,
     );
+  }
+
+  void toggleTag(String tag) {
+    final currentTags = List<String>.from(state.tags);
+    if (currentTags.contains(tag)) {
+      currentTags.remove(tag);
+    } else {
+      currentTags.add(tag);
+    }
+    state = state.copyWith(tags: currentTags);
   }
 
   void clearFilters() {

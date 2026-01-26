@@ -189,13 +189,24 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     BuildContext context,
     CollectionFilterState filterState,
   ) async {
+    // 从当前数据中获取可用的tags
+    final collectionAsync = ref.read(collectionProvider);
+    final availableTags = <String>{};
+    if (collectionAsync.hasValue && collectionAsync.value != null) {
+      for (final item in collectionAsync.value!.items) {
+        availableTags.addAll(item.tags);
+      }
+    }
+
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => FilterDialog(
-        initialPlatform: filterState.platform,
-        initialStatus: filterState.status,
+        initialPlatforms: filterState.platforms,
+        initialStatuses: filterState.statuses,
         initialAuthor: filterState.author,
         initialDateRange: filterState.dateRange,
+        initialTags: filterState.tags,
+        availableTags: availableTags.toList()..sort(),
       ),
     );
 
@@ -203,10 +214,11 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
       ref
           .read(collectionFilterProvider.notifier)
           .setFilters(
-            platform: result['platform'],
-            status: result['status'],
+            platforms: (result['platforms'] as List<dynamic>?)?.cast<String>(),
+            statuses: (result['statuses'] as List<dynamic>?)?.cast<String>(),
             author: result['author'],
             dateRange: result['dateRange'],
+            tags: (result['tags'] as List<dynamic>?)?.cast<String>(),
           );
     }
   }

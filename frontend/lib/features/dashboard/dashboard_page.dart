@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/widgets/frosted_app_bar.dart';
 import 'providers/dashboard_provider.dart';
 import 'models/stats.dart';
@@ -13,6 +14,8 @@ class DashboardPage extends ConsumerWidget {
     final statsAsync = ref.watch(dashboardStatsProvider);
     final queueAsync = ref.watch(queueStatsProvider);
     final theme = Theme.of(context);
+
+    final hasError = statsAsync.hasError || queueAsync.hasError;
 
     return Scaffold(
       appBar: FrostedAppBar(
@@ -27,44 +30,100 @@ class DashboardPage extends ConsumerWidget {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(dashboardStatsProvider);
-          ref.invalidate(queueStatsProvider);
-        },
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '系统概览',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
+      body: hasError
+          ? _buildConnectionError(context, ref, statsAsync.error ?? queueAsync.error)
+          : RefreshIndicator(
+              onRefresh: () async {
+                ref.invalidate(dashboardStatsProvider);
+                ref.invalidate(queueStatsProvider);
+              },
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '系统概览',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    _buildStatsGrid(context, statsAsync, queueAsync),
+                    const SizedBox(height: 32),
+                    Text(
+                      '平台分布',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildPlatformDistribution(context, statsAsync),
+                    const SizedBox(height: 32),
+                    Text(
+                      '最近 7 天增长',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildGrowthChart(context, statsAsync),
+                  ],
                 ),
               ),
-              const SizedBox(height: 24),
-              _buildStatsGrid(context, statsAsync, queueAsync),
-              const SizedBox(height: 32),
-              Text(
-                '平台分布',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+            ),
+    );
+  }
+
+  Widget _buildConnectionError(BuildContext context, WidgetRef ref, Object? error) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.cloud_off,
+              size: 80,
+              color: theme.colorScheme.outline,
+            ),
+            const SizedBox(height: 24),
+            Text(
+              '无法连接到服务器',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
               ),
-              const SizedBox(height: 16),
-              _buildPlatformDistribution(context, statsAsync),
-              const SizedBox(height: 32),
-              Text(
-                '最近 7 天增长',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '请检查后端服务是否启动，或前往设置修改 API 地址',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.outline,
               ),
-              const SizedBox(height: 16),
-              _buildGrowthChart(context, statsAsync),
-            ],
-          ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () {
+                    ref.invalidate(dashboardStatsProvider);
+                    ref.invalidate(queueStatsProvider);
+                  },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('重试'),
+                ),
+                const SizedBox(width: 16),
+                FilledButton.icon(
+                  onPressed: () => context.go('/settings'),
+                  icon: const Icon(Icons.settings),
+                  label: const Text('前往设置'),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

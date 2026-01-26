@@ -130,31 +130,31 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
             ),
           ),
 
-          // Capsule Toolbar
+          // Capsule Toolbar (compact)
           Positioned(
-            top: MediaQuery.of(context).padding.top + 16,
+            top: MediaQuery.of(context).padding.top + 12,
             left: 0,
             right: 0,
             child: Center(
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(32),
+                borderRadius: BorderRadius.circular(20),
                 child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                  filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
+                      horizontal: 12,
+                      vertical: 6,
                     ),
                     decoration: BoxDecoration(
                       color: colorScheme.primaryContainer.withValues(
-                        alpha: 0.4,
+                        alpha: 0.35,
                       ),
-                      borderRadius: BorderRadius.circular(32),
+                      borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color: colorScheme.onPrimaryContainer.withValues(
-                          alpha: 0.2,
+                          alpha: 0.15,
                         ),
-                        width: 1,
+                        width: 0.5,
                       ),
                     ),
                     child: Row(
@@ -164,29 +164,29 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                           '${_currentIndex + 1} / ${widget.images.length}',
                           style: TextStyle(
                             color: colorScheme.onPrimaryContainer,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.1,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            letterSpacing: 0.5,
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         Container(
                           width: 1,
-                          height: 16,
+                          height: 14,
                           color: colorScheme.onPrimaryContainer.withValues(
                             alpha: 0.2,
                           ),
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(width: 2),
                         IconButton(
                           constraints: const BoxConstraints(),
                           padding: const EdgeInsets.all(4),
                           icon: Icon(
                             Icons.download_rounded,
                             color: colorScheme.onPrimaryContainer,
-                            size: 20,
+                            size: 18,
                           ),
                           onPressed: () {
-                            // TODO: Implement download
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('下载功能正在开发中...'),
@@ -203,51 +203,71 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
             ),
           ),
 
-          // Navigation buttons (for desktop/large screen)
+          // Navigation buttons (for desktop/large screen) with blur effect
           if (widget.images.length > 1) ...[
             if (_currentIndex > 0)
               Positioned(
-                left: 20,
+                left: 16,
                 top: 0,
                 bottom: 0,
                 child: Center(
-                  child: IconButton.filledTonal(
-                    style: IconButton.styleFrom(
-                      backgroundColor: colorScheme.primaryContainer.withValues(
-                        alpha: 0.4,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: colorScheme.primaryContainer.withValues(alpha: 0.35),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: colorScheme.onPrimaryContainer.withValues(alpha: 0.15),
+                            width: 0.5,
+                          ),
+                        ),
+                        child: IconButton(
+                          icon: Icon(Icons.chevron_left, color: colorScheme.onPrimaryContainer),
+                          onPressed: () {
+                            _controller.previousPage(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOut,
+                            );
+                          },
+                        ),
                       ),
-                      foregroundColor: colorScheme.onPrimaryContainer,
                     ),
-                    icon: const Icon(Icons.chevron_left),
-                    onPressed: () {
-                      _controller.previousPage(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
-                      );
-                    },
                   ),
                 ),
               ),
             if (_currentIndex < widget.images.length - 1)
               Positioned(
-                right: 20,
+                right: 16,
                 top: 0,
                 bottom: 0,
                 child: Center(
-                  child: IconButton.filledTonal(
-                    style: IconButton.styleFrom(
-                      backgroundColor: colorScheme.primaryContainer.withValues(
-                        alpha: 0.4,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: colorScheme.primaryContainer.withValues(alpha: 0.35),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: colorScheme.onPrimaryContainer.withValues(alpha: 0.15),
+                            width: 0.5,
+                          ),
+                        ),
+                        child: IconButton(
+                          icon: Icon(Icons.chevron_right, color: colorScheme.onPrimaryContainer),
+                          onPressed: () {
+                            _controller.nextPage(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOut,
+                            );
+                          },
+                        ),
                       ),
-                      foregroundColor: colorScheme.onPrimaryContainer,
                     ),
-                    icon: const Icon(Icons.chevron_right),
-                    onPressed: () {
-                      _controller.nextPage(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
-                      );
-                    },
                   ),
                 ),
               ),

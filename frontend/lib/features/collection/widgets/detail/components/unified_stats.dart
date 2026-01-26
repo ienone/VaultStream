@@ -29,7 +29,41 @@ class UnifiedStats extends StatelessWidget {
     final List<Widget> items = [];
 
     if (isUserProfile) {
-      if (isWeibo) {
+      if (isXiaohongshu) {
+        // 小红书用户统计
+        final xhsStats = stats.isNotEmpty ? stats : (detail.rawMetadata ?? {});
+        final followers = xhsStats['followers'] ?? xhsStats['follower_count'] ?? 0;
+        final following = xhsStats['following'] ?? xhsStats['following_count'] ?? 0;
+        final liked = xhsStats['liked'] ?? xhsStats['liked_count'] ?? 0;
+        
+        if (followers is num && followers > 0) {
+          items.add(
+            UnifiedStatItem(
+              icon: Icons.people_outline,
+              label: '粉丝',
+              value: formatCount(followers),
+            ),
+          );
+        }
+        if (following is num && following > 0) {
+          items.add(
+            UnifiedStatItem(
+              icon: Icons.person_add_alt_1_outlined,
+              label: '关注',
+              value: formatCount(following),
+            ),
+          );
+        }
+        if (liked is num && liked > 0) {
+          items.add(
+            UnifiedStatItem(
+              icon: Icons.thumb_up_alt_outlined,
+              label: '获赞与收藏',
+              value: formatCount(liked),
+            ),
+          );
+        }
+      } else if (isWeibo) {
         items.add(
           UnifiedStatItem(
             icon: Icons.people_outline,

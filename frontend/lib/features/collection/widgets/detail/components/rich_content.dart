@@ -147,37 +147,78 @@ class RichContent extends StatelessWidget {
             ),
           ),
         );
-
-        if (!hideTopAnswers &&
-            detail.isZhihuQuestion &&
-            detail.rawMetadata != null &&
-            detail.rawMetadata!['top_answers'] != null) {
-          children.add(
-            ZhihuTopAnswers(
-              topAnswers: detail.rawMetadata!['top_answers'] as List<dynamic>,
-            ),
-          );
-        }
-
         children.add(const SizedBox(height: 24));
-      } else {
-        if (!hideTopAnswers &&
-            detail.isZhihuQuestion &&
-            detail.rawMetadata != null &&
-            detail.rawMetadata!['top_answers'] != null) {
+      }
+
+      // 知乎精选回答（移到图片之前显示）
+      if (!hideTopAnswers &&
+          detail.isZhihuQuestion &&
+          detail.rawMetadata != null &&
+          detail.rawMetadata!['top_answers'] != null) {
+        children.add(
+          ZhihuTopAnswers(
+            topAnswers: detail.rawMetadata!['top_answers'] as List<dynamic>,
+          ),
+        );
+      }
+
+      // 知乎问题：图片显示在回答之后
+      if (detail.isZhihuQuestion && mediaUrls.isNotEmpty) {
+        children.add(const SizedBox(height: 16));
+        if (mediaUrls.length == 1) {
           children.add(
-            ZhihuTopAnswers(
-              topAnswers: detail.rawMetadata!['top_answers'] as List<dynamic>,
+            MediaGalleryItem(
+              images: mediaUrls,
+              index: 0,
+              apiBaseUrl: apiBaseUrl,
+              apiToken: apiToken,
+              contentId: detail.id,
+              contentColor: contentColor,
+              heroTag: 'content-image-${detail.id}',
+              fit: BoxFit.contain,
+            ),
+          );
+        } else {
+          children.add(
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 1.0,
+              ),
+              itemCount: mediaUrls.length,
+              itemBuilder: (context, index) {
+                final String heroTag = index == 0
+                    ? 'content-image-${detail.id}'
+                    : 'image-$index-${detail.id}';
+                return MediaGalleryItem(
+                  images: mediaUrls,
+                  index: index,
+                  apiBaseUrl: apiBaseUrl,
+                  apiToken: apiToken,
+                  contentId: detail.id,
+                  contentColor: contentColor,
+                  heroTag: heroTag,
+                );
+              },
             ),
           );
         }
+        children.add(const SizedBox(height: 24));
       }
     }
 
     bool showMediaGrid = false;
-    if (detail.isZhihuPin ||
+    // 知乎问题的图片已在上面单独处理（在回答之前显示）
+    if (detail.isZhihuQuestion) {
+      showMediaGrid = false; // 不在这里重复显示
+    } else if (detail.isZhihuPin ||
         detail.isTwitter ||
         detail.isWeibo ||
+        detail.isXiaohongshu ||
         (detail.isBilibili && detail.contentType == 'video')) {
       showMediaGrid = mediaUrls.isNotEmpty;
     } else {
@@ -218,7 +259,7 @@ class RichContent extends StatelessWidget {
               final String baseTag = index == 0
                   ? 'content-image-${detail.id}'
                   : 'image-$index-${detail.id}';
-              
+
               // 确保 Hero Tag 在整个 RichContent 树中唯一
               String finalHeroTag = baseTag;
               int suffix = 1;
@@ -399,7 +440,7 @@ class RichContent extends StatelessWidget {
       final cleanSearch = url.split('?').first;
       index = mediaUrls.indexWhere((m) => m.split('?').first == cleanSearch);
     }
-    
+
     // 如果仍未找到，将此图片添加到列表末尾以确保完整的图片列表
     List<String> effectiveMediaUrls = mediaUrls;
     int effectiveIndex = index;
@@ -410,9 +451,11 @@ class RichContent extends StatelessWidget {
 
     // 使用 md- 前缀以避免与底部 GridView 产生 Hero 标签冲突
     final String baseTag = effectiveIndex != -1
-        ? (effectiveIndex == 0 ? 'md-content-image-${detail.id}' : 'md-image-$effectiveIndex-${detail.id}')
+        ? (effectiveIndex == 0
+              ? 'md-content-image-${detail.id}'
+              : 'md-image-$effectiveIndex-${detail.id}')
         : 'markdown-image-$url-${detail.id}';
-        
+
     String finalHeroTag = baseTag;
     int suffix = 1;
     if (usedHeroTags != null) {
