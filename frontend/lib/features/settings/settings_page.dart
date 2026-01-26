@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers/theme_provider.dart';
 import '../../core/widgets/frosted_app_bar.dart';
 import 'providers/settings_provider.dart';
+import '../../core/providers/local_settings_provider.dart';
 import 'models/system_setting.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -20,9 +21,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final settingsAsync = ref.watch(systemSettingsProvider);
 
     return Scaffold(
-      appBar: const FrostedAppBar(
-        title: Text('设置中心'),
-      ),
+      appBar: const FrostedAppBar(title: Text('设置中心')),
       body: settingsAsync.when(
         data: (settings) => ListView(
           padding: const EdgeInsets.symmetric(vertical: 16),
@@ -35,6 +34,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             const Divider(height: 32),
             _buildSectionHeader(context, '系统与存储'),
             _buildStorageSettings(context),
+            const Divider(height: 32),
+            _buildSectionHeader(context, '服务器与连接'),
+            _buildNetworkSettings(context),
             const SizedBox(height: 40),
             _buildAppInfo(context),
           ],
@@ -268,6 +270,92 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           },
         ),
       ],
+    );
+  }
+
+  Widget _buildNetworkSettings(BuildContext context) {
+    final settings = ref.watch(localSettingsProvider);
+
+    return Column(
+      children: [
+        _buildSettingTile(
+          context,
+          title: '后端 API 地址',
+          subtitle: settings.baseUrl,
+          icon: Icons.cloud_queue,
+          onTap: () => _showBaseUrlEditor(context, settings.baseUrl),
+        ),
+        _buildSettingTile(
+          context,
+          title: 'API 访问密钥',
+          subtitle: settings.apiToken.length > 4
+              ? '${settings.apiToken.substring(0, 4)}****'
+              : '****',
+          icon: Icons.vpn_key_outlined,
+          onTap: () => _showApiTokenEditor(context, settings.apiToken),
+        ),
+      ],
+    );
+  }
+
+  void _showBaseUrlEditor(BuildContext context, String currentValue) {
+    final controller = TextEditingController(text: currentValue);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('修改后端地址'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'API Base URL',
+            hintText: 'http://192.168.1.100:8000/api/v1',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await ref
+                  .read(localSettingsProvider.notifier)
+                  .setBaseUrl(controller.text);
+              if (context.mounted) Navigator.pop(context);
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showApiTokenEditor(BuildContext context, String currentValue) {
+    final controller = TextEditingController(text: currentValue);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('修改访问密钥'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'API Token'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await ref
+                  .read(localSettingsProvider.notifier)
+                  .setApiToken(controller.text);
+              if (context.mounted) Navigator.pop(context);
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
     );
   }
 
