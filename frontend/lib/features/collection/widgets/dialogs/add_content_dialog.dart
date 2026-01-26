@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/network/api_client.dart';
-import '../providers/collection_provider.dart';
+import '../../../../core/network/api_client.dart';
+import '../../providers/collection_provider.dart';
 
 class AddContentDialog extends ConsumerStatefulWidget {
   const AddContentDialog({super.key});

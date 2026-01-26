@@ -38,5 +38,6 @@ pytest-asyncio
 # 图片转码（可选：用于导出/归档时将图片转为 WebP）
 Pillow
 
-# S3/MinIO（已移除，如需请取消注释）
-# boto3
+# 内容解析与 Markdown 转换
+markdownify
+beautifulsoup4

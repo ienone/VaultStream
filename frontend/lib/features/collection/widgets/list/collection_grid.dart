@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:go_router/go_router.dart';
-import '../../../core/layout/responsive_layout.dart';
-import '../models/content.dart';
+import '../../../../core/layout/responsive_layout.dart';
+import '../../models/content.dart';
 import 'content_card.dart';
 
 class CollectionGrid extends StatelessWidget {

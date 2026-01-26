@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
-import '../../../core/layout/responsive_layout.dart';
+import '../../../../core/layout/responsive_layout.dart';
 
 class CollectionSkeleton extends StatelessWidget {
   const CollectionSkeleton({super.key});

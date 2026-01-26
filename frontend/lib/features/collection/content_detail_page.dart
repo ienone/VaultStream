@@ -7,15 +7,15 @@ import 'models/content.dart';
 import 'providers/collection_provider.dart';
 import 'utils/content_parser.dart';
 import 'widgets/detail/gallery/full_screen_gallery.dart';
+import 'widgets/detail/layout/article_landscape_layout.dart';
 import 'widgets/detail/layout/bilibili_landscape_layout.dart';
-import 'widgets/detail/layout/markdown_landscape_layout.dart';
 import 'widgets/detail/layout/portrait_layout.dart';
 import 'widgets/detail/layout/twitter_landscape_layout.dart';
 import 'widgets/detail/layout/user_profile_layout.dart';
-import 'widgets/detail/layout/zhihu_landscape_layout.dart';
-import 'widgets/edit_content_dialog.dart';
+import 'widgets/dialogs/edit_content_dialog.dart';
 import '../../theme/app_theme.dart';
 import '../../core/network/api_client.dart';
+import '../../core/utils/dynamic_color_helper.dart';
 
 class ContentDetailPage extends ConsumerStatefulWidget {
   final int contentId;
@@ -114,18 +114,39 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     super.dispose();
   }
 
-  ThemeData _getCustomTheme(String? hexColor, Brightness brightness) {
+  ThemeData _getCustomTheme(ContentDetail? detail, Brightness brightness) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final baseColor = hexColor != null && hexColor.startsWith('#')
-        ? AppTheme.parseHexColor(hexColor)
-        : null;
+
+    // 使用 DynamicColorHelper 获取动态颜色
+    Color? baseColor;
+
+    // 先尝试从 detail.coverColor 获取
+    if (detail?.coverColor != null && detail!.coverColor!.isNotEmpty) {
+      baseColor = DynamicColorHelper.getContentColor(
+        detail.coverColor,
+        context,
+      );
+    } else if (widget.initialColor != null) {
+      // 回退到 initialColor
+      baseColor = DynamicColorHelper.getContentColor(
+        widget.initialColor,
+        context,
+      );
+    }
+
+    // 如果 baseColor 仍然是 null 或等于系统 primary，表示没有有效的封面色
+    final systemPrimary = theme.colorScheme.primary;
+    if (baseColor == null || baseColor == systemPrimary) {
+      _contentColor = null; // 使用系统主题
+      return AppTheme.fromColorScheme(theme.colorScheme, brightness);
+    }
 
     _contentColor = baseColor;
 
-    final customColorScheme = baseColor != null
-        ? ColorScheme.fromSeed(seedColor: baseColor, brightness: brightness)
-        : colorScheme;
+    final customColorScheme = ColorScheme.fromSeed(
+      seedColor: baseColor,
+      brightness: brightness,
+    );
 
     return AppTheme.fromColorScheme(customColorScheme, brightness);
   }
@@ -140,10 +161,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
     return detailAsync.when(
       data: (detail) {
-        final customTheme = _getCustomTheme(
-          detail.coverColor ?? widget.initialColor,
-          theme.brightness,
-        );
+        final customTheme = _getCustomTheme(detail, theme.brightness);
         final colorScheme = customTheme.colorScheme;
 
         return Theme(
@@ -258,11 +276,13 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               ],
             ),
             body: SelectionArea(
-              child: _buildResponsiveLayout(
-                context,
-                detail,
-                apiBaseUrl,
-                apiToken,
+              child: Builder(
+                builder: (context) => _buildResponsiveLayout(
+                  context,
+                  detail,
+                  apiBaseUrl,
+                  apiToken,
+                ),
               ),
             ),
           ),
@@ -270,7 +290,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       },
       loading: () {
         final customTheme = _getCustomTheme(
-          widget.initialColor,
+          null, // 加载时没有 detail
           theme.brightness,
         );
         final colorScheme = customTheme.colorScheme;
@@ -323,7 +343,6 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool isLandscape = constraints.maxWidth > 800;
-        final bool hasMarkdown = ContentParser.hasMarkdown(detail);
 
         if (!isLandscape) {
           return PortraitLayout(
@@ -351,13 +370,21 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           );
         }
 
-        if (detail.isZhihuAnswer) {
-          return ZhihuLandscapeLayout(
+        // 统一文章布局：知乎回答、知乎文章、B站文章/动态
+        if (detail.isZhihuAnswer ||
+            detail.isZhihuArticle ||
+            (detail.isBilibili &&
+                (detail.contentType == 'article' ||
+                    detail.contentType == 'dynamic'))) {
+          final markdown = ContentParser.getMarkdownContent(detail);
+          return ArticleLandscapeLayout(
             detail: detail,
             apiBaseUrl: apiBaseUrl,
             apiToken: apiToken,
             contentScrollController: _contentScrollController,
             headerKeys: _headerKeys,
+            headers: ContentParser.extractHeaders(markdown),
+            activeHeader: _activeHeader,
             contentColor: _contentColor,
           );
         }
@@ -392,7 +419,8 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           );
         }
 
-        if (detail.isBilibili) {
+        // B站视频保持原布局
+        if (detail.isBilibili && detail.contentType == 'video') {
           return BilibiliLandscapeLayout(
             detail: detail,
             apiBaseUrl: apiBaseUrl,
@@ -405,20 +433,6 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               apiToken,
               detail.id,
             ),
-          );
-        }
-
-        if (hasMarkdown) {
-          final markdown = ContentParser.getMarkdownContent(detail);
-          return MarkdownLandscapeLayout(
-            detail: detail,
-            apiBaseUrl: apiBaseUrl,
-            apiToken: apiToken,
-            contentScrollController: _contentScrollController,
-            headerKeys: _headerKeys,
-            headers: ContentParser.extractHeaders(markdown),
-            activeHeader: _activeHeader,
-            contentColor: _contentColor,
           );
         }
 

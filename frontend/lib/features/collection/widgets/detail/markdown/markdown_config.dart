@@ -104,13 +104,15 @@ class CodeElementBuilder extends MarkdownElementBuilder {
     }
 
     if (!isBlock) {
-      // Inline code
+      // Inline code - 使用主题色系统确保在各种主题下都有良好的可见性
+      // 暗色模式：使用 tertiaryContainer 作为背景，tertiary 作为文字（通常是高对比度的强调色）
+      // 亮色模式：使用 primary 相关色
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
           color: isDark
-              ? Colors.white.withValues(alpha: 0.1)
-              : Colors.black.withValues(alpha: 0.05),
+              ? appTheme.colorScheme.surfaceContainerHighest
+              : appTheme.colorScheme.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(6),
         ),
         child: Text(
@@ -119,7 +121,9 @@ class CodeElementBuilder extends MarkdownElementBuilder {
             textStyle: TextStyle(
               fontSize: 13,
               color: isDark
-                  ? appTheme.colorScheme.primaryContainer
+                  ? appTheme
+                        .colorScheme
+                        .tertiary // 暗色模式用 tertiary（通常是高对比度色）
                   : appTheme.colorScheme.primary,
               fontWeight: FontWeight.w500,
             ),

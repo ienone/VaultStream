@@ -1,19 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:frontend/core/utils/media_utils.dart';
-import '../../../../../core/network/image_headers.dart';
 import '../../../models/content.dart';
 import '../../../utils/content_parser.dart';
 
 import '../markdown/markdown_config.dart';
-import '../gallery/full_screen_gallery.dart';
 import 'author_header.dart';
 import 'unified_stats.dart';
 import 'zhihu_question_stats.dart';
 import 'zhihu_top_answers.dart';
-import '../../video_player_widget.dart';
+import 'media_gallery_item.dart';
 
 class RichContent extends StatelessWidget {
   final ContentDetail detail;
@@ -194,54 +191,15 @@ class RichContent extends StatelessWidget {
 
       if (mediaUrls.length == 1) {
         children.add(
-          Builder(
-            builder: (context) {
-              final url = mediaUrls.first;
-              if (isVideo(url)) {
-                return ClipRRect(
-                  borderRadius: BorderRadius.circular(28),
-                  child: VideoPlayerWidget(
-                    videoUrl: url,
-                    headers: buildImageHeaders(
-                      imageUrl: url,
-                      baseUrl: apiBaseUrl,
-                      apiToken: apiToken,
-                    ),
-                  ),
-                );
-              }
-              return GestureDetector(
-                onTap: () => _showFullScreenImage(
-                  context,
-                  mediaUrls,
-                  0,
-                  apiBaseUrl,
-                  apiToken,
-                  detail.id,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(28),
-                  child: Hero(
-                    tag: 'content-image-${detail.id}',
-                    child: CachedNetworkImage(
-                      imageUrl: url,
-                      httpHeaders: buildImageHeaders(
-                        imageUrl: url,
-                        baseUrl: apiBaseUrl,
-                        apiToken: apiToken,
-                      ),
-                      fit: BoxFit.contain,
-                      placeholder: (c, u) => Container(
-                        height: 240,
-                        width: double.infinity,
-                        color: theme.colorScheme.surfaceContainerHighest,
-                        child: const Center(child: CircularProgressIndicator()),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
+          MediaGalleryItem(
+            images: mediaUrls,
+            index: 0,
+            apiBaseUrl: apiBaseUrl,
+            apiToken: apiToken,
+            contentId: detail.id,
+            contentColor: contentColor,
+            heroTag: 'content-image-${detail.id}',
+            fit: BoxFit.contain,
           ),
         );
       } else {
@@ -257,72 +215,27 @@ class RichContent extends StatelessWidget {
             ),
             itemCount: mediaUrls.length,
             itemBuilder: (context, index) {
-              final url = mediaUrls[index];
-              if (isVideo(url)) {
-                return ClipRRect(
-                  borderRadius: BorderRadius.circular(28),
-                  child: Stack(
-                    children: [
-                      Container(color: Colors.black),
-                      const Center(
-                        child: Icon(
-                          Icons.play_circle_outline,
-                          color: Colors.white,
-                          size: 48,
-                        ),
-                      ),
-                      Positioned.fill(
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () {
-                              // TODO: Open video player dialog
-                            },
-                            child: const Center(
-                              child: Text(
-                                "VIDEO",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
+              final String baseTag = index == 0
+                  ? 'content-image-${detail.id}'
+                  : 'image-$index-${detail.id}';
+              
+              // 确保 Hero Tag 在整个 RichContent 树中唯一
+              String finalHeroTag = baseTag;
+              int suffix = 1;
+              while (usedHeroTags.contains(finalHeroTag)) {
+                finalHeroTag = '$baseTag-dup$suffix';
+                suffix++;
               }
-              return GestureDetector(
-                onTap: () => _showFullScreenImage(
-                  context,
-                  mediaUrls,
-                  index,
-                  apiBaseUrl,
-                  apiToken,
-                  detail.id,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(28),
-                  child: Hero(
-                    tag: index == 0
-                        ? 'content-image-${detail.id}'
-                        : 'image-$index-${detail.id}',
-                    child: CachedNetworkImage(
-                      imageUrl: url,
-                      httpHeaders: buildImageHeaders(
-                        imageUrl: url,
-                        baseUrl: apiBaseUrl,
-                        apiToken: apiToken,
-                      ),
-                      fit: BoxFit.cover,
-                      placeholder: (c, u) => Container(
-                        color: theme.colorScheme.surfaceContainerHighest,
-                      ),
-                    ),
-                  ),
-                ),
+              usedHeroTags.add(finalHeroTag);
+
+              return MediaGalleryItem(
+                images: mediaUrls,
+                index: index,
+                apiBaseUrl: apiBaseUrl,
+                apiToken: apiToken,
+                contentId: detail.id,
+                contentColor: contentColor,
+                heroTag: finalHeroTag,
               );
             },
           ),
@@ -336,46 +249,13 @@ class RichContent extends StatelessWidget {
     );
   }
 
-  void _showFullScreenImage(
-    BuildContext context,
-    List<String> images,
-    int initialIndex,
-    String apiBaseUrl,
-    String? apiToken,
-    int contentId,
-  ) {
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        opaque: false,
-        barrierColor: Colors.transparent,
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            FullScreenGallery(
-              images: images,
-              initialIndex: initialIndex,
-              apiBaseUrl: apiBaseUrl,
-              apiToken: apiToken,
-              contentId: contentId,
-              contentColor: contentColor,
-            ),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(opacity: animation, child: child);
-        },
-      ),
-    );
-  }
-
   String _getMarkdownContent(ContentDetail detail) {
+    // 允许后端通过 archive 节点或 description 提供 Markdown
     if (detail.rawMetadata != null && detail.rawMetadata!['archive'] != null) {
-      return detail.rawMetadata!['archive']['markdown']?.toString() ?? '';
+      final md = detail.rawMetadata!['archive']['markdown']?.toString();
+      if (md != null && md.isNotEmpty) return md;
     }
-    if (detail.isBilibili && (detail.description?.contains('![') ?? false)) {
-      return detail.description ?? '';
-    }
-    if ((detail.isZhihuArticle || detail.isZhihuAnswer) &&
-        detail.description != null) {
-      return detail.description!;
-    }
-    return '';
+    return detail.description ?? '';
   }
 
   static final Map<String, String> _markdownCache = {};
@@ -512,59 +392,52 @@ class RichContent extends StatelessWidget {
           : mapUrl(url, apiBaseUrl);
     }
 
-    final String heroTag = 'markdown-image-$url-${detail.id}';
-    final bool canUseHero =
-        useHero && usedHeroTags != null && !usedHeroTags.contains(heroTag);
-    if (canUseHero) usedHeroTags.add(heroTag);
+    // 在全局媒体列表中查找此图片的索引
+    final mediaUrls = ContentParser.extractAllMedia(detail, apiBaseUrl);
+    int index = mediaUrls.indexOf(url);
+    if (index == -1) {
+      final cleanSearch = url.split('?').first;
+      index = mediaUrls.indexWhere((m) => m.split('?').first == cleanSearch);
+    }
+    
+    // 如果仍未找到，将此图片添加到列表末尾以确保完整的图片列表
+    List<String> effectiveMediaUrls = mediaUrls;
+    int effectiveIndex = index;
+    if (index == -1) {
+      effectiveMediaUrls = [...mediaUrls, url];
+      effectiveIndex = effectiveMediaUrls.length - 1;
+    }
+
+    // 使用 md- 前缀以避免与底部 GridView 产生 Hero 标签冲突
+    final String baseTag = effectiveIndex != -1
+        ? (effectiveIndex == 0 ? 'md-content-image-${detail.id}' : 'md-image-$effectiveIndex-${detail.id}')
+        : 'markdown-image-$url-${detail.id}';
+        
+    String finalHeroTag = baseTag;
+    int suffix = 1;
+    if (usedHeroTags != null) {
+      while (usedHeroTags.contains(finalHeroTag)) {
+        finalHeroTag = '$baseTag-dup$suffix';
+        suffix++;
+      }
+      usedHeroTags.add(finalHeroTag);
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          GestureDetector(
-            onTap: () => _showFullScreenImage(
-              context,
-              [url],
-              0,
-              apiBaseUrl,
-              apiToken,
-              detail.id,
-            ),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.shadow.withValues(alpha: 0.1),
-                    blurRadius: 30,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: CachedNetworkImage(
-                  imageUrl: url,
-                  httpHeaders: buildImageHeaders(
-                    imageUrl: url,
-                    baseUrl: apiBaseUrl,
-                    apiToken: apiToken,
-                  ),
-                  fit: BoxFit.fitWidth,
-                  placeholder: (c, u) => Container(
-                    height: 200,
-                    width: double.infinity,
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.surfaceContainerHighest,
-                    child: const Center(child: CircularProgressIndicator()),
-                  ),
-                ),
-              ),
-            ),
+          MediaGalleryItem(
+            images: effectiveMediaUrls,
+            index: effectiveIndex,
+            apiBaseUrl: apiBaseUrl,
+            apiToken: apiToken,
+            contentId: detail.id,
+            contentColor: contentColor,
+            heroTag: finalHeroTag,
+            fit: BoxFit.fitWidth,
+            borderRadius: BorderRadius.circular(24),
           ),
           if (alt != null && alt.trim().isNotEmpty)
             Padding(

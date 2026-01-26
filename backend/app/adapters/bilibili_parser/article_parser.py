@@ -16,10 +16,12 @@ from app.adapters.errors import (
 from app.models import BilibiliContentType
 from .base import clean_text, safe_url, format_request_error
 import re
+from markdownify import markdownify as md
+from bs4 import BeautifulSoup
 
 
 # API端点
-API_ARTICLE_INFO = "https://api.bilibili.com/x/article/viewinfo"
+API_ARTICLE_INFO = "https://api.bilibili.com/x/article/view"
 
 
 async def parse_article(
@@ -87,14 +89,34 @@ async def parse_article(
             'share': item.get('stats', {}).get('share', 0),
         }
 
-        # 构建存档结构
-        image_urls = item.get('image_urls', [])
+        # 提取全文内容并转换为Markdown
+        content_html = item.get('content', '')
+        html_images = []
+        if content_html:
+            # 从 HTML 中提取所有图片 URL
+            soup = BeautifulSoup(content_html, 'html.parser')
+            for img in soup.find_all('img'):
+                src = img.get('src') or img.get('data-src')
+                if src:
+                    if src.startswith('//'):
+                        src = 'https:' + src
+                    html_images.append(src)
+            
+            markdown_content = md(content_html, heading_style="ATX")
+            plain_text = soup.get_text("\n")
+        else:
+            markdown_content = item.get('summary', '')
+            plain_text = item.get('summary', '')
+
+        # 合并 API image_urls 和 HTML 提取的图片（去重保序）
+        api_image_urls = item.get('image_urls', [])
+        image_urls = list(dict.fromkeys(api_image_urls + html_images))
         archive = {
             "version": 2,
             "type": "bilibili_article",
             "title": item.get('title', ''),
-            "plain_text": item.get('summary', ''),
-            "markdown": item.get('summary', ''),  # 暂无全文Markdown，仅摘要
+            "plain_text": plain_text,
+            "markdown": markdown_content,
             "images": [{"url": u} for u in image_urls],
             "links": [],
             "stored_images": []
@@ -114,7 +136,7 @@ async def parse_article(
             content_id=f"cv{cvid}",
             clean_url=url,
             title=item.get('title'),
-            description=item.get('summary'),
+            description=markdown_content,
             author_name=item.get('author_name'),
             author_id=str(author_mid) if author_mid else None,
             author_avatar_url=item.get('author_face'),

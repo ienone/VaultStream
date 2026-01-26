@@ -4,11 +4,11 @@ import '../../core/widgets/frosted_app_bar.dart';
 import 'providers/collection_provider.dart';
 import 'providers/search_history_provider.dart';
 import 'providers/collection_filter_provider.dart';
-import 'widgets/add_content_dialog.dart';
-import 'widgets/filter_dialog.dart';
-import 'widgets/collection_grid.dart';
-import 'widgets/collection_error_view.dart';
-import 'widgets/collection_skeleton.dart';
+import 'widgets/dialogs/add_content_dialog.dart';
+import 'widgets/dialogs/filter_dialog.dart';
+import 'widgets/list/collection_grid.dart';
+import 'widgets/list/collection_error_view.dart';
+import 'widgets/list/collection_skeleton.dart';
 
 class CollectionPage extends ConsumerStatefulWidget {
   const CollectionPage({super.key});

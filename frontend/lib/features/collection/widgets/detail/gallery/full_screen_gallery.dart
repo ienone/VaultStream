@@ -10,6 +10,7 @@ class FullScreenGallery extends StatefulWidget {
   final String? apiToken;
   final int contentId;
   final Color? contentColor;
+  final String? customHeroTag;
   final Function(int)? onPageChanged;
 
   const FullScreenGallery({
@@ -20,6 +21,7 @@ class FullScreenGallery extends StatefulWidget {
     this.apiToken,
     required this.contentId,
     this.contentColor,
+    this.customHeroTag,
     this.onPageChanged,
   });
 
@@ -40,6 +42,9 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
   }
 
   String _getHeroTag(int index) {
+    if (index == widget.initialIndex && widget.customHeroTag != null) {
+      return widget.customHeroTag!;
+    }
     return index == 0
         ? 'content-image-${widget.contentId}'
         : 'image-$index-${widget.contentId}';

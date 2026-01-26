@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/network/api_client.dart';
-import '../models/content.dart';
-import '../providers/collection_provider.dart';
+import '../../../../core/network/api_client.dart';
+import '../../models/content.dart';
+import '../../providers/collection_provider.dart';
 
 class EditContentDialog extends ConsumerStatefulWidget {
   final ContentDetail content;

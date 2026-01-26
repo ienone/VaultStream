@@ -1,16 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:frontend/core/utils/media_utils.dart';
 import '../../../../../core/network/image_headers.dart';
 import '../../../models/content.dart';
-import '../components/author_header.dart';
-
-import '../components/tags_section.dart';
-import '../components/unified_stats.dart';
-import '../components/zhihu_top_answers.dart';
-import '../../video_player_widget.dart';
+import '../components/media_gallery_item.dart';
+import '../components/content_side_info_card.dart';
 
 class TwitterLandscapeLayout extends StatelessWidget {
   final ContentDetail detail;
@@ -62,7 +56,27 @@ class TwitterLandscapeLayout extends StatelessWidget {
           ),
         ),
         // Right: Content Info Area (Supporting Pane)
-        Expanded(flex: 4, child: _buildSideInfo(context)),
+        Expanded(
+          flex: 4,
+          child: Container(
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              border: Border(
+                left: BorderSide(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+                ),
+              ),
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              child: ContentSideInfoCard(
+                detail: detail,
+                contentColor: contentColor,
+                padding: const EdgeInsets.all(28),
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -78,43 +92,18 @@ class TwitterLandscapeLayout extends StatelessWidget {
                 itemCount: images.length,
                 onPageChanged: onPageChanged,
                 itemBuilder: (context, index) {
-                  final img = images[index];
-                  if (isVideo(img)) {
-                    return Center(
-                      child: VideoPlayerWidget(
-                        videoUrl: img,
-                        headers: buildImageHeaders(
-                          imageUrl: img,
-                          baseUrl: apiBaseUrl,
-                          apiToken: apiToken,
-                        ),
-                      ),
-                    );
-                  }
                   return Center(
-                    child: GestureDetector(
-                      onTap: () => onImageTap(index),
-                      child: InteractiveViewer(
-                        minScale: 1.0,
-                        maxScale: 3.0,
-                        child: Hero(
-                          tag: index == 0
-                              ? 'content-image-${detail.id}'
-                              : 'image-$index-${detail.id}',
-                          child: CachedNetworkImage(
-                            imageUrl: img,
-                            httpHeaders: buildImageHeaders(
-                              imageUrl: img,
-                              baseUrl: apiBaseUrl,
-                              apiToken: apiToken,
-                            ),
-                            fit: BoxFit.contain,
-                            placeholder: (c, u) => const Center(
-                              child: CircularProgressIndicator(),
-                            ),
-                          ),
-                        ),
-                      ),
+                    child: MediaGalleryItem(
+                      images: images,
+                      index: index,
+                      apiBaseUrl: apiBaseUrl,
+                      apiToken: apiToken,
+                      contentId: detail.id,
+                      contentColor: contentColor,
+                      heroTag: index == 0
+                          ? 'content-image-${detail.id}'
+                          : 'image-$index-${detail.id}',
+                      fit: BoxFit.contain,
                     ),
                   );
                 },
@@ -261,111 +250,6 @@ class TwitterLandscapeLayout extends StatelessWidget {
             ),
           ),
       ],
-    );
-  }
-
-  Widget _buildSideInfo(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        border: Border(
-          left: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-          ),
-        ),
-      ),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-        child: Container(
-          decoration: BoxDecoration(
-            color: isDark
-                ? colorScheme.surfaceContainer
-                : colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(28),
-            border: isDark
-                ? Border.all(
-                    color: Colors.white.withValues(alpha: 0.05),
-                    width: 1,
-                  )
-                : null,
-            boxShadow: isDark
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ]
-                : null,
-          ),
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AuthorHeader(detail: detail),
-              const SizedBox(height: 32),
-              if (detail.title != null &&
-                  detail.title!.isNotEmpty &&
-                  !detail.isTwitter &&
-                  !detail.isWeibo &&
-                  !detail.isZhihuPin) ...[
-                Text(
-                  detail.title!,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    height: 1.3,
-                  ),
-                ),
-                const SizedBox(height: 24),
-              ],
-              if (detail.description != null)
-                MarkdownBody(
-                  data: detail.description!,
-                  selectable: true,
-                  onTapLink: (text, href, title) {
-                    if (href != null) {
-                      launchUrl(
-                        Uri.parse(href),
-                        mode: LaunchMode.externalApplication,
-                      );
-                    }
-                  },
-                  styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                    p: theme.textTheme.headlineSmall?.copyWith(
-                      height: 1.5,
-                      letterSpacing: 0.1,
-                      fontSize: 20,
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 48),
-              UnifiedStats(detail: detail),
-              const SizedBox(height: 48),
-              Text(
-                '关联标签',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.primary,
-                  letterSpacing: 1.1,
-                ),
-              ),
-              const SizedBox(height: 16),
-              TagsSection(detail: detail),
-              if (detail.isZhihuQuestion &&
-                  detail.rawMetadata != null &&
-                  detail.rawMetadata!['top_answers'] != null)
-                ZhihuTopAnswers(
-                  topAnswers:
-                      detail.rawMetadata!['top_answers'] as List<dynamic>,
-                ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
