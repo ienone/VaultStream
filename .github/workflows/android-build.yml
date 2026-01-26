@@ -1,0 +1,47 @@
+name: Android Build
+
+on:
+  push:
+    branches: [main] # 只要你 push 代码到main分支就会自动触发
+  workflow_dispatch: # 允许你在 GitHub 页面上点按钮手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    # 设置默认的工作目录为 frontend
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: . # 检出整个仓库
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "zulu"
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+          cache-key: "flutter-:os:-:channel:-:package:-:filehash:"
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: vaultstream-debug-apk
+          # 注意：这里的路径是相对于整个仓库根目录的
+          path: frontend/build/app/outputs/flutter-apk/app-debug.apk
