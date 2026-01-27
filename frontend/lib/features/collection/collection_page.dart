@@ -201,8 +201,8 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => FilterDialog(
-        initialPlatforms: filterState.platforms,
-        initialStatuses: filterState.statuses,
+        // initialPlatforms: filterState.platforms,
+        // initialStatuses: filterState.statuses,
         initialAuthor: filterState.author,
         initialDateRange: filterState.dateRange,
         initialTags: filterState.tags,

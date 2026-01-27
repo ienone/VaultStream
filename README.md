@@ -1,196 +1,312 @@
-# VaultStream - 跨平台收藏夹&分享工具
+# VaultStream - 跨平台内容收藏 & 分享系统
 
-## 项目目的：VaultStream
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
+![Flutter](https://img.shields.io/badge/Flutter-3.10%2B-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-VaultStream 是多平台内容存档与分享系统。通过爬取存档和结构化分发，实现一个信息存档与分享的平台。
+VaultStream 是一个私有内容存档与合规分享的完整解决方案。通过适配器系统支持多平台（B站、Twitter、小红书等）内容采集，提供本地化存储、智能分发，确保私有数据与公开分享严格隔离。
 
-记录链接，通过深度适配器抓取并本地化存储（包含链接、图、文、数据信息、视频(tbd)、音频(tbd)、评论数据(tbd)）。结合RAG技术等，实现对存档内容的AI摘要与语义检索。用户可通过移动端应用和Web后台进行内容管理与分享。
+## 🎯 核心特性
 
-### 1. 设计构想：解耦
+### 私有存档 (Private Archive)
+- 📥 多平台采集: B站视频、Twitter/X、小红书、知乎、微博等
+- 🎬 完整媒体存档: 图片、视频、文本等本地化存储
+- 🔍 智能检索: FTS5 全文搜索 + 标签多维筛选
+- 🏷️ 灵活标记: 自定义标签、NSFW 标记、收藏备注
 
-- 多维适配架构： 采用解耦的插件化设计，开发者可快速为不同平台编写专属适配器，实现URL净化与元数据提取。
-- 多端交互体验： 
-    - 移动端 (MD3 Expressive)： 基于 Material 3 规范开发，支持通过系统分享快捷收藏/打标，支持查看管理/检索/收藏内容并管理
-    - 管理后台 (Web)： 和移动端同步开发，支持批量导入/导出、标签管理、AI 摘要生成等高级功能。
+### 合规分享 (Compliance Share)
+- 🚀 智能分发: 基于规则的自动推送（Telegram、QQ 等）
+- 🔐 严格隔离: 分享卡片仅包含标题、摘要、媒体，不泄露原始数据
+- 📋 审批流: 手动审批或自动分流，NSFW 内容硬拦截
+- 📊 推送审计: 完整的推送历史追踪，支持重推、撤回
 
-- 自动化分发网络： 结合 Astrbot 等机器人框架，支持基于标签的轨道式推送，实现 QQ/TG 等多平台的定时、定向分享。
+### 系统架构
+- 🪶 轻量化: SQLite + 本地存储，~200MB 内存占用，无需 Docker/容器
+- ⚡ 高效能: SQLite WAL 模式，支持并发读写
+- 🔄 可观测: 结构化日志、请求追踪、任务队列监控
 
-### 2. 安全与合规网关
+## 📋 项目里程碑
 
-严格区分私有存档与分享：
+### ✅ 已完成 (M0-M5)
 
-- 私有库： 存储全量信息，不支持分享
-- 合规分享： 分享卡片形式，仅包含标题、摘要、封面图等
+| 里程碑 | 说明 | 状态 |
+|-------|------|------|
+| M0 | 项目基础与轻量化架构 | ✅ 完成 |
+| M1 | 收藏入口与去重模型 | ✅ 完成 |
+| M2 | 解析流水线与 Adapter 体系 | ✅ 完成 (B站、Twitter、小红书、知乎、微博) |
+| M3 | 私有存档与媒体存储 | ✅ 完成 (WebP 转码、FTS5 搜索、代理 API) |
+| M4 | 分发规则与审批流 | ✅ 完成 (分发引擎、推送历史、NSFW 分流) |
+| M5 | Telegram Bot 实现 | ✅ 完成 (命令系统、Media Group、自动推送) |
 
-## 项目结构
+### 🚧 进行中 (M6+)
 
-```text
-backend/
-├── app/
-│   ├── adapters/      # 平台解析适配器 (B站, X等)
-│   ├── api.py         # FastAPI 路由定义
-│   ├── bot.py         # Telegram Bot 逻辑
-│   ├── models.py      # SQLAlchemy 数据库模型
-│   ├── worker.py      # 异步抓取任务处理器
-│   ├── db_adapter.py  # 数据库适配器抽象层
-│   ├── queue_adapter.py
-│   ├── storage.py     # 存储后端抽象层
-│   └── utils.py       # 工具函数 (URL规范化, 文本格式化)
-├── scripts/           # 部署与管理脚本
-├── systemd/           # systemd service 模板
-├── static/            # 静态资源（测试页等）
-└── .env.example       # 后端环境变量示例
-frontend/              # Flutter 前端（待创建）
-docs/                  # 详细文档
+| 里程碑 | 说明 | 进度 |
+|-------|------|------|
+| M6 | Flutter 多端客户端 (Web/Desktop/Mobile) | 🚧 20% |
+| M7 | 移动端深度集成 (分享采集) | 🚧 0% |
+| M8 | AI 摘要与语义检索 | 🚧 0% |
+| M9 | 运维、安全、合规 | 🚧 0% |
+| M10 | 完整测试覆盖 | 🚧 10% |
+
+## 📁 项目结构
+
+```
+VaultStream/
+├── backend/                          # Python FastAPI 后端
+│   ├── app/                          # 应用主体
+│   │   ├── adapters/                 # 平台解析适配器
+│   │   │   ├── base.py              # 适配器基类
+│   │   │   ├── bilibili.py          # B站解析器
+│   │   │   ├── twitter_fx.py        # Twitter/X 解析器
+│   │   │   ├── xiaohongshu.py       # 小红书解析器
+│   │   │   ├── zhihu.py             # 知乎解析器
+│   │   │   ├── weibo.py             # 微博解析器
+│   │   │   ├── errors.py            # 异常定义
+│   │   │   ├── utils/               # 适配器工具函数
+│   │   │   ├── bilibili_parser/     # B站解析工具包
+│   │   │   ├── weibo_parser/        # 微博解析工具包
+│   │   │   ├── xiaohongshu_parser/  # 小红书解析工具包
+│   │   │   └── zhihu_parser/        # 知乎解析工具包
+│   │   ├── routers/                 # API 路由
+│   │   │   ├── auth.py              # 认证路由
+│   │   │   ├── contents.py          # 内容管理路由
+│   │   │   ├── distribution.py      # 分发规则路由
+│   │   │   ├── media.py             # 媒体相关路由
+│   │   │   ├── shares.py            # 分享入口路由
+│   │   │   ├── stats.py             # 统计信息路由
+│   │   │   └── tags.py              # 标签管理路由
+│   │   ├── repositories/            # 数据仓库层 (DAL)
+│   │   │   ├── content_repository.py
+│   │   │   ├── distribution_repository.py
+│   │   │   ├── media_repository.py
+│   │   │   └── tag_repository.py
+│   │   ├── services/                # 业务逻辑服务层
+│   │   │   ├── auth_service.py
+│   │   │   ├── content_service.py
+│   │   │   ├── distribution_service.py
+│   │   │   ├── media_service.py
+│   │   │   └── push_service.py
+│   │   ├── worker/                  # 异步任务处理
+│   │   │   ├── __init__.py
+│   │   │   ├── task_handler.py      # 任务处理器
+│   │   │   └── queue.py             # 队列管理
+│   │   ├── bot/                     # Telegram Bot 逻辑（可选）
+│   │   │   └── telegram_bot.py
+│   │   ├── telegram/                # Telegram 推送
+│   │   │   ├── client.py
+│   │   │   └── handlers.py
+│   │   ├── push/                    # 推送引擎
+│   │   │   ├── __init__.py
+│   │   │   └── dispatcher.py
+│   │   ├── distribution/            # 分发相关
+│   │   │   ├── __init__.py
+│   │   │   └── rules_engine.py
+│   │   ├── media/                   # 媒体处理
+│   │   │   ├── __init__.py
+│   │   │   ├── processor.py
+│   │   │   └── storage.py
+│   │   ├── core/                    # 核心组件
+│   │   │   ├── __init__.py
+│   │   │   ├── database.py          # SQLite 初始化
+│   │   │   ├── config.py            # 配置管理
+│   │   │   └── logger.py            # 日志配置
+│   │   ├── utils/                   # 工具函数
+│   │   │   ├── __init__.py
+│   │   │   ├── url_utils.py
+│   │   │   ├── crypto.py
+│   │   │   └── validators.py
+│   │   ├── models.py                # SQLAlchemy ORM 数据模型
+│   │   ├── schemas.py               # Pydantic 请求/响应 schema
+│   │   ├── main.py                  # FastAPI 应用入口
+│   │   └── README.md                # 后端模块说明
+│   ├── data/                        # 运行时数据目录 (生成)
+│   │   ├── vaultstream.db          # SQLite 数据库
+│   │   └── media/                  # 媒体文件存储 (SHA256 寻址)
+│   ├── logs/                        # 日志目录 (生成)
+│   │   ├── vaultstream.log        # 文本日志
+│   │   └── vaultstream.json.log   # JSON 结构化日志
+│   ├── tests/                       # 测试套件
+│   │   ├── conftest.py             # pytest 配置
+│   │   ├── test_adapters/          # 适配器单元测试
+│   │   ├── test_api/               # API 集成测试
+│   │   ├── export_markdown.py      # 导出工具
+│   │   └── check_tags.py           # 标签检查工具
+│   ├── migrations/                  # 数据库迁移 (预留)
+│   ├── scripts/                     # 部署和维护脚本
+│   ├── systemd/                     # Systemd service 配置
+│   ├── tools/                       # 杂项工具
+│   ├── static/                      # 静态文件
+│   ├── requirements.txt             # Python 依赖
+│   ├── pytest.ini                   # pytest 配置
+│   ├── install.sh                   # Linux 安装脚本
+│   ├── install.bat                  # Windows 安装脚本
+│   ├── start.sh                     # Linux 启动脚本
+│   ├── start.ps1                    # PowerShell 启动脚本
+│   ├── start.bat                    # Windows 启动脚本
+│   └── .env.example                 # 环境变量示例
+│
+├── frontend/                        # Flutter 客户端 (多端支持)
+│   ├── lib/
+│   │   ├── main.dart                # 应用入口
+│   │   ├── core/                    # 核心模块
+│   │   │   ├── config/              # 应用配置
+│   │   │   ├── network/             # 网络层
+│   │   │   │   ├── api_client.dart  # API 客户端
+│   │   │   │   └── interceptors.dart # 拦截器
+│   │   │   ├── providers/           # 全局 Riverpod providers
+│   │   │   ├── services/            # 本地存储等服务
+│   │   │   ├── utils/               # 工具函数
+│   │   │   └── widgets/             # 通用 Widget
+│   │   ├── features/                # 功能模块 (Clean Architecture)
+│   │   │   ├── collection/          # 收藏中心 (M3 集成)
+│   │   │   │   ├── data/
+│   │   │   │   ├── domain/
+│   │   │   │   └── presentation/
+│   │   │   ├── review/              # 审批面板 (M4 集成)
+│   │   │   │   ├── data/
+│   │   │   │   ├── domain/
+│   │   │   │   └── presentation/
+│   │   │   ├── dashboard/           # 仪表板 (监控)
+│   │   │   │   └── presentation/
+│   │   │   └── settings/            # 设置页面
+│   │   │       └── presentation/
+│   │   ├── routing/                 # go_router 路由配置
+│   │   ├── layout/                  # 响应式布局组件
+│   │   └── theme/                   # 主题配置 (Material 3)
+│   ├── test/                        # Widget 测试
+│   ├── web/                         # Web 构建输出
+│   ├── android/                     # Android 原生配置
+│   ├── linux/                       # Linux 桌面构建配置
+│   ├── analysis_options.yaml        # Dart 分析规则
+│   ├── pubspec.yaml                 # Flutter 依赖配置
+│   ├── pubspec.lock                 # 依赖锁定文件
+│   ├── README.md                    # 前端开发指南
+│   └── .metadata                    # Flutter 元数据
+│
+├── docs/                            # 项目文档
+│   ├── API.md                       # REST API 接口文档
+│   ├── ARCHITECTURE.md              # 系统架构设计
+│   ├── DATABASE.md                  # 数据库设计与索引
+│   ├── WORKFLOWS.md                 # 核心工作流程
+│   ├── M4_DISTRIBUTION.md           # 分发规则与审批流
+│   ├── BILIBILI_ADAPTER.md          # B站适配器实现
+│   ├── TWITTER_ADAPTER.md           # Twitter 适配器实现
+│   ├── XIAOHONGSHU_ADAPTER.md       # 小红书适配器
+│   ├── ZHIHU_ADAPTER.md             # 知乎适配器
+│   └── WEIBO_ADAPTER.md             # 微博适配器
+│
+├── data/                            # 项目级数据目录
+│   └── media/                       # 共享媒体存储
+│
+├── AGENTS.md                        # 项目规范与命令
+├── COMPLETE.md                      # 已完成项目总结 (M0-M5)
+├── TASKS.md                         # 待完成任务 (M6-M10)
+├── README.md                        # 项目总览 (本文件)
+├── SETUP_GUIDE.md                   # 完整安装指南
+├── TODO.md                          # 高层规划 (原始需求)
+└── 设计思路.md                      # 设计文档
 ```
 
-## 使用方法
+**核心目录说明**:
+- `backend/data/` - 本地数据存储（SQLite 数据库、媒体文件）
+- `backend/logs/` - 运行日志（自动创建）
+- `frontend/lib/core/` - 核心模块：网络、状态、服务
+- `frontend/lib/features/` - 功能模块：集合、审批、仪表板、设置
+- `docs/` - 详细技术文档
 
-### 架构特点
+## 🚀 快速开始
 
-VaultStream 采用**轻量化架构**：
+### 环境要求
 
-- **数据库**: SQLite（WAL模式，性能优化）
-- **任务队列**: SQLite Task表（使用`SELECT FOR UPDATE SKIP LOCKED`）
-- **媒体存储**: 本地文件系统 + SHA256内容寻址
-- **资源占用**: ~200MB 内存
+| 组件 | 版本要求 | 说明 |
+|------|----------|------|
+| Python | 3.10+ | 后端运行环境 |
+| Flutter | 3.10+ | 前端开发环境 |
+| SQLite | 3.35+ | 数据库 (通常预装) |
+| Node.js | 16+ | (可选) 前端构建工具 |
 
-### 持久化运行 (Systemd)
+### 安装 & 启动
 
-对于 Linux 服务器，可以使用 systemd 将 VaultStream 作为服务运行，确保后台自动重启并持久化执行：
+#### Linux / macOS
 
-1. **部署服务**:
+```bash
+# 1. 克隆项目
+git clone https://github.com/ienone/VaultStream.git
+cd VaultStream
+
+# 2. 安装后端依赖
+cd backend
+bash install.sh   # 交互式安装，可选择虚拟环境或系统 Python
+
+# 3. 启动后端
+bash start.sh
+
+# 4. (另一个终端) 安装前端依赖
+cd frontend
+flutter pub get
+dart run build_runner build # 代码生成
+
+# 5. 启动前端 (Web/Desktop/Mobile)
+flutter run -d chrome        # Web 版本
+# 或其他设备
+```
+
+#### Windows
+
+```bash
+# 1. 克隆项目
+git clone https://github.com/ienone/VaultStream.git
+cd VaultStream\backend
+
+# 2. 安装后端依赖
+install.bat                 # 创建虚拟环境
+
+# 3. 启动后端
+start.bat
+
+# 4. (另一个 PowerShell) 安装前端依赖
+cd ..\frontend
+flutter pub get
+dart run build_runner build
+
+# 5. 启动前端
+flutter run -d chrome      # Web 版本
+```
+
+### 首次使用
+
+1. **配置环境变量**:
    ```bash
-   ./scripts/deploy_services.sh
+   cp backend/.env.example backend/.env
+   # 编辑 .env，可选配置 (Telegram Bot):
+   # - ENABLE_BOT=True (启用 Bot，默认 False)
+   # - TELEGRAM_BOT_TOKEN (仅在 ENABLE_BOT=True 时需要)
+   # - TELEGRAM_CHANNEL_ID (仅在 ENABLE_BOT=True 时需要)
    ```
 
-2. **管理命令**:
-   - 启动 API: `sudo systemctl start vaultstream-api`
-   - 查看日志: `tail -f logs/vaultstream.log`
-   - 检查状态: `sudo systemctl status vaultstream-api`
+2. **验证后端**:
+   ```bash
+   curl http://localhost:8000/health
+   ```
 
-### 日志系统
+3. **（可选）启动 Telegram Bot**:
+   仅当需要 Bot 功能时，在 `.env` 中设置 `ENABLE_BOT=True` 并配置，然后：
+   ```bash
+   cd backend
+   ./.venv/bin/python -m app.bot
+   ```
 
-项目现已支持自动写入日志文件：
-- 文本日志: `logs/vaultstream.log`
-- JSON日志: `logs/vaultstream.json.log` (适合日志聚合)
-- 支持自动按天/大小切换、压缩及保留 7 天记录。
-- **部署要求**: 无需Docker，单机部署
+4. **访问前端**:
+   - 本地: http://localhost:8080 (Web 版本)
+   - API 文档: http://localhost:8000/docs
+   - 交互式 API: http://localhost:8000/redoc
 
-**适用场景**: 个人/小团队内容收藏与分享
+## 📚 使用文档
 
-> **扩展性说明**: 代码保留了适配器抽象层（DatabaseAdapter, QueueAdapter, StorageBackend），如需扩展到PostgreSQL/Redis/S3等生产级组件，可参考git历史重新实现。
-
-### 快速开始
-
-#### 1. 安装依赖
-
-```bash
-./install.sh
-```
-
-#### 2. 配置环境
+### 后端 API 指南
 
 ```bash
-cp backend/.env.example backend/.env  # 配置后端环境变量
-```
-
-关键配置：
-
-```dotenv
-# 数据库（SQLite）
-DATABASE_TYPE=sqlite
-SQLITE_DB_PATH=./data/vaultstream.db
-
-# 任务队列（SQLite）
-QUEUE_TYPE=sqlite
-
-# 存储后端（本地）
-STORAGE_BACKEND=local
-STORAGE_LOCAL_ROOT=./data/media
-
-# 媒体处理
-ENABLE_ARCHIVE_MEDIA_PROCESSING=True
-ARCHIVE_IMAGE_WEBP_QUALITY=80
-ARCHIVE_IMAGE_MAX_COUNT=100
-```
-
-#### 3. 启动服务
-
-```bash
-./start.sh
-```
-
-服务将在 `http://localhost:8000` 启动。
-
-访问地址：
-- 测试页面: http://localhost:8000
-- API文档: http://localhost:8000/docs
-- 交互式API: http://localhost:8000/redoc
-
-#### 4. 健康检查
-
-```bash
-curl http://localhost:8000/health
-```
-
-### 功能特性
-
-#### 私有归档媒体处理（图片→WebP→存储）
-
-该功能仅作用于私有归档（`Content.raw_metadata.archive`），不会进入对外分享卡片字段。
-
-**配置**：
-```dotenv
-ENABLE_ARCHIVE_MEDIA_PROCESSING=True
-ARCHIVE_IMAGE_WEBP_QUALITY=80        # WebP质量（1-100）
-ARCHIVE_IMAGE_MAX_COUNT=100          # 单个内容最多处理图片数
-```
-
-**存储位置**：
-- 本地路径：`./data/media/`
-- 目录结构：SHA256内容寻址 + 2级分片
-- 示例：`data/media/ab/cd/abcdef123...webp`
-
-**处理流程**：
-1. Worker在内容解析成功后自动触发
-2. 下载远程图片 → Pillow转WebP → 计算SHA256
-3. 存储到本地文件系统（内容寻址）
-4. 更新`raw_metadata.archive.images[].stored_*`字段
-
-**访问方式**：
-- API代理：`GET /api/v1/media/{key}`
-- 直接访问：`./data/media/{hash[0:2]}/{hash[2:4]}/{hash}.webp`
-
-**补处理失败图片**：
-```bash
-# 重新触发同一内容的解析任务，系统会自动检测并补处理未存储的图片
-curl -X POST http://localhost:8000/api/v1/shares \
-  -H "Content-Type: application/json" \
-  -d '{"url": "原URL"}'
-```
-
-#### 导出内容为Markdown
-
-导出脚本读取`Content.raw_metadata.archive`，生成包含本地图片引用的Markdown文件：
-
-```bash
-# 基础导出
-./backend/.venv/bin/python backend/tests/export_markdown.py --content-id 6 --out backend/exports/content_6.md
-
-# 导出前补处理缺失图片（推荐）
-./backend/.venv/bin/python backend/tests/export_markdown.py \
-  --content-id 6 \
-  --out backend/exports/content_6.md \
-  --process-missing-images \
-  --max-images 100
-```
-
-## 核心API
-
-### 1. 创建分享
-
-```bash
+# 1. 添加分享
 curl -X POST http://localhost:8000/api/v1/shares \
   -H "Content-Type: application/json" \
   -d '{
@@ -199,166 +315,164 @@ curl -X POST http://localhost:8000/api/v1/shares \
     "note": "值得收藏",
     "is_nsfw": false
   }'
-```
 
-### 2. 获取待分发内容
+# 2. 查询内容
+curl "http://localhost:8000/api/v1/contents?tag=技术&limit=10"
 
-```bash
+# 3. 获取详情
+curl http://localhost:8000/api/v1/contents/123
+
+# 4. Telegram Bot 推送
 curl -X POST http://localhost:8000/api/v1/bot/get-content \
   -H "Content-Type: application/json" \
   -d '{
     "target_platform": "TG_CHANNEL_@example",
-    "platform": "bilibili",
     "limit": 5
   }'
 ```
 
-### 3. 标记已推送
+详细 API 文档见: [docs/API.md](docs/API.md)
+
+### 前端开发指南
+
+见: [frontend/README.md](frontend/README.md)
+
+### 平台适配器
+
+- [B站适配器](docs/BILIBILI_ADAPTER.md)
+- [Twitter 适配器](docs/TWITTER_ADAPTER.md)
+- [小红书适配器](docs/XIAOHONGSHU_ADAPTER.md)
+- [知乎适配器](docs/ZHIHU_ADAPTER.md)
+- [微博适配器](docs/WEIBO_ADAPTER.md)
+
+## 🛠️ 开发
+
+### 后端开发
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/bot/mark-pushed \
-  -H "Content-Type: application/json" \
-  -d '{
-    "content_id": 123,
-    "target_platform": "TG_CHANNEL_@example",
-    "message_id": "456"
-  }'
+# 运行测试
+cd backend
+.venv/bin/python -m pytest tests/
+
+# 单个测试
+.venv/bin/python -m pytest tests/test_adapter.py -k bilibili
+
+# 代码格式化 (可选)
+.venv/bin/python -m black app/
+.venv/bin/python -m isort app/
 ```
 
-### 4. 查询内容详情
+### 前端开发
 
 ```bash
-curl http://localhost:8000/api/v1/contents/123
+# 代码生成 (必须在修改 model/adapter 后执行)
+cd frontend
+dart run build_runner build
+
+# 或监听变化自动生成
+dart run build_runner watch
+
+# 代码分析
+flutter analyze
+
+# 格式化
+dart format lib/
 ```
 
-### 5. 访问存储的图片
+### 数据库操作
 
 ```bash
-# 通过API代理访问
-curl http://localhost:8000/api/v1/media/blobs/sha256/ab/cd/abcdef123...webp
+# 导出内容为 Markdown
+.venv/bin/python backend/tests/export_markdown.py \
+  --content-id 6 \
+  --out backend/exports/content_6.md \
+  --process-missing-images
 
-# 或直接访问文件系统
-cat ./data/media/ab/cd/abcdef123...webp
+# 访问 SQLite 数据库
+sqlite3 data/vaultstream.db
+> SELECT COUNT(*) FROM contents;
 ```
 
-## Telegram Bot
+## 📊 系统监控
 
-### 启动Bot
+### 日志查看
 
 ```bash
-./backend/.venv/bin/python -m app.bot
+# 实时日志
+tail -f logs/vaultstream.log
+
+# JSON 日志 (用于日志聚合)
+tail -f logs/vaultstream.json.log | jq .
+
+# 错误过滤
+grep ERROR logs/vaultstream.log
 ```
 
-### Bot命令
+### 队列监控
 
-- `/start` - 开始使用
-- `/get [tag]` - 拉取未推送内容（可选指定tag过滤）
-- `/status` - 查看系统状态
-- `/stats` - 查看统计信息
-
-### 配置
-
-在`.env`中配置：
-
-```dotenv
-ENABLE_BOT=True
-TELEGRAM_BOT_TOKEN=your_bot_token_here
-TELEGRAM_CHANNEL_ID=@your_channel_id
-```
-
-## 数据存储说明
-
-### 元数据存储（SQLite）
-
-**位置**: `./data/vaultstream.db`
-
-**表结构**:
-- `contents`: 内容主表（标题、URL、作者、统计数据等）
-- `content_sources`: 分享来源记录
-- `pushed_records`: 推送记录
-- `tasks`: 异步任务队列
-
-**优化配置**:
-- WAL模式：支持并发读写
-- 64MB缓存
-- mmap启用
-- 外键约束
-
-### 媒体文件存储（本地文件系统）
-
-**位置**: `./data/media/`
-
-**目录结构**: SHA256内容寻址 + 2级分片
-```
-./data/media/
-├── ab/                    # 哈希前2位
-│   └── cd/                # 哈希3-4位  
-│       └── abcdef123...webp  # 完整哈希值.webp
-```
-
-**存储流程**:
-1. 下载原始图片
-2. Pillow转WebP（质量可配置）
-3. 计算SHA256哈希
-4. 写入分片目录
-5. 更新数据库引用
-
-## 测试
+访问 API 获取队列统计:
 
 ```bash
-# 运行所有测试
-./backend/.venv/bin/python -m pytest backend/tests/
-
-# 测试特定适配器
-./backend/.venv/bin/python -m pytest backend/tests/test_adapter.py -k bilibili
-
-# 测试API
-./backend/.venv/bin/python -m pytest backend/tests/
+curl http://localhost:8000/api/v1/stats
 ```
 
-## 开发文档
+响应:
+```json
+{
+  "pending_count": 10,
+  "processing_count": 2,
+  "failed_count": 5,
+  "total_contents": 156
+}
+```
 
-- [架构设计](docs/ARCHITECTURE.md) - 完整的系统架构、组件说明、适配器模式
-- [API文档](docs/API.md) - 详细的API接口说明
-- [数据库设计](docs/DATABASE.md) - 数据模型和索引策略
-- [工作流程](docs/WORKFLOWS.md) - 内容处理流程和状态机
-- [B站适配器](docs/BILIBILI_ADAPTER.md) - B站平台解析实现
-- [Twitter适配器](docs/TWITTER_ADAPTER.md) - Twitter平台解析实现
-- [微博适配器](docs/WEIBO_ADAPTER.md) - 微博平台解析实现
-- [知乎适配器](docs/ZHIHU_ADAPTER.md) - 知乎平台解析实现
-- [小红书适配器](docs/XIAOHONGSHU_ADAPTER.md) - 小红书平台解析实现
+### 系统健康检查
 
-## 技术栈
+```bash
+curl http://localhost:8000/health
+```
 
-- **后端**: FastAPI + SQLAlchemy + aiosqlite
-- **任务队列**: SQLite Task表
-- **数据库**: SQLite（WAL模式）
-- **存储**: 本地文件系统
-- **图片处理**: Pillow（WebP转码）
-- **日志**: Loguru
-- **Bot**: python-telegram-bot
+## 🔐 安全考虑
 
-## 路线图
+- ✅ 私有存档隔离: `contents.raw_metadata.archive` 仅内部使用
+- ✅ 分享卡片独立: 分享数据结构严格分离，不含原始内容
+- ✅ NSFW 分流: 不合规内容硬拦截，不送往公开分享
+- ✅ 推送追踪: `pushed_records` 确保推过不再推
+- ✅ 敏感信息保护: Cookie/Token 加密存储、日志脱敏
 
-详见 [TODO.md](TODO.md)
+详见: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
-当前重点：
-- [x] M0: 基础架构（轻量化完成）
-- [x] M1: 收藏入口与去重
-- [x] M2: 解析流水线（Bilibili/Twitter/Weibo/Zhihu/Xiaohongshu适配器）
-- [x] M3: 媒体存储与转码
-- [ ] M4: 分享卡片与分发规则
-- [ ] M5: Telegram Bot完善
-- [ ] M6: Web管理端
-- [ ] M7: Flutter移动端
-- [ ] M8: AI摘要增强
-- [ ] M9: 运维与安全
-- [ ] M10: 测试覆盖
 
-## 贡献指南
+## 🤝 贡献指南
 
-欢迎提交Issue和Pull Request！
+欢迎提交 Issue 和 Pull Request！
 
-## 许可证
+1. Fork 项目
+2. 创建特性分支: `git checkout -b feature/AmazingFeature`
+3. 提交更改: `git commit -m 'Add AmazingFeature'`
+4. 推送到分支: `git push origin feature/AmazingFeature`
+5. 提交 Pull Request
 
-MIT License
+### 代码规范
+
+- Python: 遵循 PEP 8，使用 type hints
+- Dart: 遵循 Effective Dart，使用 freezed + json_serializable
+- 提交信息: 清晰描述，英文或中文均可
+
+## 📝 许可证
+
+MIT License - 详见 [LICENSE](LICENSE) 文件
+
+## 🙏 致谢
+
+感谢所有为这个项目做出贡献的开发者！
+
+## 📧 联系方式
+
+- 问题报告: [GitHub Issues](https://github.com/ienone/VaultStream/issues)
+- 功能建议: [GitHub Discussions](https://github.com/ienone/VaultStream/discussions)
+- 邮件: your-email@example.com
+
+---
+
+最后更新: 2026年1月27日

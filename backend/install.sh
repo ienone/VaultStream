@@ -1,66 +1,113 @@
 #!/bin/bash
 
-echo "VaultStream 依赖安装脚本"
-echo "=========================="
+echo "VaultStream 依赖安装脚本 (Linux/macOS)"
+echo "=========================================="
 echo ""
 echo "架构: SQLite + 本地存储 + 任务表队列"
 echo "资源: ~200MB 内存占用"
 echo ""
 
-# 检查Python版本
-if ! command -v python3 &> /dev/null; then
-    echo "未找到 Python3，请先安装 Python 3.10+"
+# 自动检测可用的 Python
+echo "检测可用的 Python 环境..."
+AVAILABLE_PYTHON=""
+AVAILABLE_CONDA=""
+
+# 检查系统 Python3
+if command -v python3 &> /dev/null; then
+    PY_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))' 2>/dev/null)
+    if [[ "$PY_VERSION" =~ ^3\.(1[0-9]|[0-9]{2}) ]] || [[ "$PY_VERSION" > "3.9" ]]; then
+        AVAILABLE_PYTHON="python3 ($PY_VERSION)"
+        echo "  ✓ 系统 Python3: $PY_VERSION"
+    fi
+fi
+
+# 检查 Conda
+if command -v conda &> /dev/null; then
+    AVAILABLE_CONDA="conda"
+    echo "  ✓ Conda 环境管理器已安装"
+fi
+
+# 如果没有找到任何 Python，则失败
+if [ -z "$AVAILABLE_PYTHON" ]; then
+    echo "错误: 未找到 Python 3.10+，请先安装"
     exit 1
 fi
 
-PYTHON_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
-echo "Python 版本: $PYTHON_VERSION"
-
-# 检查并安装 python3-venv
 echo ""
-echo "检查虚拟环境支持..."
-if ! python3 -m venv --help &> /dev/null; then
-    echo "需要安装 python3-venv"
-    echo ""
-    echo "请运行以下命令安装："
-    echo "  sudo apt install python3.12-venv"
-    echo ""
-    read -p "是否现在安装？(需要sudo权限) (y/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        sudo apt install python3.12-venv -y
-        if [ $? -ne 0 ]; then
-            echo "安装失败"
-            exit 1
-        fi
-    else
-        echo "无法继续，请手动安装 python3-venv"
-        exit 1
-    fi
+echo "安装模式选择:"
+if [ -n "$AVAILABLE_PYTHON" ]; then
+    echo "  1. 使用系统 Python ($AVAILABLE_PYTHON)"
+fi
+if [ -n "$AVAILABLE_CONDA" ]; then
+    echo "  2. 使用 Conda 创建虚拟环境 (vaultwarden_env)"
+fi
+echo "  3. 创建本地虚拟环境 (vaultwarden_env)"
+echo ""
+
+# 设置默认选择
+if [ -n "$AVAILABLE_CONDA" ]; then
+    DEFAULT_CHOICE=2
+else
+    DEFAULT_CHOICE=3
 fi
 
-VENV_DIR=".venv"
-VENV_PY="$VENV_DIR/bin/python"
+read -p "请选择 (默认 $DEFAULT_CHOICE): " -n 1 -r CHOICE
+echo
+CHOICE=${CHOICE:-$DEFAULT_CHOICE}
 
-# 创建虚拟环境
-echo ""
-echo "创建虚拟环境 ($VENV_DIR)..."
-if [ ! -x "$VENV_PY" ]; then
-    # 清理可能损坏的虚拟环境目录
-    if [ -d "$VENV_DIR" ]; then
-        rm -rf "$VENV_DIR"
-    fi
-
-    python3 -m venv "$VENV_DIR"
-
-    if [ -x "$VENV_PY" ]; then
-        echo "虚拟环境创建成功"
-    else
-        echo "虚拟环境创建失败"
+if [ "$CHOICE" = "1" ]; then
+    # 使用系统 Python
+    VENV_DIR=""
+    VENV_PY="python3"
+    INSTALL_MODE="system"
+elif [ "$CHOICE" = "2" ] && [ -n "$AVAILABLE_CONDA" ]; then
+    # 使用 Conda 创建虚拟环境
+    VENV_DIR="vaultwarden_env"
+    INSTALL_MODE="conda"
+    echo ""
+    echo "创建 Conda 虚拟环境..."
+    conda create -n "$VENV_DIR" python=3.11 -y
+    VENV_PY="$(conda run -n $VENV_DIR which python)"
+    if [ -z "$VENV_PY" ]; then
+        echo "错误: Conda 虚拟环境创建失败"
         exit 1
     fi
 else
-    echo "虚拟环境已存在"
+    # 创建本地虚拟环境
+    VENV_DIR="vaultwarden_env"
+    INSTALL_MODE="venv"
+fi
+
+echo ""
+echo "使用 Python: $VENV_PY"
+echo "虚拟环境目录: ${VENV_DIR:-(系统全局)}"
+
+# 创建虚拟环境（仅在 venv 模式时）
+if [ "$INSTALL_MODE" = "venv" ]; then
+    echo ""
+    echo "创建虚拟环境 ($VENV_DIR)..."
+    
+    # 检查虚拟环境支持
+    if ! python3 -m venv --help &> /dev/null; then
+        echo "错误: 需要安装 python3-venv"
+        echo ""
+        echo "请运行:"
+        echo "  sudo apt install python3-venv"
+        exit 1
+    fi
+    
+    if [ ! -d "$VENV_DIR" ]; then
+        python3 -m venv "$VENV_DIR"
+        if [ -x "$VENV_DIR/bin/python" ]; then
+            echo "虚拟环境创建成功"
+            VENV_PY="$VENV_DIR/bin/python"
+        else
+            echo "虚拟环境创建失败"
+            exit 1
+        fi
+    else
+        echo "虚拟环境已存在"
+    fi
 fi
 
 # 确保 venv 内有 pip（某些发行版可能 venv 不包含 pip）
@@ -102,6 +149,20 @@ if [ ! -f ".env" ]; then
 else
     echo "配置文件已存在"
 fi
+
+# 将Python路径写入.env
+echo ""
+echo "配置Python路径..."
+if [ -f ".env" ]; then
+    # 移除旧的PYTHON_PATH配置
+    sed -i.bak '/^PYTHON_PATH=/d' .env
+else
+    touch .env
+fi
+
+# 添加新的PYTHON_PATH
+echo "PYTHON_PATH=$VENV_PY" >> .env
+echo "已将 Python 路径写入 .env: PYTHON_PATH=$VENV_PY"
 
 # 读取 .env 配置（用于创建目录与展示提示信息）
 get_env_value() {

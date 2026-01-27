@@ -32,7 +32,7 @@
 - [x] 在rich_content.dart中为知乎问题单独处理图片显示
 - [x] 图片显示顺序调整为：描述 -> 图片 -> 精选回答
 - 涉及文件: `rich_content.dart`
-
+- [] 知乎提问反向优化了：把精选回答的图片和提问本身的混在了一起，横屏状态下都显示为左侧的图片部分。竖屏状态下此前是提问图在精选回答下，我希望改成提问图在精选回答上方。
 ### 7. 知乎想法标题截断优化 (P1) ✅
 - [x] 添加generate_pin_title函数截取到第一个标点符号
 - 涉及文件: `backend/app/adapters/zhihu_parser/pin_parser.py`
