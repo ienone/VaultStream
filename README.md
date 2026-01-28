@@ -293,7 +293,10 @@ flutter run -d chrome      # Web 版本
    仅当需要 Bot 功能时，在 `.env` 中设置 `ENABLE_BOT=True` 并配置，然后：
    ```bash
    cd backend
-   ./.venv/bin/python -m app.bot
+   # Windows
+   .venv\Scripts\python -m app.bot.main
+   # Linux / macOS
+   ./.venv/bin/python -m app.bot.main
    ```
 
 4. **访问前端**:

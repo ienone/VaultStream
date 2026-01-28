@@ -104,6 +104,9 @@ class Content(Base):
     reviewed_by = Column(String(100))  # 审核人（预留）
     review_note = Column(Text)  # 审核备注
     
+    # 队列排序优先级（越大越优先）
+    queue_priority = Column(Integer, default=0, index=True)
+    
     # 标签和分类
     tags = Column(JSON, default=list)  # 用户自定义标签
     is_nsfw = Column(Boolean, default=False)
@@ -144,13 +147,19 @@ class Content(Base):
     
     # 提取的通用字段
     title = Column(Text)
-    description = Column(Text)
+    description = Column(Text)  # 完整内容文本
     author_name = Column(String(200))
     author_id = Column(String(100))
     _author_avatar_url = Column("author_avatar_url", Text)
     author_url = Column(Text)  # 作者主页链接
     cover_url = Column(Text)
     source_tags = Column(JSON, default=list)  # 平台原生标签
+
+    @property
+    def display_title(self) -> str:
+        """获取显示用标题：优先使用 title，否则从 description 生成"""
+        from app.adapters.utils import ensure_title
+        return ensure_title(self.title, self.description, max_len=60, fallback="无标题")
 
     @property
     def author_avatar_url(self) -> Optional[str]:
@@ -357,4 +366,86 @@ class SystemSetting(Base):
     value = Column(JSON, nullable=False)  # 存储各种格式的配置（JSON 格式）
     category = Column(String(50), index=True) # platform, storage, general, etc.
     description = Column(Text)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class BotChatType(str, Enum):
+    """Bot 聊天类型"""
+    CHANNEL = "channel"     # 频道
+    GROUP = "group"         # 普通群组
+    SUPERGROUP = "supergroup"  # 超级群组
+    PRIVATE = "private"     # 私聊
+
+
+class BotChat(Base):
+    """Bot 关联的聊天/群组/频道"""
+    __tablename__ = "bot_chats"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Telegram 聊天信息
+    chat_id = Column(String(50), nullable=False, unique=True, index=True)  # Telegram chat_id
+    chat_type = Column(SQLEnum(BotChatType), nullable=False)  # channel/group/supergroup/private
+    title = Column(String(200))  # 群组/频道名称
+    username = Column(String(100))  # @username（可选）
+    description = Column(Text)  # 群组描述
+    
+    # 成员信息
+    member_count = Column(Integer)  # 成员数量
+    
+    # Bot 权限状态
+    is_admin = Column(Boolean, default=False)  # Bot 是否为管理员
+    can_post = Column(Boolean, default=False)  # 是否可以发送消息
+    
+    # 分发配置
+    enabled = Column(Boolean, default=True, index=True)  # 是否启用此目标
+    priority = Column(Integer, default=0)  # 优先级
+    
+    # NSFW 策略（覆盖全局设置）
+    nsfw_policy = Column(String(50), default="inherit")  # inherit/allow/block/separate
+    nsfw_chat_id = Column(String(50))  # NSFW 内容的备用频道/群组
+    
+    # 关联的分发规则（JSON 存储规则ID列表）
+    linked_rule_ids = Column(JSON, default=list)
+    
+    # 标签过滤器（为空表示接收所有）
+    tag_filter = Column(JSON, default=list)  # 只接收包含这些标签的内容
+    platform_filter = Column(JSON, default=list)  # 只接收来自这些平台的内容
+    
+    # 统计
+    total_pushed = Column(Integer, default=0)  # 累计推送数
+    last_pushed_at = Column(DateTime)  # 最后推送时间
+    
+    # 元数据
+    raw_data = Column(JSON)  # 原始 Telegram Chat 数据
+    
+    # 可访问性标记（同步时检测）
+    is_accessible = Column(Boolean, default=True)  # Bot 是否还能访问该群组
+    last_sync_at = Column(DateTime)  # 最后同步时间
+    sync_error = Column(String(500))  # 同步错误信息
+    
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class BotRuntime(Base):
+    """Bot 运行时状态（单例表，只有一条记录）"""
+    __tablename__ = "bot_runtime"
+    
+    id = Column(Integer, primary_key=True, default=1)
+    
+    # Bot 信息
+    bot_id = Column(String(50))  # Telegram Bot ID
+    bot_username = Column(String(100))  # @username
+    bot_first_name = Column(String(200))  # Bot 显示名
+    
+    # 运行状态
+    started_at = Column(DateTime)  # 进程启动时间
+    last_heartbeat_at = Column(DateTime)  # 最后心跳时间
+    version = Column(String(50))  # 版本号
+    
+    # 错误信息
+    last_error = Column(Text)  # 最后错误信息
+    last_error_at = Column(DateTime)  # 最后错误时间
+    
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)

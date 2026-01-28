@@ -177,13 +177,18 @@ def build_weibo_archive(data: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Dict: 存档数据结构
     """
+    from app.adapters.utils import generate_title_from_text
+    
     text_html = data.get("text", "")
     plain_text = clean_html_text(text_html)
+    
+    # 使用通用函数从正文生成标题
+    title = generate_title_from_text(plain_text, max_len=60, fallback="微博内容")
     
     archive = {
         "version": 2,
         "type": "weibo_status",
-        "title": plain_text[:50] if plain_text else "微博内容",
+        "title": title,
         "plain_text": plain_text,
         "markdown": plain_text,  # 暂且直接用纯文本作为markdown
         "images": [],

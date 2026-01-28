@@ -16,6 +16,7 @@ from app.adapters.errors import (
     NonRetryableAdapterError,
     RetryableAdapterError,
 )
+from app.adapters.utils import ensure_title
 from .base import clean_text, extract_source_tags, strip_tags_from_text
 
 
@@ -109,15 +110,17 @@ async def parse_note(
     raw_metadata["archive"] = archive
     raw_metadata["source_tags"] = source_tags
     
-    title = archive.get("title") or "小红书笔记"
+    raw_title = archive.get("title")
     description = archive.get("plain_text", "")
+    # 使用通用函数确保标题：优先原生标题，否则从正文生成
+    title = ensure_title(raw_title, description, max_len=60, fallback="小红书笔记")
     
     return ParsedContent(
         platform="xiaohongshu",
         content_type="note",
         content_id=note_id,
         clean_url=url,
-        title=title[:100],
+        title=title,
         description=description,
         author_name=author_name or "未知用户",
         author_id=str(author_id) if author_id else None,
@@ -316,17 +319,16 @@ def normalize_ssr_note(note: Dict[str, Any]) -> Dict[str, Any]:
     if 'tagList' in note and 'tag_list' not in note:
         normalized['tag_list'] = note['tagList']
     
-   # 处理图片列表格式差异
+    # 处理图片列表格式差异
     image_list = normalized.get('image_list') or normalized.get('imageList') or []
     for img in image_list:
         if 'urlDefault' in img and 'info_list' not in img:
             img['info_list'] = [
-                {'url': img.get('urlPre', img['urlDefault'])},
-                {'url': img['urlDefault']},
+                {'url': img['urlDefault'], 'image_scene': 'WB_DFT'},
+                {'url': img.get('urlPre', img['urlDefault']), 'image_scene': 'PREVIEW'},
             ]
     
     return normalized
-
 
 def build_note_archive(note: Dict[str, Any]) -> Dict[str, Any]:
     """构建笔记存档数据"""
@@ -372,12 +374,30 @@ def build_note_archive(note: Dict[str, Any]) -> Dict[str, Any]:
         best_url = None
         info_list = img.get("info_list") or []
         
+        # 优先级映射: 越高越好
+        SCENE_PRIORITY = {
+            "ORIGIN": 100,
+            "WB_DFT": 90,  # Web Default
+            "POST_DETAIL": 80,
+            "CRD": 10,     # Card/Thumbnail
+            "PREVIEW": 5,
+        }
+        
+        candidates = []
         for info in info_list:
             if isinstance(info, dict):
                 info_url = safe_url(info.get("url"))
+                # 过滤掉水印图片 (wm_1)
                 if info_url and "wm_1" not in info_url:
-                    best_url = info_url
-                    break
+                    scene = info.get("image_scene", "")
+                    priority = SCENE_PRIORITY.get(scene, 50) # 默认为50
+                    candidates.append((priority, info_url))
+        
+        # 按优先级排序 (降序)
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        
+        if candidates:
+            best_url = candidates[0][1]
         
         if not best_url:
             best_url = safe_url(img.get("url_default") or img.get("url"))

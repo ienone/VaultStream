@@ -65,10 +65,13 @@ def extract_media_urls(
             url = img.get('url') or img.get('stored_url')
         
         if url:
-            media_items.append({
+            item = {
                 'type': 'photo',
                 'url': url
-            })
+            }
+            if img.get('stored_key'):
+                item['stored_key'] = img.get('stored_key')
+            media_items.append(item)
     
     # 如果 images 为空或没有找到URL，尝试从 stored_images 获取
     if not media_items:
@@ -76,10 +79,13 @@ def extract_media_urls(
         for img in stored_images:
             url = img.get('url')
             if url:
-                media_items.append({
+                item = {
                     'type': 'photo',
                     'url': url
-                })
+                }
+                if img.get('key'):
+                    item['stored_key'] = img.get('key')
+                media_items.append(item)
     
     # 处理视频
     videos = archive.get('videos', [])
@@ -92,10 +98,13 @@ def extract_media_urls(
             url = vid.get('url') or vid.get('stored_url')
         
         if url:
-            media_items.append({
+            item = {
                 'type': 'video',
                 'url': url
-            })
+            }
+            if vid.get('stored_key'):
+                item['stored_key'] = vid.get('stored_key')
+            media_items.append(item)
     
     # 如果 videos 为空或没有找到URL，尝试从 stored_videos 获取
     if not any(item['type'] == 'video' for item in media_items):
@@ -103,10 +112,13 @@ def extract_media_urls(
         for vid in stored_videos:
             url = vid.get('url')
             if url:
-                media_items.append({
+                item = {
                     'type': 'video',
                     'url': url
-                })
+                }
+                if vid.get('key'):
+                    item['stored_key'] = vid.get('key')
+                media_items.append(item)
     
     # 兜底：使用封面图
     if not media_items and cover_url:

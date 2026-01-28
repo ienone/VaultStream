@@ -7,6 +7,7 @@ import traceback
 from sqlalchemy import select
 from app.core.logging import logger, log_context
 from app.core.database import AsyncSessionLocal
+from app.core.time_utils import utcnow
 from app.models import Content, ReviewStatus, PushedRecord, Platform
 from app.push.factory import get_push_service
 
@@ -57,11 +58,21 @@ class ContentDistributor:
                         select(PushedRecord).where(
                             PushedRecord.content_id == content_id,
                             PushedRecord.target_id == target_id
-                        )
+                        ).order_by(PushedRecord.pushed_at.desc()).limit(1)
                     )
-                    if existing.scalar_one_or_none():
-                        logger.info(f"内容已推送到目标，跳过: target_id={target_id}")
-                        return
+                    record = existing.scalar_one_or_none()
+                    
+                    if record:
+                        # 检查是否是重推情况
+                        should_skip = True
+                        if content.reviewed_at and record.pushed_at:
+                            if content.reviewed_at > record.pushed_at:
+                                logger.info(f"检测到重推任务: target={target_id}")
+                                should_skip = False
+                        
+                        if should_skip:
+                            logger.info(f"内容已推送到目标，跳过: target_id={target_id}")
+                            return
                     
                     # 获取推送服务
                     try:
@@ -99,30 +110,66 @@ class ContentDistributor:
                     message_id = await push_service.push(content_dict, target_id)
                     
                     if message_id:
-                        # 创建推送记录
-                        push_record = PushedRecord(
-                            content_id=content_id,
-                            target_platform=target_platform,
-                            target_id=target_id,
-                            message_id=str(message_id),
-                            push_status="success"
+                        # 重新获取记录以支持更新 (避免游标耗尽问题)
+                        record_query = await session.execute(
+                            select(PushedRecord).where(
+                                PushedRecord.content_id == content_id,
+                                PushedRecord.target_id == target_id
+                            )
                         )
-                        session.add(push_record)
+                        record = record_query.scalar_one_or_none()
+
+                        if record:
+                            # Update existing
+                            record.message_id = str(message_id)
+                            record.push_status = "success"
+                            record.pushed_at = utcnow()
+                            record.error_message = None
+                            session.add(record)
+                            action_type = "更新"
+                        else:
+                            # Create new
+                            push_record = PushedRecord(
+                                content_id=content_id,
+                                target_platform=target_platform,
+                                target_id=target_id,
+                                message_id=str(message_id),
+                                push_status="success"
+                            )
+                            session.add(push_record)
+                            action_type = "创建"
+                        
                         await session.commit()
                         
                         logger.info(
-                            f"分发任务完成: content_id={content_id}, "
+                            f"分发任务完成 ({action_type}): content_id={content_id}, "
                             f"target={target_id}, message_id={message_id}"
                         )
                     else:
-                        # 推送失败，记录失败状态
-                        push_record = PushedRecord(
-                            content_id=content_id,
-                            target_platform=target_platform,
-                            target_id=target_id,
-                            push_status="failed"
+                        # 推送失败
+                        record_query = await session.execute(
+                            select(PushedRecord).where(
+                                PushedRecord.content_id == content_id,
+                                PushedRecord.target_id == target_id
+                            )
                         )
-                        session.add(push_record)
+                        record = record_query.scalar_one_or_none()
+                        
+                        if record:
+                            record.push_status = "failed"
+                            record.error_message = "Push failed (no message_id)"
+                            record.pushed_at = utcnow()
+                            session.add(record)
+                        else:
+                            push_record = PushedRecord(
+                                content_id=content_id,
+                                target_platform=target_platform,
+                                target_id=target_id,
+                                push_status="failed",
+                                error_message="Push failed (no message_id)"
+                            )
+                            session.add(push_record)
+                            
                         await session.commit()
                         logger.error(f"分发任务失败: content_id={content_id}, target={target_id}")
                     

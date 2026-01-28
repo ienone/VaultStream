@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 from .models import ZhihuPin, ZhihuAuthor
 from .base import extract_initial_data, preprocess_zhihu_html, extract_images
 from app.adapters.base import ParsedContent
+from app.adapters.utils import generate_title_from_text
 from datetime import datetime
 
 from urllib.parse import unquote, urlparse, parse_qs
@@ -152,27 +153,8 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
         "repin_count": pin_data.get('repinCount', 0),
     }
 
-    # 生成标题：截取到第一个非开头的标点符号
-    def generate_pin_title(text: str, max_len: int = 60) -> str:
-        if not text:
-            return "知乎想法"
-        # 去除开头的空白和标点
-        text = text.strip()
-        # 常见中英文标点
-        punctuations = ['。', '！', '？', '，', '；', '：', '…', '.', '!', '?', ',', ';', ':', '\n']
-        # 从第2个字符开始查找第一个标点
-        cut_pos = -1
-        for i in range(1, min(len(text), max_len)):
-            if text[i] in punctuations:
-                cut_pos = i
-                break
-        if cut_pos > 0:
-            return text[:cut_pos] + "…"
-        elif len(text) > max_len:
-            return text[:max_len] + "…"
-        return text
-
-    pin_title = generate_pin_title(description)
+    # 生成标题：使用通用工具函数
+    pin_title = generate_title_from_text(description, max_len=60, fallback="知乎想法")
 
     # Construct Archive
     if isinstance(pin_data, dict):

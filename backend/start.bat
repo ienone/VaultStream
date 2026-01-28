@@ -70,6 +70,14 @@ except Exception as e:
     echo 数据库表已存在或初始化失败，继续...
 )
 
+REM 启动 Telegram Bot (可选)
+echo.
+set /p START_BOT="是否启动 Telegram Bot (需在 .env 配置)? (y/n): "
+if /i "%START_BOT%"=="y" (
+    echo 正在启动 Telegram Bot...
+    start "VaultStream Bot" "%VENV_PY%" -m app.bot.main
+)
+
 REM 启动后端API
 echo.
 echo 启动 FastAPI 后端...

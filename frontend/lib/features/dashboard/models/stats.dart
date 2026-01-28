@@ -29,3 +29,26 @@ abstract class DashboardStats with _$DashboardStats {
   factory DashboardStats.fromJson(Map<String, dynamic> json) =>
       _$DashboardStatsFromJson(json);
 }
+
+@freezed
+abstract class TagStats with _$TagStats {
+  const factory TagStats({
+    required String name,
+    required int count,
+  }) = _TagStats;
+
+  factory TagStats.fromJson(Map<String, dynamic> json) =>
+      _$TagStatsFromJson(json);
+}
+
+@freezed
+abstract class SystemHealth with _$SystemHealth {
+  const factory SystemHealth({
+    required String status,
+    @JsonKey(name: 'queue_size') int? queueSize,
+    Map<String, String>? components,
+  }) = _SystemHealth;
+
+  factory SystemHealth.fromJson(Map<String, dynamic> json) =>
+      _$SystemHealthFromJson(json);
+}

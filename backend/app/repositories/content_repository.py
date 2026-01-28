@@ -1,7 +1,7 @@
 from typing import List, Optional, Tuple
 from sqlalchemy import select, and_, or_, func, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import Content, ContentStatus, Platform
+from app.models import Content, ContentStatus, Platform, ReviewStatus
 from datetime import datetime
 
 class ContentRepository:
@@ -14,6 +14,7 @@ class ContentRepository:
         size: int = 20,
         platform: Optional[Platform] = None,
         status: Optional[ContentStatus] = None,
+        review_status: Optional[ReviewStatus] = None,
         tag: Optional[str] = None,
         q: Optional[str] = None,
         is_nsfw: Optional[bool] = None,
@@ -27,6 +28,8 @@ class ContentRepository:
             conditions.append(Content.platform == platform)
         if status:
             conditions.append(Content.status == status)
+        if review_status:
+            conditions.append(Content.review_status == review_status)
         if is_nsfw is not None:
             conditions.append(Content.is_nsfw == is_nsfw)
         if author:

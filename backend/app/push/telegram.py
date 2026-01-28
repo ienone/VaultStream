@@ -4,13 +4,17 @@ Telegram推送服务实现
 提供完整的Telegram消息推送功能,包括文本、图片、视频等
 """
 import httpx
+import os
 from typing import Dict, Any, List, Tuple, Optional
+from contextlib import ExitStack
 
 from telegram import Bot, InputMediaPhoto, InputMediaVideo
+from telegram.request import HTTPXRequest
 from telegram.error import TelegramError
 
 from app.core.logging import logger
 from app.core.config import settings
+from app.core.storage import get_storage_backend
 from app.utils.text_formatters import format_content_for_tg
 from app.media.extractor import extract_media_urls
 from .base import BasePushService
@@ -45,17 +49,21 @@ class TelegramPushService(BasePushService):
         if self._bot is None:
             bot_token = settings.telegram_bot_token.get_secret_value()
             
-            # 配置代理
-            proxy_url = None
+            # 配置代理 (通过环境变量，httpx 会自动读取)
             if hasattr(settings, 'http_proxy') and settings.http_proxy:
-                proxy_url = settings.http_proxy
+                os.environ['HTTP_PROXY'] = settings.http_proxy
+                os.environ['HTTPS_PROXY'] = settings.http_proxy
+                logger.debug(f"已设置代理环境变量: {settings.http_proxy}")
+            
+            request = HTTPXRequest(
+                connect_timeout=10.0,
+                read_timeout=30.0,
+                write_timeout=60.0
+            )
             
             self._bot = Bot(
                 token=bot_token,
-                proxy_url=proxy_url,
-                connect_timeout=10,
-                read_timeout=30,
-                write_timeout=60
+                request=request
             )
         return self._bot
     
@@ -115,41 +123,55 @@ class TelegramPushService(BasePushService):
         Returns:
             第一条消息对象，失败返回None
         """
-        media_group = []
-        for idx, item in enumerate(media_items[:MAX_MEDIA_GROUP_SIZE]):
-            if item['type'] == 'photo':
-                if idx == 0:
-                    media_group.append(InputMediaPhoto(media=item['url'], caption=text, parse_mode='HTML'))
-                else:
-                    media_group.append(InputMediaPhoto(media=item['url']))
-            elif item['type'] == 'video':
-                if idx == 0:
-                    media_group.append(InputMediaVideo(media=item['url'], caption=text, parse_mode='HTML'))
-                else:
-                    media_group.append(InputMediaVideo(media=item['url']))
+        backend = get_storage_backend()
         
-        try:
-            messages = await bot.send_media_group(
-                chat_id=chat_id,
-                media=media_group,
-                read_timeout=60,
-                write_timeout=60
-            )
-            if messages:
-                # 如果有按钮,发送一条回复消息
-                if reply_markup:
-                    await bot.send_message(
-                        chat_id=chat_id,
-                        text="管理操作:",
-                        reply_to_message_id=messages[0].message_id,
-                        reply_markup=reply_markup
-                    )
-                return messages[0]
-            return None
-        except TelegramError as e:
-            logger.warning(f"发送媒体组失败，降级为单个媒体: {e}")
-            # 降级处理：只发送第一个媒体
-            return await self._send_single_media(bot, chat_id, media_items[0], text, reply_markup)
+        with ExitStack() as stack:
+            media_group = []
+            for idx, item in enumerate(media_items[:MAX_MEDIA_GROUP_SIZE]):
+                media = item['url']
+                # 尝试使用本地文件
+                if item.get('stored_key'):
+                     local_path = backend.get_local_path(key=item['stored_key'])
+                     if local_path:
+                         try:
+                             media = stack.enter_context(open(local_path, 'rb'))
+                             logger.debug(f"使用本地媒体文件: {local_path}")
+                         except Exception as e:
+                             logger.warning(f"无法打开本地文件 {local_path}: {e}")
+
+                if item['type'] == 'photo':
+                    if idx == 0:
+                        media_group.append(InputMediaPhoto(media=media, caption=text, parse_mode='HTML'))
+                    else:
+                        media_group.append(InputMediaPhoto(media=media))
+                elif item['type'] == 'video':
+                    if idx == 0:
+                        media_group.append(InputMediaVideo(media=media, caption=text, parse_mode='HTML'))
+                    else:
+                        media_group.append(InputMediaVideo(media=media))
+            
+            try:
+                messages = await bot.send_media_group(
+                    chat_id=chat_id,
+                    media=media_group,
+                    read_timeout=120,
+                    write_timeout=120
+                )
+                if messages:
+                    # 如果有按钮,发送一条回复消息
+                    if reply_markup:
+                        await bot.send_message(
+                            chat_id=chat_id,
+                            text="管理操作:",
+                            reply_to_message_id=messages[0].message_id,
+                            reply_markup=reply_markup
+                        )
+                    return messages[0]
+                return None
+            except TelegramError as e:
+                logger.warning(f"发送媒体组失败，降级为单个媒体: {e}")
+                # 降级处理：只发送第一个媒体
+                return await self._send_single_media(bot, chat_id, media_items[0], text, reply_markup)
     
     async def _send_single_media(
         self,
@@ -172,25 +194,40 @@ class TelegramPushService(BasePushService):
         Returns:
             消息对象，失败返回None
         """
+        backend = get_storage_backend()
+        media = media_item['url']
+        file_handle = None
+        
+        # 尝试使用本地文件
+        if media_item.get('stored_key'):
+             local_path = backend.get_local_path(key=media_item['stored_key'])
+             if local_path:
+                 try:
+                     file_handle = open(local_path, 'rb')
+                     media = file_handle
+                     logger.debug(f"使用本地媒体文件: {local_path}")
+                 except Exception as e:
+                     logger.warning(f"无法打开本地文件 {local_path}: {e}")
+
         try:
             if media_item['type'] == 'photo':
                 return await bot.send_photo(
                     chat_id=chat_id,
-                    photo=media_item['url'],
+                    photo=media,
                     caption=caption,
                     parse_mode='HTML',
-                    read_timeout=30,
-                    write_timeout=30,
+                    read_timeout=60,
+                    write_timeout=60,
                     reply_markup=reply_markup
                 )
             elif media_item['type'] == 'video':
                 return await bot.send_video(
                     chat_id=chat_id,
-                    video=media_item['url'],
+                    video=media,
                     caption=caption,
                     parse_mode='HTML',
-                    read_timeout=60,
-                    write_timeout=60,
+                    read_timeout=120,
+                    write_timeout=120,
                     reply_markup=reply_markup
                 )
         except TelegramError as e:
@@ -203,6 +240,9 @@ class TelegramPushService(BasePushService):
                 disable_web_page_preview=False,
                 reply_markup=reply_markup
             )
+        finally:
+            if file_handle:
+                file_handle.close()
     
     async def push(
         self, 
@@ -228,6 +268,7 @@ class TelegramPushService(BasePushService):
             message = None
             
             # 根据媒体数量选择发送方式
+            logger.info(f"准备发送至 Telegram: target={target_id}, media_count={len(media_items)}, text_len={len(text)}")
             if len(media_items) > 1:
                 message = await self._send_media_group(bot, target_id, text, media_items, reply_markup)
             elif len(media_items) == 1:

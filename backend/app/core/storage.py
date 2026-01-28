@@ -50,6 +50,10 @@ class StorageBackend:
         """获取对象的访问URL"""
         return None
 
+    def get_local_path(self, *, key: str) -> Optional[str]:
+        """获取对象的本地文件路径（如果可用）"""
+        return None
+
 
 class LocalStorageBackend(StorageBackend):
     def __init__(self, root_dir: str, public_base_url: Optional[str] = None):
@@ -71,6 +75,12 @@ class LocalStorageBackend(StorageBackend):
     async def exists(self, *, key: str) -> bool:
         path = self._full_path(key)
         return os.path.exists(path)
+        
+    def get_local_path(self, *, key: str) -> Optional[str]:
+        path = self._full_path(key)
+        if os.path.exists(path):
+            return path
+        return None
 
     async def get_bytes(self, key: str) -> bytes:
         path = self._full_path(key)

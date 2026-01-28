@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import get_db, db_ping
 from app.models import SystemSetting, Content, Task, ContentStatus
 from app.schemas import (
     SystemSettingResponse, SystemSettingUpdate, DashboardStats, 
@@ -26,10 +26,19 @@ router = APIRouter()
 @router.get("/health")
 async def health_check():
     """健康检查"""
+    redis_ok = await task_queue.ping()
+    db_ok = await db_ping()
     queue_size = await task_queue.get_queue_size()
+    
+    status = "ok" if (redis_ok and db_ok) else "degraded"
+    
     return {
-        "status": "ok",
-        "queue_size": queue_size
+        "status": status,
+        "queue_size": queue_size,
+        "components": {
+            "db": "ok" if db_ok else "error",
+            "redis": "ok" if redis_ok else "error"
+        }
     }
 
 @router.get("/dashboard/stats", response_model=DashboardStats)

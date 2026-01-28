@@ -310,7 +310,96 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           icon: Icons.vpn_key_outlined,
           onTap: () => _showApiTokenEditor(context, settings.apiToken),
         ),
+        _buildSettingTile(
+          context,
+          title: '测试连接',
+          subtitle: '验证服务器连接和认证状态',
+          icon: Icons.link,
+          onTap: () => _testConnection(context),
+        ),
+        _buildSettingTile(
+          context,
+          title: '退出登录',
+          subtitle: '清除本地认证信息',
+          icon: Icons.logout,
+          onTap: () => _confirmLogout(context),
+        ),
       ],
+    );
+  }
+
+  Future<void> _testConnection(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final errorColor = Theme.of(context).colorScheme.error;
+
+    messenger.showSnackBar(
+      const SnackBar(content: Text('正在测试连接...')),
+    );
+
+    try {
+      final settings = ref.read(localSettingsProvider);
+
+      final response = await ref
+          .read(localSettingsProvider.notifier)
+          .testConnection(settings.baseUrl, settings.apiToken);
+
+      if (response) {
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('✅ 连接成功！服务器响应正常'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+          SnackBar(
+            content: const Text('❌ 连接失败，请检查设置'),
+            backgroundColor: errorColor,
+          ),
+        );
+      }
+    } catch (e) {
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('❌ 连接错误: $e'),
+          backgroundColor: errorColor,
+        ),
+      );
+    }
+  }
+
+  void _confirmLogout(BuildContext context) {
+    final errorColor = Theme.of(context).colorScheme.error;
+    final messenger = ScaffoldMessenger.of(context);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认退出登录'),
+        content: const Text('这将清除本地保存的 API 密钥。您需要重新输入密钥才能继续使用。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await ref.read(localSettingsProvider.notifier).clearAuth();
+              messenger.showSnackBar(
+                const SnackBar(content: Text('已退出登录')),
+              );
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: errorColor,
+            ),
+            child: const Text('退出'),
+          ),
+        ],
+      ),
     );
   }
 

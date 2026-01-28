@@ -14,6 +14,7 @@ from app.adapters.errors import (
     NonRetryableAdapterError,
     RetryableAdapterError,
 )
+from app.adapters.utils import generate_title_from_text
 from app.models import BilibiliContentType
 from .base import clean_text, safe_url, render_markdown, parse_opus_text_nodes, format_request_error
 import re
@@ -381,8 +382,8 @@ async def parse_dynamic(
         major = module_dynamic.get('major', {})
         opus = major.get('opus', {})
 
-        # 标题回退机制（分享用：保持现状）
-        title = opus.get('title') or module_title.get('text') or item.get('basic', {}).get('title') or "动态"
+        # 标题回退机制：优先使用原生标题，否则从正文生成
+        raw_title = opus.get('title') or module_title.get('text') or item.get('basic', {}).get('title')
 
         # 提取正文（分享用：优先使用archive中的完整纯文本）
         summary = archive.get("plain_text") or ""
@@ -392,6 +393,9 @@ async def parse_dynamic(
                                if p.get('text', {}).get('content')])
 
         summary = clean_text(summary)
+        
+        # 生成标题：优先使用原生标题，否则从正文生成
+        title = raw_title if raw_title else generate_title_from_text(summary, max_len=60, fallback="B站动态")
 
         # 提取图片（分享用：优先使用archive中的图片列表）
         pics = [img.get("url") for img in archive.get("images", []) if img.get("url")]

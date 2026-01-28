@@ -22,3 +22,4 @@
 - **Naming**: snake_case (Python), camelCase (Dart), PascalCase (classes)
 - **Error handling**: Use FastAPI HTTPException, proper async exception handling
 - **Imports**: Group stdlib, third-party, local imports; relative imports within app/
+- **Design patterns**: Material 3 expressive, adaptive layouts, Clean Architecture for features

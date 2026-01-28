@@ -11,6 +11,10 @@ class CollectionGrid extends StatelessWidget {
   final bool hasMore;
   final bool isLoadingMore;
   final RefreshCallback onRefresh;
+  final bool isSelectionMode;
+  final Set<int> selectedIds;
+  final ValueChanged<int>? onToggleSelection;
+  final ValueChanged<int>? onLongPress;
 
   const CollectionGrid({
     super.key,
@@ -19,6 +23,10 @@ class CollectionGrid extends StatelessWidget {
     required this.hasMore,
     required this.isLoadingMore,
     required this.onRefresh,
+    this.isSelectionMode = false,
+    this.selectedIds = const {},
+    this.onToggleSelection,
+    this.onLongPress,
   });
 
   @override
@@ -39,14 +47,53 @@ class CollectionGrid extends StatelessWidget {
               crossAxisSpacing: 12,
               itemBuilder: (context, index) {
                 final item = items[index];
-                return ContentCard(
-                  content: item,
-                  onTap: () {
-                    final colorParam = item.coverColor != null
-                        ? '?color=${Uri.encodeComponent(item.coverColor!)}'
-                        : '';
-                    context.push('/collection/${item.id}$colorParam');
-                  },
+                final isSelected = selectedIds.contains(item.id);
+                return GestureDetector(
+                  onLongPress: onLongPress != null
+                      ? () => onLongPress!(item.id)
+                      : null,
+                  child: Stack(
+                    children: [
+                      ContentCard(
+                        content: item,
+                        onTap: isSelectionMode
+                            ? () => onToggleSelection?.call(item.id)
+                            : () {
+                                final colorParam = item.coverColor != null
+                                    ? '?color=${Uri.encodeComponent(item.coverColor!)}'
+                                    : '';
+                                context.push('/collection/${item.id}$colorParam');
+                              },
+                      ),
+                      if (isSelectionMode)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(context).colorScheme.surface.withValues(alpha: 0.8),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Theme.of(context).colorScheme.primary,
+                                width: 2,
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: isSelected
+                                  ? Icon(
+                                      Icons.check,
+                                      size: 16,
+                                      color: Theme.of(context).colorScheme.onPrimary,
+                                    )
+                                  : const SizedBox(width: 16, height: 16),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 );
               },
               childCount: items.length,

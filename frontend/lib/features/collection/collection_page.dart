@@ -4,8 +4,10 @@ import '../../core/widgets/frosted_app_bar.dart';
 import 'providers/collection_provider.dart';
 import 'providers/search_history_provider.dart';
 import 'providers/collection_filter_provider.dart';
+import 'providers/batch_selection_provider.dart';
 import 'widgets/dialogs/add_content_dialog.dart';
 import 'widgets/dialogs/filter_dialog.dart';
+import 'widgets/dialogs/batch_action_sheet.dart';
 import 'widgets/list/collection_grid.dart';
 import 'widgets/list/collection_error_view.dart';
 import 'widgets/list/collection_skeleton.dart';
@@ -27,6 +29,26 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    
+    // Defer to next frame to allow ref access
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initFiltersFromUrl();
+    });
+  }
+
+  void _initFiltersFromUrl() {
+    // Read query params from GoRouterState
+    // Note: Since this page is within a StatefulShellRoute, accessing GoRouterState.of(context)
+    // might be tricky directly in initState. We'll use the provider if needed, or rely on
+    // GoRouter passing params if we were to change the route definition.
+    // However, for now, we'll check if the widget was rebuilt with new params.
+    // Actually, in the current setup, navigating to /collection?status=failed 
+    // will just update the shell.
+    
+    // For simplicity in this implementation, we will assume this page
+    // might be pushed with params. But since it's a shell route, it's persistent.
+    // A better approach for "Dashboard Jump" is to update the provider BEFORE navigation.
+    // So logic will be in DashboardPage.
   }
 
   @override
@@ -75,11 +97,14 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   Widget build(BuildContext context) {
     final filterState = ref.watch(collectionFilterProvider);
     final collectionAsync = ref.watch(collectionProvider);
+    final batchSelection = ref.watch(batchSelectionProvider);
     final theme = Theme.of(context);
 
     return Scaffold(
       extendBodyBehindAppBar: true,
-      appBar: _buildAppBar(context, theme, filterState),
+      appBar: batchSelection.isSelectionMode
+          ? _buildSelectionAppBar(context, theme, batchSelection)
+          : _buildAppBar(context, theme, filterState),
       body: NotificationListener<ScrollNotification>(
         onNotification: _handleScrollNotification,
         child: collectionAsync.when(
@@ -90,6 +115,13 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
             isLoadingMore:
                 collectionAsync.isLoading && response.items.isNotEmpty,
             onRefresh: () => ref.refresh(collectionProvider.future),
+            isSelectionMode: batchSelection.isSelectionMode,
+            selectedIds: batchSelection.selectedIds,
+            onToggleSelection: (id) => ref.read(batchSelectionProvider.notifier).toggleSelection(id),
+            onLongPress: (id) {
+              ref.read(batchSelectionProvider.notifier).enterSelectionMode();
+              ref.read(batchSelectionProvider.notifier).toggleSelection(id);
+            },
           ),
           loading: () => const CollectionSkeleton(),
           error: (err, stack) => CollectionErrorView(
@@ -98,7 +130,46 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
           ),
         ),
       ),
-      floatingActionButton: _AddContentFab(isExtended: _isFabExtended),
+      floatingActionButton: batchSelection.isSelectionMode
+          ? FloatingActionButton.extended(
+              onPressed: () => _showBatchActions(context),
+              icon: const Icon(Icons.checklist),
+              label: Text('操作 (${batchSelection.count})'),
+            )
+          : _AddContentFab(isExtended: _isFabExtended),
+    );
+  }
+
+  PreferredSizeWidget _buildSelectionAppBar(
+    BuildContext context,
+    ThemeData theme,
+    BatchSelectionState selection,
+  ) {
+    return AppBar(
+      leading: IconButton(
+        icon: const Icon(Icons.close),
+        onPressed: () => ref.read(batchSelectionProvider.notifier).exitSelectionMode(),
+      ),
+      title: Text('已选择 ${selection.count} 项'),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.select_all),
+          tooltip: '全选',
+          onPressed: () {
+            final items = ref.read(collectionProvider).value?.items ?? [];
+            ref.read(batchSelectionProvider.notifier).selectAll(
+              items.map((e) => e.id).toList(),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  void _showBatchActions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => const BatchActionSheet(),
     );
   }
 

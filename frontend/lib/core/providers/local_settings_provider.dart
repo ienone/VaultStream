@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/env_config.dart';
@@ -50,5 +51,28 @@ class LocalSettings extends _$LocalSettings {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyApiToken, token);
     state = state.copyWith(apiToken: token);
+  }
+
+  Future<void> clearAuth() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyApiToken);
+    state = state.copyWith(apiToken: '');
+  }
+
+  Future<bool> testConnection(String baseUrl, String apiToken) async {
+    try {
+      final dio = Dio(
+        BaseOptions(
+          baseUrl: baseUrl,
+          connectTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+          headers: {'X-API-Token': apiToken},
+        ),
+      );
+      final response = await dio.get('/health');
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
   }
 }

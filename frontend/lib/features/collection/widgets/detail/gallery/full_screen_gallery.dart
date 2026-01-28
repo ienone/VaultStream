@@ -33,6 +33,7 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
   late int _currentIndex;
   late PageController _controller;
   double _dragOffset = 0;
+  int _rotationTurns = 0;
 
   @override
   void initState() {
@@ -99,7 +100,10 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                 controller: _controller,
                 itemCount: widget.images.length,
                 onPageChanged: (i) {
-                  setState(() => _currentIndex = i);
+                  setState(() {
+                    _currentIndex = i;
+                    _rotationTurns = 0;
+                  });
                   widget.onPageChanged?.call(i);
                 },
                 itemBuilder: (context, index) {
@@ -112,14 +116,17 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                       child: Center(
                         child: Hero(
                           tag: _getHeroTag(index),
-                          child: CachedNetworkImage(
-                            imageUrl: widget.images[index],
-                            httpHeaders: buildImageHeaders(
+                          child: RotatedBox(
+                            quarterTurns: index == _currentIndex ? _rotationTurns : 0,
+                            child: CachedNetworkImage(
                               imageUrl: widget.images[index],
-                              baseUrl: widget.apiBaseUrl,
-                              apiToken: widget.apiToken,
+                              httpHeaders: buildImageHeaders(
+                                imageUrl: widget.images[index],
+                                baseUrl: widget.apiBaseUrl,
+                                apiToken: widget.apiToken,
+                              ),
+                              fit: BoxFit.contain,
                             ),
-                            fit: BoxFit.contain,
                           ),
                         ),
                       ),
@@ -178,6 +185,20 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                           ),
                         ),
                         const SizedBox(width: 2),
+                        IconButton(
+                          constraints: const BoxConstraints(),
+                          padding: const EdgeInsets.all(4),
+                          icon: Icon(
+                            Icons.rotate_right_rounded,
+                            color: colorScheme.onPrimaryContainer,
+                            size: 18,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _rotationTurns = (_rotationTurns + 1) % 4;
+                            });
+                          },
+                        ),
                         IconButton(
                           constraints: const BoxConstraints(),
                           padding: const EdgeInsets.all(4),

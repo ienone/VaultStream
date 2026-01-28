@@ -2,6 +2,7 @@
 Pydantic 模式定义（用于API请求/响应）
 """
 from datetime import datetime
+from enum import Enum
 import json
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator
@@ -155,6 +156,9 @@ class ContentUpdate(BaseModel):
     cover_url: Optional[str] = None
     is_nsfw: Optional[bool] = None
     status: Optional[ContentStatus] = None
+    review_status: Optional[ReviewStatus] = None
+    review_note: Optional[str] = None
+    reviewed_by: Optional[str] = None
 
 
 class MarkPushedRequest(BaseModel):
@@ -186,7 +190,11 @@ class ShareCard(BaseModel):
     cover_color: Optional[str] = None  # M5: 封面主色调 (Hex)
     media_urls: List[str] = Field(default_factory=list) # M6: 支持首图回退
     tags: List[str] = Field(default_factory=list)
+    is_nsfw: bool = False
     published_at: Optional[datetime] = None
+    
+    # 审批状态
+    review_status: Optional[ReviewStatus] = None
 
     # 少量通用互动数据（可选）
     view_count: int = 0
@@ -284,19 +292,29 @@ class DistributionRuleResponse(BaseModel):
     """分发规则响应"""
     id: int
     name: str
-    description: Optional[str]
-    match_conditions: Dict[str, Any]
-    targets: List[Dict[str, Any]]
-    enabled: bool
-    priority: int
-    nsfw_policy: str
-    approval_required: bool
-    auto_approve_conditions: Optional[Dict[str, Any]]
-    rate_limit: Optional[int]
-    time_window: Optional[int]
-    template_id: Optional[str]
+    description: Optional[str] = None
+    match_conditions: Dict[str, Any] = Field(default_factory=dict)
+    targets: List[Dict[str, Any]] = Field(default_factory=list)
+    enabled: bool = True
+    priority: int = 0
+    nsfw_policy: str = "inherit"
+    approval_required: bool = False
+    auto_approve_conditions: Optional[Dict[str, Any]] = None
+    rate_limit: Optional[int] = None
+    time_window: Optional[int] = None
+    template_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    
+    @field_validator('match_conditions', mode='before')
+    @classmethod
+    def default_match_conditions(cls, v):
+        return v if v is not None else {}
+    
+    @field_validator('targets', mode='before')
+    @classmethod
+    def default_targets(cls, v):
+        return v if v is not None else []
     
     class Config:
         from_attributes = True
@@ -367,3 +385,212 @@ class SystemSettingResponse(SystemSettingBase):
 
     class Config:
         from_attributes = True
+
+
+# ========== Bot 管理 Schema ==========
+
+class BotChatCreate(BaseModel):
+    """创建 Bot 聊天关联"""
+    chat_id: str = Field(..., description="Telegram Chat ID")
+    chat_type: str = Field(..., description="channel/group/supergroup/private")
+    title: Optional[str] = None
+    username: Optional[str] = None
+    description: Optional[str] = None
+    enabled: bool = True
+    priority: int = 0
+    nsfw_policy: str = "inherit"
+    nsfw_chat_id: Optional[str] = None
+    tag_filter: List[str] = Field(default_factory=list)
+    platform_filter: List[str] = Field(default_factory=list)
+    linked_rule_ids: List[int] = Field(default_factory=list)
+
+
+class BotChatUpdate(BaseModel):
+    """更新 Bot 聊天配置"""
+    title: Optional[str] = None
+    enabled: Optional[bool] = None
+    priority: Optional[int] = None
+    nsfw_policy: Optional[str] = None
+    nsfw_chat_id: Optional[str] = None
+    tag_filter: Optional[List[str]] = None
+    platform_filter: Optional[List[str]] = None
+    linked_rule_ids: Optional[List[int]] = None
+
+
+class BotChatResponse(BaseModel):
+    """Bot 聊天响应"""
+    id: int
+    chat_id: str
+    chat_type: str
+    title: Optional[str]
+    username: Optional[str]
+    description: Optional[str]
+    member_count: Optional[int]
+    is_admin: bool
+    can_post: bool
+    enabled: bool
+    priority: int
+    nsfw_policy: str
+    nsfw_chat_id: Optional[str]
+    tag_filter: List[str]
+    platform_filter: List[str]
+    linked_rule_ids: List[int]
+    total_pushed: int
+    last_pushed_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class BotStatusResponse(BaseModel):
+    """Bot 状态响应"""
+    is_running: bool
+    bot_username: Optional[str]
+    bot_id: Optional[int]
+    connected_chats: int
+    total_pushed_today: int
+    uptime_seconds: Optional[int]
+
+
+class BotSyncRequest(BaseModel):
+    """同步 Bot 聊天请求"""
+    chat_id: Optional[str] = Field(None, description="指定同步的 Chat ID，为空则同步所有")
+
+
+class StorageStatsResponse(BaseModel):
+    """存储统计响应"""
+    total_bytes: int
+    media_count: int
+    by_platform: Dict[str, int]
+    by_type: Dict[str, int]
+
+
+class HealthDetailResponse(BaseModel):
+    """健康检查详细响应"""
+    status: str
+    database: str
+    storage: str
+    bot: Optional[str]
+    queue_pending: int
+    queue_failed: int
+    uptime_seconds: int
+    version: str
+
+
+# ========== Bot Runtime Schema ==========
+
+class BotChatUpsert(BaseModel):
+    """Bot 聊天 Upsert（用于 Bot 进程上报）"""
+    chat_id: str = Field(..., description="Telegram Chat ID")
+    chat_type: str = Field(..., description="channel/group/supergroup/private")
+    title: Optional[str] = None
+    username: Optional[str] = None
+    description: Optional[str] = None
+    member_count: Optional[int] = None
+    is_admin: bool = False
+    can_post: bool = False
+    raw_data: Optional[Dict] = None
+
+
+class BotHeartbeat(BaseModel):
+    """Bot 心跳请求"""
+    bot_id: str
+    bot_username: str
+    bot_first_name: Optional[str] = None
+    version: str = "0.1.0"
+    error: Optional[str] = None
+
+
+class BotRuntimeResponse(BaseModel):
+    """Bot 运行时状态响应"""
+    bot_id: Optional[str]
+    bot_username: Optional[str]
+    bot_first_name: Optional[str]
+    started_at: Optional[datetime]
+    last_heartbeat_at: Optional[datetime]
+    is_running: bool
+    uptime_seconds: Optional[int]
+    version: Optional[str]
+    last_error: Optional[str]
+    last_error_at: Optional[datetime]
+
+
+class BotSyncResult(BaseModel):
+    """Bot 群组同步结果"""
+    total: int
+    updated: int
+    failed: int
+    inaccessible: int
+    details: List[Dict] = Field(default_factory=list)
+
+
+class RepushFailedRequest(BaseModel):
+    """重新推送失败任务请求"""
+    limit: int = Field(default=10, le=100)
+    older_than_minutes: int = Field(default=5, ge=1)
+    task_ids: Optional[List[int]] = None
+
+
+class RepushFailedResponse(BaseModel):
+    """重新推送失败任务响应"""
+    repushed_count: int
+    task_ids: List[int]
+
+
+# ========== 规则预览 Schema ==========
+
+class RulePreviewRequest(BaseModel):
+    """规则预览请求"""
+    hours_ahead: int = Field(default=24, ge=1, le=168, description="预览未来多少小时")
+    limit: int = Field(default=50, ge=1, le=200, description="最大返回条数")
+
+
+class PreviewItemStatus(str, Enum):
+    """预览项状态"""
+    WILL_PUSH = "will_push"
+    FILTERED_NSFW = "filtered_nsfw"
+    FILTERED_TAG = "filtered_tag"
+    FILTERED_PLATFORM = "filtered_platform"
+    PENDING_REVIEW = "pending_review"
+    RATE_LIMITED = "rate_limited"
+    ALREADY_PUSHED = "already_pushed"
+
+
+class RulePreviewItem(BaseModel):
+    """规则预览项"""
+    content_id: int
+    title: Optional[str] = None
+    platform: str
+    tags: List[str] = Field(default_factory=list)
+    is_nsfw: bool = False
+    status: str
+    reason: Optional[str] = None
+    scheduled_time: Optional[datetime] = None
+    thumbnail_url: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class RulePreviewResponse(BaseModel):
+    """规则预览响应"""
+    rule_id: int
+    rule_name: str
+    total_matched: int
+    will_push_count: int
+    filtered_count: int
+    pending_review_count: int
+    rate_limited_count: int
+    items: List[RulePreviewItem]
+
+
+class RulePreviewStats(BaseModel):
+    """规则预览统计"""
+    rule_id: int
+    rule_name: str
+    will_push: int
+    filtered: int
+    pending_review: int
+    rate_limited: int

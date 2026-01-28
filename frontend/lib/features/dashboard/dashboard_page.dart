@@ -5,14 +5,27 @@ import 'package:go_router/go_router.dart';
 import '../../core/widgets/frosted_app_bar.dart';
 import 'providers/dashboard_provider.dart';
 import 'models/stats.dart';
+import '../collection/providers/collection_filter_provider.dart';
 
 class DashboardPage extends ConsumerWidget {
   const DashboardPage({super.key});
+
+  void _navigateToCollection(BuildContext context, WidgetRef ref, {List<String>? statuses}) {
+    // Clear existing filters first
+    ref.read(collectionFilterProvider.notifier).clearFilters();
+    // Set new filters
+    if (statuses != null) {
+      ref.read(collectionFilterProvider.notifier).setFilters(statuses: statuses);
+    }
+    // Navigate (switch tab)
+    context.go('/collection');
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final statsAsync = ref.watch(dashboardStatsProvider);
     final queueAsync = ref.watch(queueStatsProvider);
+    final healthAsync = ref.watch(systemHealthProvider);
     final theme = Theme.of(context);
 
     final hasError = statsAsync.hasError || queueAsync.hasError;
@@ -26,6 +39,7 @@ class DashboardPage extends ConsumerWidget {
             onPressed: () {
               ref.invalidate(dashboardStatsProvider);
               ref.invalidate(queueStatsProvider);
+              ref.invalidate(systemHealthProvider);
             },
           ),
         ],
@@ -36,6 +50,7 @@ class DashboardPage extends ConsumerWidget {
               onRefresh: () async {
                 ref.invalidate(dashboardStatsProvider);
                 ref.invalidate(queueStatsProvider);
+                ref.invalidate(systemHealthProvider);
               },
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
@@ -49,7 +64,7 @@ class DashboardPage extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    _buildStatsGrid(context, statsAsync, queueAsync),
+                    _buildStatsGrid(context, ref, statsAsync, queueAsync),
                     const SizedBox(height: 32),
                     Text(
                       '平台分布',
@@ -68,10 +83,222 @@ class DashboardPage extends ConsumerWidget {
                     ),
                     const SizedBox(height: 16),
                     _buildGrowthChart(context, statsAsync),
+                    const SizedBox(height: 32),
+                    Text(
+                      '队列状态',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildQueueStatus(context, queueAsync),
+                    const SizedBox(height: 32),
+                    Text(
+                      '服务状态',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildHealthStatus(context, healthAsync),
+                    const SizedBox(height: 32),
                   ],
                 ),
               ),
             ),
+    );
+  }
+
+  Widget _buildHealthStatus(
+    BuildContext context,
+    AsyncValue<SystemHealth> healthAsync,
+  ) {
+    return healthAsync.when(
+      data: (health) {
+        final colorScheme = Theme.of(context).colorScheme;
+        final isOk = health.status == 'ok';
+        final dbOk = health.components?['db'] == 'ok';
+        final redisOk = health.components?['redis'] == 'ok';
+
+        return Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+            side: BorderSide(
+              color: isOk ? Colors.green.withValues(alpha: 0.5) : colorScheme.error,
+            ),
+          ),
+          color: isOk
+              ? Colors.green.withValues(alpha: 0.05)
+              : colorScheme.errorContainer.withValues(alpha: 0.1),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      isOk ? Icons.check_circle : Icons.warning_rounded,
+                      color: isOk ? Colors.green : colorScheme.error,
+                      size: 32,
+                    ),
+                    const SizedBox(width: 16),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isOk ? '系统运行正常' : '系统服务异常',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: isOk ? Colors.green : colorScheme.error,
+                          ),
+                        ),
+                        if (health.queueSize != null)
+                          Text('当前任务队列: ${health.queueSize}'),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildComponentStatus(context, 'Database', dbOk),
+                    _buildComponentStatus(context, 'Redis', redisOk),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('加载失败: $e')),
+    );
+  }
+
+  Widget _buildComponentStatus(BuildContext context, String name, bool isOk) {
+    return Row(
+      children: [
+        Icon(
+          isOk ? Icons.check_circle_outline : Icons.error_outline,
+          size: 20,
+          color: isOk ? Colors.green : Theme.of(context).colorScheme.error,
+        ),
+        const SizedBox(width: 8),
+        Text(name),
+      ],
+    );
+  }
+
+  Widget _buildQueueStatus(
+    BuildContext context,
+    AsyncValue<QueueStats> queueAsync,
+  ) {
+    return queueAsync.when(
+      data: (queue) {
+        final total = queue.total;
+        if (total == 0) return const Center(child: Text('队列为空'));
+
+        final colorScheme = Theme.of(context).colorScheme;
+
+        return Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+            side: BorderSide(
+              color: colorScheme.outlineVariant,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                _buildQueueRow(
+                  context,
+                  '待处理',
+                  queue.pending,
+                  total,
+                  colorScheme.tertiary,
+                ),
+                const SizedBox(height: 12),
+                _buildQueueRow(
+                  context,
+                  '处理中',
+                  queue.processing,
+                  total,
+                  colorScheme.primary,
+                ),
+                const SizedBox(height: 12),
+                _buildQueueRow(
+                  context,
+                  '失败',
+                  queue.failed,
+                  total,
+                  colorScheme.error,
+                ),
+                const SizedBox(height: 12),
+                _buildQueueRow(
+                  context,
+                  '已归档',
+                  queue.archived,
+                  total,
+                  Colors.green,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('加载失败: $e')),
+    );
+  }
+
+  Widget _buildQueueRow(
+    BuildContext context,
+    String label,
+    int value,
+    int total,
+    Color color,
+  ) {
+    final percent = total > 0 ? value / total : 0.0;
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          flex: 2,
+          child: Text(label),
+        ),
+        Expanded(
+          flex: 5,
+          child: LinearProgressIndicator(
+            value: percent,
+            backgroundColor: color.withValues(alpha: 0.1),
+            valueColor: AlwaysStoppedAnimation(color),
+            borderRadius: BorderRadius.circular(4),
+            minHeight: 8,
+          ),
+        ),
+        const SizedBox(width: 12),
+        SizedBox(
+          width: 80,
+          child: Text(
+            '$value (${(percent * 100).toStringAsFixed(1)}%)',
+            textAlign: TextAlign.end,
+          ),
+        ),
+      ],
     );
   }
 
@@ -131,6 +358,7 @@ class DashboardPage extends ConsumerWidget {
 
   Widget _buildStatsGrid(
     BuildContext context,
+    WidgetRef ref,
     AsyncValue<DashboardStats> statsAsync,
     AsyncValue<QueueStats> queueAsync,
   ) {
@@ -153,6 +381,7 @@ class DashboardPage extends ConsumerWidget {
           ),
           Icons.library_books_outlined,
           Theme.of(context).colorScheme.primary,
+          onTap: () => _navigateToCollection(context, ref),
         ),
         _buildStatCard(
           context,
@@ -175,6 +404,7 @@ class DashboardPage extends ConsumerWidget {
           ),
           Icons.hourglass_empty,
           Theme.of(context).colorScheme.tertiary,
+          onTap: () => _navigateToCollection(context, ref, statuses: ['pending']),
         ),
         _buildStatCard(
           context,
@@ -186,6 +416,7 @@ class DashboardPage extends ConsumerWidget {
           ),
           Icons.error_outline,
           Theme.of(context).colorScheme.error,
+          onTap: () => _navigateToCollection(context, ref, statuses: ['failed']),
         ),
       ],
     );
@@ -196,42 +427,47 @@ class DashboardPage extends ConsumerWidget {
     String label,
     String value,
     IconData icon,
-    Color color,
-  ) {
+    Color color, {
+    VoidCallback? onTap,
+  }) {
     final theme = Theme.of(context);
     return Card(
+      clipBehavior: Clip.antiAlias,
       elevation: 0,
       color: color.withValues(alpha: 0.1),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(24),
         side: BorderSide(color: color.withValues(alpha: 0.2)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Icon(icon, color: color, size: 24),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  value,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: color,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Icon(icon, color: color, size: 24),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    value,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
                   ),
-                ),
-                Text(
-                  label,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                  Text(
+                    label,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

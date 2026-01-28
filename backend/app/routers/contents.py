@@ -71,6 +71,7 @@ async def list_contents(
     size: int = Query(20, ge=1, le=100),
     platform: Optional[Platform] = Query(None),
     status: Optional[ContentStatus] = Query(None),
+    review_status: Optional[ReviewStatus] = Query(None),
     tag: Optional[str] = Query(None),
     author: Optional[str] = Query(None),
     start_date: Optional[datetime] = Query(None),
@@ -82,7 +83,7 @@ async def list_contents(
 ):
     """完整内容列表查询"""
     items, total = await repo.list_contents(
-        page=page, size=size, platform=platform, status=status,
+        page=page, size=size, platform=platform, status=status, review_status=review_status,
         tag=tag, author=author, start_date=start_date, end_date=end_date, q=q, is_nsfw=is_nsfw
     )
     
@@ -137,6 +138,12 @@ async def update_content(
         content.is_nsfw = request.is_nsfw
     if request.status is not None:
         content.status = request.status
+    if request.review_status is not None:
+        content.review_status = request.review_status
+    if request.review_note is not None:
+        content.review_note = request.review_note
+    if request.reviewed_by is not None:
+        content.reviewed_by = request.reviewed_by
         
     await db.commit()
     await db.refresh(content)
@@ -317,6 +324,23 @@ async def list_pushed_records(
     records = result.scalars().all()
     return [PushedRecordResponse.model_validate(r) for r in records]
 
+@router.delete("/pushed-records/{record_id}")
+async def delete_pushed_record(
+    record_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """删除推送记录（允许重推）"""
+    result = await db.execute(select(PushedRecord).where(PushedRecord.id == record_id))
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(status_code=404, detail="Pushed record not found")
+    
+    await db.delete(record)
+    await db.commit()
+    logger.info(f"推送记录已删除: ID {record_id}")
+    return {"success": True, "id": record_id}
+
 # --- Cards & Previews ---
 
 @router.get("/cards", response_model=ShareCardListResponse)
@@ -325,6 +349,7 @@ async def list_share_cards(
     size: int = Query(20, ge=1, le=100),
     platform: Optional[Platform] = Query(None),
     status: Optional[ContentStatus] = Query(None),
+    review_status: Optional[ReviewStatus] = Query(None),
     tag: Optional[str] = Query(None),
     author: Optional[str] = Query(None),
     start_date: Optional[datetime] = Query(None),
@@ -335,32 +360,30 @@ async def list_share_cards(
 ):
     """轻量级分享卡片列表"""
     contents, total = await repo.list_contents(
-        page=page, size=size, platform=platform, status=status, 
+        page=page, size=size, platform=platform, status=status, review_status=review_status,
         tag=tag, author=author, start_date=start_date, end_date=end_date, q=q
     )
 
     items = []
     for c in contents:
-        summary = (c.description or c.title or "")[:200]
-        if len(c.description or c.title or "") > 200:
-            summary += "..."
-
         items.append({
             "id": c.id,
             "platform": c.platform,
             "url": c.url,
             "clean_url": c.clean_url,
             "content_type": c.content_type,
-            "title": c.title,
-            "summary": summary,
-            "description": c.description or c.title,
+            "title": c.display_title,  # 使用 display_title（自动从正文生成标题）
+            "summary": None,  # 卡片视图不返回摘要
+            "description": None,  # 卡片视图不返回正文
             "author_name": c.author_name,
             "author_id": c.author_id,
             "cover_url": c.cover_url,
             "cover_color": c.cover_color,
             "media_urls": [], 
             "tags": c.tags or [],
+            "is_nsfw": c.is_nsfw or False,
             "published_at": c.published_at,
+            "review_status": c.review_status,
             "view_count": c.view_count or 0,
             "like_count": c.like_count or 0,
             "collect_count": c.collect_count or 0,
@@ -375,6 +398,57 @@ async def list_share_cards(
         "size": size,
         "has_more": total > page * size
     }
+
+
+@router.post("/cards/{card_id}/review")
+async def review_card(
+    card_id: int,
+    action: ReviewAction,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """审批单个卡片（轻量级接口）"""
+    result = await db.execute(select(Content).where(Content.id == card_id))
+    content = result.scalar_one_or_none()
+    if not content:
+        raise HTTPException(status_code=404, detail="Card not found")
+    if action.action not in ["approve", "reject"]:
+        raise HTTPException(status_code=400, detail="Invalid action")
+    
+    content.review_status = ReviewStatus.APPROVED if action.action == "approve" else ReviewStatus.REJECTED
+    content.reviewed_at = datetime.utcnow()
+    content.reviewed_by = action.reviewed_by
+    content.review_note = action.note
+    
+    await db.commit()
+    return {"id": content.id, "review_status": content.review_status.value}
+
+
+@router.post("/cards/batch-review")
+async def batch_review_cards(
+    request: BatchReviewRequest,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """批量审批卡片（轻量级接口）"""
+    if request.action not in ["approve", "reject"]:
+        raise HTTPException(status_code=400, detail="Invalid action")
+    review_status = ReviewStatus.APPROVED if request.action == "approve" else ReviewStatus.REJECTED
+    
+    result = await db.execute(select(Content).where(Content.id.in_(request.content_ids)))
+    contents = result.scalars().all()
+    if not contents:
+        raise HTTPException(status_code=404, detail="No cards found")
+    
+    for content in contents:
+        content.review_status = review_status
+        content.reviewed_at = datetime.utcnow()
+        content.reviewed_by = request.reviewed_by
+        content.review_note = request.note
+    
+    await db.commit()
+    return {"updated": len(contents), "action": request.action}
+
 
 @router.get("/contents/{content_id}/preview", response_model=ShareCardPreview)
 async def get_content_preview(

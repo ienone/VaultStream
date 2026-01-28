@@ -16,6 +16,7 @@ from app.adapters.errors import (
     NonRetryableAdapterError,
     RetryableAdapterError,
 )
+from app.adapters.utils import generate_title_from_text
 from app.models import TwitterContentType
 from app.core.config import settings
 
@@ -332,7 +333,7 @@ class TwitterFxAdapter(PlatformAdapter):
             content_type=content_type.value,
             content_id=tweet_id,
             clean_url=original_url,
-            title=f"@{author.get('screen_name', 'unknown')}: {text[:50]}...",
+            title=generate_title_from_text(text, max_len=60, fallback=f"@{author.get('screen_name', 'unknown')} 的推文"),
             description=text,
             author_name=author.get('name'),
             author_id=author.get('screen_name'),  # 使用 screen_name 作为 author_id

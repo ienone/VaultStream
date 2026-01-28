@@ -61,6 +61,11 @@ class DistributionScheduler:
                 logger.error(f"分发调度器出错: {e}", exc_info=True)
             
             await asyncio.sleep(self.interval_seconds)
+
+    async def trigger_run(self):
+        """手动触发一次分发"""
+        logger.info("手动触发分发...")
+        await self._check_and_distribute()
     
     async def _check_and_distribute(self):
         """检查并分发内容"""
@@ -72,7 +77,7 @@ class DistributionScheduler:
                     Content.review_status.in_([ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED]),
                     Content.status == "pulled"
                 )
-                .order_by(Content.created_at.asc())
+                .order_by(Content.queue_priority.desc(), Content.created_at.asc())
                 .limit(50)
             )
             contents = result.scalars().all()
@@ -81,7 +86,7 @@ class DistributionScheduler:
                 logger.debug("没有待分发的内容")
                 return
             
-            logger.debug(f"找到 {len(contents)} 条候选内容")
+            logger.info(f"分发调度器: 找到 {len(contents)} 条候选内容")
             
             engine = DistributionEngine(session)
             
@@ -93,6 +98,10 @@ class DistributionScheduler:
                 try:
                     tasks = await engine.create_distribution_tasks(content)
                     
+                    if not tasks:
+                        logger.warning(f"内容 {content.id} 未生成任何分发任务 (可能被过滤)")
+                        continue
+
                     for task in tasks:
                         task_data = {
                             "action": "distribute",
