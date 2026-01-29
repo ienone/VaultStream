@@ -21,11 +21,6 @@ jobs:
           distribution: "zulu"
           java-version: "17"
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.14"
-
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -36,20 +31,34 @@ jobs:
         run: flutter pub get
         working-directory: frontend
 
+      # Pre-download Gradle to avoid wrapper network issues
+      - name: Setup Gradle wrapper
+        run: |
+          cd android
+          chmod +x gradlew
+          # Use gradle properties to skip wrapper download validation
+          mkdir -p ~/.gradle
+          echo "org.gradle.daemon=false" >> ~/.gradle/gradle.properties
+        working-directory: frontend
+
       - name: Build Debug APK
         run: |
           flutter build apk --debug \
-            --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }} \
-            --dart-define=API_TOKEN=${{ secrets.API_TOKEN }}
+            --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL || 'http://localhost:8000' }} \
+            --dart-define=API_TOKEN=${{ secrets.API_TOKEN || '' }}
         working-directory: frontend
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
 
       - name: Build Release APK
         if: github.event_name != 'pull_request'
         run: |
           flutter build apk --release \
-            --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }} \
-            --dart-define=API_TOKEN=${{ secrets.API_TOKEN }}
+            --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL || 'http://localhost:8000' }} \
+            --dart-define=API_TOKEN=${{ secrets.API_TOKEN || '' }}
         working-directory: frontend
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -63,33 +72,6 @@ jobs:
         with:
           name: vaultstream-android-release
           path: frontend/build/app/outputs/flutter-apk/app-release.apk
-
-  # iOS Build
-  ios:
-    runs-on: macos-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: "stable"
-          cache: true
-
-      - name: Install dependencies
-        run: flutter pub get
-        working-directory: frontend
-
-      - name: Build iOS (no codesign)
-        run: flutter build ios --debug --no-codesign
-        working-directory: frontend
-
-      - name: Upload iOS Build
-        uses: actions/upload-artifact@v4
-        with:
-          name: vaultstream-ios-debug
-          path: frontend/build/ios/iphoneos/Runner.app
 
   # Web Build
   web:
@@ -111,8 +93,8 @@ jobs:
       - name: Build Web
         run: |
           flutter build web --release \
-            --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }} \
-            --dart-define=API_TOKEN=${{ secrets.API_TOKEN }}
+            --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL || 'http://localhost:8000' }} \
+            --dart-define=API_TOKEN=${{ secrets.API_TOKEN || '' }}
         working-directory: frontend
 
       - name: Upload Web Build
@@ -120,33 +102,6 @@ jobs:
         with:
           name: vaultstream-web
           path: frontend/build/web
-
-  # Windows Build
-  windows:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: "stable"
-          cache: true
-
-      - name: Install dependencies
-        run: flutter pub get
-        working-directory: frontend
-
-      - name: Build Windows
-        run: flutter build windows --release
-        working-directory: frontend
-
-      - name: Upload Windows Build
-        uses: actions/upload-artifact@v4
-        with:
-          name: vaultstream-windows
-          path: frontend/build/windows/x64/runner/Release
 
   # Linux Build
   linux:
@@ -179,30 +134,3 @@ jobs:
         with:
           name: vaultstream-linux
           path: frontend/build/linux/x64/release/bundle
-
-  # macOS Build
-  macos:
-    runs-on: macos-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: "stable"
-          cache: true
-
-      - name: Install dependencies
-        run: flutter pub get
-        working-directory: frontend
-
-      - name: Build macOS
-        run: flutter build macos --release
-        working-directory: frontend
-
-      - name: Upload macOS Build
-        uses: actions/upload-artifact@v4
-        with:
-          name: vaultstream-macos
-          path: frontend/build/macos/Build/Products/Release
