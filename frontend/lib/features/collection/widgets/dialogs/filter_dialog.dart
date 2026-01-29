@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../providers/tag_provider.dart';
 
 class FilterDialog extends ConsumerStatefulWidget {
@@ -33,38 +34,16 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
   late Set<String> _selectedTags;
   List<String> _tagSuggestions = [];
 
-  final List<String> _platforms = [
-    'bilibili',
-    'twitter',
-    'xiaohongshu',
-    'douyin',
-    'weibo',
-    'zhihu',
-  ];
-
-  final List<String> _statuses = [
-    'unprocessed',
-    'processing',
-    'pulled',
-    'failed',
-    'archived',
-  ];
+  final List<String> _platforms = ['bilibili', 'twitter', 'xiaohongshu', 'douyin', 'weibo', 'zhihu'];
+  final List<String> _statuses = ['unprocessed', 'processing', 'pulled', 'failed', 'archived'];
 
   final Map<String, String> _platformLabels = {
-    'bilibili': 'Bilibili',
-    'twitter': 'Twitter/X',
-    'xiaohongshu': '小红书',
-    'douyin': '抖音',
-    'weibo': '微博',
-    'zhihu': '知乎',
+    'bilibili': 'Bilibili', 'twitter': 'Twitter/X', 'xiaohongshu': '小红书',
+    'douyin': '抖音', 'weibo': '微博', 'zhihu': '知乎',
   };
 
   final Map<String, String> _statusLabels = {
-    'unprocessed': '未处理',
-    'processing': '处理中',
-    'pulled': '已拉取',
-    'failed': '失败',
-    'archived': '已归档',
+    'unprocessed': '未处理', 'processing': '处理中', 'pulled': '已拉取', 'failed': '失败', 'archived': '已归档',
   };
 
   @override
@@ -89,8 +68,8 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
     setState(() {
       _selectedPlatforms.clear();
       _selectedStatuses.clear();
-      _authorController.text = ''; // 显式设置文本
-      _tagInputController.text = '';
+      _authorController.clear();
+      _tagInputController.clear();
       _dateRange = null;
       _selectedTags.clear();
       _tagSuggestions = [];
@@ -103,7 +82,7 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
       return;
     }
     final suggestions = globalTags
-        .where((t) => t.contains(value.toLowerCase()) && !_selectedTags.contains(t))
+        .where((t) => t.toLowerCase().contains(value.toLowerCase()) && !_selectedTags.contains(t))
         .take(10)
         .toList();
     setState(() => _tagSuggestions = suggestions);
@@ -131,22 +110,33 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
     return false;
   }
 
-  Widget _buildDateChip(String label, DateTimeRange? range) {
-    final isSelected = (range == null && _dateRange == null) ||
-        (range != null && _dateRange != null && _isPresetRange(_dateRange!) &&
-         range.duration.inDays == _dateRange!.duration.inDays);
-    
-    return FilterChip(
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 24, bottom: 12),
+      child: Text(title, style: Theme.of(context).textTheme.titleSmall?.copyWith(
+        fontWeight: FontWeight.bold,
+        color: Theme.of(context).colorScheme.primary,
+        letterSpacing: 0.5,
+      )),
+    );
+  }
+
+  Widget _buildChoiceChip(String label, bool isSelected, ValueChanged<bool> onSelected) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return ChoiceChip(
       label: Text(label),
       selected: isSelected,
-      onSelected: (selected) {
-        setState(() {
-          _dateRange = selected ? range : null;
-        });
-      },
+      onSelected: onSelected,
       showCheckmark: false,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+      selectedColor: colorScheme.primaryContainer,
+      labelStyle: TextStyle(
+        color: isSelected ? colorScheme.onPrimaryContainer : colorScheme.onSurfaceVariant,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+      ),
+      shape: const StadiumBorder(),
+      side: BorderSide(
+        color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.5),
+        width: isSelected ? 1.5 : 1,
       ),
     );
   }
@@ -158,264 +148,296 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
     final allTagsAsync = ref.watch(allTagsProvider);
     final globalTags = allTagsAsync.value?.map((e) => e.name).toList() ?? [];
 
-    return Material(
-      color: Colors.transparent,
-      child: Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480, maxHeight: 600),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.filter_list_rounded, color: colorScheme.primary),
-                    const SizedBox(width: 12),
-                    Text(
-                      '筛选内容',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
+    return Dialog(
+      backgroundColor: colorScheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 500, maxHeight: 700),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(Icons.tune_rounded, color: colorScheme.primary, size: 22),
+                  ),
+                  const SizedBox(width: 16),
+                  Text('筛选收藏内容', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  IconButton.filledTonal(
+                    onPressed: _resetAll,
+                    icon: const Icon(Icons.refresh_rounded, size: 20),
+                    tooltip: '重置所有',
+                    style: IconButton.styleFrom(foregroundColor: colorScheme.error),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Divider(),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildSectionHeader('内容平台'),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _platforms.map((p) => _buildChoiceChip(
+                          _platformLabels[p] ?? p.toUpperCase(),
+                          _selectedPlatforms.contains(p),
+                          (selected) => setState(() => selected ? _selectedPlatforms.add(p) : _selectedPlatforms.remove(p)),
+                        )).toList(),
                       ),
-                    ),
-                    const Spacer(),
-                    TextButton.icon(
-                      onPressed: _resetAll,
-                      icon: const Icon(Icons.refresh_rounded, size: 18),
-                      label: const Text('重置'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: colorScheme.error,
+
+                      _buildSectionHeader('处理状态'),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _statuses.map((s) => _buildChoiceChip(
+                          _statusLabels[s] ?? s,
+                          _selectedStatuses.contains(s),
+                          (selected) => setState(() => selected ? _selectedStatuses.add(s) : _selectedStatuses.remove(s)),
+                        )).toList(),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Platform chips
-                        Text('平台', style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: colorScheme.onSurfaceVariant,
-                        )),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: _platforms.map((p) {
-                            final isSelected = _selectedPlatforms.contains(p);
-                            return FilterChip(
-                              label: Text(_platformLabels[p] ?? p.toUpperCase()),
-                              selected: isSelected,
-                              onSelected: (selected) {
-                                setState(() {
-                                  if (selected) {
-                                    _selectedPlatforms.add(p);
-                                  } else {
-                                    _selectedPlatforms.remove(p);
-                                  }
-                                });
-                              },
-                              showCheckmark: false,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
+
+                      _buildSectionHeader('标签筛选'),
+                      if (_selectedTags.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: _selectedTags.map((tag) => InputChip(
+                              label: Text('#$tag'),
+                              onDeleted: () => setState(() => _selectedTags.remove(tag)),
+                              deleteIcon: Icon(Icons.close_rounded, size: 14, color: colorScheme.onPrimaryContainer),
+                              shape: const StadiumBorder(),
+                              backgroundColor: colorScheme.primaryContainer,
+                              labelStyle: TextStyle(
+                                color: colorScheme.onPrimaryContainer,
+                                fontWeight: FontWeight.bold,
                               ),
-                            );
-                          }).toList(),
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Status chips
-                        Text('状态', style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: colorScheme.onSurfaceVariant,
-                        )),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: _statuses.map((s) {
-                            final isSelected = _selectedStatuses.contains(s);
-                            return FilterChip(
-                              label: Text(_statusLabels[s] ?? s),
-                              selected: isSelected,
-                              onSelected: (selected) {
-                                setState(() {
-                                  if (selected) {
-                                    _selectedStatuses.add(s);
-                                  } else {
-                                    _selectedStatuses.remove(s);
-                                  }
-                                });
-                              },
-                              showCheckmark: false,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Tags (Search and Select)
-                        Text('标签', style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: colorScheme.onSurfaceVariant,
-                        )),
-                        const SizedBox(height: 8),
-                        if (_selectedTags.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: _selectedTags.map((tag) => InputChip(
-                                label: Text('#$tag'),
-                                onDeleted: () => setState(() => _selectedTags.remove(tag)),
-                                deleteIcon: const Icon(Icons.close, size: 14),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                              )).toList(),
-                            ),
-                          ),
-                        TextField(
-                          controller: _tagInputController,
-                          onChanged: (v) => _onTagInputChanged(v, globalTags),
-                          decoration: InputDecoration(
-                            hintText: '搜索并添加标签...',
-                            prefixIcon: const Icon(Icons.tag, size: 20),
-                            isDense: true,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                              side: BorderSide(color: colorScheme.primary, width: 1.5),
+                            )).toList(),
                           ),
                         ),
-                        if (_tagSuggestions.isNotEmpty)
-                          Container(
-                            margin: const EdgeInsets.only(top: 8),
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Wrap(
-                              spacing: 8,
-                              children: _tagSuggestions.map((tag) => ActionChip(
-                                label: Text(tag),
-                                onPressed: () => _addTag(tag),
-                              )).toList(),
+                      _buildTextField(
+                        controller: _tagInputController,
+                        label: '搜索标签',
+                        hint: '输入关键词搜索并添加...',
+                        icon: Icons.tag_rounded,
+                        onChanged: (v) => _onTagInputChanged(v, globalTags),
+                        suffixIcon: allTagsAsync.isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : null,
+                      ),
+                      if (_tagInputController.text.isNotEmpty && _tagSuggestions.isEmpty)
+                        Container(
+                          margin: const EdgeInsets.only(top: 12),
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '无匹配标签',
+                              style: TextStyle(color: colorScheme.outline),
                             ),
                           ),
-                        const SizedBox(height: 20),
-
-                        // Author
-                        TextField(
-                          controller: _authorController,
-                          decoration: InputDecoration(
-                            labelText: '作者',
-                            hintText: '包含关键词',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            prefixIcon: const Icon(Icons.person_outline),
+                        ),
+                      if (_tagSuggestions.isNotEmpty)
+                        Container(
+                          margin: const EdgeInsets.only(top: 12),
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: _tagSuggestions.map((tag) => ActionChip(
+                              label: Text(tag),
+                              onPressed: () => _addTag(tag),
+                              shape: const StadiumBorder(),
+                              backgroundColor: colorScheme.surface,
+                              side: BorderSide(color: colorScheme.outlineVariant),
+                            )).toList(),
                           ),
                         ),
-                        const SizedBox(height: 20),
 
-                        // Date range
-                        Text('时间范围', style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: colorScheme.onSurfaceVariant,
-                        )),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _buildDateChip('全部', null),
-                            _buildDateChip('今天', DateTimeRange(
-                              start: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
-                              end: DateTime.now(),
-                            )),
-                            _buildDateChip('过去7天', DateTimeRange(
-                              start: DateTime.now().subtract(const Duration(days: 7)),
-                              end: DateTime.now(),
-                            )),
-                            _buildDateChip('过去30天', DateTimeRange(
-                              start: DateTime.now().subtract(const Duration(days: 30)),
-                              end: DateTime.now(),
-                            )),
-                            ActionChip(
-                              label: Text(_dateRange != null && !_isPresetRange(_dateRange!)
-                                  ? '${_dateRange!.start.toString().split(' ')[0]} ~ ${_dateRange!.end.toString().split(' ')[0]}'
-                                  : '自定义'),
-                              avatar: const Icon(Icons.edit_calendar, size: 18),
-                              onPressed: () async {
-                                final picked = await showDateRangePicker(
-                                  context: context,
-                                  firstDate: DateTime(2020),
-                                  lastDate: DateTime.now(),
-                                  initialDateRange: _dateRange,
-                                  builder: (context, child) => Center(
-                                    child: ConstrainedBox(
-                                      constraints: const BoxConstraints(maxWidth: 400, maxHeight: 520),
-                                      child: child,
-                                    ),
-                                  ),
-                                );
-                                if (picked != null) {
-                                  setState(() => _dateRange = picked);
-                                }
-                              },
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      _buildSectionHeader('作者过滤'),
+                      _buildTextField(
+                        controller: _authorController,
+                        label: '作者名称',
+                        hint: '包含特定的作者关键词',
+                        icon: Icons.person_search_rounded,
+                      ),
+
+                      _buildSectionHeader('时间范围'),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _buildChoiceChip('全部时间', _dateRange == null, (s) => setState(() => _dateRange = null)),
+                          _buildDatePresetChip('今天', 0),
+                          _buildDatePresetChip('过去 7 天', 7),
+                          _buildDatePresetChip('过去 30 天', 30),
+                          ActionChip(
+                            label: Text(_dateRange != null && !_isPresetRange(_dateRange!)
+                                ? DateFormat('yyyy-MM-dd').format(_dateRange!.start)
+                                : '自定义日期'),
+                            avatar: const Icon(Icons.calendar_today_rounded, size: 16),
+                            onPressed: _showExpressiveDatePicker,
+                            shape: const StadiumBorder(),
+                            backgroundColor: (_dateRange != null && !_isPresetRange(_dateRange!)) ? colorScheme.primaryContainer : null,
+                            labelStyle: TextStyle(
+                              color: (_dateRange != null && !_isPresetRange(_dateRange!)) ? colorScheme.onPrimaryContainer : null,
+                              fontWeight: (_dateRange != null && !_isPresetRange(_dateRange!)) ? FontWeight.bold : null,
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
+                            side: BorderSide(color: (_dateRange != null && !_isPresetRange(_dateRange!)) ? colorScheme.primary : colorScheme.outlineVariant),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 32),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
-                        child: const Text('取消'),
+              ),
+              const Divider(),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
+                      child: const Text('取消'),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 2,
-                      child: FilledButton(
-                        onPressed: () {
-                          Navigator.of(context).pop({
-                            'platforms': _selectedPlatforms.toList(),
-                            'statuses': _selectedStatuses.toList(),
-                            'author': _authorController.text.trim().isEmpty ? null : _authorController.text.trim(),
-                            'dateRange': _dateRange,
-                            'tags': _selectedTags.toList(),
-                          });
-                        },
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
-                        child: const Text('应用筛选'),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton(
+                      onPressed: () {
+                        Navigator.of(context).pop({
+                          'platforms': _selectedPlatforms.toList(),
+                          'statuses': _selectedStatuses.toList(),
+                          'author': _authorController.text.trim().isEmpty ? null : _authorController.text.trim(),
+                          'dateRange': _dateRange,
+                          'tags': _selectedTags.toList(),
+                        });
+                      },
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
+                      child: const Text('应用筛选条件'),
                     ),
-                  ],
-                ),
-              ],
-            ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    ValueChanged<String>? onChanged,
+    Widget? suffixIcon,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: Icon(icon, size: 20),
+        suffixIcon: suffixIcon,
+        filled: true,
+        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
+    );
+  }
+
+  Widget _buildDatePresetChip(String label, int days) {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day).subtract(Duration(days: days));
+    final range = DateTimeRange(start: start, end: now);
+    final isSelected = _dateRange != null && _isPresetRange(_dateRange!) && 
+                      _dateRange!.start.day == start.day && _dateRange!.duration.inDays == days;
+    
+    return _buildChoiceChip(label, isSelected, (s) => setState(() => _dateRange = s ? range : null));
+  }
+
+  void _showExpressiveDatePicker() async {
+    final colorScheme = Theme.of(context).colorScheme;
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+      initialDateRange: _dateRange,
+      locale: const Locale('zh', 'CN'),
+      builder: (context, child) {
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: 400,
+              maxHeight: 560,
+            ),
+            child: Theme(
+              data: Theme.of(context).copyWith(
+                colorScheme: colorScheme.copyWith(
+                  primary: colorScheme.primary,
+                  onPrimary: colorScheme.onPrimary,
+                  surface: colorScheme.surface,
+                  onSurface: colorScheme.onSurface,
+                ),
+                dialogTheme: DialogThemeData(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28),
+                  ),
+                ),
+              ),
+              child: child!,
+            ),
+          ),
+        );
+      },
+    );
+    if (picked != null) setState(() => _dateRange = picked);
   }
 }

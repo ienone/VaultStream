@@ -95,89 +95,105 @@ class BilibiliLandscapeLayout extends StatelessWidget {
         Expanded(
           flex: 4,
           child: Container(
-            decoration: BoxDecoration(
-              color: colorScheme.surface,
-              border: Border(
-                left: BorderSide(color: colorScheme.outlineVariant),
-              ),
-            ),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(28),
-                ),
-                padding: const EdgeInsets.all(28),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    AuthorHeader(detail: detail),
-                    const SizedBox(height: 32),
-                    Text(
-                      detail.title ?? '无标题内容',
-                      style: theme.textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        height: 1.3,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    UnifiedStats(detail: detail),
-                    const SizedBox(height: 16),
-                    if (detail.platformId != null) BvidCard(detail: detail),
-                    const SizedBox(height: 24),
-                    TagsSection(detail: detail),
-                    const SizedBox(height: 40),
-                    if (detail.description != null &&
-                        detail.description!.isNotEmpty &&
-                        detail.description != '-') ...[
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(
-                            color: colorScheme.primary.withValues(alpha: 0.1),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.notes_rounded,
-                                  size: 18,
-                                  color: colorScheme.primary,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '简介',
-                                  style: theme.textTheme.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                    color: colorScheme.primary,
-                                    letterSpacing: 1.0,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              detail.description!,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                height: 1.8,
-                                fontSize: 15,
-                                color: colorScheme.onSurface,
-                              ),
-                            ),
-                          ],
-                        ),
+            color: colorScheme.surface,
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Top: Colored Container
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(32),
+                    boxShadow: [
+                      BoxShadow(
+                        color: colorScheme.shadow.withValues(alpha: 0.08),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
                       ),
                     ],
-                  ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AuthorHeader(detail: detail),
+                      const SizedBox(height: 24),
+                      Text(
+                        detail.title ?? '无标题内容',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          height: 1.3,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      UnifiedStats(detail: detail, useContainer: false), // Use internal layout
+                      const SizedBox(height: 16),
+                      if (detail.platformId != null) BvidCard(detail: detail),
+                      const SizedBox(height: 20),
+                      TagsSection(detail: detail),
+                    ],
+                  ),
                 ),
-              ),
+                
+                const SizedBox(height: 24),
+                
+                // Bottom: Description (Scrollable)
+                if (detail.description != null &&
+                    detail.description!.isNotEmpty &&
+                    detail.description != '-')
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(32),
+                        boxShadow: [
+                          BoxShadow(
+                            color: colorScheme.shadow.withValues(alpha: 0.08),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.notes_rounded, size: 18, color: colorScheme.primary),
+                              const SizedBox(width: 8),
+                              Text(
+                                '简介',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Expanded(
+                            child: SingleChildScrollView(
+                              child: Text(
+                                detail.description!,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  height: 1.6,
+                                  fontSize: 15,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  const Spacer(),
+              ],
             ),
           ),
         ),

@@ -3,6 +3,7 @@ from sqlalchemy import select, and_, or_, func, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Content, ContentStatus, Platform, ReviewStatus
 from datetime import datetime
+import json
 
 class ContentRepository:
     def __init__(self, db: AsyncSession):
@@ -42,13 +43,23 @@ class ContentRepository:
         if tags:
             # 针对 SQLite 的鲁棒性标签过滤方案
             # 标签在数据库中以 JSON 字符串存储，如 '["tag1", "tag2"]'
-            # 使用 LIKE '%"tag"%' 匹配可以精确锁定被引号包裹的独立标签
+            # 使用 LIKE '%"tag"%' 匹配可以精准锁定被引号包裹的独立标签
             tag_conditions = []
             for t in tags:
-                # 兼容性匹配：既尝试标准的 contains (PostgreSQL/SQLAlchemy 抽象)
-                # 也提供针对 SQLite 的字符串级精准匹配
+                # 1. 尝试标准的 JSON 包含 (兼容性)
                 tag_conditions.append(Content.tags.contains(t))
-                tag_conditions.append(Content.tags.like(f'%"%"{t}%"'))
+                
+                # 2. 提供针对 SQLite 的字符串级精准匹配: "%"tag"%"
+                # 注意: 这里使用前后引号确保匹配的是完整标签而非子串
+                tag_conditions.append(Content.tags.like(f'%"{t}"%'))
+                
+                # 3. 针对 Unicode 转义存储 (如中文标签 "\u516b...")
+                try:
+                    escaped_tag = json.dumps(t, ensure_ascii=True)[1:-1]
+                    if escaped_tag != t:
+                        tag_conditions.append(Content.tags.like(f'%"{escaped_tag}"%'))
+                except Exception:
+                    pass
             
             conditions.append(or_(*tag_conditions))
 

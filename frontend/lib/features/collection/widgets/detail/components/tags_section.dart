@@ -40,12 +40,12 @@ class TagsSection extends StatelessWidget {
                     label: Text('#$tag'),
                     labelStyle: theme.textTheme.labelSmall?.copyWith(
                       color: colorScheme.primary,
+                      fontWeight: FontWeight.bold,
                     ),
                     visualDensity: VisualDensity.compact,
-                    side: BorderSide(
-                      color: colorScheme.primary.withValues(alpha: 0.3),
-                    ),
+                    side: BorderSide.none,
                     backgroundColor: colorScheme.primary.withValues(alpha: 0.1),
+                    shape: StadiumBorder(),
                   ),
                 )
                 .toList(),

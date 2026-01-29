@@ -1,7 +1,8 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/network/api_client.dart';
+import '../../core/widgets/frosted_app_bar.dart';
 import 'models/distribution_rule.dart';
 import 'models/bot_chat.dart';
 import 'models/pushed_record.dart';
@@ -48,26 +49,21 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: FrostedAppBar(
         title: const Text('审批与分发'),
-        backgroundColor: colorScheme.surface.withValues(alpha: 0.8),
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        flexibleSpace: ClipRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(color: Colors.transparent),
-          ),
-        ),
         bottom: TabBar(
           controller: _tabController,
+          dividerColor: Colors.transparent,
+          indicatorSize: TabBarIndicatorSize.label,
+          indicatorWeight: 3,
+          labelStyle: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
+          unselectedLabelStyle: theme.textTheme.labelLarge,
           tabs: const [
-            Tab(icon: Icon(Icons.dashboard), text: '内容队列'),
-            Tab(icon: Icon(Icons.smart_toy), text: 'Bot 群组'),
-            Tab(icon: Icon(Icons.history), text: '推送历史'),
+            Tab(text: '内容队列'),
+            Tab(text: 'Bot 群组'),
+            Tab(text: '推送历史'),
           ],
         ),
       ),
@@ -90,9 +86,10 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         if (_tabController.index == 1) {
           return FloatingActionButton.extended(
             onPressed: _showAddBotChatDialog,
-            icon: const Icon(Icons.add),
+            icon: const Icon(Icons.add_rounded),
             label: const Text('添加群组'),
-          );
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          ).animate().scale(curve: Curves.easeOutBack);
         }
         return const SizedBox.shrink();
       },
@@ -102,71 +99,70 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
   Widget _buildQueueTab() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isWideScreen = constraints.maxWidth > 800;
+        final isWideScreen = constraints.maxWidth > 900;
 
         if (isWideScreen) {
           return Row(
             children: [
               SizedBox(
-                width: 320,
+                width: 360,
                 child: _buildRuleSidebar(),
               ),
-              const VerticalDivider(width: 1),
+              VerticalDivider(
+                width: 1, 
+                thickness: 1, 
+                color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.3)
+              ),
               Expanded(
-                child: _buildQueueContent(),
+                child: Container(
+                  color: Theme.of(context).colorScheme.surface,
+                  child: _buildQueueContent(),
+                ),
               ),
             ],
           );
         } else {
-          return Stack(
+          return Column(
             children: [
-              Column(
-                children: [
-                  const SizedBox(height: 72), // Reserve space for rule selector header
-                  Expanded(child: _buildQueueContent()),
-                ],
-              ),
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: _buildRuleSelector(),
-              ),
+              _buildRuleSelector(),
+              Expanded(child: _buildQueueContent()),
             ],
           );
         }
       },
-    );
+    ).animate().fadeIn(duration: 400.ms);
   }
 
   Widget _buildRuleSidebar() {
     final rulesAsync = ref.watch(distributionRulesProvider);
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Container(
-      color: theme.colorScheme.surfaceContainerLow,
+      color: colorScheme.surfaceContainerLow, // Added consistent background color
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
             child: Row(
               children: [
+                Icon(Icons.rule_rounded, size: 20, color: colorScheme.primary),
+                const SizedBox(width: 12),
                 Text(
                   '分发规则',
-                  style: theme.textTheme.titleSmall?.copyWith(
+                  style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.add, size: 20),
+                IconButton.filledTonal(
+                  icon: const Icon(Icons.add_rounded, size: 20),
                   onPressed: _showCreateRuleDialog,
                   tooltip: '新建规则',
                 ),
               ],
             ),
           ),
-          const Divider(height: 1),
           Expanded(
             child: rulesAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -184,210 +180,228 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
     final colorScheme = theme.colorScheme;
 
     return ListView(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
-        // "All content" is a special item without rule details
-        Card(
-          margin: EdgeInsets.zero,
-          color: _selectedRuleId == null ? colorScheme.primaryContainer : null,
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: () {
-              setState(() => _selectedRuleId = null);
-              ref.read(queueFilterProvider.notifier).setRuleId(null);
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '全部内容',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w500,
-                      color: _selectedRuleId == null ? colorScheme.onPrimaryContainer : null,
-                    ),
-                  ),
-                  Text(
-                    '显示所有内容',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: _selectedRuleId == null
-                          ? colorScheme.onPrimaryContainer.withValues(alpha: 0.7)
-                          : colorScheme.outline,
-                    ),
-                  ),
-                ],
+        _buildAllContentCard(colorScheme, theme),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            const Expanded(child: Divider()),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text(
+                '自定义规则', 
+                style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline, fontWeight: FontWeight.bold)
               ),
             ),
-          ),
+            const Expanded(child: Divider()),
+          ],
         ),
-        const SizedBox(height: 8),
-        const Divider(),
-        const SizedBox(height: 8),
+        const SizedBox(height: 16),
         if (rules.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                Icon(Icons.rule, size: 40, color: theme.colorScheme.outline),
-                const SizedBox(height: 8),
-                const Text('暂无规则'),
-                const SizedBox(height: 8),
-                FilledButton.tonalIcon(
-                  onPressed: _showCreateRuleDialog,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('创建规则'),
-                ),
-              ],
-            ),
-          )
+          _buildEmptyRulesPlaceholder(theme)
         else
-          ...rules.map((rule) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _buildRuleItem(rule),
+          ...rules.asMap().entries.map((entry) => RuleListTile(
+                index: entry.key,
+                rule: entry.value,
+                isSelected: _selectedRuleId == entry.value.id,
+                onTap: () {
+                  setState(() => _selectedRuleId = entry.value.id);
+                  ref.read(queueFilterProvider.notifier).setRuleId(entry.value.id);
+                },
+                onEdit: () => _showEditRuleDialog(entry.value),
+                onDelete: () => _confirmDeleteRule(entry.value),
+                onToggleEnabled: (enabled) => _toggleRuleEnabled(entry.value, enabled),
               )),
       ],
     );
   }
 
-  Widget _buildRuleItem(DistributionRule rule) {
-    final isSelected = _selectedRuleId == rule.id;
+  Widget _buildAllContentCard(ColorScheme colorScheme, ThemeData theme) {
+    final isSelected = _selectedRuleId == null;
+    return Card(
+        margin: EdgeInsets.zero,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(
+            color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.3),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        color: isSelected ? colorScheme.primaryContainer.withValues(alpha: 0.3) : colorScheme.surfaceContainerHigh,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () {
+            setState(() => _selectedRuleId = null);
+            ref.read(queueFilterProvider.notifier).setRuleId(null);
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: (isSelected ? colorScheme.primary : colorScheme.outline).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.all_inclusive_rounded,
+                    size: 20,
+                    color: isSelected ? colorScheme.primary : colorScheme.outline,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '全部内容',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: isSelected ? colorScheme.primary : null,
+                        ),
+                      ),
+                      Text(
+                        '显示所有分发任务',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+  }
 
-    return RuleListTile(
-      rule: rule,
-      isSelected: isSelected,
-      onTap: () {
-        setState(() => _selectedRuleId = rule.id);
-        ref.read(queueFilterProvider.notifier).setRuleId(rule.id);
-      },
-      onEdit: () => _showEditRuleDialog(rule),
-      onDelete: () => _confirmDeleteRule(rule),
-      onToggleEnabled: (enabled) => _toggleRuleEnabled(rule, enabled),
-    );
+  Widget _buildEmptyRulesPlaceholder(ThemeData theme) {
+    return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 32),
+            child: Column(
+              children: [
+                Icon(Icons.rule_rounded, size: 48, color: theme.colorScheme.outline.withValues(alpha: 0.5)),
+                const SizedBox(height: 16),
+                const Text('暂无自定义规则'),
+                const SizedBox(height: 16),
+                FilledButton.tonalIcon(
+                  onPressed: _showCreateRuleDialog,
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('立即创建'),
+                ),
+              ],
+            ),
+          );
   }
 
   Widget _buildRuleSelector() {
     final rulesAsync = ref.watch(distributionRulesProvider);
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
-    return Material(
-      color: theme.colorScheme.surface,
-      elevation: _portraitRuleConfigExpanded ? 4 : 0,
-      shadowColor: Colors.black26,
-      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        decoration: BoxDecoration(
-          color: _portraitRuleConfigExpanded
-              ? theme.colorScheme.surfaceContainer
-              : theme.colorScheme.surface,
-          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-          border: _portraitRuleConfigExpanded
-              ? null
-              : Border(bottom: BorderSide(color: theme.colorScheme.outlineVariant)),
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        border: Border(bottom: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.3))),
+      ),
+      child: rulesAsync.when(
+        loading: () => const LinearProgressIndicator(),
+        error: (e, st) => Padding(
+          padding: const EdgeInsets.all(8),
+          child: Text('加载失败: $e'),
         ),
-        child: rulesAsync.when(
-          loading: () => const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: LinearProgressIndicator(),
-          ),
-          error: (e, st) => Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Text('加载失败: $e'),
-          ),
-          data: (rules) {
-            final selectedRule = _selectedRuleId != null
-                ? rules.where((r) => r.id == _selectedRuleId).firstOrNull
-                : null;
+        data: (rules) {
+          final selectedRule = _selectedRuleId != null
+              ? rules.where((r) => r.id == _selectedRuleId).firstOrNull
+              : null;
 
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<int?>(
-                          initialValue: _selectedRuleId,
-                          decoration: InputDecoration(
-                            contentPadding:
-                                const EdgeInsets.symmetric(horizontal: 12),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            prefixIcon: const Icon(Icons.rule, size: 20),
-                            isDense: true,
-                            fillColor: theme.colorScheme.surface,
-                            filled: true,
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<int?>(
+                        initialValue: _selectedRuleId,
+                        decoration: InputDecoration(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
                           ),
-                          items: [
-                            const DropdownMenuItem<int?>(
-                              value: null,
-                              child: Text('全部规则'),
-                            ),
-                            ...rules.map((rule) => DropdownMenuItem<int?>(
-                                  value: rule.id,
-                                  child: Text(rule.name),
-                                )),
-                          ],
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedRuleId = value;
-                              _portraitRuleConfigExpanded = false;
-                            });
-                            ref.read(queueFilterProvider.notifier).setRuleId(value);
-                          },
+                          prefixIcon: const Icon(Icons.rule_rounded, size: 20),
+                          isDense: true,
+                          fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                          filled: true,
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      if (selectedRule != null)
-                        IconButton(
-                          icon: Icon(
-                            _portraitRuleConfigExpanded
-                                ? Icons.expand_less
-                                : Icons.expand_more,
+                        items: [
+                          const DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text('全部规则'),
                           ),
-                          onPressed: () {
-                            setState(() {
-                              _portraitRuleConfigExpanded =
-                                  !_portraitRuleConfigExpanded;
-                            });
-                          },
-                          tooltip:
-                              _portraitRuleConfigExpanded ? '收起规则详情' : '展开规则详情',
+                          ...rules.map((rule) => DropdownMenuItem<int?>(
+                                value: rule.id,
+                                child: Text(rule.name),
+                              )),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedRuleId = value;
+                            _portraitRuleConfigExpanded = false;
+                          });
+                          ref.read(queueFilterProvider.notifier).setRuleId(value);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    if (selectedRule != null)
+                      IconButton.filledTonal(
+                        icon: AnimatedRotation(
+                          turns: _portraitRuleConfigExpanded ? 0.5 : 0,
+                          duration: 300.ms,
+                          child: const Icon(Icons.expand_more_rounded),
                         ),
-                      IconButton(
-                        icon: const Icon(Icons.add),
-                        onPressed: _showCreateRuleDialog,
-                        tooltip: '新建规则',
+                        onPressed: () {
+                          setState(() {
+                            _portraitRuleConfigExpanded = !_portraitRuleConfigExpanded;
+                          });
+                        },
                       ),
-                    ],
-                  ),
+                    const SizedBox(width: 4),
+                    IconButton.filledTonal(
+                      icon: const Icon(Icons.add_rounded),
+                      onPressed: _showCreateRuleDialog,
+                    ),
+                  ],
                 ),
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                  alignment: Alignment.topCenter,
-                  child: (selectedRule != null && _portraitRuleConfigExpanded)
-                      ? Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                          child: RuleConfigPanel(
-                            rule: selectedRule,
-                            expanded: true,
-                            onEdit: () => _showEditRuleDialog(selectedRule),
-                            onDelete: () => _confirmDeleteRule(selectedRule),
-                            onToggleEnabled: (enabled) =>
-                                _toggleRuleEnabled(selectedRule, enabled),
-                            // No onToggleExpand passed, so icon is hidden
-                          ),
-                        )
-                      : const SizedBox(width: double.infinity),
-                ),
-              ],
-            );
-          },
-        ),
+              ),
+              AnimatedSize(
+                duration: 300.ms,
+                curve: Curves.easeOutQuart,
+                child: (selectedRule != null && _portraitRuleConfigExpanded)
+                    ? Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                        child: RuleConfigPanel(
+                          rule: selectedRule,
+                          expanded: true,
+                          onEdit: () => _showEditRuleDialog(selectedRule),
+                          onDelete: () => _confirmDeleteRule(selectedRule),
+                          onToggleEnabled: (enabled) =>
+                              _toggleRuleEnabled(selectedRule, enabled),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -404,14 +418,14 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
   Widget _buildStatusTabs() {
     final filter = ref.watch(queueFilterProvider);
     final statsAsync = ref.watch(queueStatsProvider(_selectedRuleId));
-    final theme = Theme.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
+        color: colorScheme.surface,
         border: Border(
-          bottom: BorderSide(color: theme.colorScheme.outlineVariant),
+          bottom: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
         ),
       ),
       child: statsAsync.when(
@@ -423,28 +437,28 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
           final pending = stats['pending_review'] ?? 0;
           final pushed = stats['pushed'] ?? 0;
 
-          return SizedBox(
-            width: double.infinity,
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
             child: SegmentedButton<QueueStatus>(
               segments: [
                 ButtonSegment<QueueStatus>(
                   value: QueueStatus.willPush,
-                  icon: const Icon(Icons.schedule_send),
+                  icon: const Icon(Icons.auto_awesome_rounded, size: 18),
                   label: Text('待推送 ($willPush)'),
                 ),
                 ButtonSegment<QueueStatus>(
                   value: QueueStatus.filtered,
-                  icon: const Icon(Icons.filter_alt),
-                  label: Text('不推送 ($filtered)'),
+                  icon: const Icon(Icons.filter_list_off_rounded, size: 18),
+                  label: Text('已过滤 ($filtered)'),
                 ),
                 ButtonSegment<QueueStatus>(
                   value: QueueStatus.pendingReview,
-                  icon: const Icon(Icons.pending_actions),
+                  icon: const Icon(Icons.rate_review_rounded, size: 18),
                   label: Text('待审批 ($pending)'),
                 ),
                 ButtonSegment<QueueStatus>(
                   value: QueueStatus.pushed,
-                  icon: const Icon(Icons.check_circle),
+                  icon: const Icon(Icons.check_circle_rounded, size: 18),
                   label: Text('已推送 ($pushed)'),
                 ),
               ],
@@ -453,9 +467,12 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                 ref.read(queueFilterProvider.notifier).setStatus(newSelection.first);
               },
               showSelectedIcon: false,
-              style: ButtonStyle(
+              style: SegmentedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
                 visualDensity: VisualDensity.comfortable,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                selectedBackgroundColor: colorScheme.primary,
+                selectedForegroundColor: colorScheme.onPrimary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
             ),
           );
@@ -474,11 +491,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: 48, color: Theme.of(context).colorScheme.error),
+            Icon(Icons.error_outline_rounded, size: 48, color: Theme.of(context).colorScheme.error),
             const SizedBox(height: 16),
             Text('加载失败: $e'),
             const SizedBox(height: 16),
-            FilledButton(
+            FilledButton.tonal(
               onPressed: () => ref.invalidate(contentQueueProvider),
               child: const Text('重试'),
             ),
@@ -500,6 +517,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
 
   Widget _buildBotChatsTab() {
     final chatsAsync = ref.watch(botChatsProvider);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return chatsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -507,11 +525,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: 48, color: Theme.of(context).colorScheme.error),
+            Icon(Icons.error_outline_rounded, size: 48, color: colorScheme.error),
             const SizedBox(height: 16),
             Text('加载失败: $e'),
             const SizedBox(height: 16),
-            FilledButton(
+            FilledButton.tonal(
               onPressed: () => ref.invalidate(botChatsProvider),
               child: const Text('重试'),
             ),
@@ -525,49 +543,64 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
             ref.invalidate(botStatusProvider);
           },
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(24),
             children: [
               BotStatusCard(
                 isSyncing: _isSyncingChats,
                 onSync: _syncBotChats,
                 onTriggerPush: _triggerPush,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 32),
+              Row(
+                children: [
+                  Icon(Icons.groups_rounded, size: 20, color: colorScheme.primary),
+                  const SizedBox(width: 12),
+                  Text('群组与频道', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  Text('${chats.length} 个配置', style: Theme.of(context).textTheme.labelLarge?.copyWith(color: colorScheme.outline)),
+                ],
+              ),
+              const SizedBox(height: 20),
               if (chats.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 48),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.smart_toy,
-                        size: 64,
-                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        '暂无关联的群组/频道',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      const Text('点击右下角按钮添加群组'),
-                    ],
-                  ),
-                )
+                _buildEmptyChatsPlaceholder(colorScheme)
               else
-                ...chats.map((chat) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
+                ...chats.asMap().entries.map((entry) => Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
                       child: BotChatCard(
-                        chat: chat,
-                        onEdit: () => _showEditBotChatDialog(chat),
-                        onDelete: () => _confirmDeleteBotChat(chat),
-                        onToggleEnabled: (enabled) => _toggleBotChatEnabled(chat),
+                        index: entry.key,
+                        chat: entry.value,
+                        onEdit: () => _showEditBotChatDialog(entry.value),
+                        onDelete: () => _confirmDeleteBotChat(entry.value),
+                        onToggleEnabled: (enabled) => _toggleBotChatEnabled(entry.value),
                       ),
                     )),
-              const SizedBox(height: 80),
+              const SizedBox(height: 100),
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildEmptyChatsPlaceholder(ColorScheme colorScheme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 64),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withValues(alpha: 0.05),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.smart_toy_rounded, size: 64, color: colorScheme.primary.withValues(alpha: 0.5)),
+          ),
+          const SizedBox(height: 24),
+          Text('暂无关联的群组/频道', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 12),
+          const Text('点击右下角按钮添加第一个推送目标'),
+        ],
+      ),
     );
   }
 
@@ -580,7 +613,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       if (mounted) {
         ref.invalidate(botStatusProvider);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('同步完成: ${result.updated} 更新')),
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            content: Text('同步完成: ${result.updated} 个配置已更新'),
+          ),
         );
       }
     } catch (e) {
@@ -600,9 +637,12 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       await dio.post('/distribution/trigger-run');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已触发分发任务，正在后台处理...')),
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            content: const Text('已触发分发任务，正在后台处理...'),
+          ),
         );
-        // Refresh stats after a short delay
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted) {
             ref.invalidate(botStatusProvider);
@@ -628,11 +668,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: 48, color: Theme.of(context).colorScheme.error),
+            Icon(Icons.error_outline_rounded, size: 48, color: Theme.of(context).colorScheme.error),
             const SizedBox(height: 16),
             Text('加载失败: $e'),
             const SizedBox(height: 16),
-            FilledButton(
+            FilledButton.tonal(
               onPressed: () => ref.invalidate(pushedRecordsProvider),
               child: const Text('重试'),
             ),
@@ -646,9 +686,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  Icons.history,
+                  Icons.history_rounded,
                   size: 64,
-                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -663,7 +703,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         return RefreshIndicator(
           onRefresh: () async => ref.invalidate(pushedRecordsProvider),
           child: ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: 16),
             itemCount: records.length,
             separatorBuilder: (context, index) => const Divider(height: 1),
             itemBuilder: (context, index) {
@@ -671,7 +711,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
               return PushedRecordTile(
                 record: record,
                 onRetry: record.isFailed ? () => _retryPush(record) : null,
-              );
+              ).animate().fadeIn(delay: (index % 15 * 50).ms);
             },
           ),
         );
@@ -735,6 +775,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       builder: (ctx) => AlertDialog(
         title: const Text('确认删除'),
         content: Text('确定要删除规则 "${rule.name}" 吗？'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -794,7 +835,6 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       ref.invalidate(pushedRecordsProvider);
       ref.invalidate(contentQueueProvider);
       ref.invalidate(queueStatsProvider(_selectedRuleId));
-      // Switch to willPush tab to show the re-queued content
       ref.read(queueFilterProvider.notifier).setStatus(QueueStatus.willPush);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -866,6 +906,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       builder: (ctx) => AlertDialog(
         title: const Text('确认删除'),
         content: Text('确定要删除群组 "${chat.displayName}" 吗？'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -911,5 +952,3 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
     }
   }
 }
-
-

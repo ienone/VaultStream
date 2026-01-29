@@ -1,160 +1,156 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-// 定义一个名为AppTheme的类，用于管理应用的主题
+/// AppTheme manages the application's visual identity using Material 3 Expressive principles.
 class AppTheme {
-  // 用一个不可变的局部静态变量定义默认的浅色主题颜色方案，
-  // 使用ColorScheme.fromSeed方法从指定的种子颜色(seedColor)生成颜色方案
-  // brightness参数指定颜色方案的亮度，这里设置为浅色(Brightness.light)
+  // Brand color - slightly more vibrant for "Expressive" feel
+  static const _seedColor = Color(0xFF6750A4);
+
   static final _defaultLightColorScheme = ColorScheme.fromSeed(
-    seedColor: const Color(0xFF6750A4),
+    seedColor: _seedColor,
     brightness: Brightness.light,
   );
 
   static final _defaultDarkColorScheme = ColorScheme.fromSeed(
-    seedColor: const Color(0xFF6750A4),
+    seedColor: _seedColor,
     brightness: Brightness.dark,
   );
 
-  // 定义一个静态方法light，接受一个可选的动态颜色方案参数(dynamicColorScheme)
-  // ThemeData是Flutter框架中用于定义应用主题的类
   static ThemeData light(ColorScheme? dynamicColorScheme) {
-    final scheme = dynamicColorScheme ?? _defaultLightColorScheme;
-    return fromColorScheme(scheme, Brightness.light);
+    return fromColorScheme(dynamicColorScheme ?? _defaultLightColorScheme, Brightness.light);
   }
 
   static ThemeData dark(ColorScheme? dynamicColorScheme) {
-    final scheme = dynamicColorScheme ?? _defaultDarkColorScheme;
-    return fromColorScheme(scheme, Brightness.dark);
+    return fromColorScheme(dynamicColorScheme ?? _defaultDarkColorScheme, Brightness.dark);
   }
 
   static ThemeData fromColorScheme(ColorScheme scheme, Brightness brightness) {
     final isDark = brightness == Brightness.dark;
+    final textTheme = _buildTextTheme(brightness);
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
       brightness: brightness,
+      textTheme: textTheme,
 
-      // Scaffold 和 AppBar 的深度调整
+      // Surface & Background
       scaffoldBackgroundColor: scheme.surface,
+      canvasColor: scheme.surface,
+
+      // Enhanced AppBar for Expressive M3
       appBarTheme: AppBarTheme(
-        backgroundColor: scheme.surface.withValues(alpha: 0.8),
-        surfaceTintColor: scheme.surfaceContainerHighest,
+        backgroundColor: Colors.transparent, // Usually used with glassmorphism or scrolledUnderElevation
+        surfaceTintColor: scheme.surfaceTint,
         elevation: 0,
+        scrolledUnderElevation: 2,
         centerTitle: false,
-        scrolledUnderElevation: 1,
-        titleTextStyle: TextStyle(
+        titleTextStyle: textTheme.titleLarge?.copyWith(
           color: scheme.onSurface,
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.bold,
         ),
+        iconTheme: IconThemeData(color: scheme.onSurface),
       ),
 
-      // 导航栏在深色模式下稍微突出一点
+      // Expressive Navigation Rail
       navigationRailTheme: NavigationRailThemeData(
         labelType: NavigationRailLabelType.all,
         groupAlignment: -0.9,
-        backgroundColor: isDark
-            ? scheme.surfaceContainerLow
-            : scheme.surfaceContainerHigh,
+        backgroundColor: scheme.surfaceContainerLow,
         indicatorColor: scheme.secondaryContainer,
-        indicatorShape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(20)),
-        ),
-        selectedIconTheme: IconThemeData(
-          color: scheme.onSecondaryContainer,
-          size: 28,
-        ),
-        unselectedIconTheme: IconThemeData(
-          color: scheme.onSurfaceVariant,
-          size: 24,
-        ),
-        selectedLabelTextStyle: TextStyle(
+        indicatorShape: const StadiumBorder(),
+        selectedIconTheme: IconThemeData(color: scheme.onSecondaryContainer, size: 28),
+        unselectedIconTheme: IconThemeData(color: scheme.onSurfaceVariant, size: 24),
+        selectedLabelTextStyle: textTheme.labelMedium?.copyWith(
           color: scheme.onSurface,
-          fontWeight: FontWeight.w900,
-          fontSize: 12,
-          letterSpacing: 0.5,
+          fontWeight: FontWeight.bold,
         ),
-        unselectedLabelTextStyle: TextStyle(
+        unselectedLabelTextStyle: textTheme.labelMedium?.copyWith(
           color: scheme.onSurfaceVariant,
-          fontSize: 11,
-          fontWeight: FontWeight.w500,
         ),
       ),
 
-      // 核心层次感：卡片设计
+      // M3 Expressive Cards: Larger radii and subtle borders
       cardTheme: CardThemeData(
         clipBehavior: Clip.antiAlias,
-        elevation: isDark ? 2 : 0, // 深色模式下给一点点投影来增强边缘识别
-        color: isDark ? scheme.surfaceContainer : scheme.surfaceContainerLow,
-        shadowColor: Colors.black.withValues(alpha: 0.8),
+        elevation: 0,
+        color: scheme.surfaceContainerLow,
         shape: RoundedRectangleBorder(
-          borderRadius: const BorderRadius.all(Radius.circular(28)),
-          // 在深色模式下添加细微的边框，模仿高光边缘
-          side: isDark
-              ? BorderSide(
-                  color: scheme.outlineVariant.withValues(alpha: 0.1),
-                  width: 1,
-                )
-              : BorderSide.none,
+          borderRadius: BorderRadius.circular(28),
+          side: isDark 
+            ? BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.2))
+            : BorderSide.none,
         ),
       ),
 
+      // Dynamic Floating Action Button
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: scheme.primaryContainer,
         foregroundColor: scheme.onPrimaryContainer,
-        elevation: 4,
-        hoverElevation: 8,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        extendedSizeConstraints: const BoxConstraints.tightFor(height: 56),
+        elevation: 2,
+        hoverElevation: 6,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       ),
 
-      // 列表和分割线优化
-      dividerTheme: DividerThemeData(
-        thickness: 1,
-        color: scheme.outlineVariant.withValues(alpha: isDark ? 0.2 : 0.5),
+      // Input Decoration (Textfields)
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: scheme.surfaceContainerHighest,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: scheme.primary, width: 2),
+        ),
       ),
 
-      // 弹窗层次
+      // Dialogs
       dialogTheme: DialogThemeData(
         backgroundColor: scheme.surfaceContainerHigh,
-        elevation: 8,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        elevation: 6,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+        titleTextStyle: textTheme.headlineSmall,
+      ),
+
+      // Transitions - Using built-in physics
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.windows: ZoomPageTransitionsBuilder(),
+        },
       ),
     );
   }
 
-  /// Parses a hex color string (e.g., "#FFAABB" or "FFAABB") to a [Color].
-  static Color parseHexColor(String hex) {
-    String cleanedHex = hex.replaceFirst('#', '');
-    if (cleanedHex.length == 6) cleanedHex = 'FF$cleanedHex';
-    return Color(int.parse(cleanedHex, radix: 16));
-  }
+  /// Builds a text theme using Google Fonts for an expressive feel.
+  /// Lexend is chosen for its clarity and geometric personality (Headings).
+  /// Inter provides excellent legibility for body text.
+  static TextTheme _buildTextTheme(Brightness brightness) {
+    final baseTheme = brightness == Brightness.light
+        ? ThemeData.light().textTheme
+        : ThemeData.dark().textTheme;
 
-  /// Adjusts a color for better readability based on the brightness.
-  static Color getAdjustedColor(Color color, Brightness brightness) {
-    HSLColor hsl = HSLColor.fromColor(color);
-
-    if (brightness == Brightness.light) {
-      // 亮色模式：如果颜色太浅（如接近白色的黄/青），将其压暗，确保文字可读
-      if (hsl.lightness > 0.6) {
-        hsl = hsl.withLightness(0.5);
-      }
-      // 适当提升饱和度，让颜色在亮色背景下更“鲜活”一些
-      if (hsl.saturation < 0.3) {
-        hsl = hsl.withSaturation(0.5);
-      }
-    } else {
-      // 深色模式：如果颜色太深（如接近黑色的深蓝），将其提亮
-      if (hsl.lightness < 0.4) {
-        hsl = hsl.withLightness(0.7);
-      }
-      // 深色模式下饱和度不宜过高，避免刺眼
-      if (hsl.saturation > 0.8) {
-        hsl = hsl.withSaturation(0.6);
-      }
-    }
-
-    return hsl.toColor();
+    return GoogleFonts.lexendTextTheme(baseTheme).copyWith(
+      displayLarge: GoogleFonts.lexend(textStyle: baseTheme.displayLarge, fontWeight: FontWeight.bold),
+      displayMedium: GoogleFonts.lexend(textStyle: baseTheme.displayMedium, fontWeight: FontWeight.bold),
+      displaySmall: GoogleFonts.lexend(textStyle: baseTheme.displaySmall, fontWeight: FontWeight.bold),
+      headlineLarge: GoogleFonts.lexend(textStyle: baseTheme.headlineLarge, fontWeight: FontWeight.bold),
+      headlineMedium: GoogleFonts.lexend(textStyle: baseTheme.headlineMedium, fontWeight: FontWeight.bold),
+      headlineSmall: GoogleFonts.lexend(textStyle: baseTheme.headlineSmall, fontWeight: FontWeight.bold),
+      titleLarge: GoogleFonts.lexend(textStyle: baseTheme.titleLarge, fontWeight: FontWeight.w600),
+      titleMedium: GoogleFonts.lexend(textStyle: baseTheme.titleMedium, fontWeight: FontWeight.w600),
+      titleSmall: GoogleFonts.lexend(textStyle: baseTheme.titleSmall, fontWeight: FontWeight.w600),
+      bodyLarge: GoogleFonts.inter(textStyle: baseTheme.bodyLarge),
+      bodyMedium: GoogleFonts.inter(textStyle: baseTheme.bodyMedium),
+      bodySmall: GoogleFonts.inter(textStyle: baseTheme.bodySmall),
+      labelLarge: GoogleFonts.inter(textStyle: baseTheme.labelLarge, fontWeight: FontWeight.bold),
+    );
   }
 }

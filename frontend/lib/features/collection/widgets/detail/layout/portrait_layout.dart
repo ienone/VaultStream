@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../../models/content.dart';
+import '../../../utils/content_parser.dart';
 import '../components/author_header.dart';
 import '../components/bvid_card.dart';
 import '../components/rich_content.dart';
 import '../components/tags_section.dart';
 import '../components/unified_stats.dart';
+import '../components/media_gallery_item.dart';
 
 class PortraitLayout extends StatelessWidget {
   final ContentDetail detail;
@@ -27,34 +30,61 @@ class PortraitLayout extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+    final bool isBilibiliVideo = detail.isBilibili && detail.contentType == 'video';
+    final mediaUrls = ContentParser.extractAllMedia(detail, apiBaseUrl);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 1. Media at top for Bilibili Video (XHS Style)
+          if (isBilibiliVideo && mediaUrls.isNotEmpty) ...[
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: MediaGalleryItem(
+                images: mediaUrls,
+                index: 0,
+                apiBaseUrl: apiBaseUrl,
+                apiToken: apiToken,
+                contentId: detail.id,
+                contentColor: contentColor,
+                heroTag: 'content-image-${detail.id}',
+                fit: BoxFit.cover,
+                borderRadius: BorderRadius.circular(24),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
+
+          // 2. Info Container
           if (!detail.isZhihuAnswer)
             Container(
               decoration: BoxDecoration(
                 color: isDark
                     ? colorScheme.surfaceContainer
                     : colorScheme.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(28),
-                border: isDark
-                    ? Border.all(
-                        color: Colors.white.withValues(alpha: 0.05),
-                        width: 1,
-                      )
-                    : null,
-                boxShadow: isDark
-                    ? [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ]
-                    : null,
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.2),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: (contentColor ?? colorScheme.primary).withValues(alpha: 0.08),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
               padding: const EdgeInsets.all(24),
               child: Column(
@@ -69,28 +99,32 @@ class PortraitLayout extends StatelessWidget {
                       style: theme.textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.w900,
                         height: 1.2,
-                        letterSpacing: -0.5,
+                        letterSpacing: -0.8,
                         color: colorScheme.onSurface,
                       ),
-                    ),
+                    ).animate().fadeIn(delay: 200.ms).slideX(begin: -0.05, end: 0),
                   const SizedBox(height: 24),
-                  UnifiedStats(detail: detail),
-                  const SizedBox(height: 16),
+                  UnifiedStats(detail: detail, useContainer: false),
+                  const SizedBox(height: 20),
                   if (detail.isBilibili && detail.platformId != null)
                     BvidCard(detail: detail),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
                   TagsSection(detail: detail),
                 ],
               ),
-            ),
+            ).animate().fadeIn(duration: 500.ms).scale(begin: const Offset(0.98, 0.98), curve: Curves.easeOutCubic),
+          
           const SizedBox(height: 32),
+          
+          // 3. Rich Content (Description)
           RichContent(
             detail: detail,
             apiBaseUrl: apiBaseUrl,
             apiToken: apiToken,
             headerKeys: headerKeys,
             contentColor: contentColor,
-          ),
+            hideMedia: isBilibiliVideo, // Don't show cover twice
+          ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.05, end: 0),
           const SizedBox(height: 48),
         ],
       ),

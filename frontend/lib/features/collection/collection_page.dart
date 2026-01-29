@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/widgets/frosted_app_bar.dart';
 import 'providers/collection_provider.dart';
 import 'providers/search_history_provider.dart';
@@ -30,25 +31,13 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     super.initState();
     _scrollController.addListener(_onScroll);
     
-    // Defer to next frame to allow ref access
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initFiltersFromUrl();
     });
   }
 
   void _initFiltersFromUrl() {
-    // Read query params from GoRouterState
-    // Note: Since this page is within a StatefulShellRoute, accessing GoRouterState.of(context)
-    // might be tricky directly in initState. We'll use the provider if needed, or rely on
-    // GoRouter passing params if we were to change the route definition.
-    // However, for now, we'll check if the widget was rebuilt with new params.
-    // Actually, in the current setup, navigating to /collection?status=failed 
-    // will just update the shell.
-    
-    // For simplicity in this implementation, we will assume this page
-    // might be pushed with params. But since it's a shell route, it's persistent.
-    // A better approach for "Dashboard Jump" is to update the provider BEFORE navigation.
-    // So logic will be in DashboardPage.
+    // Logic for deep linking if needed
   }
 
   @override
@@ -57,6 +46,12 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     _scrollController.dispose();
     _isFabExtended.dispose();
     _searchController.dispose();
+    // Clear filters when leaving the page (Task 8)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(collectionFilterProvider.notifier).clearFilters();
+      }
+    });
     super.dispose();
   }
 
@@ -133,8 +128,9 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
       floatingActionButton: batchSelection.isSelectionMode
           ? FloatingActionButton.extended(
               onPressed: () => _showBatchActions(context),
-              icon: const Icon(Icons.checklist),
+              icon: const Icon(Icons.checklist_rounded),
               label: Text('操作 (${batchSelection.count})'),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             )
           : _AddContentFab(isExtended: _isFabExtended),
     );
@@ -146,14 +142,18 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     BatchSelectionState selection,
   ) {
     return AppBar(
+      backgroundColor: theme.colorScheme.surfaceContainerHigh,
       leading: IconButton(
-        icon: const Icon(Icons.close),
+        icon: const Icon(Icons.close_rounded),
         onPressed: () => ref.read(batchSelectionProvider.notifier).exitSelectionMode(),
       ),
-      title: Text('已选择 ${selection.count} 项'),
+      title: Text(
+        '已选择 ${selection.count} 项',
+        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+      ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.select_all),
+          icon: const Icon(Icons.select_all_rounded),
           tooltip: '全选',
           onPressed: () {
             final items = ref.read(collectionProvider).value?.items ?? [];
@@ -162,6 +162,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
             );
           },
         ),
+        const SizedBox(width: 8),
       ],
     );
   }
@@ -193,21 +194,21 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
         _buildSearchAnchor(context, theme),
         if (filterState.searchQuery.isNotEmpty)
           IconButton(
-            icon: const Icon(Icons.close),
+            icon: const Icon(Icons.close_rounded),
             onPressed: () {
               ref.read(collectionFilterProvider.notifier).updateSearchQuery('');
               _searchController.clear();
             },
           ),
         IconButton(
-          icon: const Icon(Icons.refresh),
+          icon: const Icon(Icons.refresh_rounded),
           onPressed: () => ref.invalidate(collectionProvider),
         ),
         Hero(
           tag: 'filter_icon',
           child: IconButton(
             icon: Icon(
-              Icons.filter_list,
+              Icons.filter_list_rounded,
               color: filterState.hasActiveFilters
                   ? theme.colorScheme.primary
                   : null,
@@ -225,7 +226,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
       searchController: _searchController,
       viewHintText: '搜索标题、描述、标签...',
       builder: (context, controller) => IconButton(
-        icon: const Icon(Icons.search),
+        icon: const Icon(Icons.search_rounded),
         onPressed: () => controller.openView(),
       ),
       suggestionsBuilder: (context, controller) {
@@ -238,13 +239,13 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
             return [
               if (keyword.isNotEmpty)
                 ListTile(
-                  leading: const Icon(Icons.search),
+                  leading: const Icon(Icons.search_rounded),
                   title: Text('搜索 "$keyword"'),
                   onTap: () => _performSearch(keyword),
                 ),
               ...suggestions.map(
                 (item) => ListTile(
-                  leading: const Icon(Icons.history),
+                  leading: const Icon(Icons.history_rounded),
                   title: Text(item),
                   onTap: () => _performSearch(item),
                 ),
@@ -263,7 +264,6 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     BuildContext context,
     CollectionFilterState filterState,
   ) async {
-    // 从当前数据中获取可用的tags
     final collectionAsync = ref.read(collectionProvider);
     final availableTags = <String>{};
     if (collectionAsync.hasValue && collectionAsync.value != null) {
@@ -296,7 +296,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
             parent: anim1,
             curve: Curves.fastOutSlowIn,
           ),
-          alignment: const Alignment(0.85, -0.85), // 对应右上角图标位置
+          alignment: const Alignment(0.85, -0.85),
           child: FadeTransition(
             opacity: anim1,
             child: child,
@@ -325,6 +325,7 @@ class _AddContentFab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return ValueListenableBuilder<bool>(
       valueListenable: isExtended,
       builder: (context, extended, _) {
@@ -341,11 +342,30 @@ class _AddContentFab extends StatelessWidget {
             }
           },
           label: AnimatedSize(
-            duration: const Duration(milliseconds: 200),
-            child: extended ? const Text('添加内容') : const SizedBox.shrink(),
+            duration: 300.ms,
+            curve: Curves.easeOutCubic,
+            child: extended 
+              ? Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Text(
+                    '添加内容',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
           ),
-          icon: const Icon(Icons.add),
+          icon: const Icon(Icons.add_rounded, size: 28),
           isExtended: extended,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          backgroundColor: theme.colorScheme.primaryContainer,
+          foregroundColor: theme.colorScheme.onPrimaryContainer,
+        ).animate(target: extended ? 1 : 0).shimmer(
+          delay: 2.seconds,
+          duration: 1500.ms,
+          color: Colors.white24,
         );
       },
     );

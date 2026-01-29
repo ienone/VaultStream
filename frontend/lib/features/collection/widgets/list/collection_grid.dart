@@ -56,6 +56,7 @@ class CollectionGrid extends StatelessWidget {
                     children: [
                       ContentCard(
                         content: item,
+                        index: index,
                         onTap: isSelectionMode
                             ? () => onToggleSelection?.call(item.id)
                             : () {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../providers/bot_chats_provider.dart';
 
 class BotStatusCard extends ConsumerWidget {
@@ -21,21 +22,30 @@ class BotStatusCard extends ConsumerWidget {
     final colorScheme = theme.colorScheme;
 
     return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(32),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+        ),
+      ),
+      color: colorScheme.surfaceContainerLow,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(24),
         child: statusAsync.when(
           loading: () => const Center(
             child: Padding(
-              padding: EdgeInsets.all(24),
+              padding: EdgeInsets.all(32),
               child: CircularProgressIndicator(),
             ),
           ),
           error: (e, st) => Column(
             children: [
-              Icon(Icons.error_outline, size: 32, color: colorScheme.error),
+              Icon(Icons.error_outline_rounded, size: 48, color: colorScheme.error),
+              const SizedBox(height: 16),
+              Text('Bot 状态加载失败', style: theme.textTheme.titleMedium?.copyWith(color: colorScheme.error)),
               const SizedBox(height: 8),
-              Text('加载失败', style: TextStyle(color: colorScheme.error)),
-              TextButton(
+              FilledButton.tonal(
                 onPressed: () => ref.invalidate(botStatusProvider),
                 child: const Text('重试'),
               ),
@@ -46,21 +56,8 @@ class BotStatusCard extends ConsumerWidget {
             children: [
               Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: status.isRunning
-                          ? Colors.green.withValues(alpha: 0.1)
-                          : Colors.red.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      Icons.smart_toy,
-                      color: status.isRunning ? Colors.green : Colors.red,
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
+                  _buildStatusIndicator(status.isRunning, colorScheme),
+                  const SizedBox(width: 20),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -69,79 +66,62 @@ class BotStatusCard extends ConsumerWidget {
                           children: [
                             Text(
                               'Telegram Bot',
-                              style: theme.textTheme.titleMedium?.copyWith(
+                              style: theme.textTheme.titleLarge?.copyWith(
                                 fontWeight: FontWeight.bold,
+                                letterSpacing: -0.5,
                               ),
                             ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: status.isRunning
-                                    ? Colors.green.withValues(alpha: 0.1)
-                                    : Colors.red.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                status.isRunning ? '运行中' : '离线',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: status.isRunning
-                                      ? Colors.green
-                                      : Colors.red,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
+                            const SizedBox(width: 12),
+                            _buildStatusBadge(status.isRunning),
                           ],
                         ),
                         if (status.botUsername != null)
                           Text(
                             '@${status.botUsername}',
-                            style: theme.textTheme.bodySmall?.copyWith(
+                            style: theme.textTheme.bodyMedium?.copyWith(
                               color: colorScheme.primary,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                       ],
                     ),
                   ),
-                  IconButton(
+                  IconButton.filledTonal(
                     onPressed: () => ref.invalidate(botStatusProvider),
-                    icon: const Icon(Icons.refresh),
+                    icon: const Icon(Icons.refresh_rounded),
                     tooltip: '刷新状态',
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
+              const Divider(height: 1),
+              const SizedBox(height: 24),
               Wrap(
                 spacing: 12,
-                runSpacing: 8,
+                runSpacing: 12,
                 children: [
                   _buildStatChip(
                     context,
-                    icon: Icons.groups,
+                    icon: Icons.groups_rounded,
                     label: '${status.connectedChats} 个群组',
                     color: colorScheme.primary,
                   ),
                   _buildStatChip(
                     context,
-                    icon: Icons.send,
+                    icon: Icons.send_rounded,
                     label: '今日推送 ${status.totalPushedToday}',
                     color: colorScheme.secondary,
                   ),
                   if (status.uptimeSeconds != null)
                     _buildStatChip(
                       context,
-                      icon: Icons.timer,
-                      label: '运行 ${status.uptimeFormatted}',
+                      icon: Icons.timer_outlined,
+                      label: '在线 ${status.uptimeFormatted}',
                       color: colorScheme.tertiary,
                     ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 32),
               Row(
                 children: [
                   Expanded(
@@ -149,26 +129,71 @@ class BotStatusCard extends ConsumerWidget {
                       onPressed: isSyncing ? null : onSync,
                       icon: isSyncing
                           ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2.5),
                             )
-                          : const Icon(Icons.sync),
-                      label: Text(isSyncing ? '同步中...' : '同步群组信息'),
+                          : const Icon(Icons.sync_rounded),
+                      label: Text(isSyncing ? '同步中...' : '同步群组'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: FilledButton.icon(
                       onPressed: onTriggerPush,
-                      icon: const Icon(Icons.send),
+                      icon: const Icon(Icons.rocket_launch_rounded),
                       label: const Text('立即推送'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
                     ),
-                  ),
+                  ).animate(onPlay: (c) => c.repeat()).shimmer(delay: 3.seconds, duration: 2.seconds, color: Colors.white24),
                 ],
               ),
             ],
           ),
+        ),
+      ),
+    ).animate().fadeIn().scale(begin: const Offset(0.98, 0.98), curve: Curves.easeOutCubic);
+  }
+
+  Widget _buildStatusIndicator(bool isRunning, ColorScheme colorScheme) {
+    final color = isRunning ? Colors.green : Colors.red;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(
+        Icons.smart_toy_rounded,
+        color: color,
+        size: 32,
+      ),
+    ).animate(onPlay: (c) => isRunning ? c.repeat(reverse: true) : c.stop())
+     .shimmer(duration: 2.seconds, color: isRunning ? Colors.greenAccent.withValues(alpha: 0.3) : null);
+  }
+
+  Widget _buildStatusBadge(bool isRunning) {
+    final color = isRunning ? Colors.green : Colors.red;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Text(
+        isRunning ? '运行中' : '离线',
+        style: TextStyle(
+          fontSize: 12,
+          color: color,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );
@@ -181,20 +206,20 @@ class BotStatusCard extends ConsumerWidget {
     required Color color,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
+        color: color.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.1)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 16, color: color),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           Text(
             label,
-            style: TextStyle(fontSize: 13, color: color),
+            style: TextStyle(fontSize: 13, color: color, fontWeight: FontWeight.w600),
           ),
         ],
       ),

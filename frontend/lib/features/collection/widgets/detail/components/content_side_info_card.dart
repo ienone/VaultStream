@@ -54,6 +54,20 @@ class ContentSideInfoCard extends StatelessWidget {
         AuthorHeader(detail: detail),
         const SizedBox(height: 24),
 
+        // 2.5 标题 (Fix for Task 12 & 14)
+        if (detail.title != null && detail.title!.trim().isNotEmpty && detail.title != '-') ...[
+          Text(
+            detail.title!.trim(),
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w900,
+              height: 1.3,
+              letterSpacing: -0.5,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+
         // 3. 统计数据
         UnifiedStats(detail: detail, useContainer: false),
 

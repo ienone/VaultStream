@@ -68,12 +68,12 @@ GoRouter goRouter(Ref ref) {
                           contentId: id,
                           initialColor: color,
                         ),
+                        transitionDuration: const Duration(milliseconds: 400),
+                        reverseTransitionDuration: const Duration(milliseconds: 400),
                         transitionsBuilder:
                             (context, animation, secondaryAnimation, child) {
                               return FadeTransition(
-                                opacity: CurveTween(
-                                  curve: Curves.easeInOutCirc,
-                                ).animate(animation),
+                                opacity: animation,
                                 child: child,
                               );
                             },

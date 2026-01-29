@@ -2,21 +2,31 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/widgets/frosted_app_bar.dart';
 import 'providers/dashboard_provider.dart';
 import 'models/stats.dart';
 import '../collection/providers/collection_filter_provider.dart';
+import 'widgets/stat_card.dart';
+import 'widgets/bot_overview_card.dart';
+import 'widgets/queue_status_card.dart';
+import 'widgets/platform_distribution_card.dart';
+import 'widgets/growth_chart_card.dart';
 
 class DashboardPage extends ConsumerWidget {
   const DashboardPage({super.key});
 
-  void _navigateToCollection(BuildContext context, WidgetRef ref, {List<String>? statuses}) {
+  void _navigateToCollection(BuildContext context, WidgetRef ref, {List<String>? statuses, List<String>? platforms, DateTimeRange? dateRange}) {
     // Clear existing filters first
     ref.read(collectionFilterProvider.notifier).clearFilters();
-    // Set new filters
-    if (statuses != null) {
-      ref.read(collectionFilterProvider.notifier).setFilters(statuses: statuses);
-    }
+    
+    // Set new filters if provided
+    ref.read(collectionFilterProvider.notifier).setFilters(
+      statuses: statuses,
+      platforms: platforms,
+      dateRange: dateRange,
+    );
+    
     // Navigate (switch tab)
     context.go('/collection');
   }
@@ -25,8 +35,6 @@ class DashboardPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final statsAsync = ref.watch(dashboardStatsProvider);
     final queueAsync = ref.watch(queueStatsProvider);
-    final healthAsync = ref.watch(systemHealthProvider);
-    final theme = Theme.of(context);
 
     final hasError = statsAsync.hasError || queueAsync.hasError;
 
@@ -35,13 +43,14 @@ class DashboardPage extends ConsumerWidget {
         title: const Text('仪表盘'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh_rounded),
             onPressed: () {
               ref.invalidate(dashboardStatsProvider);
               ref.invalidate(queueStatsProvider);
               ref.invalidate(systemHealthProvider);
             },
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: hasError
@@ -53,306 +62,118 @@ class DashboardPage extends ConsumerWidget {
                 ref.invalidate(systemHealthProvider);
               },
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '系统概览',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    _buildSectionHeader(context, '系统概览', Icons.analytics_rounded),
                     const SizedBox(height: 24),
                     _buildStatsGrid(context, ref, statsAsync, queueAsync),
-                    const SizedBox(height: 32),
-                    Text(
-                      '平台分布',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    const SizedBox(height: 40),
+                    
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final bool isWide = constraints.maxWidth > 700;
+                        if (isWide) {
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildSectionHeader(context, '队列状态', Icons.queue_rounded),
+                                    const SizedBox(height: 16),
+                                    queueAsync.when(
+                                      data: (q) => QueueStatusCard(queue: q),
+                                      loading: () => const _LoadingPlaceholder(height: 240),
+                                      error: (e, _) => _ErrorCard(message: '加载队列失败: $e'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 24),
+                              Expanded(
+                                flex: 2,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildSectionHeader(context, 'Bot 概览', Icons.smart_toy_rounded),
+                                    const SizedBox(height: 16),
+                                    const BotOverviewCard(),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          );
+                        } else {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildSectionHeader(context, '队列状态', Icons.queue_rounded),
+                              const SizedBox(height: 16),
+                              queueAsync.when(
+                                data: (q) => QueueStatusCard(queue: q),
+                                loading: () => const _LoadingPlaceholder(height: 240),
+                                error: (e, _) => _ErrorCard(message: '加载队列失败: $e'),
+                              ),
+                              const SizedBox(height: 32),
+                              _buildSectionHeader(context, 'Bot 概览', Icons.smart_toy_rounded),
+                              const SizedBox(height: 16),
+                              const BotOverviewCard(),
+                            ],
+                          );
+                        }
+                      },
                     ),
+                    const SizedBox(height: 40),
+
+                    _buildSectionHeader(context, '最近 7 天增长', Icons.trending_up_rounded),
                     const SizedBox(height: 16),
-                    _buildPlatformDistribution(context, statsAsync),
-                    const SizedBox(height: 32),
-                    Text(
-                      '最近 7 天增长',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
+                    statsAsync.when(
+                      data: (s) => GrowthChartCard(
+                        stats: s,
+                        onDateTap: (range) => _navigateToCollection(context, ref, dateRange: range),
                       ),
+                      loading: () => const _LoadingPlaceholder(height: 220),
+                      error: (e, _) => _ErrorCard(message: '加载图表失败: $e'),
                     ),
+                    const SizedBox(height: 40),
+
+                    _buildSectionHeader(context, '平台分布', Icons.pie_chart_rounded),
                     const SizedBox(height: 16),
-                    _buildGrowthChart(context, statsAsync),
-                    const SizedBox(height: 32),
-                    Text(
-                      '队列状态',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
+                    statsAsync.when(
+                      data: (s) => PlatformDistributionCard(
+                        stats: s,
+                        onPlatformTap: (p) => _navigateToCollection(context, ref, platforms: [p]),
                       ),
+                      loading: () => const _LoadingPlaceholder(height: 300),
+                      error: (e, _) => _ErrorCard(message: '加载分布失败: $e'),
                     ),
-                    const SizedBox(height: 16),
-                    _buildQueueStatus(context, queueAsync),
-                    const SizedBox(height: 32),
-                    Text(
-                      '服务状态',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildHealthStatus(context, healthAsync),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 48),
                   ],
                 ),
-              ),
+              ).animate().fadeIn(duration: 600.ms),
             ),
     );
   }
 
-  Widget _buildHealthStatus(
-    BuildContext context,
-    AsyncValue<SystemHealth> healthAsync,
-  ) {
-    return healthAsync.when(
-      data: (health) {
-        final colorScheme = Theme.of(context).colorScheme;
-        final isOk = health.status == 'ok';
-        final dbOk = health.components?['db'] == 'ok';
-        final redisOk = health.components?['redis'] == 'ok';
-
-        return Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-            side: BorderSide(
-              color: isOk ? Colors.green.withValues(alpha: 0.5) : colorScheme.error,
-            ),
-          ),
-          color: isOk
-              ? Colors.green.withValues(alpha: 0.05)
-              : colorScheme.errorContainer.withValues(alpha: 0.1),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      isOk ? Icons.check_circle : Icons.warning_rounded,
-                      color: isOk ? Colors.green : colorScheme.error,
-                      size: 32,
-                    ),
-                    const SizedBox(width: 16),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          isOk ? '系统运行正常' : '系统服务异常',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: isOk ? Colors.green : colorScheme.error,
-                          ),
-                        ),
-                        if (health.queueSize != null)
-                          Text('当前任务队列: ${health.queueSize}'),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                const Divider(),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildComponentStatus(context, 'Database', dbOk),
-                    _buildComponentStatus(context, 'Redis', redisOk),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('加载失败: $e')),
-    );
-  }
-
-  Widget _buildComponentStatus(BuildContext context, String name, bool isOk) {
-    return Row(
-      children: [
-        Icon(
-          isOk ? Icons.check_circle_outline : Icons.error_outline,
-          size: 20,
-          color: isOk ? Colors.green : Theme.of(context).colorScheme.error,
-        ),
-        const SizedBox(width: 8),
-        Text(name),
-      ],
-    );
-  }
-
-  Widget _buildQueueStatus(
-    BuildContext context,
-    AsyncValue<QueueStats> queueAsync,
-  ) {
-    return queueAsync.when(
-      data: (queue) {
-        final total = queue.total;
-        if (total == 0) return const Center(child: Text('队列为空'));
-
-        final colorScheme = Theme.of(context).colorScheme;
-
-        return Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-            side: BorderSide(
-              color: colorScheme.outlineVariant,
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              children: [
-                _buildQueueRow(
-                  context,
-                  '待处理',
-                  queue.pending,
-                  total,
-                  colorScheme.tertiary,
-                ),
-                const SizedBox(height: 12),
-                _buildQueueRow(
-                  context,
-                  '处理中',
-                  queue.processing,
-                  total,
-                  colorScheme.primary,
-                ),
-                const SizedBox(height: 12),
-                _buildQueueRow(
-                  context,
-                  '失败',
-                  queue.failed,
-                  total,
-                  colorScheme.error,
-                ),
-                const SizedBox(height: 12),
-                _buildQueueRow(
-                  context,
-                  '已归档',
-                  queue.archived,
-                  total,
-                  Colors.green,
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('加载失败: $e')),
-    );
-  }
-
-  Widget _buildQueueRow(
-    BuildContext context,
-    String label,
-    int value,
-    int total,
-    Color color,
-  ) {
-    final percent = total > 0 ? value / total : 0.0;
-    return Row(
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(3),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          flex: 2,
-          child: Text(label),
-        ),
-        Expanded(
-          flex: 5,
-          child: LinearProgressIndicator(
-            value: percent,
-            backgroundColor: color.withValues(alpha: 0.1),
-            valueColor: AlwaysStoppedAnimation(color),
-            borderRadius: BorderRadius.circular(4),
-            minHeight: 8,
-          ),
-        ),
-        const SizedBox(width: 12),
-        SizedBox(
-          width: 80,
-          child: Text(
-            '$value (${(percent * 100).toStringAsFixed(1)}%)',
-            textAlign: TextAlign.end,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildConnectionError(BuildContext context, WidgetRef ref, Object? error) {
+  Widget _buildSectionHeader(BuildContext context, String title, IconData icon) {
     final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.cloud_off,
-              size: 80,
-              color: theme.colorScheme.outline,
-            ),
-            const SizedBox(height: 24),
-            Text(
-              '无法连接到服务器',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '请检查后端服务是否启动，或前往设置修改 API 地址',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.outline,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () {
-                    ref.invalidate(dashboardStatsProvider);
-                    ref.invalidate(queueStatsProvider);
-                  },
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('重试'),
-                ),
-                const SizedBox(width: 16),
-                FilledButton.icon(
-                  onPressed: () => context.go('/settings'),
-                  icon: const Icon(Icons.settings),
-                  label: const Text('前往设置'),
-                ),
-              ],
-            ),
-          ],
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: theme.colorScheme.primary),
+        const SizedBox(width: 12),
+        Text(
+          title,
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+            letterSpacing: -0.5,
+          ),
         ),
-      ),
+      ],
     );
   }
 
@@ -362,237 +183,125 @@ class DashboardPage extends ConsumerWidget {
     AsyncValue<DashboardStats> statsAsync,
     AsyncValue<QueueStats> queueAsync,
   ) {
+    final isWide = MediaQuery.of(context).size.width > 900;
+    
     return GridView.count(
-      crossAxisCount: MediaQuery.of(context).size.width > 600 ? 4 : 2,
+      crossAxisCount: isWide ? 4 : 2,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 16,
-      crossAxisSpacing: 16,
-      childAspectRatio: 1.5,
+      mainAxisSpacing: 20,
+      crossAxisSpacing: 20,
+      childAspectRatio: isWide ? 1.6 : 1.3,
       children: [
-        _buildStatCard(
-          context,
-          '总内容',
-          statsAsync.when(
-            data: (s) =>
-                s.platformCounts.values.fold(0, (a, b) => a + b).toString(),
+        StatCard(
+          label: '总内容',
+          value: statsAsync.when(
+            data: (s) => s.platformCounts.values.fold(0, (a, b) => a + b).toString(),
             loading: () => '...',
             error: (_, _) => '!',
           ),
-          Icons.library_books_outlined,
-          Theme.of(context).colorScheme.primary,
+          icon: Icons.library_books_rounded,
+          color: Theme.of(context).colorScheme.primary,
           onTap: () => _navigateToCollection(context, ref),
         ),
-        _buildStatCard(
-          context,
-          '存储占用',
-          statsAsync.when(
+        StatCard(
+          label: '存储占用',
+          value: statsAsync.when(
             data: (s) => _formatBytes(s.storageUsageBytes),
             loading: () => '...',
             error: (_, _) => '!',
           ),
-          Icons.storage_outlined,
-          Theme.of(context).colorScheme.secondary,
+          icon: Icons.storage_rounded,
+          color: Theme.of(context).colorScheme.secondary,
         ),
-        _buildStatCard(
-          context,
-          '队列积压',
-          queueAsync.when(
+        StatCard(
+          label: '队列积压',
+          value: queueAsync.when(
             data: (q) => q.pending.toString(),
             loading: () => '...',
             error: (_, _) => '!',
           ),
-          Icons.hourglass_empty,
-          Theme.of(context).colorScheme.tertiary,
-          onTap: () => _navigateToCollection(context, ref, statuses: ['pending']),
+          icon: Icons.hourglass_top_rounded,
+          color: Theme.of(context).colorScheme.tertiary,
+          onTap: () => _navigateToCollection(context, ref, statuses: ['unprocessed', 'processing']),
         ),
-        _buildStatCard(
-          context,
-          '解析失败',
-          queueAsync.when(
+        StatCard(
+          label: '解析失败',
+          value: queueAsync.when(
             data: (q) => q.failed.toString(),
             loading: () => '...',
             error: (_, _) => '!',
           ),
-          Icons.error_outline,
-          Theme.of(context).colorScheme.error,
+          icon: Icons.error_outline_rounded,
+          color: Theme.of(context).colorScheme.error,
           onTap: () => _navigateToCollection(context, ref, statuses: ['failed']),
         ),
       ],
     );
   }
 
-  Widget _buildStatCard(
-    BuildContext context,
-    String label,
-    String value,
-    IconData icon,
-    Color color, {
-    VoidCallback? onTap,
-  }) {
+  Widget _buildConnectionError(BuildContext context, WidgetRef ref, Object? error) {
     final theme = Theme.of(context);
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      elevation: 0,
-      color: color.withValues(alpha: 0.1),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
-        side: BorderSide(color: color.withValues(alpha: 0.2)),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Icon(icon, color: color, size: 24),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    value,
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: color,
-                    ),
-                  ),
-                  Text(
-                    label,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(48),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(32),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.errorContainer.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
               ),
-            ],
-          ),
+              child: Icon(
+                Icons.cloud_off_rounded,
+                size: 80,
+                color: theme.colorScheme.error,
+              ),
+            ),
+            const SizedBox(height: 32),
+            Text(
+              '连接服务器失败',
+              style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '无法获取实时数据。请确保后端服务已启动并检查 API 配置。',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 40),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () {
+                    ref.invalidate(dashboardStatsProvider);
+                    ref.invalidate(queueStatsProvider);
+                  },
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('重试连接'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                FilledButton.icon(
+                  onPressed: () => context.go('/settings'),
+                  icon: const Icon(Icons.settings_rounded),
+                  label: const Text('前往设置'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildPlatformDistribution(
-    BuildContext context,
-    AsyncValue<DashboardStats> statsAsync,
-  ) {
-    return statsAsync.when(
-      data: (stats) {
-        final total = stats.platformCounts.values.fold(0, (a, b) => a + b);
-        if (total == 0) return const Center(child: Text('暂无数据'));
-
-        return Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-            side: BorderSide(
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              children: stats.platformCounts.entries.map((entry) {
-                final percent = total > 0 ? entry.value / total : 0.0;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            entry.key.toUpperCase(),
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            '${entry.value} (${(percent * 100).toStringAsFixed(1)}%)',
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      LinearProgressIndicator(
-                        value: percent,
-                        borderRadius: BorderRadius.circular(4),
-                        minHeight: 8,
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-        );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('加载失败: $e')),
-    );
-  }
-
-  Widget _buildGrowthChart(
-    BuildContext context,
-    AsyncValue<DashboardStats> statsAsync,
-  ) {
-    return statsAsync.when(
-      data: (stats) {
-        if (stats.dailyGrowth.isEmpty) return const Center(child: Text('暂无数据'));
-
-        final maxCount = stats.dailyGrowth.fold(
-          0,
-          (max, day) => (day['count'] as int) > max ? day['count'] as int : max,
-        );
-
-        return Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-            side: BorderSide(
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: SizedBox(
-              height: 200,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: stats.dailyGrowth.map((day) {
-                  final count = day['count'] as int;
-                  final heightFactor = maxCount > 0 ? count / maxCount : 0.0;
-                  final date = DateTime.parse(day['date']);
-
-                  return Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Tooltip(
-                          message: '${day['date']}: $count',
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            height: (heightFactor * 140).clamp(4.0, 140.0),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '${date.month}/${date.day}',
-                          style: Theme.of(context).textTheme.labelSmall,
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-          ),
-        );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('加载失败: $e')),
+      ).animate().fadeIn().scale(begin: const Offset(0.9, 0.9)),
     );
   }
 
@@ -600,6 +309,40 @@ class DashboardPage extends ConsumerWidget {
     if (bytes <= 0) return "0 B";
     const suffixes = ["B", "KB", "MB", "GB", "TB"];
     var i = (math.log(bytes) / math.log(1024)).floor();
-    return "${(bytes / math.pow(1024, i)).toStringAsFixed(2)} ${suffixes[i]}";
+    return "${(bytes / math.pow(1024, i)).toStringAsFixed(1)} ${suffixes[i]}";
+  }
+}
+
+class _LoadingPlaceholder extends StatelessWidget {
+  final double height;
+  const _LoadingPlaceholder({required this.height});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(32),
+      ),
+      child: const Center(child: CircularProgressIndicator()),
+    ).animate(onPlay: (c) => c.repeat()).shimmer(duration: 2.seconds);
+  }
+}
+
+class _ErrorCard extends StatelessWidget {
+  final String message;
+  const _ErrorCard({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.1),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(message, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+      ),
+    );
   }
 }

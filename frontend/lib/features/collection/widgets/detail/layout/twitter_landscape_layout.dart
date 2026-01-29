@@ -99,6 +99,7 @@ class TwitterLandscapeLayout extends StatelessWidget {
                           ? 'content-image-${detail.id}'
                           : 'image-$index-${detail.id}',
                       fit: BoxFit.contain,
+                      onPageChanged: onPageChanged,
                     ),
                   );
                 },

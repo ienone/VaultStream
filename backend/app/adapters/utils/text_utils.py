@@ -6,8 +6,14 @@ Provides common text processing functions for all platform adapters.
 from typing import Optional
 
 
-# 常见中英文标点符号
-PUNCTUATIONS = ['。', '！', '？', '，', '；', '：', '…', '.', '!', '?', ',', ';', ':', '\n']
+# 常见中英文标点符号和分隔符
+PUNCTUATIONS = [
+    '。', '！', '？', '，', '；', '：', '…', 
+    '.', '!', '?', ',', ';', ':', '\n', 
+    '【', '】', '[', ']', '（', '）', '(', ')', 
+    '—', '-', '«', '»', '“', '”', '"', "'",
+    '|', '/', '\\'
+]
 
 
 def generate_title_from_text(

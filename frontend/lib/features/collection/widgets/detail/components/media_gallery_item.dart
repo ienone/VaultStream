@@ -18,6 +18,7 @@ class MediaGalleryItem extends StatelessWidget {
   final double? height;
   final double? width;
   final BorderRadius? borderRadius;
+  final Function(int)? onPageChanged;
 
   const MediaGalleryItem({
     super.key,
@@ -33,6 +34,7 @@ class MediaGalleryItem extends StatelessWidget {
     this.height,
     this.width,
     this.borderRadius,
+    this.onPageChanged,
   });
 
   String get url => images[index];
@@ -109,6 +111,7 @@ class MediaGalleryItem extends StatelessWidget {
           contentId: contentId,
           contentColor: contentColor,
           customHeroTag: heroTag,
+          onPageChanged: onPageChanged,
         ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(opacity: animation, child: child);

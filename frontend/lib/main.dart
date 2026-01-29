@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart'; // 引入Flutter的Material库，用于构建符合Material Design规范的应用
+import 'package:flutter_localizations/flutter_localizations.dart'; // Add localization support
 import 'package:flutter_riverpod/flutter_riverpod.dart'; // 引入Riverpod库，用于状态管理
 import 'package:dynamic_color/dynamic_color.dart'; // 引入dynamic_color库，用于动态颜色支持
 import 'theme/app_theme.dart'; // 引入自定义的应用主题
@@ -51,6 +52,15 @@ class VaultStreamApp extends ConsumerWidget {
           themeMode: themeMode, // 主题模式
           routerConfig: router, // 应用的路由配置是叫router
           debugShowCheckedModeBanner: false,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [
+            Locale('zh', 'CN'),
+            Locale('en', 'US'),
+          ],
         );
       },
     );

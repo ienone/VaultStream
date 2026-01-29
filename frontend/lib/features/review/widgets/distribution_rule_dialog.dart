@@ -29,12 +29,9 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
   late bool _approvalRequired;
   late bool _enabled;
   
-  // Tag filtering state
   late List<String> _includeTags;
   late List<String> _excludeTags;
   late String _tagsMatchMode;
-  
-  // Targets state
   late List<Map<String, dynamic>> _targets;
 
   bool get isEditing => widget.rule != null;
@@ -56,13 +53,10 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
     _approvalRequired = rule?.approvalRequired ?? false;
     _enabled = rule?.enabled ?? true;
     
-    // Initialize tag filters
     final conditions = rule?.matchConditions ?? {};
     _includeTags = List.from(conditions['tags'] ?? []);
     _excludeTags = List.from(conditions['tags_exclude'] ?? []);
     _tagsMatchMode = conditions['tags_match_mode'] ?? 'any';
-    
-    // Initialize targets
     _targets = List.from(rule?.targets ?? []);
   }
 
@@ -78,174 +72,314 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
-    return AlertDialog(
-      title: Text(isEditing ? '编辑分发规则' : '创建分发规则'),
-      content: SizedBox(
-        width: 480,
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 560),
+        padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                TextFormField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: '规则名称 *',
-                    hintText: '输入规则名称',
-                    border: OutlineInputBorder(),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  validator: (v) =>
-                      v == null || v.isEmpty ? '请输入规则名称' : null,
+                  child: Icon(Icons.settings_suggest_rounded, color: colorScheme.primary),
                 ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _descriptionController,
-                  decoration: const InputDecoration(
-                    labelText: '描述',
-                    hintText: '规则描述（可选）',
-                    border: OutlineInputBorder(),
-                  ),
-                  maxLines: 2,
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _priorityController,
-                        decoration: const InputDecoration(
-                          labelText: '优先级',
-                          hintText: '0',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        // ignore: deprecated_member_use
-                        value: _nsfwPolicy,
-                        decoration: const InputDecoration(
-                          labelText: 'NSFW 策略',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 'block', child: Text('阻止')),
-                          DropdownMenuItem(value: 'allow', child: Text('允许')),
-                          DropdownMenuItem(
-                            value: 'separate_channel',
-                            child: Text('分离频道'),
-                          ),
-                        ],
-                        onChanged: (v) => setState(() => _nsfwPolicy = v!),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _rateLimitController,
-                        decoration: const InputDecoration(
-                          labelText: '速率限制',
-                          hintText: '每时间窗口最大推送数',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _timeWindowController,
-                        decoration: const InputDecoration(
-                          labelText: '时间窗口 (秒)',
-                          hintText: '3600',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                SwitchListTile(
-                  title: const Text('需要审批'),
-                  subtitle: const Text('推送前需要人工审批'),
-                  value: _approvalRequired,
-                  onChanged: (v) => setState(() => _approvalRequired = v),
-                  contentPadding: EdgeInsets.zero,
-                ),
-                SwitchListTile(
-                  title: const Text('启用规则'),
-                  value: _enabled,
-                  onChanged: (v) => setState(() => _enabled = v),
-                  contentPadding: EdgeInsets.zero,
-                ),
-                const SizedBox(height: 16),
-                _buildTargetsSection(context),
-                const SizedBox(height: 16),
+                const SizedBox(width: 16),
                 Text(
-                  '标签筛选',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                _TagInput(
-                  label: '包含标签',
-                  tags: _includeTags,
-                  onChanged: (tags) => setState(() => _includeTags = tags),
-                  placeholder: '输入标签后回车添加',
-                  chipColor: Colors.blue,
-                ),
-                if (_includeTags.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    initialValue: _tagsMatchMode,
-                    decoration: const InputDecoration(
-                      labelText: '标签匹配模式',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'any', child: Text('包含任一 (Any)')),
-                      DropdownMenuItem(value: 'all', child: Text('包含所有 (All)')),
-                    ],
-                    onChanged: (v) => setState(() => _tagsMatchMode = v!),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                _TagInput(
-                  label: '排除标签',
-                  tags: _excludeTags,
-                  onChanged: (tags) => setState(() => _excludeTags = tags),
-                  placeholder: '输入标签后回车排除',
-                  chipColor: Colors.red,
+                  isEditing ? '编辑分发规则' : '创建分发规则',
+                  style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
                 ),
               ],
             ),
-          ),
+            const SizedBox(height: 28),
+            Flexible(
+              child: Form(
+                key: _formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTextField(
+                        controller: _nameController,
+                        label: '规则名称',
+                        hint: '为规则起一个直观的名字',
+                        icon: Icons.label_important_rounded,
+                        validator: (v) => v == null || v.isEmpty ? '请输入规则名称' : null,
+                      ),
+                      const SizedBox(height: 24),
+                      _buildTextField(
+                        controller: _descriptionController,
+                        label: '规则描述',
+                        hint: '可选：描述该规则的用途',
+                        icon: Icons.description_rounded,
+                        maxLines: 2,
+                      ),
+                      const SizedBox(height: 32),
+                      _buildSubHeader('分发策略'),
+                      const SizedBox(height: 16),
+                      _buildNsfwSelector(),
+                      const SizedBox(height: 24),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildTextField(
+                              controller: _priorityController,
+                              label: '优先级',
+                              hint: '0',
+                              icon: Icons.priority_high_rounded,
+                              keyboardType: TextInputType.number,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: _rateLimitController,
+                              label: '频率限制',
+                              hint: '最大推送数',
+                              icon: Icons.speed_rounded,
+                              keyboardType: TextInputType.number,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      _buildTextField(
+                        controller: _timeWindowController,
+                        label: '时间窗口 (秒)',
+                        hint: '3600',
+                        icon: Icons.timer_rounded,
+                        keyboardType: TextInputType.number,
+                      ),
+                      const SizedBox(height: 24),
+                      _buildSwitchTile(
+                        title: '人工审批',
+                        subtitle: '开启后，符合规则的内容需在“待审批”中手动确认',
+                        icon: Icons.rate_review_rounded,
+                        value: _approvalRequired,
+                        onChanged: (v) => setState(() => _approvalRequired = v),
+                      ),
+                      _buildSwitchTile(
+                        title: '启用该规则',
+                        subtitle: '控制该规则是否立即生效',
+                        icon: Icons.power_settings_new_rounded,
+                        value: _enabled,
+                        onChanged: (v) => setState(() => _enabled = v),
+                      ),
+                      const SizedBox(height: 32),
+                      _buildSubHeader('标签匹配'),
+                      const SizedBox(height: 16),
+                      _TagInput(
+                        label: '包含标签',
+                        tags: _includeTags,
+                        onChanged: (tags) => setState(() => _includeTags = tags),
+                        placeholder: '输入标签后回车',
+                        chipColor: colorScheme.primary,
+                      ),
+                      if (_includeTags.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        _buildExpressiveDropdown<String>(
+                          label: '匹配模式',
+                          value: _tagsMatchMode,
+                          icon: Icons.api_rounded,
+                          items: const [
+                            DropdownMenuItem(value: 'any', child: Text('包含任一 (Any)')),
+                            DropdownMenuItem(value: 'all', child: Text('包含所有 (All)')),
+                          ],
+                          onChanged: (v) => setState(() => _tagsMatchMode = v!),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      _TagInput(
+                        label: '排除标签',
+                        tags: _excludeTags,
+                        onChanged: (tags) => setState(() => _excludeTags = tags),
+                        placeholder: '输入要过滤的标签',
+                        chipColor: colorScheme.error,
+                      ),
+                      const SizedBox(height: 32),
+                      _buildTargetsSection(context),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('取消'),
+                ),
+                const SizedBox(width: 12),
+                FilledButton(
+                  onPressed: _submit,
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: Text(isEditing ? '保存修改' : '创建规则'),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
+    );
+  }
+
+  Widget _buildSubHeader(String title) {
+    return Text(
+      title,
+      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+        color: Theme.of(context).colorScheme.primary,
+        fontWeight: FontWeight.bold,
+        letterSpacing: 1.2,
+      ),
+    );
+  }
+
+  Widget _buildNsfwSelector() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.security_rounded, size: 20, color: colorScheme.outline),
+            const SizedBox(width: 12),
+            Text('NSFW 策略', style: Theme.of(context).textTheme.bodyMedium),
+          ],
         ),
-        FilledButton(
-          onPressed: _submit,
-          child: Text(isEditing ? '保存' : '创建'),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: 'block', label: Text('阻止'), icon: Icon(Icons.block_rounded, size: 18)),
+              ButtonSegment(value: 'allow', label: Text('允许'), icon: Icon(Icons.check_circle_outline_rounded, size: 18)),
+              ButtonSegment(value: 'separate_channel', label: Text('分离'), icon: Icon(Icons.call_split_rounded, size: 18)),
+            ],
+            selected: {_nsfwPolicy},
+            onSelectionChanged: (Set<String> newSelection) {
+              setState(() => _nsfwPolicy = newSelection.first);
+            },
+            style: SegmentedButton.styleFrom(
+              visualDensity: VisualDensity.comfortable,
+              selectedBackgroundColor: colorScheme.primary,
+              selectedForegroundColor: colorScheme.onPrimary,
+            ),
+          ),
         ),
       ],
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    int maxLines = 1,
+    TextInputType? keyboardType,
+    String? Function(String?)? validator,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return TextFormField(
+      controller: controller,
+      maxLines: maxLines,
+      keyboardType: keyboardType,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: Icon(icon, size: 20),
+        filled: true,
+        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: colorScheme.primary, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      ),
+    );
+  }
+
+  Widget _buildExpressiveDropdown<T>({
+    required String label,
+    required T value,
+    required IconData icon,
+    required List<DropdownMenuItem<T>> items,
+    required ValueChanged<T?> onChanged,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return DropdownButtonFormField<T>(
+      value: value,
+      items: items,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, size: 20),
+        filled: true,
+        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      ),
+    );
+  }
+
+  Widget _buildSwitchTile({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: SwitchListTile(
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+        secondary: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: (value ? colorScheme.primary : colorScheme.outline).withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 20, color: value ? colorScheme.primary : colorScheme.outline),
+        ),
+        value: value,
+        onChanged: onChanged,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
     );
   }
 
@@ -257,138 +391,116 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              '分发目标',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: colorScheme.primary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            IconButton(
+            _buildSubHeader('分发目标'),
+            IconButton.filledTonal(
               onPressed: _showAddTargetDialog,
-              icon: const Icon(Icons.add_circle_outline),
+              icon: const Icon(Icons.add_rounded, size: 18),
               tooltip: '添加目标',
-              constraints: const BoxConstraints(),
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               padding: EdgeInsets.zero,
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         if (_targets.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: colorScheme.outlineVariant),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.warning_amber, size: 16, color: colorScheme.error),
-                const SizedBox(width: 8),
-                Text(
-                  '未配置分发目标，规则将不会生效',
-                  style: TextStyle(fontSize: 12, color: colorScheme.error),
-                ),
-              ],
-            ),
-          )
+          _buildEmptyTargets(colorScheme)
         else
-          ..._targets.asMap().entries.map((entry) {
-            final index = entry.key;
-            final target = entry.value;
-            final platform = target['platform'] ?? 'telegram';
-            final targetId = target['target_id'] ?? '';
-            final enabled = target['enabled'] ?? true;
-
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                leading: Icon(
-                  platform == 'telegram' ? Icons.telegram : Icons.public,
-                  color: platform == 'telegram' ? Colors.blue : null,
-                ),
-                title: Text(targetId),
-                subtitle: Text(platform),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Switch(
-                      value: enabled,
-                      onChanged: (v) {
-                        setState(() {
-                          _targets[index] = {...target, 'enabled': v};
-                        });
-                      },
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline, size: 20),
-                      onPressed: () {
-                        setState(() {
-                          _targets.removeAt(index);
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }),
+          ..._targets.asMap().entries.map((entry) => _buildTargetCard(entry.key, entry.value, colorScheme)),
       ],
+    );
+  }
+
+  Widget _buildEmptyTargets(ColorScheme colorScheme) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colorScheme.error.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: colorScheme.error),
+          const SizedBox(width: 16),
+          const Expanded(
+            child: Text('尚未配置分发目标，该规则目前不会产生任何推送动作。', style: TextStyle(fontSize: 13)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTargetCard(int index, Map<String, dynamic> target, ColorScheme colorScheme) {
+    final platform = target['platform'] ?? 'telegram';
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      color: colorScheme.surfaceContainer,
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ListTile(
+        leading: Icon(platform == 'telegram' ? Icons.telegram : Icons.hub_rounded, color: Colors.blue),
+        title: Text(target['target_id'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(platform.toUpperCase(), style: TextStyle(fontSize: 11, color: colorScheme.outline)),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Switch(
+              value: target['enabled'] ?? true,
+              onChanged: (v) => setState(() => _targets[index] = {...target, 'enabled': v}),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded, size: 20),
+              onPressed: () => setState(() => _targets.removeAt(index)),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
   void _showAddTargetDialog() {
     String platform = 'telegram';
     final targetIdController = TextEditingController();
-    
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: const Text('添加分发目标'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            DropdownButtonFormField<String>(
-              initialValue: platform,
-              decoration: const InputDecoration(labelText: '平台'),
-              items: const [
-                DropdownMenuItem(value: 'telegram', child: Text('Telegram')),
-                // Add other platforms if needed
-              ],
+            _buildExpressiveDropdown<String>(
+              label: '平台',
+              value: platform,
+              icon: Icons.hub_rounded,
+              items: const [DropdownMenuItem(value: 'telegram', child: Text('Telegram'))],
               onChanged: (v) => platform = v!,
             ),
             const SizedBox(height: 16),
             TextField(
               controller: targetIdController,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: '目标 ID',
                 hintText: '例如: @channel_name',
+                prefixIcon: const Icon(Icons.alternate_email_rounded),
+                filled: true,
+                fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
               ),
             ),
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(
             onPressed: () {
               if (targetIdController.text.isNotEmpty) {
-                setState(() {
-                  _targets.add({
-                    'platform': platform,
-                    'target_id': targetIdController.text.trim(),
-                    'enabled': true,
-                  });
-                });
+                setState(() => _targets.add({'platform': platform, 'target_id': targetIdController.text.trim(), 'enabled': true}));
                 Navigator.pop(ctx);
               }
             },
-            child: const Text('添加'),
+            child: const Text('确认添加'),
           ),
         ],
       ),
@@ -397,52 +509,31 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
-
-    final priority = int.tryParse(_priorityController.text) ?? 0;
-    final rateLimit = int.tryParse(_rateLimitController.text);
-    final timeWindow = int.tryParse(_timeWindowController.text);
-
     final matchConditions = {
       if (_includeTags.isNotEmpty) 'tags': _includeTags,
       if (_excludeTags.isNotEmpty) 'tags_exclude': _excludeTags,
       'tags_match_mode': _tagsMatchMode,
     };
-
+    final create = DistributionRuleCreate(
+      name: _nameController.text,
+      description: _descriptionController.text.isEmpty ? null : _descriptionController.text,
+      matchConditions: matchConditions,
+      targets: _targets,
+      priority: int.tryParse(_priorityController.text) ?? 0,
+      nsfwPolicy: _nsfwPolicy,
+      approvalRequired: _approvalRequired,
+      enabled: _enabled,
+      rateLimit: int.tryParse(_rateLimitController.text),
+      timeWindow: int.tryParse(_timeWindowController.text),
+    );
     if (isEditing) {
-      widget.onUpdate?.call(
-        widget.rule!.id,
-        DistributionRuleUpdate(
-          name: _nameController.text,
-          description: _descriptionController.text.isEmpty
-              ? null
-              : _descriptionController.text,
-          matchConditions: matchConditions,
-          targets: _targets,
-          priority: priority,
-          nsfwPolicy: _nsfwPolicy,
-          approvalRequired: _approvalRequired,
-          enabled: _enabled,
-          rateLimit: rateLimit,
-          timeWindow: timeWindow,
-        ),
-      );
+      widget.onUpdate?.call(widget.rule!.id, DistributionRuleUpdate(
+        name: create.name, description: create.description, matchConditions: create.matchConditions,
+        targets: create.targets, priority: create.priority, nsfwPolicy: create.nsfwPolicy,
+        approvalRequired: create.approvalRequired, enabled: create.enabled, rateLimit: create.rateLimit, timeWindow: create.timeWindow,
+      ));
     } else {
-      widget.onCreate(
-        DistributionRuleCreate(
-          name: _nameController.text,
-          description: _descriptionController.text.isEmpty
-              ? null
-              : _descriptionController.text,
-          matchConditions: matchConditions,
-          targets: _targets,
-          priority: priority,
-          nsfwPolicy: _nsfwPolicy,
-          approvalRequired: _approvalRequired,
-          enabled: _enabled,
-          rateLimit: rateLimit,
-          timeWindow: timeWindow,
-        ),
-      );
+      widget.onCreate(create);
     }
     Navigator.of(context).pop();
   }
@@ -492,6 +583,7 @@ class _TagInputState extends State<_TagInput> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -500,39 +592,31 @@ class _TagInputState extends State<_TagInput> {
           decoration: InputDecoration(
             labelText: widget.label,
             hintText: widget.placeholder,
-            border: const OutlineInputBorder(),
-            suffixIcon: IconButton(
-              onPressed: _addTag,
-              icon: const Icon(Icons.add),
-            ),
+            prefixIcon: const Icon(Icons.tag_rounded, size: 20),
+            filled: true,
+            fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+            suffixIcon: IconButton(onPressed: _addTag, icon: const Icon(Icons.add_circle_outline_rounded)),
           ),
           onFieldSubmitted: (_) => _addTag(),
         ),
         if (widget.tags.isNotEmpty) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: widget.tags.map((tag) {
-              return Chip(
-                label: Text(tag),
-                labelStyle: TextStyle(
-                  color: widget.chipColor,
-                  fontSize: 12,
-                ),
-                backgroundColor: widget.chipColor.withValues(alpha: 0.1),
-                side: BorderSide(color: widget.chipColor.withValues(alpha: 0.3)),
-                onDeleted: () {
-                  final newTags = List<String>.from(widget.tags)..remove(tag);
-                  widget.onChanged(newTags);
-                },
-                deleteIconColor: widget.chipColor,
-              );
-            }).toList(),
+            children: widget.tags.map((tag) => Chip(
+              label: Text(tag),
+              labelStyle: TextStyle(color: widget.chipColor, fontSize: 12, fontWeight: FontWeight.bold),
+              backgroundColor: widget.chipColor.withValues(alpha: 0.1),
+              side: BorderSide(color: widget.chipColor.withValues(alpha: 0.2)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              onDeleted: () => widget.onChanged(List<String>.from(widget.tags)..remove(tag)),
+              deleteIconColor: widget.chipColor,
+            )).toList(),
           ),
         ],
       ],
     );
   }
 }
-

@@ -30,13 +30,14 @@ class CollectionFilterState {
     List<String>? tags,
     bool clearPlatforms = false,
     bool clearStatuses = false,
+    bool clearAuthor = false,
     bool clearDateRange = false,
     bool clearTags = false,
   }) {
     return CollectionFilterState(
       platforms: clearPlatforms ? const [] : (platforms ?? this.platforms),
       statuses: clearStatuses ? const [] : (statuses ?? this.statuses),
-      author: author ?? this.author,
+      author: clearAuthor ? null : (author ?? this.author),
       dateRange: clearDateRange ? null : (dateRange ?? this.dateRange),
       searchQuery: searchQuery ?? this.searchQuery,
       tags: clearTags ? const [] : (tags ?? this.tags),
@@ -74,6 +75,7 @@ class CollectionFilter extends _$CollectionFilter {
       tags: tags,
       clearPlatforms: platforms == null || platforms.isEmpty,
       clearStatuses: statuses == null || statuses.isEmpty,
+      clearAuthor: author == null,
       clearDateRange: dateRange == null,
       clearTags: tags == null || tags.isEmpty,
     );

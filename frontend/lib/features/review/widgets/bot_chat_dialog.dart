@@ -66,155 +66,314 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
   @override
   Widget build(BuildContext context) {
     final rulesAsync = ref.watch(distributionRulesProvider);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
-    return AlertDialog(
-      title: Text(isEditing ? '编辑群组配置' : '添加 Bot 群组'),
-      content: SizedBox(
-        width: 500,
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 560),
+        padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                if (!isEditing) ...[
-                  TextFormField(
-                    controller: _chatIdController,
-                    decoration: const InputDecoration(
-                      labelText: 'Chat ID *',
-                      hintText: '-1001234567890 或 @channel_name',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (v) =>
-                        v == null || v.isEmpty ? '请输入 Chat ID' : null,
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    // ignore: deprecated_member_use
-                    value: _chatType,
-                    decoration: const InputDecoration(
-                      labelText: '类型',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'channel', child: Text('频道')),
-                      DropdownMenuItem(value: 'group', child: Text('群组')),
-                      DropdownMenuItem(
-                          value: 'supergroup', child: Text('超级群组')),
-                    ],
-                    onChanged: (v) => setState(() => _chatType = v!),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                TextFormField(
-                  controller: _titleController,
-                  decoration: const InputDecoration(
-                    labelText: '显示名称',
-                    hintText: '群组/频道名称',
-                    border: OutlineInputBorder(),
-                  ),
+                  child: Icon(Icons.smart_toy_rounded, color: colorScheme.primary),
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _priorityController,
-                        decoration: const InputDecoration(
-                          labelText: '优先级',
-                          hintText: '0',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        // ignore: deprecated_member_use
-                        value: _nsfwPolicy,
-                        decoration: const InputDecoration(
-                          labelText: 'NSFW 策略',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                              value: 'inherit', child: Text('继承全局')),
-                          DropdownMenuItem(value: 'allow', child: Text('允许')),
-                          DropdownMenuItem(value: 'block', child: Text('阻止')),
-                          DropdownMenuItem(
-                              value: 'separate', child: Text('分离频道')),
-                        ],
-                        onChanged: (v) => setState(() => _nsfwPolicy = v!),
-                      ),
-                    ),
-                  ],
-                ),
-                if (_nsfwPolicy == 'separate') ...[
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _nsfwChatIdController,
-                    decoration: const InputDecoration(
-                      labelText: 'NSFW 备用频道 ID',
-                      hintText: '-1001234567890',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _tagFilterController,
-                  decoration: const InputDecoration(
-                    labelText: '标签过滤器',
-                    hintText: '逗号分隔，留空接收所有',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SwitchListTile(
-                  title: const Text('启用此群组'),
-                  value: _enabled,
-                  onChanged: (v) => setState(() => _enabled = v),
-                  contentPadding: EdgeInsets.zero,
-                ),
-                const SizedBox(height: 16),
+                const SizedBox(width: 16),
                 Text(
-                  '关联分发规则',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const SizedBox(height: 8),
-                rulesAsync.when(
-                  data: (rules) => _buildRuleSelector(rules),
-                  loading: () => const CircularProgressIndicator(),
-                  error: (e, _) => Text('加载规则失败: $e'),
+                  isEditing ? '编辑群组配置' : '添加 Bot 群组',
+                  style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
                 ),
               ],
             ),
-          ),
+            const SizedBox(height: 32),
+            Flexible(
+              child: Form(
+                key: _formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (!isEditing) ...[
+                        _buildTextField(
+                          controller: _chatIdController,
+                          label: 'Chat ID *',
+                          hint: '-1001234567890 或 @channel_name',
+                          icon: Icons.alternate_email_rounded,
+                          validator: (v) => v == null || v.isEmpty ? '请输入 Chat ID' : null,
+                        ),
+                        const SizedBox(height: 20),
+                        _buildExpressiveDropdown<String>(
+                          label: '群组类型',
+                          value: _chatType,
+                          icon: Icons.category_rounded,
+                          items: const [
+                            DropdownMenuItem(value: 'channel', child: Text('频道')),
+                            DropdownMenuItem(value: 'group', child: Text('群组')),
+                            DropdownMenuItem(value: 'supergroup', child: Text('超级群组')),
+                          ],
+                          onChanged: (v) => setState(() => _chatType = v!),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+                      _buildTextField(
+                        controller: _titleController,
+                        label: '显示名称',
+                        hint: '可选：群组/频道备注名称',
+                        icon: Icons.title_rounded,
+                      ),
+                      const SizedBox(height: 32),
+                      _buildSubHeader('NSFW 与优先级'),
+                      const SizedBox(height: 16),
+                      _buildNsfwSelector(),
+                      const SizedBox(height: 24),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildTextField(
+                              controller: _priorityController,
+                              label: '优先级',
+                              hint: '0',
+                              icon: Icons.priority_high_rounded,
+                              keyboardType: TextInputType.number,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: _tagFilterController,
+                              label: '标签过滤器',
+                              hint: '逗号分隔，留空接收所有',
+                              icon: Icons.filter_list_rounded,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_nsfwPolicy == 'separate') ...[
+                        const SizedBox(height: 24),
+                        _buildTextField(
+                          controller: _nsfwChatIdController,
+                          label: 'NSFW 备用频道 ID',
+                          hint: '例如: -1001234567890',
+                          icon: Icons.call_split_rounded,
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                      _buildSwitchTile(
+                        title: '启用此配置',
+                        subtitle: '控制 Bot 是否向此群组/频道推送消息',
+                        icon: Icons.power_settings_new_rounded,
+                        value: _enabled,
+                        onChanged: (v) => setState(() => _enabled = v),
+                      ),
+                      const SizedBox(height: 32),
+                      _buildSubHeader('关联分发规则'),
+                      const SizedBox(height: 16),
+                      rulesAsync.when(
+                        data: (rules) => _buildRuleSelector(rules),
+                        loading: () => const Center(child: CircularProgressIndicator()),
+                        error: (e, _) => Text('加载失败: $e', style: TextStyle(color: colorScheme.error)),
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('取消'),
+                ),
+                const SizedBox(width: 12),
+                FilledButton(
+                  onPressed: _submit,
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: Text(isEditing ? '保存修改' : '确认添加'),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
+    );
+  }
+
+  Widget _buildSubHeader(String title) {
+    return Text(
+      title,
+      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+        color: Theme.of(context).colorScheme.primary,
+        fontWeight: FontWeight.bold,
+        letterSpacing: 1.2,
+      ),
+    );
+  }
+
+  Widget _buildNsfwSelector() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.security_rounded, size: 20, color: colorScheme.outline),
+            const SizedBox(width: 12),
+            Text('NSFW 策略', style: Theme.of(context).textTheme.bodyMedium),
+          ],
         ),
-        FilledButton(
-          onPressed: _submit,
-          child: Text(isEditing ? '保存' : '添加'),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: 'inherit', label: Text('继承'), icon: Icon(Icons.settings_backup_restore_rounded, size: 18)),
+              ButtonSegment(value: 'allow', label: Text('允许'), icon: Icon(Icons.check_circle_outline_rounded, size: 18)),
+              ButtonSegment(value: 'block', label: Text('阻止'), icon: Icon(Icons.block_rounded, size: 18)),
+              ButtonSegment(value: 'separate', label: Text('分离'), icon: Icon(Icons.call_split_rounded, size: 18)),
+            ],
+            selected: {_nsfwPolicy},
+            onSelectionChanged: (Set<String> newSelection) {
+              setState(() => _nsfwPolicy = newSelection.first);
+            },
+            style: SegmentedButton.styleFrom(
+              visualDensity: VisualDensity.comfortable,
+              selectedBackgroundColor: colorScheme.primary,
+              selectedForegroundColor: colorScheme.onPrimary,
+            ),
+          ),
         ),
       ],
     );
   }
 
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    int maxLines = 1,
+    TextInputType? keyboardType,
+    String? Function(String?)? validator,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return TextFormField(
+      controller: controller,
+      maxLines: maxLines,
+      keyboardType: keyboardType,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: Icon(icon, size: 20),
+        filled: true,
+        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: colorScheme.primary, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      ),
+    );
+  }
+
+  Widget _buildExpressiveDropdown<T>({
+    required String label,
+    required T value,
+    required IconData icon,
+    required List<DropdownMenuItem<T>> items,
+    required ValueChanged<T?> onChanged,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return DropdownButtonFormField<T>(
+      value: value,
+      items: items,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, size: 20),
+        filled: true,
+        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      ),
+    );
+  }
+
+  Widget _buildSwitchTile({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: SwitchListTile(
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+        secondary: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: (value ? colorScheme.primary : colorScheme.outline).withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 20, color: value ? colorScheme.primary : colorScheme.outline),
+        ),
+        value: value,
+        onChanged: onChanged,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+    );
+  }
+
   Widget _buildRuleSelector(List<DistributionRule> rules) {
     if (rules.isEmpty) {
-      return const Text('暂无可用规则');
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Text('尚未创建任何分发规则', textAlign: TextAlign.center, style: TextStyle(fontSize: 13)),
+      );
     }
 
     return Wrap(
       spacing: 8,
-      runSpacing: 4,
+      runSpacing: 8,
       children: rules.map((rule) {
         final isSelected = _linkedRuleIds.contains(rule.id);
         return FilterChip(
@@ -229,6 +388,8 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
               }
             });
           },
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          showCheckmark: true,
         );
       }).toList(),
     );

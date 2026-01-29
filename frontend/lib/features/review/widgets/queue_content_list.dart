@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import '../models/queue_item.dart';
@@ -41,7 +42,6 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
       setState(() {
         _localItems = List.from(widget.items);
       });
-      // 清理不再存在的选中项
       final currentIds = _localItems.map((e) => e.contentId).toSet();
       _selectedIds.retainAll(currentIds);
       if (_selectedIds.isEmpty) _isSelectionMode = false;
@@ -64,22 +64,33 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
 
   Widget _buildEmptyState() {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.schedule_send,
-              size: 64, color: theme.colorScheme.outline.withValues(alpha: 0.5)),
-          const SizedBox(height: 16),
-          Text('暂无内容', style: theme.textTheme.titleMedium),
-          TextButton.icon(
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withValues(alpha: 0.05),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.auto_awesome_rounded,
+                size: 64, color: colorScheme.primary.withValues(alpha: 0.3)),
+          ),
+          const SizedBox(height: 24),
+          Text('暂无待处理内容', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Text('队列目前是空的，休息一下吧', style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.outline)),
+          const SizedBox(height: 24),
+          FilledButton.tonalIcon(
             onPressed: widget.onRefresh,
-            icon: const Icon(Icons.refresh),
-            label: const Text('立即刷新'),
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('刷新队列'),
           ),
         ],
       ),
-    );
+    ).animate().fadeIn();
   }
 
   Widget _buildMainList() {
@@ -89,8 +100,6 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
       return _buildNormalList();
     }
 
-    // 核心修复：使用 LayoutBuilder + ClipRect 锁定物理显示区域
-    // 确保拖动时的虚影（Overlay）在视觉上不超出此 Widget 边界
     return LayoutBuilder(
       builder: (context, constraints) {
         return ClipRect(
@@ -98,21 +107,23 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
             height: constraints.maxHeight,
             width: constraints.maxWidth,
             child: ReorderableListView.builder(
-              padding: EdgeInsets.fromLTRB(16, 16, 16, _isSelectionMode ? 100 : 24),
+              padding: EdgeInsets.fromLTRB(16, 16, 16, _isSelectionMode ? 120 : 24),
               itemCount: _localItems.length,
               onReorder: _onReorder,
+              buildDefaultDragHandles: false, // Fix Task 3: Disable default handles to prevent overlap
               proxyDecorator: (child, index, animation) {
                 return AnimatedBuilder(
                   animation: animation,
                   builder: (context, _) {
                     final animValue = Curves.easeInOut.transform(animation.value);
-                    final elevation = lerpDouble(0, 8, animValue)!;
+                    final elevation = lerpDouble(0, 12, animValue)!;
                     return Material(
                       elevation: elevation,
+                      borderRadius: BorderRadius.circular(24),
                       color: Colors.transparent,
-                      shadowColor: Colors.black.withValues(alpha: 0.3),
+                      shadowColor: Colors.black.withValues(alpha: 0.2),
                       child: Transform.scale(
-                        scale: lerpDouble(1, 1.02, animValue)!,
+                        scale: lerpDouble(1, 1.05, animValue)!,
                         child: child,
                       ),
                     );
@@ -175,7 +186,6 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
 
     try {
       await ref.read(contentQueueProvider.notifier).reorderToIndex(movedItem.contentId, newIndex);
-      // 重排后失效，强制从后端拉取权威时间轴
       ref.invalidate(contentQueueProvider);
     } catch (e) {
       widget.onRefresh();
@@ -203,41 +213,67 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
 
   Widget _buildBatchActionBar() {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Positioned(
-      left: 16,
-      right: 16,
+      left: 20,
+      right: 20,
       bottom: 24,
       child: Card(
-        color: theme.colorScheme.primaryContainer,
+        color: colorScheme.primaryContainer,
+        elevation: 8,
+        shadowColor: colorScheme.shadow.withValues(alpha: 0.2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           child: Row(
             children: [
-              Text('已选 ${_selectedIds.length} 项',
-                  style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.onPrimaryContainer)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: colorScheme.onPrimaryContainer.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '已选 ${_selectedIds.length}',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
               const Spacer(),
-              TextButton.icon(
+              FilledButton.icon(
                 onPressed: _batchPushNow,
-                icon: const Icon(Icons.flash_on),
+                icon: const Icon(Icons.flash_on_rounded, size: 18),
                 label: const Text('立即推送'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: colorScheme.onPrimaryContainer,
+                  foregroundColor: colorScheme.primaryContainer,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
               ),
-              TextButton.icon(
+              const SizedBox(width: 8),
+              FilledButton.tonalIcon(
                 onPressed: _batchReschedule,
-                icon: const Icon(Icons.calendar_month),
-                label: const Text('批量排期'),
+                icon: const Icon(Icons.event_repeat_rounded, size: 18),
+                label: const Text('重排期'),
+                style: FilledButton.styleFrom(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
               ),
-              IconButton(
+              const SizedBox(width: 8),
+              IconButton.filledTonal(
                 onPressed: () => setState(() {
                   _isSelectionMode = false;
                   _selectedIds.clear();
                 }),
-                icon: const Icon(Icons.close),
+                icon: const Icon(Icons.close_rounded, size: 20),
               ),
             ],
           ),
         ),
       ),
-    );
+    ).animate().slideY(begin: 1, end: 0, curve: Curves.easeOutBack);
   }
 
   Future<void> _batchPushNow() async {
@@ -265,7 +301,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
     final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.now(),
-      helpText: '选择批量排期的起始时间 (不能早于现在)',
+      helpText: '选择批量排期的起始时间',
     );
 
     if (picked == null) return;
@@ -283,7 +319,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
     try {
       await ref.read(contentQueueProvider.notifier).batchReschedule(ids, startTime);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('批量排期完成，队列已重排')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('批量排期完成')));
       }
     } catch (e) {
       if (mounted) {
@@ -295,9 +331,6 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
   Future<void> _updateSchedule(QueueItem item, DateTime newTime) async {
     try {
       await ref.read(contentQueueProvider.notifier).updateSchedule(item.contentId, newTime);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('推送时间已更新')));
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('更新失败: $e')));
@@ -313,8 +346,15 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
     try {
       await ref.read(contentQueueProvider.notifier).moveToStatus(item.contentId, newStatus);
       if (mounted) {
+        String dest = newStatus == QueueStatus.filtered ? '已过滤' : '待推送';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已移动到${newStatus.label}')),
+          SnackBar(
+            content: Text('已移动到"$dest"列表'),
+            action: SnackBarAction(
+              label: '撤销',
+              onPressed: () => _moveItem(item, widget.currentStatus),
+            ),
+          ),
         );
       }
     } catch (e) {
@@ -322,9 +362,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
         _localItems.add(item);
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('操作失败: $e')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('操作失败: $e')));
       }
     }
   }
@@ -368,148 +406,171 @@ class _QueueItemCard extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        onTap: isSelectionMode ? onToggleSelect : null,
-        onLongPress: onLongPress,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: isSelected ? colorScheme.primary.withValues(alpha: 0.05) : colorScheme.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected 
-                  ? colorScheme.primary 
-                  : colorScheme.outlineVariant.withValues(alpha: 0.4),
-              width: isSelected ? 2 : 1,
-            ),
+      child: AnimatedContainer(
+        duration: 300.ms,
+        decoration: BoxDecoration(
+          color: isSelected 
+              ? colorScheme.primary.withValues(alpha: 0.05) 
+              : colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: isSelected 
+                ? colorScheme.primary 
+                : colorScheme.outlineVariant.withValues(alpha: 0.3),
+            width: isSelected ? 2 : 1,
           ),
-          child: IntrinsicHeight(
-            child: Row(
-              children: [
-                // 左侧时间/状态指示器
-                if (isWillPush)
-                  _buildTimeSection(context)
-                else
-                  _buildStatusIndicator(context),
-                
-                // 主内容
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-                    child: Row(
-                      children: [
-                        if (item.coverUrl != null)
-                          _buildCover(colorScheme),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                item.title ?? '无标题',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  _PlatformBadge(platform: item.platform),
-                                  if (item.isNsfw)
-                                    Padding(
-                                      padding: const EdgeInsets.only(left: 8),
-                                      child: _Badge(label: 'NSFW', color: Colors.red),
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // 操作区
-                if (isSelectionMode)
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Checkbox(value: isSelected, onChanged: (_) => onToggleSelect?.call()),
-                  )
-                else
-                  _buildActions(context),
-                
-                // 拖动手柄
-                if (isWillPush && !isSelectionMode)
-                  ReorderableDragStartListener(
-                    index: index,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: isSelectionMode ? onToggleSelect : null,
+            onLongPress: onLongPress,
+            borderRadius: BorderRadius.circular(24),
+            child: IntrinsicHeight(
+              child: Row(
+                children: [
+                  if (isWillPush)
+                    _buildTimeSection(context),
+                  
+                  Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Icon(Icons.drag_indicator, color: colorScheme.outline.withValues(alpha: 0.5)),
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          if (item.coverUrl != null)
+                            _buildCover(colorScheme),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.title ?? '无标题内容',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: -0.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    _PlatformBadge(platform: item.platform),
+                                    if (item.isNsfw)
+                                      Padding(
+                                        padding: const EdgeInsets.only(left: 8),
+                                        child: _Badge(label: 'NSFW', color: Colors.red),
+                                      ),
+                                    const Spacer(),
+                                    if (!isWillPush && item.scheduledTime != null)
+                                       Text(
+                                         DateFormat('MM-dd HH:mm').format(item.scheduledTime!.toLocal()),
+                                         style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline),
+                                       ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-              ],
+
+                  if (isSelectionMode)
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Checkbox(
+                        value: isSelected, 
+                        onChanged: (_) => onToggleSelect?.call(),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                      ),
+                    )
+                  else
+                    _buildActions(context),
+                  
+                  if (isWillPush && !isSelectionMode)
+                    ReorderableDragStartListener(
+                      index: index,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Icon(Icons.drag_indicator_rounded, size: 20, color: colorScheme.outline.withValues(alpha: 0.3)),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
       ),
-    );
+    ).animate().fadeIn(delay: (index % 15 * 50).ms).slideX(begin: 0.1, end: 0, curve: Curves.easeOutCubic);
   }
 
   Widget _buildTimeSection(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    // 统一转换为本地时间显示
     final localTime = item.scheduledTime?.toLocal();
-    final timeStr = localTime != null
-        ? DateFormat('HH:mm').format(localTime)
-        : '--:--';
+    final timeStr = localTime != null ? DateFormat('HH:mm').format(localTime) : '--:--';
 
-    return PopupMenuButton<dynamic>(
-      tooltip: '快速调整时间',
-      onSelected: (value) async {
-        final now = DateTime.now();
-        DateTime? newTime;
-        
-        if (value is int) {
-          final baseTime = localTime ?? now;
-          newTime = baseTime.isBefore(now) ? now.add(Duration(minutes: value)) : baseTime.add(Duration(minutes: value));
-        } else if (value == 'now') {
-          newTime = now;
-        } else if (value == 'custom') {
-          await _pickTime(context);
-          return;
-        }
-
-        if (newTime != null) {
-          // 限制最小时间不能早于现在
-          if (newTime.isBefore(now)) newTime = now.add(const Duration(seconds: 10));
-          onUpdateSchedule?.call(newTime);
-        }
-      },
-      itemBuilder: (context) => [
-        const PopupMenuItem(value: 'now', child: ListTile(leading: Icon(Icons.bolt, size: 18), title: Text('立即推送'), dense: true)),
-        const PopupMenuDivider(),
-        const PopupMenuItem(value: 10, child: Text('+10 分钟')),
-        const PopupMenuItem(value: 30, child: Text('+30 分钟')),
-        const PopupMenuItem(value: 60, child: Text('+1 小时')),
-        const PopupMenuItem(value: 120, child: Text('+2 小时')),
-        const PopupMenuDivider(),
-        const PopupMenuItem(value: 'custom', child: ListTile(leading: Icon(Icons.edit_calendar, size: 18), title: Text('自定义时间...'), dense: true)),
-      ],
-      child: Container(
-        width: 60,
-        decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-          borderRadius: const BorderRadius.only(topLeft: Radius.circular(11), bottomLeft: Radius.circular(11)),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(timeStr, style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.primary)),
-            const SizedBox(height: 2),
-            Icon(Icons.expand_more, size: 10, color: colorScheme.outline),
-          ],
+    return Theme(
+      data: theme.copyWith(
+        hoverColor: Colors.transparent,
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+      ),
+      child: PopupMenuButton<dynamic>(
+        tooltip: '调整时间',
+        offset: const Offset(72, 0),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        onSelected: (value) async {
+          final now = DateTime.now();
+          DateTime? newTime;
+          if (value is int) {
+            final baseTime = localTime ?? now;
+            newTime = baseTime.isBefore(now) ? now.add(Duration(minutes: value)) : baseTime.add(Duration(minutes: value));
+          } else if (value == 'now') {
+            newTime = now.add(const Duration(seconds: 1));
+          } else if (value == 'custom') {
+            await _pickTime(context);
+            return;
+          }
+          if (newTime != null) {
+            if (newTime.isBefore(now)) newTime = now.add(const Duration(seconds: 10));
+            onUpdateSchedule?.call(newTime);
+          }
+        },
+        itemBuilder: (context) => [
+          PopupMenuItem(
+            value: 'now', 
+            child: Row(children: [Icon(Icons.bolt_rounded, size: 20, color: colorScheme.primary), const SizedBox(width: 12), const Text('立即推送')]),
+          ),
+          const PopupMenuDivider(),
+          const PopupMenuItem(value: 10, child: Text('+10 分钟')),
+          const PopupMenuItem(value: 30, child: Text('+30 分钟')),
+          const PopupMenuItem(value: 60, child: Text('+1 小时')),
+          const PopupMenuDivider(),
+          const PopupMenuItem(value: 'custom', child: Row(children: [Icon(Icons.edit_calendar_rounded, size: 20), const SizedBox(width: 12), const Text('自定义...')])),
+        ],
+        child: Material(
+          color: colorScheme.primary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.only(topLeft: Radius.circular(23), bottomLeft: Radius.circular(23)),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: null, // Handled by PopupMenuButton
+            child: Container(
+              width: 72,
+              alignment: Alignment.center,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(timeStr, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900, color: colorScheme.primary)),
+                  const SizedBox(height: 4),
+                  Icon(Icons.timer_outlined, size: 14, color: colorScheme.primary.withValues(alpha: 0.5)),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -518,68 +579,79 @@ class _QueueItemCard extends StatelessWidget {
   Future<void> _pickTime(BuildContext context) async {
     final now = DateTime.now();
     final localTime = item.scheduledTime?.toLocal();
-    final initialTime = localTime != null && localTime.isAfter(now)
-        ? TimeOfDay.fromDateTime(localTime) 
-        : TimeOfDay.now();
+    final initialTime = localTime != null && localTime.isAfter(now) ? TimeOfDay.fromDateTime(localTime) : TimeOfDay.now();
     
     final picked = await showTimePicker(
       context: context,
       initialTime: initialTime,
-      helpText: '设置推送时间 (不能早于现在)',
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: Theme.of(context).colorScheme.copyWith(primary: Theme.of(context).colorScheme.primary),
+        ),
+        child: child!,
+      ),
     );
 
-    if (picked != null && onUpdateSchedule != null) {
-      final newDateTime = DateTime(now.year, now.month, now.day, picked.hour, picked.minute);
-      // 如果选的是今天且时间已过，或者日期逻辑有问题，进行修正
-      var finalTime = newDateTime;
-      if (finalTime.isBefore(now)) {
-        // 如果点选的时间在今天已过去，自动假定为明天，或者提示错误。这里逻辑上强制设为“现在”
-        finalTime = now.add(const Duration(seconds: 10));
-      }
-      onUpdateSchedule!(finalTime);
+    if (picked != null) {
+      final finalTime = DateTime(now.year, now.month, now.day, picked.hour, picked.minute);
+      onUpdateSchedule?.call(finalTime.isBefore(now) ? now.add(const Duration(seconds: 10)) : finalTime);
     }
   }
 
-  Widget _buildStatusIndicator(BuildContext context) {
-    final color = currentStatus == QueueStatus.pendingReview ? Colors.orange : Colors.grey;
-    return Container(
-      width: 6,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.5),
-        borderRadius: const BorderRadius.only(topLeft: Radius.circular(11), bottomLeft: Radius.circular(11)),
-      ),
-    );
-  }
-
   Widget _buildCover(ColorScheme colorScheme) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: CachedNetworkImage(
-        imageUrl: item.coverUrl!,
-        width: 48,
-        height: 48,
-        fit: BoxFit.cover,
-        placeholder: (context, url) => Container(width: 48, height: 48, color: colorScheme.surfaceContainerHighest),
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, offset: const Offset(0, 2))],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: CachedNetworkImage(
+          imageUrl: item.coverUrl!,
+          width: 52,
+          height: 52,
+          fit: BoxFit.cover,
+          placeholder: (context, url) => Container(color: colorScheme.surfaceContainerHighest),
+        ),
       ),
     );
   }
 
   Widget _buildActions(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     if (currentStatus == QueueStatus.pendingReview) {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(onPressed: onApprove, icon: const Icon(Icons.check, color: Colors.green, size: 20)),
-          IconButton(onPressed: onReject, icon: const Icon(Icons.close, color: Colors.red, size: 20)),
+          IconButton.filledTonal(
+            onPressed: onApprove, 
+            icon: const Icon(Icons.check_rounded, color: Colors.green, size: 20),
+            style: IconButton.styleFrom(backgroundColor: Colors.green.withValues(alpha: 0.1)),
+          ),
+          const SizedBox(width: 8),
+          IconButton.filledTonal(
+            onPressed: onReject, 
+            icon: const Icon(Icons.close_rounded, color: Colors.red, size: 20),
+            style: IconButton.styleFrom(backgroundColor: Colors.red.withValues(alpha: 0.1)),
+          ),
+          const SizedBox(width: 12),
         ],
       );
     }
     if (currentStatus == QueueStatus.willPush) {
-      return IconButton(
-          onPressed: onMoveToFiltered,
-          icon: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error, size: 20));
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: IconButton.filledTonal(
+            onPressed: onMoveToFiltered,
+            icon: Icon(Icons.delete_sweep_rounded, color: colorScheme.error, size: 20),
+            style: IconButton.styleFrom(backgroundColor: colorScheme.error.withValues(alpha: 0.1)),
+        ),
+      );
     }
-    return IconButton(onPressed: onRestore, icon: const Icon(Icons.refresh, size: 20));
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: IconButton.filledTonal(onPressed: onRestore, icon: const Icon(Icons.restore_page_rounded, size: 20)),
+    );
   }
 }
 
@@ -591,13 +663,13 @@ class _Badge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
-      child: Text(label, style: TextStyle(fontSize: 8, color: color, fontWeight: FontWeight.bold)),
+      child: Text(label, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold)),
     );
   }
 }
@@ -609,29 +681,29 @@ class _PlatformBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (icon, color) = switch (platform.toLowerCase()) {
-      'bilibili' => (Icons.play_circle_fill, const Color(0xFFFA7298)),
-      'weibo' => (Icons.radio_button_checked, const Color(0xFFE6162D)),
-      'twitter' => (Icons.tag, const Color(0xFF1DA1F2)),
-      'xiaohongshu' => (Icons.book, const Color(0xFFFF2442)),
-      'zhihu' => (Icons.question_answer, const Color(0xFF0066FF)),
-      _ => (Icons.public, Colors.grey),
+      'bilibili' => (Icons.play_circle_fill_rounded, Color(0xFFFA7298)),
+      'weibo' => (Icons.radio_button_checked_rounded, Color(0xFFE6162D)),
+      'twitter' => (Icons.tag_rounded, Color(0xFF1DA1F2)),
+      'xiaohongshu' => (Icons.explore_rounded, Color(0xFFFF2442)),
+      'zhihu' => (Icons.question_answer_rounded, Color(0xFF0066FF)),
+      _ => (Icons.public_rounded, Colors.grey),
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.15)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 10, color: color),
-          const SizedBox(width: 4),
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 6),
           Text(
             platform.toUpperCase(),
-            style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold),
+            style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold, letterSpacing: 0.5),
           ),
         ],
       ),

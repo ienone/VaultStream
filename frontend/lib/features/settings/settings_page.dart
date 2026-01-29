@@ -1,6 +1,6 @@
-// ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/providers/theme_provider.dart';
 import '../../core/widgets/frosted_app_bar.dart';
 import 'providers/settings_provider.dart';
@@ -15,453 +15,186 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
+  int? _expandedIndex;
+
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeModeProvider);
     final settingsAsync = ref.watch(systemSettingsProvider);
+    final localSettings = ref.watch(localSettingsProvider);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      appBar: const FrostedAppBar(title: Text('设置中心')),
+      appBar: const FrostedAppBar(title: Text('设置')),
       body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
         children: [
-          _buildSectionHeader(context, '服务器与连接'),
-          _buildNetworkSettings(context),
-          const Divider(height: 32),
+          _buildHeroTitle(theme),
+          const SizedBox(height: 32),
+
+          _buildSectionHeader(context, '服务器与通信'),
+          _buildGroup([
+            _buildExpandableSettingTile(
+              context,
+              index: 0,
+              title: '后端 API 地址',
+              subtitle: localSettings.baseUrl,
+              icon: Icons.cloud_done_rounded,
+              expandedContent: _buildBaseUrlEditor(localSettings.baseUrl),
+            ),
+            _buildExpandableSettingTile(
+              context,
+              index: 1,
+              title: 'API 访问密钥',
+              subtitle: '管理您的身份认证凭证',
+              icon: Icons.key_rounded,
+              expandedContent: _buildApiTokenEditor(localSettings.apiToken),
+            ),
+            _buildSettingTile(
+              context,
+              title: '测试服务器连接',
+              subtitle: '验证后端服务可用性',
+              icon: Icons.cell_tower_rounded,
+              onTap: () => _testConnection(context),
+            ),
+          ]),
+
+          const SizedBox(height: 32),
           _buildSectionHeader(context, '外观与偏好'),
-          _buildThemeSettings(context, ref, themeMode),
-          const Divider(height: 32),
+          _buildGroup([
+            _buildSettingTile(
+              context,
+              title: '主题模式',
+              subtitle: _getThemeModeName(themeMode),
+              icon: Icons.palette_rounded,
+              onTap: () => _showThemePicker(context, ref, themeMode),
+            ),
+            _buildSettingTile(
+              context,
+              title: '管理通知偏好设置',
+              subtitle: '配置推送通知与提醒',
+              icon: Icons.notifications_active_rounded,
+              onTap: () => _showToast(context, '通知设置 (Beta)'),
+            ),
+          ]),
+
+          const SizedBox(height: 32),
           _buildSectionHeader(context, '平台集成 (Cookies)'),
           _buildPlatformSettingsSection(context, settingsAsync),
-          const Divider(height: 32),
-          _buildSectionHeader(context, '系统与存储'),
-          _buildStorageSettings(context),
-          const SizedBox(height: 40),
+
+          const SizedBox(height: 32),
+          _buildSectionHeader(context, '备份与同步'),
+          _buildGroup([
+            _buildSettingTile(
+              context,
+              title: '管理备份设置',
+              subtitle: '导出/导入您的本地配置',
+              icon: Icons.cloud_upload_rounded,
+              onTap: () => _showToast(context, '备份功能即将上线'),
+            ),
+            _buildExpandableSettingTile(
+              context,
+              index: 2,
+              title: '网络代理配置',
+              subtitle: '配置 HTTP/HTTPS 代理服务器',
+              icon: Icons.lan_rounded,
+              expandedContent: _buildProxyEditor(),
+            ),
+          ]),
+
+          const SizedBox(height: 32),
+          _buildSectionHeader(context, '关于 VaultStream'),
+          _buildGroup([
+            _buildSettingTile(
+              context,
+              title: '清理缓存',
+              subtitle: '释放存储空间并清理媒体缓存',
+              icon: Icons.delete_sweep_rounded,
+              onTap: () => _showToast(context, '缓存已清理'),
+            ),
+            _buildSettingTile(
+              context,
+              title: '开源许可',
+              subtitle: '查看第三方库授权信息',
+              icon: Icons.info_outline_rounded,
+              onTap: () => showLicensePage(
+                context: context,
+                applicationName: 'VaultStream',
+                applicationVersion: 'v0.1.0-alpha',
+              ),
+            ),
+            _buildSettingTile(
+              context,
+              title: '退出登录',
+              subtitle: '清除本地认证并注销',
+              icon: Icons.logout_rounded,
+              iconColor: colorScheme.error,
+              onTap: () => _confirmLogout(context),
+              showArrow: false,
+            ),
+          ]),
+
+          const SizedBox(height: 64),
           _buildAppInfo(context),
+          const SizedBox(height: 40),
         ],
       ),
     );
+  }
+
+  Widget _buildHeroTitle(ThemeData theme) {
+    return Text(
+      '设置',
+      style: theme.textTheme.displayMedium?.copyWith(
+        fontWeight: FontWeight.w900,
+        letterSpacing: -1.5,
+        color: theme.colorScheme.onSurface,
+      ),
+    ).animate().fadeIn(duration: 400.ms).slideX(begin: -0.1, end: 0);
   }
 
   Widget _buildSectionHeader(BuildContext context, String title) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
       child: Text(
         title,
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-          color: Theme.of(context).colorScheme.primary,
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+          color: Theme.of(context).colorScheme.outline,
           fontWeight: FontWeight.bold,
-          letterSpacing: 1.2,
+          letterSpacing: 0.5,
         ),
       ),
     );
   }
 
-  Widget _buildThemeSettings(
-    BuildContext context,
-    WidgetRef ref,
-    ThemeMode themeMode,
-  ) {
-    return Column(
-      children: [
-        _buildSettingTile(
-          context,
-          title: '主题模式',
-          subtitle: _getThemeModeName(themeMode),
-          icon: Icons.palette_outlined,
-          onTap: () => _showThemePicker(context, ref, themeMode),
-        ),
-      ],
-    );
-  }
-
-  String _getThemeModeName(ThemeMode mode) {
-    switch (mode) {
-      case ThemeMode.system:
-        return '跟随系统';
-      case ThemeMode.light:
-        return '浅色模式';
-      case ThemeMode.dark:
-        return '深色模式';
-    }
-  }
-
-  void _showThemePicker(
-    BuildContext context,
-    WidgetRef ref,
-    ThemeMode currentMode,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text('跟随系统'),
-              leading: const Icon(Icons.brightness_auto),
-              trailing: currentMode == ThemeMode.system
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () {
-                ref.read(themeModeProvider.notifier).set(ThemeMode.system);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              title: const Text('浅色模式'),
-              leading: const Icon(Icons.light_mode),
-              trailing: currentMode == ThemeMode.light
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () {
-                ref.read(themeModeProvider.notifier).set(ThemeMode.light);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              title: const Text('深色模式'),
-              leading: const Icon(Icons.dark_mode),
-              trailing: currentMode == ThemeMode.dark
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () {
-                ref.read(themeModeProvider.notifier).set(ThemeMode.dark);
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        ),
+  Widget _buildGroup(List<Widget> children) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.2)),
       ),
-    );
-  }
-
-  Widget _buildPlatformSettingsSection(
-    BuildContext context,
-    AsyncValue<List<SystemSetting>> settingsAsync,
-  ) {
-    return settingsAsync.when(
-      data: (settings) => _buildPlatformSettings(context, settings),
-      loading: () => const Padding(
-        padding: EdgeInsets.all(16),
-        child: Center(child: CircularProgressIndicator()),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: children.asMap().entries.map((entry) {
+          final isLast = entry.key == children.length - 1;
+          return Column(
+            children: [
+              entry.value,
+              if (!isLast)
+                Divider(
+                  height: 1, 
+                  indent: 64, 
+                  endIndent: 20, 
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.3)
+                ),
+            ],
+          );
+        }).toList(),
       ),
-      error: (err, _) => Padding(
-        padding: const EdgeInsets.all(16),
-        child: Text(
-          '无法加载平台设置（请先配置服务器地址）',
-          style: TextStyle(color: Theme.of(context).colorScheme.outline),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPlatformSettings(
-    BuildContext context,
-    List<SystemSetting> settings,
-  ) {
-    final platforms = [
-      {
-        'key': 'weibo_cookie',
-        'name': '微博',
-        'icon': Icons.wechat,
-      },
-      {
-        'key': 'bilibili_cookie',
-        'name': 'Bilibili',
-        'icon': Icons.video_library,
-      },
-      {'key': 'x_cookie', 'name': 'X (Twitter)', 'icon': Icons.close},
-    ];
-
-    return Column(
-      children: platforms.map((p) {
-        final setting = settings.where((s) => s.key == p['key']).firstOrNull;
-        final isConfigured =
-            setting != null && setting.value.toString().isNotEmpty;
-
-        return _buildSettingTile(
-          context,
-          title: p['name'] as String,
-          subtitle: isConfigured ? '已配置' : '未配置',
-          icon: p['icon'] as IconData,
-          trailing: Icon(
-            isConfigured ? Icons.check_circle : Icons.warning_amber_rounded,
-            color: isConfigured ? Colors.green : Colors.orange,
-            size: 20,
-          ),
-          onTap: () => _showCookieEditor(
-            context,
-            p['key'] as String,
-            p['name'] as String,
-            setting?.value?.toString() ?? '',
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  void _showCookieEditor(
-    BuildContext context,
-    String key,
-    String name,
-    String currentValue,
-  ) {
-    final controller = TextEditingController(text: currentValue);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('配置 $name Cookie'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              '请粘贴对应平台的 Cookie 字符串，这通常包含登录信息。',
-              style: TextStyle(fontSize: 12),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              maxLines: 5,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: 'Paste cookie here...',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final messenger = ScaffoldMessenger.of(context);
-              final navigator = Navigator.of(context);
-
-              await ref
-                  .read(systemSettingsProvider.notifier)
-                  .updateSetting(
-                    key,
-                    controller.text,
-                    category: 'platform',
-                    description: '$name 登录凭证',
-                  );
-
-              if (mounted) {
-                navigator.pop();
-                messenger.showSnackBar(SnackBar(content: Text('$name 配置已更新')));
-              }
-            },
-            child: const Text('保存'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStorageSettings(BuildContext context) {
-    return Column(
-      children: [
-        _buildSettingTile(
-          context,
-          title: '清理缓存',
-          subtitle: '删除本地临时文件和图片缓存',
-          icon: Icons.cleaning_services_outlined,
-          onTap: () {
-            // TODO: Implement cache cleanup
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(const SnackBar(content: Text('缓存已清理 (模拟)')));
-          },
-        ),
-        _buildSettingTile(
-          context,
-          title: '网络代理',
-          subtitle: '配置 HTTP 代理服务器',
-          icon: Icons.network_ping,
-          onTap: () {
-            _showCookieEditor(context, 'http_proxy', 'HTTP 代理', '');
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildNetworkSettings(BuildContext context) {
-    final settings = ref.watch(localSettingsProvider);
-
-    return Column(
-      children: [
-        _buildSettingTile(
-          context,
-          title: '后端 API 地址',
-          subtitle: settings.baseUrl,
-          icon: Icons.cloud_queue,
-          onTap: () => _showBaseUrlEditor(context, settings.baseUrl),
-        ),
-        _buildSettingTile(
-          context,
-          title: 'API 访问密钥',
-          subtitle: settings.apiToken.length > 4
-              ? '${settings.apiToken.substring(0, 4)}****'
-              : '****',
-          icon: Icons.vpn_key_outlined,
-          onTap: () => _showApiTokenEditor(context, settings.apiToken),
-        ),
-        _buildSettingTile(
-          context,
-          title: '测试连接',
-          subtitle: '验证服务器连接和认证状态',
-          icon: Icons.link,
-          onTap: () => _testConnection(context),
-        ),
-        _buildSettingTile(
-          context,
-          title: '退出登录',
-          subtitle: '清除本地认证信息',
-          icon: Icons.logout,
-          onTap: () => _confirmLogout(context),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _testConnection(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final errorColor = Theme.of(context).colorScheme.error;
-
-    messenger.showSnackBar(
-      const SnackBar(content: Text('正在测试连接...')),
-    );
-
-    try {
-      final settings = ref.read(localSettingsProvider);
-
-      final response = await ref
-          .read(localSettingsProvider.notifier)
-          .testConnection(settings.baseUrl, settings.apiToken);
-
-      if (response) {
-        messenger.hideCurrentSnackBar();
-        messenger.showSnackBar(
-          const SnackBar(
-            content: Text('✅ 连接成功！服务器响应正常'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else {
-        messenger.hideCurrentSnackBar();
-        messenger.showSnackBar(
-          SnackBar(
-            content: const Text('❌ 连接失败，请检查设置'),
-            backgroundColor: errorColor,
-          ),
-        );
-      }
-    } catch (e) {
-      messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('❌ 连接错误: $e'),
-          backgroundColor: errorColor,
-        ),
-      );
-    }
-  }
-
-  void _confirmLogout(BuildContext context) {
-    final errorColor = Theme.of(context).colorScheme.error;
-    final messenger = ScaffoldMessenger.of(context);
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('确认退出登录'),
-        content: const Text('这将清除本地保存的 API 密钥。您需要重新输入密钥才能继续使用。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await ref.read(localSettingsProvider.notifier).clearAuth();
-              messenger.showSnackBar(
-                const SnackBar(content: Text('已退出登录')),
-              );
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: errorColor,
-            ),
-            child: const Text('退出'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showBaseUrlEditor(BuildContext context, String currentValue) {
-    final controller = TextEditingController(text: currentValue);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('修改后端地址'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'API Base URL',
-            hintText: 'http://192.168.1.100:8000/api/v1',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              await ref
-                  .read(localSettingsProvider.notifier)
-                  .setBaseUrl(controller.text);
-              if (context.mounted) Navigator.pop(context);
-            },
-            child: const Text('保存'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showApiTokenEditor(BuildContext context, String currentValue) {
-    final controller = TextEditingController(text: currentValue);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('修改访问密钥'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(labelText: 'API Token'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              await ref
-                  .read(localSettingsProvider.notifier)
-                  .setApiToken(controller.text);
-              if (context.mounted) Navigator.pop(context);
-            },
-            child: const Text('保存'),
-          ),
-        ],
-      ),
-    );
+    ).animate().fadeIn(delay: 100.ms).slideY(begin: 0.05, end: 0);
   }
 
   Widget _buildSettingTile(
@@ -469,47 +202,381 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     required String title,
     required String subtitle,
     required IconData icon,
+    Color? iconColor,
     Widget? trailing,
     VoidCallback? onTap,
+    bool showArrow = true,
   }) {
-    return ListTile(
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: Theme.of(
-            context,
-          ).colorScheme.primaryContainer.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(
-          icon,
-          color: Theme.of(context).colorScheme.primary,
-          size: 20,
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20), // Added radius for better ripple clipping
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: (iconColor ?? colorScheme.primary).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: iconColor ?? colorScheme.primary, size: 22),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, fontSize: 16)),
+                    const SizedBox(height: 2),
+                    Text(subtitle, style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant)),
+                  ],
+                ),
+              ),
+              if (trailing != null) trailing else if (showArrow) Icon(Icons.chevron_right_rounded, color: colorScheme.outline.withValues(alpha: 0.5)),
+            ],
+          ),
         ),
       ),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
-      subtitle: Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
-      trailing: trailing ?? const Icon(Icons.chevron_right, size: 20),
+    );
+  }
+
+  Widget _buildExpandableSettingTile(
+    BuildContext context, {
+    required int index,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Widget expandedContent,
+    Widget? trailing,
+  }) {
+    final isExpanded = _expandedIndex == index;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      children: [
+        _buildSettingTile(
+          context,
+          title: title,
+          subtitle: subtitle,
+          icon: icon,
+          showArrow: false,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (trailing != null) trailing,
+              const SizedBox(width: 8),
+              AnimatedRotation(
+                turns: isExpanded ? 0.25 : 0,
+                duration: 300.ms,
+                child: Icon(Icons.chevron_right_rounded, color: colorScheme.outline.withValues(alpha: 0.5)),
+              ),
+            ],
+          ),
+          onTap: () => setState(() => _expandedIndex = isExpanded ? null : index),
+        ),
+        AnimatedSize(
+          duration: 300.ms,
+          curve: Curves.easeOutQuart,
+          child: isExpanded
+              ? Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(64, 0, 20, 24),
+                  child: expandedContent,
+                )
+              : const SizedBox.shrink(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBaseUrlEditor(String currentValue) {
+    final controller = TextEditingController(text: currentValue);
+    return Column(
+      children: [
+        TextField(
+          controller: controller,
+          decoration: InputDecoration(
+            hintText: 'http://example.com/api/v1',
+            prefixIcon: const Icon(Icons.link_rounded),
+            filled: true,
+            fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.tonal(
+            onPressed: () async {
+              await ref.read(localSettingsProvider.notifier).setBaseUrl(controller.text);
+              if (mounted) {
+                _showToast(context, 'API 地址已保存');
+                setState(() => _expandedIndex = null);
+              }
+            },
+            child: const Text('保存配置'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildApiTokenEditor(String currentValue) {
+    final controller = TextEditingController(text: currentValue);
+    return Column(
+      children: [
+        TextField(
+          controller: controller,
+          obscureText: true,
+          decoration: InputDecoration(
+            labelText: 'API Token',
+            prefixIcon: const Icon(Icons.password_rounded),
+            filled: true,
+            fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.tonal(
+            onPressed: () async {
+              await ref.read(localSettingsProvider.notifier).setApiToken(controller.text);
+              if (mounted) {
+                _showToast(context, '密钥已更新');
+                setState(() => _expandedIndex = null);
+              }
+            },
+            child: const Text('更新密钥'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProxyEditor() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('设置 HTTP/HTTPS 代理以访问受限平台', style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: 12),
+        TextField(
+          decoration: InputDecoration(
+            hintText: '127.0.0.1:7890',
+            prefixIcon: const Icon(Icons.vignette_rounded),
+            filled: true,
+            fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.tonal(
+            onPressed: () => _showToast(context, '代理设置即将支持'),
+            child: const Text('更新代理'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPlatformSettingsSection(BuildContext context, AsyncValue<List<SystemSetting>> settingsAsync) {
+    return settingsAsync.when(
+      data: (settings) => _buildPlatformSettings(context, settings),
+      loading: () => const _LoadingGroup(),
+      error: (err, _) => _buildGroup([
+        _buildSettingTile(
+          context,
+          title: '配置同步失败',
+          subtitle: '点击重试获取服务端配置',
+          icon: Icons.sync_problem_rounded,
+          iconColor: Theme.of(context).colorScheme.error,
+          onTap: () => ref.invalidate(systemSettingsProvider),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildPlatformSettings(BuildContext context, List<SystemSetting> settings) {
+    final platforms = [
+      {'key': 'bilibili_cookie', 'name': 'Bilibili 凭证', 'icon': Icons.video_collection_rounded},
+      {'key': 'weibo_cookie', 'name': '微博 凭证', 'icon': Icons.share_rounded},
+      {'key': 'x_cookie', 'name': 'X (Twitter) 凭证', 'icon': Icons.close_rounded},
+      {'key': 'xiaohongshu_cookie', 'name': '小红书 凭证', 'icon': Icons.explore_rounded},
+    ];
+
+    return _buildGroup(platforms.asMap().entries.map((entry) {
+      final p = entry.value;
+      final setting = settings.where((s) => s.key == p['key']).firstOrNull;
+      final isConfigured = setting != null && setting.value.toString().isNotEmpty;
+
+      return _buildExpandableSettingTile(
+        context,
+        index: 10 + entry.key, // Unique index range for cookies
+        title: p['name'] as String,
+        subtitle: isConfigured ? '已完成登录授权' : '尚未配置访问凭证',
+        icon: p['icon'] as IconData,
+        expandedContent: _buildInlineCookieEditor(p['key'] as String, setting?.value?.toString() ?? ''),
+        trailing: Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: isConfigured ? Colors.green : Colors.orange,
+            shape: BoxShape.circle,
+            boxShadow: [BoxShadow(color: (isConfigured ? Colors.green : Colors.orange).withValues(alpha: 0.4), blurRadius: 4)],
+          ),
+        ),
+      );
+    }).toList());
+  }
+
+  Widget _buildInlineCookieEditor(String key, String currentValue) {
+    final controller = TextEditingController(text: currentValue);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('粘贴对应平台的 Cookie 字符串。', style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: 12),
+        TextField(
+          controller: controller,
+          maxLines: 3,
+          decoration: InputDecoration(
+            hintText: 'Paste here...',
+            fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            filled: true,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.tonal(
+            onPressed: () async {
+              await ref.read(systemSettingsProvider.notifier).updateSetting(key, controller.text, category: 'platform');
+              if (mounted) {
+                _showToast(context, '凭证已保存');
+                setState(() => _expandedIndex = null);
+              }
+            },
+            child: const Text('保存配置'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _getThemeModeName(ThemeMode mode) => switch (mode) {
+    ThemeMode.system => '跟随系统',
+    ThemeMode.light => '浅色模式',
+    ThemeMode.dark => '深色模式',
+  };
+
+  void _showThemePicker(BuildContext context, WidgetRef ref, ThemeMode currentMode) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(32))),
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildPickerOption(context, '跟随系统', Icons.brightness_auto_rounded, currentMode == ThemeMode.system, () => _setTheme(ref, ThemeMode.system)),
+            _buildPickerOption(context, '浅色模式', Icons.light_mode_rounded, currentMode == ThemeMode.light, () => _setTheme(ref, ThemeMode.light)),
+            _buildPickerOption(context, '深色模式', Icons.dark_mode_rounded, currentMode == ThemeMode.dark, () => _setTheme(ref, ThemeMode.dark)),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPickerOption(BuildContext context, String title, IconData icon, bool isSelected, VoidCallback onTap) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+      leading: Icon(icon, color: isSelected ? Theme.of(context).colorScheme.primary : null),
+      title: Text(title, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : null)),
+      trailing: isSelected ? Icon(Icons.check_circle_rounded, color: Theme.of(context).colorScheme.primary) : null,
       onTap: onTap,
     );
   }
 
-  Widget _buildAppInfo(BuildContext context) {
-    return Center(
-      child: Column(
-        children: [
-          const Text(
-            'VaultStream',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-          ),
-          Text(
-            'v0.1.0 (Alpha)',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.outline,
-            ),
+  void _setTheme(WidgetRef ref, ThemeMode mode) {
+    ref.read(themeModeProvider.notifier).set(mode);
+    Navigator.pop(context);
+  }
+
+  void _showToast(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+  }
+
+  void _confirmLogout(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('退出登录'),
+        content: const Text('注销后将清除本地 API 密钥，需重新配置。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () async {
+              await ref.read(localSettingsProvider.notifier).clearAuth();
+              if (ctx.mounted) {
+                Navigator.pop(ctx);
+                _showToast(context, '已成功退出');
+              }
+            },
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            child: const Text('退出'),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _testConnection(BuildContext context) async {
+    _showToast(context, '正在测试连接...');
+    try {
+      final settings = ref.read(localSettingsProvider);
+      final success = await ref.read(localSettingsProvider.notifier).testConnection(settings.baseUrl, settings.apiToken);
+      if (context.mounted) _showToast(context, success ? '✅ 连接成功' : '❌ 连接失败');
+    } catch (e) {
+      if (context.mounted) _showToast(context, '❌ 错误: $e');
+    }
+  }
+
+  Widget _buildAppInfo(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: theme.colorScheme.primary.withValues(alpha: 0.05), shape: BoxShape.circle),
+          child: Icon(Icons.vape_free_rounded, size: 48, color: theme.colorScheme.primary),
+        ),
+        const SizedBox(height: 16),
+        Text('VaultStream', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+        Text('Version 0.1.0 (Alpha)', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline)),
+      ],
+    );
+  }
+}
+
+class _LoadingGroup extends StatelessWidget {
+  const _LoadingGroup();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 200,
+      decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerLow, borderRadius: BorderRadius.circular(28)),
+      child: const Center(child: CircularProgressIndicator()),
+    ).animate(onPlay: (c) => c.repeat()).shimmer();
   }
 }

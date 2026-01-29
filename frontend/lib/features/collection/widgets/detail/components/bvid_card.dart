@@ -19,7 +19,6 @@ class BvidCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: colorScheme.secondaryContainer.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: colorScheme.secondary.withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

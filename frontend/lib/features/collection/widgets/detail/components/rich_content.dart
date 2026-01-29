@@ -20,6 +20,7 @@ class RichContent extends StatelessWidget {
   final bool useHero;
   final bool hideZhihuHeader;
   final bool hideTopAnswers;
+  final bool hideMedia;
   final Color? contentColor;
 
   const RichContent({
@@ -31,6 +32,7 @@ class RichContent extends StatelessWidget {
     this.useHero = true,
     this.hideZhihuHeader = false,
     this.hideTopAnswers = false,
+    this.hideMedia = false,
     this.contentColor,
   });
 
@@ -227,7 +229,7 @@ class RichContent extends StatelessWidget {
       }
     }
 
-    if (showMediaGrid) {
+    if (showMediaGrid && !hideMedia) {
       if (children.isNotEmpty) children.add(const SizedBox(height: 24));
 
       if (mediaUrls.length == 1) {

@@ -4,9 +4,12 @@
 从图片中提取主色调信息
 """
 import httpx
+from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 from app.core.logging import logger
+from app.core.config import settings
 
 
 def _get_dominant_color(data: bytes) -> str:
@@ -46,6 +49,25 @@ def _get_dominant_color(data: bytes) -> str:
         return "#000000"
 
 
+def _try_read_local_media(url: str) -> Optional[bytes]:
+    """
+    尝试从本地存储读取媒体文件
+    
+    如果URL指向本地媒体路径，直接从磁盘读取避免HTTP回环请求
+    """
+    try:
+        parsed = urlparse(url)
+        # 检查是否是本地媒体路径 (如 /media/vaultstream/blobs/...)
+        if parsed.path.startswith("/media/"):
+            relative_path = parsed.path[7:]  # 去掉 "/media/" 前缀
+            local_path = Path(settings.storage_local_root) / relative_path
+            if local_path.exists() and local_path.is_file():
+                return local_path.read_bytes()
+    except Exception:
+        pass
+    return None
+
+
 async def extract_cover_color(url: str, timeout_seconds: float = 10.0) -> Optional[str]:
     """
     从 URL 提取封面主色调（无需启用完整的归档处理）
@@ -62,6 +84,12 @@ async def extract_cover_color(url: str, timeout_seconds: float = 10.0) -> Option
         "#FF5733"
     """
     try:
+        # 优先尝试本地读取，避免HTTP回环请求导致502错误
+        local_data = _try_read_local_media(url)
+        if local_data:
+            return _get_dominant_color(local_data)
+        
+        # 远程URL通过HTTP获取
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             resp = await client.get(url)
             resp.raise_for_status()
