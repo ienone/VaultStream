@@ -31,16 +31,6 @@ jobs:
         run: flutter pub get
         working-directory: frontend
 
-      # Pre-download Gradle to avoid wrapper network issues
-      - name: Setup Gradle wrapper
-        run: |
-          cd android
-          chmod +x gradlew
-          # Use gradle properties to skip wrapper download validation
-          mkdir -p ~/.gradle
-          echo "org.gradle.daemon=false" >> ~/.gradle/gradle.properties
-        working-directory: frontend
-
       - name: Build Debug APK
         run: |
           flutter build apk --debug \
