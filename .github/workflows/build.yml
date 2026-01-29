@@ -1,0 +1,208 @@
+name: Multi-Platform Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # Android Build
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "zulu"
+          java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: frontend
+
+      - name: Build Debug APK
+        run: |
+          flutter build apk --debug \
+            --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }} \
+            --dart-define=API_TOKEN=${{ secrets.API_TOKEN }}
+        working-directory: frontend
+
+      - name: Build Release APK
+        if: github.event_name != 'pull_request'
+        run: |
+          flutter build apk --release \
+            --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }} \
+            --dart-define=API_TOKEN=${{ secrets.API_TOKEN }}
+        working-directory: frontend
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: vaultstream-android-debug
+          path: frontend/build/app/outputs/flutter-apk/app-debug.apk
+
+      - name: Upload Release APK
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vaultstream-android-release
+          path: frontend/build/app/outputs/flutter-apk/app-release.apk
+
+  # iOS Build
+  ios:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: frontend
+
+      - name: Build iOS (no codesign)
+        run: flutter build ios --debug --no-codesign
+        working-directory: frontend
+
+      - name: Upload iOS Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: vaultstream-ios-debug
+          path: frontend/build/ios/iphoneos/Runner.app
+
+  # Web Build
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: frontend
+
+      - name: Build Web
+        run: |
+          flutter build web --release \
+            --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }} \
+            --dart-define=API_TOKEN=${{ secrets.API_TOKEN }}
+        working-directory: frontend
+
+      - name: Upload Web Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: vaultstream-web
+          path: frontend/build/web
+
+  # Windows Build
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: frontend
+
+      - name: Build Windows
+        run: flutter build windows --release
+        working-directory: frontend
+
+      - name: Upload Windows Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: vaultstream-windows
+          path: frontend/build/windows/x64/runner/Release
+
+  # Linux Build
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: frontend
+
+      - name: Build Linux
+        run: flutter build linux --release
+        working-directory: frontend
+
+      - name: Upload Linux Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: vaultstream-linux
+          path: frontend/build/linux/x64/release/bundle
+
+  # macOS Build
+  macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: frontend
+
+      - name: Build macOS
+        run: flutter build macos --release
+        working-directory: frontend
+
+      - name: Upload macOS Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: vaultstream-macos
+          path: frontend/build/macos/Build/Products/Release
