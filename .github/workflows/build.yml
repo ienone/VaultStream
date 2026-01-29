@@ -31,6 +31,10 @@ jobs:
         run: flutter pub get
         working-directory: frontend
 
+      - name: Run code generation
+        run: dart run build_runner build --delete-conflicting-outputs
+        working-directory: frontend
+
       - name: Build Debug APK
         run: |
           flutter build apk --debug \
@@ -80,6 +84,10 @@ jobs:
         run: flutter pub get
         working-directory: frontend
 
+      - name: Run code generation
+        run: dart run build_runner build --delete-conflicting-outputs
+        working-directory: frontend
+
       - name: Build Web
         run: |
           flutter build web --release \
@@ -113,6 +121,10 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+        working-directory: frontend
+
+      - name: Run code generation
+        run: dart run build_runner build --delete-conflicting-outputs
         working-directory: frontend
 
       - name: Build Linux

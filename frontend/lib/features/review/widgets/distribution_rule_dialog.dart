@@ -337,7 +337,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     return DropdownButtonFormField<T>(
-      value: value,
+      initialValue: value,
       items: items,
       onChanged: onChanged,
       decoration: InputDecoration(

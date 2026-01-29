@@ -313,7 +313,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     return DropdownButtonFormField<T>(
-      value: value,
+      initialValue: value,
       items: items,
       onChanged: onChanged,
       decoration: InputDecoration(

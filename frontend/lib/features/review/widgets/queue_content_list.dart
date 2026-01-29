@@ -550,7 +550,7 @@ class _QueueItemCard extends StatelessWidget {
           const PopupMenuItem(value: 30, child: Text('+30 分钟')),
           const PopupMenuItem(value: 60, child: Text('+1 小时')),
           const PopupMenuDivider(),
-          const PopupMenuItem(value: 'custom', child: Row(children: [Icon(Icons.edit_calendar_rounded, size: 20), const SizedBox(width: 12), const Text('自定义...')])),
+          const PopupMenuItem(value: 'custom', child: Row(children: [Icon(Icons.edit_calendar_rounded, size: 20), SizedBox(width: 12), Text('自定义...')])),
         ],
         child: Material(
           color: colorScheme.primary.withValues(alpha: 0.08),
