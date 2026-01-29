@@ -202,6 +202,8 @@ class Content(Base):
     created_at = Column(DateTime, default=utcnow, index=True)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     published_at = Column(DateTime)  # 原始发布时间
+    scheduled_at = Column(DateTime, index=True)  # 预期分发时间（由分发引擎计算）
+    is_manual_schedule = Column(Boolean, default=False)  # 是否为手动设定的排期
     
     # 关系
     pushed_records = relationship("PushedRecord", back_populates="content")

@@ -39,7 +39,6 @@ class XiaohongshuAdapter(PlatformAdapter):
         'note': [
             r'xiaohongshu\.com/explore/([a-f0-9]+)',
             r'xiaohongshu\.com/discovery/item/([a-f0-9]+)',
-            r'xhslink\.com/([a-zA-Z0-9]+)',
         ],
         'user': [
             r'xiaohongshu\.com/user/profile/([a-f0-9]+)',

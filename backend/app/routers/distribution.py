@@ -38,7 +38,12 @@ async def create_distribution_rule(
     await db.commit()
     await db.refresh(db_rule)
     
-    logger.info(f"分发规则已创建: {db_rule.name} (ID: {db_rule.id})")
+    # 规则变动后，自动刷新队列状态和排期
+    from app.distribution.engine import DistributionEngine
+    engine = DistributionEngine(db)
+    await engine.refresh_queue_by_rules()
+    
+    logger.info(f"分发规则已创建并刷新队列: {db_rule.name} (ID: {db_rule.id})")
     return db_rule
 
 @router.get("/distribution-rules", response_model=List[DistributionRuleResponse])
@@ -86,7 +91,13 @@ async def update_distribution_rule(
     
     await db.commit()
     await db.refresh(db_rule)
-    logger.info(f"分发规则已更新: {db_rule.name} (ID: {db_rule.id})")
+    
+    # 规则变动后，自动刷新队列状态和排期
+    from app.distribution.engine import DistributionEngine
+    engine = DistributionEngine(db)
+    await engine.refresh_queue_by_rules()
+    
+    logger.info(f"分发规则已更新并刷新队列: {db_rule.name} (ID: {db_rule.id})")
     return db_rule
 
 @router.delete("/distribution-rules/{rule_id}")
@@ -103,7 +114,13 @@ async def delete_distribution_rule(
     
     await db.delete(db_rule)
     await db.commit()
-    logger.info(f"分发规则已删除: {db_rule.name} (ID: {rule_id})")
+    
+    # 规则变动后，自动刷新队列状态和排期
+    from app.distribution.engine import DistributionEngine
+    engine = DistributionEngine(db)
+    await engine.refresh_queue_by_rules()
+    
+    logger.info(f"分发规则已删除并刷新队列: {db_rule.name} (ID: {rule_id})")
     return {"status": "deleted", "id": rule_id}
 
 

@@ -40,7 +40,7 @@ class Collection extends _$Collection {
       queryParameters: {
         'page': page,
         'size': size,
-        if (tags != null && tags.isNotEmpty) 'tags': tags.join(','),
+        if (tags != null && tags.isNotEmpty) 'tag': tags.join(','),
         if (platforms != null && platforms.isNotEmpty)
           'platform': platforms.join(','),
         if (statuses != null && statuses.isNotEmpty)

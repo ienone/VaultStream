@@ -32,6 +32,18 @@ from app.repositories.content_repository import ContentRepository
 
 router = APIRouter()
 
+def _parse_list_param(values: Optional[List[str]]) -> Optional[List[str]]:
+    """处理 FastAPI List[str] 参数，支持逗号分隔或多个相同 Key"""
+    if not values:
+        return None
+    result = []
+    for v in values:
+        if "," in v:
+            result.extend([i.strip() for i in v.split(",") if i.strip()])
+        else:
+            result.append(v)
+    return result if result else None
+
 # --- Sharing ---
 
 @router.post("/shares", response_model=ShareResponse)
@@ -63,16 +75,37 @@ async def create_share(
         logger.exception("Failed to create share")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@router.get("/tags")
+async def list_all_tags(
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """获取所有标签及其计数"""
+    result = await db.execute(select(Content.tags).where(Content.tags != None))
+    all_tag_lists = result.scalars().all()
+    
+    tag_counts = {}
+    for tags in all_tag_lists:
+        if isinstance(tags, list):
+            for t in tags:
+                tag_counts[t] = tag_counts.get(t, 0) + 1
+                
+    return sorted(
+        [{"name": k, "count": v} for k, v in tag_counts.items()],
+        key=lambda x: x["count"],
+        reverse=True
+    )
+
 # --- Content CRUD ---
 
 @router.get("/contents", response_model=ContentListResponse)
 async def list_contents(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
-    platform: Optional[Platform] = Query(None),
-    status: Optional[ContentStatus] = Query(None),
+    platforms: Optional[List[str]] = Query(None, alias="platform"),
+    statuses: Optional[List[str]] = Query(None, alias="status"),
     review_status: Optional[ReviewStatus] = Query(None),
-    tag: Optional[str] = Query(None),
+    tags: Optional[List[str]] = Query(None, alias="tag"),
     author: Optional[str] = Query(None),
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
@@ -83,8 +116,17 @@ async def list_contents(
 ):
     """完整内容列表查询"""
     items, total = await repo.list_contents(
-        page=page, size=size, platform=platform, status=status, review_status=review_status,
-        tag=tag, author=author, start_date=start_date, end_date=end_date, q=q, is_nsfw=is_nsfw
+        page=page, 
+        size=size, 
+        platforms=_parse_list_param(platforms), 
+        statuses=_parse_list_param(statuses), 
+        review_status=review_status,
+        tags=_parse_list_param(tags), 
+        author=author, 
+        start_date=start_date, 
+        end_date=end_date, 
+        q=q, 
+        is_nsfw=is_nsfw
     )
     
     return {
@@ -347,10 +389,10 @@ async def delete_pushed_record(
 async def list_share_cards(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
-    platform: Optional[Platform] = Query(None),
-    status: Optional[ContentStatus] = Query(None),
+    platforms: Optional[List[str]] = Query(None, alias="platform"),
+    statuses: Optional[List[str]] = Query(None, alias="status"),
     review_status: Optional[ReviewStatus] = Query(None),
-    tag: Optional[str] = Query(None),
+    tags: Optional[List[str]] = Query(None, alias="tag"),
     author: Optional[str] = Query(None),
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
@@ -360,8 +402,16 @@ async def list_share_cards(
 ):
     """轻量级分享卡片列表"""
     contents, total = await repo.list_contents(
-        page=page, size=size, platform=platform, status=status, review_status=review_status,
-        tag=tag, author=author, start_date=start_date, end_date=end_date, q=q
+        page=page, 
+        size=size, 
+        platforms=_parse_list_param(platforms), 
+        statuses=_parse_list_param(statuses), 
+        review_status=review_status,
+        tags=_parse_list_param(tags), 
+        author=author, 
+        start_date=start_date, 
+        end_date=end_date, 
+        q=q
     )
 
     items = []
@@ -408,6 +458,7 @@ async def review_card(
     _: None = Depends(require_api_token),
 ):
     """审批单个卡片（轻量级接口）"""
+    from app.distribution.engine import DistributionEngine
     result = await db.execute(select(Content).where(Content.id == card_id))
     content = result.scalar_one_or_none()
     if not content:
@@ -415,13 +466,20 @@ async def review_card(
     if action.action not in ["approve", "reject"]:
         raise HTTPException(status_code=400, detail="Invalid action")
     
-    content.review_status = ReviewStatus.APPROVED if action.action == "approve" else ReviewStatus.REJECTED
+    is_approve = action.action == "approve"
+    content.review_status = ReviewStatus.APPROVED if is_approve else ReviewStatus.REJECTED
     content.reviewed_at = datetime.utcnow()
     content.reviewed_by = action.reviewed_by
     content.review_note = action.note
     
+    if is_approve:
+        engine = DistributionEngine(db)
+        content.scheduled_at = await engine.calculate_scheduled_at(content)
+    else:
+        content.scheduled_at = None
+    
     await db.commit()
-    return {"id": content.id, "review_status": content.review_status.value}
+    return {"id": content.id, "review_status": content.review_status.value, "scheduled_at": content.scheduled_at}
 
 
 @router.post("/cards/batch-review")
@@ -431,20 +489,28 @@ async def batch_review_cards(
     _: None = Depends(require_api_token),
 ):
     """批量审批卡片（轻量级接口）"""
+    from app.distribution.engine import DistributionEngine
     if request.action not in ["approve", "reject"]:
         raise HTTPException(status_code=400, detail="Invalid action")
-    review_status = ReviewStatus.APPROVED if request.action == "approve" else ReviewStatus.REJECTED
+    
+    is_approve = request.action == "approve"
+    review_status = ReviewStatus.APPROVED if is_approve else ReviewStatus.REJECTED
     
     result = await db.execute(select(Content).where(Content.id.in_(request.content_ids)))
     contents = result.scalars().all()
     if not contents:
         raise HTTPException(status_code=404, detail="No cards found")
     
+    engine = DistributionEngine(db)
     for content in contents:
         content.review_status = review_status
         content.reviewed_at = datetime.utcnow()
         content.reviewed_by = request.reviewed_by
         content.review_note = request.note
+        if is_approve:
+            content.scheduled_at = await engine.calculate_scheduled_at(content)
+        else:
+            content.scheduled_at = None
     
     await db.commit()
     return {"updated": len(contents), "action": request.action}
@@ -509,6 +575,7 @@ async def review_content(
     _: None = Depends(require_api_token),
 ):
     """审批单个内容"""
+    from app.distribution.engine import DistributionEngine
     result = await db.execute(select(Content).where(Content.id == content_id))
     content = result.scalar_one_or_none()
     if not content:
@@ -516,14 +583,21 @@ async def review_content(
     if action.action not in ["approve", "reject"]:
         raise HTTPException(status_code=400, detail="Invalid action")
     
-    content.review_status = ReviewStatus.APPROVED if action.action == "approve" else ReviewStatus.REJECTED
+    is_approve = action.action == "approve"
+    content.review_status = ReviewStatus.APPROVED if is_approve else ReviewStatus.REJECTED
     content.reviewed_at = datetime.utcnow()
     content.reviewed_by = action.reviewed_by
     content.review_note = action.note
     
+    if is_approve:
+        engine = DistributionEngine(db)
+        content.scheduled_at = await engine.calculate_scheduled_at(content)
+    else:
+        content.scheduled_at = None
+        
     await db.commit()
     await db.refresh(content)
-    return {"id": content.id, "review_status": content.review_status, "reviewed_at": content.reviewed_at}
+    return {"id": content.id, "review_status": content.review_status, "reviewed_at": content.reviewed_at, "scheduled_at": content.scheduled_at}
 
 @router.post("/contents/batch-review")
 async def batch_review_contents(
@@ -532,20 +606,28 @@ async def batch_review_contents(
     _: None = Depends(require_api_token),
 ):
     """批量审批内容"""
+    from app.distribution.engine import DistributionEngine
     if request.action not in ["approve", "reject"]:
         raise HTTPException(status_code=400, detail="Invalid action")
-    review_status = ReviewStatus.APPROVED if request.action == "approve" else ReviewStatus.REJECTED
+    
+    is_approve = request.action == "approve"
+    review_status = ReviewStatus.APPROVED if is_approve else ReviewStatus.REJECTED
     
     result = await db.execute(select(Content).where(Content.id.in_(request.content_ids)))
     contents = result.scalars().all()
     if not contents:
         raise HTTPException(status_code=404, detail="No contents found")
     
+    engine = DistributionEngine(db)
     for content in contents:
         content.review_status = review_status
         content.reviewed_at = datetime.utcnow()
         content.reviewed_by = request.reviewed_by
         content.review_note = request.note
+        if is_approve:
+            content.scheduled_at = await engine.calculate_scheduled_at(content)
+        else:
+            content.scheduled_at = None
     
     await db.commit()
     return {"updated": len(contents), "action": request.action, "content_ids": request.content_ids}

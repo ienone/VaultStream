@@ -203,14 +203,17 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
           icon: const Icon(Icons.refresh),
           onPressed: () => ref.invalidate(collectionProvider),
         ),
-        IconButton(
-          icon: Icon(
-            Icons.filter_list,
-            color: filterState.hasActiveFilters
-                ? theme.colorScheme.primary
-                : null,
+        Hero(
+          tag: 'filter_icon',
+          child: IconButton(
+            icon: Icon(
+              Icons.filter_list,
+              color: filterState.hasActiveFilters
+                  ? theme.colorScheme.primary
+                  : null,
+            ),
+            onPressed: () => _showFilterDialog(context, filterState),
           ),
-          onPressed: () => _showFilterDialog(context, filterState),
         ),
       ],
     );
@@ -269,16 +272,37 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
       }
     }
 
-    final result = await showDialog<Map<String, dynamic>>(
+    final result = await showGeneralDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => FilterDialog(
-        // initialPlatforms: filterState.platforms,
-        // initialStatuses: filterState.statuses,
-        initialAuthor: filterState.author,
-        initialDateRange: filterState.dateRange,
-        initialTags: filterState.tags,
-        availableTags: availableTags.toList()..sort(),
-      ),
+      barrierDismissible: true,
+      barrierLabel: 'Filter',
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (context, anim1, anim2) {
+        return Hero(
+          tag: 'filter_icon',
+          child: FilterDialog(
+            initialPlatforms: filterState.platforms,
+            initialStatuses: filterState.statuses,
+            initialAuthor: filterState.author,
+            initialDateRange: filterState.dateRange,
+            initialTags: filterState.tags,
+            availableTags: availableTags.toList()..sort(),
+          ),
+        );
+      },
+      transitionBuilder: (context, anim1, anim2, child) {
+        return ScaleTransition(
+          scale: CurvedAnimation(
+            parent: anim1,
+            curve: Curves.fastOutSlowIn,
+          ),
+          alignment: const Alignment(0.85, -0.85), // 对应右上角图标位置
+          child: FadeTransition(
+            opacity: anim1,
+            child: child,
+          ),
+        );
+      },
     );
 
     if (result != null) {

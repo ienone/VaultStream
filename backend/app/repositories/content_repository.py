@@ -12,10 +12,10 @@ class ContentRepository:
         self,
         page: int = 1,
         size: int = 20,
-        platform: Optional[Platform] = None,
-        status: Optional[ContentStatus] = None,
+        platforms: Optional[List[str]] = None,
+        statuses: Optional[List[str]] = None,
         review_status: Optional[ReviewStatus] = None,
-        tag: Optional[str] = None,
+        tags: Optional[List[str]] = None,
         q: Optional[str] = None,
         is_nsfw: Optional[bool] = None,
         author: Optional[str] = None,
@@ -24,10 +24,10 @@ class ContentRepository:
     ) -> Tuple[List[Content], int]:
         """统一的内容查询逻辑，支持 FTS5 搜索"""
         conditions = []
-        if platform:
-            conditions.append(Content.platform == platform)
-        if status:
-            conditions.append(Content.status == status)
+        if platforms:
+            conditions.append(Content.platform.in_(platforms))
+        if statuses:
+            conditions.append(Content.status.in_(statuses))
         if review_status:
             conditions.append(Content.review_status == review_status)
         if is_nsfw is not None:
@@ -38,8 +38,19 @@ class ContentRepository:
             conditions.append(Content.created_at >= start_date)
         if end_date:
             conditions.append(Content.created_at <= end_date)
-        if tag:
-            conditions.append(Content.tags.contains([tag]))
+        
+        if tags:
+            # 针对 SQLite 的鲁棒性标签过滤方案
+            # 标签在数据库中以 JSON 字符串存储，如 '["tag1", "tag2"]'
+            # 使用 LIKE '%"tag"%' 匹配可以精确锁定被引号包裹的独立标签
+            tag_conditions = []
+            for t in tags:
+                # 兼容性匹配：既尝试标准的 contains (PostgreSQL/SQLAlchemy 抽象)
+                # 也提供针对 SQLite 的字符串级精准匹配
+                tag_conditions.append(Content.tags.contains(t))
+                tag_conditions.append(Content.tags.like(f'%"%"{t}%"'))
+            
+            conditions.append(or_(*tag_conditions))
 
         if q:
             # 整合 FTS5 与 ILIKE

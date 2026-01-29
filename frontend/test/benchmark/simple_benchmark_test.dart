@@ -38,7 +38,7 @@ void main() {
     stopwatch.stop();
 
     final elapsed = stopwatch.elapsedMilliseconds;
-    print('QueueContentList with 100 items rendered in ${elapsed}ms');
+    debugPrint('QueueContentList with 100 items rendered in ${elapsed}ms');
 
     // Basic assertion to ensure it's "fast enough"
     expect(elapsed, lessThan(1000), reason: 'Rendering took too long');
@@ -55,6 +55,6 @@ void main() {
     await tester.pumpAndSettle();
     
     stopwatch.stop();
-    print('Scrolling list took ${stopwatch.elapsedMilliseconds}ms');
+    debugPrint('Scrolling list took ${stopwatch.elapsedMilliseconds}ms');
   });
 }

@@ -77,11 +77,42 @@ class ContentQueue extends _$ContentQueue {
     ref.invalidate(queueStatsProvider(filter.ruleId));
   }
 
-  Future<void> reorderItem(int contentId, int newPriority) async {
+  Future<void> reorderToIndex(int contentId, int index) async {
     final dio = ref.read(apiClientProvider);
     await dio.post(
       '/queue/items/$contentId/reorder',
-      data: {'priority': newPriority},
+      data: {'index': index},
+    );
+    _safeInvalidate();
+  }
+
+  Future<void> batchPushNow(List<int> contentIds) async {
+    final dio = ref.read(apiClientProvider);
+    await dio.post(
+      '/queue/batch-push-now',
+      data: {'content_ids': contentIds},
+    );
+    _safeInvalidate();
+  }
+
+  Future<void> batchReschedule(List<int> contentIds, DateTime startTime, {int interval = 300}) async {
+    final dio = ref.read(apiClientProvider);
+    await dio.post(
+      '/queue/batch-reschedule',
+      data: {
+        'content_ids': contentIds,
+        'start_time': startTime.toUtc().toIso8601String(),
+        'interval_seconds': interval,
+      },
+    );
+    _safeInvalidate();
+  }
+
+  Future<void> updateSchedule(int contentId, DateTime scheduledAt) async {
+    final dio = ref.read(apiClientProvider);
+    await dio.post(
+      '/queue/items/$contentId/schedule',
+      data: {'scheduled_at': scheduledAt.toUtc().toIso8601String()},
     );
     _safeInvalidate();
   }

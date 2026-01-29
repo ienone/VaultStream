@@ -161,39 +161,6 @@ class DistributionEngine:
         
         return True
     
-    async def check_rate_limit(self, rule: DistributionRule, target_id: str) -> bool:
-        """
-        检查是否超过频率限制
-        
-        Returns:
-            True: 允许推送
-            False: 超过限制
-        """
-        if not rule.rate_limit or not rule.time_window:
-            return True  # 无限制
-        
-        # 统计时间窗口内的推送次数
-        window_start = datetime.utcnow() - timedelta(seconds=rule.time_window)
-        
-        result = await self.db.execute(
-            select(PushedRecord).where(
-                and_(
-                    PushedRecord.target_id == target_id,
-                    PushedRecord.pushed_at >= window_start
-                )
-            )
-        )
-        recent_pushes = result.scalars().all()
-        
-        if len(recent_pushes) >= rule.rate_limit:
-            logger.warning(
-                f"频率限制: target_id={target_id}, "
-                f"已推送{len(recent_pushes)}次 (限制{rule.rate_limit}次/{rule.time_window}秒)"
-            )
-            return False
-        
-        return True
-    
     async def should_distribute(
         self, 
         content: Content, 
@@ -223,11 +190,6 @@ class DistributionEngine:
             logger.debug(f"内容已推送到目标 (去重拦截): content_id={content.id}, target_id={target_id}")
             return False
         
-        # 频率限制检查
-        if not await self.check_rate_limit(rule, target_id):
-            logger.debug(f"频率限制拦截: target_id={target_id}")
-            return False
-        
         return True
     
     async def create_distribution_tasks(self, content: Content) -> List[Dict[str, Any]]:
@@ -243,14 +205,14 @@ class DistributionEngine:
         matched_rules = await self.match_rules(content)
         
         if not matched_rules:
-            logger.warning(f"内容无匹配规则: content_id={content.id}, tags={content.tags}")
+            logger.info(f"内容无匹配规则: content_id={content.id}, tags={content.tags}")
             return []
         
         tasks = []
         for rule in matched_rules:
             targets = rule.targets or []
             if not targets:
-                logger.warning(f"规则无分发目标: rule={rule.name}")
+                logger.debug(f"规则无分发目标: rule={rule.name}")
             
             for target in targets:
                 if await self.should_distribute(content, rule, target):
@@ -267,6 +229,154 @@ class DistributionEngine:
         logger.info(f"为内容 {content.id} 创建了 {len(tasks)} 个分发任务")
         return tasks
     
+    async def get_min_interval_for_content(self, content: Content) -> int:
+        """
+        根据内容匹配到的所有规则，计算最严格的最小排期间隔（秒）
+        默认最小 300s (5分钟)
+        """
+        matched_rules = await self.match_rules(content)
+        if not matched_rules:
+            return 300
+        
+        max_interval = 300
+        for rule in matched_rules:
+            if rule.rate_limit and rule.time_window:
+                # 计算该规则要求的平均间隔 (例如 3600/10 = 360s)
+                rule_interval = rule.time_window // rule.rate_limit
+                max_interval = max(max_interval, rule_interval)
+        
+        return max_interval
+
+    async def calculate_scheduled_at(self, content: Content, min_interval: Optional[int] = None) -> datetime:
+        """
+        计算内容的预计推送时间 (scheduled_at)
+        策略: 寻找从现在开始的第一个可用空档
+        """
+        if min_interval is None:
+            min_interval = await self.get_min_interval_for_content(content)
+            
+        now = datetime.utcnow()
+        # 获取所有待推送的未来排期
+        result = await self.db.execute(
+            select(Content.scheduled_at)
+            .where(
+                Content.review_status.in_([ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED]),
+                Content.status == "pulled",
+                Content.scheduled_at >= now
+            )
+            .order_by(Content.scheduled_at.asc())
+        )
+        scheduled_times = [r[0] for r in result.all()]
+        
+        interval = timedelta(seconds=min_interval)
+        potential_time = now + timedelta(seconds=10)
+        
+        for st in scheduled_times:
+            # 如果当前检查的时间点和下一个已有排期之间有足够间隙
+            if st - potential_time >= interval:
+                return potential_time
+            # 否则跳到下一个排期之后继续找
+            potential_time = st + interval
+            
+        return potential_time
+
+    async def compact_schedule(self, immediate_ids: Optional[List[int]] = None):
+        """
+        队列整理（非破坏性重排）
+        1. 确保所有时间都在未来
+        2. 确保相邻条目符合其规则定义的最小间隔 (或是立即推送的 10s 间隔)
+        3. 尊重用户手动设置的更远的未来时间
+        """
+        now = datetime.utcnow()
+        result = await self.db.execute(
+            select(Content)
+            .where(
+                Content.review_status.in_([ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED]),
+                Content.status == "pulled"
+            )
+            .order_by(Content.scheduled_at.asc().nulls_last(), Content.created_at.asc())
+        )
+        contents = result.scalars().all()
+        
+        if not contents:
+            return
+
+        last_time = now
+        immediate_ids_set = set(immediate_ids or [])
+        
+        for content in contents:
+            # 1. 确定该内容应遵循的最小间隔
+            # 如果是手动设定项或指定的立即推送项，采用 10s 紧凑间隔；否则遵循规则限制
+            if content.is_manual_schedule or content.id in immediate_ids_set:
+                min_gap_seconds = 10
+            else:
+                # 常规项根据规则动态获取，默认为 300s
+                min_gap_seconds = await self.get_min_interval_for_content(content)
+            
+            interval = timedelta(seconds=min_gap_seconds)
+            
+            # 2. 基础时间：如果内容已经有了一个未来的排期，先以它为准
+            current_scheduled = content.scheduled_at.replace(tzinfo=None) if content.scheduled_at else None
+            
+            # 3. 确定最小允许时间 (上一个时间 + 间隔)
+            # 如果是第一个，从 now + 5s 开始，否则从 last_time + interval 开始
+            min_allowed = last_time + (timedelta(seconds=5) if last_time == now else interval)
+            
+            if not current_scheduled or current_scheduled < min_allowed:
+                # 如果时间已过期或太挤，则推移到最小允许时间
+                content.scheduled_at = min_allowed
+            else:
+                # 如果用户手动设置了一个更远的未来时间，且没与前项冲突，则保留
+                content.scheduled_at = current_scheduled
+            
+            last_time = content.scheduled_at
+        
+        await self.db.commit()
+        logger.info(f"队列时间轴已优化整理: 共有 {len(contents)} 个条目, 包含 {len(immediate_ids_set)} 个立即推送项")
+
+    async def move_item_to_position(self, content_id: int, new_index: int):
+        """
+        拖动重排：调整逻辑顺序，并确保时间轴递增
+        """
+        # 1. 抓出所有相关条目
+        result = await self.db.execute(
+            select(Content)
+            .where(
+                Content.review_status.in_([ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED]),
+                Content.status == "pulled"
+            )
+            .order_by(Content.scheduled_at.asc().nulls_last(), Content.created_at.asc())
+        )
+        contents = result.scalars().all()
+        
+        moving_item = next((c for c in contents if c.id == content_id), None)
+        if not moving_item: return
+
+        # 标记为手动排期，因为是用户手动拖动的
+        moving_item.is_manual_schedule = True
+
+        # 2. 内存中调整顺序
+        items = [c for c in contents if c.id != content_id]
+        new_index = max(0, min(new_index, len(items)))
+        items.insert(new_index, moving_item)
+        
+        # 3. 为移动后的条目分配一个临时时间戳以维持新的逻辑顺序（供下文 order_by 使用）
+        if new_index == 0:
+            # 移到最前：设为过去
+            moving_item.scheduled_at = datetime.utcnow() - timedelta(hours=1)
+        elif new_index >= len(items) - 1:
+            # 移到最后：设为最后一个人之后 1s
+            last_item = items[-2]
+            moving_item.scheduled_at = (last_item.scheduled_at or datetime.utcnow()) + timedelta(seconds=1)
+        else:
+            # 移到中间：设为前一个条目之后 1s
+            prev_item = items[new_index - 1]
+            moving_item.scheduled_at = (prev_item.scheduled_at or datetime.utcnow()) + timedelta(seconds=1)
+            
+        # 4. 提交临时顺序，并运行一次全局紧凑整理，它会根据动态间隔拉开正确的时间
+        await self.db.commit()
+        await self.compact_schedule()
+
     async def auto_approve_if_eligible(self, content: Content) -> bool:
         """
         根据规则的自动批准条件，自动批准内容
@@ -291,10 +401,16 @@ class DistributionEngine:
                 content.review_status = ReviewStatus.AUTO_APPROVED
                 content.reviewed_at = datetime.utcnow()
                 content.review_note = f"自动批准 (规则: {rule.name})"
+                content.is_manual_schedule = False  # 自动批准不标记为手动
+                
+                # 计算动态间隔（基于该内容的规则限制）
+                min_interval = await self.get_min_interval_for_content(content)
+                # 设置预计推送时间
+                content.scheduled_at = await self.calculate_scheduled_at(content, min_interval=min_interval)
                 
                 await self.db.commit()
                 
-                logger.info(f"内容已自动批准: content_id={content.id}, rule={rule.name}")
+                logger.info(f"内容已自动批准并加入调度: content_id={content.id}, interval={min_interval}s, scheduled_at={content.scheduled_at}")
                 return True
         
         return False
@@ -323,3 +439,57 @@ class DistributionEngine:
                     return False
         
         return True
+
+    async def refresh_queue_by_rules(self):
+        """
+        根据最新的规则刷新整个队列：
+        1. 重新评估 PENDING 内容是否符合新规则的自动批准
+        2. 重新评估 AUTO_APPROVED 内容是否依然符合规则
+        3. 重新整理时间轴
+        """
+        # 1. 获取所有待处理内容
+        result = await self.db.execute(
+            select(Content).where(Content.status == "pulled")
+        )
+        contents = result.scalars().all()
+        
+        # 2. 获取所有启用的规则
+        rule_result = await self.db.execute(
+            select(DistributionRule).where(DistributionRule.enabled == True)
+        )
+        enabled_rules = rule_result.scalars().all()
+        
+        changes = 0
+        for content in contents:
+            # 只有非手动审批的内容才受自动规则变更影响
+            if content.review_status == ReviewStatus.AUTO_APPROVED:
+                # 检查是否依然匹配任一规则的自动批准条件
+                still_valid = False
+                for rule in enabled_rules:
+                    if rule.auto_approve_conditions and await self._check_auto_approve_conditions(content, rule.auto_approve_conditions):
+                        still_valid = True
+                        break
+                
+                if not still_valid:
+                    # 不再符合规则，回退到 PENDING
+                    content.review_status = ReviewStatus.PENDING
+                    content.scheduled_at = None
+                    changes += 1
+                    
+            elif content.review_status == ReviewStatus.PENDING:
+                # 尝试匹配新规则
+                for rule in enabled_rules:
+                    if rule.auto_approve_conditions and await self._check_auto_approve_conditions(content, rule.auto_approve_conditions):
+                        content.review_status = ReviewStatus.AUTO_APPROVED
+                        content.reviewed_at = datetime.utcnow()
+                        content.review_note = f"规则更新自适应批准 (规则: {rule.name})"
+                        content.is_manual_schedule = False
+                        changes += 1
+                        break
+        
+        if changes > 0:
+            await self.db.commit()
+            logger.info(f"规则变更导致 {changes} 条内容状态发生更新")
+            
+        # 3. 无论状态是否改变，只要规则可能修改了频率限制，就触发一次重排
+        await self.compact_schedule()

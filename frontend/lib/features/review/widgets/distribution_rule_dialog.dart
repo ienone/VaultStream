@@ -210,7 +210,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
                 if (_includeTags.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
-                    value: _tagsMatchMode,
+                    initialValue: _tagsMatchMode,
                     decoration: const InputDecoration(
                       labelText: '标签匹配模式',
                       border: OutlineInputBorder(),
@@ -352,7 +352,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<String>(
-              value: platform,
+              initialValue: platform,
               decoration: const InputDecoration(labelText: '平台'),
               items: const [
                 DropdownMenuItem(value: 'telegram', child: Text('Telegram')),

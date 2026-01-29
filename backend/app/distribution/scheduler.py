@@ -70,14 +70,16 @@ class DistributionScheduler:
     async def _check_and_distribute(self):
         """检查并分发内容"""
         async with AsyncSessionLocal() as session:
-            # 查询候选内容：已批准 + 已拉取
+            now = datetime.utcnow()
+            # 查询候选内容：已批准 + 已拉取 + 到达预计推送时间
             result = await session.execute(
                 select(Content)
                 .where(
                     Content.review_status.in_([ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED]),
-                    Content.status == "pulled"
+                    Content.status == "pulled",
+                    Content.scheduled_at <= now  # 核心修改：到点才推
                 )
-                .order_by(Content.queue_priority.desc(), Content.created_at.asc())
+                .order_by(Content.queue_priority.desc(), Content.scheduled_at.asc())
                 .limit(50)
             )
             contents = result.scalars().all()
@@ -99,7 +101,12 @@ class DistributionScheduler:
                     tasks = await engine.create_distribution_tasks(content)
                     
                     if not tasks:
-                        logger.warning(f"内容 {content.id} 未生成任何分发任务 (可能被过滤)")
+                        # 核心优化：如果到点的内容无法生成任何任务（无匹配、已推送过、被过滤）
+                        # 我们需要将其状态更新，否则它会一直留在候选列表中造成死循环日志
+                        logger.info(f"内容 {content.id} 在当前规则下无有效推送目标，将其移出活跃队列")
+                        # 标记为已归档或已处理，防止再次轮询
+                        content.status = "archived" 
+                        await session.commit()
                         continue
 
                     for task in tasks:
