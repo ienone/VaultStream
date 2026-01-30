@@ -430,14 +430,97 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(28),
                   ),
+                  elevation: 6,
+                ),
+                datePickerTheme: DatePickerThemeData(
+                  backgroundColor: colorScheme.surface,
+                  surfaceTintColor: colorScheme.surfaceTint,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28),
+                  ),
+                  headerBackgroundColor: colorScheme.primaryContainer,
+                  headerForegroundColor: colorScheme.onPrimaryContainer,
+                  rangePickerShape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28),
+                  ),
+                  rangePickerHeaderBackgroundColor: colorScheme.primaryContainer,
+                  rangePickerHeaderForegroundColor: colorScheme.onPrimaryContainer,
+                  dayStyle: TextStyle(color: colorScheme.onSurface),
+                  yearStyle: TextStyle(color: colorScheme.onSurface),
+                  rangePickerShadowColor: colorScheme.shadow,
+                  rangePickerSurfaceTintColor: colorScheme.surfaceTint,
+                  rangeSelectionBackgroundColor: colorScheme.primary.withValues(alpha: 0.15),
+                  rangeSelectionOverlayColor: WidgetStateProperty.all(colorScheme.primary.withValues(alpha: 0.12)),
+                  dayOverlayColor: WidgetStateProperty.all(colorScheme.primary.withValues(alpha: 0.12)),
+                  cancelButtonStyle: TextButton.styleFrom(
+                    foregroundColor: colorScheme.onSurface,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  ),
+                  confirmButtonStyle: FilledButton.styleFrom(
+                    backgroundColor: colorScheme.primary,
+                    foregroundColor: colorScheme.onPrimary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  ),
                 ),
               ),
-              child: child!,
+              child: _AnimatedDatePickerWrapper(child: child!),
             ),
           ),
         );
       },
     );
     if (picked != null) setState(() => _dateRange = picked);
+  }
+}
+
+class _AnimatedDatePickerWrapper extends StatefulWidget {
+  final Widget child;
+  const _AnimatedDatePickerWrapper({required this.child});
+
+  @override
+  State<_AnimatedDatePickerWrapper> createState() => _AnimatedDatePickerWrapperState();
+}
+
+class _AnimatedDatePickerWrapperState extends State<_AnimatedDatePickerWrapper>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 280),
+      vsync: this,
+    );
+    _scaleAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutBack,
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    );
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: ScaleTransition(
+        scale: _scaleAnimation,
+        child: widget.child,
+      ),
+    );
   }
 }

@@ -106,6 +106,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
               child: Form(
                 key: _formKey,
                 child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(top: 6, bottom: 6), 
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
