@@ -331,10 +331,7 @@ class _AddContentFab extends StatelessWidget {
       builder: (context, extended, _) {
         return FloatingActionButton.extended(
           onPressed: () async {
-            final result = await showDialog<bool>(
-              context: context,
-              builder: (context) => const AddContentDialog(),
-            );
+            final result = await AddContentDialog.show(context);
             if (result == true && context.mounted) {
               ScaffoldMessenger.of(
                 context,

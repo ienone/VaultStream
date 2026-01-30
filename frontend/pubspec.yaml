@@ -57,6 +57,7 @@ dependencies:
   flutter_highlight: ^0.7.0
   google_fonts: ^7.0.0
   flutter_client_sse: ^2.0.3
+  receive_sharing_intent: ^1.8.1
 
 dev_dependencies:
   flutter_test:

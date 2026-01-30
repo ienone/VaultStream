@@ -1,34 +1,53 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/network/api_client.dart';
-import '../../providers/collection_provider.dart';
+import '../../core/network/api_client.dart';
+import '../collection/providers/collection_provider.dart';
+import 'share_receiver_service.dart';
 
-class AddContentDialog extends ConsumerStatefulWidget {
-  const AddContentDialog({super.key});
+/// 分享提交底部弹窗
+/// 用户从其他 App 分享内容到 VaultStream 时显示
+class ShareSubmitSheet extends ConsumerStatefulWidget {
+  final SharedContent sharedContent;
+  final VoidCallback? onSubmitted;
+  final VoidCallback? onCancelled;
 
-  /// 显示添加内容底部弹窗
-  static Future<bool?> show(BuildContext context) {
+  const ShareSubmitSheet({
+    super.key,
+    required this.sharedContent,
+    this.onSubmitted,
+    this.onCancelled,
+  });
+
+  /// 显示分享提交弹窗
+  static Future<bool?> show(
+    BuildContext context,
+    SharedContent content, {
+    VoidCallback? onSubmitted,
+  }) {
     return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => const AddContentDialog(),
+      builder: (context) => ShareSubmitSheet(
+        sharedContent: content,
+        onSubmitted: onSubmitted,
+      ),
     );
   }
 
   @override
-  ConsumerState<AddContentDialog> createState() => _AddContentDialogState();
+  ConsumerState<ShareSubmitSheet> createState() => _ShareSubmitSheetState();
 }
 
-class _AddContentDialogState extends ConsumerState<AddContentDialog> {
-  final _urlController = TextEditingController();
+class _ShareSubmitSheetState extends ConsumerState<ShareSubmitSheet> {
   final _tagsController = TextEditingController();
   final _selectedTags = <String>{};
   bool _isNsfw = false;
   bool _isLoading = false;
   String? _errorMessage;
 
+  // 常用标签 - 可以从后端获取或本地配置
   static const List<String> _quickTags = [
     '待看',
     '收藏',
@@ -40,17 +59,19 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
     '设计',
   ];
 
+  String? get _url => widget.sharedContent.extractedUrl;
+  String? get _rawText => widget.sharedContent.text;
+
   @override
   void dispose() {
-    _urlController.dispose();
     _tagsController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
-    final url = _urlController.text.trim();
-    if (url.isEmpty) {
-      setState(() => _errorMessage = '请输入有效的 URL');
+    final url = _url;
+    if (url == null) {
+      setState(() => _errorMessage = '未检测到有效的 URL');
       return;
     }
 
@@ -61,29 +82,46 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
 
     try {
       final dio = ref.read(apiClientProvider);
-      
-      // 合并快捷标签和自定义标签
-      final customTags = _tagsController.text
+
+      // 合并快捷标签和手动输入的标签
+      final manualTags = _tagsController.text
           .split(RegExp(r'[,\s，]'))
           .where((t) => t.isNotEmpty)
           .toList();
-      final allTags = {..._selectedTags, ...customTags}.toList();
+      final allTags = {..._selectedTags, ...manualTags}.toList();
 
       await dio.post(
         '/shares',
-        data: {'url': url, 'tags': allTags, 'is_nsfw': _isNsfw, 'source': 'app'},
+        data: {
+          'url': url,
+          'tags': allTags,
+          'is_nsfw': _isNsfw,
+          'source': 'android_share',
+        },
       );
 
       if (mounted) {
+        // 刷新收藏列表
         ref.invalidate(collectionProvider);
+
+        // 清除分享内容
+        ref.read(shareReceiverServiceProvider).clearSharedContent();
+
+        widget.onSubmitted?.call();
         Navigator.of(context).pop(true);
       }
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _errorMessage = '添加失败: $e';
+        _errorMessage = '提交失败: $e';
       });
     }
+  }
+
+  void _cancel() {
+    ref.read(shareReceiverServiceProvider).clearSharedContent();
+    widget.onCancelled?.call();
+    Navigator.of(context).pop(false);
   }
 
   @override
@@ -126,7 +164,7 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
                 Icon(Icons.add_link, color: colorScheme.primary),
                 const SizedBox(width: 12),
                 Text(
-                  '添加收藏内容',
+                  '保存到 VaultStream',
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
@@ -135,18 +173,35 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
             ),
             const SizedBox(height: 20),
 
-            // URL 输入
-            TextField(
-              controller: _urlController,
-              decoration: InputDecoration(
-                labelText: 'URL',
-                hintText: 'https://...',
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.link),
-                isDense: true,
+            // URL 预览
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
               ),
-              autofocus: true,
-              enabled: !_isLoading,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.link,
+                    size: 20,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _url ?? _rawText ?? '无内容',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: _url != null
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 20),
 
@@ -233,6 +288,7 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
                 ),
               ),
             ],
+
             const SizedBox(height: 20),
 
             // 操作按钮
@@ -240,22 +296,23 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
+                    onPressed: _isLoading ? null : _cancel,
                     child: const Text('取消'),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   flex: 2,
-                  child: FilledButton(
-                    onPressed: _isLoading ? null : _submit,
-                    child: _isLoading
+                  child: FilledButton.icon(
+                    onPressed: _isLoading || _url == null ? null : _submit,
+                    icon: _isLoading
                         ? const SizedBox(
-                            width: 20,
-                            height: 20,
+                            width: 18,
+                            height: 18,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text('提交'),
+                        : const Icon(Icons.save),
+                    label: Text(_isLoading ? '保存中...' : '保存'),
                   ),
                 ),
               ],

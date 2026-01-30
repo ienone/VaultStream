@@ -14,8 +14,8 @@ class ResponsiveLayout {
     if (width > 1400) return 5;
     if (width >= 1000) return 4;
     if (width >= 800) return 3;
-    if (width >= 500) return 2;
-    return 1; // 窄屏显示单列
+    if (width >= 360) return 2; // 手机屏幕(360-430)显示双列
+    return 1; // 极窄屏显示单列
   }
 
   static double getCardWidth(BuildContext context) {

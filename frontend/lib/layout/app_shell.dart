@@ -4,37 +4,84 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../core/layout/responsive_layout.dart';
 import '../features/collection/providers/collection_filter_provider.dart';
+import '../features/share_receiver/share_receiver_service.dart';
+import '../features/share_receiver/share_submit_sheet.dart';
 
-class AppShell extends ConsumerWidget {
+class AppShell extends ConsumerStatefulWidget {
   final StatefulNavigationShell navigationShell;
 
   const AppShell({required this.navigationShell, super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    void onDestinationSelected(int index) {
-      // Clear collection filters when leaving Library or resetting Library tab
-      if (navigationShell.currentIndex == 1 || index == 1) {
-        ref.read(collectionFilterProvider.notifier).clearFilters();
-      }
-      
-      navigationShell.goBranch(
-        index,
-        initialLocation: index == navigationShell.currentIndex,
-      );
+  ConsumerState<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends ConsumerState<AppShell> {
+  bool _isShowingSheet = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 分享监听已在 VaultStreamApp 中初始化
+  }
+
+  void _onDestinationSelected(int index) {
+    if (widget.navigationShell.currentIndex == 1 || index == 1) {
+      ref.read(collectionFilterProvider.notifier).clearFilters();
     }
+    
+    widget.navigationShell.goBranch(
+      index,
+      initialLocation: index == widget.navigationShell.currentIndex,
+    );
+  }
+
+  Future<void> _showShareSheet(SharedContent content) async {
+    if (_isShowingSheet) return;
+    setState(() => _isShowingSheet = true);
+
+    try {
+      await ShareSubmitSheet.show(
+        context,
+        content,
+        onSubmitted: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('已保存到收藏库'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        },
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isShowingSheet = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 监听分享内容变化
+    ref.listen<SharedContent?>(shareReceiverStateProvider, (previous, next) {
+      debugPrint('📥 AppShell: 分享状态变化 previous=$previous, next=$next, isEmpty=${next?.isEmpty}');
+      if (next != null && !next.isEmpty && !_isShowingSheet) {
+        debugPrint('📥 AppShell: 显示分享弹窗');
+        _showShareSheet(next);
+      }
+    });
 
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < ResponsiveLayout.mobileBreakpoint) {
           return _MobileShell(
-            navigationShell: navigationShell,
-            onDestinationSelected: onDestinationSelected,
+            navigationShell: widget.navigationShell,
+            onDestinationSelected: _onDestinationSelected,
           );
         } else {
           return _DesktopShell(
-            navigationShell: navigationShell,
-            onDestinationSelected: onDestinationSelected,
+            navigationShell: widget.navigationShell,
+            onDestinationSelected: _onDestinationSelected,
           );
         }
       },

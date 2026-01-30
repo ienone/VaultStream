@@ -34,12 +34,46 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
   late PageController _controller;
   double _dragOffset = 0;
   int _rotationTurns = 0;
+  final Map<int, TransformationController> _transformControllers = {};
+  bool _isZoomed = false;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
     _controller = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _transformControllers.values) {
+      controller.dispose();
+    }
+    _controller.dispose();
+    super.dispose();
+  }
+
+  TransformationController _getTransformController(int index) {
+    return _transformControllers.putIfAbsent(index, () {
+      final controller = TransformationController();
+      controller.addListener(() {
+        final scale = controller.value.getMaxScaleOnAxis();
+        final zoomed = scale > 1.01;
+        if (zoomed != _isZoomed) {
+          setState(() => _isZoomed = zoomed);
+        }
+      });
+      return controller;
+    });
+  }
+
+  void _handleDoubleTap(int index) {
+    final controller = _getTransformController(index);
+    if (controller.value != Matrix4.identity()) {
+      controller.value = Matrix4.identity();
+    } else {
+      controller.value = Matrix4.identity()..scale(2.0, 2.0, 1.0);
+    }
   }
 
   String _getHeroTag(int index) {
@@ -80,24 +114,31 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
           ),
           // Images
           GestureDetector(
-            onVerticalDragUpdate: (details) {
-              setState(() {
-                _dragOffset += details.primaryDelta!;
-              });
-            },
-            onVerticalDragEnd: (details) {
-              if (_dragOffset.abs() > 100) {
-                Navigator.pop(context);
-              } else {
-                setState(() {
-                  _dragOffset = 0;
-                });
-              }
-            },
+            onVerticalDragUpdate: _isZoomed
+                ? null
+                : (details) {
+                    setState(() {
+                      _dragOffset += details.primaryDelta!;
+                    });
+                  },
+            onVerticalDragEnd: _isZoomed
+                ? null
+                : (details) {
+                    if (_dragOffset.abs() > 100) {
+                      Navigator.pop(context);
+                    } else {
+                      setState(() {
+                        _dragOffset = 0;
+                      });
+                    }
+                  },
             child: Transform.translate(
               offset: Offset(0, _dragOffset),
               child: PageView.builder(
                 controller: _controller,
+                physics: _isZoomed
+                    ? const NeverScrollableScrollPhysics()
+                    : const PageScrollPhysics(),
                 itemCount: widget.images.length,
                 onPageChanged: (i) {
                   setState(() {
@@ -107,12 +148,16 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                   widget.onPageChanged?.call(i);
                 },
                 itemBuilder: (context, index) {
+                  final transformController = _getTransformController(index);
                   return GestureDetector(
                     onTap: () => Navigator.pop(context),
-                    behavior: HitTestBehavior.opaque,
+                    onDoubleTap: () => _handleDoubleTap(index),
                     child: InteractiveViewer(
+                      transformationController: transformController,
                       minScale: 1.0,
                       maxScale: 4.0,
+                      panEnabled: true,
+                      scaleEnabled: true,
                       child: Center(
                         child: Hero(
                           tag: _getHeroTag(index),

@@ -388,6 +388,24 @@ class ContentParser:
                     elif img.get("key"):
                         parsed.author_avatar_url = f"local://{img['key']}"
                     break
+            
+            # 同步更新 top_answers 中的头像和封面 (知乎问题等)
+            top_answers = meta.get("top_answers", [])
+            if top_answers:
+                # 构建原始URL到存储URL的映射
+                url_mapping = {}
+                for img in stored_images:
+                    orig_url = img.get("orig_url")
+                    stored_url = img.get("url") or (f"local://{img['key']}" if img.get("key") else None)
+                    if orig_url and stored_url:
+                        url_mapping[orig_url] = stored_url
+                
+                # 更新 top_answers 中的 URL
+                for ans in top_answers:
+                    if ans.get("author_avatar_url") in url_mapping:
+                        ans["author_avatar_url"] = url_mapping[ans["author_avatar_url"]]
+                    if ans.get("cover_url") in url_mapping:
+                        ans["cover_url"] = url_mapping[ans["cover_url"]]
         
         # 处理视频
         if archive.get("videos"):

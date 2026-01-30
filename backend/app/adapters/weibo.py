@@ -85,12 +85,25 @@ class WeiboAdapter(PlatformAdapter):
                 headers = {
                     "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15"
                 }
+                
+                # 配置代理
+                proxy = settings.http_proxy or settings.https_proxy
+                
                 # 对mapp链接使用GET请求，因为HEAD常常不能正确重定向
-                async with httpx.AsyncClient(headers=headers, follow_redirects=True, timeout=10.0) as client:
+                async with httpx.AsyncClient(headers=headers, follow_redirects=True, timeout=10.0, proxy=proxy) as client:
                     resp = await client.get(url)
                     final_url = str(resp.url)
                     
-                    if "mapp.api.weibo.cn" in final_url:
+                    # 检查是否跳转到了visitor.passport页面，从url参数中提取真实URL
+                    if "visitor.passport.weibo.cn" in final_url:
+                        from urllib.parse import urlparse, parse_qs, unquote
+                        parsed = urlparse(final_url)
+                        query_params = parse_qs(parsed.query)
+                        if "url" in query_params:
+                            real_url = unquote(query_params["url"][0])
+                            logger.debug(f"从visitor页面提取真实URL: {real_url}")
+                            url = real_url
+                    elif "mapp.api.weibo.cn" in final_url:
                         # 尝试从响应体中解析
                         match_body = re.search(r'"mblogid":\s*"([a-zA-Z0-9]+)"', resp.text)
                         if match_body:
@@ -99,8 +112,8 @@ class WeiboAdapter(PlatformAdapter):
                         match_bid = re.search(r'bid=([a-zA-Z0-9]+)', resp.text)
                         if match_bid:
                             return f"https://weibo.com/detail/{match_bid.group(1)}"
-                    
-                    url = final_url
+                    else:
+                        url = final_url
             except Exception as e:
                 logger.warning(f"还原移动端/mapp URL失败 {url}: {e}")
 

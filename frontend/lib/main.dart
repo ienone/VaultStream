@@ -2,33 +2,95 @@ import 'package:flutter/material.dart'; // 引入Flutter的Material库，用于�
 import 'package:flutter_localizations/flutter_localizations.dart'; // Add localization support
 import 'package:flutter_riverpod/flutter_riverpod.dart'; // 引入Riverpod库，用于状态管理
 import 'package:dynamic_color/dynamic_color.dart'; // 引入dynamic_color库，用于动态颜色支持
+import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'theme/app_theme.dart'; // 引入自定义的应用主题
 import 'routing/app_router.dart'; // 引入自定义的应用路由
 import 'core/providers/theme_provider.dart';
+import 'features/share_receiver/share_receiver_service.dart';
 
+// 全局存储启动时的分享内容
+List<SharedMediaFile>? _initialSharedMedia;
 
-
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 在应用启动前先获取初始分享内容
+  try {
+    _initialSharedMedia = await ReceiveSharingIntent.instance.getInitialMedia();
+    print('📥 main: 初始分享内容 ${_initialSharedMedia?.length ?? 0} 个');
+    if (_initialSharedMedia != null && _initialSharedMedia!.isNotEmpty) {
+      for (final file in _initialSharedMedia!) {
+        print('📥 main: type=${file.type}, path=${file.path}');
+      }
+    }
+  } catch (e) {
+    print('📥 main: 获取初始分享失败: $e');
+  }
+
   runApp(
-    const ProviderScope(
-      child: VaultStreamApp(),
+    ProviderScope(
+      child: VaultStreamApp(initialSharedMedia: _initialSharedMedia),
     ),
   );
 }
 
-class VaultStreamApp extends ConsumerWidget {
-  // ConsumerWidget是Riverpod提供的一个可以监听providers的无状态Widget(stateless widget)。
-  // providers是Riverpod中的核心概念，表示应用中的状态或数据源,比如计数器的值、用户信息等。
-  // extends 用于继承类，表示VaultStreamApp类继承自ConsumerWidget类,能使用WidgetRef来访问和监听providers。
+class VaultStreamApp extends ConsumerStatefulWidget {
+  final List<SharedMediaFile>? initialSharedMedia;
 
   const VaultStreamApp({
     super.key,
-  }); // 常量构造函数，接受一个可选的key参数，传递给父类ConsumerWidget的构造函数。
+    this.initialSharedMedia,
+  });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<VaultStreamApp> createState() => _VaultStreamAppState();
+}
+
+class _VaultStreamAppState extends ConsumerState<VaultStreamApp> {
+  @override
+  void initState() {
+    super.initState();
+    // 处理初始分享内容
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _handleInitialShare();
+      // 初始化流监听
+      ref.read(shareReceiverServiceProvider).initialize();
+    });
+  }
+
+  void _handleInitialShare() {
+    final files = widget.initialSharedMedia;
+    if (files != null && files.isNotEmpty) {
+      print('📥 VaultStreamApp: 处理初始分享 ${files.length} 个文件');
+      
+      String? sharedText;
+      final mediaFiles = <SharedMediaFile>[];
+
+      for (final file in files) {
+        if (file.type == SharedMediaType.text || file.type == SharedMediaType.url) {
+          sharedText = file.path;
+        } else {
+          mediaFiles.add(file);
+        }
+      }
+
+      final content = SharedContent(
+        text: sharedText,
+        mediaFiles: mediaFiles,
+      );
+
+      if (!content.isEmpty) {
+        print('📥 VaultStreamApp: 设置分享内容到状态');
+        ref.read(shareReceiverStateProvider.notifier).setSharedContent(content);
+      }
+      
+      // 重置 intent 避免重复处理
+      ReceiveSharingIntent.instance.reset();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     // build方法是Flutter Widget的核心方法，用于构建Widget的UI。
     // build方法接受两个参数：BuildContext和WidgetRef。
     // context参数是Flutter框架传递的BuildContext对象，表示Widget在Widget树中的位置。

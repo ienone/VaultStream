@@ -197,7 +197,12 @@ class ZhihuAdapter(PlatformAdapter):
 
     async def _parse_answer_via_api(self, answer_id: str, url: str) -> Optional[ParsedContent]:
         """通过API解析回答"""
-        data = await self._api_request("answer", answer_id, use_cookies=False)
+        # 优先尝试使用Cookie获取完整内容（知乎对无Cookie请求返回截断的content）
+        data = await self._api_request("answer", answer_id, use_cookies=True)
+        
+        # 如果Cookie请求失败，回退到无Cookie请求（可能内容不完整）
+        if not data or "_error" in data:
+            data = await self._api_request("answer", answer_id, use_cookies=False)
         
         if not data or "_error" in data:
             return None
