@@ -52,6 +52,7 @@ frontend/.packages
 
 
 # 临时文件
+experiments/
 *.tmp
 *.bak
 nohup.out
