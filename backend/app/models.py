@@ -4,7 +4,7 @@
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, List
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum, UniqueConstraint, JSON, Index
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum, UniqueConstraint, JSON, Index, Float
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -52,6 +52,7 @@ class Platform(str, Enum):
     WEIBO = "weibo"
     ZHIHU = "zhihu"
     KU_AN="ku_an"
+    UNIVERSAL = "universal"
 
 
 class BilibiliContentType(str, Enum):
@@ -111,11 +112,12 @@ class Content(Base):
     tags = Column(JSON, default=list)  # 用户自定义标签
     is_nsfw = Column(Boolean, default=False)
     source = Column(String(100))  # 来源标识
+    source_type = Column(String(50), default="user_submit", index=True)  # user_submit, ai_discovered
+    ai_score = Column(Float, nullable=True)
+    discovered_at = Column(DateTime)
     
     # 平台特有 ID (如 BV号, 推文ID)
     platform_id = Column(String(100), index=True)
-    # 平台特有内容类型 (如 B站的 video, live, dynamic)
-    content_type = Column(String(50), index=True)
     
     # 添加以下兼容性属性，以便 Pydantic 模型 ContentDetail 能够正确验证
     @property
@@ -370,6 +372,32 @@ class SystemSetting(Base):
     description = Column(Text)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
+class DiscoveryTopic(Base):
+    """发现主题（用户订阅）"""
+    __tablename__ = "discover_topics"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)  # 如 "AI", "Game"
+    keywords = Column(JSON)  # 关键词列表 ["LLM", "GPT"]
+    platforms = Column(JSON)  # 目标平台 ["zhihu", "bilibili"]
+    enabled = Column(Boolean, default=True, index=True)
+    priority = Column(Integer, default=5)
+    
+    created_at = Column(DateTime, default=utcnow)
+
+class DiscoverySource(Base):
+    """发现源配置"""
+    __tablename__ = "discover_sources"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    type = Column(String(50), nullable=False)  # 'platform_hot', 'rss', 'custom'
+    name = Column(String(100), nullable=False)
+    config = Column(JSON)  # 具体配置
+    schedule = Column(String(100))  # Cron 表达式
+    enabled = Column(Boolean, default=True, index=True)
+    last_run_at = Column(DateTime)
+    
+    created_at = Column(DateTime, default=utcnow)
 
 class BotChatType(str, Enum):
     """Bot 聊天类型"""

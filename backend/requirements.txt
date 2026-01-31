@@ -42,3 +42,11 @@ Pillow
 # 内容解析与 Markdown 转换
 markdownify
 beautifulsoup4
+
+# 智能爬虫与发现层 (Native Crawler & Discovery)
+browser-use
+crawl4ai
+playwright
+langchain-openai
+langchain-anthropic
+nest_asyncio

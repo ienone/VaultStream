@@ -10,9 +10,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import select
 
 from app.main import app
-from app.config import settings
-from app.database import Base
-from app.models import Content
+from app.core.config import settings
+from app.models import Base, Content
 
 # Override the database URL for testing if needed
 # For now, we use the existing SQLite DB (as per user request to test with real data)

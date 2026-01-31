@@ -8,6 +8,7 @@ from app.adapters.twitter_fx import TwitterFxAdapter
 from app.adapters.xiaohongshu import XiaohongshuAdapter
 from app.adapters.weibo import WeiboAdapter
 from app.adapters.zhihu import ZhihuAdapter
+from app.adapters.universal_adapter import UniversalAdapter
 from app.models import Platform
 
 
@@ -27,6 +28,8 @@ class AdapterFactory:
             return WeiboAdapter(**kwargs)
         elif platform == Platform.ZHIHU:
             return ZhihuAdapter(**kwargs)
+        elif platform == Platform.UNIVERSAL:
+            return UniversalAdapter(**kwargs)
         # 未来可以在这里添加其他平台
         raise ValueError(f"不支持的平台: {platform}")
     
@@ -43,5 +46,5 @@ class AdapterFactory:
             return Platform.WEIBO
         elif 'zhihu.com' in url:
             return Platform.ZHIHU
-        # 未来添加其他平台检测
-        return None
+        # 默认返回通用平台适配器
+        return Platform.UNIVERSAL
