@@ -39,7 +39,8 @@ class ContentCard extends ConsumerWidget {
       baseUrl: apiBaseUrl,
       apiToken: apiToken,
     );
-    final isTwitter = content.isTwitter;
+    final layoutType = content.resolvedLayoutType;
+    final isGallery = layoutType == 'gallery';
     final hasImage = imageUrl.isNotEmpty;
 
     final double cardWidth = ResponsiveLayout.getCardWidth(context);
@@ -68,7 +69,7 @@ class ContentCard extends ConsumerWidget {
       imageUrl: imageUrl,
       imageHeaders: imageHeaders ?? {},
       hasImage: hasImage,
-      isTwitter: isTwitter,
+      isGallery: isGallery,
       isTinyCard: isTinyCard,
       imageAspectRatio: imageAspectRatio,
       cardAspectRatio: cardAspectRatio,
@@ -86,7 +87,7 @@ class _ContentCardInternal extends StatefulWidget {
   final String imageUrl;
   final Map<String, String> imageHeaders;
   final bool hasImage;
-  final bool isTwitter;
+  final bool isGallery;
   final bool isTinyCard;
   final double imageAspectRatio;
   final double cardAspectRatio;
@@ -101,7 +102,7 @@ class _ContentCardInternal extends StatefulWidget {
     required this.imageUrl,
     required this.imageHeaders,
     required this.hasImage,
-    required this.isTwitter,
+    required this.isGallery,
     required this.isTinyCard,
     required this.imageAspectRatio,
     required this.cardAspectRatio,
@@ -280,7 +281,7 @@ class _ContentCardInternalState extends State<_ContentCardInternal> {
 
                                         content: content,
 
-                                        isTwitter: widget.isTwitter,
+                                        isGallery: widget.isGallery,
 
                                         isTinyCard: widget.isTinyCard,
 
@@ -485,12 +486,12 @@ class _CardAuthor extends StatelessWidget {
 
 class _CardContentSnippet extends StatelessWidget {
   final ShareCard content;
-  final bool isTwitter;
+  final bool isGallery;
   final bool isTinyCard;
 
   const _CardContentSnippet({
     required this.content,
-    required this.isTwitter,
+    required this.isGallery,
     required this.isTinyCard,
   });
 
@@ -502,7 +503,7 @@ class _CardContentSnippet extends StatelessWidget {
     final title = content.title?.trim() ?? '';
     final description = content.description?.trim() ?? '';
 
-    if (isTwitter || content.isWeibo) {
+    if (isGallery) {
       // Use backend-generated smart title if available
       final text = (title.isNotEmpty && title != '-') ? title : description;
       if (text.isEmpty) return const SizedBox.shrink();

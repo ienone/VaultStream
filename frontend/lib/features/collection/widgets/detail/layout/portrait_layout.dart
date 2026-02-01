@@ -30,7 +30,7 @@ class PortraitLayout extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
-    final bool isBilibiliVideo = detail.isBilibili && detail.contentType == 'video';
+    final bool isVideoLayout = detail.resolvedLayoutType == 'video';
     final mediaUrls = ContentParser.extractAllMedia(detail, apiBaseUrl);
 
     return SingleChildScrollView(
@@ -38,8 +38,8 @@ class PortraitLayout extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Media at top for Bilibili Video (XHS Style)
-          if (isBilibiliVideo && mediaUrls.isNotEmpty) ...[
+          // 1. Media at top for Video layout
+          if (isVideoLayout && mediaUrls.isNotEmpty) ...[
             Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(24),
@@ -92,7 +92,7 @@ class PortraitLayout extends StatelessWidget {
                 children: [
                   AuthorHeader(detail: detail),
                   const SizedBox(height: 24),
-                  if (!detail.isTwitter &&
+                  if (detail.resolvedLayoutType != 'gallery' &&
                       (detail.title != null && detail.title!.isNotEmpty))
                     Text(
                       detail.title ?? '无标题内容',
@@ -123,7 +123,7 @@ class PortraitLayout extends StatelessWidget {
             apiToken: apiToken,
             headerKeys: headerKeys,
             contentColor: contentColor,
-            hideMedia: isBilibiliVideo, // Don't show cover twice
+            hideMedia: isVideoLayout, // Don't show cover twice for video layout
           ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.05, end: 0),
           const SizedBox(height: 48),
         ],

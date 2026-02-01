@@ -217,11 +217,7 @@ class RichContent extends StatelessWidget {
     // 知乎问题的图片已在上面单独处理（在回答之前显示）
     if (detail.isZhihuQuestion) {
       showMediaGrid = false; // 不在这里重复显示
-    } else if (detail.isZhihuPin ||
-        detail.isTwitter ||
-        detail.isWeibo ||
-        detail.isXiaohongshu ||
-        (detail.isBilibili && detail.contentType == 'video')) {
+    } else if (detail.resolvedLayoutType == 'gallery' || detail.resolvedLayoutType == 'video') {
       showMediaGrid = mediaUrls.isNotEmpty;
     } else {
       if (markdown.isEmpty && mediaUrls.isNotEmpty) {

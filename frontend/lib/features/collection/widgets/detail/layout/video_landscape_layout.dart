@@ -8,13 +8,13 @@ import '../components/bvid_card.dart';
 import '../components/tags_section.dart';
 import '../components/unified_stats.dart';
 
-class BilibiliLandscapeLayout extends StatelessWidget {
+class VideoLandscapeLayout extends StatelessWidget {
   final ContentDetail detail;
   final String apiBaseUrl;
   final String? apiToken;
   final Function(List<String>, int) onImageTap;
 
-  const BilibiliLandscapeLayout({
+  const VideoLandscapeLayout({
     super.key,
     required this.detail,
     required this.apiBaseUrl,

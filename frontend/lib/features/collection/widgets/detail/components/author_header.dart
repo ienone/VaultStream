@@ -105,7 +105,11 @@ class AuthorHeader extends ConsumerWidget {
                   : null,
               child: mappedAvatarUrl == null
                   ? Text(
-                      (detail.authorName ?? '?').substring(0, 1).toUpperCase(),
+                      (detail.authorName?.isNotEmpty == true
+                              ? detail.authorName!
+                              : '?')
+                          .substring(0, 1)
+                          .toUpperCase(),
                       style: TextStyle(
                         color: isBilibili
                             ? const Color(0xFFFB7299)

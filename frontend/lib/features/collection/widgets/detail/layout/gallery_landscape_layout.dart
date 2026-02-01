@@ -6,7 +6,7 @@ import '../../../models/content.dart';
 import '../components/media_gallery_item.dart';
 import '../components/content_side_info_card.dart';
 
-class TwitterLandscapeLayout extends StatelessWidget {
+class GalleryLandscapeLayout extends StatelessWidget {
   final ContentDetail detail;
   final String apiBaseUrl;
   final String? apiToken;
@@ -18,7 +18,7 @@ class TwitterLandscapeLayout extends StatelessWidget {
   final Map<String, GlobalKey> headerKeys;
   final Color? contentColor;
 
-  const TwitterLandscapeLayout({
+  const GalleryLandscapeLayout({
     super.key,
     required this.detail,
     required this.apiBaseUrl,
