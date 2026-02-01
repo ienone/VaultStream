@@ -56,6 +56,8 @@ def parse_people(html_content: str, url: str) -> Optional[ParsedContent]:
     
     description = headline if headline else ""
 
+    url_token = user_data.get('urlToken')
+    
     return ParsedContent(
         platform="zhihu",
         content_type="user_profile",
@@ -64,7 +66,9 @@ def parse_people(html_content: str, url: str) -> Optional[ParsedContent]:
         title=f"{name} 的知乎主页",
         description=description,
         author_name=name,
-        author_id=user_data.get('urlToken'),
+        author_id=url_token,
+        author_avatar_url=avatar_url,
+        author_url=f"https://www.zhihu.com/people/{url_token}" if url_token else None,
         cover_url=avatar_url,
         media_urls=[avatar_url] if avatar_url else [],
         published_at=datetime.now(), # User profile doesn't have a specific pub date

@@ -168,7 +168,13 @@ def build_opus_archive(item: Dict[str, Any]) -> Dict[str, Any]:
                 links.append({"url": href, "text": clean_text(link.get("text") or "")})
 
     # 3) 顶层pics
+    # 兼容老OPUS结构 (opus.pics) 和 Polymer动态结构 (module_top.display.album.pics)
     pics = opus.get("pics") or []
+    
+    module_top = modules_map.get("module_top", {})
+    if not pics:
+        pics = module_top.get("display", {}).get("album", {}).get("pics", [])
+
     for pic in pics:
         if not isinstance(pic, dict):
             continue
@@ -381,6 +387,10 @@ async def parse_dynamic(
         # 处理Opus图文内容
         major = module_dynamic.get('major', {})
         opus = major.get('opus', {})
+        
+        # 调试日志：记录 major 类型和 keys，辅助判断内容类型
+        major_type = major.get('type')
+        logger.debug(f"Dynamic major info: type={major_type}, keys={list(major.keys())}")
 
         # 标题回退机制：优先使用原生标题，否则从正文生成
         raw_title = opus.get('title') or module_title.get('text') or item.get('basic', {}).get('title')
@@ -428,10 +438,39 @@ async def parse_dynamic(
             list((raw_metadata.get("archive") or {}).keys()),
         )
 
-        # 判断layout_type: 有标题且正文较长为ARTICLE，否则为GALLERY
-        has_long_content = len(summary) > 500
-        has_title = bool(raw_title)
-        layout = LAYOUT_ARTICLE if (has_title and has_long_content) else LAYOUT_GALLERY
+        module_content = modules_map.get('module_content', {})
+        module_top = modules_map.get('module_top', {})
+
+        # 判断layout_type
+        # 1. 检查正文段落中是否包含图片 (有嵌入图片 -> 文章)
+        # 优先使用 module_content (Polymer), 回退到 opus.content (Old)
+        has_embedded_images = False
+        paragraphs = module_content.get('paragraphs') or opus.get('content', {}).get('paragraphs') or []
+        
+        if paragraphs:
+            for p in paragraphs:
+                # para_type 2 is image, or check if 'pic' field exists
+                if p.get('para_type') == 2 or p.get('pic'): 
+                    has_embedded_images = True
+                    break
+        
+        # 2. 检查顶层图片 (Opus动态通常将图片放在pics字段，Polymer放在module_top)
+        top_pics = opus.get('pics') or module_top.get("display", {}).get("album", {}).get("pics", [])
+        top_pics_count = len(top_pics)
+        
+        # 3. 判定逻辑
+        if has_embedded_images:
+            layout = LAYOUT_ARTICLE
+        elif top_pics_count > 0:
+            layout = LAYOUT_GALLERY
+        else:
+            # 无图情况：根据标题和长度判定
+            # 有标题且正文较长(>200字)视作文章，否则视作状态(Gallery样式)
+            has_long_content = len(summary) > 200
+            has_title = bool(raw_title)
+            layout = LAYOUT_ARTICLE if (has_title and has_long_content) else LAYOUT_GALLERY
+        
+        logger.info(f"Dynamic layout detection: id={dynamic_id}, embedded_img={has_embedded_images}, top_pics={top_pics_count}, layout={layout}")
         
         # 构建ParsedContent
         return ParsedContent(

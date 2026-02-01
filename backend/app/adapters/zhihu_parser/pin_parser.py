@@ -185,6 +185,7 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
         author_name=author.name,
         author_id=author.url_token or str(author.id),
         author_avatar_url=author.avatar_url,
+        author_url=f"https://www.zhihu.com/people/{author.url_token}" if author.url_token else None,
         cover_url=media_urls[0] if media_urls else None,
         media_urls=media_urls,
         published_at=published_at,

@@ -131,6 +131,19 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
         }
         answer_data['archive'] = archive
 
+    # Phase 7: 提取 associated_question 到顶层字段
+    associated_question = {
+        "id": question_id,
+        "title": question_title,
+        "url": f"https://www.zhihu.com/question/{question_id}" if question_id else None,
+        "visit_count": question_data.get('visitCount', 0) if isinstance(question_data, dict) else 0,
+        "answer_count": question_data.get('answerCount', 0) if isinstance(question_data, dict) else 0,
+        "follower_count": question_data.get('followerCount', 0) if isinstance(question_data, dict) else 0,
+        "comment_count": question_data.get('commentCount', 0) if isinstance(question_data, dict) else 0,
+        "view_count": question_data.get('visitCount', 0) if isinstance(question_data, dict) else 0,
+        "like_count": question_data.get('voteupCount', 0) if isinstance(question_data, dict) else 0,
+    }
+
     return ParsedContent(
         platform="zhihu",
         content_type="answer",
@@ -141,10 +154,12 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
         author_name=author.name,
         author_id=author.url_token or str(author.id),
         author_avatar_url=author.avatar_url,
+        author_url=f"https://www.zhihu.com/people/{author.url_token}" if author.url_token else None,
         cover_url=answer_data.get('thumbnail') or (media_urls[0] if media_urls else None),
         media_urls=media_urls,
         published_at=published_at,
         raw_metadata=answer_data,
         stats=stats,
         layout_type=LAYOUT_ARTICLE,
+        associated_question=associated_question,
     )

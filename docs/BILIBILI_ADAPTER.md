@@ -40,6 +40,18 @@ Bilibili 适配器主要依赖官方 Web API，但在处理动态时使用了更
 - 文本清洗：自动去除零宽字符（\u200b）、还原 HTML 转义字符、压缩多余换行。
 - Markdown 转换：将解析出的富文本块自动转换为标准的 Markdown 格式，便于存档和搜索。
 
+### 2.3 Opus 布局判定与结构差异
+
+Bilibili Opus 接口返回的数据结构存在差异，直接决定了前端展示形态 (`layout_type`)：
+
+| Opus 类型 | 典型来源 | 接口特征 (Polymer API) | 布局类型 | 前端展示 |
+| :--- | :--- | :--- | :--- | :--- |
+| **Opus 文章** | 专栏文章 (`read/cv`) 重定向 | 正文图片**嵌入**在 `MODULE_TYPE_CONTENT` 的段落 (`paragraphs`) 中。 | `ARTICLE` | 长文排版 (左侧文本) |
+| **Opus 动态** | 手机端发布的九宫格图文 | 图片位于 **`MODULE_TYPE_TOP`** 的相册组件 (`display.album.pics`) 中，正文仅含文本。 | `GALLERY` | 画廊排版 (左侧图片) |
+
+**解析逻辑**：
+适配器会优先检查 `module_content` 的段落中是否包含嵌入图片。若有，则判定为文章；否则检查 `module_top` 是否有相册图片，若有则判定为画廊。
+
 ---
 
 ## 3. 回退逻辑与安全性

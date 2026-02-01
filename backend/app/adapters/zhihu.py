@@ -301,6 +301,16 @@ class ZhihuAdapter(PlatformAdapter):
             f"回答：{question_title}" if question_title else f"知乎回答 {answer_id}",
             processed_html, markdown_content, media_urls, author.avatar_url)
         
+        # Phase 7: 提取 associated_question 到顶层字段
+        associated_question = {
+            "id": question_id,
+            "title": question_title,
+            "url": f"https://www.zhihu.com/question/{question_id}" if question_id else None,
+            "visit_count": question_data.get('visit_count', 0),
+            "answer_count": question_data.get('answer_count', 0),
+            "follower_count": question_data.get('follower_count', 0),
+        }
+        
         return ParsedContent(
             platform="zhihu",
             content_type="answer",
@@ -312,11 +322,13 @@ class ZhihuAdapter(PlatformAdapter):
             author_name=author.name,
             author_id=author.url_token or str(author.id),
             author_avatar_url=author.avatar_url,
+            author_url=f"https://www.zhihu.com/people/{author.url_token}" if author.url_token else None,
             cover_url=data.get('thumbnail') or (media_urls[0] if media_urls else None),
             media_urls=media_urls,
             published_at=published_at,
             raw_metadata=raw_metadata,
-            stats=stats
+            stats=stats,
+            associated_question=associated_question,
         )
 
     def _build_article_from_api(self, data: Dict, url: str) -> ParsedContent:
@@ -370,6 +382,7 @@ class ZhihuAdapter(PlatformAdapter):
             author_name=author.name,
             author_id=author.url_token or str(author.id),
             author_avatar_url=author.avatar_url,
+            author_url=f"https://www.zhihu.com/people/{author.url_token}" if author.url_token else None,
             cover_url=cover_url,
             media_urls=media_urls,
             published_at=published_at,
@@ -418,6 +431,7 @@ class ZhihuAdapter(PlatformAdapter):
             description=markdown_content,
             author_name=author_name,
             author_id=author_id,
+            author_url=f"https://www.zhihu.com/people/{author_id}" if author_id else None,
             cover_url=media_urls[0] if media_urls else None,
             media_urls=media_urls,
             published_at=published_at,
@@ -461,6 +475,8 @@ class ZhihuAdapter(PlatformAdapter):
             description=headline,
             author_name=name,
             author_id=url_token,
+            author_avatar_url=avatar_url,
+            author_url=f"https://www.zhihu.com/people/{url_token}" if url_token else None,
             cover_url=avatar_url,
             media_urls=[avatar_url] if avatar_url else [],
             published_at=datetime.now(),
@@ -505,6 +521,7 @@ class ZhihuAdapter(PlatformAdapter):
             author_name=author_name,
             author_id=author_id,
             author_avatar_url=author_avatar,
+            author_url=f"https://www.zhihu.com/people/{author_id}" if author_id else None,
             cover_url=image_url,
             media_urls=[image_url] if image_url else [],
             published_at=published_at,
@@ -551,6 +568,7 @@ class ZhihuAdapter(PlatformAdapter):
             author_name=creator_name,
             author_id=creator_id,
             author_avatar_url=creator_avatar,
+            author_url=f"https://www.zhihu.com/people/{creator_id}" if creator_id else None,
             cover_url=creator_avatar,
             media_urls=[],
             published_at=published_at,

@@ -179,6 +179,7 @@ def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
         description=full_description,
         author_name=author.name,
         author_id=author.url_token or str(author.id),
+        author_url=f"https://www.zhihu.com/people/{author.url_token}" if author.url_token else None,
         # cover_url priority: 1. media_urls[0] (from description), 2. top_answer cover, 3. None
         cover_url=media_urls[0] if media_urls else (top_answers[0]['cover_url'] if top_answers and top_answers[0].get('cover_url') else None), 
         media_urls=media_urls,
@@ -186,4 +187,5 @@ def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
         raw_metadata=question_data,
         stats=stats,
         layout_type=LAYOUT_ARTICLE,
+        top_answers=top_answers,  # Phase 7: 提取 top_answers 到顶层字段
     )

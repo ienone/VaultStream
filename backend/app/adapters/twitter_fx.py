@@ -328,17 +328,20 @@ class TwitterFxAdapter(PlatformAdapter):
             "favorite": 0,
         }
         
+        screen_name = author.get('screen_name')
+        
         return ParsedContent(
             platform=self.PLATFORM_NAME,
             content_type=content_type.value,
             content_id=tweet_id,
             clean_url=original_url,
             layout_type=LAYOUT_GALLERY,  # Twitter推文默认为Gallery布局
-            title=generate_title_from_text(text, max_len=60, fallback=f"@{author.get('screen_name', 'unknown')} 的推文"),
+            title=generate_title_from_text(text, max_len=60, fallback=f"@{screen_name or 'unknown'} 的推文"),
             description=text,
             author_name=author.get('name'),
-            author_id=author.get('screen_name'),  # 使用 screen_name 作为 author_id
+            author_id=screen_name,  # 使用 screen_name 作为 author_id
             author_avatar_url=author.get('avatar_url'),  # 添加作者头像URL
+            author_url=f"https://twitter.com/{screen_name}" if screen_name else None,
             cover_url=media_list[0]["url"] if media_list else author.get("avatar_url"),
             media_urls=media_urls,
             published_at=published_at,

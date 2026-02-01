@@ -155,6 +155,9 @@ async def parse_user(uid: str, url: str, headers: Dict[str, str], cookies: Dict[
             "height": None
         })
     
+    author_avatar_url = user_info.get('avatar_hd', '')
+    author_url = f"https://weibo.com/u/{uid}" if uid else None
+    
     return ParsedContent(
         platform="weibo",
         content_type="user_profile",
@@ -165,8 +168,10 @@ async def parse_user(uid: str, url: str, headers: Dict[str, str], cookies: Dict[
         description=user_info.get('description', ''),
         author_name=user_info.get('nick_name', ''),
         author_id=uid,
-        cover_url=user_info.get('avatar_hd', ''),
-        media_urls=[user_info.get('avatar_hd', '')] if user_info.get('avatar_hd') else [],
+        author_avatar_url=author_avatar_url,
+        author_url=author_url,
+        cover_url=author_avatar_url,
+        media_urls=[author_avatar_url] if author_avatar_url else [],
         published_at=datetime.now(), 
         raw_metadata={
             **user_info,

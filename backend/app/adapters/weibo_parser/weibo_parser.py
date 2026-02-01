@@ -118,6 +118,8 @@ async def parse_weibo(
         user = data.get("user", {})
         author_name = user.get("screen_name", "Unknown")
         author_id = str(user.get("id", ""))
+        author_avatar_url = user.get("avatar_hd") or user.get("profile_image_url")
+        author_url = f"https://weibo.com/u/{author_id}" if author_id else None
         
         # 统计
         reposts_count = data.get("reposts_count", 0)
@@ -147,6 +149,8 @@ async def parse_weibo(
             description=description,
             author_name=author_name,
             author_id=author_id,
+            author_avatar_url=author_avatar_url,
+            author_url=author_url,
             cover_url=cover_url,
             media_urls=media_urls,
             published_at=published_at,
