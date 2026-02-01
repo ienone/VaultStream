@@ -45,6 +45,30 @@ abstract class ShareCard with _$ShareCard {
   bool get isWeibo => platform.toLowerCase() == 'weibo';
   bool get isZhihu => platform.toLowerCase() == 'zhihu';
 
+  /// 获取有效布局类型：后端提供 > 兼容回退
+  String get resolvedLayoutType {
+    // 后端检测值
+    if (layoutType != null && layoutType!.isNotEmpty) {
+      return layoutType!;
+    }
+    // 兼容回退：根据 platform/contentType 推断
+    return _fallbackLayoutType();
+  }
+
+  String _fallbackLayoutType() {
+    if (isBilibili) {
+      if (contentType == 'article' || contentType == 'opus') return 'article';
+      return 'gallery'; // video/dynamic
+    }
+    if (isWeibo || isTwitter || isXiaohongshu) return 'gallery';
+    if (isZhihu) {
+      if (contentType == 'article' || contentType == 'answer') return 'article';
+      if (contentType == 'pin') return 'gallery';
+      return 'article';
+    }
+    return 'article'; // 默认
+  }
+
   bool get isLandscapeCover {
     try {
       if (rawMetadata != null && rawMetadata!['archive'] != null) {

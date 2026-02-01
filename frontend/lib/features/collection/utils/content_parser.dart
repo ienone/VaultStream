@@ -71,6 +71,31 @@ class ContentParser {
     // 获取作者头像以便过滤
     final authorAvatar = detail.authorAvatarUrl;
 
+    // 1. 优先添加封面图 (如果不是视频)
+    if (detail.coverUrl != null &&
+        detail.coverUrl!.isNotEmpty &&
+        !media_utils.isVideo(detail.coverUrl!)) {
+      final url = detail.coverUrl!;
+      // 过滤头像
+      if (authorAvatar == null || !url.contains(authorAvatar)) {
+        if (storedMap.containsKey(url)) {
+          list.add(media_utils.mapUrl(storedMap[url]!, apiBaseUrl));
+        } else {
+          final cleanUrl = url.split('?')[0];
+          final match = storedMap.entries.firstWhere(
+            (e) => e.key.split('?')[0] == cleanUrl,
+            orElse: () => const MapEntry('', ''),
+          );
+          list.add(
+            match.key.isNotEmpty
+                ? media_utils.mapUrl(match.value, apiBaseUrl)
+                : media_utils.mapUrl(url, apiBaseUrl),
+          );
+        }
+      }
+    }
+
+    // 2. 添加媒体列表中的图片
     if (detail.mediaUrls.isNotEmpty) {
       for (var item in detail.mediaUrls) {
         final String url = item.toString();
@@ -170,11 +195,7 @@ class ContentParser {
     if (detail.rawMetadata != null && detail.rawMetadata!['archive'] != null) {
       return detail.rawMetadata!['archive']['markdown']?.toString() ?? '';
     }
-    if (detail.isBilibili && (detail.description?.contains('![') ?? false)) {
-      return detail.description ?? '';
-    }
-    if ((detail.isZhihuArticle || detail.isZhihuAnswer) &&
-        detail.description != null) {
+    if (detail.description != null && detail.description!.isNotEmpty) {
       return detail.description!;
     }
     return '';

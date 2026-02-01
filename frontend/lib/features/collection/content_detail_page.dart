@@ -9,9 +9,9 @@ import 'providers/collection_provider.dart';
 import 'utils/content_parser.dart';
 import 'widgets/detail/gallery/full_screen_gallery.dart';
 import 'widgets/detail/layout/article_landscape_layout.dart';
-import 'widgets/detail/layout/bilibili_landscape_layout.dart';
+import 'widgets/detail/layout/gallery_landscape_layout.dart';
 import 'widgets/detail/layout/portrait_layout.dart';
-import 'widgets/detail/layout/twitter_landscape_layout.dart';
+import 'widgets/detail/layout/video_landscape_layout.dart';
 import 'widgets/detail/layout/user_profile_layout.dart';
 import 'widgets/dialogs/edit_content_dialog.dart';
 import '../../theme/app_theme.dart';
@@ -272,7 +272,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           
           case 'gallery':
             // 画廊布局 - 适用于微博、推文、小红书等
-            return TwitterLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, images: ContentParser.extractAllImages(detail, apiBaseUrl), imagePageController: _imagePageController, currentImageIndex: _currentImageIndex, onImageTap: (idx) => _showFullScreenImage(context, ContentParser.extractAllImages(detail, apiBaseUrl), idx, apiBaseUrl, apiToken, detail.id), onPageChanged: (idx) {
+            return GalleryLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, images: ContentParser.extractAllImages(detail, apiBaseUrl), imagePageController: _imagePageController, currentImageIndex: _currentImageIndex, onImageTap: (idx) => _showFullScreenImage(context, ContentParser.extractAllImages(detail, apiBaseUrl), idx, apiBaseUrl, apiToken, detail.id), onPageChanged: (idx) {
               if (!mounted) return;
               setState(() => _currentImageIndex = idx);
               if (_imagePageController.hasClients && _imagePageController.page?.round() != idx) {
@@ -281,12 +281,12 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             }, headerKeys: _headerKeys, contentColor: _contentColor);
           
           case 'video':
-            // 视频布局 - 目前B站视频使用BilibiliLandscapeLayout（仅封面）
+            // 视频布局 - 使用VideoLandscapeLayout（仅封面）
             if (detail.isBilibili) {
-              return BilibiliLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, onImageTap: (imgs, idx) => _showFullScreenImage(context, imgs, idx, apiBaseUrl, apiToken, detail.id));
+              return VideoLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, onImageTap: (imgs, idx) => _showFullScreenImage(context, imgs, idx, apiBaseUrl, apiToken, detail.id));
             }
             // 其他平台视频暂时用Gallery布局
-            return TwitterLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, images: ContentParser.extractAllImages(detail, apiBaseUrl), imagePageController: _imagePageController, currentImageIndex: _currentImageIndex, onImageTap: (idx) => _showFullScreenImage(context, ContentParser.extractAllImages(detail, apiBaseUrl), idx, apiBaseUrl, apiToken, detail.id), onPageChanged: (idx) {
+            return GalleryLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, images: ContentParser.extractAllImages(detail, apiBaseUrl), imagePageController: _imagePageController, currentImageIndex: _currentImageIndex, onImageTap: (idx) => _showFullScreenImage(context, ContentParser.extractAllImages(detail, apiBaseUrl), idx, apiBaseUrl, apiToken, detail.id), onPageChanged: (idx) {
               if (!mounted) return;
               setState(() => _currentImageIndex = idx);
               if (_imagePageController.hasClients && _imagePageController.page?.round() != idx) {
