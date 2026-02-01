@@ -32,6 +32,7 @@ class TestUniversalAdapter:
         assert result.title is not None
         assert "Content" not in result.title # 确保不是默认标题
         assert len(result.description) > 100
+        assert result.layout_type == "article"
         # Check if cover_url is populated (either from LLM or fallback)
         if result.media_urls:
             assert result.cover_url is not None
@@ -49,6 +50,7 @@ class TestUniversalAdapter:
         
         assert result.title is not None
         assert result.platform == "universal"
+        assert result.layout_type == "article"
 
     async def test_twitter_post(self):
         """测试 Twitter (需本地 Chrome 配合，否则可能只能拿到登录页)"""
@@ -62,10 +64,12 @@ class TestUniversalAdapter:
             result = await adapter.parse(url)
         
         print(f"\n[Twitter] Content: {result.description[:50]}...")
+        print(f"\n[Twitter] Layout: {result.layout_type}")
         print(f"[Twitter] Media: {result.media_urls}")
         
         # 如果突破了登录墙，应该能拿到正文
         assert "登录" not in result.title
+        assert result.layout_type in ["gallery", "article"]
         
     async def test_weibo_post(self):
         """测试微博 (动态页面)"""
@@ -77,5 +81,7 @@ class TestUniversalAdapter:
         
         print(f"\n[Weibo] Author: {result.author_name}")
         print(f"[Weibo] Content: {result.description[:50]}...")
+        print(f"[Weibo] Layout: {result.layout_type}")
         
         assert result.description is not None
+        assert result.layout_type in ["gallery", "article"]

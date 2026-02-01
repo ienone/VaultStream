@@ -51,6 +51,7 @@ class AdapterTestBase(ABC):
         assert result.content_type is not None
         assert result.content_id is not None
         assert result.clean_url is not None
+        assert result.layout_type is not None, "ParsedContent.layout_type should not be None"
         
         # Validate optional but expected fields
         assert result.title or result.description, "Should have title or description"

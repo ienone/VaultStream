@@ -38,6 +38,7 @@ class TestTwitterAdapter(AdapterTestBase):
             print(f"\nTesting {content_type}: {url}")
             result = await self._test_basic_parse(adapter, url)
             assert result.content_type == "tweet"
+            assert result.layout_type == "gallery"
             # Twitter should have media or text
             assert result.media_urls or result.description
     

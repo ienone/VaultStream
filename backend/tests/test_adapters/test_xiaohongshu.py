@@ -39,6 +39,7 @@ class TestXiaohongshuAdapter(AdapterTestBase):
             print(f"\nTesting {content_type}: {url}")
             result = await self._test_basic_parse(adapter, url)
             assert result.content_type in ["note", "video", "user_profile"]
+            assert result.layout_type == "gallery"
 
     @pytest.mark.asyncio
     @pytest.mark.integration

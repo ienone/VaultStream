@@ -12,11 +12,12 @@ from sqlalchemy import select
 from app.main import app
 from app.core.config import settings
 from app.models import Base, Content
+import os
 
 # Override the database URL for testing if needed
-# For now, we use the existing SQLite DB (as per user request to test with real data)
-# In a strict unit test environment, we might want a separate test DB.
-DB_URL = f"sqlite+aiosqlite:///{settings.sqlite_db_path}"
+# Use absolute path to avoid ambiguity during tests
+_db_path = os.path.abspath(settings.sqlite_db_path)
+DB_URL = f"sqlite+aiosqlite:///{_db_path}"
 
 engine = create_async_engine(DB_URL, echo=False)
 TestingSessionLocal = sessionmaker(

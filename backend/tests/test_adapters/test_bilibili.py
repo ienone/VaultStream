@@ -40,6 +40,13 @@ class TestBilibiliAdapter(AdapterTestBase):
             print(f"\nTesting {content_type}: {url}")
             result = await self._test_basic_parse(adapter, url)
             assert result.content_type in ["video", "article", "dynamic", "bangumi", "live"]
+            
+            # 校验布局类型
+            if result.content_type == "article":
+                assert result.layout_type == "article"
+            else:
+                # video, dynamic, bangumi, live 目前统一设为 gallery (B站视频暂无播放器只存封面)
+                assert result.layout_type in ["gallery", "article"]  # dynamic 可能是 article
     
     @pytest.mark.asyncio
     async def test_archive_structure_from_db(self, adapter, get_platform_urls):

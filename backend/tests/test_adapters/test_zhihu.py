@@ -39,6 +39,12 @@ class TestZhihuAdapter(AdapterTestBase):
             print(f"\nTesting {content_type}: {url}")
             result = await self._test_basic_parse(adapter, url)
             assert result.content_type in ["answer", "article", "question", "pin", "user_profile"]
+            
+            # 校验布局类型
+            if result.content_type in ["answer", "article", "question"]:
+                assert result.layout_type == "article"
+            elif result.content_type in ["pin", "user_profile"]:
+                assert result.layout_type == "gallery"
     
     @pytest.mark.asyncio
     @pytest.mark.integration
