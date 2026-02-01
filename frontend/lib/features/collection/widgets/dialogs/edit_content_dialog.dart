@@ -20,6 +20,7 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
   late TextEditingController _tagsController;
   late TextEditingController _coverUrlController;
   late bool _isNsfw;
+  String? _selectedLayout;
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -36,6 +37,7 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
     );
     _coverUrlController = TextEditingController(text: widget.content.coverUrl);
     _isNsfw = widget.content.isNsfw;
+    _selectedLayout = widget.content.layoutTypeOverride;
   }
 
   @override
@@ -70,6 +72,7 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
           'cover_url': _coverUrlController.text.trim(),
           'tags': tags,
           'is_nsfw': _isNsfw,
+          'layout_type_override': _selectedLayout,
         },
       );
 
@@ -123,6 +126,27 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
                 border: OutlineInputBorder(),
               ),
               enabled: !_isLoading,
+            ),
+            const SizedBox(height: 16),
+            InputDecorator(
+              decoration: const InputDecoration(
+                labelText: '显示样式',
+                border: OutlineInputBorder(),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String?>(
+                  value: _selectedLayout,
+                  isDense: true,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(value: null, child: Text('自动检测 (默认)')),
+                    DropdownMenuItem(value: 'article', child: Text('文章 (Article)')),
+                    DropdownMenuItem(value: 'gallery', child: Text('画廊 (Gallery)')),
+                    DropdownMenuItem(value: 'video', child: Text('视频 (Video)')),
+                  ],
+                  onChanged: _isLoading ? null : (val) => setState(() => _selectedLayout = val),
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             TextField(

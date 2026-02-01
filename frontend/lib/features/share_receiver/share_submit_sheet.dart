@@ -43,6 +43,7 @@ class ShareSubmitSheet extends ConsumerStatefulWidget {
 class _ShareSubmitSheetState extends ConsumerState<ShareSubmitSheet> {
   final _tagsController = TextEditingController();
   final _selectedTags = <String>{};
+  String? _selectedLayout;
   bool _isNsfw = false;
   bool _isLoading = false;
   String? _errorMessage;
@@ -97,6 +98,7 @@ class _ShareSubmitSheetState extends ConsumerState<ShareSubmitSheet> {
           'tags': allTags,
           'is_nsfw': _isNsfw,
           'source': 'android_share',
+          'layout_type_override': _selectedLayout,
         },
       );
 
@@ -201,6 +203,31 @@ class _ShareSubmitSheetState extends ConsumerState<ShareSubmitSheet> {
                     ),
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // 布局选择
+            InputDecorator(
+              decoration: const InputDecoration(
+                labelText: '显示样式',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.view_quilt_outlined),
+                isDense: true,
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String?>(
+                  value: _selectedLayout,
+                  isDense: true,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(value: null, child: Text('自动检测 (默认)')),
+                    DropdownMenuItem(value: 'article', child: Text('文章 (Article)')),
+                    DropdownMenuItem(value: 'gallery', child: Text('画廊 (Gallery)')),
+                    DropdownMenuItem(value: 'video', child: Text('视频 (Video)')),
+                  ],
+                  onChanged: _isLoading ? null : (val) => setState(() => _selectedLayout = val),
+                ),
               ),
             ),
             const SizedBox(height: 20),

@@ -33,6 +33,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _buildHeroTitle(theme),
           const SizedBox(height: 32),
 
+          _buildSectionHeader(context, 'AI 发现与分析'),
+          _buildAiSettings(context, settingsAsync),
+          const SizedBox(height: 32),
+
           _buildSectionHeader(context, '服务器与通信'),
           _buildGroup([
             _buildExpandableSettingTile(
@@ -140,6 +144,138 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const SizedBox(height: 40),
         ],
       ),
+    );
+  }
+
+  Widget _buildAiSettings(BuildContext context, AsyncValue<List<SystemSetting>> settingsAsync) {
+    return settingsAsync.when(
+      data: (settings) {
+        final enableAi = settings.firstWhere((s) => s.key == 'enable_ai_discovery', orElse: () => const SystemSetting(key: '', value: false)).value as bool? ?? false;
+        final prompt = settings.firstWhere((s) => s.key == 'universal_adapter_prompt', orElse: () => const SystemSetting(key: '', value: '')).value as String? ?? '';
+        final topics = settings.firstWhere((s) => s.key == 'discovery_topics', orElse: () => const SystemSetting(key: '', value: [])).value;
+        
+        // Handle topics list
+        List<String> topicList = [];
+        if (topics is List) {
+          topicList = topics.map((e) => e.toString()).toList();
+        }
+
+        return _buildGroup([
+          _buildSettingTile(
+            context,
+            title: '启用 AI 自动发现',
+            subtitle: '根据订阅主题自动抓取相关内容',
+            icon: Icons.auto_awesome_rounded,
+            trailing: Switch(
+              value: enableAi,
+              onChanged: (val) => ref.read(systemSettingsProvider.notifier).updateSetting('enable_ai_discovery', val, category: 'ai'),
+            ),
+            onTap: () => ref.read(systemSettingsProvider.notifier).updateSetting('enable_ai_discovery', !enableAi, category: 'ai'),
+          ),
+          _buildExpandableSettingTile(
+            context,
+            index: 100,
+            title: '订阅主题管理',
+            subtitle: '${topicList.length} 个关注主题',
+            icon: Icons.topic_rounded,
+            expandedContent: _buildTopicsEditor(topicList),
+          ),
+          _buildExpandableSettingTile(
+            context,
+            index: 101,
+            title: '通用解析 Prompt',
+            subtitle: '自定义 LLM 解析指令',
+            icon: Icons.psychology_rounded,
+            expandedContent: _buildPromptEditor(prompt),
+          ),
+        ]);
+      },
+      loading: () => const _LoadingGroup(),
+      error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+
+  Widget _buildTopicsEditor(List<String> currentTopics) {
+    final controller = TextEditingController();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: currentTopics.map((t) => Chip(
+            label: Text(t),
+            onDeleted: () {
+              final newTopics = List<String>.from(currentTopics)..remove(t);
+              ref.read(systemSettingsProvider.notifier).updateSetting('discovery_topics', newTopics, category: 'ai');
+            },
+          )).toList(),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: controller,
+                decoration: InputDecoration(
+                  hintText: '添加新主题...',
+                  isDense: true,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onSubmitted: (val) {
+                  if (val.trim().isNotEmpty && !currentTopics.contains(val.trim())) {
+                    final newTopics = List<String>.from(currentTopics)..add(val.trim());
+                    ref.read(systemSettingsProvider.notifier).updateSetting('discovery_topics', newTopics, category: 'ai');
+                    controller.clear();
+                  }
+                },
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.add_circle_rounded),
+              onPressed: () {
+                if (controller.text.trim().isNotEmpty && !currentTopics.contains(controller.text.trim())) {
+                  final newTopics = List<String>.from(currentTopics)..add(controller.text.trim());
+                  ref.read(systemSettingsProvider.notifier).updateSetting('discovery_topics', newTopics, category: 'ai');
+                  controller.clear();
+                }
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPromptEditor(String currentPrompt) {
+    final controller = TextEditingController(text: currentPrompt);
+    return Column(
+      children: [
+        TextField(
+          controller: controller,
+          maxLines: 8,
+          decoration: InputDecoration(
+            hintText: 'Enter LLM Prompt...',
+            filled: true,
+            fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.tonal(
+            onPressed: () async {
+              await ref.read(systemSettingsProvider.notifier).updateSetting('universal_adapter_prompt', controller.text, category: 'ai');
+              if (mounted) {
+                _showToast(context, 'Prompt 已更新');
+                setState(() => _expandedIndex = null);
+              }
+            },
+            child: const Text('保存配置'),
+          ),
+        ),
+      ],
     );
   }
 
