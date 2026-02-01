@@ -1,0 +1,16 @@
+# 自动检测文本文件并统一换行符为 LF
+* text=auto eol=lf
+
+# 二进制文件不处理
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.db binary
+*.sqlite binary
+
+# Windows 脚本保持 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
