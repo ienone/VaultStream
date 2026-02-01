@@ -6,7 +6,7 @@ from enum import Enum
 import json
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator
-from app.models import ContentStatus, Platform, BilibiliContentType, ReviewStatus
+from app.models import ContentStatus, Platform, BilibiliContentType, ReviewStatus, LayoutType
 
 
 NOTE_MAX_LENGTH = 2000 # 备注内容的最大长度
@@ -21,6 +21,7 @@ class ShareRequest(BaseModel):
     note: Optional[str] = Field(None, description="备注", max_length=NOTE_MAX_LENGTH)
     client_context: Optional[Dict[str, Any]] = Field(None, description="客户端上下文（可选）")
     is_nsfw: bool = Field(default=False, description="是否为NSFW内容")
+    layout_type_override: Optional[LayoutType] = Field(None, description="强制指定的布局类型")
 
     @field_validator("client_context")
     @classmethod
@@ -73,6 +74,11 @@ class ContentDetail(BaseModel):
     source: Optional[str]
     platform_id: Optional[str] = None # 平台特有ID
     content_type: Optional[str] = None # 内容具体类型
+    
+    # 布局类型 - 用于前端展示形态的判定
+    layout_type: Optional[LayoutType] = None  # 系统检测/推荐值
+    layout_type_override: Optional[LayoutType] = None  # 用户覆盖值
+    effective_layout_type: Optional[str] = None  # 有效布局类型
 
     # 通用字段
     title: Optional[str] # 内容标题
@@ -98,6 +104,10 @@ class ContentDetail(BaseModel):
         
     # 元数据
     raw_metadata: Optional[Dict[str, Any]]
+    
+    # Phase 7: 结构化字段 - 消除前端从 rawMetadata 挖掘
+    associated_question: Optional[Dict[str, Any]] = None  # 知乎回答关联的问题
+    top_answers: Optional[List[Dict[str, Any]]] = None  # 知乎问题的精选回答
     
     # 时间
     created_at: datetime
@@ -159,6 +169,7 @@ class ContentUpdate(BaseModel):
     review_status: Optional[ReviewStatus] = None
     review_note: Optional[str] = None
     reviewed_by: Optional[str] = None
+    layout_type_override: Optional[LayoutType] = None  # 用户覆盖布局类型
 
 
 class MarkPushedRequest(BaseModel):
@@ -180,12 +191,14 @@ class ShareCard(BaseModel):
     url: str
     clean_url: Optional[str] = None
     content_type: Optional[str] = None
+    layout_type: Optional[str] = None  # 布局类型
     title: Optional[str] = None
     summary: Optional[str] = None
     description: Optional[str] = None  # Added for text content display
     author_name: Optional[str] = None  # 作者名称
     author_id: Optional[str] = None     # 作者ID
     author_avatar_url: Optional[str] = None # 作者头像URL
+    author_url: Optional[str] = None  # 作者主页链接
     cover_url: Optional[str] = None
     cover_color: Optional[str] = None  # M5: 封面主色调 (Hex)
     media_urls: List[str] = Field(default_factory=list) # M6: 支持首图回退

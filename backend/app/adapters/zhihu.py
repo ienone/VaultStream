@@ -5,7 +5,7 @@ from datetime import datetime
 from markdownify import markdownify as md
 from bs4 import BeautifulSoup
 from loguru import logger
-from app.adapters.base import PlatformAdapter, ParsedContent
+from app.adapters.base import PlatformAdapter, ParsedContent, LAYOUT_ARTICLE, LAYOUT_GALLERY
 from app.adapters.errors import NonRetryableAdapterError, RetryableAdapterError, AuthRequiredAdapterError
 from app.adapters.zhihu_parser import (
     parse_article,
@@ -306,6 +306,7 @@ class ZhihuAdapter(PlatformAdapter):
             content_type="answer",
             content_id=answer_id,
             clean_url=url.split('?')[0],
+            layout_type=LAYOUT_ARTICLE,  # 知乎回答为长文布局
             title=f"回答：{question_title}" if question_title else f"知乎回答 {answer_id}",
             description=markdown_content,
             author_name=author.name,
@@ -363,6 +364,7 @@ class ZhihuAdapter(PlatformAdapter):
             content_type="article",
             content_id=article_id,
             clean_url=url.split('?')[0],
+            layout_type=LAYOUT_ARTICLE,  # 知乎文章为长文布局
             title=title,
             description=markdown_content,
             author_name=author.name,
@@ -411,6 +413,7 @@ class ZhihuAdapter(PlatformAdapter):
             content_type="question",
             content_id=question_id,
             clean_url=url.split('?')[0],
+            layout_type=LAYOUT_ARTICLE,  # 知乎问题为长文布局
             title=title,
             description=markdown_content,
             author_name=author_name,
@@ -453,6 +456,7 @@ class ZhihuAdapter(PlatformAdapter):
             content_type="user_profile",
             content_id=str(user_id),
             clean_url=url.split('?')[0],
+            layout_type=LAYOUT_GALLERY,  # 用户主页为Gallery布局
             title=f"{name} 的知乎主页",
             description=headline,
             author_name=name,
@@ -495,6 +499,7 @@ class ZhihuAdapter(PlatformAdapter):
             content_type="column",
             content_id=str(column_id),
             clean_url=url.split('?')[0],
+            layout_type=LAYOUT_ARTICLE,  # 专栏为文章布局
             title=f"专栏：{title}" if title else f"知乎专栏 {column_id}",
             description=intro,
             author_name=author_name,
@@ -540,6 +545,7 @@ class ZhihuAdapter(PlatformAdapter):
             content_type="collection",
             content_id=str(collection_id),
             clean_url=url.split('?')[0],
+            layout_type=LAYOUT_GALLERY,  # 收藏夹为Gallery布局
             title=f"收藏夹：{title}" if title else f"知乎收藏夹 {collection_id}",
             description=description,
             author_name=creator_name,

@@ -3,7 +3,7 @@ from typing import Optional, Dict, Any
 from bs4 import BeautifulSoup
 from .models import ZhihuPin, ZhihuAuthor
 from .base import extract_initial_data, preprocess_zhihu_html, extract_images
-from app.adapters.base import ParsedContent
+from app.adapters.base import ParsedContent, LAYOUT_GALLERY
 from app.adapters.utils import generate_title_from_text
 from datetime import datetime
 
@@ -189,5 +189,6 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
         media_urls=media_urls,
         published_at=published_at,
         raw_metadata=pin_data,
-        stats=stats
+        stats=stats,
+        layout_type=LAYOUT_GALLERY,
     )

@@ -18,7 +18,8 @@ class ContentService:
         source_name: str = None, 
         note: str = None,
         is_nsfw: bool = False,
-        client_context: dict = None
+        client_context: dict = None,
+        layout_type_override: str = None
     ) -> Content:
         """核心分享创建业务逻辑"""
         # 1. 规范化
@@ -51,6 +52,7 @@ class ContentService:
                 source=source_name,
                 is_nsfw=is_nsfw,
                 status=ContentStatus.UNPROCESSED,
+                layout_type_override=layout_type_override,
             )
             self.db.add(content)
             await self.db.flush()
@@ -62,6 +64,9 @@ class ContentService:
             content.tags = list(existing_tags.union(incoming_tags))
             if source_name:
                 content.source = source_name
+            # 如果提供了 override，更新它
+            if layout_type_override:
+                content.layout_type_override = layout_type_override
 
         # 5. 记录来源流水
         self.db.add(

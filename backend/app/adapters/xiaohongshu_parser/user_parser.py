@@ -6,7 +6,7 @@
 from datetime import datetime
 from typing import Dict, Any, Optional
 from app.core.logging import logger
-from app.adapters.base import ParsedContent
+from app.adapters.base import ParsedContent, LAYOUT_GALLERY
 from app.adapters.errors import (
     AuthRequiredAdapterError,
     NonRetryableAdapterError,
@@ -188,6 +188,7 @@ async def parse_user(
         content_type='user_profile',
         content_id=user_id,
         clean_url=url,
+        layout_type=LAYOUT_GALLERY,  # 用户主页为Gallery布局
         title=nickname or "小红书用户",
         description=desc,
         author_name=nickname,

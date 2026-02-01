@@ -8,7 +8,7 @@ import httpx
 from datetime import datetime
 from typing import Dict, Any, List, Set
 from app.core.logging import logger
-from app.adapters.base import ParsedContent
+from app.adapters.base import ParsedContent, LAYOUT_GALLERY, LAYOUT_ARTICLE
 from app.adapters.errors import (
     AuthRequiredAdapterError,
     NonRetryableAdapterError,
@@ -428,12 +428,18 @@ async def parse_dynamic(
             list((raw_metadata.get("archive") or {}).keys()),
         )
 
+        # 判断layout_type: 有标题且正文较长为ARTICLE，否则为GALLERY
+        has_long_content = len(summary) > 500
+        has_title = bool(raw_title)
+        layout = LAYOUT_ARTICLE if (has_title and has_long_content) else LAYOUT_GALLERY
+        
         # 构建ParsedContent
         return ParsedContent(
             platform='bilibili',
             content_type=BilibiliContentType.DYNAMIC.value,
             content_id=dynamic_id,
             clean_url=url,
+            layout_type=layout,
             title=title,
             description=summary,
             author_name=module_author.get('name') or "未知用户",

@@ -6,7 +6,7 @@ B站番剧/影视解析器
 import httpx
 from typing import Dict, Any
 from app.core.logging import logger
-from app.adapters.base import ParsedContent
+from app.adapters.base import ParsedContent, LAYOUT_GALLERY
 from app.adapters.errors import (
     AuthRequiredAdapterError,
     NonRetryableAdapterError,
@@ -96,11 +96,13 @@ async def parse_bangumi(
         }
         
         # 构建ParsedContent
+        # 番剧封面展示，layout_type设为GALLERY
         return ParsedContent(
             platform='bilibili',
             content_type=BilibiliContentType.BANGUMI.value,
             content_id=id_val,
             clean_url=url,
+            layout_type=LAYOUT_GALLERY,
             title=item.get('title'),
             description=item.get('evaluate'),
             author_name="Bilibili Bangumi",

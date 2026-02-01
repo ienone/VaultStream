@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.core.logging import logger
-from app.adapters.base import PlatformAdapter, ParsedContent
+from app.adapters.base import PlatformAdapter, ParsedContent, LAYOUT_GALLERY
 from app.adapters.errors import (
     NonRetryableAdapterError,
     RetryableAdapterError,
@@ -333,6 +333,7 @@ class TwitterFxAdapter(PlatformAdapter):
             content_type=content_type.value,
             content_id=tweet_id,
             clean_url=original_url,
+            layout_type=LAYOUT_GALLERY,  # Twitter推文默认为Gallery布局
             title=generate_title_from_text(text, max_len=60, fallback=f"@{author.get('screen_name', 'unknown')} 的推文"),
             description=text,
             author_name=author.get('name'),

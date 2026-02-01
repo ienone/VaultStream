@@ -25,6 +25,15 @@ def get_json_type():
     return JSON
 
 
+class LayoutType(str, Enum):
+    """内容布局类型 - 用于前端展示形态的判定"""
+    ARTICLE = "article"   # 长文 (知乎专栏, 博客, 新闻) - 侧重 Markdown 渲染
+    VIDEO = "video"       # 纯视频 (B站, YouTube) - 侧重播放器
+    GALLERY = "gallery"   # 画廊 (微博, 小红书, Twitter/X) - 侧重图片轮播
+    AUDIO = "audio"       # 音频 (Podcast)
+    LINK = "link"         # 纯链接 (无法解析时)
+
+
 class ContentStatus(str, Enum):
     """内容状态"""
     UNPROCESSED = "unprocessed"  # 未处理
@@ -83,6 +92,7 @@ class Content(Base):
         Index("ix_contents_platform_created_at", "platform", "created_at"),
         Index("ix_contents_status_created_at", "status", "created_at"),
         Index("ix_contents_is_nsfw_created_at", "is_nsfw", "created_at"),
+        Index("ix_contents_layout_type_created_at", "layout_type", "created_at"),
     )
     
     id = Column(Integer, primary_key=True, index=True)
@@ -91,6 +101,11 @@ class Content(Base):
     canonical_url = Column(Text, index=True)  # 用于去重的规范化URL
     clean_url = Column(Text)  # 解析后的净化URL
     status = Column(SQLEnum(ContentStatus), default=ContentStatus.UNPROCESSED, index=True)
+    
+    # 布局类型 - 内容驱动的展示形态
+    layout_type = Column(SQLEnum(LayoutType, values_callable=lambda x: [e.value for e in x]), nullable=True, index=True)  # 系统检测/推荐值
+    layout_type_override = Column(SQLEnum(LayoutType, values_callable=lambda x: [e.value for e in x]), nullable=True)  # 用户覆盖值
+    content_type = Column(String(50), index=True)  # 平台内容类型 (video, article, dynamic等)
 
     # 失败记录（用于失败重试/人工修复/后续可视化）
     failure_count = Column(Integer, default=0)
@@ -164,6 +179,32 @@ class Content(Base):
         return ensure_title(self.title, self.description, max_len=60, fallback="无标题")
 
     @property
+    def effective_layout_type(self) -> Optional['LayoutType']:
+        """获取有效布局类型：用户覆盖 > 系统检测 > 兼容回退"""
+        if self.layout_type_override:
+            return self.layout_type_override
+        if self.layout_type:
+            return self.layout_type
+        # 兼容回退：根据 platform/content_type 推断
+        return self._fallback_layout_type()
+    
+    def _fallback_layout_type(self) -> 'LayoutType':
+        """根据旧字段推断布局类型（兼容存量数据）"""
+        if self.platform == Platform.BILIBILI:
+            if self.content_type in ('article', 'opus'):
+                return LayoutType.ARTICLE
+            return LayoutType.GALLERY  # video/dynamic 等
+        if self.platform in (Platform.WEIBO, Platform.TWITTER, Platform.XIAOHONGSHU):
+            return LayoutType.GALLERY
+        if self.platform == Platform.ZHIHU:
+            if self.content_type in ('article', 'answer'):
+                return LayoutType.ARTICLE
+            if self.content_type == 'pin':
+                return LayoutType.GALLERY
+            return LayoutType.ARTICLE
+        return LayoutType.ARTICLE  # 默认
+
+    @property
     def author_avatar_url(self) -> Optional[str]:
         """获取作者头像 URL，如果数据库字段为空则尝试从元数据中动态提取"""
         if self._author_avatar_url:
@@ -199,6 +240,10 @@ class Content(Base):
         self._author_avatar_url = value
     cover_color = Column(String(20))  # M5: 封面主色调 (Hex)
     media_urls = Column(JSON, default=list)  # 媒体资源URL列表
+    
+    # Phase 7: 结构化字段 - 消除前端从 rawMetadata 挖掘
+    associated_question = Column(JSON, nullable=True)  # 知乎回答关联的问题
+    top_answers = Column(JSON, nullable=True)  # 知乎问题的精选回答
     
     # 时间戳
     created_at = Column(DateTime, default=utcnow, index=True)

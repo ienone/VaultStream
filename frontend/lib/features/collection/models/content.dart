@@ -19,6 +19,7 @@ abstract class ShareCard with _$ShareCard {
     @JsonKey(name: 'author_avatar_url') String? authorAvatarUrl,
     @JsonKey(name: 'author_url') String? authorUrl,
     @JsonKey(name: 'content_type') String? contentType,
+    @JsonKey(name: 'layout_type') String? layoutType,
     @JsonKey(name: 'cover_url') String? coverUrl,
     @JsonKey(name: 'cover_color') String? coverColor,
     @JsonKey(name: 'media_urls') @Default([]) List<String> mediaUrls,
@@ -83,6 +84,9 @@ abstract class ContentDetail with _$ContentDetail {
     required String platform,
     @JsonKey(name: 'platform_id') String? platformId,
     @JsonKey(name: 'content_type') String? contentType,
+    @JsonKey(name: 'layout_type') String? layoutType,
+    @JsonKey(name: 'layout_type_override') String? layoutTypeOverride,
+    @JsonKey(name: 'effective_layout_type') String? effectiveLayoutType,
     required String url,
     @JsonKey(name: 'clean_url') String? cleanUrl,
     required String status,
@@ -126,6 +130,38 @@ abstract class ContentDetail with _$ContentDetail {
   bool get isZhihuQuestion => isZhihu && contentType == 'question';
   bool get isZhihuColumn => isZhihu && contentType == 'column';
   bool get isZhihuCollection => isZhihu && contentType == 'collection';
+
+  /// 获取有效布局类型：用户覆盖 > 后端检测 > 兼容回退
+  String get resolvedLayoutType {
+    // 优先用户覆盖
+    if (layoutTypeOverride != null && layoutTypeOverride!.isNotEmpty) {
+      return layoutTypeOverride!;
+    }
+    // 其次后端提供的有效类型
+    if (effectiveLayoutType != null && effectiveLayoutType!.isNotEmpty) {
+      return effectiveLayoutType!;
+    }
+    // 后端检测值
+    if (layoutType != null && layoutType!.isNotEmpty) {
+      return layoutType!;
+    }
+    // 兼容回退：根据 platform/contentType 推断
+    return _fallbackLayoutType();
+  }
+
+  String _fallbackLayoutType() {
+    if (isBilibili) {
+      if (contentType == 'article' || contentType == 'opus') return 'article';
+      return 'gallery'; // video/dynamic
+    }
+    if (isWeibo || isTwitter || isXiaohongshu) return 'gallery';
+    if (isZhihu) {
+      if (contentType == 'article' || contentType == 'answer') return 'article';
+      if (contentType == 'pin') return 'gallery';
+      return 'article';
+    }
+    return 'article'; // 默认
+  }
 
   factory ContentDetail.fromJson(Map<String, dynamic> json) =>
       _$ContentDetailFromJson(json);

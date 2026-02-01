@@ -7,7 +7,7 @@ import requests
 from datetime import datetime
 from typing import Dict, Any, List
 from app.core.logging import logger
-from app.adapters.base import ParsedContent
+from app.adapters.base import ParsedContent, LAYOUT_GALLERY
 from app.adapters.errors import (
     AuthRequiredAdapterError,
     NonRetryableAdapterError,
@@ -142,6 +142,7 @@ async def parse_weibo(
             content_type="status",
             content_id=bid,
             clean_url=url,
+            layout_type=LAYOUT_GALLERY,  # 微博默认为Gallery布局
             title=title[:100], 
             description=description,
             author_name=author_name,

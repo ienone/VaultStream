@@ -6,7 +6,7 @@ B站直播间解析器
 import httpx
 from typing import Dict, Any
 from app.core.logging import logger
-from app.adapters.base import ParsedContent
+from app.adapters.base import ParsedContent, LAYOUT_GALLERY
 from app.adapters.errors import (
     AuthRequiredAdapterError,
     NonRetryableAdapterError,
@@ -97,11 +97,13 @@ async def parse_live(
         author_uid = room_info.get('uid')
         
         # 构建ParsedContent
+        # 直播间封面展示，layout_type设为GALLERY
         return ParsedContent(
             platform='bilibili',
             content_type=BilibiliContentType.LIVE.value,
             content_id=str(room_info.get('room_id')),
             clean_url=url,
+            layout_type=LAYOUT_GALLERY,
             title=room_info.get('title'),
             description=room_info.get('description'),
             author_name=room_info.get('uname'),

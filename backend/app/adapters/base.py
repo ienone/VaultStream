@@ -2,9 +2,18 @@
 平台适配器基类
 """
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List
-from dataclasses import dataclass
+from typing import Dict, Any, Optional, List, Literal
+from dataclasses import dataclass, field
 from datetime import datetime
+
+# 布局类型常量
+LAYOUT_ARTICLE = "article"
+LAYOUT_VIDEO = "video"
+LAYOUT_GALLERY = "gallery"
+LAYOUT_AUDIO = "audio"
+LAYOUT_LINK = "link"
+
+LayoutTypeStr = Literal["article", "video", "gallery", "audio", "link"]
 
 
 @dataclass
@@ -14,6 +23,7 @@ class ParsedContent:
     content_type: str
     content_id: str
     clean_url: str
+    layout_type: LayoutTypeStr  # 布局类型 - 必填
     
     title: Optional[str] = None
     description: Optional[str] = None
@@ -23,23 +33,18 @@ class ParsedContent:
     author_url: Optional[str] = None  # 作者主页链接
     cover_url: Optional[str] = None
     cover_color: Optional[str] = None
-    media_urls: list = None
+    media_urls: list = field(default_factory=list)
     published_at: Optional[datetime] = None
     
-    raw_metadata: Dict[str, Any] = None
-    stats: Dict[str, int] = None  # 通用互动数据
-    source_tags: List[str] = None  # 平台原生标签（如小红书 #话题#）
+    raw_metadata: Dict[str, Any] = field(default_factory=dict)
+    stats: Dict[str, int] = field(default_factory=dict)  # 通用互动数据
+    source_tags: List[str] = field(default_factory=list)  # 平台原生标签
+    
+    # Phase 7: 结构化字段 - 消除前端从 rawMetadata 挖掘
+    associated_question: Optional[Dict[str, Any]] = None  # 知乎回答关联的问题
+    top_answers: Optional[List[Dict[str, Any]]] = None  # 知乎问题的精选回答
     
     def __post_init__(self):
-        if self.media_urls is None:
-            self.media_urls = []
-        if self.raw_metadata is None:
-            self.raw_metadata = {}
-        if self.stats is None:
-            self.stats = {}
-        if self.source_tags is None:
-            self.source_tags = []
-
         # 强约束：必需的标识符必须存在
         if not isinstance(self.platform, str) or not self.platform.strip():
             raise ValueError("ParsedContent.platform 不能为空")
@@ -49,6 +54,11 @@ class ParsedContent:
             raise ValueError("ParsedContent.content_id 不能为空")
         if not isinstance(self.clean_url, str) or not self.clean_url.strip():
             raise ValueError("ParsedContent.clean_url 不能为空")
+        
+        # layout_type 必填且合法
+        valid_layouts = (LAYOUT_ARTICLE, LAYOUT_VIDEO, LAYOUT_GALLERY, LAYOUT_AUDIO, LAYOUT_LINK)
+        if self.layout_type not in valid_layouts:
+            raise ValueError(f"ParsedContent.layout_type 必须是 {valid_layouts} 之一，实际为: {self.layout_type}")
 
         if not isinstance(self.media_urls, list):
             raise ValueError("ParsedContent.media_urls 必须是列表")

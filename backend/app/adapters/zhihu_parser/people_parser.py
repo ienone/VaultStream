@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any
 from .models import ZhihuAuthor
 from .base import extract_initial_data
-from app.adapters.base import ParsedContent
+from app.adapters.base import ParsedContent, LAYOUT_GALLERY
 from datetime import datetime
 
 def parse_people(html_content: str, url: str) -> Optional[ParsedContent]:
@@ -69,5 +69,6 @@ def parse_people(html_content: str, url: str) -> Optional[ParsedContent]:
         media_urls=[avatar_url] if avatar_url else [],
         published_at=datetime.now(), # User profile doesn't have a specific pub date
         raw_metadata=user_data,
-        stats=stats
+        stats=stats,
+        layout_type=LAYOUT_GALLERY,
     )

@@ -3,7 +3,7 @@ from markdownify import markdownify as md
 from bs4 import BeautifulSoup
 from .models import ZhihuAnswer, ZhihuAuthor
 from .base import extract_initial_data, preprocess_zhihu_html, extract_images
-from app.adapters.base import ParsedContent
+from app.adapters.base import ParsedContent, LAYOUT_ARTICLE
 from datetime import datetime
 
 def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
@@ -145,5 +145,6 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
         media_urls=media_urls,
         published_at=published_at,
         raw_metadata=answer_data,
-        stats=stats
+        stats=stats,
+        layout_type=LAYOUT_ARTICLE,
     )

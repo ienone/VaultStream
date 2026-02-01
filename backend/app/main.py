@@ -1,7 +1,13 @@
 """
 FastAPI 主应用
 """
+import sys
 import asyncio
+
+# Fix for Windows: Playwright requires ProactorEventLoop
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 from time import perf_counter
@@ -19,7 +25,7 @@ from app.worker import worker
 from app.distribution import get_distribution_scheduler
 
 # Import new routers
-from app.routers import contents, distribution, system, media, bot_management, queue
+from app.routers import contents, distribution, system, media, bot_management, queue, crawler
 
 setup_logging(level=settings.log_level, fmt=settings.log_format, debug=settings.debug)
 
@@ -126,6 +132,7 @@ app.include_router(queue.router, prefix="/api/v1", tags=["queue"])
 app.include_router(system.router, prefix="/api/v1", tags=["system"])
 app.include_router(media.router, prefix="/api/v1", tags=["media"])
 app.include_router(bot_management.router, prefix="/api/v1", tags=["bot"])
+app.include_router(crawler.router, prefix="/api/v1/crawler", tags=["crawler"])
 
 
 @app.get("/api")

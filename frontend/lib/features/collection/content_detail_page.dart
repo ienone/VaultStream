@@ -250,29 +250,55 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool isLandscape = constraints.maxWidth > 800;
+        
+        // 竖屏统一使用 PortraitLayout
         if (!isLandscape) {
           return PortraitLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, headerKeys: _headerKeys, contentColor: _contentColor);
         }
+        
+        // 特殊类型：用户主页
         if (detail.contentType == 'user_profile') {
           return UserProfileLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, onImageTap: (imgs, idx) => _showFullScreenImage(context, imgs, idx, apiBaseUrl, apiToken, detail.id));
         }
-        if (detail.isZhihuAnswer || detail.isZhihuArticle || (detail.isBilibili && (detail.contentType == 'article' || detail.contentType == 'dynamic'))) {
-          final markdown = ContentParser.getMarkdownContent(detail);
-          return ArticleLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, contentScrollController: _contentScrollController, headerKeys: _headerKeys, headers: ContentParser.extractHeaders(markdown), activeHeader: _activeHeader, contentColor: _contentColor);
-        }
-        if (detail.isTwitter || detail.isWeibo || detail.isZhihuPin || detail.isZhihuQuestion || detail.isXiaohongshu) {
-          return TwitterLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, images: ContentParser.extractAllImages(detail, apiBaseUrl), imagePageController: _imagePageController, currentImageIndex: _currentImageIndex, onImageTap: (idx) => _showFullScreenImage(context, ContentParser.extractAllImages(detail, apiBaseUrl), idx, apiBaseUrl, apiToken, detail.id), onPageChanged: (idx) {
-            if (!mounted) return;
-            setState(() => _currentImageIndex = idx);
-            if (_imagePageController.hasClients && _imagePageController.page?.round() != idx) {
-              _imagePageController.jumpToPage(idx);
+        
+        // 基于 layoutType 分发（内容驱动）
+        final layoutType = detail.resolvedLayoutType;
+        
+        switch (layoutType) {
+          case 'article':
+            // 长文布局 - 适用于文章、回答等
+            final markdown = ContentParser.getMarkdownContent(detail);
+            return ArticleLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, contentScrollController: _contentScrollController, headerKeys: _headerKeys, headers: ContentParser.extractHeaders(markdown), activeHeader: _activeHeader, contentColor: _contentColor);
+          
+          case 'gallery':
+            // 画廊布局 - 适用于微博、推文、小红书等
+            return TwitterLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, images: ContentParser.extractAllImages(detail, apiBaseUrl), imagePageController: _imagePageController, currentImageIndex: _currentImageIndex, onImageTap: (idx) => _showFullScreenImage(context, ContentParser.extractAllImages(detail, apiBaseUrl), idx, apiBaseUrl, apiToken, detail.id), onPageChanged: (idx) {
+              if (!mounted) return;
+              setState(() => _currentImageIndex = idx);
+              if (_imagePageController.hasClients && _imagePageController.page?.round() != idx) {
+                _imagePageController.jumpToPage(idx);
+              }
+            }, headerKeys: _headerKeys, contentColor: _contentColor);
+          
+          case 'video':
+            // 视频布局 - 目前B站视频使用BilibiliLandscapeLayout（仅封面）
+            if (detail.isBilibili) {
+              return BilibiliLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, onImageTap: (imgs, idx) => _showFullScreenImage(context, imgs, idx, apiBaseUrl, apiToken, detail.id));
             }
-          }, headerKeys: _headerKeys, contentColor: _contentColor);
+            // 其他平台视频暂时用Gallery布局
+            return TwitterLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, images: ContentParser.extractAllImages(detail, apiBaseUrl), imagePageController: _imagePageController, currentImageIndex: _currentImageIndex, onImageTap: (idx) => _showFullScreenImage(context, ContentParser.extractAllImages(detail, apiBaseUrl), idx, apiBaseUrl, apiToken, detail.id), onPageChanged: (idx) {
+              if (!mounted) return;
+              setState(() => _currentImageIndex = idx);
+              if (_imagePageController.hasClients && _imagePageController.page?.round() != idx) {
+                _imagePageController.jumpToPage(idx);
+              }
+            }, headerKeys: _headerKeys, contentColor: _contentColor);
+          
+          default:
+            // 默认使用Article布局
+            final markdown = ContentParser.getMarkdownContent(detail);
+            return ArticleLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, contentScrollController: _contentScrollController, headerKeys: _headerKeys, headers: ContentParser.extractHeaders(markdown), activeHeader: _activeHeader, contentColor: _contentColor);
         }
-        if (detail.isBilibili && detail.contentType == 'video') {
-          return BilibiliLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, onImageTap: (imgs, idx) => _showFullScreenImage(context, imgs, idx, apiBaseUrl, apiToken, detail.id));
-        }
-        return PortraitLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, headerKeys: _headerKeys, contentColor: _contentColor);
       },
     );
   }

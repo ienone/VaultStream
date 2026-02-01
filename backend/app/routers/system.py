@@ -131,15 +131,11 @@ async def get_tags_list(
 @router.get("/settings", response_model=List[SystemSettingResponse])
 async def list_settings(
     category: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """获取系统设置列表"""
-    query = select(SystemSetting)
-    if category:
-        query = query.where(SystemSetting.category == category)
-    result = await db.execute(query)
-    return result.scalars().all()
+    from app.services.settings_service import list_settings_values
+    return await list_settings_values(category)
 
 @router.get("/settings/{key}", response_model=SystemSettingResponse)
 async def get_setting(
@@ -159,44 +155,21 @@ async def update_setting(
     key: str,
     update: SystemSettingUpdate,
     category: Optional[str] = Query(None),
-    db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """创建或更新设置"""
-    result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
-    setting = result.scalar_one_or_none()
-    
-    if setting:
-        setting.value = update.value
-        if update.description:
-            setting.description = update.description
-        if category:
-            setting.category = category
-    else:
-        setting = SystemSetting(
-            key=key,
-            value=update.value,
-            category=category or "general",
-            description=update.description
-        )
-        db.add(setting)
-    
-    await db.commit()
-    await db.refresh(setting)
-    return setting
+    from app.services.settings_service import set_setting_value
+    return await set_setting_value(key, update.value, category, update.description)
 
 @router.delete("/settings/{key}")
 async def delete_setting(
     key: str,
-    db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """删除设置"""
-    result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
-    setting = result.scalar_one_or_none()
-    if not setting:
+    from app.services.settings_service import delete_setting_value
+    success = await delete_setting_value(key)
+    if not success:
         raise HTTPException(status_code=404, detail="Setting not found")
     
-    await db.delete(setting)
-    await db.commit()
     return {"status": "deleted", "key": key}

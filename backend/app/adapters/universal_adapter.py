@@ -8,11 +8,11 @@ from loguru import logger
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.extraction_strategy import LLMExtractionStrategy
 
-from app.adapters.base import PlatformAdapter, ParsedContent
+from app.adapters.base import PlatformAdapter, ParsedContent, LAYOUT_ARTICLE, LAYOUT_VIDEO, LAYOUT_GALLERY, LAYOUT_AUDIO
 from app.adapters.errors import RetryableAdapterError
 from app.core.llm_factory import LLMFactory
 
-# 增强的数据提取 Schema，包含互动数据
+# 增强的数据提取 Schema，包含互动数据和内容类型检测
 EXTENDED_SCHEMA = {
     "type": "object",
     "properties": {
@@ -23,7 +23,13 @@ EXTENDED_SCHEMA = {
         "publish_date": {"type": "string", "description": "Publication date if available (YYYY-MM-DD HH:MM format preferred)."},
         "tags": {"type": "array", "items": {"type": "string"}, "description": "Relevant topics or tags."},
         "images": {"type": "array", "items": {"type": "string"}, "description": "List of main content image URLs."},
-        # 新增互动统计字段
+        "video_url": {"type": "string", "description": "URL of main video content if present."},
+        "audio_url": {"type": "string", "description": "URL of main audio/podcast if present."},
+        "detected_type": {
+            "type": "string",
+            "enum": ["article", "video", "gallery", "audio"],
+            "description": "Detected content type: 'article' for long-form text, 'video' for video content, 'gallery' for image-heavy posts, 'audio' for podcasts."
+        },
         "metrics": {
             "type": "object",
             "properties": {
@@ -36,6 +42,53 @@ EXTENDED_SCHEMA = {
     },
     "required": ["title", "content"]
 }
+
+
+def infer_layout_type(data: dict, description: str, media_urls: list) -> str:
+    """
+    推断内容的布局类型
+    
+    规则优先 + LLM 兜底:
+    1. 如果有video_url -> VIDEO
+    2. 如果有audio_url -> AUDIO
+    3. 如果图片>=2且正文很短 -> GALLERY
+    4. 如果正文很长 -> ARTICLE
+    5. LLM检测结果作为参考
+    6. 默认为ARTICLE
+    """
+    video_url = data.get("video_url")
+    audio_url = data.get("audio_url")
+    llm_type = data.get("detected_type", "").lower()
+    
+    # 规则1: 有视频URL
+    if video_url and video_url.strip():
+        return LAYOUT_VIDEO
+    
+    # 规则2: 有音频URL
+    if audio_url and audio_url.strip():
+        return LAYOUT_AUDIO
+    
+    # 规则3: 图片多且正文短 -> Gallery
+    content_len = len(description or "")
+    num_images = len(media_urls)
+    
+    if num_images >= 2 and content_len < 500:
+        return LAYOUT_GALLERY
+    
+    # 规则4: 正文长 -> Article
+    if content_len > 1000:
+        return LAYOUT_ARTICLE
+    
+    # 规则5: 参考LLM检测结果
+    if llm_type == "video":
+        return LAYOUT_VIDEO
+    if llm_type == "audio":
+        return LAYOUT_AUDIO
+    if llm_type == "gallery":
+        return LAYOUT_GALLERY
+    
+    # 默认为ARTICLE
+    return LAYOUT_ARTICLE
 
 class UniversalAdapter(PlatformAdapter):
     """
@@ -92,6 +145,8 @@ class UniversalAdapter(PlatformAdapter):
                 2. Extract metadata like author, publish date, and tags.
                 3. CRITICAL: Look for interaction metrics (views, likes, comments, shares) usually found at the top or bottom of the post.
                 4. Keep the 'content' field in clean Markdown format.
+                5. Detect content type: 'article' for long-form text, 'video' if main content is video, 'gallery' if image-focused, 'audio' for podcasts.
+                6. Extract video_url if there's a main video element, audio_url if there's a podcast/audio player.
                 """
             )
 
@@ -135,16 +190,22 @@ class UniversalAdapter(PlatformAdapter):
                     # 如果成功获取结构化数据，或者没有配置 LLM (直接用 Markdown)，则退出循环
                     # 映射 metrics
                     metrics = data.get("metrics", {})
+                    description = data.get("content") or result.markdown
+                    media_urls = data.get("images", [])
+                    
+                    # 推断布局类型
+                    layout_type = infer_layout_type(data, description, media_urls)
                     
                     return ParsedContent(
                         platform="universal",
                         content_type="webpage",
                         content_id=hashlib.md5(url.encode()).hexdigest(),
                         clean_url=url,
+                        layout_type=layout_type,
                         title=data.get("title") or "Untitled",
-                        description=data.get("content") or result.markdown,
+                        description=description,
                         author_name=data.get("author"),
-                        media_urls=data.get("images", []),
+                        media_urls=media_urls,
                         source_tags=data.get("tags", []),
                         stats={
                             "view_count": metrics.get("view_count", 0),
@@ -156,6 +217,9 @@ class UniversalAdapter(PlatformAdapter):
                             "llm_extracted": llm_success,
                             "summary": data.get("summary"),
                             "publish_date": data.get("publish_date"),
+                            "detected_type": data.get("detected_type"),
+                            "video_url": data.get("video_url"),
+                            "audio_url": data.get("audio_url"),
                             "crawl_attempt": attempt + 1,
                             "original_result": {
                                 "status_code": result.status_code,

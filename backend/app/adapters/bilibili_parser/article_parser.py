@@ -7,7 +7,7 @@ import httpx
 from datetime import datetime
 from typing import Dict, Any
 from app.core.logging import logger
-from app.adapters.base import ParsedContent
+from app.adapters.base import ParsedContent, LAYOUT_ARTICLE
 from app.adapters.errors import (
     AuthRequiredAdapterError,
     NonRetryableAdapterError,
@@ -135,6 +135,7 @@ async def parse_article(
             content_type=BilibiliContentType.ARTICLE.value,
             content_id=f"cv{cvid}",
             clean_url=url,
+            layout_type=LAYOUT_ARTICLE,
             title=item.get('title'),
             description=markdown_content,
             author_name=item.get('author_name'),

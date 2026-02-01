@@ -8,7 +8,7 @@ import httpx
 from datetime import datetime
 from typing import Optional, Dict, Any
 from app.core.logging import logger
-from app.adapters.base import ParsedContent
+from app.adapters.base import ParsedContent, LAYOUT_GALLERY
 from app.adapters.errors import (
     AuthRequiredAdapterError,
     NonRetryableAdapterError,
@@ -118,11 +118,13 @@ async def parse_video(
         author_mid = owner.get('mid')
         
         # 构建ParsedContent
+        # 视频当前只存封面不存视频，layout_type设为GALLERY
         return ParsedContent(
             platform='bilibili',
             content_type=BilibiliContentType.VIDEO.value,
             content_id=bvid or f"av{aid}",
             clean_url=url,
+            layout_type=LAYOUT_GALLERY,
             title=item.get('title'),
             description=item.get('desc'),
             author_name=owner.get('name'),

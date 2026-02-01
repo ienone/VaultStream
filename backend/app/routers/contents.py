@@ -44,6 +44,42 @@ def _parse_list_param(values: Optional[List[str]]) -> Optional[List[str]]:
             result.append(v)
     return result if result else None
 
+def _transform_media_url(url: Optional[str], base_url: str) -> Optional[str]:
+    """将 local:// 协议的 URL 转换为 HTTP 代理 URL"""
+    if url and url.startswith("local://"):
+        key = url.replace("local://", "")
+        return f"{base_url}/api/v1/media/{key}"
+    return url
+
+def _transform_content_detail(content: ContentDetail, base_url: str) -> ContentDetail:
+    """转换内容详情中的所有媒体链接"""
+    content.cover_url = _transform_media_url(content.cover_url, base_url)
+    content.author_avatar_url = _transform_media_url(content.author_avatar_url, base_url)
+    if content.media_urls:
+        content.media_urls = [_transform_media_url(u, base_url) for u in content.media_urls if u]
+    
+    # Phase 7: 转换 top_answers 中的头像/封面
+    if content.top_answers:
+        for ans in content.top_answers:
+            if ans.get("author_avatar_url"):
+                ans["author_avatar_url"] = _transform_media_url(ans["author_avatar_url"], base_url)
+            if ans.get("cover_url"):
+                ans["cover_url"] = _transform_media_url(ans["cover_url"], base_url)
+                
+    # 转换 Markdown 正文中的 local:// 图片链接
+    if content.description and "local://" in content.description:
+        import re
+        def replacer(match):
+            key = match.group(1)
+            return f"{base_url}/api/v1/media/{key}"
+        
+        # 匹配 local:// 后面的所有非空白字符，直到遇到 markdown 的结尾括号 ) 或其他分隔符
+        # 这里假设 local://key 格式紧凑
+        # key = blobs/sha256/xx/xx/xxxx.webp
+        content.description = re.sub(r'local://([a-zA-Z0-9_/.-]+)', replacer, content.description)
+
+    return content
+
 # --- Sharing ---
 
 @router.post("/shares", response_model=ShareResponse)
@@ -60,7 +96,8 @@ async def create_share(
             source_name=share.source,
             note=share.note,
             is_nsfw=share.is_nsfw,
-            client_context=share.client_context
+            client_context=share.client_context,
+            layout_type_override=share.layout_type_override
         )
         return ShareResponse(
             id=content.id,
@@ -129,8 +166,15 @@ async def list_contents(
         is_nsfw=is_nsfw
     )
     
+    # 转换 Pydantic 模型并处理 local:// URL
+    base_url = settings.base_url or "http://localhost:8000"
+    items_pydantic = [
+        _transform_content_detail(ContentDetail.model_validate(c), base_url)
+        for c in items
+    ]
+    
     return {
-        "items": items,
+        "items": items_pydantic,
         "total": total,
         "page": page,
         "size": size,
@@ -148,7 +192,9 @@ async def get_content_detail(
     content = result.scalar_one_or_none()
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
-    return content
+        
+    base_url = settings.base_url or "http://localhost:8000"
+    return _transform_content_detail(ContentDetail.model_validate(content), base_url)
 
 @router.patch("/contents/{content_id}", response_model=ContentDetail)
 async def update_content(
@@ -186,10 +232,14 @@ async def update_content(
         content.review_note = request.review_note
     if request.reviewed_by is not None:
         content.reviewed_by = request.reviewed_by
+    if request.layout_type_override is not None:
+        content.layout_type_override = request.layout_type_override
         
     await db.commit()
     await db.refresh(content)
-    return content
+    
+    base_url = settings.base_url or "http://localhost:8000"
+    return _transform_content_detail(ContentDetail.model_validate(content), base_url)
 
 @router.delete("/contents/{content_id}")
 async def delete_content(
@@ -414,6 +464,7 @@ async def list_share_cards(
         q=q
     )
 
+    base_url = settings.base_url or "http://localhost:8000"
     items = []
     for c in contents:
         items.append({
@@ -427,7 +478,8 @@ async def list_share_cards(
             "description": None,  # 卡片视图不返回正文
             "author_name": c.author_name,
             "author_id": c.author_id,
-            "cover_url": c.cover_url,
+            "author_avatar_url": _transform_media_url(c.author_avatar_url, base_url),
+            "cover_url": _transform_media_url(c.cover_url, base_url),
             "cover_color": c.cover_color,
             "media_urls": [], 
             "tags": c.tags or [],

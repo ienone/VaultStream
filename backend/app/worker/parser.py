@@ -126,6 +126,7 @@ class ContentParser:
         """更新内容数据到数据库"""
         content.clean_url = parsed.clean_url
         content.content_type = parsed.content_type
+        content.layout_type = parsed.layout_type  # 新增: 保存布局类型
         content.title = parsed.title
         content.description = parsed.description
         content.author_name = parsed.author_name
@@ -134,6 +135,10 @@ class ContentParser:
         content.author_url = parsed.author_url
         content.source_tags = parsed.source_tags or []
         content.published_at = parsed.published_at
+        
+        # Phase 7: 保存结构化字段
+        content.associated_question = getattr(parsed, 'associated_question', None)
+        content.top_answers = getattr(parsed, 'top_answers', None)
 
         # 私有归档媒体处理
         if settings.enable_archive_media_processing:
@@ -491,12 +496,6 @@ class ContentParser:
                     await session.commit()
 
                     # 复用内部执行逻辑
-                    await self._execute_parse_with_retry(content, 0, 1) # 单次尝试，循环在外层控制
-                    # 更新数据库
-                    # 这里有点棘手，因为 _execute_parse_with_retry 返回 parsed 对象
-                    # 我们需要再次调用 _update_content
-                    
-                    # 重新获取解析结果 (在循环内部)
                     parsed = await self._execute_parse_with_retry(content, 0, 1)
                     await self._update_content(session, content, parsed)
                     

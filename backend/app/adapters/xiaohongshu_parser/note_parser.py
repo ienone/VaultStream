@@ -10,7 +10,7 @@ import httpx
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from app.core.logging import logger
-from app.adapters.base import ParsedContent
+from app.adapters.base import ParsedContent, LAYOUT_GALLERY
 from app.adapters.errors import (
     AuthRequiredAdapterError,
     NonRetryableAdapterError,
@@ -120,6 +120,7 @@ async def parse_note(
         content_type="note",
         content_id=note_id,
         clean_url=url,
+        layout_type=LAYOUT_GALLERY,  # 小红书笔记默认为Gallery布局
         title=title,
         description=description,
         author_name=author_name or "未知用户",
