@@ -290,6 +290,9 @@ async def store_archive_images_as_webp(
 
             if info.url:
                 url_to_stored_url[orig_url] = info.url
+            if info.key:
+                 # 优先使用 local:// 协议，以便后端 API 统一替换为代理 URL
+                 url_to_stored_url[orig_url] = f"local://{info.key}"
 
             count += 1
 
