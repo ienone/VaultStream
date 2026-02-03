@@ -1,6 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:extended_image/extended_image.dart';
 import '../../../../../core/network/image_headers.dart';
 
 class FullScreenGallery extends StatefulWidget {
@@ -162,15 +162,48 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                         child: Hero(
                           tag: _getHeroTag(index),
                           child: RotatedBox(
-                            quarterTurns: index == _currentIndex ? _rotationTurns : 0,
-                            child: CachedNetworkImage(
-                              imageUrl: widget.images[index],
-                              httpHeaders: buildImageHeaders(
+                            quarterTurns: index == _currentIndex
+                                ? _rotationTurns
+                                : 0,
+                            child: ExtendedImage.network(
+                              widget.images[index],
+                              headers: buildImageHeaders(
                                 imageUrl: widget.images[index],
                                 baseUrl: widget.apiBaseUrl,
                                 apiToken: widget.apiToken,
                               ),
                               fit: BoxFit.contain,
+                              cache: true,
+                              enableMemoryCache: true,
+                              clearMemoryCacheWhenDispose: false,
+                              loadStateChanged: (state) {
+                                switch (state.extendedImageLoadState) {
+                                  case LoadState.loading:
+                                    return Center(
+                                      child: CircularProgressIndicator(
+                                        value: state.loadingProgress != null
+                                            ? state
+                                                      .loadingProgress!
+                                                      .cumulativeBytesLoaded /
+                                                  (state
+                                                          .loadingProgress!
+                                                          .expectedTotalBytes ??
+                                                      1)
+                                            : null,
+                                      ),
+                                    );
+                                  case LoadState.failed:
+                                    return Container(
+                                      color: colorScheme.errorContainer,
+                                      child: Icon(
+                                        Icons.broken_image,
+                                        color: colorScheme.error,
+                                      ),
+                                    );
+                                  case LoadState.completed:
+                                    return state.completedWidget;
+                                }
+                              },
                             ),
                           ),
                         ),
@@ -283,15 +316,22 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                       filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: colorScheme.primaryContainer.withValues(alpha: 0.35),
+                          color: colorScheme.primaryContainer.withValues(
+                            alpha: 0.35,
+                          ),
                           borderRadius: BorderRadius.circular(24),
                           border: Border.all(
-                            color: colorScheme.onPrimaryContainer.withValues(alpha: 0.15),
+                            color: colorScheme.onPrimaryContainer.withValues(
+                              alpha: 0.15,
+                            ),
                             width: 0.5,
                           ),
                         ),
                         child: IconButton(
-                          icon: Icon(Icons.chevron_left, color: colorScheme.onPrimaryContainer),
+                          icon: Icon(
+                            Icons.chevron_left,
+                            color: colorScheme.onPrimaryContainer,
+                          ),
                           onPressed: () {
                             _controller.previousPage(
                               duration: const Duration(milliseconds: 300),
@@ -316,15 +356,22 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                       filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: colorScheme.primaryContainer.withValues(alpha: 0.35),
+                          color: colorScheme.primaryContainer.withValues(
+                            alpha: 0.35,
+                          ),
                           borderRadius: BorderRadius.circular(24),
                           border: Border.all(
-                            color: colorScheme.onPrimaryContainer.withValues(alpha: 0.15),
+                            color: colorScheme.onPrimaryContainer.withValues(
+                              alpha: 0.15,
+                            ),
                             width: 0.5,
                           ),
                         ),
                         child: IconButton(
-                          icon: Icon(Icons.chevron_right, color: colorScheme.onPrimaryContainer),
+                          icon: Icon(
+                            Icons.chevron_right,
+                            color: colorScheme.onPrimaryContainer,
+                          ),
                           onPressed: () {
                             _controller.nextPage(
                               duration: const Duration(milliseconds: 300),

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:extended_image/extended_image.dart';
 import '../../../../../core/network/image_headers.dart';
 import '../../common/video_player_widget.dart';
 import '../gallery/full_screen_gallery.dart';
@@ -68,29 +68,48 @@ class MediaGalleryItem extends StatelessWidget {
       child: Container(
         width: width,
         height: height,
-        decoration: BoxDecoration(
-          borderRadius: effectiveBorderRadius,
-        ),
+        decoration: BoxDecoration(borderRadius: effectiveBorderRadius),
         child: ClipRRect(
           borderRadius: effectiveBorderRadius,
           child: Hero(
             tag: heroTag,
-            child: CachedNetworkImage(
-              imageUrl: url,
-              httpHeaders: buildImageHeaders(
+            child: ExtendedImage.network(
+              url,
+              headers: buildImageHeaders(
                 imageUrl: url,
                 baseUrl: apiBaseUrl,
                 apiToken: apiToken,
               ),
               fit: fit,
-              placeholder: (c, u) => Container(
-                color: theme.colorScheme.surfaceContainerHighest,
-                child: const Center(child: CircularProgressIndicator()),
-              ),
-              errorWidget: (c, u, e) => Container(
-                color: theme.colorScheme.errorContainer,
-                child: const Icon(Icons.broken_image),
-              ),
+              cache: true,
+              enableMemoryCache: true,
+              clearMemoryCacheWhenDispose: false,
+              loadStateChanged: (state) {
+                switch (state.extendedImageLoadState) {
+                  case LoadState.loading:
+                    return Container(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          value: state.loadingProgress != null
+                              ? state.loadingProgress!.cumulativeBytesLoaded /
+                                    (state
+                                            .loadingProgress!
+                                            .expectedTotalBytes ??
+                                        1)
+                              : null,
+                        ),
+                      ),
+                    );
+                  case LoadState.failed:
+                    return Container(
+                      color: theme.colorScheme.errorContainer,
+                      child: const Icon(Icons.broken_image),
+                    );
+                  case LoadState.completed:
+                    return state.completedWidget;
+                }
+              },
             ),
           ),
         ),
@@ -103,16 +122,17 @@ class MediaGalleryItem extends StatelessWidget {
       PageRouteBuilder(
         opaque: false,
         barrierColor: Colors.transparent,
-        pageBuilder: (context, animation, secondaryAnimation) => FullScreenGallery(
-          images: images,
-          initialIndex: index,
-          apiBaseUrl: apiBaseUrl,
-          apiToken: apiToken,
-          contentId: contentId,
-          contentColor: contentColor,
-          customHeroTag: heroTag,
-          onPageChanged: onPageChanged,
-        ),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            FullScreenGallery(
+              images: images,
+              initialIndex: index,
+              apiBaseUrl: apiBaseUrl,
+              apiToken: apiToken,
+              contentId: contentId,
+              contentColor: contentColor,
+              customHeroTag: heroTag,
+              onPageChanged: onPageChanged,
+            ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(opacity: animation, child: child);
         },

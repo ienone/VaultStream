@@ -34,6 +34,7 @@ backend/exports/
 backend/.venv/
 backend/venv/
 backend/migrations/
+backend/tests/outputs/
 
 # data safety
 data/
