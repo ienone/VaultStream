@@ -194,6 +194,14 @@ async def store_archive_images_as_webp(
             if not isinstance(orig_url, str) or not orig_url.strip():
                 continue
             orig_url = orig_url.strip()
+            
+            # URL编码：处理中文字符和空格等特殊字符
+            from urllib.parse import urlsplit, urlunsplit, quote
+            parts = urlsplit(orig_url)
+            # 只编码路径部分，保留已编码的字符
+            encoded_path = quote(parts.path, safe='/%')
+            encoded_query = quote(parts.query, safe='=&%')
+            request_url = urlunsplit((parts.scheme, parts.netloc, encoded_path, encoded_query, parts.fragment))
 
             # Skip if already processed
             if isinstance(img.get("stored_key"), str) and img.get("stored_key"):
@@ -208,7 +216,7 @@ async def store_archive_images_as_webp(
             # Best-effort retries for transient failures (network hiccups, CDN throttling).
             for attempt in range(3):
                 try:
-                    resp = await client.get(orig_url, headers=_request_headers_for_url(orig_url))
+                    resp = await client.get(request_url, headers=_request_headers_for_url(orig_url))
                     resp.raise_for_status()
                     src_bytes = resp.content
                     webp_bytes, width, height = _image_to_webp(src_bytes, quality=quality)
@@ -299,10 +307,9 @@ async def store_archive_images_as_webp(
     if stored_images:
         archive["stored_images"] = stored_images
 
-    md = archive.get("markdown")
-    if isinstance(md, str) and md and url_to_stored_url:
-        for src_url, dst_url in url_to_stored_url.items():
-            archive["markdown"] = archive["markdown"].replace(f"]({src_url})", f"]({dst_url})")
+    # 注意：不修改 archive["markdown"] 中的 URL
+    # 前端通过 stored_images 的 orig_url -> key 映射来查找本地图片
+    # 这样保持与知乎等其他解析器一致的结构
 
     logger.info(
         "Archive images processed: total_images={}, stored_images={}",

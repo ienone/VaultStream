@@ -66,17 +66,14 @@ def _transform_content_detail(content: ContentDetail, base_url: str) -> ContentD
             if ans.get("cover_url"):
                 ans["cover_url"] = _transform_media_url(ans["cover_url"], base_url)
                 
-    # 转换 Markdown 正文中的 local:// 图片链接
+    # 转换 Markdown 正文中的 local:// 图片链接 (兜底处理，正常流程应通过 storedMap 映射)
     if content.description and "local://" in content.description:
         import re
         def replacer(match):
             key = match.group(1)
             return f"{base_url}/api/v1/media/{key}"
-        
-        # 匹配 local:// 后面的所有非空白字符，直到遇到 markdown 的结尾括号 ) 或其他分隔符
-        # 这里假设 local://key 格式紧凑
-        # key = blobs/sha256/xx/xx/xxxx.webp
-        content.description = re.sub(r'local://([a-zA-Z0-9_/.-]+)', replacer, content.description)
+        local_pattern = r'local://([a-zA-Z0-9_/.-]+)'
+        content.description = re.sub(local_pattern, replacer, content.description)
 
     return content
 

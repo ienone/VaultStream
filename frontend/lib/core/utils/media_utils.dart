@@ -13,6 +13,15 @@ String mapUrl(String url, String apiBaseUrl) {
   if (url.isEmpty) return url;
   if (url.startsWith('//')) url = 'https:$url';
 
+  // 0. 处理 local:// 协议 (后端本地存储的兜底)
+  if (url.startsWith('local://')) {
+    final key = url.substring('local://'.length);
+    if (key.isEmpty) return '';
+    final uri = Uri.parse(apiBaseUrl);
+    final origin = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+    return '$origin/api/v1/media/$key';
+  }
+
   // 1. 处理需要代理的外部域名
   if (url.contains('pbs.twimg.com') ||
       url.contains('hdslb.com') ||
@@ -62,6 +71,12 @@ String mapUrl(String url, String apiBaseUrl) {
     final uri = Uri.parse(apiBaseUrl);
     final origin = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
     return '$origin$cleanPath';
+  }
+
+  // 4. 所有其他外部URL都走代理以避免CORS问题
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    if (url.contains('/proxy/image?url=')) return url;
+    return '$apiBaseUrl/proxy/image?url=${Uri.encodeComponent(url)}';
   }
 
   return url;

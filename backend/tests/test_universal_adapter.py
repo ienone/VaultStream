@@ -2,7 +2,7 @@ import pytest
 import os
 from unittest.mock import patch, MagicMock
 from dotenv import load_dotenv
-from app.adapters.universal_adapter import UniversalAdapter, EXTRACTION_PROMPT
+from app.adapters.universal_adapter import UniversalAdapter
 
 # 显式加载 .env，确保环境变量可用
 load_dotenv()

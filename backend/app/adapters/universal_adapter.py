@@ -1,10 +1,10 @@
-"通用适配器 (Universal Adapter) - Agentic V2
+# 通用适配器 (Universal Adapter) - Agentic V2
 
-使用探测、语义定标与本地提取的三阶段架构：
-1. 探测阶段：使用 Crawl4AI 下载页面并提取原始 HTML 与元数据。
-2. 定标阶段：提取 DOM 结构概览，利用轻量级 LLM 识别正文容器选择器。
-3. 提取阶段：在本地利用锁定容器进行 Markdown 转换，补全路径并合并元数据。
-"
+# 使用探测、语义定标与本地提取的三阶段架构：
+# 1. 探测阶段：使用 Crawl4AI 下载页面并提取原始 HTML 与元数据。
+# 2. 定标阶段：提取 DOM 结构概览，利用轻量级 LLM 识别正文容器选择器。
+# 3. 提取阶段：在本地利用锁定容器进行 Markdown 转换，补全路径并合并元数据。
+
 import os
 import sys
 import json
@@ -129,20 +129,41 @@ class UniversalAdapter(PlatformAdapter):
             )
 
     def _fix_links(self, md_text: str, base_url: str) -> str:
-        """补全 Markdown 中的所有相对链接"""
+        """补全 Markdown 中的所有相对链接，并对URL进行编码"""
         if not md_text: return ""
+        
+        from urllib.parse import urlsplit, urlunsplit, quote
+        
+        def encode_url(raw_url: str) -> str:
+            """对URL路径中的特殊字符（空格、中文、括号等）进行编码"""
+            # 先处理markdown转义字符：\( -> (, \) -> )
+            url = raw_url.strip().replace('\\(', '(').replace('\\)', ')')
+            full_url = urljoin(base_url, url)
+            try:
+                parts = urlsplit(full_url)
+                # 编码路径部分，不保留括号（括号也需要编码以避免markdown解析问题）
+                encoded_path = quote(parts.path, safe='/')
+                encoded_query = quote(parts.query, safe='=&') if parts.query else ''
+                return urlunsplit((parts.scheme, parts.netloc, encoded_path, encoded_query, parts.fragment))
+            except:
+                return full_url
+        
+        # 匹配URL：支持转义字符和包含空格的URL
+        # [^)\\]  匹配除了 ) 和 \ 之外的任意字符（包括空格、中文等）
+        # \\.     匹配任何转义序列如 \( \) \[ 等
+        url_pattern = r'(?:[^)\\]|\\.)+'
         
         # 1. 修复图片 ![alt](url)
         def img_repl(m):
             alt, url = m.group(1), m.group(2)
-            return f"![{alt}]({urljoin(base_url, url)})"
-        md_text = re.sub(r"!\\\[(.*?)\\\]\((.*?)\")", img_repl, md_text)
+            return f"![{alt}]({encode_url(url)})"
+        md_text = re.sub(rf"!\[([^\]]*)\]\(({url_pattern})\)", img_repl, md_text)
         
         # 2. 修复普通链接 [text](url)
         def link_repl(m):
             text, url = m.group(1), m.group(2)
-            return f"[{text}]({urljoin(base_url, url)})"
-        md_text = re.sub(r"(?<!!)\\\\[(.*?)\\\]\((.*?)\")", link_repl, md_text)
+            return f"[{text}]({encode_url(url)})"
+        md_text = re.sub(rf"(?<!!)\[([^\]]*)\]\(({url_pattern})\)", link_repl, md_text)
         
         return md_text
 
@@ -245,9 +266,10 @@ class UniversalAdapter(PlatformAdapter):
                 logger.warning(f"UniversalAdapter: Local conversion failed: {e}")
                 description = result.markdown.fit_markdown or result.markdown.raw_markdown
 
-            # 4. 后处理：修复路径与清理
+            # 4. 后处理：修复路径与清理（URL会被编码，括号等特殊字符会被转义）
             description = self._cleanup_markdown(self._fix_links(description, url))
-            images = [urljoin(url, img) for img in re.findall(r'!\\[.*?\\]\((.*?)\\)`, description)]
+            # 从已处理的 markdown 中提取图片 URL（已编码，不含裸括号）
+            images = re.findall(r'!\[[^\]]*\]\(([^)\s]+)\)', description)
 
             # 5. 元数据合并
             og = result.metadata.get("opengraph", {})
