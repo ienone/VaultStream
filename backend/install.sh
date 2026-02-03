@@ -12,10 +12,10 @@ echo "检测可用的 Python 环境..."
 AVAILABLE_PYTHON=""
 AVAILABLE_CONDA=""
 
-# 检查系统 Python3
+# 检查系统 Python3 (3.10+)
 if command -v python3 &> /dev/null; then
-    PY_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))' 2>/dev/null)
-    if [[ "$PY_VERSION" =~ ^3\.(1[0-9]|[0-9]{2}) ]] || [[ "$PY_VERSION" > "3.9" ]]; then
+    if python3 -c 'import sys; exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
+        PY_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))' 2>/dev/null)
         AVAILABLE_PYTHON="python3 ($PY_VERSION)"
         echo "  ✓ 系统 Python3: $PY_VERSION"
     fi
@@ -34,14 +34,69 @@ if [ -z "$AVAILABLE_PYTHON" ]; then
 fi
 
 echo ""
+echo "检查 ffmpeg (可选，用于快速转码动画GIF)..."
+FFMPEG_AVAILABLE="no"
+if command -v ffmpeg &> /dev/null; then
+    echo "  ✓ ffmpeg 已安装"
+    FFMPEG_AVAILABLE="yes"
+else
+    echo "  ✗ ffmpeg 未找到，尝试自动安装..."
+    OS_TYPE=$(uname -s)
+    
+    if [ "$OS_TYPE" = "Darwin" ]; then
+        # macOS - brew
+        if command -v brew &> /dev/null; then
+            brew install ffmpeg
+            if command -v ffmpeg &> /dev/null; then
+                echo "  ✓ ffmpeg 安装成功"
+                FFMPEG_AVAILABLE="yes"
+            fi
+        fi
+    elif [ "$OS_TYPE" = "Linux" ]; then
+        # Linux - apt 或 yum
+        if command -v apt &> /dev/null; then
+            echo "  检测到 apt，准备安装 ffmpeg，可能需要输入密码..."
+            if sudo apt update && sudo apt install -y ffmpeg 2>/dev/null; then
+                if command -v ffmpeg &> /dev/null; then
+                    echo "  ✓ ffmpeg 安装成功"
+                    FFMPEG_AVAILABLE="yes"
+                fi
+            else
+                echo "  ✗ apt 安装失败，可能需要管理员权限"
+            fi
+        elif command -v yum &> /dev/null; then
+            echo "  检测到 yum，准备安装 ffmpeg，可能需要输入密码..."
+            if sudo yum install -y ffmpeg 2>/dev/null; then
+                if command -v ffmpeg &> /dev/null; then
+                    echo "  ✓ ffmpeg 安装成功"
+                    FFMPEG_AVAILABLE="yes"
+                fi
+            else
+                echo "  ✗ yum 安装失败，可能需要管理员权限"
+            fi
+        fi
+    fi
+    
+    if [ "$FFMPEG_AVAILABLE" = "no" ]; then
+        echo "  [可选] 手动安装 ffmpeg:"
+        if [ "$OS_TYPE" = "Darwin" ]; then
+            echo "    brew install ffmpeg"
+        elif [ "$OS_TYPE" = "Linux" ]; then
+            echo "    Ubuntu/Debian: sudo apt install ffmpeg"
+            echo "    Fedora/CentOS: sudo yum install ffmpeg"
+        fi
+    fi
+fi
+
+echo ""
 echo "安装模式选择:"
 if [ -n "$AVAILABLE_PYTHON" ]; then
     echo "  1. 使用系统 Python ($AVAILABLE_PYTHON)"
 fi
 if [ -n "$AVAILABLE_CONDA" ]; then
-    echo "  2. 使用 Conda 创建虚拟环境 (vaultwarden_env)"
+    echo "  2. 使用 Conda 创建虚拟环境 (vaultstream_env)"
 fi
-echo "  3. 创建本地虚拟环境 (vaultwarden_env)"
+echo "  3. 创建本地虚拟环境 (vaultstream_env)"
 echo ""
 
 # 设置默认选择
@@ -62,7 +117,7 @@ if [ "$CHOICE" = "1" ]; then
     INSTALL_MODE="system"
 elif [ "$CHOICE" = "2" ] && [ -n "$AVAILABLE_CONDA" ]; then
     # 使用 Conda 创建虚拟环境
-    VENV_DIR="vaultwarden_env"
+    VENV_DIR="vaultstream_env"
     INSTALL_MODE="conda"
     echo ""
     echo "创建 Conda 虚拟环境..."
@@ -74,7 +129,7 @@ elif [ "$CHOICE" = "2" ] && [ -n "$AVAILABLE_CONDA" ]; then
     fi
 else
     # 创建本地虚拟环境
-    VENV_DIR="vaultwarden_env"
+    VENV_DIR="vaultstream_env"
     INSTALL_MODE="venv"
 fi
 
@@ -154,8 +209,8 @@ fi
 echo ""
 echo "配置Python路径..."
 if [ -f ".env" ]; then
-    # 移除旧的PYTHON_PATH配置
-    sed -i.bak '/^PYTHON_PATH=/d' .env
+    # 移除旧的PYTHON_PATH配置 (兼容 Linux/macOS sed)
+    grep -v "^PYTHON_PATH=" .env > .env.tmp && mv .env.tmp .env
 else
     touch .env
 fi

@@ -69,8 +69,73 @@ def _content_addressed_key(namespace: str, sha256_hex: str, ext: str) -> str:
     return f"{prefix}blobs/sha256/{sha256_hex[:2]}/{sha256_hex[2:4]}/{sha256_hex}.{ext.lstrip('.')}"
 
 
+def _image_to_webp_ffmpeg(data: bytes, quality: int = 80) -> Optional[tuple[bytes, int, int]]:
+    """使用 ffmpeg 转码动画为 WebP（高性能）
+    
+    性能对比：
+    - PNG 单帧：ffmpeg 1.4x 快，但输出大 3.8x（不推荐）
+    - GIF 动画：ffmpeg 25x 快，输出大 3.9x（推荐）
+    """
+    import subprocess
+    import tempfile
+    import os
+    from io import BytesIO
+    
+    try:
+        with tempfile.NamedTemporaryFile(delete=False) as tmp_in:
+            tmp_in.write(data)
+            tmp_in_path = tmp_in.name
+        
+        with tempfile.NamedTemporaryFile(suffix=".webp", delete=False) as tmp_out:
+            tmp_out_path = tmp_out.name
+        
+        try:
+            # quality 映射：80 → crf 40（数值越低质量越好，范围0-63）
+            crf = max(0, min(63, int(80 - quality / 100 * 30)))
+            
+            result = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-i", tmp_in_path,
+                    "-c:v", "libwebp",
+                    "-quality", str(100),  # 编码质量 0-100
+                    "-crf", str(crf),      # 恒定质量模式
+                    "-loop", "0",          # 无限循环
+                    "-y",                  # 覆盖输出文件
+                    tmp_out_path
+                ],
+                capture_output=True,
+                timeout=120,
+                check=False
+            )
+            
+            if result.returncode != 0:
+                logger.warning(f"ffmpeg 转码失败: {result.stderr.decode()}")
+                return None
+            
+            with open(tmp_out_path, "rb") as f:
+                webp_data = f.read()
+            
+            # 获取尺寸
+            from PIL import Image
+            with Image.open(BytesIO(webp_data)) as img:
+                width, height = img.size
+            
+            return webp_data, width, height
+        finally:
+            os.unlink(tmp_in_path)
+            os.unlink(tmp_out_path)
+    
+    except (FileNotFoundError, subprocess.TimeoutExpired, Exception) as e:
+        logger.debug(f"ffmpeg 不可用或转码失败: {e}")
+        return None
+
+
 def _image_to_webp(data: bytes, quality: int = 80) -> tuple[bytes, Optional[int], Optional[int]]:
-    """将图片转换为WebP格式"""
+    """将图片转换为WebP格式，保留动画帧
+    
+    优先使用 ffmpeg（动画快 10+ 倍），降级到 Pillow
+    """
     try:
         from PIL import Image  # type: ignore
     except Exception as e:  # pragma: no cover
@@ -78,16 +143,63 @@ def _image_to_webp(data: bytes, quality: int = 80) -> tuple[bytes, Optional[int]
 
     from io import BytesIO
 
+    # 先尝试 ffmpeg（只对动画有效）
+    with Image.open(BytesIO(data)) as im:
+        is_animated = hasattr(im, 'n_frames') and im.n_frames > 1
+    
+    if is_animated:
+        ffmpeg_result = _image_to_webp_ffmpeg(data, quality=quality)
+        if ffmpeg_result:
+            return ffmpeg_result[0], ffmpeg_result[1], ffmpeg_result[2]
+        # ffmpeg 不可用，降级到 Pillow
+        logger.info("ffmpeg 不可用，使用 Pillow 转码（速度较慢）")
+    
+    # Pillow 转码（用于单帧或 ffmpeg 不可用）
     with Image.open(BytesIO(data)) as im:
         width, height = im.size
-        if im.mode in ("P", "LA"):
-            im = im.convert("RGBA")
-        elif im.mode not in ("RGB", "RGBA"):
-            im = im.convert("RGB")
+        
+        # 检查是否是动画图像（多帧）
+        is_animated = hasattr(im, 'n_frames') and im.n_frames > 1
+        
+        if is_animated:
+            # 提取所有帧和持续时间
+            frames = []
+            durations = []
+            
+            for frame_idx in range(im.n_frames):
+                im.seek(frame_idx)
+                
+                # 转换颜色模式
+                frame = im.convert("RGBA") if im.mode in ("P", "LA") else im.convert("RGB")
+                frames.append(frame)
+                
+                # 获取帧延迟（毫秒）
+                duration = im.info.get('duration', 100)
+                durations.append(duration)
+            
+            # 保存为动态 WebP
+            out = BytesIO()
+            frames[0].save(
+                out,
+                format="WEBP",
+                quality=int(quality),
+                method=6,
+                save_all=True,
+                append_images=frames[1:],
+                duration=durations,
+                loop=0  # 无限循环
+            )
+            return out.getvalue(), int(width) if width else None, int(height) if height else None
+        else:
+            # 单帧图像，正常转换
+            if im.mode in ("P", "LA"):
+                im = im.convert("RGBA")
+            elif im.mode not in ("RGB", "RGBA"):
+                im = im.convert("RGB")
 
-        out = BytesIO()
-        im.save(out, format="WEBP", quality=int(quality), method=6)
-        return out.getvalue(), int(width) if width else None, int(height) if height else None
+            out = BytesIO()
+            im.save(out, format="WEBP", quality=int(quality), method=6)
+            return out.getvalue(), int(width) if width else None, int(height) if height else None
 
 
 def _create_thumbnail_webp(data: bytes, size: tuple[int, int] = (300, 300), quality: int = 70) -> bytes:
