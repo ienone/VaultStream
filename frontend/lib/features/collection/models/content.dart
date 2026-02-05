@@ -21,6 +21,7 @@ abstract class ShareCard with _$ShareCard {
     @JsonKey(name: 'content_type') String? contentType,
     @JsonKey(name: 'layout_type') String? layoutType,
     @JsonKey(name: 'cover_url') String? coverUrl,
+    @JsonKey(name: 'thumbnail_url') String? thumbnailUrl,  // 缩略图 (优化加载)
     @JsonKey(name: 'cover_color') String? coverColor,
     @JsonKey(name: 'media_urls') @Default([]) List<String> mediaUrls,
     @Default([]) List<String> tags,

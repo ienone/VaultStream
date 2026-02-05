@@ -464,6 +464,12 @@ async def list_share_cards(
     base_url = settings.base_url or "http://localhost:8000"
     items = []
     for c in contents:
+        cover_url = _transform_media_url(c.cover_url, base_url)
+        # 生成缩略图URL (添加 ?size=thumb 参数)
+        thumbnail_url = None
+        if cover_url and "/api/v1/media/" in cover_url:
+            thumbnail_url = f"{cover_url}?size=thumb"
+        
         items.append({
             "id": c.id,
             "platform": c.platform,
@@ -476,7 +482,8 @@ async def list_share_cards(
             "author_name": c.author_name,
             "author_id": c.author_id,
             "author_avatar_url": _transform_media_url(c.author_avatar_url, base_url),
-            "cover_url": _transform_media_url(c.cover_url, base_url),
+            "cover_url": cover_url,
+            "thumbnail_url": thumbnail_url,
             "cover_color": c.cover_color,
             "media_urls": [], 
             "tags": c.tags or [],

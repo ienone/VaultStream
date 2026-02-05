@@ -126,9 +126,45 @@ class GetContentRequest(BaseModel):
     limit: int = Field(1, ge=1, le=10, description="获取数量")
 
 
+class ContentListItem(BaseModel):
+    """内容列表项（精简版，用于列表展示）"""
+    id: int
+    platform: Platform
+    url: str
+    status: ContentStatus
+    
+    # 显示必需字段
+    title: Optional[str] = None
+    cover_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None  # 缩略图URL（优化加载）
+    author_name: Optional[str] = None
+    
+    tags: List[str] = Field(default_factory=list)
+    is_nsfw: bool = False
+    layout_type: Optional[str] = None
+    
+    # 时间戳
+    created_at: datetime
+    published_at: Optional[datetime] = None
+    
+    # 排除：raw_metadata, extra_stats, 所有统计字段
+    
+    class Config:
+        from_attributes = True
+
+
 class ContentListResponse(BaseModel):
     """内容列表响应"""
     items: List[ContentDetail]
+    total: int
+    page: int
+    size: int
+    has_more: bool
+
+
+class ContentListItemResponse(BaseModel):
+    """内容列表响应（精简版）"""
+    items: List[ContentListItem]
     total: int
     page: int
     size: int
@@ -172,6 +208,21 @@ class ContentUpdate(BaseModel):
     layout_type_override: Optional[LayoutType] = None  # 用户覆盖布局类型
 
 
+class BatchUpdateRequest(BaseModel):
+    """批量更新请求"""
+    content_ids: List[int] = Field(..., min_items=1, max_items=100, description="内容ID列表")
+    updates: ContentUpdate = Field(..., description="更新内容")
+
+
+class BatchOperationResponse(BaseModel):
+    """批量操作响应"""
+    success_count: int
+    failed_count: int
+    success_ids: List[int] = Field(default_factory=list)
+    failed_ids: List[int] = Field(default_factory=list)
+    errors: Dict[int, str] = Field(default_factory=dict)
+
+
 class MarkPushedRequest(BaseModel):
     """标记已推送请求"""
     content_id: int
@@ -200,6 +251,7 @@ class ShareCard(BaseModel):
     author_avatar_url: Optional[str] = None # 作者头像URL
     author_url: Optional[str] = None  # 作者主页链接
     cover_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None  # 缩略图URL (优化加载)
     cover_color: Optional[str] = None  # M5: 封面主色调 (Hex)
     media_urls: List[str] = Field(default_factory=list) # M6: 支持首图回退
     tags: List[str] = Field(default_factory=list)
