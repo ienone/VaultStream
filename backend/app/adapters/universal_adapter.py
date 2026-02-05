@@ -205,12 +205,42 @@ class UniversalAdapter(PlatformAdapter):
         return md_text
 
     def _cleanup_markdown(self, md_text: str) -> str:
-        """清理冗余字符和空行"""
+        """清理 Markdown 格式问题"""
         if not md_text: return ""
-        # 移除标题末尾锚点 #
+        
+        # 1. 移除标题末尾锚点 #
         md_text = re.sub(r'^(#+ .*?)#\s*$', r'\1', md_text, flags=re.MULTILINE)
-        # 移除过多的连续空行
+        
+        # 2. 修复错误的引用块格式（> 符号后直接跟内容，应有空格）
+        md_text = re.sub(r'^>\s*\*\s+', '- ', md_text, flags=re.MULTILINE)
+        
+        # 3. 移除独立的 > 行（空引用块）
+        md_text = re.sub(r'^>\s*$', '', md_text, flags=re.MULTILINE)
+        
+        # 4. 修复被错误包裹为引用块的列表项
+        md_text = re.sub(r'^>\s+(\d+\.\s+)', r'\1', md_text, flags=re.MULTILINE)
+        md_text = re.sub(r'^>\s+(-\s+)', r'\1', md_text, flags=re.MULTILINE)
+        
+        # 5. 修复代码块内的引用标记（通常是转换错误）
+        # 将 > ``` 修复为 ```
+        md_text = re.sub(r'^>\s*```', '```', md_text, flags=re.MULTILINE)
+        
+        # 6. 移除行首多余的 > 标记（连续多个 >）
+        md_text = re.sub(r'^>+\s*>', '> ', md_text, flags=re.MULTILINE)
+        
+        # 7. 清理 HTML 实体残留
+        md_text = md_text.replace('&nbsp;', ' ')
+        md_text = md_text.replace('&amp;', '&')
+        md_text = md_text.replace('&lt;', '<')
+        md_text = md_text.replace('&gt;', '>')
+        
+        # 8. 移除过多的连续空行
         md_text = re.sub(r'\n{3,}', '\n\n', md_text)
+        
+        # 9. 修复列表项之间的空行（保持列表连续性）
+        md_text = re.sub(r'(\n- [^\n]+)\n{2,}(- )', r'\1\n\2', md_text)
+        md_text = re.sub(r'(\n\d+\. [^\n]+)\n{2,}(\d+\. )', r'\1\n\2', md_text)
+        
         return md_text.strip()
 
     def _build_html_summary(self, soup: BeautifulSoup, limit: int = 150) -> str:
@@ -496,9 +526,29 @@ class UniversalAdapter(PlatformAdapter):
             author_avatar_url = llm_avatar_url or ""
 
             # 构建 archive 供 worker 下载图片
+            # 收集所有需要下载的图片：正文图片 + 封面 + 头像
+            all_images = []
+            seen_urls = set()
+            
+            # 1. 封面图（标记类型）
+            if cover_url and cover_url not in seen_urls:
+                all_images.append({"url": cover_url, "type": "cover"})
+                seen_urls.add(cover_url)
+            
+            # 2. 作者头像（标记类型）
+            if author_avatar_url and author_avatar_url not in seen_urls:
+                all_images.append({"url": author_avatar_url, "type": "avatar", "is_avatar": True})
+                seen_urls.add(author_avatar_url)
+            
+            # 3. 正文图片
+            for img_url in images:
+                if img_url and img_url not in seen_urls:
+                    all_images.append({"url": img_url})
+                    seen_urls.add(img_url)
+            
             archive = {
                 "markdown": description,
-                "images": [{"url": img} for img in images],
+                "images": all_images,
                 "videos": [],
                 "llm_selector": selector,
                 "llm_targeting": targeting  # 保存完整的 LLM 定位结果供调试
