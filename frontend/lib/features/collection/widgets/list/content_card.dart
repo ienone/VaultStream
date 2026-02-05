@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -53,7 +52,7 @@ class ContentCard extends ConsumerWidget {
         : (isTinyCard ? 0.48 : 0.54);
 
     Color? displayColor;
-    String? backendColor = content.coverColor ?? content.rawMetadata?['archive']?['dominant_color'];
+    final backendColor = content.coverColor;
 
     if (backendColor != null && backendColor.isNotEmpty) {
       displayColor = DynamicColorHelper.getContentColor(backendColor, context);
@@ -394,31 +393,6 @@ class _CardCover extends StatelessWidget {
               ),
             ),
           ),
-          if (content.mediaUrls.length > 1)
-            Positioned(
-              right: 8,
-              bottom: 8,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    color: Colors.black.withValues(alpha: 0.6),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.collections_rounded, size: 10, color: Colors.white),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${content.mediaUrls.length}',
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
     );
@@ -503,11 +477,10 @@ class _CardContentSnippet extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     final title = content.title?.trim() ?? '';
-    final description = content.description?.trim() ?? '';
 
     if (isGallery) {
       // Use backend-generated smart title if available
-      final text = (title.isNotEmpty && title != '-') ? title : description;
+      final text = (title.isNotEmpty && title != '-') ? title : '';
       if (text.isEmpty) return const SizedBox.shrink();
       return Text(
         text,
@@ -522,7 +495,7 @@ class _CardContentSnippet extends StatelessWidget {
       );
     } else {
       // For other platforms, show title more prominently
-      final text = title.isNotEmpty ? title : description;
+      final text = title.isNotEmpty ? title : '';
       if (text.isEmpty) return const SizedBox.shrink();
       return Text(
         text,

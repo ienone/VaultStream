@@ -31,7 +31,7 @@ class UnifiedStats extends StatelessWidget {
     if (isUserProfile) {
       if (isXiaohongshu) {
         // 小红书用户统计
-        final xhsStats = stats.isNotEmpty ? stats : (detail.rawMetadata ?? {});
+        final xhsStats = stats;
         final followers = xhsStats['followers'] ?? xhsStats['follower_count'] ?? 0;
         final following = xhsStats['following'] ?? xhsStats['following_count'] ?? 0;
         final liked = xhsStats['liked'] ?? xhsStats['liked_count'] ?? 0;
@@ -130,10 +130,7 @@ class UnifiedStats extends StatelessWidget {
         'urank': '等级',
       };
 
-      final Map<String, dynamic> combinedMetadata = {
-        ...detail.extraStats,
-        ...(detail.rawMetadata ?? {}),
-      };
+      final Map<String, dynamic> combinedMetadata = detail.extraStats;
 
       for (var entry in combinedMetadata.entries) {
         if (keyMap.containsKey(entry.key) &&

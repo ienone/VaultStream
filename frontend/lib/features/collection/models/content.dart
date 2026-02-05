@@ -11,30 +11,23 @@ abstract class ShareCard with _$ShareCard {
     required int id,
     required String platform,
     required String url,
+    @JsonKey(name: 'clean_url') String? cleanUrl,
+    @JsonKey(name: 'content_type') String? contentType,
+    @JsonKey(name: 'effective_layout_type') String? effectiveLayoutType,
     String? title,
-    String? summary,
-    String? description,
     @JsonKey(name: 'author_name') String? authorName,
     @JsonKey(name: 'author_id') String? authorId,
     @JsonKey(name: 'author_avatar_url') String? authorAvatarUrl,
-    @JsonKey(name: 'author_url') String? authorUrl,
-    @JsonKey(name: 'content_type') String? contentType,
-    @JsonKey(name: 'layout_type') String? layoutType,
     @JsonKey(name: 'cover_url') String? coverUrl,
-    @JsonKey(name: 'thumbnail_url') String? thumbnailUrl,  // 缩略图 (优化加载)
+    @JsonKey(name: 'thumbnail_url') String? thumbnailUrl,
     @JsonKey(name: 'cover_color') String? coverColor,
-    @JsonKey(name: 'media_urls') @Default([]) List<String> mediaUrls,
     @Default([]) List<String> tags,
     @JsonKey(name: 'is_nsfw') @Default(false) bool isNsfw,
-    @JsonKey(name: 'source_tags') @Default([]) List<String> sourceTags,
     @JsonKey(name: 'review_status') String? reviewStatus,
+    @JsonKey(name: 'published_at') DateTime? publishedAt,
+    @JsonKey(name: 'created_at') DateTime? createdAt,
     @JsonKey(name: 'view_count') @Default(0) int viewCount,
     @JsonKey(name: 'like_count') @Default(0) int likeCount,
-    @JsonKey(name: 'collect_count') @Default(0) int collectCount,
-    @JsonKey(name: 'share_count') @Default(0) int shareCount,
-    @JsonKey(name: 'comment_count') @Default(0) int commentCount,
-    @JsonKey(name: 'published_at') DateTime? publishedAt,
-    @JsonKey(name: 'raw_metadata') Map<String, dynamic>? rawMetadata,
   }) = _ShareCard;
 
   bool get isTwitter =>
@@ -46,13 +39,13 @@ abstract class ShareCard with _$ShareCard {
   bool get isWeibo => platform.toLowerCase() == 'weibo';
   bool get isZhihu => platform.toLowerCase() == 'zhihu';
 
-  /// 获取有效布局类型：后端提供 > 兼容回退
+  /// 获取有效布局类型：后端已计算
   String get resolvedLayoutType {
-    // 后端检测值
-    if (layoutType != null && layoutType!.isNotEmpty) {
-      return layoutType!;
+    // 后端已计算的有效布局类型
+    if (effectiveLayoutType != null && effectiveLayoutType!.isNotEmpty) {
+      return effectiveLayoutType!;
     }
-    // 兼容回退：根据 platform/contentType 推断
+    // 兼容回退：根据 platform/contentType 推断（用于旧数据）
     return _fallbackLayoutType();
   }
 
@@ -71,29 +64,8 @@ abstract class ShareCard with _$ShareCard {
   }
 
   bool get isLandscapeCover {
-    try {
-      if (rawMetadata != null && rawMetadata!['archive'] != null) {
-        final storedImages = rawMetadata!['archive']['stored_images'];
-        if (storedImages is List && storedImages.isNotEmpty) {
-          final currentImg = storedImages.firstWhere(
-            (img) => _compareUrls(img['orig_url'], coverUrl),
-            orElse: () => storedImages.first,
-          );
-          if (currentImg != null &&
-              currentImg['width'] != null &&
-              currentImg['height'] != null) {
-            return (currentImg['width'] as num) >=
-                (currentImg['height'] as num);
-          }
-        }
-      }
-    } catch (_) {}
+    // ShareCard 不再需要封面方向判断（已移除 rawMetadata）
     return true; // Default to landscape
-  }
-
-  bool _compareUrls(dynamic url1, dynamic url2) {
-    if (url1 == null || url2 == null) return false;
-    return url1.toString() == url2.toString();
   }
 
   factory ShareCard.fromJson(Map<String, dynamic> json) =>
@@ -137,7 +109,8 @@ abstract class ContentDetail with _$ContentDetail {
     @JsonKey(name: 'share_count') @Default(0) int shareCount,
     @JsonKey(name: 'comment_count') @Default(0) int commentCount,
     @JsonKey(name: 'extra_stats') @Default({}) Map<String, dynamic> extraStats,
-    @JsonKey(name: 'raw_metadata') Map<String, dynamic>? rawMetadata,
+    @JsonKey(name: 'associated_question') Map<String, dynamic>? associatedQuestion,
+    @JsonKey(name: 'top_answers') List<Map<String, dynamic>>? topAnswers,
   }) = _ContentDetail;
 
   bool get isTwitter =>

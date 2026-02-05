@@ -65,8 +65,15 @@ def _transform_content_detail(content: ContentDetail, base_url: str) -> ContentD
                 ans["author_avatar_url"] = _transform_media_url(ans["author_avatar_url"], base_url)
             if ans.get("cover_url"):
                 ans["cover_url"] = _transform_media_url(ans["cover_url"], base_url)
+    
+    # 转换 associated_question 中的封面
+    if content.associated_question:
+        if content.associated_question.get("cover_url"):
+            content.associated_question["cover_url"] = _transform_media_url(
+                content.associated_question["cover_url"], base_url
+            )
                 
-    # 转换 Markdown 正文中的 local:// 图片链接 (兜底处理，正常流程应通过 storedMap 映射)
+    # 转换 Markdown 正文中的 local:// 图片链接 (完整处理)
     if content.description and "local://" in content.description:
         import re
         def replacer(match):
@@ -470,31 +477,30 @@ async def list_share_cards(
         if cover_url and "/api/v1/media/" in cover_url:
             thumbnail_url = f"{cover_url}?size=thumb"
         
+        # 计算有效布局类型
+        effective_layout = c.effective_layout_type.value if c.effective_layout_type else None
+        
         items.append({
             "id": c.id,
             "platform": c.platform,
             "url": c.url,
             "clean_url": c.clean_url,
             "content_type": c.content_type,
+            "effective_layout_type": effective_layout,
             "title": c.display_title,  # 使用 display_title（自动从正文生成标题）
-            "summary": None,  # 卡片视图不返回摘要
-            "description": None,  # 卡片视图不返回正文
             "author_name": c.author_name,
             "author_id": c.author_id,
             "author_avatar_url": _transform_media_url(c.author_avatar_url, base_url),
             "cover_url": cover_url,
             "thumbnail_url": thumbnail_url,
             "cover_color": c.cover_color,
-            "media_urls": [], 
             "tags": c.tags or [],
             "is_nsfw": c.is_nsfw or False,
             "published_at": c.published_at,
+            "created_at": c.created_at,
             "review_status": c.review_status,
             "view_count": c.view_count or 0,
             "like_count": c.like_count or 0,
-            "collect_count": c.collect_count or 0,
-            "share_count": c.share_count or 0,
-            "comment_count": c.comment_count or 0,
         })
 
     return {

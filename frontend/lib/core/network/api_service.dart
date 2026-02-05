@@ -52,44 +52,6 @@ class ApiService {
     return ShareCardListResponse.fromJson(response.data);
   }
 
-  /// 已废弃：使用 getCards() 替代
-  /// 
-  /// getCards() 返回精简的ShareCard数据，响应体积减少60-80%
-  @Deprecated('Use getCards() instead - returns lightweight ShareCard data')
-  Future<ContentListResponse> getContents({
-    int page = 1,
-    int size = 20,
-    String? platform,
-    String? status,
-    String? reviewStatus,
-    String? tag,
-    String? author,
-    DateTime? startDate,
-    DateTime? endDate,
-    String? query,
-    bool? isNsfw,
-    String? excludeFields = 'raw_metadata,extra_stats',
-  }) async {
-    final response = await _dio.get(
-      '/contents',
-      queryParameters: {
-        'page': page,
-        'size': size,
-        if (platform != null) 'platform': platform,
-        if (status != null) 'status': status,
-        if (reviewStatus != null) 'review_status': reviewStatus,
-        if (tag != null) 'tag': tag,
-        if (author != null) 'author': author,
-        if (startDate != null) 'start_date': startDate.toIso8601String(),
-        if (endDate != null) 'end_date': endDate.toIso8601String(),
-        if (query != null) 'q': query,
-        if (isNsfw != null) 'is_nsfw': isNsfw,
-        if (excludeFields != null) 'exclude_fields': excludeFields,
-      },
-    );
-    return ContentListResponse.fromJson(response.data);
-  }
-
   Future<ContentDetail> getContentDetail(int id) async {
     final response = await _dio.get('/contents/$id');
     return ContentDetail.fromJson(response.data);

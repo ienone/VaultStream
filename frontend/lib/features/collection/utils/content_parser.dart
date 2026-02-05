@@ -5,59 +5,10 @@ import '../models/content.dart';
 import '../models/header_line.dart';
 
 class ContentParser {
+  // getStoredMap 已废弃，后端直接返回映射后的URL
+  @Deprecated('Use backend-provided URLs directly')
   static Map<String, String> getStoredMap(ContentDetail detail) {
-    Map<String, String> storedMap = {};
-    try {
-      if (detail.rawMetadata != null &&
-          detail.rawMetadata!['archive'] != null) {
-        final archive = detail.rawMetadata!['archive'];
-
-        // 1. Images
-        final storedImages = archive['stored_images'];
-        if (storedImages is List) {
-          for (var img in storedImages) {
-            if (img is Map && img['orig_url'] != null) {
-              String? localPath = img['url'];
-              final String? key = img['key'];
-              if (key != null) {
-                if (key.startsWith('sha256:')) {
-                  final hashVal = key.split(':')[1];
-                  localPath =
-                      'vaultstream/blobs/sha256/${hashVal.substring(0, 2)}/${hashVal.substring(2, 4)}/$hashVal.webp';
-                } else {
-                  localPath = key;
-                }
-              }
-              if (localPath != null) storedMap[img['orig_url']] = localPath;
-            }
-          }
-        }
-
-        // 2. Videos
-        final storedVideos = archive['stored_videos'];
-        if (storedVideos is List) {
-          for (var vid in storedVideos) {
-            if (vid is Map && vid['orig_url'] != null) {
-              String? localPath = vid['url'];
-              final String? key = vid['key'];
-              if (key != null) {
-                if (key.startsWith('sha256:')) {
-                  final hashVal = key.split(':')[1];
-                  // 视频保持原后缀，不强转 webp
-                  final ext = key.split('.').last;
-                  localPath =
-                      'vaultstream/blobs/sha256/${hashVal.substring(0, 2)}/${hashVal.substring(2, 4)}/$hashVal.$ext';
-                } else {
-                  localPath = key;
-                }
-              }
-              if (localPath != null) storedMap[vid['orig_url']] = localPath;
-            }
-          }
-        }
-      }
-    } catch (_) {}
-    return storedMap;
+    return {};
   }
 
   static List<String> extractAllImages(
@@ -66,7 +17,6 @@ class ContentParser {
     bool includeAvatarFallback = false,
   }) {
     final list = <String>{};
-    final storedMap = getStoredMap(detail);
 
     // 获取作者头像以便过滤
     final authorAvatar = detail.authorAvatarUrl;
@@ -78,20 +28,7 @@ class ContentParser {
       final url = detail.coverUrl!;
       // 过滤头像
       if (authorAvatar == null || !url.contains(authorAvatar)) {
-        if (storedMap.containsKey(url)) {
-          list.add(media_utils.mapUrl(storedMap[url]!, apiBaseUrl));
-        } else {
-          final cleanUrl = url.split('?')[0];
-          final match = storedMap.entries.firstWhere(
-            (e) => e.key.split('?')[0] == cleanUrl,
-            orElse: () => const MapEntry('', ''),
-          );
-          list.add(
-            match.key.isNotEmpty
-                ? media_utils.mapUrl(match.value, apiBaseUrl)
-                : media_utils.mapUrl(url, apiBaseUrl),
-          );
-        }
+        list.add(media_utils.mapUrl(url, apiBaseUrl));
       }
     }
 
@@ -104,52 +41,20 @@ class ContentParser {
         // 过滤头像
         if (authorAvatar != null && url.contains(authorAvatar)) continue;
 
-        if (storedMap.containsKey(url)) {
-          list.add(media_utils.mapUrl(storedMap[url]!, apiBaseUrl));
-        } else {
-          final cleanUrl = url.split('?')[0];
-          final match = storedMap.entries.firstWhere(
-            (e) => e.key.split('?')[0] == cleanUrl,
-            orElse: () => const MapEntry('', ''),
-          );
-          list.add(
-            match.key.isNotEmpty
-                ? media_utils.mapUrl(match.value, apiBaseUrl)
-                : media_utils.mapUrl(url, apiBaseUrl),
-          );
-        }
+        list.add(media_utils.mapUrl(url, apiBaseUrl));
       }
     }
     
     // 无图时使用头像作为回退
     if (list.isEmpty && includeAvatarFallback && authorAvatar != null) {
-      final mappedAvatar = _mapAvatarUrl(authorAvatar, storedMap, apiBaseUrl);
-      if (mappedAvatar.isNotEmpty) {
-        list.add(mappedAvatar);
-      }
+      list.add(media_utils.mapUrl(authorAvatar, apiBaseUrl));
     }
     
     return list.toList();
   }
-  
-  /// 映射头像URL到本地存档
-  static String _mapAvatarUrl(String avatarUrl, Map<String, String> storedMap, String apiBaseUrl) {
-    if (storedMap.containsKey(avatarUrl)) {
-      return media_utils.mapUrl(storedMap[avatarUrl]!, apiBaseUrl);
-    }
-    final cleanUrl = avatarUrl.split('?')[0];
-    final match = storedMap.entries.firstWhere(
-      (e) => e.key.split('?')[0] == cleanUrl,
-      orElse: () => const MapEntry('', ''),
-    );
-    return match.key.isNotEmpty
-        ? media_utils.mapUrl(match.value, apiBaseUrl)
-        : media_utils.mapUrl(avatarUrl, apiBaseUrl);
-  }
 
   static List<String> extractAllMedia(ContentDetail detail, String apiBaseUrl) {
     final list = <String>{};
-    final storedMap = getStoredMap(detail);
 
     // 获取作者头像 URL，用于排除
     final authorAvatar = detail.authorAvatarUrl;
@@ -162,20 +67,7 @@ class ContentParser {
         // 如果该媒体是作者头像，则跳过（防止在正文大图/网格中显示）
         if (authorAvatar != null && url.contains(authorAvatar)) continue;
 
-        if (storedMap.containsKey(url)) {
-          list.add(media_utils.mapUrl(storedMap[url]!, apiBaseUrl));
-        } else {
-          final cleanUrl = url.split('?').first;
-          final match = storedMap.entries.firstWhere(
-            (e) => e.key.split('?').first == cleanUrl,
-            orElse: () => const MapEntry('', ''),
-          );
-          list.add(
-            match.key.isNotEmpty
-                ? media_utils.mapUrl(match.value, apiBaseUrl)
-                : media_utils.mapUrl(url, apiBaseUrl),
-          );
-        }
+        list.add(media_utils.mapUrl(url, apiBaseUrl));
       }
     }
     return list.toList();
@@ -183,22 +75,11 @@ class ContentParser {
 
   static bool hasMarkdown(ContentDetail detail) {
     if (detail.isZhihuArticle || detail.isZhihuAnswer) return true;
-    final archive = detail.rawMetadata?['archive'];
-    if (archive != null) {
-      final md = archive['markdown'];
-      if (md != null && md.toString().isNotEmpty) return true;
-    }
     return detail.isBilibili && (detail.description?.contains('![') ?? false);
   }
 
   static String getMarkdownContent(ContentDetail detail) {
-    if (detail.rawMetadata != null && detail.rawMetadata!['archive'] != null) {
-      return detail.rawMetadata!['archive']['markdown']?.toString() ?? '';
-    }
-    if (detail.description != null && detail.description!.isNotEmpty) {
-      return detail.description!;
-    }
-    return '';
+    return detail.description ?? '';
   }
 
   static List<HeaderLine> extractHeaders(String markdown) {
@@ -252,101 +133,24 @@ class ContentParser {
   }
 
   /// 获取卡片显示的封面图 URL
-  /// 从 ContentMediaHelper 迁移，优先使用封面，回退到首张媒体图，最后回退到头像
+  /// 后端已返回优化后的coverUrl，直接使用即可
   static String getDisplayImageUrl(ShareCard content, String apiBaseUrl) {
     String url = '';
-    // 封面优先，B站Opus等特殊场景回退到首张媒体图
+    // 封面优先
     if (content.coverUrl != null &&
         content.coverUrl!.isNotEmpty &&
         !media_utils.isVideo(content.coverUrl!)) {
       url = content.coverUrl!;
-    } else if (content.mediaUrls.isNotEmpty) {
-      // 找第一个不是视频的媒体
-      try {
-        url = content.mediaUrls.firstWhere((u) => !media_utils.isVideo(u));
-      } catch (_) {
-        url = '';
-      }
     }
 
-    // 无封面无媒体时，回退到作者头像
+    // 无封面时，回退到作者头像
     if (url.isEmpty && content.authorAvatarUrl != null && content.authorAvatarUrl!.isNotEmpty) {
       url = content.authorAvatarUrl!;
     }
 
-    if (url.isEmpty) return '';
-
-    // =========================================================
-    // Level 1: 本地优先 (Local First)
-    // 尝试在 metadata 中查找该 URL 对应的本地 stored_url
-    // =========================================================
-    try {
-      if (content.rawMetadata != null) {
-        final archive = content.rawMetadata!['archive'];
-        if (archive != null) {
-          final storedImages = archive['stored_images'];
-          if (storedImages is List && storedImages.isNotEmpty) {
-            // 1. 尝试精确匹配 orig_url
-            final localMatch = storedImages.firstWhere(
-              (img) => _compareUrls(img['orig_url'], url),
-              orElse: () => null,
-            );
-
-            if (localMatch != null) {
-              String? localPath = localMatch['url'];
-              final String? key = localMatch['key'];
-
-              // 统一使用 key 逻辑，避免路径不匹配
-              if (key != null) {
-                if (key.startsWith('sha256:')) {
-                  final hashVal = key.split(':')[1];
-                  localPath =
-                      'vaultstream/blobs/sha256/${hashVal.substring(0, 2)}/${hashVal.substring(2, 4)}/$hashVal.webp';
-                } else {
-                  localPath = key;
-                }
-              }
-
-              if (localPath != null) {
-                return media_utils.mapUrl(localPath, apiBaseUrl);
-              }
-            }
-
-            // 2. 模糊匹配/降级策略 (代理外部链接反盗链)
-            if (url.contains('twimg.com') || url.contains('hdslb.com')) {
-              final fallback = storedImages.first;
-              if (fallback != null) {
-                String? localPath = fallback['url'];
-                final String? key = fallback['key'];
-                if (key != null) {
-                  if (key.startsWith('sha256:')) {
-                    final hashVal = key.split(':')[1];
-                    localPath =
-                        'vaultstream/blobs/sha256/${hashVal.substring(0, 2)}/${hashVal.substring(2, 4)}/$hashVal.webp';
-                  } else {
-                    localPath = key;
-                  }
-                }
-                if (localPath != null) {
-                  return media_utils.mapUrl(localPath, apiBaseUrl);
-                }
-              }
-            }
-          }
-        }
-      }
-    } catch (_) {}
-
-    return media_utils.mapUrl(url, apiBaseUrl);
+    return url.isEmpty ? '' : media_utils.mapUrl(url, apiBaseUrl);
   }
 
-  /// URL 比较辅助函数
-  static bool _compareUrls(dynamic url1, String? url2) {
-    if (url1 == null || url2 == null) return false;
-    final s1 = url1.toString().split('?').first;
-    final s2 = url2.split('?').first;
-    return s1 == s2;
-  }
 
   /// 格式化数字显示
   /// 从 ContentMediaHelper 迁移，直接调用 media_utils

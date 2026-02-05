@@ -101,11 +101,8 @@ class ContentDetail(BaseModel):
     # B站特有
     bilibili_type: Optional[BilibiliContentType]
     bilibili_id: Optional[str]
-        
-    # 元数据
-    raw_metadata: Optional[Dict[str, Any]]
     
-    # Phase 7: 结构化字段 - 消除前端从 rawMetadata 挖掘
+    # Phase 7: 结构化字段（已完成raw_metadata迁移）
     associated_question: Optional[Dict[str, Any]] = None  # 知乎回答关联的问题
     top_answers: Optional[List[Dict[str, Any]]] = None  # 知乎问题的精选回答
     
@@ -232,9 +229,10 @@ class MarkPushedRequest(BaseModel):
 
 
 class ShareCard(BaseModel):
-    """合规分享卡片（对外输出用）。
+    """合规分享卡片（对外输出用）- 轻量级列表展示。
 
-    与“私有存档 raw_metadata”严格隔离：这里不允许出现 raw_metadata、client_context 等全量信息。
+    与"私有存档 raw_metadata"严格隔离：这里不允许出现 raw_metadata、client_context 等全量信息。
+    优化后仅包含列表展示必需字段，移除 description, summary, media_urls 等详情页字段。
     """
 
     id: int
@@ -242,35 +240,38 @@ class ShareCard(BaseModel):
     url: str
     clean_url: Optional[str] = None
     content_type: Optional[str] = None
-    layout_type: Optional[str] = None  # 布局类型
+    
+    # 布局类型 - 使用计算后的有效值
+    effective_layout_type: Optional[str] = None  # 已计算的有效布局类型
+    
+    # 基础展示字段
     title: Optional[str] = None
-    summary: Optional[str] = None
-    description: Optional[str] = None  # Added for text content display
-    author_name: Optional[str] = None  # 作者名称
-    author_id: Optional[str] = None     # 作者ID
-    author_avatar_url: Optional[str] = None # 作者头像URL
-    author_url: Optional[str] = None  # 作者主页链接
+    author_name: Optional[str] = None
+    author_id: Optional[str] = None
+    author_avatar_url: Optional[str] = None
+    
+    # 封面相关
     cover_url: Optional[str] = None
     thumbnail_url: Optional[str] = None  # 缩略图URL (优化加载)
     cover_color: Optional[str] = None  # M5: 封面主色调 (Hex)
-    media_urls: List[str] = Field(default_factory=list) # M6: 支持首图回退
+    
+    # 分类和标记
     tags: List[str] = Field(default_factory=list)
     is_nsfw: bool = False
-    published_at: Optional[datetime] = None
     
     # 审批状态
     review_status: Optional[ReviewStatus] = None
+    
+    # 时间戳
+    published_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
 
-    # 少量通用互动数据（可选）
+    # 基础统计（仅用于列表排序/筛选）
     view_count: int = 0
     like_count: int = 0
-    collect_count: int = 0
-    share_count: int = 0
-    comment_count: int = 0
 
     class Config:
         from_attributes = True
-
 
 class ShareCardListResponse(BaseModel):
     """分发合规内容列表响应"""

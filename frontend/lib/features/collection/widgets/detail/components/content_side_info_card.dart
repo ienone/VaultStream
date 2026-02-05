@@ -33,13 +33,7 @@ class ContentSideInfoCard extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     // 知乎回答时获取所属问题信息
-    Map<String, dynamic>? questionInfo;
-    if (detail.isZhihuAnswer) {
-      final q = detail.rawMetadata?['associated_question'];
-      if (q is Map<String, dynamic>) {
-        questionInfo = q;
-      }
-    }
+    final questionInfo = detail.isZhihuAnswer ? detail.associatedQuestion : null;
 
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -105,11 +99,11 @@ class ContentSideInfoCard extends StatelessWidget {
 
         // 6. 知乎精选回答（如有）
         if (detail.isZhihuQuestion &&
-            detail.rawMetadata != null &&
-            detail.rawMetadata!['top_answers'] != null) ...[
+            detail.topAnswers != null &&
+            detail.topAnswers!.isNotEmpty) ...[
           const SizedBox(height: 24),
           ZhihuTopAnswers(
-            topAnswers: detail.rawMetadata!['top_answers'] as List<dynamic>,
+            topAnswers: detail.topAnswers!,
           ),
         ],
       ],

@@ -39,7 +39,6 @@ class RichContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final storedMap = ContentParser.getStoredMap(detail);
     final mediaUrls = ContentParser.extractAllMedia(detail, apiBaseUrl);
     final rawMarkdown = _getMarkdownContent(detail);
     final markdown = _preprocessMarkdown(rawMarkdown);
@@ -51,8 +50,9 @@ class RichContent extends StatelessWidget {
       final style = _getMarkdownStyle(theme);
       // ... 其余逻辑保持一致
 
+      // Phase 7: 使用结构化字段 associatedQuestion 而非 rawMetadata
       final questionInfo = detail.isZhihuAnswer
-          ? (detail.rawMetadata?['associated_question'])
+          ? detail.associatedQuestion
           : null;
 
       if (!hideZhihuHeader && detail.isZhihuAnswer && questionInfo != null) {
@@ -113,7 +113,6 @@ class RichContent extends StatelessWidget {
               detail,
               uri,
               alt,
-              storedMap,
               apiBaseUrl,
               apiToken,
               useHero: useHero,
@@ -125,11 +124,11 @@ class RichContent extends StatelessWidget {
 
       if (!hideTopAnswers &&
           detail.isZhihuQuestion &&
-          detail.rawMetadata != null &&
-          detail.rawMetadata!['top_answers'] != null) {
+          detail.topAnswers != null &&
+          detail.topAnswers!.isNotEmpty) {
         children.add(
           ZhihuTopAnswers(
-            topAnswers: detail.rawMetadata!['top_answers'] as List<dynamic>,
+            topAnswers: detail.topAnswers!,
           ),
         );
       }
@@ -155,11 +154,11 @@ class RichContent extends StatelessWidget {
       // 知乎精选回答（移到图片之前显示）
       if (!hideTopAnswers &&
           detail.isZhihuQuestion &&
-          detail.rawMetadata != null &&
-          detail.rawMetadata!['top_answers'] != null) {
+          detail.topAnswers != null &&
+          detail.topAnswers!.isNotEmpty) {
         children.add(
           ZhihuTopAnswers(
-            topAnswers: detail.rawMetadata!['top_answers'] as List<dynamic>,
+            topAnswers: detail.topAnswers!,
           ),
         );
       }
@@ -289,11 +288,7 @@ class RichContent extends StatelessWidget {
   }
 
   String _getMarkdownContent(ContentDetail detail) {
-    // 允许后端通过 archive 节点或 description 提供 Markdown
-    if (detail.rawMetadata != null && detail.rawMetadata!['archive'] != null) {
-      final md = detail.rawMetadata!['archive']['markdown']?.toString();
-      if (md != null && md.isNotEmpty) return md;
-    }
+    // 直接使用 description 字段（后端已经在 archive.markdown 中填充）
     return detail.description ?? '';
   }
 
@@ -411,25 +406,12 @@ class RichContent extends StatelessWidget {
     ContentDetail detail,
     Uri uri,
     String? alt,
-    Map<String, String> storedMap,
     String apiBaseUrl,
     String? apiToken, {
     bool useHero = true,
     Set<String>? usedHeroTags,
   }) {
-    String url = uri.toString();
-    if (storedMap.containsKey(url)) {
-      url = mapUrl(storedMap[url]!, apiBaseUrl);
-    } else {
-      final cleanUrl = url.split('?').first;
-      final match = storedMap.entries.firstWhere(
-        (e) => e.key.split('?').first == cleanUrl,
-        orElse: () => const MapEntry('', ''),
-      );
-      url = match.key.isNotEmpty
-          ? mapUrl(match.value, apiBaseUrl)
-          : mapUrl(url, apiBaseUrl);
-    }
+    String url = mapUrl(uri.toString(), apiBaseUrl);
 
     // 在全局媒体列表中查找此图片的索引
     final mediaUrls = ContentParser.extractAllMedia(detail, apiBaseUrl);
