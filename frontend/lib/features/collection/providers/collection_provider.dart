@@ -1,15 +1,48 @@
+import 'dart:async';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/sse_service.dart';
 import '../models/content.dart';
 import 'collection_filter_provider.dart';
 
 part 'collection_provider.g.dart';
 
+/// 收藏库相关的 SSE 事件类型
+const _collectionEventTypes = {
+  'content_created',
+  'content_updated',
+  'content_deleted',
+};
+
 @riverpod
 class Collection extends _$Collection {
+  Timer? _debounceTimer;
+  StreamSubscription? _sseSub;
+  
   @override
   FutureOr<ShareCardListResponse> build() async {
     final filter = ref.watch(collectionFilterProvider);
+    
+    // 启动 SSE 服务（确保服务已初始化）
+    ref.watch(sseServiceProvider.notifier);
+    
+    // 监听 SSE 事件，自动刷新收藏库
+    _sseSub?.cancel();
+    _sseSub = SseEventBus().eventStream.listen((event) {
+      if (_collectionEventTypes.contains(event.type)) {
+        // 防抖：取消之前的定时器，避免频繁刷新
+        _debounceTimer?.cancel();
+        _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+          ref.invalidateSelf();
+        });
+      }
+    });
+    
+    ref.onDispose(() {
+      _sseSub?.cancel();
+      _debounceTimer?.cancel();
+    });
+    
     return _fetch(
       page: 1,
       query: filter.searchQuery.isEmpty ? null : filter.searchQuery,

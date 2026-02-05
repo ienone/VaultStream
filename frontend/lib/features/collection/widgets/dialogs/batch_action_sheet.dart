@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/batch_selection_provider.dart';
-import '../../providers/collection_provider.dart';
 
 class BatchActionSheet extends ConsumerWidget {
   const BatchActionSheet({super.key});
@@ -105,8 +104,6 @@ class BatchActionSheet extends ConsumerWidget {
                   .toList();
 
               await ref.read(batchSelectionProvider.notifier).batchUpdateTags(tags);
-              ref.invalidate(collectionProvider);
-              ref.read(batchSelectionProvider.notifier).clearSelection();
 
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -125,8 +122,6 @@ class BatchActionSheet extends ConsumerWidget {
     Navigator.pop(context);
 
     await ref.read(batchSelectionProvider.notifier).batchSetNsfw(isNsfw);
-    ref.invalidate(collectionProvider);
-    ref.read(batchSelectionProvider.notifier).clearSelection();
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -139,8 +134,6 @@ class BatchActionSheet extends ConsumerWidget {
     Navigator.pop(context);
 
     await ref.read(batchSelectionProvider.notifier).batchReParse();
-    ref.invalidate(collectionProvider);
-    ref.read(batchSelectionProvider.notifier).clearSelection();
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -168,7 +161,6 @@ class BatchActionSheet extends ConsumerWidget {
               Navigator.pop(context);
 
               await ref.read(batchSelectionProvider.notifier).batchDelete();
-              ref.invalidate(collectionProvider);
               ref.read(batchSelectionProvider.notifier).clearSelection();
 
               if (context.mounted) {
