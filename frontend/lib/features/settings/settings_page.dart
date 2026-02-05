@@ -191,7 +191,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         ]);
       },
       loading: () => const _LoadingGroup(),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (error, stackTrace) => const SizedBox.shrink(),
     );
   }
 
