@@ -179,16 +179,39 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
 
     final movedItem = _localItems[oldIndex];
 
+    // 1. 本地立即更新
     setState(() {
       final item = _localItems.removeAt(oldIndex);
       _localItems.insert(newIndex, item);
     });
 
     try {
-      await ref.read(contentQueueProvider.notifier).reorderToIndex(movedItem.contentId, newIndex);
-      ref.invalidate(contentQueueProvider);
+      // 2. 后端请求
+      await ref.read(contentQueueProvider.notifier)
+          .reorderToIndex(movedItem.contentId, newIndex);
+      
+      // ❌ 移除立即刷新
+      // ref.invalidate(contentQueueProvider);
+      
+      // ✅ 延迟软刷新（仅更新数据，不重置UI）
+      Future.delayed(Duration(seconds: 2), () {
+        if (mounted) {
+          ref.read(contentQueueProvider.notifier).softRefresh();
+        }
+      });
+      
     } catch (e) {
-      widget.onRefresh();
+      // 失败时回滚本地状态
+      setState(() {
+        final item = _localItems.removeAt(newIndex);
+        _localItems.insert(oldIndex, item);
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('排序失败: $e')),
+        );
+      }
     }
   }
 

@@ -25,7 +25,7 @@ from app.worker import worker
 from app.distribution import get_distribution_scheduler
 
 # Import new routers
-from app.routers import contents, distribution, system, media, bot_management, queue, crawler
+from app.routers import contents, distribution, system, media, bot_management, queue, crawler, events
 
 setup_logging(level=settings.log_level, fmt=settings.log_format, debug=settings.debug)
 
@@ -133,6 +133,7 @@ app.include_router(system.router, prefix="/api/v1", tags=["system"])
 app.include_router(media.router, prefix="/api/v1", tags=["media"])
 app.include_router(bot_management.router, prefix="/api/v1", tags=["bot"])
 app.include_router(crawler.router, prefix="/api/v1/crawler", tags=["crawler"])
+app.include_router(events.router, prefix="/api/v1", tags=["events"])
 
 
 @app.get("/api")

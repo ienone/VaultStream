@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/network/api_client.dart';
 import '../models/queue_item.dart';
@@ -83,7 +84,48 @@ class ContentQueue extends _$ContentQueue {
       '/queue/items/$contentId/reorder',
       data: {'index': index},
     );
-    _safeInvalidate();
+    // 不立即刷新，等待SSE事件或延迟软刷新
+  }
+
+  Future<void> softRefresh() async {
+    // 后台更新数据，但不触发 UI 重建（仅当数据实际变化时才更新）
+    final filter = ref.read(queueFilterProvider);
+    try {
+      final newData = await _fetchQueue(
+        ruleId: filter.ruleId,
+        status: filter.status,
+      );
+      
+      // 仅当数据实际变化时才更新
+      final currentState = state;
+      if (currentState is AsyncData) {
+        final oldItems = currentState.value?.items;
+        if (oldItems != null) {
+          final oldIds = oldItems.map((e) => e.contentId).toList();
+          final newIds = newData.items.map((e) => e.contentId).toList();
+          
+          // 比较ID列表和顺序
+          if (!_listsEqual(oldIds, newIds)) {
+            state = AsyncValue.data(newData);
+          }
+        } else {
+          state = AsyncValue.data(newData);
+        }
+      } else {
+        state = AsyncValue.data(newData);
+      }
+    } catch (e) {
+      // 软刷新失败不影响现有数据
+      debugPrint('Soft refresh failed: $e');
+    }
+  }
+
+  bool _listsEqual(List a, List b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   Future<void> batchPushNow(List<int> contentIds) async {

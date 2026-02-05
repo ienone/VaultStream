@@ -17,14 +17,14 @@ void main() async {
   // 在应用启动前先获取初始分享内容
   try {
     _initialSharedMedia = await ReceiveSharingIntent.instance.getInitialMedia();
-    print('📥 main: 初始分享内容 ${_initialSharedMedia?.length ?? 0} 个');
+    debugPrint('📥 main: 初始分享内容 ${_initialSharedMedia?.length ?? 0} 个');
     if (_initialSharedMedia != null && _initialSharedMedia!.isNotEmpty) {
       for (final file in _initialSharedMedia!) {
-        print('📥 main: type=${file.type}, path=${file.path}');
+        debugPrint('📥 main: type=${file.type}, path=${file.path}');
       }
     }
   } catch (e) {
-    print('📥 main: 获取初始分享失败: $e');
+    debugPrint('📥 main: 获取初始分享失败: $e');
   }
 
   runApp(
@@ -61,7 +61,7 @@ class _VaultStreamAppState extends ConsumerState<VaultStreamApp> {
   void _handleInitialShare() {
     final files = widget.initialSharedMedia;
     if (files != null && files.isNotEmpty) {
-      print('📥 VaultStreamApp: 处理初始分享 ${files.length} 个文件');
+      debugPrint('📥 VaultStreamApp: 处理初始分享 ${files.length} 个文件');
       
       String? sharedText;
       final mediaFiles = <SharedMediaFile>[];
@@ -80,7 +80,7 @@ class _VaultStreamAppState extends ConsumerState<VaultStreamApp> {
       );
 
       if (!content.isEmpty) {
-        print('📥 VaultStreamApp: 设置分享内容到状态');
+        debugPrint('📥 VaultStreamApp: 设置分享内容到状态');
         ref.read(shareReceiverStateProvider.notifier).setSharedContent(content);
       }
       

@@ -52,6 +52,10 @@ class ApiService {
     return ShareCardListResponse.fromJson(response.data);
   }
 
+  /// 已废弃：使用 getCards() 替代
+  /// 
+  /// getCards() 返回精简的ShareCard数据，响应体积减少60-80%
+  @Deprecated('Use getCards() instead - returns lightweight ShareCard data')
   Future<ContentListResponse> getContents({
     int page = 1,
     int size = 20,
@@ -64,6 +68,7 @@ class ApiService {
     DateTime? endDate,
     String? query,
     bool? isNsfw,
+    String? excludeFields = 'raw_metadata,extra_stats',
   }) async {
     final response = await _dio.get(
       '/contents',
@@ -79,6 +84,7 @@ class ApiService {
         if (endDate != null) 'end_date': endDate.toIso8601String(),
         if (query != null) 'q': query,
         if (isNsfw != null) 'is_nsfw': isNsfw,
+        if (excludeFields != null) 'exclude_fields': excludeFields,
       },
     );
     return ContentListResponse.fromJson(response.data);
@@ -154,28 +160,42 @@ class ApiService {
 
   // ============ Batch Operations ============
 
-  Future<void> batchUpdateTags(List<int> ids, List<String> tags) async {
-    for (final id in ids) {
-      await updateContent(id, tags: tags);
-    }
+  Future<Map<String, dynamic>> batchUpdateTags(List<int> ids, List<String> tags) async {
+    final response = await _dio.post(
+      '/contents/batch-update',
+      data: {
+        'content_ids': ids,
+        'updates': {'tags': tags},
+      },
+    );
+    return response.data;
   }
 
-  Future<void> batchSetNsfw(List<int> ids, bool isNsfw) async {
-    for (final id in ids) {
-      await updateContent(id, isNsfw: isNsfw);
-    }
+  Future<Map<String, dynamic>> batchSetNsfw(List<int> ids, bool isNsfw) async {
+    final response = await _dio.post(
+      '/contents/batch-update',
+      data: {
+        'content_ids': ids,
+        'updates': {'is_nsfw': isNsfw},
+      },
+    );
+    return response.data;
   }
 
-  Future<void> batchDelete(List<int> ids) async {
-    for (final id in ids) {
-      await deleteContent(id);
-    }
+  Future<Map<String, dynamic>> batchDelete(List<int> ids) async {
+    final response = await _dio.post(
+      '/contents/batch-delete',
+      data: ids,
+    );
+    return response.data;
   }
 
-  Future<void> batchReParse(List<int> ids) async {
-    for (final id in ids) {
-      await reParseContent(id);
-    }
+  Future<Map<String, dynamic>> batchReParse(List<int> ids) async {
+    final response = await _dio.post(
+      '/contents/batch-re-parse',
+      data: ids,
+    );
+    return response.data;
   }
 
   // ============ Distribution Rules ============

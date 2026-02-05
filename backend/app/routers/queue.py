@@ -300,6 +300,68 @@ async def move_queue_item(
     }
 
 
+@router.post("/queue/items/{content_id}/reorder")
+async def reorder_queue_item(
+    content_id: int,
+    request: ReorderRequest,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """重新排序队列项
+    
+    通过调整 queue_priority 来控制相同 scheduled_at 下的顺序
+    """
+    result = await db.execute(select(Content).where(Content.id == content_id))
+    content = result.scalar_one_or_none()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+    
+    # 获取当前队列所有项
+    all_items_result = await db.execute(
+        select(Content)
+        .where(Content.status == ContentStatus.PULLED)
+        .order_by(
+            Content.scheduled_at.asc().nulls_last(),
+            desc(Content.queue_priority),
+            desc(Content.created_at),
+        )
+        .limit(200)
+    )
+    all_items = all_items_result.scalars().all()
+    
+    # 计算目标优先级
+    target_index = min(request.index, len(all_items) - 1)
+    if target_index >= 0 and target_index < len(all_items):
+        target_item = all_items[target_index]
+        # 设置比目标项更高的优先级
+        content.queue_priority = (target_item.queue_priority or 0) + 1
+    else:
+        content.queue_priority = 0
+    
+    # 如果要移到最前面，同时更新 scheduled_at
+    if request.index == 0:
+        content.scheduled_at = datetime.now(timezone.utc)
+        content.is_manual_schedule = True
+    
+    await db.commit()
+    
+    # 发布队列重排事件
+    from app.core.events import event_bus
+    await event_bus.publish("queue_item_reordered", {
+        "content_id": content_id,
+        "new_index": request.index,
+        "new_priority": content.queue_priority,
+    })
+    
+    logger.info(f"队列项已重排: content_id={content_id}, index={request.index}, priority={content.queue_priority}")
+    
+    return {
+        "success": True,
+        "new_priority": content.queue_priority,
+        "new_index": request.index,
+    }
+
+
 @router.post("/queue/items/{content_id}/schedule")
 async def update_item_schedule(
     content_id: int,
