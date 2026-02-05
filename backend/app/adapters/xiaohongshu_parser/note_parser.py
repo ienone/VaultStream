@@ -442,6 +442,12 @@ def build_note_archive(note: Dict[str, Any]) -> Dict[str, Any]:
     archive["videos"] = videos
     archive["plain_text"] = "\n\n".join([t for t in text_chunks if t])
     
+    # 添加头像（标记为type:avatar，用于媒体转码但不加入media_urls）
+    user = note.get("user") or {}
+    author_avatar = safe_url(user.get("avatar") or user.get("images"))
+    if author_avatar:
+        archive["images"].append({"url": author_avatar, "type": "avatar"})
+    
     return archive
 
 

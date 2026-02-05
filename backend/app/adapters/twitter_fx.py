@@ -268,6 +268,11 @@ class TwitterFxAdapter(PlatformAdapter):
                     "thumbnail_url": media.get("thumbnail_url"),
                 })
         
+        # 添加头像（标记为type:avatar，用于媒体转码但不加入media_urls）
+        author_avatar_url = author.get("avatar_url")
+        if author_avatar_url:
+            archive_images.append({"url": author_avatar_url, "type": "avatar"})
+        
         # 构建元数据
         raw_metadata = {
             "source": "fxtwitter_api",

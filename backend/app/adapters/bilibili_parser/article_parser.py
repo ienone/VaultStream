@@ -111,6 +111,10 @@ async def parse_article(
         # 合并 API image_urls 和 HTML 提取的图片（去重保序）
         api_image_urls = item.get('image_urls', [])
         image_urls = list(dict.fromkeys(api_image_urls + html_images))
+        
+        # 提取作者头像
+        author_avatar_url = item.get('author_face')
+        
         archive = {
             "version": 2,
             "type": "bilibili_article",
@@ -121,6 +125,10 @@ async def parse_article(
             "links": [],
             "stored_images": []
         }
+        
+        # 添加头像（标记为type:avatar，避免被添加到media_urls）
+        if author_avatar_url:
+            archive["images"].append({"url": author_avatar_url, "type": "avatar"})
         
         # 保留原始元数据并附加archive
         raw_metadata = dict(item)
@@ -140,7 +148,7 @@ async def parse_article(
             description=markdown_content,
             author_name=item.get('author_name'),
             author_id=str(author_mid) if author_mid else None,
-            author_avatar_url=item.get('author_face'),
+            author_avatar_url=author_avatar_url,
             author_url=f"https://space.bilibili.com/{author_mid}" if author_mid else None,
             cover_url=item.get('banner_url') or (image_urls[0] if image_urls else None),
             media_urls=image_urls,

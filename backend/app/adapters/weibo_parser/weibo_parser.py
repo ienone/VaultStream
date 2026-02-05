@@ -212,4 +212,10 @@ def build_weibo_archive(data: Dict[str, Any]) -> Dict[str, Any]:
     if video:
         archive["videos"].append(video)
     
+    # 添加头像（标记为type:avatar，用于媒体转码但不加入media_urls）
+    user = data.get("user", {})
+    author_avatar_url = user.get("avatar_hd") or user.get("profile_image_url")
+    if author_avatar_url:
+        archive["images"].append({"url": author_avatar_url, "type": "avatar"})
+    
     return archive

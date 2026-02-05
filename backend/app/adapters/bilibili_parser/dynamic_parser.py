@@ -6,7 +6,7 @@ B站动态解析器
 """
 import httpx
 from datetime import datetime
-from typing import Dict, Any, List, Set
+from typing import Dict, Any, List, Set, Optional
 from app.core.logging import logger
 from app.adapters.base import ParsedContent, LAYOUT_GALLERY, LAYOUT_ARTICLE
 from app.adapters.errors import (
@@ -25,7 +25,7 @@ API_DYNAMIC_INFO = "https://api.bilibili.com/x/polymer/web-dynamic/v1/opus/detai
 API_DYNAMIC_DETAIL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/detail"
 
 
-def build_opus_archive(item: Dict[str, Any]) -> Dict[str, Any]:
+def build_opus_archive(item: Dict[str, Any], author_avatar_url: Optional[str] = None) -> Dict[str, Any]:
     """
     从Polymer动态详情中提取可存档的完整图文内容
     
@@ -33,6 +33,7 @@ def build_opus_archive(item: Dict[str, Any]) -> Dict[str, Any]:
     
     Args:
         item: 动态详情数据
+        author_avatar_url: 作者头像URL（可选，如果提供则添加到archive.images）
         
     Returns:
         Dict[str, Any]: 可JSON序列化的存档结构
@@ -250,6 +251,10 @@ def build_opus_archive(item: Dict[str, Any]) -> Dict[str, Any]:
     archive["links"] = uniq_links
     archive["plain_text"] = clean_text("\n\n".join([t for t in text_chunks if t]))
     archive["markdown"] = render_markdown(blocks)
+    
+    # 添加头像（标记为type:avatar，避免被添加到media_urls）
+    if author_avatar_url:
+        archive["images"].append({"url": author_avatar_url, "type": "avatar"})
 
     # 日志：用于确认存档内容是否构建成功（避免打印全文）
     logger.debug(
@@ -353,9 +358,25 @@ async def parse_dynamic(
         
         item = data['data']['item']
 
-        # 构建存档数据（完整图文），放进raw_metadata里
+        # 提取基础信息（用于archive构建）
+        modules = item.get('modules', [])
+        
+        # 兼容列表结构的modules（Polymer API特点）
+        modules_map = {}
+        if isinstance(modules, list):
+            for m in modules:
+                m_type = m.get('module_type', '').lower().replace('_type_', '_')
+                if m_type:
+                    modules_map[m_type] = m.get(m_type, {})
+        else:
+            modules_map = modules
+        
+        module_author = modules_map.get('module_author', {})
+        author_face = module_author.get('face')
+
+        # 构建存档数据（完整图文），放进raw_metadata里，传入头像URL
         try:
-            archive = build_opus_archive(item)
+            archive = build_opus_archive(item, author_avatar_url=author_face)
             logger.info(
                 "Opus archive ready: dynamic_id={}, text_len={}, images={}",
                 dynamic_id,
@@ -365,21 +386,6 @@ async def parse_dynamic(
         except Exception as e:
             logger.warning(f"构建Opus存档失败: {e}")
             archive = {"version": 2, "type": "bilibili_opus", "error": str(e)}
-
-        modules = item.get('modules', [])
-
-        # 兼容列表结构的modules（Polymer API特点）
-        modules_map = {}
-        if isinstance(modules, list):
-            for m in modules:
-                # 修正映射逻辑：MODULE_TYPE_AUTHOR -> module_author
-                m_type = m.get('module_type', '').lower().replace('_type_', '_')
-                if m_type:
-                    modules_map[m_type] = m.get(m_type, {})
-        else:
-            modules_map = modules
-
-        module_author = modules_map.get('module_author', {})
         module_dynamic = modules_map.get('module_dynamic', {})
         module_stat = modules_map.get('module_stat', {})
         module_title = modules_map.get('module_title', {})
@@ -423,7 +429,6 @@ async def parse_dynamic(
         # 作者信息
         author_mid = module_author.get('mid') or item.get('basic', {}).get('uid')
         author_id = str(author_mid) if author_mid else None
-        author_face = module_author.get('face')
         author_url = f"https://space.bilibili.com/{author_mid}" if author_mid else None
 
         # raw_metadata：保留原始item，并附加archive（便于后续浏览功能开发）
