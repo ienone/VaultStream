@@ -19,9 +19,10 @@ async def subscribe_events(
     """SSE事件订阅端点
     
     客户端通过此端点订阅实时事件：
-    - content_pushed: 内容已推送
-    - content_updated: 内容更新
+    - content_created: 内容新增（收藏库）
+    - content_updated: 内容更新（解析完成/编辑）
     - content_deleted: 内容删除
+    - content_pushed: 内容已推送（分发）
     - queue_item_reordered: 队列重新排序
     - queue_updated: 队列更新
     - ping: 心跳保活
@@ -77,9 +78,6 @@ async def subscribe_events(
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # 禁用 Nginx 缓冲
         },
-    )
-            "X-Accel-Buffering": "no",  # 禁用Nginx缓冲
-        }
     )
 
 

@@ -29,6 +29,7 @@ from app.adapters import AdapterFactory
 from app.core.dependencies import require_api_token, get_content_service, get_content_repo
 from app.services.content_service import ContentService
 from app.repositories.content_repository import ContentRepository
+from app.core.events import event_bus
 
 router = APIRouter()
 
@@ -242,6 +243,14 @@ async def update_content(
     await db.commit()
     await db.refresh(content)
     
+    # 广播更新事件
+    await event_bus.publish("content_updated", {
+        "id": content.id,
+        "title": content.title,
+        "status": content.status.value if content.status else None,
+        "platform": content.platform.value if content.platform else None,
+    })
+    
     base_url = settings.base_url or "http://localhost:8000"
     return _transform_content_detail(ContentDetail.model_validate(content), base_url)
 
@@ -266,6 +275,10 @@ async def delete_content(
     await db.commit()
     
     logger.info(f"内容已删除: content_id={content_id}")
+    
+    # 广播删除事件
+    await event_bus.publish("content_deleted", {"id": content_id})
+    
     return {"status": "deleted", "content_id": content_id}
 
 @router.post("/contents/{content_id}/retry")

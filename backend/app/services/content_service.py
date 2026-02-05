@@ -6,6 +6,7 @@ from app.adapters import AdapterFactory
 from app.utils.url_utils import normalize_bilibili_url, canonicalize_url
 from app.core.queue import task_queue
 from app.core.logging import logger
+from app.core.events import event_bus
 
 class ContentService:
     def __init__(self, db: AsyncSession):
@@ -86,5 +87,13 @@ class ContentService:
         if is_new:
             await task_queue.enqueue({'content_id': content.id, 'action': 'parse'})
             logger.info(f"New content enqueued: {content.id}")
+            
+            # 广播新增事件
+            await event_bus.publish("content_created", {
+                "id": content.id,
+                "url": content.url,
+                "platform": content.platform.value if content.platform else None,
+                "status": content.status.value if content.status else None,
+            })
 
         return content
