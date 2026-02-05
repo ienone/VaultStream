@@ -18,11 +18,12 @@ VaultStream 是一个私有化内容归档与分发系统，旨在帮助用户�
 
 | 平台 | 解析能力 | 文档链接 | 备注 |
 | :--- | :--- | :--- | :--- |
-| Bilibili | 视频、专栏、动态 (Opus) | [BILIBILI_ADAPTER.md](BILIBILI_ADAPTER.md) | 支持完整图文动态归档 |
-| Twitter/X | 推文 (FxTwitter) | [TWITTER_ADAPTER.md](TWITTER_ADAPTER.md) | 免登录获取多图/视频 |
-| 微博 | 博文 (Status/User) | [WEIBO_ADAPTER.md](WEIBO_ADAPTER.md) | 支持长文及移动端链接还原 |
-| 知乎 | 回答/文章 (Article/Answer) | [ZHIHU_ADAPTER.md](ZHIHU_ADAPTER.md) | 优化 API/HTML 差异化解析 |
-| 小红书 | 笔记、视频、用户 | [XIAOHONGSHU_ADAPTER.md](XIAOHONGSHU_ADAPTER.md) | 支持笔记图文和视频 |
+| Bilibili | 视频、专栏、动态 (Opus) | [BILIBILI_ADAPTER.md](adapters/BILIBILI_ADAPTER.md) | 支持完整图文动态归档 |
+| Twitter/X | 推文 (FxTwitter) | [TWITTER_ADAPTER.md](adapters/TWITTER_ADAPTER.md) | 免登录获取多图/视频 |
+| 微博 | 博文 (Status/User) | [WEIBO_ADAPTER.md](adapters/WEIBO_ADAPTER.md) | 支持长文及移动端链接还原 |
+| 知乎 | 回答/文章 (Article/Answer) | [ZHIHU_ADAPTER.md](adapters/ZHIHU_ADAPTER.md) | 优化 API/HTML 差异化解析 |
+| 小红书 | 笔记、视频、用户 | [XIAOHONGSHU_ADAPTER.md](adapters/XIAOHONGSHU_ADAPTER.md) | 支持笔记图文和视频 |
+| 通用 | 任意网页 | [UNIVERSAL_ADAPTER.md](adapters/UNIVERSAL_ADAPTER.md) | AI 驱动的智能解析 |
 
 ### 2.2 前端功能 (Collection)
 - 瀑布流/网格视图: 自适应布局，支持卡片悬浮效果。
