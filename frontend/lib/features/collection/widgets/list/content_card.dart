@@ -365,10 +365,12 @@ class _CardCover extends StatelessWidget {
           Hero(
             tag: 'content-image-${content.id}',
             child: CachedNetworkImage(
-              imageUrl: imageUrl,
+              imageUrl: content.thumbnailUrl ?? imageUrl,  // 优先使用缩略图
               httpHeaders: imageHeaders,
               fit: BoxFit.cover,
               maxHeightDiskCache: 800,
+              memCacheWidth: 400,  // 限制内存缓存大小
+              memCacheHeight: 300,
               placeholder: (context, url) => Container(
                 color: colorScheme.surfaceContainerHighest,
                 child: const Center(
