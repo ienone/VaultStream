@@ -29,6 +29,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
   final Set<int> _selectedIds = {};
   bool _isSelectionMode = false;
   bool _isReordering = false; // 拖动中标记，防止外部数据覆盖
+  bool _hasAnimatedOnce = false; // 入场动画只播放一次
 
   @override
   void initState() {
@@ -152,6 +153,12 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
               },
               itemBuilder: (context, index) {
                 final item = _localItems[index];
+                final shouldAnimate = !_hasAnimatedOnce;
+                if (index == _localItems.length - 1 && !_hasAnimatedOnce) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) _hasAnimatedOnce = true;
+                  });
+                }
                 return _QueueItemCard(
                   key: ValueKey(item.contentId),
                   item: item,
@@ -159,6 +166,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                   currentStatus: widget.currentStatus,
                   isSelected: _selectedIds.contains(item.contentId),
                   isSelectionMode: _isSelectionMode,
+                  animateEntry: shouldAnimate,
                   onToggleSelect: () => _toggleSelect(item.contentId),
                   onLongPress: () => _startSelection(item.contentId),
                   onMoveToFiltered: () => _moveItem(item, QueueStatus.filtered),
@@ -339,9 +347,30 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
 
   Future<void> _batchPushNow() async {
     final ids = _selectedIds.toList();
+    final idsSet = ids.toSet();
+    
+    // 乐观更新：将选中项移到列表最前面并更新时间
+    final selectedItems = _localItems.where((i) => idsSet.contains(i.contentId)).toList();
+    final otherItems = _localItems.where((i) => !idsSet.contains(i.contentId)).toList();
+    
     setState(() {
       _isSelectionMode = false;
       _selectedIds.clear();
+      
+      // 重新排列：选中项放在最前，时间从现在开始递增
+      final now = DateTime.now();
+      const interval = Duration(seconds: 10);
+      for (int i = 0; i < selectedItems.length; i++) {
+        selectedItems[i] = selectedItems[i].copyWith(scheduledTime: now.add(interval * i));
+      }
+      // 其他项时间顺延
+      final baseTime = now.add(interval * selectedItems.length);
+      const normalInterval = Duration(minutes: 10);
+      for (int i = 0; i < otherItems.length; i++) {
+        otherItems[i] = otherItems[i].copyWith(scheduledTime: baseTime.add(normalInterval * i));
+      }
+      
+      _localItems = [...selectedItems, ...otherItems];
     });
 
     try {
@@ -437,6 +466,7 @@ class _QueueItemCard extends StatelessWidget {
     required this.currentStatus,
     this.isSelected = false,
     this.isSelectionMode = false,
+    this.animateEntry = true,
     this.onToggleSelect,
     this.onLongPress,
     this.onMoveToFiltered,
@@ -451,6 +481,7 @@ class _QueueItemCard extends StatelessWidget {
   final QueueStatus currentStatus;
   final bool isSelected;
   final bool isSelectionMode;
+  final bool animateEntry;
   final VoidCallback? onToggleSelect;
   final VoidCallback? onLongPress;
   final VoidCallback? onMoveToFiltered;
@@ -465,7 +496,7 @@ class _QueueItemCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final isWillPush = currentStatus == QueueStatus.willPush;
 
-    return Padding(
+    final card = Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: AnimatedContainer(
         duration: 300.ms,
@@ -565,7 +596,12 @@ class _QueueItemCard extends StatelessWidget {
           ),
         ),
       ),
-    ).animate().fadeIn(delay: (index % 15 * 50).ms).slideX(begin: 0.1, end: 0, curve: Curves.easeOutCubic);
+    );
+    
+    if (animateEntry) {
+      return card.animate().fadeIn(delay: (index % 15 * 50).ms).slideX(begin: 0.1, end: 0, curve: Curves.easeOutCubic);
+    }
+    return card;
   }
 
   Widget _buildTimeSection(BuildContext context) {

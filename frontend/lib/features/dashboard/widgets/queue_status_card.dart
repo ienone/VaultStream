@@ -26,7 +26,7 @@ class QueueStatusCard extends StatelessWidget {
           children: [
             _buildQueueRow(
               context,
-              '待处理',
+              '未处理',
               queue.pending,
               total,
               colorScheme.tertiary,
@@ -35,7 +35,7 @@ class QueueStatusCard extends StatelessWidget {
             const SizedBox(height: 16),
             _buildQueueRow(
               context,
-              '处理中',
+              '待推送',
               queue.processing,
               total,
               colorScheme.primary,
@@ -44,7 +44,7 @@ class QueueStatusCard extends StatelessWidget {
             const SizedBox(height: 16),
             _buildQueueRow(
               context,
-              '失败',
+              '解析失败',
               queue.failed,
               total,
               colorScheme.error,
@@ -53,7 +53,7 @@ class QueueStatusCard extends StatelessWidget {
             const SizedBox(height: 16),
             _buildQueueRow(
               context,
-              '已归档',
+              '已推送',
               queue.archived,
               total,
               Colors.green,

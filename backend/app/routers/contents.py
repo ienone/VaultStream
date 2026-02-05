@@ -394,6 +394,16 @@ async def mark_content_pushed(
         )
         db.add(pushed_record)
         await db.commit()
+        
+        # 发送 SSE 事件通知前端
+        from app.core.events import event_bus
+        await event_bus.publish("content_pushed", {
+            "content_id": request.content_id,
+            "target_id": request.target_id,
+            "target_platform": request.target_platform,
+            "message_id": request.message_id,
+        })
+        
         return {"success": True, "message": "标记成功", "record_id": pushed_record.id}
         
     except Exception as e:

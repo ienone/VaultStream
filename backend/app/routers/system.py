@@ -83,22 +83,21 @@ async def get_dashboard_queue(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
-    """任务队列状态统计"""
-    task_query = select(Task.status, func.count()).group_by(Task.status)
-    task_results = (await db.execute(task_query)).all()
-    task_stats = {str(r[0].value): r[1] for r in task_results}
+    """内容状态统计（基于 Content 表，非 Task 表）"""
+    # 按 Content.status 分组统计
+    status_query = select(Content.status, func.count()).group_by(Content.status)
+    status_results = (await db.execute(status_query)).all()
+    status_stats = {str(r[0].value): r[1] for r in status_results}
     
-    archived_query = select(func.count()).select_from(Content).where(Content.status == ContentStatus.ARCHIVED)
-    archived_count = (await db.execute(archived_query)).scalar() or 0
-    
-    total_tasks = sum(task_stats.values())
+    # 计算总数
+    total_content = sum(status_stats.values())
     
     return {
-        "pending": task_stats.get("pending", 0),
-        "processing": task_stats.get("running", 0),
-        "failed": task_stats.get("failed", 0),
-        "archived": archived_count,
-        "total": total_tasks
+        "pending": status_stats.get("unprocessed", 0),
+        "processing": status_stats.get("processing", 0) + status_stats.get("pulled", 0),
+        "failed": status_stats.get("failed", 0),
+        "archived": status_stats.get("archived", 0),
+        "total": total_content
     }
 
 @router.get("/tags", response_model=List[TagStats])

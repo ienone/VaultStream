@@ -138,66 +138,104 @@ async def get_queue_items(
         if not rule:
             raise HTTPException(status_code=404, detail="Rule not found")
     
-    # 核心：严格按 scheduled_at 升序排列待推送条目
-    content_query = select(Content).where(
-        Content.status == ContentStatus.PULLED
-    ).order_by(
-        Content.scheduled_at.asc().nulls_last(),
-        desc(Content.queue_priority), 
-        desc(Content.created_at)
-    ).limit(limit * 2)
-    
-    content_result = await db.execute(content_query)
-    all_contents = content_result.scalars().all()
-    
     items: List[QueueItem] = []
     counts = {"will_push": 0, "filtered": 0, "pending_review": 0, "pushed": 0}
     
-    for content in all_contents:
-        pushed_result = await db.execute(
-            select(PushedRecord).where(PushedRecord.content_id == content.id).order_by(desc(PushedRecord.pushed_at)).limit(1)
+    # 如果请求"已推送"状态，从 PushedRecord 查询
+    if status == "pushed":
+        pushed_query = (
+            select(Content, PushedRecord)
+            .join(PushedRecord, Content.id == PushedRecord.content_id)
+            .order_by(desc(PushedRecord.pushed_at))
+            .limit(limit)
         )
-        last_pushed_record = pushed_result.scalar_one_or_none()
+        pushed_result = await db.execute(pushed_query)
         
-        item_status, reason = _determine_content_status(content, rule, last_pushed_record)
-        counts[item_status] = counts.get(item_status, 0) + 1
+        for content, pushed_record in pushed_result.all():
+            pushed_at = pushed_record.pushed_at
+            if pushed_at and pushed_at.tzinfo is None:
+                pushed_at = pushed_at.replace(tzinfo=timezone.utc)
+            
+            items.append(QueueItem(
+                id=content.id,
+                content_id=content.id,
+                title=content.title or (content.description[:50] if content.description else None),
+                platform=content.platform.value,
+                tags=content.tags or [],
+                is_nsfw=content.is_nsfw or False,
+                cover_url=content.cover_url,
+                author_name=content.author_name,
+                status="pushed",
+                reason=None,
+                scheduled_time=pushed_at,
+                pushed_at=pushed_at,
+                priority=0,
+            ))
         
-        if status and item_status != status:
-            continue
+        # 统计已推送总数
+        pushed_count_query = select(func.count(func.distinct(PushedRecord.content_id)))
+        counts["pushed"] = (await db.execute(pushed_count_query)).scalar() or 0
+    else:
+        # 查询 PULLED 状态的内容
+        content_query = select(Content).where(
+            Content.status == ContentStatus.PULLED
+        ).order_by(
+            Content.scheduled_at.asc().nulls_last(),
+            desc(Content.queue_priority), 
+            desc(Content.created_at)
+        ).limit(limit * 2)
         
-        pushed_at = last_pushed_record.pushed_at if last_pushed_record else None
+        content_result = await db.execute(content_query)
+        all_contents = content_result.scalars().all()
         
-        # 直接使用数据库中的值
-        item_scheduled_time = content.scheduled_at
-        if not item_scheduled_time and item_status == "pushed":
-            item_scheduled_time = pushed_at
-        elif not item_scheduled_time:
-            item_scheduled_time = content.created_at
-        
-        # 确保带有时区信息，避免前端解析为本地时间
-        if item_scheduled_time and item_scheduled_time.tzinfo is None:
-            item_scheduled_time = item_scheduled_time.replace(tzinfo=timezone.utc)
-        if pushed_at and pushed_at.tzinfo is None:
-            pushed_at = pushed_at.replace(tzinfo=timezone.utc)
+        for content in all_contents:
+            pushed_result = await db.execute(
+                select(PushedRecord).where(PushedRecord.content_id == content.id).order_by(desc(PushedRecord.pushed_at)).limit(1)
+            )
+            last_pushed_record = pushed_result.scalar_one_or_none()
+            
+            item_status, reason = _determine_content_status(content, rule, last_pushed_record)
+            counts[item_status] = counts.get(item_status, 0) + 1
+            
+            if status and item_status != status:
+                continue
+            
+            pushed_at = last_pushed_record.pushed_at if last_pushed_record else None
+            
+            item_scheduled_time = content.scheduled_at
+            if not item_scheduled_time and item_status == "pushed":
+                item_scheduled_time = pushed_at
+            elif not item_scheduled_time:
+                item_scheduled_time = content.created_at
+            
+            if item_scheduled_time and item_scheduled_time.tzinfo is None:
+                item_scheduled_time = item_scheduled_time.replace(tzinfo=timezone.utc)
+            if pushed_at and pushed_at.tzinfo is None:
+                pushed_at = pushed_at.replace(tzinfo=timezone.utc)
 
-        items.append(QueueItem(
-            id=content.id,
-            content_id=content.id,
-            title=content.title or (content.description[:50] if content.description else None),
-            platform=content.platform.value,
-            tags=content.tags or [],
-            is_nsfw=content.is_nsfw or False,
-            cover_url=content.cover_url,
-            author_name=content.author_name,
-            status=item_status,
-            reason=reason,
-            scheduled_time=item_scheduled_time,
-            pushed_at=pushed_at,
-            priority=content.queue_priority or 0,
-        ))
-        
-        if len(items) >= limit:
-            break
+            items.append(QueueItem(
+                id=content.id,
+                content_id=content.id,
+                title=content.title or (content.description[:50] if content.description else None),
+                platform=content.platform.value,
+                tags=content.tags or [],
+                is_nsfw=content.is_nsfw or False,
+                cover_url=content.cover_url,
+                author_name=content.author_name,
+                status=item_status,
+                reason=reason,
+                scheduled_time=item_scheduled_time,
+                pushed_at=pushed_at,
+                priority=content.queue_priority or 0,
+            ))
+            
+            if len(items) >= limit:
+                break
+    
+    # 获取已推送总数用于统计
+    if status != "pushed":
+        pushed_count_query = select(func.count(func.distinct(PushedRecord.content_id)))
+        counts["pushed"] = (await db.execute(pushed_count_query)).scalar() or 0
     
     return QueueListResponse(
         items=items,
@@ -215,12 +253,18 @@ async def get_queue_stats(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
-    """获取队列统计"""
+    """获取队列统计
+    
+    统计范围：
+    - will_push/filtered/pending_review: 基于 PULLED 状态的内容
+    - pushed: 基于有 PushedRecord 的已归档内容
+    """
     rule = None
     if rule_id:
         result = await db.execute(select(DistributionRule).where(DistributionRule.id == rule_id))
         rule = result.scalar_one_or_none()
     
+    # 统计 PULLED 状态的内容
     content_query = select(Content).where(
         Content.status == ContentStatus.PULLED
     ).limit(500)
@@ -238,6 +282,11 @@ async def get_queue_stats(
         
         item_status, _ = _determine_content_status(content, rule, last_pushed_record)
         counts[item_status] = counts.get(item_status, 0) + 1
+    
+    # 单独统计已推送数量（包括已归档的内容）
+    pushed_query = select(func.count(func.distinct(PushedRecord.content_id))).select_from(PushedRecord)
+    pushed_count = (await db.execute(pushed_query)).scalar() or 0
+    counts["pushed"] = pushed_count
     
     return counts
 
@@ -417,9 +466,11 @@ async def batch_reschedule(
     _: None = Depends(require_api_token),
 ):
     """批量排期：从指定时间开始，按间隔排列选中内容"""
-    start_time = request.start_time or datetime.utcnow()
-    # 后端校验
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
+    start_time = request.start_time or now
+    # 统一为 UTC 时区进行比较
+    if start_time.tzinfo is None:
+        start_time = start_time.replace(tzinfo=timezone.utc)
     if start_time < now:
         start_time = now + timedelta(seconds=10)
         
