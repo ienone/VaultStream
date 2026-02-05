@@ -309,17 +309,22 @@ async def reorder_queue_item(
 ):
     """重新排序队列项
     
-    通过调整 queue_priority 来控制相同 scheduled_at 下的顺序
+    通过更新 scheduled_at 时间来实现正确的顺序显示
     """
+    from app.distribution.engine import DistributionEngine
+    
     result = await db.execute(select(Content).where(Content.id == content_id))
     content = result.scalar_one_or_none()
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
     
-    # 获取当前队列所有项
+    # 获取当前队列所有项（排除被拖动的项）
     all_items_result = await db.execute(
         select(Content)
-        .where(Content.status == ContentStatus.PULLED)
+        .where(
+            Content.status == ContentStatus.PULLED,
+            Content.id != content_id,
+        )
         .order_by(
             Content.scheduled_at.asc().nulls_last(),
             desc(Content.queue_priority),
@@ -327,38 +332,42 @@ async def reorder_queue_item(
         )
         .limit(200)
     )
-    all_items = all_items_result.scalars().all()
+    all_items = list(all_items_result.scalars().all())
     
-    # 计算目标优先级
-    target_index = min(request.index, len(all_items) - 1)
-    if target_index >= 0 and target_index < len(all_items):
-        target_item = all_items[target_index]
-        # 设置比目标项更高的优先级
-        content.queue_priority = (target_item.queue_priority or 0) + 1
-    else:
-        content.queue_priority = 0
+    # 将被拖动项插入到目标位置
+    target_index = min(max(0, request.index), len(all_items))
+    all_items.insert(target_index, content)
     
-    # 如果要移到最前面，同时更新 scheduled_at
-    if request.index == 0:
-        content.scheduled_at = datetime.now(timezone.utc)
-        content.is_manual_schedule = True
+    # 重新分配所有项的 scheduled_at，确保时间递增
+    now = datetime.now(timezone.utc)
+    base_time = now
+    interval = timedelta(minutes=10)  # 默认间隔
+    
+    for i, item in enumerate(all_items):
+        new_scheduled_at = base_time + interval * i
+        item.scheduled_at = new_scheduled_at
+        item.queue_priority = len(all_items) - i  # 优先级与索引反向
     
     await db.commit()
+    
+    # 触发紧凑重排以应用规则间隔设置
+    engine = DistributionEngine(db)
+    await engine.compact_schedule()
     
     # 发布队列重排事件
     from app.core.events import event_bus
     await event_bus.publish("queue_item_reordered", {
         "content_id": content_id,
         "new_index": request.index,
-        "new_priority": content.queue_priority,
+        "new_scheduled_at": content.scheduled_at.isoformat() if content.scheduled_at else None,
     })
     
-    logger.info(f"队列项已重排: content_id={content_id}, index={request.index}, priority={content.queue_priority}")
+    logger.info(f"队列项已重排: content_id={content_id}, index={request.index}, scheduled_at={content.scheduled_at}")
     
     return {
         "success": True,
-        "new_priority": content.queue_priority,
         "new_index": request.index,
+        "new_scheduled_at": content.scheduled_at.replace(tzinfo=timezone.utc) if content.scheduled_at else None,
     }
 
 
@@ -478,25 +487,5 @@ async def batch_push_now(
     return {"updated_count": len(selected_contents)}
 
 
-@router.post("/queue/items/{content_id}/reorder")
-async def reorder_queue_item(
-    content_id: int,
-    request: ReorderRequest,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """拖动重排：将条目移动到指定索引位置"""
-    from app.distribution.engine import DistributionEngine
-    engine = DistributionEngine(db)
-    await engine.move_item_to_position(content_id, request.index)
-    
-    # 获取更新后的时间
-    result = await db.execute(select(Content.scheduled_at).where(Content.id == content_id))
-    new_scheduled = result.scalar_one_or_none()
-    
-    return {
-        "id": content_id, 
-        "index": request.index, 
-        "scheduled_at": new_scheduled.replace(tzinfo=timezone.utc) if new_scheduled else None
-    }
+
 

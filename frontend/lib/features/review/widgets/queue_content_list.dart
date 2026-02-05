@@ -28,6 +28,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
   List<QueueItem> _localItems = [];
   final Set<int> _selectedIds = {};
   bool _isSelectionMode = false;
+  bool _isReordering = false; // 拖动中标记，防止外部数据覆盖
 
   @override
   void initState() {
@@ -38,10 +39,29 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
   @override
   void didUpdateWidget(QueueContentList oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // 如果正在拖动，跳过外部更新以避免闪烁
+    if (_isReordering) return;
+    
     if (!listEquals(oldWidget.items, widget.items)) {
-      setState(() {
-        _localItems = List.from(widget.items);
-      });
+      // 智能合并：仅当列表ID集合变化时才完全替换
+      final oldIds = _localItems.map((e) => e.contentId).toSet();
+      final newIds = widget.items.map((e) => e.contentId).toSet();
+      
+      if (oldIds.difference(newIds).isNotEmpty || newIds.difference(oldIds).isNotEmpty) {
+        // 条目增删时完全替换
+        setState(() {
+          _localItems = List.from(widget.items);
+        });
+      } else {
+        // 仅顺序/字段变化时，更新字段但保持本地顺序
+        final newItemMap = {for (var i in widget.items) i.contentId: i};
+        setState(() {
+          _localItems = _localItems.map((item) {
+            return newItemMap[item.contentId] ?? item;
+          }).toList();
+        });
+      }
+      
       final currentIds = _localItems.map((e) => e.contentId).toSet();
       _selectedIds.retainAll(currentIds);
       if (_selectedIds.isEmpty) _isSelectionMode = false;
@@ -178,11 +198,15 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
     if (oldIndex == newIndex) return;
 
     final movedItem = _localItems[oldIndex];
+    
+    // 标记拖动中，防止外部更新覆盖
+    _isReordering = true;
 
-    // 1. 本地立即更新
+    // 1. 本地立即更新列表顺序，同时重新计算预估时间
     setState(() {
       final item = _localItems.removeAt(oldIndex);
       _localItems.insert(newIndex, item);
+      _recalculateLocalScheduledTimes();
     });
 
     try {
@@ -190,21 +214,21 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
       await ref.read(contentQueueProvider.notifier)
           .reorderToIndex(movedItem.contentId, newIndex);
       
-      // ❌ 移除立即刷新
-      // ref.invalidate(contentQueueProvider);
-      
-      // ✅ 延迟软刷新（仅更新数据，不重置UI）
-      Future.delayed(Duration(seconds: 2), () {
+      // 延迟解除锁定并软刷新
+      Future.delayed(const Duration(seconds: 2), () {
         if (mounted) {
+          _isReordering = false;
           ref.read(contentQueueProvider.notifier).softRefresh();
         }
       });
       
     } catch (e) {
       // 失败时回滚本地状态
+      _isReordering = false;
       setState(() {
         final item = _localItems.removeAt(newIndex);
         _localItems.insert(oldIndex, item);
+        _recalculateLocalScheduledTimes();
       });
       
       if (mounted) {
@@ -212,6 +236,20 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
           SnackBar(content: Text('排序失败: $e')),
         );
       }
+    }
+  }
+
+  /// 根据当前列表顺序重新计算本地预估推送时间（用于即时UI反馈）
+  void _recalculateLocalScheduledTimes() {
+    if (_localItems.isEmpty) return;
+    
+    // 基于第一个条目的时间，按列表顺序递增分配时间
+    final baseTime = _localItems.first.scheduledTime ?? DateTime.now();
+    const interval = Duration(minutes: 10); // 默认间隔
+    
+    for (int i = 0; i < _localItems.length; i++) {
+      final newTime = baseTime.add(interval * i);
+      _localItems[i] = _localItems[i].copyWith(scheduledTime: newTime);
     }
   }
 
