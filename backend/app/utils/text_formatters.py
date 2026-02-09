@@ -4,9 +4,126 @@
 提供Telegram等平台的内容文本格式化功能
 """
 import html
-from typing import Dict, Any
+from datetime import datetime
+from typing import Dict, Any, Optional
 
 from .formatters import format_number
+
+_DEFAULT_RENDER_CONFIG = {
+    "show_platform_id": True,
+    "show_title": True,
+    "show_tags": False,
+    "author_mode": "full",
+    "content_mode": "summary",
+    "media_mode": "auto",
+    "link_mode": "clean",
+    "header_text": "",
+    "footer_text": "",
+}
+
+_PLATFORM_LABELS = {
+    "bilibili": "Bilibili",
+    "twitter": "Twitter/X",
+    "xiaohongshu": "Xiaohongshu",
+    "douyin": "Douyin",
+    "weibo": "Weibo",
+    "zhihu": "Zhihu",
+    "ku_an": "KuAn",
+    "universal": "Universal",
+}
+
+
+def _normalize_render_config(render_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not render_config:
+        return {}
+    if isinstance(render_config, dict) and isinstance(render_config.get("structure"), dict):
+        return {**render_config.get("structure", {})}
+    return {**render_config}
+
+
+def _apply_template(text: str, content: Dict[str, Any]) -> str:
+    if not text:
+        return ""
+    date_value = datetime.utcnow().strftime("%Y-%m-%d")
+    title_value = str(content.get("title") or content.get("description") or "")
+    return text.replace("{{date}}", date_value).replace("{{title}}", title_value)
+
+
+def format_content_with_render_config(
+    content_dict: Dict[str, Any],
+    render_config: Dict[str, Any],
+    *,
+    rich_text: bool,
+    platform: str,
+) -> str:
+    """
+    根据 render_config 渲染内容文本
+
+    Args:
+        content_dict: 内容数据字典
+        render_config: 渲染配置
+        rich_text: 是否使用富文本（Telegram HTML）
+        platform: 目标平台名称
+    """
+    config = {**_DEFAULT_RENDER_CONFIG, **_normalize_render_config(render_config)}
+
+    def escape(value: str) -> str:
+        return html.escape(value) if rich_text else value
+
+    lines = []
+
+    header_text = _apply_template(str(config.get("header_text") or ""), content_dict)
+    if header_text:
+        lines.append(escape(header_text))
+
+    if config.get("show_platform_id"):
+        label = _PLATFORM_LABELS.get(platform, platform)
+        lines.append(f"平台：{escape(str(label))}")
+
+    if config.get("show_title"):
+        title = str(content_dict.get("title") or content_dict.get("description") or "")
+        if title:
+            title_text = escape(title)
+            if rich_text:
+                title_text = f"<b>{title_text}</b>"
+            lines.append(title_text)
+
+    author_mode = config.get("author_mode", "full")
+    if author_mode and author_mode != "none":
+        author_name = content_dict.get("author_name")
+        author_id = content_dict.get("author_id")
+        if author_name:
+            author_text = escape(str(author_name))
+            if author_mode == "full" and author_id:
+                author_text = f"{author_text} ({escape(str(author_id))})"
+            lines.append(f"作者：{author_text}")
+
+    content_mode = config.get("content_mode", "summary")
+    if content_mode and content_mode != "hidden":
+        desc = content_dict.get("summary") or content_dict.get("description") or ""
+        if desc:
+            if content_mode == "summary" and len(desc) > 200:
+                desc = desc[:200] + "..."
+            lines.append(escape(str(desc)))
+
+    link_mode = config.get("link_mode", "clean")
+    link = ""
+    if link_mode == "original":
+        link = content_dict.get("url") or content_dict.get("canonical_url") or ""
+    elif link_mode == "clean":
+        link = content_dict.get("clean_url") or content_dict.get("canonical_url") or content_dict.get("url") or ""
+    if link_mode != "none" and link:
+        lines.append(f"链接：{escape(str(link))}")
+
+    if config.get("show_tags") and content_dict.get("tags"):
+        tags = " ".join([f"#{tag}" for tag in content_dict.get("tags") or []])
+        lines.append(escape(tags))
+
+    footer_text = _apply_template(str(config.get("footer_text") or ""), content_dict)
+    if footer_text:
+        lines.append(escape(footer_text))
+
+    return "\n".join([line for line in lines if line])
 
 
 def format_content_for_tg(content_dict: dict) -> str:

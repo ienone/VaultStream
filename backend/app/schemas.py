@@ -336,6 +336,7 @@ class DistributionRuleCreate(BaseModel):
     rate_limit: Optional[int] = None
     time_window: Optional[int] = None
     template_id: Optional[str] = None
+    render_config: Optional[Dict[str, Any]] = None
 
 
 class DistributionRuleUpdate(BaseModel):
@@ -352,6 +353,7 @@ class DistributionRuleUpdate(BaseModel):
     rate_limit: Optional[int] = None
     time_window: Optional[int] = None
     template_id: Optional[str] = None
+    render_config: Optional[Dict[str, Any]] = None
 
 
 class DistributionRuleResponse(BaseModel):
@@ -369,6 +371,7 @@ class DistributionRuleResponse(BaseModel):
     rate_limit: Optional[int] = None
     time_window: Optional[int] = None
     template_id: Optional[str] = None
+    render_config: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
     

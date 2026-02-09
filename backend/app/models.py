@@ -346,6 +346,9 @@ class DistributionRule(Base):
     
     # 模板ID（预留）
     template_id = Column(String(100))
+
+    # 渲染配置（用于个性化推送内容格式）
+    render_config = Column(JSON, nullable=True)
     
     # 时间戳
     created_at = Column(DateTime, default=utcnow)

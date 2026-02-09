@@ -109,20 +109,24 @@ class DistributionScheduler:
                         await session.commit()
                         continue
 
-                    for task in tasks:
+                    dispatch_tasks = await engine.group_tasks_for_dispatch(tasks)
+
+                    for task in dispatch_tasks:
                         task_data = {
-                            "action": "distribute",
-                            "content_id": task["content_id"],
-                            "rule_id": task["rule_id"],
-                            "target_platform": task["target_platform"],
-                            "target_id": task["target_id"],
-                            "schema_version": 2
+                            "action": task.get("action", "distribute"),
+                            "content_id": task.get("content_id"),
+                            "rule_id": task.get("rule_id"),
+                            "target_platform": task.get("target_platform"),
+                            "target_id": task.get("target_id"),
+                            "batch_contents": task.get("batch_contents"),
+                            "target_meta": task.get("target_meta"),
+                            "schema_version": 2,
                         }
-                        
+
                         await task_queue.enqueue(task_data)
                         logger.info(
-                            f"已创建分发任务: content_id={task['content_id']}, "
-                            f"target={task['target_id']}"
+                            f"已创建分发任务: content_id={task.get('content_id')}, "
+                            f"target={task.get('target_id')}"
                         )
                         
                         self._record_push_time()

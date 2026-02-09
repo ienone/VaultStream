@@ -15,7 +15,7 @@ from telegram.error import TelegramError
 from app.core.logging import logger
 from app.core.config import settings
 from app.core.storage import get_storage_backend
-from app.utils.text_formatters import format_content_for_tg
+from app.utils.text_formatters import format_content_for_tg, format_content_with_render_config
 from app.media.extractor import extract_media_urls
 from .base import BasePushService
 
@@ -88,7 +88,16 @@ class TelegramPushService(BasePushService):
         Returns:
             Tuple[str, List[Dict]]: (格式化后的文本, 媒体项列表)
         """
-        text = format_content_for_tg(content)
+        render_config = content.get('render_config') or {}
+        if render_config:
+            text = format_content_with_render_config(
+                content,
+                render_config,
+                rich_text=True,
+                platform=content.get('platform') or "",
+            )
+        else:
+            text = format_content_for_tg(content)
         
         raw_metadata = content.get('raw_metadata', {})
         cover_url = content.get('cover_url')
