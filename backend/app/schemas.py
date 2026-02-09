@@ -7,6 +7,7 @@ import json
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator
 from app.models import ContentStatus, Platform, BilibiliContentType, ReviewStatus, LayoutType
+from app.constants import SUPPORTED_PLATFORMS
 
 
 NOTE_MAX_LENGTH = 2000 # 备注内容的最大长度
@@ -348,6 +349,66 @@ class DistributionTarget(BaseModel):
     render_config: Optional[Dict[str, Any]] = Field(None, description="Per-target render config override")
 
 
+def _validate_targets_list(v: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Helper to validate target schema to ensure consistency"""
+    if v is None:
+        return v
+        
+    for target in v:
+        # Required fields
+        if 'platform' not in target or 'target_id' not in target:
+            raise ValueError("Each target must have 'platform' and 'target_id'")
+        
+        # Platform validation
+        platform = target['platform']
+        if platform not in SUPPORTED_PLATFORMS:
+            raise ValueError(f"Invalid platform: {platform}. Must be one of {SUPPORTED_PLATFORMS}")
+        
+        # Validate and normalize target_id
+        target_id = str(target['target_id']).strip()
+        if not target_id:
+            raise ValueError("target_id cannot be empty or whitespace-only")
+        
+        # Platform-specific validation
+        if platform == Platform.TELEGRAM.value:
+            # Telegram: numeric chat ID or @username
+            if not (target_id.startswith('@') or target_id.lstrip('-').isdigit()):
+                raise ValueError(
+                    f"Invalid Telegram target_id: '{target_id}'. "
+                    "Must be numeric chat ID or @username"
+                )
+        elif platform == Platform.QQ.value:
+            # QQ: numeric group/user ID or group:numeric
+            if target_id.startswith('group:'):
+                group_id = target_id.split(':', 1)[1]
+                if not group_id.isdigit():
+                    raise ValueError(
+                        f"Invalid QQ group ID: '{target_id}'. "
+                        "Group ID must be numeric"
+                    )
+            elif not target_id.isdigit():
+                raise ValueError(
+                    f"Invalid QQ target_id: '{target_id}'. "
+                    "Must be numeric or 'group:numeric' format"
+                )
+        
+        # Update target_id after validation
+        target['target_id'] = target_id
+        
+        # Optional fields with defaults
+        target.setdefault('enabled', True)
+        target.setdefault('merge_forward', False)
+        target.setdefault('use_author_name', False)
+        target.setdefault('summary', '')
+        
+        # Validate render_config if present
+        if 'render_config' in target and target['render_config'] is not None:
+            if not isinstance(target['render_config'], dict):
+                raise ValueError("render_config must be a dictionary")
+    
+    return v
+
+
 class DistributionRuleCreate(BaseModel):
     """创建分发规则"""
     name: str = Field(..., min_length=1, max_length=200)
@@ -363,6 +424,12 @@ class DistributionRuleCreate(BaseModel):
     time_window: Optional[int] = None
     template_id: Optional[str] = None
     render_config: Optional[Dict[str, Any]] = None
+
+    @field_validator('targets')
+    @classmethod
+    def validate_targets(cls, v: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Validate target schema to ensure consistency"""
+        return _validate_targets_list(v)
 
 
 class DistributionRuleUpdate(BaseModel):
@@ -380,6 +447,12 @@ class DistributionRuleUpdate(BaseModel):
     time_window: Optional[int] = None
     template_id: Optional[str] = None
     render_config: Optional[Dict[str, Any]] = None
+
+    @field_validator('targets')
+    @classmethod
+    def validate_targets(cls, v: Optional[List[Dict[str, Any]]]) -> Optional[List[Dict[str, Any]]]:
+        """Validate target schema to ensure consistency"""
+        return _validate_targets_list(v)
 
 
 class DistributionRuleResponse(BaseModel):
@@ -689,3 +762,94 @@ class RulePreviewStats(BaseModel):
     filtered: int
     pending_review: int
     rate_limited: int
+
+
+# ========== Target Management Schema ==========
+
+class TargetUsageInfo(BaseModel):
+    """Target usage information"""
+    target_platform: str
+    target_id: str
+    enabled: bool = True
+    
+    # Statistics
+    rule_count: int = Field(0, description="Number of rules using this target")
+    rule_ids: List[int] = Field(default_factory=list, description="IDs of rules using this target")
+    rule_names: List[str] = Field(default_factory=list, description="Names of rules using this target")
+    total_pushed: int = Field(0, description="Total number of pushes to this target")
+    last_pushed_at: Optional[datetime] = Field(None, description="Last push timestamp")
+    
+    # Configuration
+    merge_forward: bool = Field(default=False, description="Use merged forward mode")
+    use_author_name: bool = Field(default=False, description="Show original author name")
+    summary: str = Field(default="", description="Display name for merged forward")
+    render_config: Optional[Dict[str, Any]] = Field(None, description="Render config override")
+    
+    # Connection status
+    connection_status: Optional[str] = Field(None, description="Connection test result: unknown/ok/error")
+    connection_message: Optional[str] = Field(None, description="Connection test message")
+
+
+class TargetListResponse(BaseModel):
+    """Target list response"""
+    total: int
+    targets: List[TargetUsageInfo]
+
+
+class TargetTestRequest(BaseModel):
+    """Target connection test request"""
+    platform: str = Field(..., description="Platform: telegram/qq")
+    target_id: str = Field(..., description="Channel/Group ID")
+
+
+class TargetTestResponse(BaseModel):
+    """Target connection test response"""
+    platform: str
+    target_id: str
+    status: str = Field(..., description="Test status: ok/error")
+    message: str = Field(..., description="Test result message")
+    details: Optional[Dict[str, Any]] = Field(None, description="Additional details")
+
+
+class BatchTargetUpdateRequest(BaseModel):
+    """Batch target update request"""
+    rule_ids: List[int] = Field(..., description="Rule IDs to update")
+    target_platform: str = Field(..., description="Target platform to update")
+    target_id: str = Field(..., description="Target ID to update")
+    enabled: Optional[bool] = Field(None, description="Enable/disable target")
+    merge_forward: Optional[bool] = Field(None, description="Update merge forward setting")
+    render_config: Optional[Dict[str, Any]] = Field(None, description="Update render config")
+
+
+class BatchTargetUpdateResponse(BaseModel):
+    """Batch target update response"""
+    updated_count: int
+    updated_rules: List[int]
+    message: str
+
+
+# ========== Render Config Preset Schema ==========
+
+class RenderConfigPreset(BaseModel):
+    """Render config preset template"""
+    id: str = Field(..., description="Preset ID")
+    name: str = Field(..., description="Preset name")
+    description: Optional[str] = Field(None, description="Preset description")
+    config: Dict[str, Any] = Field(..., description="Render config")
+    is_builtin: bool = Field(default=False, description="Built-in preset (cannot be deleted)")
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class RenderConfigPresetCreate(BaseModel):
+    """Create render config preset"""
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    config: Dict[str, Any] = Field(...)
+
+
+class RenderConfigPresetUpdate(BaseModel):
+    """Update render config preset"""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None

@@ -1,20 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/render_config_preset.dart';
+import '../providers/targets_provider.dart';
 
-class RenderConfigEditor extends StatefulWidget {
+class RenderConfigEditor extends ConsumerStatefulWidget {
   const RenderConfigEditor({
     super.key,
     required this.config,
     required this.onChanged,
+    this.showPresetSelector = true,
   });
 
   final Map<String, dynamic> config;
   final ValueChanged<Map<String, dynamic>> onChanged;
+  final bool showPresetSelector;
 
   @override
-  State<RenderConfigEditor> createState() => _RenderConfigEditorState();
+  ConsumerState<RenderConfigEditor> createState() => _RenderConfigEditorState();
 }
 
-class _RenderConfigEditorState extends State<RenderConfigEditor> {
+class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
   late final TextEditingController _headerController;
   late final TextEditingController _footerController;
 
@@ -63,9 +68,18 @@ class _RenderConfigEditorState extends State<RenderConfigEditor> {
 
   @override
   Widget build(BuildContext context) {
+    final presetsAsync = ref.watch(renderConfigPresetsProvider);
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (widget.showPresetSelector)
+          presetsAsync.when(
+            data: (presets) => _buildPresetSelector(presets),
+            loading: () => const SizedBox.shrink(),
+            error: (error, stackTrace) => const SizedBox.shrink(),
+          ),
+        if (widget.showPresetSelector) const SizedBox(height: 24),
         _sectionLabel('显示控制'),
         const SizedBox(height: 8),
         _switchTile(
@@ -260,4 +274,94 @@ class _RenderConfigEditorState extends State<RenderConfigEditor> {
       ),
     );
   }
+
+  Widget _buildPresetSelector(List<RenderConfigPreset> presets) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.auto_awesome_rounded, 
+                size: 20, color: colorScheme.primary),
+            const SizedBox(width: 12),
+            Text('预设模板', 
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                )),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: presets.map((preset) {
+            return ActionChip(
+              avatar: Icon(
+                _getPresetIcon(preset.id),
+                size: 18,
+                color: colorScheme.primary,
+              ),
+              label: Text(preset.name),
+              tooltip: preset.description,
+              onPressed: () => _applyPreset(preset),
+              backgroundColor: colorScheme.surfaceContainerLow,
+              side: BorderSide(
+                color: colorScheme.outline.withValues(alpha: 0.2),
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  IconData _getPresetIcon(String id) {
+    switch (id) {
+      case 'minimal':
+        return Icons.minimize_rounded;
+      case 'standard':
+        return Icons.view_agenda_rounded;
+      case 'detailed':
+        return Icons.list_alt_rounded;
+      case 'media_only':
+        return Icons.photo_library_rounded;
+      default:
+        return Icons.bookmarks_rounded;
+    }
+  }
+
+  void _applyPreset(RenderConfigPreset preset) {
+    // Apply preset config
+    final presetConfig = Map<String, dynamic>.from(preset.config);
+    
+    // Update text controllers
+    _headerController.text = presetConfig['header_text'] ?? '';
+    _footerController.text = presetConfig['footer_text'] ?? '';
+    
+    // Emit change
+    _emitChange(presetConfig);
+    
+    // Show feedback
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.white),
+            const SizedBox(width: 12),
+            Text('已应用预设: ${preset.name}'),
+          ],
+        ),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
 }
+

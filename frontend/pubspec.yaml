@@ -59,6 +59,7 @@ dependencies:
   flutter_client_sse: ^2.0.3
   receive_sharing_intent: ^1.8.1
   extended_image: ^8.2.0
+  timeago: ^3.7.0
 
 dev_dependencies:
   flutter_test:

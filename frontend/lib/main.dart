@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart'; // Add locali
 import 'package:flutter_riverpod/flutter_riverpod.dart'; // 引入Riverpod库，用于状态管理
 import 'package:dynamic_color/dynamic_color.dart'; // 引入dynamic_color库，用于动态颜色支持
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
+import 'package:timeago/timeago.dart' as timeago;  // Import timeago for localization
 import 'theme/app_theme.dart'; // 引入自定义的应用主题
 import 'routing/app_router.dart'; // 引入自定义的应用路由
 import 'core/providers/theme_provider.dart';
@@ -13,6 +14,9 @@ List<SharedMediaFile>? _initialSharedMedia;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize timeago localization
+  timeago.setLocaleMessages('zh_CN', timeago.ZhCnMessages());
 
   // 在应用启动前先获取初始分享内容
   try {

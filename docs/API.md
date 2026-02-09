@@ -1,8 +1,8 @@
 # VaultStream API 文档
 
-> 版本: v0.2.0  
-> 更新: 2026-02-03  
-> 基于优化报告全面改进
+> 版本: v0.3.0  
+> 更新: 2026-02-09  
+> 包含队列、分发及目标管理增强
 
 ## 目录
 
@@ -264,6 +264,11 @@ limit=50         # 返回数量
 移动队列项到指定状态（will_push/filtered/pending_review）。
 
 
+### POST /api/v1/queue/items/{id}/push-now
+
+立即推送单个项目（忽略原有排期）。
+
+
 ### POST /api/v1/queue/items/{id}/reorder
 
 重新排序队列项（优化：无跳变）。
@@ -275,11 +280,18 @@ limit=50         # 返回数量
 }
 ```
 
-**优化机制**：
-- 调整 `queue_priority` 控制顺序
-- 前端本地立即更新UI
-- 延迟软刷新（避免跳变）
-- SSE事件通知其他客户端
+
+### POST /api/v1/queue/merge-group
+
+将多个项目合并为同一时间分组（支持合并转发）。
+
+**Request Body**：
+```json
+{
+  "content_ids": [1, 2, 3],
+  "scheduled_at": "2026-02-09T12:00:00Z"
+}
+```
 
 
 ### POST /api/v1/queue/batch-push-now
@@ -313,6 +325,38 @@ limit=50         # 返回数量
 ### DELETE /api/v1/distribution-rules/{id}
 
 删除分发规则。
+
+
+### GET /api/v1/targets
+
+获取所有分发目标（跨规则聚合）。
+
+**Query Parameters**:
+- `platform`: `telegram`/`qq`
+- `enabled`: `true`/`false`
+
+
+### POST /api/v1/targets/test
+
+测试目标连接性。
+
+**Request Body**:
+```json
+{
+  "platform": "telegram",
+  "target_id": "-100123456"
+}
+```
+
+
+### POST /api/v1/targets/batch-update
+
+批量更新目标的启用状态或渲染配置。
+
+
+### GET /api/v1/render-config-presets
+
+获取渲染配置预设模板列表（Minimal/Standard/Detailed/Media-Only）。
 
 ---
 
