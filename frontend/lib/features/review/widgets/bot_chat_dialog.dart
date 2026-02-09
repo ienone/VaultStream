@@ -116,10 +116,10 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                           label: '群组类型',
                           value: _chatType,
                           icon: Icons.category_rounded,
-                          items: const [
-                            DropdownMenuItem(value: 'channel', child: Text('频道')),
-                            DropdownMenuItem(value: 'group', child: Text('群组')),
-                            DropdownMenuItem(value: 'supergroup', child: Text('超级群组')),
+                          entries: const [
+                            DropdownMenuEntry(value: 'channel', label: '频道'),
+                            DropdownMenuEntry(value: 'group', label: '群组'),
+                            DropdownMenuEntry(value: 'supergroup', label: '超级群组'),
                           ],
                           onChanged: (v) => setState(() => _chatType = v!),
                         ),
@@ -308,20 +308,24 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
     required String label,
     required T value,
     required IconData icon,
-    required List<DropdownMenuItem<T>> items,
+    required List<DropdownMenuEntry<T>> entries,
     required ValueChanged<T?> onChanged,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    return DropdownButtonFormField<T>(
-      initialValue: value,
-      items: items,
-      onChanged: onChanged,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, size: 20),
+    return DropdownMenu<T>(
+      initialSelection: value,
+      dropdownMenuEntries: entries,
+      onSelected: onChanged,
+      leadingIcon: Icon(icon, size: 20),
+      label: Text(label),
+      expandedInsets: EdgeInsets.zero,
+      inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       ),
     );
@@ -353,6 +357,12 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
         ),
         value: value,
         onChanged: onChanged,
+        thumbIcon: WidgetStateProperty.resolveWith<Icon?>((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const Icon(Icons.check_rounded);
+          }
+          return const Icon(Icons.close_rounded);
+        }),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );

@@ -85,7 +85,7 @@ start.bat
 启动 VaultStream
 ====================
 
-使用 Python: c:\path\to\.venv\Scripts\python.exe
+使用 Python: c:\path\to\.venv\python.exe
 初始化数据库...
 数据库初始化完成
 启动 FastAPI 后端...

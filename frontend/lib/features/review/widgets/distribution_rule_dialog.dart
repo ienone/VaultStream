@@ -196,9 +196,9 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
                           label: '匹配模式',
                           value: _tagsMatchMode,
                           icon: Icons.api_rounded,
-                          items: const [
-                            DropdownMenuItem(value: 'any', child: Text('包含任一 (Any)')),
-                            DropdownMenuItem(value: 'all', child: Text('包含所有 (All)')),
+                          entries: const [
+                            DropdownMenuEntry(value: 'any', label: '包含任一 (Any)'),
+                            DropdownMenuEntry(value: 'all', label: '包含所有 (All)'),
                           ],
                           onChanged: (v) => setState(() => _tagsMatchMode = v!),
                         ),
@@ -339,20 +339,24 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
     required String label,
     required T value,
     required IconData icon,
-    required List<DropdownMenuItem<T>> items,
+    required List<DropdownMenuEntry<T>> entries,
     required ValueChanged<T?> onChanged,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    return DropdownButtonFormField<T>(
-      initialValue: value,
-      items: items,
-      onChanged: onChanged,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, size: 20),
+    return DropdownMenu<T>(
+      initialSelection: value,
+      dropdownMenuEntries: entries,
+      onSelected: onChanged,
+      leadingIcon: Icon(icon, size: 20),
+      label: Text(label),
+      expandedInsets: EdgeInsets.zero,
+      inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       ),
     );
@@ -385,6 +389,12 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
         ),
         value: value,
         onChanged: onChanged,
+        thumbIcon: WidgetStateProperty.resolveWith<Icon?>((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const Icon(Icons.check_rounded);
+          }
+          return const Icon(Icons.close_rounded);
+        }),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
@@ -631,14 +641,20 @@ class _TagInputState extends State<_TagInput> {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: widget.tags.map((tag) => Chip(
+            children: widget.tags.map((tag) => InputChip(
               label: Text(tag),
-              labelStyle: TextStyle(color: widget.chipColor, fontSize: 12, fontWeight: FontWeight.bold),
-              backgroundColor: widget.chipColor.withValues(alpha: 0.1),
-              side: BorderSide(color: widget.chipColor.withValues(alpha: 0.2)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              labelStyle: TextStyle(
+                color: widget.chipColor,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+              backgroundColor: widget.chipColor.withValues(alpha: 0.08),
+              side: BorderSide(color: widget.chipColor.withValues(alpha: 0.15)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               onDeleted: () => widget.onChanged(List<String>.from(widget.tags)..remove(tag)),
+              deleteIcon: const Icon(Icons.close_rounded, size: 16),
               deleteIconColor: widget.chipColor,
+              visualDensity: VisualDensity.compact,
             )).toList(),
           ),
         ],

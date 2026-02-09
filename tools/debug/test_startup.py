@@ -4,7 +4,7 @@ import sys
 import os
 
 # Hardcoded absolute path for verification in this specific environment
-python_exe = r"C:\Users\86138\Documents\coding\VaultStream\.venv\Scripts\python.exe"
+python_exe = r"C:\Users\86138\Documents\coding\VaultStream\.venv\python.exe"
 
 if not os.path.exists(python_exe):
     print(f"Warning: {python_exe} not found, falling back to sys.executable")

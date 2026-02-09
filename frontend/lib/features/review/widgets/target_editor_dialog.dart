@@ -326,6 +326,12 @@ class _TargetEditorDialogState extends State<TargetEditorDialog> {
         ),
         value: value,
         onChanged: onChanged,
+        thumbIcon: WidgetStateProperty.resolveWith<Icon?>((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const Icon(Icons.check_rounded);
+          }
+          return const Icon(Icons.close_rounded);
+        }),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );

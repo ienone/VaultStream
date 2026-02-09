@@ -70,6 +70,25 @@ class AppTheme {
         ),
       ),
 
+      // Integrated Navigation Bar Theme
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: scheme.surfaceContainerLow,
+        indicatorColor: scheme.secondaryContainer,
+        indicatorShape: const StadiumBorder(),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return IconThemeData(color: scheme.onSecondaryContainer, size: 28);
+          }
+          return IconThemeData(color: scheme.onSurfaceVariant, size: 24);
+        }),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return textTheme.labelMedium?.copyWith(fontWeight: FontWeight.bold, color: scheme.onSurface);
+          }
+          return textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant);
+        }),
+      ),
+
       // M3 Expressive Cards: Larger radii and subtle borders
       cardTheme: CardThemeData(
         clipBehavior: Clip.antiAlias,
@@ -116,6 +135,75 @@ class AppTheme {
         elevation: 6,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
         titleTextStyle: textTheme.headlineSmall,
+      ),
+
+      // M3 Expressive Menus: Large radii and subtle elevation
+      menuTheme: MenuThemeData(
+        style: MenuStyle(
+          shape: WidgetStateProperty.all(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          ),
+          elevation: WidgetStateProperty.all(8),
+          backgroundColor: WidgetStateProperty.all(scheme.surfaceContainerHighest),
+          surfaceTintColor: WidgetStateProperty.all(scheme.surfaceTint),
+          padding: WidgetStateProperty.all(const EdgeInsets.symmetric(vertical: 8)),
+        ),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        elevation: 8,
+        surfaceTintColor: scheme.surfaceTint,
+        color: scheme.surfaceContainerHighest,
+      ),
+
+      // Dropdown Menu Theme
+      dropdownMenuTheme: DropdownMenuThemeData(
+        textStyle: textTheme.bodyLarge,
+        menuStyle: MenuStyle(
+          shape: WidgetStateProperty.all(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          ),
+          elevation: WidgetStateProperty.all(8),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.3),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        ),
+      ),
+
+      // Integrated Search Bar Theme
+      searchBarTheme: SearchBarThemeData(
+        elevation: WidgetStateProperty.all(0),
+        backgroundColor: WidgetStateProperty.all(scheme.surfaceContainerHigh),
+        shape: WidgetStateProperty.all(const StadiumBorder()),
+        padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 16)),
+        textStyle: WidgetStateProperty.all(textTheme.bodyLarge),
+        hintStyle: WidgetStateProperty.all(textTheme.bodyLarge?.copyWith(color: scheme.outline)),
+      ),
+
+      // Expressive Segmented Button
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: SegmentedButton.styleFrom(
+          visualDensity: VisualDensity.comfortable,
+          selectedBackgroundColor: scheme.primary,
+          selectedForegroundColor: scheme.onPrimary,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+
+      // Expressive Chips
+      chipTheme: ChipThemeData(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        side: BorderSide.none,
+        backgroundColor: scheme.surfaceContainerLow,
+        selectedColor: scheme.primaryContainer,
+        labelStyle: textTheme.labelMedium?.copyWith(fontWeight: FontWeight.bold),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),
 
       // Transitions - Using built-in physics

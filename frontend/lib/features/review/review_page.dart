@@ -86,10 +86,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         if (_tabController.index == 1) {
           return FloatingActionButton.extended(
             onPressed: _showAddBotChatDialog,
-            icon: const Icon(Icons.add_rounded),
+            icon: const Icon(Icons.add_rounded, size: 24),
             label: const Text('添加群组'),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          ).animate().scale(curve: Curves.easeOutBack);
+            isExtended: true,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          ).animate().scale(curve: Curves.easeOutBack, duration: 400.ms);
         }
         return const SizedBox.shrink();
       },
@@ -161,6 +162,18 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                   tooltip: '新建规则',
                 ),
               ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: SearchBar(
+              hintText: '搜索规则...',
+              leading: const Icon(Icons.search_rounded, size: 20),
+              elevation: WidgetStateProperty.all(0),
+              backgroundColor: WidgetStateProperty.all(colorScheme.surfaceContainerHigh),
+              onChanged: (value) {
+                // TODO: Implement rule filtering if needed
+              },
             ),
           ),
           Expanded(
@@ -328,36 +341,37 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                 child: Row(
                   children: [
                     Expanded(
-                      child: DropdownButtonFormField<int?>(
-                        initialValue: _selectedRuleId,
-                        decoration: InputDecoration(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide.none,
-                          ),
-                          prefixIcon: const Icon(Icons.rule_rounded, size: 20),
-                          isDense: true,
-                          fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                          filled: true,
-                        ),
-                        items: [
-                          const DropdownMenuItem<int?>(
+                      child: DropdownMenu<int?>(
+                        initialSelection: _selectedRuleId,
+                        dropdownMenuEntries: [
+                          const DropdownMenuEntry<int?>(
                             value: null,
-                            child: Text('全部规则'),
+                            label: '全部规则',
+                            leadingIcon: Icon(Icons.all_inclusive_rounded, size: 18),
                           ),
-                          ...rules.map((rule) => DropdownMenuItem<int?>(
-                                value: rule.id,
-                                child: Text(rule.name),
-                              )),
+                          ...rules.map((rule) => DropdownMenuEntry<int?>(
+                            value: rule.id,
+                            label: rule.name,
+                            leadingIcon: const Icon(Icons.rule_rounded, size: 18),
+                          )),
                         ],
-                        onChanged: (value) {
+                        onSelected: (value) {
                           setState(() {
                             _selectedRuleId = value;
                             _portraitRuleConfigExpanded = false;
                           });
                           ref.read(queueFilterProvider.notifier).setRuleId(value);
                         },
+                        leadingIcon: const Icon(Icons.filter_list_rounded, size: 20),
+                        expandedInsets: EdgeInsets.zero,
+                        inputDecorationTheme: InputDecorationTheme(
+                          filled: true,
+                          fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),

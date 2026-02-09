@@ -3,7 +3,7 @@
 包含：规则增删改查、规则预览、目标管理、渲染配置预设
 调用方式：需要 API Token
 """
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, desc, and_

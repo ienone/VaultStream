@@ -1,8 +1,8 @@
 # AGENTS.md
 
 ## Commands
-- **Backend tests**: `cd backend && .venv/bin/python -m pytest tests/`
-- **Single test**: `cd backend && .venv/bin/python -m pytest tests/test_file.py -k test_name`
+- **Backend tests**: `cd backend && .venv/python -m pytest tests/`
+- **Single test**: `cd backend && .venv/python -m pytest tests/test_file.py -k test_name`
 - **Start backend**: `./start.sh` (runs at http://localhost:8000)
 - **Frontend build**: `cd frontend && flutter build`
 - **Frontend analyze**: `cd frontend && flutter analyze`
