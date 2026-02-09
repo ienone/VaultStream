@@ -315,11 +315,37 @@ class ShareCardPreview(BaseModel):
         from_attributes = True
 
 
+class RenderConfig(BaseModel):
+    """渲染配置结构（可嵌套或扁平使用）"""
+    # Display control
+    show_platform_id: bool = True
+    show_title: bool = True
+    show_tags: bool = False
+    
+    # Mode selectors
+    author_mode: str = Field(default="full", description="Author display mode: none/name/full")
+    content_mode: str = Field(default="summary", description="Content mode: hidden/summary/full")
+    media_mode: str = Field(default="auto", description="Media mode: none/auto/all")
+    link_mode: str = Field(default="clean", description="Link mode: none/clean/original")
+    
+    # Template text
+    header_text: str = Field(default="", description="Header text with variable support")
+    footer_text: str = Field(default="", description="Footer text with variable support")
+
+
 class DistributionTarget(BaseModel):
     """分发目标配置"""
-    platform: str  # "telegram", "qq" 等
-    target_id: str  # 频道/群组 ID
-    enabled: bool = True
+    platform: str = Field(..., description="Platform name: telegram/qq")
+    target_id: str = Field(..., description="Channel/Group ID")
+    enabled: bool = Field(default=True, description="Enable this target")
+    
+    # 批量转发选项（仅适用于 QQ）
+    merge_forward: bool = Field(default=False, description="Use merged forward mode (QQ only)")
+    use_author_name: bool = Field(default=False, description="Show original author name")
+    summary: str = Field(default="", description="Display name for merged forward")
+    
+    # 可选的渲染配置覆盖（如果需要针对特定目标调整展示）
+    render_config: Optional[Dict[str, Any]] = Field(None, description="Per-target render config override")
 
 
 class DistributionRuleCreate(BaseModel):

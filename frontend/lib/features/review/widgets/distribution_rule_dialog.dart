@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/distribution_rule.dart';
+import 'render_config_editor.dart';
+import 'target_editor_dialog.dart';
 
 class DistributionRuleDialog extends StatefulWidget {
   final DistributionRule? rule;
@@ -33,6 +35,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
   late List<String> _excludeTags;
   late String _tagsMatchMode;
   late List<Map<String, dynamic>> _targets;
+  late Map<String, dynamic> _renderConfig;
 
   bool get isEditing => widget.rule != null;
 
@@ -58,6 +61,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
     _excludeTags = List.from(conditions['tags_exclude'] ?? []);
     _tagsMatchMode = conditions['tags_match_mode'] ?? 'any';
     _targets = List.from(rule?.targets ?? []);
+    _renderConfig = Map<String, dynamic>.from(rule?.renderConfig ?? {});
   }
 
   @override
@@ -207,6 +211,8 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
                         placeholder: '输入要过滤的标签',
                         chipColor: colorScheme.error,
                       ),
+                      const SizedBox(height: 32),
+                      _buildRenderConfigSection(),
                       const SizedBox(height: 32),
                       _buildTargetsSection(context),
                       const SizedBox(height: 24),
@@ -384,6 +390,42 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
     );
   }
 
+  Widget _buildRenderConfigSection() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: ExpansionTile(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: colorScheme.tertiary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(Icons.palette_rounded, size: 20, color: colorScheme.tertiary),
+        ),
+        title: const Text('渲染配置', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        subtitle: Text(
+          _renderConfig.isEmpty ? '使用默认渲染配置' : '已自定义',
+          style: const TextStyle(fontSize: 12),
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: RenderConfigEditor(
+              config: _renderConfig,
+              onChanged: (cfg) => setState(() => _renderConfig = cfg),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTargetsSection(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Column(
@@ -434,14 +476,24 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
 
   Widget _buildTargetCard(int index, Map<String, dynamic> target, ColorScheme colorScheme) {
     final platform = target['platform'] ?? 'telegram';
+    final hasOverride = target['render_config'] != null && (target['render_config'] as Map).isNotEmpty;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       color: colorScheme.surfaceContainer,
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ListTile(
-        leading: Icon(platform == 'telegram' ? Icons.telegram : Icons.hub_rounded, color: Colors.blue),
-        title: Text(target['target_id'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+        onTap: () => _showEditTargetDialog(index, target),
+        leading: Icon(platform == 'telegram' ? Icons.telegram : Icons.chat_rounded, color: Colors.blue),
+        title: Row(
+          children: [
+            Flexible(child: Text(target['target_id'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold))),
+            if (hasOverride) ...[
+              const SizedBox(width: 6),
+              Icon(Icons.palette_rounded, size: 14, color: colorScheme.tertiary),
+            ],
+          ],
+        ),
         subtitle: Text(platform.toUpperCase(), style: TextStyle(fontSize: 11, color: colorScheme.outline)),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
@@ -461,49 +513,20 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
   }
 
   void _showAddTargetDialog() {
-    String platform = 'telegram';
-    final targetIdController = TextEditingController();
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('添加分发目标'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildExpressiveDropdown<String>(
-              label: '平台',
-              value: platform,
-              icon: Icons.hub_rounded,
-              items: const [DropdownMenuItem(value: 'telegram', child: Text('Telegram'))],
-              onChanged: (v) => platform = v!,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: targetIdController,
-              decoration: InputDecoration(
-                labelText: '目标 ID',
-                hintText: '例如: @channel_name',
-                prefixIcon: const Icon(Icons.alternate_email_rounded),
-                filled: true,
-                fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () {
-              if (targetIdController.text.isNotEmpty) {
-                setState(() => _targets.add({'platform': platform, 'target_id': targetIdController.text.trim(), 'enabled': true}));
-                Navigator.pop(ctx);
-              }
-            },
-            child: const Text('确认添加'),
-          ),
-        ],
+      builder: (ctx) => TargetEditorDialog(
+        onSave: (target) => setState(() => _targets.add(target)),
+      ),
+    );
+  }
+
+  void _showEditTargetDialog(int index, Map<String, dynamic> target) {
+    showDialog(
+      context: context,
+      builder: (ctx) => TargetEditorDialog(
+        target: target,
+        onSave: (updated) => setState(() => _targets[index] = updated),
       ),
     );
   }
@@ -526,12 +549,14 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
       enabled: _enabled,
       rateLimit: int.tryParse(_rateLimitController.text),
       timeWindow: int.tryParse(_timeWindowController.text),
+      renderConfig: _renderConfig.isEmpty ? null : _renderConfig,
     );
     if (isEditing) {
       widget.onUpdate?.call(widget.rule!.id, DistributionRuleUpdate(
         name: create.name, description: create.description, matchConditions: create.matchConditions,
         targets: create.targets, priority: create.priority, nsfwPolicy: create.nsfwPolicy,
         approvalRequired: create.approvalRequired, enabled: create.enabled, rateLimit: create.rateLimit, timeWindow: create.timeWindow,
+        renderConfig: create.renderConfig,
       ));
     } else {
       widget.onCreate(create);

@@ -1,21 +1,23 @@
 """
-功能描述：内容队列管理 API
-包含：队列项查询、状态切换、排序
+内容分发队列相关API。
+
+包括队列项查询、状态转换和调度等。
 """
+import asyncio
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, desc, and_, func
+from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.core.database import get_db
+from app.core.events import event_bus
 from app.models import Content, DistributionRule, PushedRecord, ReviewStatus, ContentStatus
 from app.core.logging import logger
 from app.core.dependencies import require_api_token
 
 router = APIRouter()
-
 
 class QueueItem(BaseModel):
     id: int
@@ -32,7 +34,6 @@ class QueueItem(BaseModel):
     pushed_at: Optional[datetime] = None
     priority: int = 0
 
-
 class QueueListResponse(BaseModel):
     items: List[QueueItem]
     total: int
@@ -41,11 +42,9 @@ class QueueListResponse(BaseModel):
     pending_review_count: int = 0
     pushed_count: int = 0
 
-
 class MoveItemRequest(BaseModel):
     status: str
     reason: Optional[str] = None
-
 
 class ReorderRequest(BaseModel):
     index: int
@@ -54,7 +53,7 @@ class ReorderRequest(BaseModel):
 def _determine_content_status(
     content: Content,
     rule: Optional[DistributionRule],
-    last_pushed_record: Optional[PushedRecord]
+    last_pushed_record: Optional[PushedRecord],
 ) -> tuple[str, Optional[str]]:
     """确定内容在队列中的状态"""
     # 如果已推送，检查是否在推送后重新审批通过（重推）
@@ -111,21 +110,22 @@ def _determine_content_status(
 class ScheduleUpdateRequest(BaseModel):
     scheduled_at: datetime
 
-
 class BatchScheduleRequest(BaseModel):
     content_ids: List[int]
     start_time: Optional[datetime] = None
     interval_seconds: Optional[int] = 300
 
-
 class BatchPushNowRequest(BaseModel):
     content_ids: List[int]
 
+class MergeGroupRequest(BaseModel):
+    content_ids: List[int]
+    scheduled_at: Optional[datetime] = None
 
 @router.get("/queue/items", response_model=QueueListResponse)
 async def get_queue_items(
-    rule_id: Optional[int] = Query(None, description="规则ID筛选"),
-    status: Optional[str] = Query(None, description="状态筛选: will_push, filtered, pending_review, pushed"),
+    rule_id: Optional[int] = Query(None, description="Rule filter"),
+    status: Optional[str] = Query(None, description="Status filter"),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
@@ -137,7 +137,7 @@ async def get_queue_items(
         rule = result.scalar_one_or_none()
         if not rule:
             raise HTTPException(status_code=404, detail="Rule not found")
-    
+
     items: List[QueueItem] = []
     counts = {"will_push": 0, "filtered": 0, "pending_review": 0, "pushed": 0}
     
@@ -150,12 +150,12 @@ async def get_queue_items(
             .limit(limit)
         )
         pushed_result = await db.execute(pushed_query)
-        
+
         for content, pushed_record in pushed_result.all():
             pushed_at = pushed_record.pushed_at
             if pushed_at and pushed_at.tzinfo is None:
                 pushed_at = pushed_at.replace(tzinfo=timezone.utc)
-            
+
             items.append(QueueItem(
                 id=content.id,
                 content_id=content.id,
@@ -177,37 +177,43 @@ async def get_queue_items(
         counts["pushed"] = (await db.execute(pushed_count_query)).scalar() or 0
     else:
         # 查询 PULLED 状态的内容
-        content_query = select(Content).where(
-            Content.status == ContentStatus.PULLED
-        ).order_by(
-            Content.scheduled_at.asc().nulls_last(),
-            desc(Content.queue_priority), 
-            desc(Content.created_at)
-        ).limit(limit * 2)
-        
+        content_query = (
+            select(Content)
+            .where(Content.status == ContentStatus.PULLED)
+            .order_by(
+                Content.scheduled_at.asc().nulls_last(),
+                desc(Content.queue_priority),
+                desc(Content.created_at),
+            )
+            .limit(limit * 2)
+        )
+
         content_result = await db.execute(content_query)
         all_contents = content_result.scalars().all()
-        
+
         for content in all_contents:
             pushed_result = await db.execute(
-                select(PushedRecord).where(PushedRecord.content_id == content.id).order_by(desc(PushedRecord.pushed_at)).limit(1)
+                select(PushedRecord)
+                .where(PushedRecord.content_id == content.id)
+                .order_by(desc(PushedRecord.pushed_at))
+                .limit(1)
             )
             last_pushed_record = pushed_result.scalar_one_or_none()
-            
+
             item_status, reason = _determine_content_status(content, rule, last_pushed_record)
             counts[item_status] = counts.get(item_status, 0) + 1
-            
+
             if status and item_status != status:
                 continue
-            
+
             pushed_at = last_pushed_record.pushed_at if last_pushed_record else None
-            
+
             item_scheduled_time = content.scheduled_at
             if not item_scheduled_time and item_status == "pushed":
                 item_scheduled_time = pushed_at
             elif not item_scheduled_time:
                 item_scheduled_time = content.created_at
-            
+
             if item_scheduled_time and item_scheduled_time.tzinfo is None:
                 item_scheduled_time = item_scheduled_time.replace(tzinfo=timezone.utc)
             if pushed_at and pushed_at.tzinfo is None:
@@ -228,7 +234,7 @@ async def get_queue_items(
                 pushed_at=pushed_at,
                 priority=content.queue_priority or 0,
             ))
-            
+
             if len(items) >= limit:
                 break
     
@@ -236,7 +242,7 @@ async def get_queue_items(
     if status != "pushed":
         pushed_count_query = select(func.count(func.distinct(PushedRecord.content_id)))
         counts["pushed"] = (await db.execute(pushed_count_query)).scalar() or 0
-    
+
     return QueueListResponse(
         items=items,
         total=len(items),
@@ -245,7 +251,6 @@ async def get_queue_items(
         pending_review_count=counts["pending_review"],
         pushed_count=counts["pushed"],
     )
-
 
 @router.get("/queue/stats")
 async def get_queue_stats(
@@ -263,33 +268,29 @@ async def get_queue_stats(
     if rule_id:
         result = await db.execute(select(DistributionRule).where(DistributionRule.id == rule_id))
         rule = result.scalar_one_or_none()
-    
-    # 统计 PULLED 状态的内容
-    content_query = select(Content).where(
-        Content.status == ContentStatus.PULLED
-    ).limit(500)
-    
+
+    content_query = select(Content).where(Content.status == ContentStatus.PULLED).limit(500)
     content_result = await db.execute(content_query)
     all_contents = content_result.scalars().all()
-    
+
     counts = {"will_push": 0, "filtered": 0, "pending_review": 0, "pushed": 0}
-    
+
     for content in all_contents:
         pushed_result = await db.execute(
-            select(PushedRecord).where(PushedRecord.content_id == content.id).order_by(desc(PushedRecord.pushed_at)).limit(1)
+            select(PushedRecord)
+            .where(PushedRecord.content_id == content.id)
+            .order_by(desc(PushedRecord.pushed_at))
+            .limit(1)
         )
         last_pushed_record = pushed_result.scalar_one_or_none()
-        
+
         item_status, _ = _determine_content_status(content, rule, last_pushed_record)
         counts[item_status] = counts.get(item_status, 0) + 1
-    
-    # 单独统计已推送数量（包括已归档的内容）
-    pushed_query = select(func.count(func.distinct(PushedRecord.content_id))).select_from(PushedRecord)
-    pushed_count = (await db.execute(pushed_query)).scalar() or 0
-    counts["pushed"] = pushed_count
-    
-    return counts
 
+    pushed_query = select(func.count(func.distinct(PushedRecord.content_id))).select_from(PushedRecord)
+    counts["pushed"] = (await db.execute(pushed_query)).scalar() or 0
+
+    return counts
 
 @router.post("/queue/items/{content_id}/move")
 async def move_queue_item(
@@ -304,10 +305,10 @@ async def move_queue_item(
     content = result.scalar_one_or_none()
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
-    
+
     new_status = request.status
     engine = DistributionEngine(db)
-    
+
     if new_status == "will_push":
         content.review_status = ReviewStatus.APPROVED
         content.reviewed_at = datetime.utcnow()
@@ -322,7 +323,7 @@ async def move_queue_item(
         # 提交后触发全局紧凑重排，确保加入高优先级内容后队列依然有序紧凑
         await db.commit()
         await engine.compact_schedule()
-        
+
     elif new_status == "filtered":
         content.review_status = ReviewStatus.REJECTED
         content.reviewed_at = datetime.utcnow()
@@ -330,7 +331,7 @@ async def move_queue_item(
         content.scheduled_at = None
         # 移除条目后，触发时间压缩补位
         await engine.compact_schedule()
-        
+
     elif new_status == "pending_review":
         content.review_status = ReviewStatus.PENDING
         content.reviewed_at = None
@@ -338,16 +339,15 @@ async def move_queue_item(
         content.scheduled_at = None
         # 移除条目后，触发时间压缩补位
         await engine.compact_schedule()
-    
+
     await db.commit()
     logger.info(f"内容状态已更新: id={content_id}, new_status={new_status}")
     
     return {
-        "id": content_id, 
-        "status": new_status, 
-        "scheduled_at": content.scheduled_at.replace(tzinfo=timezone.utc) if content.scheduled_at else None
+        "id": content_id,
+        "status": new_status,
+        "scheduled_at": content.scheduled_at.replace(tzinfo=timezone.utc) if content.scheduled_at else None,
     }
-
 
 @router.post("/queue/items/{content_id}/reorder")
 async def reorder_queue_item(
@@ -361,50 +361,14 @@ async def reorder_queue_item(
     通过更新 scheduled_at 时间来实现正确的顺序显示
     """
     from app.distribution.engine import DistributionEngine
-    
+
     result = await db.execute(select(Content).where(Content.id == content_id))
     content = result.scalar_one_or_none()
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
-    
-    # 获取当前队列所有项（排除被拖动的项）
-    all_items_result = await db.execute(
-        select(Content)
-        .where(
-            Content.status == ContentStatus.PULLED,
-            Content.id != content_id,
-        )
-        .order_by(
-            Content.scheduled_at.asc().nulls_last(),
-            desc(Content.queue_priority),
-            desc(Content.created_at),
-        )
-        .limit(200)
-    )
-    all_items = list(all_items_result.scalars().all())
-    
-    # 将被拖动项插入到目标位置
-    target_index = min(max(0, request.index), len(all_items))
-    all_items.insert(target_index, content)
-    
-    # 重新分配所有项的 scheduled_at，确保时间递增
-    now = datetime.now(timezone.utc)
-    base_time = now
-    interval = timedelta(minutes=10)  # 默认间隔
-    
-    for i, item in enumerate(all_items):
-        new_scheduled_at = base_time + interval * i
-        item.scheduled_at = new_scheduled_at
-        item.queue_priority = len(all_items) - i  # 优先级与索引反向
-    
-    await db.commit()
-    
-    # 触发紧凑重排以应用规则间隔设置
-    engine = DistributionEngine(db)
-    await engine.compact_schedule()
-    
-    # 发布队列重排事件
-    from app.core.events import event_bus
+
+    await DistributionEngine(db).move_item_to_position(content_id, request.index)
+
     await event_bus.publish("queue_item_reordered", {
         "content_id": content_id,
         "new_index": request.index,
@@ -418,7 +382,6 @@ async def reorder_queue_item(
         "new_index": request.index,
         "new_scheduled_at": content.scheduled_at.replace(tzinfo=timezone.utc) if content.scheduled_at else None,
     }
-
 
 @router.post("/queue/items/{content_id}/schedule")
 async def update_item_schedule(
@@ -454,10 +417,9 @@ async def update_item_schedule(
     
     # 返回带有时区信息的时间，确保前端识别为 UTC
     return {
-        "id": content_id, 
-        "scheduled_at": content.scheduled_at.replace(tzinfo=timezone.utc) if content.scheduled_at else None
+        "id": content_id,
+        "scheduled_at": content.scheduled_at.replace(tzinfo=timezone.utc) if content.scheduled_at else None,
     }
-
 
 @router.post("/queue/batch-reschedule")
 async def batch_reschedule(
@@ -473,7 +435,7 @@ async def batch_reschedule(
         start_time = start_time.replace(tzinfo=timezone.utc)
     if start_time < now:
         start_time = now + timedelta(seconds=10)
-        
+
     interval = request.interval_seconds or 300
     
     # 按请求中的顺序处理，如果没传顺序则按数据库现有顺序
@@ -481,7 +443,7 @@ async def batch_reschedule(
         select(Content).where(Content.id.in_(request.content_ids))
     )
     content_map = {c.id: c for c in result.scalars().all()}
-    
+
     updated_ids = []
     for i, cid in enumerate(request.content_ids):
         if cid in content_map:
@@ -489,19 +451,18 @@ async def batch_reschedule(
             content.scheduled_at = start_time + timedelta(seconds=interval * i)
             content.is_manual_schedule = True  # 批量排期标记为手动
             updated_ids.append(cid)
-            
+
     await db.commit()
     
     # 批量排期后也触发一次重排，确保与队列中其他项不碰撞
     from app.distribution.engine import DistributionEngine
     engine = DistributionEngine(db)
     await engine.compact_schedule()
-    
-    return {
-        "updated_count": len(updated_ids), 
-        "first_time": start_time.replace(tzinfo=timezone.utc) if start_time.tzinfo is None else start_time
-    }
 
+    return {
+        "updated_count": len(updated_ids),
+        "first_time": start_time.replace(tzinfo=timezone.utc) if start_time.tzinfo is None else start_time,
+    }
 
 @router.post("/queue/batch-push-now")
 async def batch_push_now(
@@ -534,9 +495,86 @@ async def batch_push_now(
     # 3. 触发全队列重排，并指定这些 ID 采用紧凑间隔 (10s)
     engine = DistributionEngine(db)
     await engine.compact_schedule(immediate_ids=request.content_ids)
-    
+
+    from app.distribution.scheduler import get_distribution_scheduler
+    scheduler = get_distribution_scheduler()
+    asyncio.ensure_future(scheduler.trigger_run())
+
+    await event_bus.publish("queue_updated", {"action": "batch_push_now", "content_ids": request.content_ids})
+
     return {"updated_count": len(selected_contents)}
 
 
+@router.post("/queue/merge-group")
+async def merge_group(
+    request: MergeGroupRequest,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """ 合并排期：将多个内容的 scheduled_at 对齐，视为一个组合单元"""
+    from app.distribution.engine import DistributionEngine
+
+    result = await db.execute(
+        select(Content).where(Content.id.in_(request.content_ids))
+    )
+    contents = result.scalars().all()
+    if not contents:
+        raise HTTPException(status_code=404, detail="No contents found")
+
+    if request.scheduled_at is not None:
+        target_time = request.scheduled_at.replace(tzinfo=None)
+    else:
+        existing_times = [c.scheduled_at for c in contents if c.scheduled_at is not None]
+        target_time = min(existing_times) if existing_times else datetime.utcnow()
+
+    for content in contents:
+        content.scheduled_at = target_time
+
+    await db.commit()
+
+    engine = DistributionEngine(db)
+    await engine.compact_schedule()
+
+    await event_bus.publish("queue_updated", {"action": "merge_group", "content_ids": request.content_ids})
+
+    return {
+        "merged_count": len(contents),
+        "scheduled_at": target_time.replace(tzinfo=timezone.utc),
+    }
 
 
+@router.post("/queue/items/{content_id}/push-now")
+async def push_now(
+    content_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """立即推送一个队列条目"""
+    from app.distribution.engine import DistributionEngine
+
+    result = await db.execute(select(Content).where(Content.id == content_id))
+    content = result.scalar_one_or_none()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    now = datetime.utcnow()
+    content.scheduled_at = now - timedelta(hours=24)
+    content.queue_priority = 9999
+    content.review_status = ReviewStatus.APPROVED
+    content.reviewed_at = now
+    content.is_manual_schedule = True
+    await db.commit()
+
+    engine = DistributionEngine(db)
+    await engine.compact_schedule(immediate_ids=[content_id])
+
+    from app.distribution.scheduler import get_distribution_scheduler
+    scheduler = get_distribution_scheduler()
+    asyncio.ensure_future(scheduler.trigger_run())
+
+    return {
+        "id": content_id,
+        "scheduled_at": content.scheduled_at.replace(tzinfo=timezone.utc) if content.scheduled_at else None,
+        "queue_priority": content.queue_priority,
+        "review_status": content.review_status.value if content.review_status else None,
+    }

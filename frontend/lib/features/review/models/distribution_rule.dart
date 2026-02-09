@@ -21,6 +21,7 @@ abstract class DistributionRule with _$DistributionRule {
     @JsonKey(name: 'rate_limit') int? rateLimit,
     @JsonKey(name: 'time_window') int? timeWindow,
     @JsonKey(name: 'template_id') String? templateId,
+    @JsonKey(name: 'render_config') Map<String, dynamic>? renderConfig,
     @JsonKey(name: 'created_at') required DateTime createdAt,
     @JsonKey(name: 'updated_at') required DateTime updatedAt,
   }) = _DistributionRule;
@@ -46,6 +47,7 @@ abstract class DistributionRuleCreate with _$DistributionRuleCreate {
     @JsonKey(name: 'rate_limit') int? rateLimit,
     @JsonKey(name: 'time_window') int? timeWindow,
     @JsonKey(name: 'template_id') String? templateId,
+    @JsonKey(name: 'render_config') Map<String, dynamic>? renderConfig,
   }) = _DistributionRuleCreate;
 
   factory DistributionRuleCreate.fromJson(Map<String, dynamic> json) =>
@@ -68,6 +70,7 @@ abstract class DistributionRuleUpdate with _$DistributionRuleUpdate {
     @JsonKey(name: 'rate_limit') int? rateLimit,
     @JsonKey(name: 'time_window') int? timeWindow,
     @JsonKey(name: 'template_id') String? templateId,
+    @JsonKey(name: 'render_config') Map<String, dynamic>? renderConfig,
   }) = _DistributionRuleUpdate;
 
   factory DistributionRuleUpdate.fromJson(Map<String, dynamic> json) =>
