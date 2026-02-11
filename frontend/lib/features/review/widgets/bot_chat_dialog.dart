@@ -34,6 +34,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
   late List<int> _linkedRuleIds;
 
   bool get isEditing => widget.chat != null;
+  bool get _isQQType => _chatType == 'qq_group' || _chatType == 'qq_private';
 
   @override
   void initState() {
@@ -104,24 +105,39 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (!isEditing) ...[
-                        _buildTextField(
-                          controller: _chatIdController,
-                          label: 'Chat ID *',
-                          hint: '-1001234567890 或 @channel_name',
-                          icon: Icons.alternate_email_rounded,
-                          validator: (v) => v == null || v.isEmpty ? '请输入 Chat ID' : null,
-                        ),
-                        const SizedBox(height: 20),
                         _buildExpressiveDropdown<String>(
                           label: '群组类型',
                           value: _chatType,
                           icon: Icons.category_rounded,
                           entries: const [
-                            DropdownMenuEntry(value: 'channel', label: '频道'),
-                            DropdownMenuEntry(value: 'group', label: '群组'),
-                            DropdownMenuEntry(value: 'supergroup', label: '超级群组'),
+                            DropdownMenuEntry(value: 'channel', label: 'TG 频道'),
+                            DropdownMenuEntry(value: 'group', label: 'TG 群组'),
+                            DropdownMenuEntry(value: 'supergroup', label: 'TG 超级群组'),
+                            DropdownMenuEntry(value: 'qq_group', label: 'QQ 群'),
+                            DropdownMenuEntry(value: 'qq_private', label: 'QQ 私聊'),
                           ],
                           onChanged: (v) => setState(() => _chatType = v!),
+                        ),
+                        const SizedBox(height: 20),
+                        _buildTextField(
+                          controller: _chatIdController,
+                          label: _isQQType
+                              ? (_chatType == 'qq_group' ? 'QQ 群号 *' : 'QQ 号 *')
+                              : 'Chat ID *',
+                          hint: _isQQType
+                              ? (_chatType == 'qq_group' ? '例如: 123456789' : '对方的 QQ 号')
+                              : '-1001234567890 或 @channel_name',
+                          icon: _isQQType ? Icons.forum_rounded : Icons.alternate_email_rounded,
+                          keyboardType: _isQQType ? TextInputType.number : null,
+                          validator: (v) {
+                            if (v == null || v.isEmpty) {
+                              return _isQQType ? '请输入 QQ 号' : '请输入 Chat ID';
+                            }
+                            if (_isQQType && int.tryParse(v) == null) {
+                              return 'QQ 号必须为纯数字';
+                            }
+                            return null;
+                          },
                         ),
                         const SizedBox(height: 24),
                       ],
@@ -170,7 +186,9 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                       const SizedBox(height: 24),
                       _buildSwitchTile(
                         title: '启用此配置',
-                        subtitle: '控制 Bot 是否向此群组/频道推送消息',
+                        subtitle: _isQQType
+                            ? '控制是否向此 QQ 群/好友推送消息'
+                            : '控制 Bot 是否向此群组/频道推送消息',
                         icon: Icons.power_settings_new_rounded,
                         value: _enabled,
                         onChanged: (v) => setState(() => _enabled = v),
@@ -432,9 +450,16 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
         ),
       );
     } else {
+      var chatId = _chatIdController.text.trim();
+      if (_chatType == 'qq_group' && !chatId.startsWith('group:')) {
+        chatId = 'group:$chatId';
+      } else if (_chatType == 'qq_private' && !chatId.startsWith('private:')) {
+        chatId = 'private:$chatId';
+      }
+
       widget.onCreate(
         BotChatCreate(
-          chatId: _chatIdController.text,
+          chatId: chatId,
           chatType: _chatType,
           title:
               _titleController.text.isEmpty ? null : _titleController.text,

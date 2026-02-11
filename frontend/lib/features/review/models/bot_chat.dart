@@ -34,20 +34,26 @@ abstract class BotChat with _$BotChat {
   }) = _BotChat;
 
   bool get isChannel => chatType == 'channel';
-  bool get isGroup => chatType == 'group' || chatType == 'supergroup';
+  bool get isGroup => chatType == 'group' || chatType == 'supergroup' || chatType == 'qq_group';
+  bool get isQQ => chatType == 'qq_group' || chatType == 'qq_private';
+  bool get isTelegram => !isQQ;
 
   String get displayName => title ?? username ?? chatId;
 
   String get chatTypeLabel {
     switch (chatType) {
       case 'channel':
-        return '频道';
+        return 'TG 频道';
       case 'group':
-        return '群组';
+        return 'TG 群组';
       case 'supergroup':
-        return '超级群组';
+        return 'TG 超级群组';
       case 'private':
-        return '私聊';
+        return 'TG 私聊';
+      case 'qq_group':
+        return 'QQ 群';
+      case 'qq_private':
+        return 'QQ 私聊';
       default:
         return chatType;
     }
@@ -106,7 +112,11 @@ abstract class BotStatus with _$BotStatus {
     @JsonKey(name: 'connected_chats') required int connectedChats,
     @JsonKey(name: 'total_pushed_today') required int totalPushedToday,
     @JsonKey(name: 'uptime_seconds') int? uptimeSeconds,
+    @JsonKey(name: 'napcat_status') String? napcatStatus,
   }) = _BotStatus;
+
+  bool get isNapcatOnline => napcatStatus == 'online';
+  bool get isNapcatEnabled => napcatStatus != null;
 
   String get uptimeFormatted {
     if (uptimeSeconds == null) return '未知';

@@ -250,6 +250,8 @@ class BotChatCard extends StatelessWidget {
       case 'group': return Icons.group_rounded;
       case 'supergroup': return Icons.groups_rounded;
       case 'private': return Icons.person_rounded;
+      case 'qq_group': return Icons.forum_rounded;
+      case 'qq_private': return Icons.chat_rounded;
       default: return Icons.chat_bubble_rounded;
     }
   }
@@ -260,6 +262,8 @@ class BotChatCard extends StatelessWidget {
       case 'group': return colorScheme.secondary;
       case 'supergroup': return colorScheme.tertiary;
       case 'private': return Colors.orange;
+      case 'qq_group': return Colors.blue;
+      case 'qq_private': return Colors.lightBlue;
       default: return colorScheme.outline;
     }
   }

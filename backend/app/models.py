@@ -449,10 +449,12 @@ class DiscoverySource(Base):
 
 class BotChatType(str, Enum):
     """Bot 聊天类型"""
-    CHANNEL = "channel"     # 频道
-    GROUP = "group"         # 普通群组
-    SUPERGROUP = "supergroup"  # 超级群组
-    PRIVATE = "private"     # 私聊
+    CHANNEL = "channel"     # TG 频道
+    GROUP = "group"         # TG 普通群组
+    SUPERGROUP = "supergroup"  # TG 超级群组
+    PRIVATE = "private"     # TG 私聊
+    QQ_GROUP = "qq_group"   # QQ 群
+    QQ_PRIVATE = "qq_private"  # QQ 私聊
 
 
 class BotChat(Base):

@@ -1,34 +1,34 @@
-import 'package:flutter/material.dart'; // 引入Flutter的Material库，用于构建符合Material Design规范的应用
-import 'package:flutter_localizations/flutter_localizations.dart'; // Add localization support
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // 引入Riverpod库，用于状态管理
-import 'package:dynamic_color/dynamic_color.dart'; // 引入dynamic_color库，用于动态颜色支持
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
-import 'package:timeago/timeago.dart' as timeago;  // Import timeago for localization
-import 'theme/app_theme.dart'; // 引入自定义的应用主题
-import 'routing/app_router.dart'; // 引入自定义的应用路由
+import 'package:timeago/timeago.dart' as timeago;
+import 'theme/app_theme.dart';
+import 'routing/app_router.dart';
 import 'core/providers/theme_provider.dart';
 import 'features/share_receiver/share_receiver_service.dart';
 
-// 全局存储启动时的分享内容
 List<SharedMediaFile>? _initialSharedMedia;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize timeago localization
   timeago.setLocaleMessages('zh_CN', timeago.ZhCnMessages());
 
-  // 在应用启动前先获取初始分享内容
-  try {
-    _initialSharedMedia = await ReceiveSharingIntent.instance.getInitialMedia();
-    debugPrint('📥 main: 初始分享内容 ${_initialSharedMedia?.length ?? 0} 个');
-    if (_initialSharedMedia != null && _initialSharedMedia!.isNotEmpty) {
-      for (final file in _initialSharedMedia!) {
-        debugPrint('📥 main: type=${file.type}, path=${file.path}');
+  if (!kIsWeb) {
+    try {
+      _initialSharedMedia = await ReceiveSharingIntent.instance.getInitialMedia();
+      debugPrint('📥 main: 初始分享内容 ${_initialSharedMedia?.length ?? 0} 个');
+      if (_initialSharedMedia != null && _initialSharedMedia!.isNotEmpty) {
+        for (final file in _initialSharedMedia!) {
+          debugPrint('📥 main: type=${file.type}, path=${file.path}');
+        }
       }
+    } catch (e) {
+      debugPrint('📥 main: 获取初始分享失败: $e');
     }
-  } catch (e) {
-    debugPrint('📥 main: 获取初始分享失败: $e');
   }
 
   runApp(
@@ -54,12 +54,12 @@ class _VaultStreamAppState extends ConsumerState<VaultStreamApp> {
   @override
   void initState() {
     super.initState();
-    // 处理初始分享内容
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _handleInitialShare();
-      // 初始化流监听
-      ref.read(shareReceiverServiceProvider).initialize();
-    });
+    if (!kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _handleInitialShare();
+        ref.read(shareReceiverServiceProvider).initialize();
+      });
+    }
   }
 
   void _handleInitialShare() {

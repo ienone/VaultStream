@@ -25,6 +25,7 @@ class DistributionScheduler:
         self.interval_seconds = interval_seconds
         self.running = False
         self._task: Optional[asyncio.Task] = None
+        self._wake_event = asyncio.Event()
         
         # 全局频率限制：20条/分钟
         self.rate_limit = 20
@@ -44,12 +45,14 @@ class DistributionScheduler:
     async def stop(self):
         """停止调度器"""
         self.running = False
+        self._wake_event.set()
         if self._task:
             self._task.cancel()
             try:
                 await self._task
             except asyncio.CancelledError:
                 pass
+        self._wake_event.clear()
         logger.info("分发调度器已停止")
     
     async def _run_loop(self):
@@ -60,12 +63,16 @@ class DistributionScheduler:
             except Exception as e:
                 logger.error(f"分发调度器出错: {e}", exc_info=True)
             
-            await asyncio.sleep(self.interval_seconds)
+            try:
+                await asyncio.wait_for(self._wake_event.wait(), timeout=self.interval_seconds)
+            except asyncio.TimeoutError:
+                pass
+            self._wake_event.clear()
 
     async def trigger_run(self):
-        """手动触发一次分发"""
-        logger.info("手动触发分发...")
-        await self._check_and_distribute()
+        """Wake the scheduler to run immediately."""
+        logger.info("Scheduler wake-up signal received")
+        self._wake_event.set()
     
     async def _check_and_distribute(self):
         """检查并分发内容"""

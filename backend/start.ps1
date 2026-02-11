@@ -81,11 +81,19 @@ except Exception as e:
 
 # 5. Start Application
 Write-Host "`nStarting FastAPI..." -ForegroundColor Green
+
+# Check if Telegram Bot should be started alongside
+if (Test-Path "$PSScriptRoot\.env") {
+    $envLines = Get-Content "$PSScriptRoot\.env" -ErrorAction SilentlyContinue
+    $enableBot = $envLines | Where-Object { $_ -match '^\s*ENABLE_BOT\s*=\s*[Tt]rue' }
+
+    if ($enableBot) {
+        New-Item -ItemType Directory -Force -Path "$PSScriptRoot\..\logs" | Out-Null
+        Write-Host "Starting Telegram Bot in background..." -ForegroundColor Cyan
+        $botProcess = Start-Process -FilePath $PYTHON -ArgumentList "-m", "app.bot.main" -WorkingDirectory $PSScriptRoot -NoNewWindow -PassThru
+        Write-Host "Telegram Bot started (PID: $($botProcess.Id))" -ForegroundColor Gray
+    }
+}
+
 $cmdString = "$PYTHON -m app.main"
-
-# We use Start-Process to keep it in this window or spawn visible
-# Ideally keeping it attached is better for logs
-# But 'python' usually requires -u for unbuffered in some shells.
-# Let's just run it directly.
-
 Invoke-Expression $cmdString

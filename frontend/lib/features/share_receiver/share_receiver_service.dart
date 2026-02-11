@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -56,14 +57,12 @@ class ShareReceiverService {
 
   ShareReceiverService(this._ref);
 
-  /// 初始化分享监听
   void initialize() {
-    if (_initialized) return;
+    if (_initialized || kIsWeb) return;
     _initialized = true;
     
     debugPrint('📥 ShareReceiverService: 初始化分享监听...');
 
-    // 监听应用运行时收到的分享
     _intentSubscription = ReceiveSharingIntent.instance.getMediaStream().listen(
       (List<SharedMediaFile> files) {
         debugPrint('📥 ShareReceiver: 收到流分享, ${files.length} 个文件');
@@ -74,12 +73,10 @@ class ShareReceiverService {
       },
     );
 
-    // 检查应用启动时是否有分享内容（冷启动）
     ReceiveSharingIntent.instance.getInitialMedia().then((files) {
       debugPrint('📥 ShareReceiver: 初始分享检查, ${files.length} 个文件');
       if (files.isNotEmpty) {
         _handleSharedMedia(files);
-        // 处理完后重置，避免重复处理
         ReceiveSharingIntent.instance.reset();
       }
     });
@@ -122,10 +119,11 @@ class ShareReceiverService {
     }
   }
 
-  /// 清除分享内容并重置 intent
   void clearSharedContent() {
     _ref.read(shareReceiverStateProvider.notifier).clear();
-    ReceiveSharingIntent.instance.reset();
+    if (!kIsWeb) {
+      ReceiveSharingIntent.instance.reset();
+    }
   }
 
   /// 释放资源

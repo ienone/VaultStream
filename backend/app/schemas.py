@@ -620,6 +620,7 @@ class BotStatusResponse(BaseModel):
     connected_chats: int
     total_pushed_today: int
     uptime_seconds: Optional[int]
+    napcat_status: Optional[str] = None
 
 
 class BotSyncRequest(BaseModel):

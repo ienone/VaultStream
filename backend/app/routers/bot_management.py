@@ -403,6 +403,25 @@ async def get_bot_status(
         if runtime.started_at and is_running:
             uptime_seconds = int((now - runtime.started_at).total_seconds())
     
+    # Napcat 连接检查
+    napcat_status = None
+    if settings.enable_napcat and settings.napcat_api_base:
+        import httpx
+        try:
+            headers = {}
+            if settings.napcat_access_token:
+                headers["Authorization"] = f"Bearer {settings.napcat_access_token.get_secret_value()}"
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"{settings.napcat_api_base.rstrip('/')}/get_login_info", headers=headers)
+                if resp.status_code == 200:
+                    napcat_status = "online"
+                else:
+                    napcat_status = f"error:{resp.status_code}"
+        except Exception as e:
+            napcat_status = f"offline:{e}"
+    elif settings.enable_napcat:
+        napcat_status = "misconfigured"
+
     return BotStatusResponse(
         is_running=is_running,
         bot_username=bot_username,
@@ -410,6 +429,7 @@ async def get_bot_status(
         connected_chats=chat_count,
         total_pushed_today=today_pushed,
         uptime_seconds=uptime_seconds,
+        napcat_status=napcat_status,
     )
 
 
@@ -624,7 +644,12 @@ async def get_health_detail(
     storage_status = "healthy" if storage_path.exists() else "missing"
     
     # Bot 状态
-    bot_status = "running" if settings.enable_bot else "disabled"
+    bot_parts = []
+    if settings.enable_bot:
+        bot_parts.append("telegram:enabled")
+    if settings.enable_napcat:
+        bot_parts.append("napcat:enabled")
+    bot_status = ", ".join(bot_parts) if bot_parts else "disabled"
     
     # 队列状态
     result = await db.execute(

@@ -78,6 +78,13 @@ class TelegramPushService(BasePushService):
             self._http_client = httpx.AsyncClient(timeout=30.0)
         return self._http_client
     
+    @staticmethod
+    def _get_media_mode(render_config: Dict[str, Any]) -> str:
+        if not render_config:
+            return "auto"
+        structure = render_config.get("structure", render_config)
+        return structure.get("media_mode", "auto")
+
     def _build_payload(self, content: Dict[str, Any]) -> Tuple[str, List[Dict]]:
         """
         构建 Telegram 发送载荷
@@ -102,7 +109,14 @@ class TelegramPushService(BasePushService):
         raw_metadata = content.get('raw_metadata', {})
         cover_url = content.get('cover_url')
         media_items = extract_media_urls(raw_metadata, cover_url)
-        
+
+        media_mode = self._get_media_mode(render_config)
+        if media_mode == "none":
+            media_items = []
+        elif media_mode == "cover" and media_items:
+            photos = [m for m in media_items if m["type"] == "photo"]
+            media_items = photos[:1] if photos else media_items[:1]
+
         # 根据是否有媒体调整文本长度
         if media_items and len(text) > MAX_CAPTION_LENGTH:
             text = text[:MAX_CAPTION_LENGTH - 3] + "..."

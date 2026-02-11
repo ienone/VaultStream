@@ -4,10 +4,45 @@
 提供Telegram等平台的内容文本格式化功能
 """
 import html
+import re
 from datetime import datetime
 from typing import Dict, Any, Optional
 
 from .formatters import format_number
+
+
+def strip_markdown(text: str) -> str:
+    """Remove common Markdown formatting for plain-text platforms (e.g. QQ).
+
+    Handles: headings, bold/italic, images, links, inline code,
+    block quotes, horizontal rules, and stray markup characters.
+    """
+    if not text:
+        return text
+    # Images: ![alt](url) → alt, or remove entirely if alt is empty
+    text = re.sub(r'!\[([^\]]*)\]\([^)]+\)', r'\1', text)
+    # Links: [text](url) → text
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    # Headings: ### heading → heading
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    # Bold/italic: **text** or __text__ → text
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    text = re.sub(r'__(.+?)__', r'\1', text)
+    # Italic: *text* or _text_ → text (careful not to match underscores in words)
+    text = re.sub(r'(?<!\w)\*(.+?)\*(?!\w)', r'\1', text)
+    text = re.sub(r'(?<!\w)_(.+?)_(?!\w)', r'\1', text)
+    # Strikethrough: ~~text~~ → text
+    text = re.sub(r'~~(.+?)~~', r'\1', text)
+    # Inline code: `code` → code
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    # Block quotes: > text → text
+    text = re.sub(r'^>\s?', '', text, flags=re.MULTILINE)
+    # Horizontal rules: --- or *** or ___ → (remove)
+    text = re.sub(r'^[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)
+    # Clean up multiple blank lines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
 
 _DEFAULT_RENDER_CONFIG = {
     "show_platform_id": True,

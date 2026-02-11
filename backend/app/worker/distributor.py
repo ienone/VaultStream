@@ -1,4 +1,4 @@
-﻿"""
+"""
 内容分发 Worker。
 
 处理向不同平台分发内容的逻辑。
@@ -19,6 +19,7 @@ class ContentDistributor:
         self,
         content: Content,
         rule: DistributionRule | None,
+        target_render_config: dict | None = None,
     ) -> dict:
         payload = {
             "id": content.id,
@@ -46,6 +47,10 @@ class ContentDistributor:
 
         if rule and rule.render_config:
             payload["render_config"] = rule.render_config
+
+        if target_render_config:
+            base = payload.get("render_config") or {}
+            payload["render_config"] = {**base, **target_render_config}
 
         return payload
 
@@ -92,8 +97,12 @@ class ContentDistributor:
                 ).order_by(PushedRecord.pushed_at.desc()).limit(1)
             )
             record = existing.scalar_one_or_none()
-            if record and content.reviewed_at and record.pushed_at:
-                if content.reviewed_at <= record.pushed_at:
+            if record:
+                should_skip = True
+                if content.reviewed_at and record.pushed_at:
+                    if content.reviewed_at > record.pushed_at:
+                        should_skip = False
+                if should_skip:
                     continue
 
             rule = None
@@ -104,7 +113,9 @@ class ContentDistributor:
                 )
                 rule = rule_result.scalar_one_or_none()
 
-            contents_payload.append(await self._build_content_payload(content, rule))
+            contents_payload.append(await self._build_content_payload(
+                content, rule, target_render_config=target_meta.get("render_config"),
+            ))
 
         if not contents_payload:
             logger.info("No eligible content for batch forward")
@@ -246,7 +257,9 @@ class ContentDistributor:
                         )
                         rule = rule_result.scalar_one_or_none()
 
-                    content_dict = await self._build_content_payload(content, rule)
+                    content_dict = await self._build_content_payload(
+                        content, rule, target_render_config=target_meta.get("render_config"),
+                    )
 
                     message_id = await push_service.push(content_dict, target_id)
 

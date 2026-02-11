@@ -194,6 +194,7 @@ class DistributionEngine:
                                 "merge_forward": target.get("merge_forward", False),
                                 "use_author_name": target.get("use_author_name", True),
                                 "summary": target.get("summary"),
+                                "render_config": target.get("render_config"),
                             },
                         }
                     )

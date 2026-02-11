@@ -1,4 +1,4 @@
-﻿"""
+"""
 Configuration management.
 """
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     telegram_blacklist_ids: str = ""  # 黑名单用户ID列表，逗号分隔
 
     # Napcat/OneBot 11 配置
+    enable_napcat: bool = False
     napcat_api_base: str = ""
     napcat_access_token: Optional[SecretStr] = None
     napcat_bot_uin: str = ""

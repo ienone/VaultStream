@@ -19,11 +19,13 @@ def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
     return None
 
 async def require_api_token(
-    x_api_token: str = Header(..., alias="X-API-Token"),
+    x_api_token: Optional[str] = Header(default=None, alias="X-API-Token"),
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
 ):
-    provided = x_api_token or _extract_bearer(authorization)
     expected = settings.api_token.get_secret_value() if settings.api_token else ""
+    if not expected:
+        return
+    provided = x_api_token or _extract_bearer(authorization)
     if not provided or provided != expected:
         raise HTTPException(status_code=401, detail="Invalid or missing API Token")
 
