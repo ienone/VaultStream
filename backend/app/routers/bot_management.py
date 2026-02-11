@@ -35,7 +35,7 @@ async def list_bot_chats(
     _: None = Depends(require_api_token),
 ):
     """获取所有 Bot 关联的群组/频道"""
-    query = select(BotChat).order_by(desc(BotChat.priority), BotChat.id)
+    query = select(BotChat).order_by(BotChat.id)
     
     if enabled is not None:
         query = query.where(BotChat.enabled == enabled)
@@ -69,12 +69,7 @@ async def create_bot_chat(
         username=chat.username,
         description=chat.description,
         enabled=chat.enabled,
-        priority=chat.priority,
-        nsfw_policy=chat.nsfw_policy,
         nsfw_chat_id=chat.nsfw_chat_id,
-        tag_filter=chat.tag_filter,
-        platform_filter=chat.platform_filter,
-        linked_rule_ids=chat.linked_rule_ids,
     )
     db.add(db_chat)
     await db.commit()
@@ -167,57 +162,6 @@ async def toggle_bot_chat(
     status = "enabled" if db_chat.enabled else "disabled"
     logger.info(f"Bot 群组状态切换: {db_chat.title or chat_id} -> {status}")
     return {"status": status, "enabled": db_chat.enabled}
-
-
-@router.post("/bot/chats/{chat_id}/link-rule/{rule_id}")
-async def link_rule_to_chat(
-    chat_id: str,
-    rule_id: int,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """将分发规则关联到群组"""
-    # 验证群组存在
-    result = await db.execute(select(BotChat).where(BotChat.chat_id == chat_id))
-    db_chat = result.scalar_one_or_none()
-    if not db_chat:
-        raise HTTPException(status_code=404, detail="Chat not found")
-    
-    # 验证规则存在
-    result = await db.execute(select(DistributionRule).where(DistributionRule.id == rule_id))
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Rule not found")
-    
-    # 添加关联
-    linked_ids = list(db_chat.linked_rule_ids or [])
-    if rule_id not in linked_ids:
-        linked_ids.append(rule_id)
-        db_chat.linked_rule_ids = linked_ids
-        await db.commit()
-    
-    return {"status": "linked", "linked_rule_ids": db_chat.linked_rule_ids}
-
-
-@router.delete("/bot/chats/{chat_id}/link-rule/{rule_id}")
-async def unlink_rule_from_chat(
-    chat_id: str,
-    rule_id: int,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """解除分发规则与群组的关联"""
-    result = await db.execute(select(BotChat).where(BotChat.chat_id == chat_id))
-    db_chat = result.scalar_one_or_none()
-    if not db_chat:
-        raise HTTPException(status_code=404, detail="Chat not found")
-    
-    linked_ids = list(db_chat.linked_rule_ids or [])
-    if rule_id in linked_ids:
-        linked_ids.remove(rule_id)
-        db_chat.linked_rule_ids = linked_ids
-        await db.commit()
-    
-    return {"status": "unlinked", "linked_rule_ids": db_chat.linked_rule_ids}
 
 
 # ========== Bot Upsert (for Bot process) ==========
@@ -689,14 +633,12 @@ def _chat_to_response(chat: BotChat) -> BotChatResponse:
         is_admin=chat.is_admin or False,
         can_post=chat.can_post or False,
         enabled=chat.enabled or False,
-        priority=chat.priority or 0,
-        nsfw_policy=chat.nsfw_policy or "inherit",
         nsfw_chat_id=chat.nsfw_chat_id,
-        tag_filter=chat.tag_filter or [],
-        platform_filter=chat.platform_filter or [],
-        linked_rule_ids=chat.linked_rule_ids or [],
         total_pushed=chat.total_pushed or 0,
         last_pushed_at=chat.last_pushed_at,
+        is_accessible=chat.is_accessible if chat.is_accessible is not None else True,
+        last_sync_at=chat.last_sync_at,
+        sync_error=chat.sync_error,
         created_at=chat.created_at,
         updated_at=chat.updated_at,
     )

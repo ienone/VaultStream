@@ -123,47 +123,6 @@ class BotChatCard extends StatelessWidget {
                   ),
                 ],
               ),
-              if (chat.tagFilter.isNotEmpty || chat.platformFilter.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                const Divider(height: 1),
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    ...chat.platformFilter.map((platform) => Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: colorScheme.secondaryContainer.withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        platform.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 10, 
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.onSecondaryContainer,
-                        ),
-                      ),
-                    )),
-                    ...chat.tagFilter.map((tag) => Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: colorScheme.primaryContainer.withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '#$tag',
-                        style: TextStyle(
-                          fontSize: 10, 
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.onPrimaryContainer,
-                        ),
-                      ),
-                    )),
-                  ],
-                ),
-              ],
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,

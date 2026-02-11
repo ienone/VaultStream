@@ -43,7 +43,6 @@ void main() {
         id: 1,
         name: 'Existing Rule',
         matchConditions: {'tags': ['old_tag'], 'tags_exclude': [], 'tags_match_mode': 'any'},
-        targets: [],
         enabled: true,
         priority: 0,
         nsfwPolicy: 'block',

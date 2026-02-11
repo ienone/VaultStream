@@ -316,6 +316,8 @@ limit=50         # 返回数量
 
 创建分发规则（支持标签、平台、NSFW策略等条件）。
 
+> **注意 (Phase 4)**: `targets` 字段已从此接口移除，请使用下方的 **分发目标 API** 管理目标。
+
 
 ### PATCH /api/v1/distribution-rules/{id}
 
@@ -326,6 +328,39 @@ limit=50         # 返回数量
 
 删除分发规则。
 
+
+### 分发目标 API (Phase 4 新增)
+
+#### GET /api/v1/distribution-rules/{id}/targets
+
+获取指定规则关联的所有分发目标。
+
+#### POST /api/v1/distribution-rules/{id}/targets
+
+为规则添加一个分发目标。
+
+**Request Body**:
+```json
+{
+  "bot_chat_id": 1,
+  "enabled": true,
+  "merge_forward": false,
+  "use_author_name": true,
+  "summary": "可选汇总名称",
+  "render_config_override": null
+}
+```
+
+#### PATCH /api/v1/distribution-rules/{rule_id}/targets/{target_id}
+
+更新特定的分发目标配置。
+
+#### DELETE /api/v1/distribution-rules/{rule_id}/targets/{target_id}
+
+移除该分发目标。
+
+
+### 全局目标视图 API
 
 ### GET /api/v1/targets
 

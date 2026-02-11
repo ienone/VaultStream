@@ -67,13 +67,13 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       final mockDistributionRules = [
-        DistributionRule(id: 1, name: 'Rule 1', matchConditions: {}, targets: [], enabled: true, priority: 1, nsfwPolicy: 'block', approvalRequired: false, createdAt: DateTime.now(), updatedAt: DateTime.now()),
+        DistributionRule(id: 1, name: 'Rule 1', matchConditions: {}, enabled: true, priority: 1, nsfwPolicy: 'block', approvalRequired: false, createdAt: DateTime.now(), updatedAt: DateTime.now()),
       ];
       final mockQueueItems = [
         QueueItem(id: 1, contentId: 101, title: 'Item 1', platform: 'twitter', status: 'will_push'),
       ];
       final mockBotChats = [
-        BotChat(id: 1, chatId: '123', chatType: 'group', title: 'Chat 1', enabled: true, nsfwPolicy: 'inherit', createdAt: DateTime.now(), updatedAt: DateTime.now()),
+        BotChat(id: 1, chatId: '123', chatType: 'group', title: 'Chat 1', enabled: true, createdAt: DateTime.now(), updatedAt: DateTime.now()),
       ];
 
       await tester.pumpWidget(

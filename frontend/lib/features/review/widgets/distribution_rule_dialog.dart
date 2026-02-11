@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/distribution_rule.dart';
 import 'render_config_editor.dart';
-import 'target_editor_dialog.dart';
 
 class DistributionRuleDialog extends StatefulWidget {
   final DistributionRule? rule;
@@ -34,7 +33,6 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
   late List<String> _includeTags;
   late List<String> _excludeTags;
   late String _tagsMatchMode;
-  late List<Map<String, dynamic>> _targets;
   late Map<String, dynamic> _renderConfig;
 
   bool get isEditing => widget.rule != null;
@@ -60,7 +58,6 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
     _includeTags = List.from(conditions['tags'] ?? []);
     _excludeTags = List.from(conditions['tags_exclude'] ?? []);
     _tagsMatchMode = conditions['tags_match_mode'] ?? 'any';
-    _targets = List.from(rule?.targets ?? []);
     _renderConfig = Map<String, dynamic>.from(rule?.renderConfig ?? {});
   }
 
@@ -213,8 +210,6 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
                       ),
                       const SizedBox(height: 32),
                       _buildRenderConfigSection(),
-                      const SizedBox(height: 32),
-                      _buildTargetsSection(context),
                       const SizedBox(height: 24),
                     ],
                   ),
@@ -436,111 +431,6 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
     );
   }
 
-  Widget _buildTargetsSection(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            _buildSubHeader('分发目标'),
-            IconButton.filledTonal(
-              onPressed: _showAddTargetDialog,
-              icon: const Icon(Icons.add_rounded, size: 18),
-              tooltip: '添加目标',
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              padding: EdgeInsets.zero,
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (_targets.isEmpty)
-          _buildEmptyTargets(colorScheme)
-        else
-          ..._targets.asMap().entries.map((entry) => _buildTargetCard(entry.key, entry.value, colorScheme)),
-      ],
-    );
-  }
-
-  Widget _buildEmptyTargets(ColorScheme colorScheme) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: colorScheme.errorContainer.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colorScheme.error.withValues(alpha: 0.2)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.warning_amber_rounded, color: colorScheme.error),
-          const SizedBox(width: 16),
-          const Expanded(
-            child: Text('尚未配置分发目标，该规则目前不会产生任何推送动作。', style: TextStyle(fontSize: 13)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTargetCard(int index, Map<String, dynamic> target, ColorScheme colorScheme) {
-    final platform = target['platform'] ?? 'telegram';
-    final hasOverride = target['render_config'] != null && (target['render_config'] as Map).isNotEmpty;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      color: colorScheme.surfaceContainer,
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ListTile(
-        onTap: () => _showEditTargetDialog(index, target),
-        leading: Icon(platform == 'telegram' ? Icons.telegram : Icons.chat_rounded, color: Colors.blue),
-        title: Row(
-          children: [
-            Flexible(child: Text(target['target_id'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold))),
-            if (hasOverride) ...[
-              const SizedBox(width: 6),
-              Icon(Icons.palette_rounded, size: 14, color: colorScheme.tertiary),
-            ],
-          ],
-        ),
-        subtitle: Text(platform.toUpperCase(), style: TextStyle(fontSize: 11, color: colorScheme.outline)),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Switch(
-              value: target['enabled'] ?? true,
-              onChanged: (v) => setState(() => _targets[index] = {...target, 'enabled': v}),
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline_rounded, size: 20),
-              onPressed: () => setState(() => _targets.removeAt(index)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showAddTargetDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => TargetEditorDialog(
-        onSave: (target) => setState(() => _targets.add(target)),
-      ),
-    );
-  }
-
-  void _showEditTargetDialog(int index, Map<String, dynamic> target) {
-    showDialog(
-      context: context,
-      builder: (ctx) => TargetEditorDialog(
-        target: target,
-        onSave: (updated) => setState(() => _targets[index] = updated),
-      ),
-    );
-  }
-
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
     final matchConditions = {
@@ -552,7 +442,6 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
       name: _nameController.text,
       description: _descriptionController.text.isEmpty ? null : _descriptionController.text,
       matchConditions: matchConditions,
-      targets: _targets,
       priority: int.tryParse(_priorityController.text) ?? 0,
       nsfwPolicy: _nsfwPolicy,
       approvalRequired: _approvalRequired,
@@ -564,7 +453,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
     if (isEditing) {
       widget.onUpdate?.call(widget.rule!.id, DistributionRuleUpdate(
         name: create.name, description: create.description, matchConditions: create.matchConditions,
-        targets: create.targets, priority: create.priority, nsfwPolicy: create.nsfwPolicy,
+        priority: create.priority, nsfwPolicy: create.nsfwPolicy,
         approvalRequired: create.approvalRequired, enabled: create.enabled, rateLimit: create.rateLimit, timeWindow: create.timeWindow,
         renderConfig: create.renderConfig,
       ));

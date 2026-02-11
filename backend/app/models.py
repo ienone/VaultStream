@@ -325,10 +325,6 @@ class DistributionRule(Base):
     # 示例: {"tags": ["tech", "news"], "platform": "bilibili", "is_nsfw": false}
     match_conditions = Column(JSON, nullable=False)
     
-    # 目标配置（JSON 数组）
-    # 示例: [{"platform": "telegram", "target_id": "@my_channel", "enabled": true}]
-    targets = Column(JSON, nullable=False, default=list)
-    
     # 规则配置
     enabled = Column(Boolean, default=True, index=True)
     priority = Column(Integer, default=0, index=True)  # 优先级（越大越高）
@@ -353,6 +349,41 @@ class DistributionRule(Base):
     # 时间戳
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class DistributionTarget(Base):
+    """分发目标表（M4 分发引擎 - 重构后）"""
+    __tablename__ = "distribution_targets"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # 外键关联
+    rule_id = Column(Integer, ForeignKey("distribution_rules.id", ondelete="CASCADE"), nullable=False, index=True)
+    bot_chat_id = Column(Integer, ForeignKey("bot_chats.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # 目标配置
+    enabled = Column(Boolean, default=True, index=True)
+    
+    # 发送选项（平台特定）
+    merge_forward = Column(Boolean, default=False)  # QQ 合并转发
+    use_author_name = Column(Boolean, default=True)  # 显示原作者名
+    summary = Column(String(200))  # 合并转发显示名
+    
+    # 渲染覆盖（优先级高于规则级 render_config）
+    render_config_override = Column(JSON)  # 覆盖规则级 render_config
+    
+    # 时间戳
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    
+    # 关系
+    rule = relationship("DistributionRule", backref="distribution_targets")
+    bot_chat = relationship("BotChat", backref="distribution_targets")
+    
+    # 唯一约束：同一规则不能重复添加同一目标
+    __table_args__ = (
+        Index("idx_rule_chat", "rule_id", "bot_chat_id", unique=True),
+    )
 
 
 class TaskStatus(str, Enum):
@@ -479,18 +510,9 @@ class BotChat(Base):
     
     # 分发配置
     enabled = Column(Boolean, default=True, index=True)  # 是否启用此目标
-    priority = Column(Integer, default=0)  # 优先级
     
-    # NSFW 策略（覆盖全局设置）
-    nsfw_policy = Column(String(50), default="inherit")  # inherit/allow/block/separate
+    # NSFW 路由（备用频道指针，非策略）
     nsfw_chat_id = Column(String(50))  # NSFW 内容的备用频道/群组
-    
-    # 关联的分发规则（JSON 存储规则ID列表）
-    linked_rule_ids = Column(JSON, default=list)
-    
-    # 标签过滤器（为空表示接收所有）
-    tag_filter = Column(JSON, default=list)  # 只接收包含这些标签的内容
-    platform_filter = Column(JSON, default=list)  # 只接收来自这些平台的内容
     
     # 统计
     total_pushed = Column(Integer, default=0)  # 累计推送数
@@ -503,6 +525,16 @@ class BotChat(Base):
     is_accessible = Column(Boolean, default=True)  # Bot 是否还能访问该群组
     last_sync_at = Column(DateTime)  # 最后同步时间
     sync_error = Column(String(500))  # 同步错误信息
+    
+    @property
+    def platform_type(self) -> str:
+        """根据 chat_type 自动推断平台"""
+        if self.chat_type in [BotChatType.QQ_GROUP, BotChatType.QQ_PRIVATE]:
+            return "qq"
+        if self.chat_type in [BotChatType.CHANNEL, BotChatType.GROUP, BotChatType.SUPERGROUP, BotChatType.PRIVATE]:
+            return "telegram"
+        # 默认回退到 telegram 或抛出异常（此处回退以保持兼容性，但记录警告）
+        return "telegram"
     
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)

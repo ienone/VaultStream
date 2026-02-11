@@ -410,11 +410,10 @@ def _validate_targets_list(v: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 class DistributionRuleCreate(BaseModel):
-    """创建分发规则"""
+    """创建分发规则（Phase 4: targets 字段已移除，请使用 DistributionTarget API）"""
     name: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
     match_conditions: Dict[str, Any] = Field(..., description="匹配条件 JSON")
-    targets: List[Dict[str, Any]] = Field(default_factory=list, description="目标配置列表")
     enabled: bool = True
     priority: int = 0
     nsfw_policy: str = Field(default="block", description="NSFW策略: allow/block/separate_channel")
@@ -425,19 +424,12 @@ class DistributionRuleCreate(BaseModel):
     template_id: Optional[str] = None
     render_config: Optional[Dict[str, Any]] = None
 
-    @field_validator('targets')
-    @classmethod
-    def validate_targets(cls, v: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Validate target schema to ensure consistency"""
-        return _validate_targets_list(v)
-
 
 class DistributionRuleUpdate(BaseModel):
-    """更新分发规则"""
+    """更新分发规则（Phase 4: targets 字段已移除，请使用 DistributionTarget API）"""
     name: Optional[str] = None
     description: Optional[str] = None
     match_conditions: Optional[Dict[str, Any]] = None
-    targets: Optional[List[Dict[str, Any]]] = None
     enabled: Optional[bool] = None
     priority: Optional[int] = None
     nsfw_policy: Optional[str] = None
@@ -448,12 +440,6 @@ class DistributionRuleUpdate(BaseModel):
     template_id: Optional[str] = None
     render_config: Optional[Dict[str, Any]] = None
 
-    @field_validator('targets')
-    @classmethod
-    def validate_targets(cls, v: Optional[List[Dict[str, Any]]]) -> Optional[List[Dict[str, Any]]]:
-        """Validate target schema to ensure consistency"""
-        return _validate_targets_list(v)
-
 
 class DistributionRuleResponse(BaseModel):
     """分发规则响应"""
@@ -461,7 +447,6 @@ class DistributionRuleResponse(BaseModel):
     name: str
     description: Optional[str] = None
     match_conditions: Dict[str, Any] = Field(default_factory=dict)
-    targets: List[Dict[str, Any]] = Field(default_factory=list)
     enabled: bool = True
     priority: int = 0
     nsfw_policy: str = "inherit"
@@ -479,10 +464,43 @@ class DistributionRuleResponse(BaseModel):
     def default_match_conditions(cls, v):
         return v if v is not None else {}
     
-    @field_validator('targets', mode='before')
-    @classmethod
-    def default_targets(cls, v):
-        return v if v is not None else []
+    class Config:
+        from_attributes = True
+
+
+# ========== DistributionTarget Schemas ==========
+
+class DistributionTargetCreate(BaseModel):
+    """创建分发目标"""
+    bot_chat_id: int = Field(..., description="关联的 BotChat ID")
+    enabled: bool = True
+    merge_forward: bool = False  # QQ 合并转发
+    use_author_name: bool = True  # 显示原作者名
+    summary: Optional[str] = None  # 合并转发显示名
+    render_config_override: Optional[Dict[str, Any]] = None  # 渲染配置覆盖
+
+
+class DistributionTargetUpdate(BaseModel):
+    """更新分发目标"""
+    enabled: Optional[bool] = None
+    merge_forward: Optional[bool] = None
+    use_author_name: Optional[bool] = None
+    summary: Optional[str] = None
+    render_config_override: Optional[Dict[str, Any]] = None
+
+
+class DistributionTargetResponse(BaseModel):
+    """分发目标响应"""
+    id: int
+    rule_id: int
+    bot_chat_id: int
+    enabled: bool
+    merge_forward: bool
+    use_author_name: bool
+    summary: Optional[str]
+    render_config_override: Optional[Dict[str, Any]]
+    created_at: datetime
+    updated_at: datetime
     
     class Config:
         from_attributes = True
@@ -565,24 +583,14 @@ class BotChatCreate(BaseModel):
     username: Optional[str] = None
     description: Optional[str] = None
     enabled: bool = True
-    priority: int = 0
-    nsfw_policy: str = "inherit"
     nsfw_chat_id: Optional[str] = None
-    tag_filter: List[str] = Field(default_factory=list)
-    platform_filter: List[str] = Field(default_factory=list)
-    linked_rule_ids: List[int] = Field(default_factory=list)
 
 
 class BotChatUpdate(BaseModel):
     """更新 Bot 聊天配置"""
     title: Optional[str] = None
     enabled: Optional[bool] = None
-    priority: Optional[int] = None
-    nsfw_policy: Optional[str] = None
     nsfw_chat_id: Optional[str] = None
-    tag_filter: Optional[List[str]] = None
-    platform_filter: Optional[List[str]] = None
-    linked_rule_ids: Optional[List[int]] = None
 
 
 class BotChatResponse(BaseModel):
@@ -597,14 +605,12 @@ class BotChatResponse(BaseModel):
     is_admin: bool
     can_post: bool
     enabled: bool
-    priority: int
-    nsfw_policy: str
     nsfw_chat_id: Optional[str]
-    tag_filter: List[str]
-    platform_filter: List[str]
-    linked_rule_ids: List[int]
     total_pushed: int
     last_pushed_at: Optional[datetime]
+    is_accessible: bool
+    last_sync_at: Optional[datetime]
+    sync_error: Optional[str]
     created_at: datetime
     updated_at: datetime
 

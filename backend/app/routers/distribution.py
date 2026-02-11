@@ -6,11 +6,12 @@
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, desc, and_
+from sqlalchemy import select, desc, and_, update
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models import DistributionRule, Content, PushedRecord, ReviewStatus, ContentStatus
+from app.models import DistributionRule, Content, PushedRecord, ReviewStatus, ContentStatus, DistributionTarget, BotChat
 from app.constants import Platform, PREVIEW_CONTENT_IDS, DEFAULT_RENDER_CONFIG_PRESETS
 from app.schemas import (
     DistributionRuleCreate, DistributionRuleUpdate, DistributionRuleResponse,
@@ -25,59 +26,6 @@ from app.core.dependencies import require_api_token
 router = APIRouter()
 
 
-async def _check_target_conflicts(
-    db: AsyncSession,
-    targets: List[Dict[str, Any]],
-    exclude_rule_id: Optional[int] = None
-) -> List[str]:
-    """
-    检查目标配置是否与其他规则冲突
-    
-    Args:
-        db: 数据库会话
-        targets: 目标列表
-        exclude_rule_id: 排除的规则ID（用于更新时忽略自己）
-    
-    Returns:
-        冲突警告列表
-    """
-    warnings = []
-    
-    # 获取所有其他规则 (SQLite 暂不支持在该层面高效查询 JSON 数组内部项，先保持聚合逻辑)
-    # 但我们可以优化内存循环
-    query = select(DistributionRule)
-    if exclude_rule_id:
-        query = query.where(DistributionRule.id != exclude_rule_id)
-    
-    result = await db.execute(query)
-    all_rules = result.scalars().all()
-    
-    # 构建现有目标的索引： (platform, target_id) -> list of rule names
-    existing_target_index = {}
-    for rule in all_rules:
-        if not rule.targets:
-            continue
-        for t in rule.targets:
-            key = (t.get('platform'), str(t.get('target_id')))
-            if key not in existing_target_index:
-                existing_target_index[key] = []
-            existing_target_index[key].append(rule.name)
-    
-    # 检查输入的目标
-    for target in targets:
-        platform = target.get('platform')
-        target_id = str(target.get('target_id'))
-        key = (platform, target_id)
-        
-        conflicting_rules = existing_target_index.get(key, [])
-        if conflicting_rules:
-            warnings.append(
-                f"Target {platform}:{target_id} is also configured in rules: {', '.join(conflicting_rules)}"
-            )
-    
-    return warnings
-
-
 @router.post("/distribution-rules", response_model=DistributionRuleResponse)
 async def create_distribution_rule(
     rule: DistributionRuleCreate,
@@ -90,14 +38,6 @@ async def create_distribution_rule(
     )
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Rule name already exists")
-    
-    # 检查目标配置冲突
-    if rule.targets:
-        conflicts = await _check_target_conflicts(db, rule.targets)
-        if conflicts:
-            logger.warning(
-                f"Creating rule '{rule.name}' with target conflicts: {'; '.join(conflicts)}"
-            )
     
     db_rule = DistributionRule(**rule.model_dump())
     db.add(db_rule)
@@ -152,14 +92,6 @@ async def update_distribution_rule(
         raise HTTPException(status_code=404, detail="Distribution rule not found")
     
     update_data = rule_update.model_dump(exclude_unset=True)
-    
-    # 检查目标配置冲突（如果更新了targets）
-    if 'targets' in update_data and update_data['targets']:
-        conflicts = await _check_target_conflicts(db, update_data['targets'], exclude_rule_id=rule_id)
-        if conflicts:
-            logger.warning(
-                f"Updating rule '{db_rule.name}' (ID: {rule_id}) with target conflicts: {'; '.join(conflicts)}"
-            )
     
     for key, value in update_data.items():
         setattr(db_rule, key, value)
@@ -219,7 +151,15 @@ async def preview_distribution_rule(
     - rate_limited: 因频率限制暂缓
     - already_pushed: 已推送过
     """
-    result = await db.execute(select(DistributionRule).where(DistributionRule.id == rule_id))
+    # 加载关联的目标和 BotChat 以支持预览逻辑
+    result = await db.execute(
+        select(DistributionRule)
+        .options(
+            selectinload(DistributionRule.distribution_targets)
+            .selectinload(DistributionTarget.bot_chat)
+        )
+        .where(DistributionRule.id == rule_id)
+    )
     rule = result.scalar_one_or_none()
     if not rule:
         raise HTTPException(status_code=404, detail="Distribution rule not found")
@@ -239,8 +179,9 @@ async def preview_distribution_rule(
     pending_review_count = 0
     rate_limited_count = 0
     
-    targets = rule.targets or []
-    target_ids = [t.get("target_id") for t in targets if t.get("target_id") and t.get("enabled", True)]
+    # 适配 Phase 4: 使用 distribution_targets 关系表
+    targets = rule.distribution_targets
+    target_ids = [t.bot_chat.chat_id for t in targets if t.enabled and t.bot_chat.enabled]
     
     window_start = datetime.utcnow() - timedelta(seconds=rule.time_window or 3600)
     pushed_counts: dict[str, int] = {}
@@ -467,54 +408,53 @@ async def list_all_targets(
     - Push statistics
     - Configuration details
     """
-    result = await db.execute(select(DistributionRule))
-    all_rules = result.scalars().all()
+    # 适配 Phase 4: 使用关联查询直接从 distribution_targets 表获取数据
+    stmt = (
+        select(DistributionTarget, BotChat, DistributionRule)
+        .join(BotChat, DistributionTarget.bot_chat_id == BotChat.id)
+        .join(DistributionRule, DistributionTarget.rule_id == DistributionRule.id)
+    )
     
-    # Aggregate targets from all rules
+    # 应用过滤条件
+    if platform:
+        stmt = stmt.where(BotChat.chat_type == platform)
+    
+    if enabled is not None:
+        stmt = stmt.where(DistributionTarget.enabled == enabled)
+        
+    result = await db.execute(stmt)
+    all_records = result.all()
+    
+    # Aggregate targets by (platform, target_id)
     target_map: Dict[tuple, Dict] = {}  # key: (platform, target_id)
     
-    for rule in all_rules:
-        if not rule.targets:
-            continue
+    for dt, chat, rule in all_records:
+        target_platform = chat.chat_type
+        target_id = chat.chat_id
         
-        for target in rule.targets:
-            target_platform = target.get("platform", "")
-            target_id = target.get("target_id", "")
-            
-            if not target_platform or not target_id:
-                continue
-            
-            # Apply filters
-            if platform and target_platform != platform:
-                continue
-            
-            target_enabled = target.get("enabled", True)
-            if enabled is not None and target_enabled != enabled:
-                continue
-            
-            key = (target_platform, target_id)
-            
-            if key not in target_map:
-                target_map[key] = {
-                    "target_platform": target_platform,
-                    "target_id": target_id,
-                    "enabled": target_enabled,
-                    "rule_count": 0,
-                    "rule_ids": [],
-                    "rule_names": [],
-                    "merge_forward": target.get("merge_forward", False),
-                    "use_author_name": target.get("use_author_name", False),
-                    "summary": target.get("summary", ""),
-                    "render_config": target.get("render_config"),
-                    "total_pushed": 0,
-                    "last_pushed_at": None,
-                }
-            
-            target_map[key]["rule_count"] += 1
-            target_map[key]["rule_ids"].append(rule.id)
-            target_map[key]["rule_names"].append(rule.name)
+        key = (target_platform, target_id)
+        
+        if key not in target_map:
+            target_map[key] = {
+                "target_platform": target_platform,
+                "target_id": target_id,
+                "enabled": dt.enabled,
+                "rule_count": 0,
+                "rule_ids": [],
+                "rule_names": [],
+                "merge_forward": dt.merge_forward,
+                "use_author_name": dt.use_author_name,
+                "summary": dt.summary,
+                "render_config": dt.render_config,
+                "total_pushed": 0,
+                "last_pushed_at": None,
+            }
+        
+        target_map[key]["rule_count"] += 1
+        target_map[key]["rule_ids"].append(rule.id)
+        target_map[key]["rule_names"].append(rule.name)
     
-    # Get push statistics for all targets (optimized: single query instead of N+1)
+    # Get push statistics for all targets
     if target_map:
         from collections import defaultdict
         all_target_ids = [key[1] for key in target_map.keys()]
@@ -682,55 +622,43 @@ async def batch_update_targets(
     updated_rule_ids = []
     
     try:
-        # Fetch all candidate rules in one query
-        result = await db.execute(
-            select(DistributionRule).where(DistributionRule.id.in_(request.rule_ids))
+        # 适配 Phase 4: 使用 SQL 直接批量更新 distribution_targets 表
+        # 1. 找到对应的 BotChat ID
+        chat_query = select(BotChat.id).where(
+            and_(
+                BotChat.chat_type == request.target_platform,
+                BotChat.chat_id == str(request.target_id)
+            )
         )
-        rules = result.scalars().all()
+        chat_result = await db.execute(chat_query)
+        bot_chat_id = chat_result.scalar_one_or_none()
+        if not bot_chat_id:
+            raise HTTPException(status_code=404, detail="Target chat not found")
+
+        # 2. 构建更新语句
+        stmt = (
+            update(DistributionTarget)
+            .where(
+                and_(
+                    DistributionTarget.rule_id.in_(request.rule_ids),
+                    DistributionTarget.bot_chat_id == bot_chat_id
+                )
+            )
+        )
         
-        for rule in rules:
-            targets = rule.targets or []
-            rule_updated = False
+        update_values = {}
+        if request.enabled is not None:
+            update_values["enabled"] = request.enabled
+        if request.merge_forward is not None:
+            update_values["merge_forward"] = request.merge_forward
+        if request.render_config is not None:
+            update_values["render_config"] = request.render_config
             
-            # Use a fresh list to ensure SQLAlchemy detects changes in JSON field
-            new_targets = []
-            for target in targets:
-                if (target.get("platform") == request.target_platform and
-                    str(target.get("target_id")) == str(request.target_id)):
-                    
-                    # Create a copy to modify
-                    updated_target = dict(target)
-                    modified = False
-                    
-                    if request.enabled is not None:
-                        updated_target["enabled"] = request.enabled
-                        modified = True
-                    
-                    if request.merge_forward is not None:
-                        updated_target["merge_forward"] = request.merge_forward
-                        modified = True
-                    
-                    if request.render_config is not None:
-                        updated_target["render_config"] = request.render_config
-                        modified = True
-                    
-                    if modified:
-                        new_targets.append(updated_target)
-                        rule_updated = True
-                    else:
-                        new_targets.append(target)
-                else:
-                    new_targets.append(target)
-            
-            if rule_updated:
-                rule.targets = new_targets
-                updated_rule_ids.append(rule.id)
-                logger.info(f"Updated target {request.target_id} in rule {rule.id}")
-        
-        if updated_rule_ids:
+        if update_values:
+            await db.execute(stmt.values(**update_values))
+            updated_rule_ids = list(request.rule_ids)
             await db.commit()
-            # No need to refresh all if we only updated the targets field 
-            # and the user only needs the IDs back
+            logger.info(f"Batch updated {len(updated_rule_ids)} targets for chat {bot_chat_id}")
         
         return BatchTargetUpdateResponse(
             updated_count=len(updated_rule_ids),

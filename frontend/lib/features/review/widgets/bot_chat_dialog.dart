@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/bot_chat.dart';
-import '../models/distribution_rule.dart';
-import '../providers/distribution_rules_provider.dart';
 
 class BotChatDialog extends ConsumerStatefulWidget {
   final BotChat? chat;
@@ -24,14 +22,10 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _chatIdController;
   late final TextEditingController _titleController;
-  late final TextEditingController _priorityController;
-  late final TextEditingController _tagFilterController;
   late final TextEditingController _nsfwChatIdController;
 
   late String _chatType;
-  late String _nsfwPolicy;
   late bool _enabled;
-  late List<int> _linkedRuleIds;
 
   bool get isEditing => widget.chat != null;
   bool get _isQQType => _chatType == 'qq_group' || _chatType == 'qq_private';
@@ -42,31 +36,22 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
     final chat = widget.chat;
     _chatIdController = TextEditingController(text: chat?.chatId ?? '');
     _titleController = TextEditingController(text: chat?.title ?? '');
-    _priorityController =
-        TextEditingController(text: (chat?.priority ?? 0).toString());
-    _tagFilterController =
-        TextEditingController(text: chat?.tagFilter.join(', ') ?? '');
     _nsfwChatIdController =
         TextEditingController(text: chat?.nsfwChatId ?? '');
     _chatType = chat?.chatType ?? 'channel';
-    _nsfwPolicy = chat?.nsfwPolicy ?? 'inherit';
     _enabled = chat?.enabled ?? true;
-    _linkedRuleIds = List.from(chat?.linkedRuleIds ?? []);
   }
 
   @override
   void dispose() {
     _chatIdController.dispose();
     _titleController.dispose();
-    _priorityController.dispose();
-    _tagFilterController.dispose();
     _nsfwChatIdController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final rulesAsync = ref.watch(distributionRulesProvider);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -147,42 +132,13 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                         hint: '可选：群组/频道备注名称',
                         icon: Icons.title_rounded,
                       ),
-                      const SizedBox(height: 32),
-                      _buildSubHeader('NSFW 与优先级'),
-                      const SizedBox(height: 16),
-                      _buildNsfwSelector(),
                       const SizedBox(height: 24),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildTextField(
-                              controller: _priorityController,
-                              label: '优先级',
-                              hint: '0',
-                              icon: Icons.priority_high_rounded,
-                              keyboardType: TextInputType.number,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _buildTextField(
-                              controller: _tagFilterController,
-                              label: '标签过滤器',
-                              hint: '逗号分隔，留空接收所有',
-                              icon: Icons.filter_list_rounded,
-                            ),
-                          ),
-                        ],
+                      _buildTextField(
+                        controller: _nsfwChatIdController,
+                        label: 'NSFW 备用频道 ID',
+                        hint: '例如: -1001234567890（规则中 NSFW 策略为"分离"时使用）',
+                        icon: Icons.call_split_rounded,
                       ),
-                      if (_nsfwPolicy == 'separate') ...[
-                        const SizedBox(height: 24),
-                        _buildTextField(
-                          controller: _nsfwChatIdController,
-                          label: 'NSFW 备用频道 ID',
-                          hint: '例如: -1001234567890',
-                          icon: Icons.call_split_rounded,
-                        ),
-                      ],
                       const SizedBox(height: 24),
                       _buildSwitchTile(
                         title: '启用此配置',
@@ -193,15 +149,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                         value: _enabled,
                         onChanged: (v) => setState(() => _enabled = v),
                       ),
-                      const SizedBox(height: 32),
-                      _buildSubHeader('关联分发规则'),
                       const SizedBox(height: 16),
-                      rulesAsync.when(
-                        data: (rules) => _buildRuleSelector(rules),
-                        loading: () => const Center(child: CircularProgressIndicator()),
-                        error: (e, _) => Text('加载失败: $e', style: TextStyle(color: colorScheme.error)),
-                      ),
-                      const SizedBox(height: 24),
                     ],
                   ),
                 ),
@@ -233,54 +181,6 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildSubHeader(String title) {
-    return Text(
-      title,
-      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-        color: Theme.of(context).colorScheme.primary,
-        fontWeight: FontWeight.bold,
-        letterSpacing: 1.2,
-      ),
-    );
-  }
-
-  Widget _buildNsfwSelector() {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.security_rounded, size: 20, color: colorScheme.outline),
-            const SizedBox(width: 12),
-            Text('NSFW 策略', style: Theme.of(context).textTheme.bodyMedium),
-          ],
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'inherit', label: Text('继承'), icon: Icon(Icons.settings_backup_restore_rounded, size: 18)),
-              ButtonSegment(value: 'allow', label: Text('允许'), icon: Icon(Icons.check_circle_outline_rounded, size: 18)),
-              ButtonSegment(value: 'block', label: Text('阻止'), icon: Icon(Icons.block_rounded, size: 18)),
-              ButtonSegment(value: 'separate', label: Text('分离'), icon: Icon(Icons.call_split_rounded, size: 18)),
-            ],
-            selected: {_nsfwPolicy},
-            onSelectionChanged: (Set<String> newSelection) {
-              setState(() => _nsfwPolicy = newSelection.first);
-            },
-            style: SegmentedButton.styleFrom(
-              visualDensity: VisualDensity.comfortable,
-              selectedBackgroundColor: colorScheme.primary,
-              selectedForegroundColor: colorScheme.onPrimary,
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -386,52 +286,8 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
     );
   }
 
-  Widget _buildRuleSelector(List<DistributionRule> rules) {
-    if (rules.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: const Text('尚未创建任何分发规则', textAlign: TextAlign.center, style: TextStyle(fontSize: 13)),
-      );
-    }
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: rules.map((rule) {
-        final isSelected = _linkedRuleIds.contains(rule.id);
-        return FilterChip(
-          label: Text(rule.name),
-          selected: isSelected,
-          onSelected: (selected) {
-            setState(() {
-              if (selected) {
-                _linkedRuleIds.add(rule.id);
-              } else {
-                _linkedRuleIds.remove(rule.id);
-              }
-            });
-          },
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          showCheckmark: true,
-        );
-      }).toList(),
-    );
-  }
-
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
-
-    final priority = int.tryParse(_priorityController.text) ?? 0;
-    final tagFilter = _tagFilterController.text
-        .split(',')
-        .map((t) => t.trim())
-        .where((t) => t.isNotEmpty)
-        .toList();
 
     if (isEditing) {
       widget.onUpdate?.call(
@@ -440,13 +296,9 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
           title:
               _titleController.text.isEmpty ? null : _titleController.text,
           enabled: _enabled,
-          priority: priority,
-          nsfwPolicy: _nsfwPolicy,
           nsfwChatId: _nsfwChatIdController.text.isEmpty
               ? null
               : _nsfwChatIdController.text,
-          tagFilter: tagFilter,
-          linkedRuleIds: _linkedRuleIds,
         ),
       );
     } else {
@@ -464,13 +316,9 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
           title:
               _titleController.text.isEmpty ? null : _titleController.text,
           enabled: _enabled,
-          priority: priority,
-          nsfwPolicy: _nsfwPolicy,
           nsfwChatId: _nsfwChatIdController.text.isEmpty
               ? null
               : _nsfwChatIdController.text,
-          tagFilter: tagFilter,
-          linkedRuleIds: _linkedRuleIds,
         ),
       );
     }

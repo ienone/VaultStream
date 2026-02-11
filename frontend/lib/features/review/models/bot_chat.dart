@@ -18,12 +18,7 @@ abstract class BotChat with _$BotChat {
     @JsonKey(name: 'is_admin') @Default(false) bool isAdmin,
     @JsonKey(name: 'can_post') @Default(false) bool canPost,
     @Default(true) bool enabled,
-    @Default(0) int priority,
-    @JsonKey(name: 'nsfw_policy') @Default('inherit') String nsfwPolicy,
     @JsonKey(name: 'nsfw_chat_id') String? nsfwChatId,
-    @JsonKey(name: 'tag_filter') @Default([]) List<String> tagFilter,
-    @JsonKey(name: 'platform_filter') @Default([]) List<String> platformFilter,
-    @JsonKey(name: 'linked_rule_ids') @Default([]) List<int> linkedRuleIds,
     @JsonKey(name: 'total_pushed') @Default(0) int totalPushed,
     @JsonKey(name: 'last_pushed_at') DateTime? lastPushedAt,
     @JsonKey(name: 'is_accessible') @Default(true) bool isAccessible,
@@ -72,12 +67,7 @@ abstract class BotChatCreate with _$BotChatCreate {
     String? username,
     String? description,
     @Default(true) bool enabled,
-    @Default(0) int priority,
-    @JsonKey(name: 'nsfw_policy') @Default('inherit') String nsfwPolicy,
     @JsonKey(name: 'nsfw_chat_id') String? nsfwChatId,
-    @JsonKey(name: 'tag_filter') @Default([]) List<String> tagFilter,
-    @JsonKey(name: 'platform_filter') @Default([]) List<String> platformFilter,
-    @JsonKey(name: 'linked_rule_ids') @Default([]) List<int> linkedRuleIds,
   }) = _BotChatCreate;
 
   factory BotChatCreate.fromJson(Map<String, dynamic> json) =>
@@ -89,12 +79,7 @@ abstract class BotChatUpdate with _$BotChatUpdate {
   const factory BotChatUpdate({
     String? title,
     bool? enabled,
-    int? priority,
-    @JsonKey(name: 'nsfw_policy') String? nsfwPolicy,
     @JsonKey(name: 'nsfw_chat_id') String? nsfwChatId,
-    @JsonKey(name: 'tag_filter') List<String>? tagFilter,
-    @JsonKey(name: 'platform_filter') List<String>? platformFilter,
-    @JsonKey(name: 'linked_rule_ids') List<int>? linkedRuleIds,
   }) = _BotChatUpdate;
 
   factory BotChatUpdate.fromJson(Map<String, dynamic> json) =>

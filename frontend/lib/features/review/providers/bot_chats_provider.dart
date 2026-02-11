@@ -56,18 +56,6 @@ class BotChats extends _$BotChats {
     ref.invalidateSelf();
   }
 
-  Future<void> linkRule(String chatId, int ruleId) async {
-    final dio = ref.watch(apiClientProvider);
-    await dio.post('/bot/chats/$chatId/link-rule/$ruleId');
-    ref.invalidateSelf();
-  }
-
-  Future<void> unlinkRule(String chatId, int ruleId) async {
-    final dio = ref.watch(apiClientProvider);
-    await dio.delete('/bot/chats/$chatId/link-rule/$ruleId');
-    ref.invalidateSelf();
-  }
-
   Future<BotSyncResult> syncChats({String? chatId}) async {
     final dio = ref.watch(apiClientProvider);
     final response = await dio.post(

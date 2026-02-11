@@ -3,6 +3,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'api_client.dart';
 import '../../features/collection/models/content.dart';
 import '../../features/review/models/distribution_rule.dart';
+import '../../features/review/models/distribution_target.dart';
 import '../../features/review/models/pushed_record.dart';
 import '../../features/dashboard/models/stats.dart';
 import '../../features/review/models/bot_chat.dart';
@@ -321,16 +322,39 @@ class ApiService {
     return BotSyncResult.fromJson(response.data);
   }
 
-  Future<Map<String, dynamic>> linkRuleToChat(String chatId, int ruleId) async {
-    final response = await _dio.post('/bot/chats/$chatId/link-rule/$ruleId');
-    return response.data;
+  // ============ Distribution Targets ============
+
+  Future<List<DistributionTarget>> getDistributionTargets(int ruleId) async {
+    final response = await _dio.get('/distribution-rules/$ruleId/targets');
+    return (response.data as List)
+        .map((e) => DistributionTarget.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
-  Future<Map<String, dynamic>> unlinkRuleFromChat(
-    String chatId,
+  Future<DistributionTarget> createDistributionTarget(
     int ruleId,
+    DistributionTargetCreate create,
   ) async {
-    final response = await _dio.delete('/bot/chats/$chatId/link-rule/$ruleId');
-    return response.data;
+    final response = await _dio.post(
+      '/distribution-rules/$ruleId/targets',
+      data: create.toJson(),
+    );
+    return DistributionTarget.fromJson(response.data);
+  }
+
+  Future<DistributionTarget> updateDistributionTarget(
+    int ruleId,
+    int targetId,
+    DistributionTargetUpdate update,
+  ) async {
+    final response = await _dio.patch(
+      '/distribution-rules/$ruleId/targets/$targetId',
+      data: update.toJson(),
+    );
+    return DistributionTarget.fromJson(response.data);
+  }
+
+  Future<void> deleteDistributionTarget(int ruleId, int targetId) async {
+    await _dio.delete('/distribution-rules/$ruleId/targets/$targetId');
   }
 }

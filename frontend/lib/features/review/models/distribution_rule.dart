@@ -11,6 +11,7 @@ abstract class DistributionRule with _$DistributionRule {
     String? description,
     @JsonKey(name: 'match_conditions')
     required Map<String, dynamic> matchConditions,
+    @Deprecated('Use DistributionTarget API instead')
     @Default([]) List<Map<String, dynamic>> targets,
     @Default(true) bool enabled,
     @Default(0) int priority,
@@ -37,7 +38,6 @@ abstract class DistributionRuleCreate with _$DistributionRuleCreate {
     String? description,
     @JsonKey(name: 'match_conditions')
     required Map<String, dynamic> matchConditions,
-    @Default([]) List<Map<String, dynamic>> targets,
     @Default(true) bool enabled,
     @Default(0) int priority,
     @JsonKey(name: 'nsfw_policy') @Default('block') String nsfwPolicy,
@@ -60,7 +60,6 @@ abstract class DistributionRuleUpdate with _$DistributionRuleUpdate {
     String? name,
     String? description,
     @JsonKey(name: 'match_conditions') Map<String, dynamic>? matchConditions,
-    List<Map<String, dynamic>>? targets,
     bool? enabled,
     int? priority,
     @JsonKey(name: 'nsfw_policy') String? nsfwPolicy,

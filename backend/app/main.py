@@ -25,7 +25,10 @@ from app.worker import worker
 from app.distribution import get_distribution_scheduler
 
 # Import new routers
-from app.routers import contents, distribution, system, media, bot_management, queue, crawler, events
+from app.routers import (
+    contents, distribution, system, media, bot_management, 
+    queue, crawler, events, distribution_targets
+)
 
 setup_logging(level=settings.log_level, fmt=settings.log_format, debug=settings.debug)
 
@@ -128,6 +131,7 @@ app.add_middleware(
 # 注册路由
 app.include_router(contents.router, prefix="/api/v1", tags=["contents"])
 app.include_router(distribution.router, prefix="/api/v1", tags=["distribution"])
+app.include_router(distribution_targets.router, prefix="/api/v1", tags=["distribution-targets"])
 app.include_router(queue.router, prefix="/api/v1", tags=["queue"])
 app.include_router(system.router, prefix="/api/v1", tags=["system"])
 app.include_router(media.router, prefix="/api/v1", tags=["media"])
