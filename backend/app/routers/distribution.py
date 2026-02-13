@@ -39,8 +39,47 @@ async def create_distribution_rule(
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Rule name already exists")
     
-    db_rule = DistributionRule(**rule.model_dump())
+    payload = rule.model_dump()
+    raw_targets = payload.pop("targets", []) or []
+
+    db_rule = DistributionRule(**payload)
     db.add(db_rule)
+    await db.flush()
+
+    if raw_targets:
+        # 预先校验 bot_chat 是否存在
+        bot_chat_ids = [int(t["bot_chat_id"]) for t in raw_targets]
+        bot_chats_result = await db.execute(
+            select(BotChat).where(BotChat.id.in_(bot_chat_ids))
+        )
+        bot_chats = {c.id: c for c in bot_chats_result.scalars().all()}
+
+        missing_ids = [chat_id for chat_id in bot_chat_ids if chat_id not in bot_chats]
+        if missing_ids:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid bot_chat_id(s): {missing_ids}",
+            )
+
+        # 批量创建关联（去重）
+        seen_chat_ids: set[int] = set()
+        for target in raw_targets:
+            bot_chat_id = int(target["bot_chat_id"])
+            if bot_chat_id in seen_chat_ids:
+                continue
+            seen_chat_ids.add(bot_chat_id)
+
+            db_target = DistributionTarget(
+                rule_id=db_rule.id,
+                bot_chat_id=bot_chat_id,
+                enabled=bool(target.get("enabled", True)),
+                merge_forward=bool(target.get("merge_forward", False)),
+                use_author_name=bool(target.get("use_author_name", True)),
+                summary=target.get("summary"),
+                render_config_override=target.get("render_config_override"),
+            )
+            db.add(db_target)
+
     await db.commit()
     await db.refresh(db_rule)
     

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/providers/theme_provider.dart';
 import '../../core/widgets/frosted_app_bar.dart';
+import '../bot/bot_management_page.dart';
 import 'providers/settings_provider.dart';
 import '../../core/providers/local_settings_provider.dart';
 import 'models/system_setting.dart';
@@ -61,6 +62,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               subtitle: '验证后端服务可用性',
               icon: Icons.cell_tower_rounded,
               onTap: () => _testConnection(context),
+            ),
+            _buildSettingTile(
+              context,
+              title: 'Bot 管理',
+              subtitle: '配置 Telegram / QQ Bot，并同步群组',
+              icon: Icons.smart_toy_rounded,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const BotManagementPage()),
+                );
+              },
             ),
           ]),
 

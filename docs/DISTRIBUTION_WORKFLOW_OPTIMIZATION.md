@@ -5,7 +5,7 @@
 > 
 > 本文档阐述 VaultStream 分发引擎的四层架构设计、完整使用流程以及优化方案。
 > 
-> **实施状态**: 第一阶段（P0 架构重构）已完成 ✅ — 旧调度系统已移除，仅保留新队列系统
+> **实施状态**: 第一阶段（P0）+ 第二阶段（P1 业务流程）已完成 ✅ — 当前进入第三阶段（P1 体验优化，WebSocket 实时通知）
 
 ---
 
@@ -977,7 +977,6 @@ async def startup_event():
 ### 💡 中优先级优化（业务流程改进）
 
 #### 4. 规则创建时一键关联目标
-#### 4. 规则创建时一键关联目标
 
 - **当前问题**: 需要先创建规则，再单独配置目标（两步操作）
 - **优化方案**: 在 `DistributionRuleDialog` 中内嵌群组选择器
@@ -986,7 +985,11 @@ async def startup_event():
   - 前端: 使用 `CheckboxListTile` 展示所有可用群组
   - 支持批量创建 `BotChatRuleConfig` 记录
 
-**实施优先级**: 🟡 **P1 - 第二阶段实施**
+**实施优先级**: ✅ **已完成（2026-02-13）**
+
+**完成情况**:
+- 后端 `POST /distribution-rules` 已支持嵌套 `targets` 批量创建关联
+- 前端规则创建弹窗已支持直接勾选 Bot 群组/频道并一并创建
 
 ---
 
@@ -1001,7 +1004,11 @@ async def startup_event():
   - ✅ 切换主 Bot
   - ✅ 查看每个 Bot 的群组数和推送统计
 
-**实施优先级**: 🟡 **P1 - 第二阶段实施**
+**实施优先级**: ✅ **已完成（2026-02-13）**
+
+**完成情况**:
+- 已新增 `BotConfig` 模型与 `/api/v1/bot-config` 系列 API（CRUD/activate/sync-chats/qr-code）
+- 已新增 `BotManagementPage` 与添加向导，并接入设置页面入口
 
 ---
 
@@ -1016,7 +1023,11 @@ async def startup_event():
   [⚙️ 配置规则]
   ```
 
-**实施优先级**: 🟡 **P1 - 第二阶段实施**
+**实施优先级**: ✅ **已完成（2026-02-13）**
+
+**完成情况**:
+- `BotChatCard` 已展示应用规则摘要
+- 已支持按群组批量勾选规则并覆盖保存（双向管理）
 
 ---
 
@@ -1028,7 +1039,7 @@ async def startup_event():
   - 队列状态变化实时刷新
 - **技术选型**: FastAPI WebSocket + Riverpod StreamProvider
 
-**实施优先级**: 🟡 **P1 - 第二阶段实施**
+**实施优先级**: ⏳ **待实施（第三阶段）**
 
 ---
 
@@ -1149,13 +1160,13 @@ sqlite3 data/vaultstream.db < migrations/m11_drop_legacy_content_schedule_column
 ### 第二阶段：业务流程改进 - P1 优先级 (2 周)
 
 ```
-🔧 4. 规则创建时一键关联目标（优化点 4）
+✅ 4. 规则创建时一键关联目标（优化点 4）
    - 修改 DistributionRuleDialog.dart
    - 添加 BotChatSelector 组件
    - 后端支持嵌套 targets 创建
    - 前端联调测试
 
-🔧 5. Bot 配置可视化（优化点 5）
+✅ 5. Bot 配置可视化（优化点 5）
    - 新建 BotConfig 模型和 API
    - 实现 CRUD 端点
    - 实现 QR Code 生成 API（Napcat）
@@ -1163,11 +1174,17 @@ sqlite3 data/vaultstream.db < migrations/m11_drop_legacy_content_schedule_column
    - 实现 AddBotWizard
    - 集成到"设置"页面
 
-🔧 6. 完善双向管理（优化点 6）
+✅ 6. 完善双向管理（优化点 6）
    - 在 BotChatCard 中显示应用的规则
    - 实现"为群组选择规则"弹窗
    - 支持快捷启用/禁用规则
 ```
+
+> **✅ 第二阶段验收结果（2026-02-13）**
+>
+> - 新增/改造 API 已完成并联调通过。
+> - 新增测试 `backend/tests/test_api/test_distribution_phase2.py` 已通过。
+> - 与分发相关回归测试通过（distribution / distribution_targets）。
 
 ---
 

@@ -33,11 +33,13 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
   bool _isSyncingChats = false;
   int? _selectedRuleId;
   bool _portraitRuleConfigExpanded = false;
+  Map<String, List<String>> _chatRuleNames = const {};
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    Future.microtask(_refreshChatRuleSummary);
   }
 
   @override
@@ -583,6 +585,8 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                       child: BotChatCard(
                         index: entry.key,
                         chat: entry.value,
+                        appliedRuleNames: _chatRuleNames[entry.value.chatId] ?? const [],
+                        onConfigureRules: () => _showConfigureChatRulesDialog(entry.value),
                         onEdit: () => _showEditBotChatDialog(entry.value),
                         onDelete: () => _confirmDeleteBotChat(entry.value),
                         onToggleEnabled: (enabled) => _toggleBotChatEnabled(entry.value),
@@ -624,6 +628,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
 
     try {
       final result = await ref.read(botChatsProvider.notifier).syncChats();
+      await _refreshChatRuleSummary();
       if (mounted) {
         ref.invalidate(botStatusProvider);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -734,12 +739,17 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
   }
 
   void _showCreateRuleDialog() {
+    final chats = ref.read(botChatsProvider).valueOrNull ?? const <BotChat>[];
     showDialog(
       context: context,
       builder: (ctx) => DistributionRuleDialog(
-        onCreate: (rule) async {
+        availableChats: chats,
+        onCreate: (rule, selectedChatIds) async {
           try {
-            await ref.read(distributionRulesProvider.notifier).createRule(rule);
+            await ref
+                .read(distributionRulesProvider.notifier)
+                .createRule(rule, targetBotChatIds: selectedChatIds);
+            await _refreshChatRuleSummary();
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('规则创建成功')),
@@ -762,7 +772,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       context: context,
       builder: (ctx) => DistributionRuleDialog(
         rule: rule,
-        onCreate: (_) {},
+        onCreate: (_, __) {},
         onUpdate: (id, update) async {
           try {
             await ref.read(distributionRulesProvider.notifier).updateRule(id, update);
@@ -871,6 +881,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         onCreate: (chat) async {
           try {
             await ref.read(botChatsProvider.notifier).createChat(chat);
+            await _refreshChatRuleSummary();
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('群组添加成功')),
@@ -897,6 +908,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         onUpdate: (chatId, update) async {
           try {
             await ref.read(botChatsProvider.notifier).updateChat(chatId, update);
+            await _refreshChatRuleSummary();
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('配置更新成功')),
@@ -931,6 +943,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
               Navigator.pop(ctx);
               try {
                 await ref.read(botChatsProvider.notifier).deleteChat(chat.chatId);
+                await _refreshChatRuleSummary();
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('群组已删除')),
@@ -957,10 +970,123 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
   Future<void> _toggleBotChatEnabled(BotChat chat) async {
     try {
       await ref.read(botChatsProvider.notifier).toggleChat(chat.chatId);
+      await _refreshChatRuleSummary();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('操作失败: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _refreshChatRuleSummary() async {
+    try {
+      final dio = ref.read(apiClientProvider);
+      final response = await dio.get('/bot/chats/rules/summary');
+      final data = response.data as List<dynamic>;
+      final map = <String, List<String>>{};
+      for (final item in data) {
+        final json = item as Map<String, dynamic>;
+        final chatId = (json['chat_id'] ?? '').toString();
+        final names = (json['rule_names'] as List<dynamic>? ?? const [])
+            .map((e) => e.toString())
+            .toList();
+        map[chatId] = names;
+      }
+      if (mounted) {
+        setState(() => _chatRuleNames = map);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _chatRuleNames = const {});
+      }
+    }
+  }
+
+  Future<void> _showConfigureChatRulesDialog(BotChat chat) async {
+    final dio = ref.read(apiClientProvider);
+
+    try {
+      final rulesResp = await dio.get('/distribution-rules');
+      final allRules = (rulesResp.data as List<dynamic>)
+          .map((e) => DistributionRule.fromJson(e as Map<String, dynamic>))
+          .toList()
+        ..sort((a, b) => b.priority.compareTo(a.priority));
+
+      final currentResp = await dio.get('/bot/chats/${chat.chatId}/rules');
+      final currentIds = ((currentResp.data as Map<String, dynamic>)['rule_ids'] as List<dynamic>? ?? const [])
+          .map((e) => (e as num).toInt())
+          .toSet();
+
+      if (!mounted) return;
+      final selected = Set<int>.from(currentIds);
+
+      await showDialog(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setStateDialog) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            title: Text('为 ${chat.displayName} 配置规则'),
+            content: SizedBox(
+              width: 420,
+              child: allRules.isEmpty
+                  ? const Text('暂无规则，请先创建分发规则。')
+                  : SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: allRules.map((rule) {
+                          final checked = selected.contains(rule.id);
+                          return CheckboxListTile(
+                            value: checked,
+                            title: Text(rule.name),
+                            subtitle: Text('优先级 ${rule.priority}'),
+                            onChanged: (v) {
+                              setStateDialog(() {
+                                if (v == true) {
+                                  selected.add(rule.id);
+                                } else {
+                                  selected.remove(rule.id);
+                                }
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  await dio.put(
+                    '/bot/chats/${chat.chatId}/rules',
+                    data: {'rule_ids': selected.toList()..sort()},
+                  );
+                  await _refreshChatRuleSummary();
+                  if (mounted) {
+                    ref.invalidate(botChatsProvider);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('规则绑定已更新')),
+                    );
+                  }
+                  if (ctx.mounted) {
+                    Navigator.of(ctx).pop();
+                  }
+                },
+                child: const Text('保存'),
+              ),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载规则失败: $e')),
         );
       }
     }

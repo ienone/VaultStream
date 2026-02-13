@@ -14,12 +14,13 @@ from app.core.dependencies import require_api_token
 from app.core.logging import logger
 from app.core.config import settings
 from app.core.time_utils import utcnow
-from app.models import BotChat, BotChatType, PushedRecord, DistributionRule, BotRuntime, Task, TaskStatus
+from app.models import BotChat, BotChatType, PushedRecord, DistributionRule, DistributionTarget, BotRuntime, Task, TaskStatus
 from app.schemas import (
     BotChatCreate, BotChatUpdate, BotChatResponse,
     BotStatusResponse, BotSyncRequest, StorageStatsResponse, HealthDetailResponse,
     BotChatUpsert, BotHeartbeat, BotRuntimeResponse, BotSyncResult,
-    RepushFailedRequest, RepushFailedResponse
+    RepushFailedRequest, RepushFailedResponse,
+    BotChatRulesResponse, BotChatRuleAssignRequest, ChatRuleBindingInfo, BotChatRuleSummaryItem,
 )
 
 router = APIRouter()
@@ -44,8 +45,10 @@ async def list_bot_chats(
     
     result = await db.execute(query)
     chats = result.scalars().all()
+
+    rule_map = await _load_chat_rule_map(db, [c.id for c in chats])
     
-    return [_chat_to_response(chat) for chat in chats]
+    return [_chat_to_response(chat, rule_map.get(chat.id)) for chat in chats]
 
 
 @router.post("/bot/chats", response_model=BotChatResponse)
@@ -92,7 +95,117 @@ async def get_bot_chat(
     chat = result.scalar_one_or_none()
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
-    return _chat_to_response(chat)
+    rule_map = await _load_chat_rule_map(db, [chat.id])
+    return _chat_to_response(chat, rule_map.get(chat.id))
+
+
+@router.get("/bot/chats/rules/summary", response_model=List[BotChatRuleSummaryItem])
+async def get_bot_chat_rules_summary(
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """获取所有群组的规则摘要（用于群组卡片展示）"""
+    chats_result = await db.execute(select(BotChat.id, BotChat.chat_id).order_by(BotChat.id.asc()))
+    chat_rows = chats_result.all()
+    if not chat_rows:
+        return []
+
+    rule_map = await _load_chat_rule_map(db, [row.id for row in chat_rows])
+    items: List[BotChatRuleSummaryItem] = []
+    for row in chat_rows:
+        info = rule_map.get(row.id) or {"ids": [], "names": []}
+        items.append(BotChatRuleSummaryItem(
+            chat_id=row.chat_id,
+            rule_ids=info["ids"],
+            rule_names=info["names"],
+            rule_count=len(info["ids"]),
+        ))
+    return items
+
+
+@router.get("/bot/chats/{chat_id}/rules", response_model=BotChatRulesResponse)
+async def get_bot_chat_rules(
+    chat_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """获取某个群组绑定的规则"""
+    chat_result = await db.execute(select(BotChat).where(BotChat.chat_id == chat_id))
+    chat = chat_result.scalar_one_or_none()
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+
+    result = await db.execute(
+        select(DistributionTarget, DistributionRule)
+        .join(DistributionRule, DistributionRule.id == DistributionTarget.rule_id)
+        .where(DistributionTarget.bot_chat_id == chat.id)
+        .order_by(DistributionRule.priority.desc(), DistributionRule.id.asc())
+    )
+
+    rows = result.all()
+    rules = [
+        ChatRuleBindingInfo(
+            rule_id=rule.id,
+            name=rule.name,
+            enabled=target.enabled,
+        )
+        for target, rule in rows
+    ]
+    return BotChatRulesResponse(
+        chat_id=chat_id,
+        rule_ids=[r.rule_id for r in rules],
+        rules=rules,
+    )
+
+
+@router.put("/bot/chats/{chat_id}/rules", response_model=BotChatRulesResponse)
+async def assign_bot_chat_rules(
+    chat_id: str,
+    payload: BotChatRuleAssignRequest,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """为群组批量配置规则（全量覆盖）"""
+    chat_result = await db.execute(select(BotChat).where(BotChat.chat_id == chat_id))
+    chat = chat_result.scalar_one_or_none()
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+
+    desired_ids = sorted({int(rule_id) for rule_id in payload.rule_ids})
+
+    if desired_ids:
+        rules_result = await db.execute(select(DistributionRule).where(DistributionRule.id.in_(desired_ids)))
+        existing_rules = {r.id: r for r in rules_result.scalars().all()}
+        missing = [rule_id for rule_id in desired_ids if rule_id not in existing_rules]
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Invalid rule_id(s): {missing}")
+
+    targets_result = await db.execute(
+        select(DistributionTarget).where(DistributionTarget.bot_chat_id == chat.id)
+    )
+    existing_targets = targets_result.scalars().all()
+    existing_ids = {t.rule_id for t in existing_targets}
+
+    # 删除不需要的绑定
+    for target in existing_targets:
+        if target.rule_id not in desired_ids:
+            await db.delete(target)
+
+    # 创建新增绑定
+    for rule_id in desired_ids:
+        if rule_id not in existing_ids:
+            db.add(DistributionTarget(
+                rule_id=rule_id,
+                bot_chat_id=chat.id,
+                enabled=True,
+                merge_forward=False,
+                use_author_name=True,
+            ))
+
+    await db.commit()
+
+    refreshed = await get_bot_chat_rules(chat_id=chat_id, db=db, _=None)
+    return refreshed
 
 
 @router.patch("/bot/chats/{chat_id}", response_model=BotChatResponse)
@@ -620,8 +733,30 @@ async def get_health_detail(
 
 # ========== 辅助函数 ==========
 
-def _chat_to_response(chat: BotChat) -> BotChatResponse:
+async def _load_chat_rule_map(db: AsyncSession, chat_ids: List[int]) -> dict[int, dict]:
+    if not chat_ids:
+        return {}
+
+    result = await db.execute(
+        select(DistributionTarget.bot_chat_id, DistributionRule.id, DistributionRule.name)
+        .join(DistributionRule, DistributionRule.id == DistributionTarget.rule_id)
+        .where(DistributionTarget.bot_chat_id.in_(chat_ids))
+        .order_by(DistributionRule.priority.desc(), DistributionRule.id.asc())
+    )
+
+    rule_map: dict[int, dict] = {}
+    for bot_chat_id, rule_id, rule_name in result.all():
+        bucket = rule_map.setdefault(bot_chat_id, {"ids": [], "names": []})
+        bucket["ids"].append(rule_id)
+        bucket["names"].append(rule_name)
+    return rule_map
+
+
+def _chat_to_response(chat: BotChat, rule_info: Optional[dict] = None) -> BotChatResponse:
     """将 BotChat 模型转换为响应对象"""
+    rule_ids = list((rule_info or {}).get("ids", []))
+    rule_names = list((rule_info or {}).get("names", []))
+
     return BotChatResponse(
         id=chat.id,
         chat_id=chat.chat_id,
@@ -639,6 +774,9 @@ def _chat_to_response(chat: BotChat) -> BotChatResponse:
         is_accessible=chat.is_accessible if chat.is_accessible is not None else True,
         last_sync_at=chat.last_sync_at,
         sync_error=chat.sync_error,
+        applied_rule_ids=rule_ids,
+        applied_rule_names=rule_names,
+        applied_rule_count=len(rule_ids),
         created_at=chat.created_at,
         updated_at=chat.updated_at,
     )

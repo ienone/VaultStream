@@ -485,14 +485,59 @@ class BotChatType(str, Enum):
     QQ_PRIVATE = "qq_private"  # QQ 私聊
 
 
+class BotConfigPlatform(str, Enum):
+    """Bot 配置平台"""
+    TELEGRAM = "telegram"
+    QQ = "qq"
+
+
+class BotConfig(Base):
+    """Bot 配置（支持多 Bot 管理）"""
+    __tablename__ = "bot_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    platform = Column(
+        SQLEnum(BotConfigPlatform, native_enum=False, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        index=True,
+    )
+    name = Column(String(100), nullable=False)
+
+    # Telegram
+    bot_token = Column(String(300))
+
+    # Napcat / QQ
+    napcat_http_url = Column(String(300))
+    napcat_ws_url = Column(String(300))
+
+    # 状态
+    enabled = Column(Boolean, default=True, index=True)
+    is_primary = Column(Boolean, default=False, index=True)
+
+    # 元数据
+    bot_id = Column(String(50))
+    bot_username = Column(String(100))
+
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    chats = relationship("BotChat", back_populates="bot_config")
+
+
 class BotChat(Base):
     """Bot 关联的聊天/群组/频道"""
     __tablename__ = "bot_chats"
     
     id = Column(Integer, primary_key=True, index=True)
+
+    __table_args__ = (
+        Index("ix_bot_chats_bot_config_chat", "bot_config_id", "chat_id", unique=True),
+    )
+
+    bot_config_id = Column(Integer, ForeignKey("bot_configs.id", ondelete="SET NULL"), index=True)
     
     # Telegram 聊天信息
-    chat_id = Column(String(50), nullable=False, unique=True, index=True)  # Telegram chat_id
+    chat_id = Column(String(50), nullable=False, index=True)  # Telegram/QQ chat_id
     chat_type = Column(SQLEnum(BotChatType), nullable=False)  # channel/group/supergroup/private
     title = Column(String(200))  # 群组/频道名称
     username = Column(String(100))  # @username（可选）
@@ -535,6 +580,8 @@ class BotChat(Base):
     
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    bot_config = relationship("BotConfig", back_populates="chats")
 
 
 class BotRuntime(Base):

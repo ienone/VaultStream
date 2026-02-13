@@ -1,17 +1,22 @@
 import 'package:flutter/material.dart';
 import '../models/distribution_rule.dart';
+import '../models/bot_chat.dart';
 import 'render_config_editor.dart';
 
 class DistributionRuleDialog extends StatefulWidget {
   final DistributionRule? rule;
-  final Function(DistributionRuleCreate) onCreate;
+  final Function(DistributionRuleCreate, List<int>) onCreate;
   final Function(int, DistributionRuleUpdate)? onUpdate;
+  final List<BotChat> availableChats;
+  final List<int> initialSelectedChatIds;
 
   const DistributionRuleDialog({
     super.key,
     this.rule,
     required this.onCreate,
     this.onUpdate,
+    this.availableChats = const [],
+    this.initialSelectedChatIds = const [],
   });
 
   @override
@@ -34,6 +39,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
   late List<String> _excludeTags;
   late String _tagsMatchMode;
   late Map<String, dynamic> _renderConfig;
+  late Set<int> _selectedTargetChatIds;
 
   bool get isEditing => widget.rule != null;
 
@@ -59,6 +65,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
     _excludeTags = List.from(conditions['tags_exclude'] ?? []);
     _tagsMatchMode = conditions['tags_match_mode'] ?? 'any';
     _renderConfig = Map<String, dynamic>.from(rule?.renderConfig ?? {});
+    _selectedTargetChatIds = Set<int>.from(widget.initialSelectedChatIds);
   }
 
   @override
@@ -209,6 +216,12 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
                         chipColor: colorScheme.error,
                       ),
                       const SizedBox(height: 32),
+                      if (!isEditing) ...[
+                        _buildSubHeader('推送目标'),
+                        const SizedBox(height: 12),
+                        _buildTargetSelector(),
+                        const SizedBox(height: 32),
+                      ],
                       _buildRenderConfigSection(),
                       const SizedBox(height: 24),
                     ],
@@ -241,6 +254,81 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildTargetSelector() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final chats = widget.availableChats.where((c) => c.enabled).toList()
+      ..sort((a, b) => a.displayName.compareTo(b.displayName));
+
+    if (chats.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Text('暂无可用群组，请先在 Bot 群组页添加或同步。'),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+            child: Row(
+              children: [
+                Text('已选择 ${_selectedTargetChatIds.length} / ${chats.length}'),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => setState(() {
+                    _selectedTargetChatIds = chats.map((c) => c.id).toSet();
+                  }),
+                  child: const Text('全选'),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _selectedTargetChatIds.clear()),
+                  child: const Text('清空'),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 220),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: chats.length,
+              itemBuilder: (context, index) {
+                final chat = chats[index];
+                final selected = _selectedTargetChatIds.contains(chat.id);
+                return CheckboxListTile(
+                  dense: true,
+                  value: selected,
+                  title: Text(chat.displayName),
+                  subtitle: Text(chat.chatTypeLabel),
+                  onChanged: (checked) {
+                    setState(() {
+                      if (checked == true) {
+                        _selectedTargetChatIds.add(chat.id);
+                      } else {
+                        _selectedTargetChatIds.remove(chat.id);
+                      }
+                    });
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -458,7 +546,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
         renderConfig: create.renderConfig,
       ));
     } else {
-      widget.onCreate(create);
+      widget.onCreate(create, _selectedTargetChatIds.toList()..sort());
     }
     Navigator.of(context).pop();
   }

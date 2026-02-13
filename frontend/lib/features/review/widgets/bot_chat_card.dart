@@ -7,7 +7,9 @@ class BotChatCard extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+  final VoidCallback? onConfigureRules;
   final ValueChanged<bool>? onToggleEnabled;
+  final List<String> appliedRuleNames;
   final int index;
 
   const BotChatCard({
@@ -16,7 +18,9 @@ class BotChatCard extends StatelessWidget {
     this.onTap,
     this.onEdit,
     this.onDelete,
+    this.onConfigureRules,
     this.onToggleEnabled,
+    this.appliedRuleNames = const [],
     this.index = 0,
   });
 
@@ -124,6 +128,36 @@ class BotChatCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 20),
+              if (appliedRuleNames.isNotEmpty) ...[
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildStatBadge(
+                      context,
+                      icon: Icons.rule_rounded,
+                      label: '应用规则 ${appliedRuleNames.length}',
+                      color: colorScheme.primary,
+                    ),
+                    ...appliedRuleNames.take(2).map(
+                      (name) => _buildStatBadge(
+                        context,
+                        icon: Icons.label_outline_rounded,
+                        label: name,
+                        color: colorScheme.secondary,
+                      ),
+                    ),
+                    if (appliedRuleNames.length > 2)
+                      _buildStatBadge(
+                        context,
+                        icon: Icons.more_horiz_rounded,
+                        label: '+${appliedRuleNames.length - 2}',
+                        color: colorScheme.tertiary,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -144,6 +178,16 @@ class BotChatCard extends StatelessWidget {
                     const SizedBox.shrink(),
                   Row(
                     children: [
+                      FilledButton.tonalIcon(
+                        onPressed: onConfigureRules,
+                        icon: const Icon(Icons.rule_folder_rounded, size: 18),
+                        label: const Text('配置规则'),
+                        style: FilledButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       FilledButton.tonalIcon(
                         onPressed: onEdit,
                         icon: const Icon(Icons.settings_outlined, size: 18),

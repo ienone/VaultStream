@@ -410,7 +410,7 @@ def _validate_targets_list(v: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 class DistributionRuleCreate(BaseModel):
-    """创建分发规则（Phase 4: targets 字段已移除，请使用 DistributionTarget API）"""
+    """创建分发规则（支持可选批量创建 targets）"""
     name: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
     match_conditions: Dict[str, Any] = Field(..., description="匹配条件 JSON")
@@ -423,6 +423,30 @@ class DistributionRuleCreate(BaseModel):
     time_window: Optional[int] = None
     template_id: Optional[str] = None
     render_config: Optional[Dict[str, Any]] = None
+    targets: List[Dict[str, Any]] = Field(default_factory=list, description="可选：批量创建分发目标")
+
+    @field_validator('targets', mode='before')
+    @classmethod
+    def validate_targets(cls, v):
+        if v is None:
+            return []
+        if not isinstance(v, list):
+            raise ValueError("targets must be a list")
+        normalized: List[Dict[str, Any]] = []
+        for item in v:
+            if not isinstance(item, dict):
+                raise ValueError("Each target must be an object")
+            if 'bot_chat_id' not in item:
+                raise ValueError("Each target must include bot_chat_id")
+            normalized.append({
+                'bot_chat_id': int(item['bot_chat_id']),
+                'enabled': bool(item.get('enabled', True)),
+                'merge_forward': bool(item.get('merge_forward', False)),
+                'use_author_name': bool(item.get('use_author_name', True)),
+                'summary': item.get('summary'),
+                'render_config_override': item.get('render_config_override'),
+            })
+        return normalized
 
 
 class DistributionRuleUpdate(BaseModel):
@@ -611,6 +635,9 @@ class BotChatResponse(BaseModel):
     is_accessible: bool
     last_sync_at: Optional[datetime]
     sync_error: Optional[str]
+    applied_rule_ids: List[int] = Field(default_factory=list)
+    applied_rule_names: List[str] = Field(default_factory=list)
+    applied_rule_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -699,6 +726,100 @@ class BotSyncResult(BaseModel):
     failed: int
     inaccessible: int
     details: List[Dict] = Field(default_factory=list)
+
+
+class ChatRuleBindingInfo(BaseModel):
+    """群组已绑定规则信息"""
+    rule_id: int
+    name: str
+    enabled: bool = True
+
+
+class BotChatRulesResponse(BaseModel):
+    """群组规则列表"""
+    chat_id: str
+    rule_ids: List[int] = Field(default_factory=list)
+    rules: List[ChatRuleBindingInfo] = Field(default_factory=list)
+
+
+class BotChatRuleAssignRequest(BaseModel):
+    """群组规则绑定更新请求"""
+    rule_ids: List[int] = Field(default_factory=list)
+
+
+class BotChatRuleSummaryItem(BaseModel):
+    """群组规则摘要"""
+    chat_id: str
+    rule_ids: List[int] = Field(default_factory=list)
+    rule_names: List[str] = Field(default_factory=list)
+    rule_count: int = 0
+
+
+class BotConfigBase(BaseModel):
+    """Bot 配置基础字段"""
+    platform: str = Field(..., pattern=r"^(telegram|qq)$")
+    name: str = Field(..., min_length=1, max_length=100)
+    bot_token: Optional[str] = None
+    napcat_http_url: Optional[str] = None
+    napcat_ws_url: Optional[str] = None
+    enabled: bool = True
+    is_primary: bool = False
+
+
+class BotConfigCreate(BotConfigBase):
+    """创建 Bot 配置"""
+
+
+class BotConfigUpdate(BaseModel):
+    """更新 Bot 配置"""
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    bot_token: Optional[str] = None
+    napcat_http_url: Optional[str] = None
+    napcat_ws_url: Optional[str] = None
+    enabled: Optional[bool] = None
+    is_primary: Optional[bool] = None
+
+
+class BotConfigResponse(BaseModel):
+    """Bot 配置响应"""
+    id: int
+    platform: str
+    name: str
+    bot_token_masked: Optional[str] = None
+    napcat_http_url: Optional[str] = None
+    napcat_ws_url: Optional[str] = None
+    enabled: bool
+    is_primary: bool
+    bot_id: Optional[str] = None
+    bot_username: Optional[str] = None
+    chat_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class BotConfigActivateResponse(BaseModel):
+    """激活主 Bot 响应"""
+    id: int
+    platform: str
+    is_primary: bool
+
+
+class BotConfigSyncChatsResponse(BaseModel):
+    """Bot 配置同步群组响应"""
+    bot_config_id: int
+    total: int = 0
+    updated: int = 0
+    created: int = 0
+    failed: int = 0
+    details: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class BotConfigQrCodeResponse(BaseModel):
+    """Napcat 登录二维码响应"""
+    bot_config_id: int
+    status: str
+    qr_code: Optional[str] = None
+    message: Optional[str] = None
 
 
 class RepushFailedRequest(BaseModel):
