@@ -1,8 +1,11 @@
 # 分发系统架构优化与完整流程设计
 
 > 文档创建时间: 2026-02-13
+> 最后更新: 2026-02-13
 > 
 > 本文档阐述 VaultStream 分发引擎的四层架构设计、完整使用流程以及优化方案。
+> 
+> **实施状态**: 第一阶段（P0 架构重构）已完成 ✅ — 旧调度系统已移除，仅保留新队列系统
 
 ---
 
@@ -13,6 +16,7 @@
 3. [完整使用流程](#三完整使用流程)
 4. [关键优化点](#四关键优化点)
 5. [实施顺序建议](#五实施顺序建议)
+6. [附录：关键代码片段](#附录关键代码片段)
 
 ---
 
@@ -120,13 +124,14 @@ class BotConfig(Base):
 │  (DistributionRule)       │◄──────│  (BotChatRuleConfig)             │
 │  ─────────────────────    │       │  原名 DistributionTarget          │
 │  职责：定义内容过滤条件     │       │  ─────────────────────────────   │
-│  与推送格式               │       │  职责：一个群组应用一个规则的配置   │
+│  与推送格式               │       │  职责：连接规则与群组              │
 │  字段：                   │       │  字段：                           │
 │    - match_conditions    │       │    - rule_id (FK)                │
 │    - render_config       │       │    - bot_chat_id (FK)            │
 │    - priority, enabled   │       │    - enabled                     │
-│    - nsfw_policy         │       │    - render_config_override      │
-│    - approval_required   │       │    - merge_forward (QQ专用)      │
+│    - nsfw_policy         │       │    - merge_forward (QQ专用)      │
+│    - approval_required   │       │    - use_author_name             │
+│                          │       │    - summary                     │
 └───────────────────────────┘       └──────────────────────────────────┘
 ```
 
@@ -142,21 +147,30 @@ class BotConfig(Base):
      - "科技新闻"规则 → 推送到 频道A、频道B、群组C
      - 频道A ← 接收 "科技新闻"、"AI动态"、"开源项目" 三个规则的内容
 
-3. **配置继承与覆盖**
-   - Rule 定义全局的 `render_config`（默认渲染格式）
-   - `BotChatRuleConfig` 可针对特定群组覆盖：
+3. **配置管理策略**
+   - Rule 定义渲染格式（每个规则完整配置）
+   - **不支持针对特定群组覆盖**（保持架构清晰）
+   - 如需不同格式，使用 **Fork 规则** 功能：
      ```json
-     // 规则全局配置
-     Rule.render_config = {
-       "layout": "card",
-       "show_author": true,
-       "show_tags": true
+     // 原规则：科技新闻（完整版）
+     {
+       "name": "科技新闻",
+       "render_config": {
+         "layout": "card",
+         "show_author": true,
+         "show_tags": true
+       }
      }
      
-     // 针对频道A覆盖（简洁模式）
-     BotChatRuleConfig(rule_id=1, bot_chat_id=5).render_config_override = {
-       "layout": "minimal",
-       "show_tags": false
+     // Fork 新规则：科技新闻 - 简洁版
+     POST /api/v1/distribution-rules/{id}/fork
+     {
+       "new_name": "科技新闻 - 简洁版",
+       "render_config": {
+         "layout": "minimal",
+         "show_tags": false
+       },
+       "inherit_targets": false  // 不继承原规则的推送目标
      }
      ```
 
@@ -224,17 +238,18 @@ class BotConfig(Base):
 │    🆕 推送目标（新增功能）：                     │
 │      ┌─────────────────────────────────┐     │
 │      │ ☑ @TechNewsChannel (Telegram)   │     │
-│      │   └─ 自定义配置: 简洁模式         │     │
 │      │ ☑ AI学习群 (QQ: 123456789)      │     │
-│      │   └─ 自定义配置: 合并转发         │     │
 │      │ ☐ 私人频道 (Telegram)           │     │
 │      │                                 │     │
 │      │ [📋 全选] [🔄 刷新列表]          │     │
 │      └─────────────────────────────────┘     │
 │                                                │
-│    渲染配置（可选）：                            │
+│    渲染配置（全局）：                            │
 │      [下拉框] 预设模板: 简洁风格 ▼             │
 │      [切换] 高级选项...                        │
+│                                                │
+│    💡 快速操作：                                │
+│      [📋 Fork此规则] - 快速创建变体            │
 │                                                │
 │ 4. [创建规则] 按钮                              │
 └────────────────────────────────────────────────┘
@@ -250,12 +265,15 @@ class BotConfig(Base):
          "nsfw_policy": "block",
          "priority": 5,
          "approval_required": false,
-         "render_config": {...},
+         "render_config": {
+           "layout": "card",
+           "show_author": true,
+           "show_tags": true
+         },
          "targets": [  // 🆕 批量创建关联
            {
              "bot_chat_id": 1,
-             "enabled": true,
-             "render_config_override": {"layout": "minimal"}
+             "enabled": true
            },
            {
              "bot_chat_id": 3,
@@ -305,32 +323,182 @@ class BotConfig(Base):
 
 #### 方式 B: 自动匹配（后台）
 
+##### 核心架构：三元组队列模型
+
+**⚠️ 架构缺陷分析**：
+- **当前痛点**: 使用 `Content.status` 模拟队列，无法细粒度跟踪多规则推送
+  ```python
+  # 场景：Content A 匹配了规则1和规则2
+  - 规则1 → 推送到 群组X, 群组Y (成功)
+  - 规则2 → 推送到 群组Y, 群组Z (失败)
+  
+  # 问题：Content A 应该标记为什么状态？
+  # 当前模型只能二选一，导致信息丢失
+  ```
+
+**✅ 改进方案：ContentQueueItem 三元组模型**
+
+每个队列项代表唯一的 `(Content × Rule × BotChat)` 组合：
+
+```python
+class ContentQueueItem(Base):
+    """
+    内容队列项 - 一个 Content 可以匹配多个 Rule，
+    一个 Rule 可以推送到多个 BotChat，
+    每个组合是独立的队列项，拥有独立的状态
+    """
+    __tablename__ = "content_queue_items"
+    
+    id = Column(Integer, primary_key=True)
+    
+    # 三元组关联
+    content_id = Column(Integer, ForeignKey("contents.id"), nullable=False)
+    rule_id = Column(Integer, ForeignKey("distribution_rules.id"), nullable=False)
+    bot_chat_id = Column(Integer, ForeignKey("bot_chats.id"), nullable=False)
+    
+    # 细粒度状态
+    status = Column(Enum(  # pending, scheduled, pushing, success, failed, skipped
+        QueueItemStatus), default="pending")
+    scheduled_at = Column(DateTime)  # 计划推送时间
+    
+    # 🎯 预处理缓存（避免推送时重复计算）
+    rendered_payload = Column(JSON)  # 预渲染结果
+    nsfw_routing_result = Column(JSON)  # NSFW 路由决策
+    passed_rate_limit = Column(Boolean, default=True)  # 频率限制检查
+    
+    # 审批流程
+    needs_approval = Column(Boolean, default=False)
+    approved_at = Column(DateTime)
+    approved_by = Column(String(100))
+    
+    # 推送结果
+    pushed_at = Column(DateTime)
+    message_id = Column(String(200))  # 消息ID（用于撤回/编辑）
+    error_message = Column(Text)
+    retry_count = Column(Integer, default=0)
+    max_retries = Column(Integer, default=3)
+    next_retry_at = Column(DateTime)
+    
+    # 确保唯一性
+    __table_args__ = (
+        UniqueConstraint("content_id", "rule_id", "bot_chat_id"),
+    )
 ```
-系统定时任务 (每分钟):
-  1. 查询 status=PULLED 且未入队的内容
-  2. 遍历所有 enabled=true 的规则
-  3. 对每个内容执行匹配:
-     - 检查平台
-     - 检查标签（包含/排除/匹配模式）
-     - 检查 NSFW 状态
-  4. 匹配成功 → 创建 ContentQueue 记录
-  5. 设置 scheduled_at (根据优先级和频率限制排期)
-```
+
+##### 事件驱动入队流程
 
 **💡 优化点 3: 事件驱动替代定时任务**
 - **当前痛点**: 依赖定时任务，延迟高（最长 1 分钟）
 - **优化方案**: Content 创建后立即触发匹配
 - **技术实现**:
   ```python
-  # 在 Content 创建后的钩子
+  # ===== 步骤 1: 监听 Content 变化 =====
   @event.listens_for(Content, 'after_insert')
-  def on_content_created(mapper, connection, target):
+  @event.listens_for(Content, 'after_update')
+  async def on_content_changed(mapper, connection, target):
       if target.status == ContentStatus.PULLED:
-          background_tasks.add_task(
-              DistributionEngine.match_and_queue, 
-              content_id=target.id
+          # 立即异步触发入队（不阻塞主流程）
+          background_tasks.add_task(enqueue_content, target.id)
+  
+  
+  # ===== 步骤 2: 入队逻辑（一次性完成所有预处理）=====
+  async def enqueue_content(content_id: int):
+      """
+      职责：
+      1. 匹配规则
+      2. NSFW 路由决策
+      3. 频率限制检查
+      4. 预渲染内容
+      5. 计算排期时间
+      6. 创建队列项
+      """
+      async with AsyncSessionLocal() as db:
+          content = await db.get(Content, content_id)
+          
+          # 1. 匹配所有启用的规则
+          matched_rules = await match_rules(db, content)
+          if not matched_rules:
+              return
+          
+          # 2. 获取规则的目标群组（批量查询避免 N+1）
+          rule_ids = [r.id for r in matched_rules]
+          targets = await db.execute(
+              select(DistributionTarget, BotChat)
+              .join(BotChat)
+              .where(DistributionTarget.rule_id.in_(rule_ids))
+              .where(DistributionTarget.enabled == True)
+              .where(BotChat.enabled == True)
           )
+          
+          # 3. 为每个 (Rule, BotChat) 组合创建队列项
+          for rule in matched_rules:
+              for target, bot_chat in targets:
+                  # 检查去重
+                  existing = await db.execute(
+                      select(ContentQueueItem).where(
+                          ContentQueueItem.content_id == content.id,
+                          ContentQueueItem.rule_id == rule.id,
+                          ContentQueueItem.bot_chat_id == bot_chat.id,
+                      )
+                  )
+                  if existing.scalar_one_or_none():
+                      continue
+                  
+                  # NSFW 路由决策
+                  nsfw_result = await apply_nsfw_routing(content, rule, bot_chat)
+                  if not nsfw_result["allowed"]:
+                      # 创建 SKIPPED 状态队列项（记录原因）
+                      queue_item = ContentQueueItem(
+                          content_id=content.id,
+                          rule_id=rule.id,
+                          bot_chat_id=bot_chat.id,
+                          status=QueueItemStatus.SKIPPED,
+                          nsfw_routing_result=nsfw_result,
+                      )
+                      db.add(queue_item)
+                      continue
+                  
+                  # 频率限制检查
+                  rate_ok, reason = await check_rate_limit(db, rule, bot_chat)
+                  
+                  # 🎯 预渲染内容（避免推送时重复渲染）
+                  rendered = await render_content(content, rule, target, bot_chat)
+                  
+                  # 计算排期时间
+                  scheduled_at = await calculate_schedule(
+                      db, content, rule,
+                      immediate=(content.review_status == ReviewStatus.APPROVED)
+                  )
+                  
+                  # 创建队列项
+                  queue_item = ContentQueueItem(
+                      content_id=content.id,
+                      rule_id=rule.id,
+                      bot_chat_id=bot_chat.id,
+                      status=QueueItemStatus.SCHEDULED if rate_ok else QueueItemStatus.PENDING,
+                      scheduled_at=scheduled_at,
+                      rendered_payload=rendered,  # 缓存渲染结果
+                      nsfw_routing_result=nsfw_result,
+                      passed_rate_limit=rate_ok,
+                      rate_limit_reason=reason if not rate_ok else None,
+                      needs_approval=(rule.approval_required and 
+                                     content.review_status == ReviewStatus.PENDING),
+                  )
+                  db.add(queue_item)
+          
+          await db.commit()
   ```
+
+**✅ 优势对比**：
+
+| 对比维度 | 定时任务方案 | 事件驱动 + 队列模型 |
+|---------|------------|------------------|
+| **响应延迟** | 0-60秒 | 实时（<1秒） |
+| **职责分离** | ❌ 混乱（调度器做所有事） | ✅ 清晰（入队/推送分离） |
+| **重复计算** | ❌ 每次推送都重新匹配规则 | ✅ 入队时算一次，缓存结果 |
+| **状态管理** | ❌ Content 级别（粗粒度） | ✅ 三元组级别（细粒度） |
+| **并发推送** | ❌ 难以实现 | ✅ 多 worker 天然支持 |
+| **失败重试** | ❌ 无机制 | ✅ 指数退避自动重试 |
 
 ---
 
@@ -370,78 +538,169 @@ class BotConfig(Base):
 
 ### 阶段 5: 自动分发执行
 
+##### 推送 Worker 架构（职责分离）
+
+**⚠️ 架构缺陷分析**：
+- **当前痛点**: 
+  - 轮询延迟 30-60 秒
+  - 每次推送重新匹配规则、检查 NSFW、渲染内容（重复计算）
+  - 调度器职责混乱（既做业务判断又做推送）
+  - 无法支持多 worker 并发推送
+
+**✅ 改进方案：事件驱动 + 职责单一的 Worker**
+
+```python
+async def distribution_worker():
+    """
+    推送 Worker：只负责发送，不做业务判断
+    
+    职责：
+    1. 查询到期的队列项
+    2. 调用推送服务发送（使用预渲染结果）
+    3. 更新队列项状态
+    4. 失败自动重试（指数退避）
+    """
+    while True:
+        try:
+            async with AsyncSessionLocal() as db:
+                # 查询到期且允许推送的队列项
+                now = datetime.utcnow()
+                result = await db.execute(
+                    select(ContentQueueItem)
+                    .where(
+                        ContentQueueItem.status == QueueItemStatus.SCHEDULED,
+                        ContentQueueItem.scheduled_at <= now,
+                        ContentQueueItem.passed_rate_limit == True,
+                        ContentQueueItem.needs_approval == False,  # 无需审批或已审批
+                    )
+                    .order_by(ContentQueueItem.scheduled_at.asc())
+                    .limit(10)  # 批量处理
+                )
+                items = result.scalars().all()
+                
+                if not items:
+                    await asyncio.sleep(5)  # 短轮询（或使用消息队列）
+                    continue
+                
+                for item in items:
+                    # 标记为推送中（避免重复推送）
+                    item.status = QueueItemStatus.PUSHING
+                    await db.commit()
+                    
+                    try:
+                        # 获取关联数据
+                        await db.refresh(item, ["content", "rule", "bot_chat"])
+                        
+                        # 确定实际推送目标（可能被 NSFW 路由了）
+                        target_chat_id = item.nsfw_routing_result.get(
+                            "routed_to", 
+                            item.bot_chat.chat_id
+                        )
+                        
+                        # 🎯 调用推送服务（直接使用预渲染结果）
+                        push_service = get_push_service(item.bot_chat.platform_type)
+                        message_id = await push_service.send(
+                            chat_id=target_chat_id,
+                            payload=item.rendered_payload,  # 使用缓存
+                        )
+                        
+                        # 更新为成功
+                        item.status = QueueItemStatus.SUCCESS
+                        item.message_id = message_id
+                        item.pushed_at = datetime.utcnow()
+                        
+                        # 同步更新 BotChat 统计
+                        item.bot_chat.total_pushed += 1
+                        item.bot_chat.last_pushed_at = item.pushed_at
+                        
+                        logger.info(
+                            f"✅ Pushed: content={item.content_id}, "
+                            f"rule={item.rule_id}, chat={target_chat_id}, msg_id={message_id}"
+                        )
+                        
+                    except Exception as e:
+                        logger.error(f"❌ Push failed: {e}", exc_info=True)
+                        
+                        # 判断是否可重试
+                        item.retry_count += 1
+                        if item.retry_count < item.max_retries:
+                            item.status = QueueItemStatus.SCHEDULED
+                            # 指数退避重试（2^n 分钟）
+                            retry_delay = 60 * (2 ** item.retry_count)
+                            item.next_retry_at = datetime.utcnow() + timedelta(seconds=retry_delay)
+                            item.scheduled_at = item.next_retry_at
+                            item.error_message = str(e)
+                            logger.info(f"🔄 Retry {item.retry_count}/{item.max_retries} in {retry_delay}s")
+                        else:
+                            item.status = QueueItemStatus.FAILED
+                            item.error_message = f"Failed after {item.max_retries} retries: {e}"
+                    
+                    await db.commit()
+        
+        except Exception as e:
+            logger.error(f"Worker error: {e}", exc_info=True)
+            await asyncio.sleep(10)
+
+
+# ===== 启动多个并发 Worker =====
+@app.on_event("startup")
+async def startup_event():
+    # 3 个并发 worker 实现并发推送
+    for i in range(3):
+        asyncio.create_task(distribution_worker(), name=f"push-worker-{i}")
 ```
-┌─ 系统后台任务 (DistributionScheduler) ────────┐
+
+**执行流程可视化**：
+
+```
+┌─ 推送 Worker (并发3个) ───────────────────────┐
 │                                              │
-│ 定时触发: 每 30 秒                            │
+│ 定时触发: 每 5 秒检查一次                       │
 │                                              │
-│ 执行流程:                                    │
-│                                              │
-│ 1. 查询待推送内容:                            │
-│    SELECT * FROM content_queue               │
-│    WHERE status='will_push'                 │
+│ 1. 查询待推送队列项:                           │
+│    SELECT * FROM content_queue_items         │
+│    WHERE status='scheduled'                 │
 │      AND scheduled_at <= NOW()              │
-│    ORDER BY priority DESC, scheduled_at     │
+│      AND passed_rate_limit=true             │
+│      AND needs_approval=false               │
 │    LIMIT 10                                 │
 │                                              │
-│ 2. 对每个内容执行推送:                        │
+│ 2. 对每个队列项:                              │
 │    ┌─────────────────────────────────────┐ │
-│    │ a) 查找匹配的规则列表                 │ │
+│    │ a) 标记为 PUSHING (避免并发冲突)     │ │
 │    │                                     │ │
-│    │ b) 对每个规则:                       │ │
-│    │    - 查询关联的目标群组               │ │
-│    │      (via BotChatRuleConfig)        │ │
-│    │    - 过滤 enabled=true 的目标        │ │
+│    │ b) 读取预渲染结果:                   │ │
+│    │    payload = item.rendered_payload  │ │
+│    │    (✅ 无需重新渲染)                 │ │
 │    │                                     │ │
-│    │ c) 检查频率限制:                     │ │
-│    │    - 查询 time_window 内推送次数     │ │
-│    │    - 如达到 rate_limit 则跳过        │ │
+│    │ c) 应用 NSFW 路由:                   │ │
+│    │    target = nsfw_result["routed_to"]│ │
+│    │    (✅ 入队时已决策)                 │ │
 │    │                                     │ │
-│    │ d) 应用 NSFW 策略:                   │ │
-│    │    - block: 跳过 NSFW 内容          │ │
-│    │    - separate_channel: 路由到备用频道│ │
-│    │    - allow: 正常推送                 │ │
+│    │ d) 调用推送服务:                     │ │
+│    │    message_id = await               │ │
+│    │      push_service.send(payload)     │ │
 │    │                                     │ │
-│    │ e) 渲染内容:                         │ │
-│    │    base = rule.render_config        │ │
-│    │    override = target.render_config  │ │
-│    │    final = {**base, **override}     │ │
-│    │    message = render(content, final) │ │
-│    │                                     │ │
-│    │ f) 调用推送服务:                     │ │
-│    │    if platform == 'telegram':       │ │
-│    │        TelegramPushService.push()   │ │
-│    │    elif platform == 'qq':           │ │
-│    │        NapcatPushService.push()     │ │
-│    │                                     │ │
-│    │ g) 记录推送结果:                     │ │
-│    │    成功 → 创建 PushedRecord          │ │
-│    │    失败 → 标记为 failed + 重试队列   │ │
+│    │ e) 更新状态:                         │ │
+│    │    成功 → status=SUCCESS            │ │
+│    │          + 记录 message_id          │ │
+│    │    失败 → 重试次数+1                │ │
+│    │          + 指数退避排期              │ │
+│    │          + 超过上限标 FAILED         │ │
 │    └─────────────────────────────────────┘ │
-│                                              │
-│ 3. 更新内容队列状态:                          │
-│    - 全部成功 → status = 'pushed'            │
-│    - 部分失败 → status = 'partial_failed'    │
-│    - 全部失败 → status = 'failed'            │
 └──────────────────────────────────────────────┘
 ```
 
-**💡 优化点 4: 预渲染缓存**
-- **当前痛点**: 每次推送都重新渲染，延迟高
-- **优化方案**: 入队时预渲染并缓存
-- **技术实现**:
-  ```python
-  # ContentQueue 新增字段
-  rendered_payloads = Column(JSON)  
-  # 格式: {"rule_1_target_5": {...}, "rule_1_target_6": {...}}
-  
-  # 入队时预渲染
-  for rule in matched_rules:
-      for target in rule.distribution_targets:
-          key = f"rule_{rule.id}_target_{target.id}"
-          payload = render_content(content, rule, target)
-          rendered_payloads[key] = payload
-  ```
+**✅ 优势对比**：
+
+| 对比维度 | 当前轮询方案 | 事件驱动 + Worker |
+|---------|------------|------------------|
+| **推送延迟** | 0-30秒 | 实时（<5秒） |
+| **重复计算** | ❌ 每次都重新匹配规则、检查 NSFW、渲染内容 | ✅ 入队时做一次，缓存结果 |
+| **并发能力** | ❌ 单线程顺序推送 | ✅ 多 worker 并发（可扩展） |
+| **失败重试** | ❌ 无自动重试 | ✅ 指数退避自动重试 |
+| **状态追溯** | ⚠️ 粗粒度（Content 级别） | ✅ 细粒度（每个推送任务独立） |
+| **推送历史** | ⚠️ PushedRecord 缺 rule_id | ✅ 队列项自动包含完整元数据 |
 
 ---
 
@@ -491,13 +750,235 @@ class BotConfig(Base):
 └──────────────────────────────────────────────┘
 ```
 
+#### 🎯 推送历史完整性保障
+
+**⚠️ 当前 PushedRecord 缺陷**：
+```python
+# 现有模型信息不足
+class PushedRecord(Base):
+    content_id: int
+    target_platform: str  # "telegram"
+    target_id: str        # "@channel"
+    message_id: str
+    push_status: str
+    
+    # ❌ 缺少：
+    # - rule_id: 不知道哪个规则触发的
+    # - rendered_config: 不知道用的什么渲染配置
+    # - retry_info: 不知道重试了几次
+```
+
+**✅ 队列模型自动包含完整元数据**：
+
+采用 `ContentQueueItem` 后，推送历史自动完整：
+
+```sql
+-- 查询示例 1: 某内容的完整推送历史
+SELECT 
+    c.title,
+    r.name AS rule_name,
+    bc.title AS chat_name,
+    q.status,
+    q.pushed_at,
+    q.message_id,
+    q.retry_count,
+    q.error_message
+FROM content_queue_items q
+JOIN contents c ON c.id = q.content_id
+JOIN distribution_rules r ON r.id = q.rule_id
+JOIN bot_chats bc ON bc.id = q.bot_chat_id
+WHERE q.content_id = 123
+ORDER BY q.created_at DESC;
+
+-- 查询示例 2: 某规则的推送效果统计
+SELECT 
+    r.name,
+    COUNT(CASE WHEN q.status = 'success' THEN 1 END) AS success_count,
+    COUNT(CASE WHEN q.status = 'failed' THEN 1 END) AS failed_count,
+    AVG(TIMESTAMPDIFF(SECOND, q.created_at, q.pushed_at)) AS avg_delay_seconds
+FROM content_queue_items q
+JOIN distribution_rules r ON r.id = q.rule_id
+WHERE r.id = 5
+GROUP BY r.id;
+
+-- 查询示例 3: 某群组的接收内容历史
+SELECT 
+    c.title,
+    c.url,
+    r.name AS from_rule,
+    q.pushed_at,
+    q.message_id
+FROM content_queue_items q
+JOIN contents c ON c.id = q.content_id
+JOIN distribution_rules r ON r.id = q.rule_id
+WHERE q.bot_chat_id = 10 AND q.status = 'success'
+ORDER BY q.pushed_at DESC
+LIMIT 50;
+```
+
 ---
 
 ## 四、关键优化点
 
-### 🎯 高优先级优化
+### 🚨 高优先级优化（架构核心修复）
 
-#### 1. 规则创建时一键关联目标
+#### 1. 引入三元组队列模型 (ContentQueueItem)
+
+**🔴 核心缺陷**：
+- **当前问题**: 使用 `Content.status` 模拟队列，无法处理多规则推送
+- **典型场景**:
+  ```python
+  # Content A 匹配了规则1和规则2
+  - 规则1 → 推送到 群组X, 群组Y (成功)
+  - 规则2 → 推送到 群组Y, 群组Z (失败)
+  
+  # ❌ 问题：Content A 应该标记为什么状态？
+  # 当前模型只能二选一，导致信息丢失：
+  Content.status = "distributed"  # 丢失了规则2失败的信息
+  Content.status = "failed"       # 忽略了规则1成功的事实
+  ```
+- **数据完整性缺失**: `PushedRecord` 缺少 `rule_id`，无法追溯推送来源
+
+**✅ 改进方案**：
+
+引入 `ContentQueueItem` 三元组模型：每个队列项代表 `(Content × Rule × BotChat)` 组合
+
+```python
+class ContentQueueItem(Base):
+    """独立的队列项，细粒度状态管理"""
+    content_id = Column(Integer, ForeignKey("contents.id"))
+    rule_id = Column(Integer, ForeignKey("distribution_rules.id"))
+    bot_chat_id = Column(Integer, ForeignKey("bot_chats.id"))
+    
+    status = Column(Enum(QueueItemStatus))  # pending, scheduled, success, failed, skipped
+    scheduled_at = Column(DateTime)
+    
+    # 预处理缓存
+    rendered_payload = Column(JSON)  # 预渲染结果
+    nsfw_routing_result = Column(JSON)  # NSFW 路由决策
+    passed_rate_limit = Column(Boolean)  # 频率限制检查
+    
+    # 审批与推送
+    needs_approval = Column(Boolean)
+    message_id = Column(String(200))
+    retry_count = Column(Integer, default=0)
+    error_message = Column(Text)
+    
+    __table_args__ = (
+        UniqueConstraint("content_id", "rule_id", "bot_chat_id"),
+    )
+```
+
+**优势对比**：
+
+| 对比维度 | 当前方案 | 队列模型 |
+|---------|---------|---------|
+| **状态管理** | ❌ Content 级别（粗粒度） | ✅ 三元组级别（细粒度） |
+| **部分失败处理** | ❌ 无法表达（二选一） | ✅ 每个推送任务独立状态 |
+| **推送历史** | ⚠️ PushedRecord 缺 rule_id | ✅ 完整元数据（规则、配置、重试次数） |
+| **数据追溯** | ❌ 难以查询"规则X触发了多少次推送" | ✅ 完整关联关系，SQL 直接查询 |
+
+**实施优先级**: ✅ **已完成** — `ContentQueueItem` 模型已实现于 `app/models.py`，队列 API 在 `app/routers/distribution_queue.py`
+
+---
+
+#### 2. 事件驱动入队机制
+
+**🔴 核心缺陷**：
+- **当前问题**: 依赖定时任务（每 60 秒轮询），延迟高
+- **重复计算**: 每次推送都重新匹配规则、检查 NSFW、检查频率限制
+- **用户体验**: 审批通过后需等待最长 60 秒才推送
+
+**✅ 改进方案**：
+
+使用 SQLAlchemy 事件监听，Content 创建/更新后立即触发入队：
+
+```python
+@event.listens_for(Content, 'after_insert')
+@event.listens_for(Content, 'after_update')
+async def on_content_changed(mapper, connection, target):
+    if target.status == ContentStatus.PULLED:
+        background_tasks.add_task(enqueue_content, target.id)
+
+
+async def enqueue_content(content_id: int):
+    """
+    一次性完成所有预处理（避免推送时重复计算）:
+    1. 匹配规则
+    2. NSFW 路由决策
+    3. 频率限制检查
+    4. 预渲染内容
+    5. 计算排期时间
+    6. 创建队列项
+    """
+    # ... 详细实现见第三章 ...
+```
+
+**优势对比**：
+
+| 对比维度 | 定时任务 | 事件驱动 |
+|---------|---------|---------|
+| **响应延迟** | 0-60秒 | 实时（<1秒） |
+| **重复计算** | ❌ 每次推送都重算 | ✅ 入队时算一次，缓存结果 |
+| **系统负载** | ⚠️ 定期全表扫描 | ✅ 按需触发 |
+
+**实施优先级**: ✅ **已完成** — `enqueue_content()` 实现于 `app/distribution/queue_service.py`，在审批/自动审批流程中触发
+
+---
+
+#### 3. 推送 Worker 职责分离 + 预渲染缓存
+
+**🔴 核心缺陷**：
+- **当前问题**: 调度器职责混乱（既做业务判断又做推送）
+- **性能瓶颈**: 每次推送都重新渲染内容
+- **并发限制**: 难以支持多 worker 并发推送
+
+**✅ 改进方案**：
+
+**职责分离**：
+- **入队逻辑**（优化2）: 负责匹配、过滤、预渲染、排期
+- **推送 Worker**（本优化）: 只负责发送，不做业务判断
+
+**预渲染缓存**：
+```python
+# 入队时预渲染（只做一次）
+rendered = await render_content(content, rule, target, bot_chat)
+queue_item.rendered_payload = rendered  # 存入数据库
+
+# 推送时直接使用（无需重新渲染）
+message_id = await push_service.send(
+    chat_id=queue_item.bot_chat.chat_id,
+    payload=queue_item.rendered_payload  # 直接使用缓存
+)
+```
+
+**并发推送**：
+```python
+# 启动多个 worker
+@app.on_event("startup")
+async def startup_event():
+    for i in range(3):  # 3 个并发 worker
+        asyncio.create_task(distribution_worker(), name=f"push-worker-{i}")
+```
+
+**优势对比**：
+
+| 对比维度 | 当前方案 | Worker + 缓存 |
+|---------|---------|--------------|
+| **职责清晰** | ❌ 调度器做所有事 | ✅ 入队/推送分离 |
+| **渲染性能** | ❌ 每次推送都渲染 | ✅ 入队时渲染一次 |
+| **并发能力** | ❌ 单线程顺序推送 | ✅ 多 worker 并发（可扩展） |
+| **失败重试** | ❌ 无自动重试 | ✅ 指数退避自动重试 |
+
+**实施优先级**: ✅ **已完成** — `DistributionQueueWorker` 实现于 `app/distribution/queue_worker.py`，支持多 Worker 并发 + 指数退避重试
+
+---
+
+### 💡 中优先级优化（业务流程改进）
+
+#### 4. 规则创建时一键关联目标
+#### 4. 规则创建时一键关联目标
+
 - **当前问题**: 需要先创建规则，再单独配置目标（两步操作）
 - **优化方案**: 在 `DistributionRuleDialog` 中内嵌群组选择器
 - **技术细节**:
@@ -505,7 +986,12 @@ class BotConfig(Base):
   - 前端: 使用 `CheckboxListTile` 展示所有可用群组
   - 支持批量创建 `BotChatRuleConfig` 记录
 
-#### 2. Bot 配置可视化
+**实施优先级**: 🟡 **P1 - 第二阶段实施**
+
+---
+
+#### 5. Bot 配置可视化
+
 - **当前问题**: 需要修改环境变量 + 重启服务
 - **优化方案**: 新建 `BotConfigPage` 支持多 Bot 管理
 - **功能清单**:
@@ -515,21 +1001,12 @@ class BotConfig(Base):
   - ✅ 切换主 Bot
   - ✅ 查看每个 Bot 的群组数和推送统计
 
-#### 3. 事件驱动的队列匹配
-- **当前问题**: 依赖定时任务，延迟 0-60 秒
-- **优化方案**: Content 创建后立即触发匹配
-- **技术实现**:
-  ```python
-  # SQLAlchemy 钩子
-  @event.listens_for(Content, 'after_insert')
-  async def on_content_created(mapper, connection, target):
-      if target.status == ContentStatus.PULLED:
-          await DistributionEngine.match_and_queue(target.id)
-  ```
+**实施优先级**: 🟡 **P1 - 第二阶段实施**
 
-### 💡 中优先级优化
+---
 
-#### 4. 群组视角的规则管理
+#### 6. 群组视角的规则管理
+
 - **功能**: 在 `BotChatCard` 中显示"应用的规则"标签
 - **交互**: 点击进入详情，勾选/取消勾选规则
 - **示例**:
@@ -539,100 +1016,200 @@ class BotConfig(Base):
   [⚙️ 配置规则]
   ```
 
-#### 5. 预渲染缓存
-- **优化点**: 避免重复渲染相同内容
-- **实现**:
-  - `ContentQueue` 新增 `rendered_payloads` JSON 字段
-  - 入队时预渲染所有变体（不同规则+目标组合）
-  - 推送时直接使用缓存结果
+**实施优先级**: 🟡 **P1 - 第二阶段实施**
 
-#### 6. WebSocket 实时更新
+---
+
+#### 7. WebSocket 实时更新
+
 - **应用场景**:
   - 同步群组时推送进度（"已同步 5/10 个群组..."）
   - 推送成功/失败实时通知前端
   - 队列状态变化实时刷新
 - **技术选型**: FastAPI WebSocket + Riverpod StreamProvider
 
-### 🔧 低优先级优化
+**实施优先级**: 🟡 **P1 - 第二阶段实施**
 
-#### 7. 智能排期算法
+---
+
+### 🔧 低优先级优化（体验提升）
+
+#### 8. 智能排期算法
+
 - **当前**: 简单的时间窗口 + 计数器
 - **改进**: 
   - 考虑目标群组的活跃时段
   - 避免同一时间推送过多内容
   - 支持自定义推送时间段（例如：工作日 9:00-18:00）
 
-#### 8. A/B 测试支持
+**实施优先级**: 🟢 **P2 - 锦上添花**
+
+---
+
+#### 9. A/B 测试支持
+
 - **功能**: 同一内容使用不同渲染配置推送到不同群组
 - **用途**: 测试哪种格式的点击率/互动率更高
+
+**实施优先级**: 🟢 **P2 - 锦上添花**
 
 ---
 
 ## 五、实施顺序建议
 
-### 第一阶段：核心流程打通（1-2 周）
+### 第一阶段：架构重构（核心修复）- P0 优先级 (2-3 周)
+
+#### 🔴 目标：修复架构缺陷，为后续优化奠定基础
 
 ```
-✅ 1. 在规则弹窗中添加目标选择
+✅ 1. 创建 ContentQueueItem 模型（优化点 1）
+   - 编写数据库迁移脚本
+   - 定义模型类和索引
+   - 编写单元测试
+   
+✅ 2. 实现事件驱动入队逻辑（优化点 2）
+   - 实现 enqueue_content() 函数
+   - 添加 SQLAlchemy 事件监听器
+   - 实现规则匹配、NSFW 路由、频率限制检查
+   - 实现预渲染逻辑
+   
+✅ 3. 实现推送 Worker（优化点 3）
+   - 实现 distribution_worker() 函数
+   - 添加失败重试机制（指数退避）
+   - 启动多个并发 worker
+   - 编写 worker 监控日志
+```
+
+#### ✅ 迁移策略执行结果（已完成）
+
+**阶段 1.1: 新建队列模型（已完成）**
+
+```sql
+-- 迁移脚本: m10_content_queue_items.sql
+CREATE TABLE content_queue_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    content_id INTEGER NOT NULL,
+    rule_id INTEGER NOT NULL,
+    bot_chat_id INTEGER NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    scheduled_at DATETIME,
+    rendered_payload JSON,
+    nsfw_routing_result JSON,
+    passed_rate_limit BOOLEAN DEFAULT TRUE,
+    rate_limit_reason VARCHAR(200),
+    needs_approval BOOLEAN DEFAULT FALSE,
+    approved_at DATETIME,
+    approved_by VARCHAR(100),
+    pushed_at DATETIME,
+    message_id VARCHAR(200),
+    error_message TEXT,
+    retry_count INTEGER DEFAULT 0,
+    max_retries INTEGER DEFAULT 3,
+    next_retry_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(content_id, rule_id, bot_chat_id),
+    FOREIGN KEY (content_id) REFERENCES contents(id) ON DELETE CASCADE,
+    FOREIGN KEY (rule_id) REFERENCES distribution_rules(id) ON DELETE CASCADE,
+    FOREIGN KEY (bot_chat_id) REFERENCES bot_chats(id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_queue_status_scheduled ON content_queue_items(status, scheduled_at);
+CREATE INDEX ix_queue_content_status ON content_queue_items(content_id, status);
+CREATE INDEX ix_queue_rule_status ON content_queue_items(rule_id, status);
+CREATE INDEX ix_queue_chat_status ON content_queue_items(bot_chat_id, status);
+```
+
+> **✅ 已完成（2026-02-13）**
+>
+> - 旧调度系统与旧队列 API 已移除（不再保留切换开关）。
+> - 分发路径统一为 `ContentQueueItem` + `distribution/queue_worker.py`。
+> - 审批通过/自动审批均直接触发 `enqueue_content` 入队。
+> - 新增数据库清理脚本：`backend/migrations/m10_cleanup_legacy_distribution.sql`，用于将历史 `contents.status='distributed'` 归一化为 `pulled`。
+> - 新增数据库结构清理脚本：`backend/migrations/m11_drop_legacy_content_schedule_columns.sql`，用于移除 `contents.scheduled_at` / `contents.is_manual_schedule`。
+
+**当前运行模式（单一模式）**
+
+```text
+启动应用 → 启动分发队列 Worker
+审批/自动审批通过 → enqueue_content
+Worker 轮询 content_queue_items → 推送 → 写入 pushed_records
+```
+
+**迁移执行说明**
+
+```bash
+cd backend
+sqlite3 data/vaultstream.db < migrations/m10_cleanup_legacy_distribution.sql
+sqlite3 data/vaultstream.db < migrations/m11_drop_legacy_content_schedule_columns.sql
+```
+
+---
+
+### 第二阶段：业务流程改进 - P1 优先级 (2 周)
+
+```
+🔧 4. 规则创建时一键关联目标（优化点 4）
    - 修改 DistributionRuleDialog.dart
    - 添加 BotChatSelector 组件
    - 后端支持嵌套 targets 创建
+   - 前端联调测试
 
-✅ 2. 激活 TargetsManagementPage
-   - 注册到 app_router.dart
-   - 在 ReviewPage 中添加入口（新 Tab 或侧边栏）
+🔧 5. Bot 配置可视化（优化点 5）
+   - 新建 BotConfig 模型和 API
+   - 实现 CRUD 端点
+   - 实现 QR Code 生成 API（Napcat）
+   - 创建 BotManagementPage
+   - 实现 AddBotWizard
+   - 集成到"设置"页面
 
-✅ 3. 完善 BotChat ↔ Rule 的双向管理
+🔧 6. 完善双向管理（优化点 6）
    - 在 BotChatCard 中显示应用的规则
    - 实现"为群组选择规则"弹窗
    - 支持快捷启用/禁用规则
 ```
 
-### 第二阶段：Bot 配置功能（1 周）
+---
+
+### 第三阶段：体验优化 - P1 优先级 (1-2 周)
 
 ```
-🔧 4. 新建 BotConfig 模型和 API
-   - 创建数据库迁移
-   - 实现 CRUD 端点
-   - 实现 QR Code 生成 API
-
-🔧 5. 前端 Bot 管理页面
-   - 创建 BotManagementPage
-   - 实现 AddBotWizard
-   - 集成到"设置"页面
-
-🔧 6. Napcat 二维码登录
-   - WebSocket 流式传输二维码数据
-   - 前端实时渲染 QR Code
-   - 登录成功后自动跳转
-```
-
-### 第三阶段：性能与体验优化（2 周）
-
-```
-⚡ 7. 事件驱动队列
-   - 实现 SQLAlchemy 钩子
-   - 重构 DistributionEngine
-   - 性能测试与调优
-
-⚡ 8. 预渲染缓存
-   - 扩展 ContentQueue 模型
-   - 实现渲染缓存逻辑
-   - A/B 对比测试效果
-
-⚡ 9. WebSocket 实时通知
+⚡ 7. WebSocket 实时通知（优化点 7）
    - 设计消息协议
    - 实现后端推送逻辑
    - 前端集成 StreamProvider
+   - 应用场景：
+     • 同步群组进度
+     • 推送成功/失败通知
+     • 队列状态实时刷新
 ```
 
-### 第四阶段：进阶功能（可选）
+---
+
+### 第四阶段：进阶功能 - P2 优先级 (可选)
 
 ```
-🚀 10. 智能排期算法
-🚀 11. A/B 测试框架
-🚀 12. 推送效果分析面板
+🚀 8. 智能排期算法（优化点 8）
+   - 分析群组活跃时段
+   - 实现智能排期策略
+   - 支持自定义推送时间段
+
+🚀 9. A/B 测试框架（优化点 9）
+   - 设计 A/B 测试数据模型
+   - 实现效果追踪
+   - 推送效果分析面板
 ```
+
+---
+
+### 🎯 实施里程碑
+
+| 阶段 | 时间 | 核心成果 | 验收标准 |
+|-----|------|---------|---------|
+| **第一阶段** | Week 1-3 | 架构重构完成 | ✅ 队列模型正常工作<br>✅ 事件驱动入队<br>✅ Worker 并发推送<br>✅ 推送成功率 ≥ 99% |
+| **第二阶段** | Week 4-5 | 业务流程优化 | ✅ 规则创建一键关联目标<br>✅ Bot 可视化管理<br>✅ 群组规则双向管理 |
+| **第三阶段** | Week 6-7 | 体验优化 | ✅ WebSocket 实时通知<br>✅ 用户操作响应 < 1s |
+| **第四阶段** | Week 8+ | 进阶功能 | ✅ 智能排期算法<br>✅ A/B 测试支持 |
 
 ---
 
@@ -720,21 +1297,3 @@ def on_content_created(mapper, connection, target):
 ```
 
 ---
-
-## 总结
-
-本设计方案通过 **四层架构** 清晰划分了职责：
-1. **BotConfig**: 管理 Bot 账号凭证
-2. **BotChat**: 存储 Bot 加入的群组身份
-3. **DistributionRule**: 定义内容过滤和推送格式
-4. **BotChatRuleConfig**: 连接规则与群组，支持个性化配置
-
-完整使用流程覆盖了从 **Bot 配置** → **规则创建** → **内容入队** → **审批** → **推送** → **监控** 的全链路。
-
-关键优化点聚焦于：
-- ✅ **简化操作**: 规则创建时一键选择目标
-- ✅ **降低门槛**: 可视化 Bot 配置（无需改环境变量）
-- ✅ **提升性能**: 事件驱动 + 预渲染缓存
-- ✅ **优化体验**: WebSocket 实时反馈
-
-建议按 **三阶段渐进式实施**，优先打通核心流程，再逐步增强体验和性能。

@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from app.main import app
 from app.core.config import settings
+from app.core.database import init_db
 from app.models import Base, Content
 import os
 
@@ -46,6 +47,7 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 @pytest.fixture(scope="function")
 async def client() -> AsyncGenerator[AsyncClient, None]:
     """Provide an authenticated AsyncClient."""
+    await init_db()
     transport = ASGITransport(app=app)
     headers = {"X-API-Token": settings.api_token.get_secret_value() if settings.api_token else ""}
     async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as c:

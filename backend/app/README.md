@@ -46,7 +46,8 @@ app/
 
 ### 4. `distribution/` (自动分发)
 - engine.py: 规则匹配引擎，决定内容是否分发
-- scheduler.py: 定时任务调度器
+- queue_service.py: 事件驱动入队服务（`enqueue_content`）
+- queue_worker.py: 队列消费 Worker（并发推送、重试与退避）
 
 ### 5. `media/` (媒体处理)
 - processor.py: 媒体文件下载、WebP 转码

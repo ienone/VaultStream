@@ -33,8 +33,8 @@ class TestSystemAPI:
     
     @pytest.mark.asyncio
     async def test_system_stats(self, client: AsyncClient):
-        """Test /api/v1/system/stats endpoint"""
-        response = await client.get("/api/v1/system/stats")
+        """Test /api/v1/dashboard/stats endpoint"""
+        response = await client.get("/api/v1/dashboard/stats")
         assert response.status_code == 200
         
         data = response.json()

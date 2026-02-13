@@ -10,27 +10,35 @@ class TestDistributionAPI:
     
     @pytest.mark.asyncio
     async def test_get_distribution_status(self, client: AsyncClient):
-        """Test GET /api/v1/distribution/status"""
-        response = await client.get("/api/v1/distribution/status")
+        """Test GET /api/v1/distribution-queue/stats"""
+        response = await client.get("/api/v1/distribution-queue/stats")
         assert response.status_code == 200
         
         data = response.json()
-        assert "enabled" in data
-        assert isinstance(data["enabled"], bool)
+        assert "total" in data
+        assert "due_now" in data
+        assert isinstance(data["total"], int)
+        assert isinstance(data["due_now"], int)
     
     @pytest.mark.asyncio
     async def test_trigger_distribution(self, client: AsyncClient):
-        """Test POST /api/v1/distribution/trigger"""
-        response = await client.post("/api/v1/distribution/trigger")
+        """Test POST /api/v1/distribution/trigger-run"""
+        response = await client.post("/api/v1/distribution/trigger-run")
         
-        # Should succeed or return appropriate status
-        assert response.status_code in [200, 202]
+        assert response.status_code == 200
+        data = response.json()
+        assert data.get("status") == "triggered"
+        assert isinstance(data.get("enqueued_count"), int)
     
     @pytest.mark.asyncio
     async def test_distribution_history(self, client: AsyncClient):
-        """Test GET /api/v1/distribution/history"""
-        response = await client.get("/api/v1/distribution/history")
+        """Test GET /api/v1/distribution-queue/items"""
+        response = await client.get("/api/v1/distribution-queue/items?page=1&size=20")
         assert response.status_code == 200
         
         data = response.json()
-        assert isinstance(data, (list, dict))
+        assert isinstance(data, dict)
+        assert "items" in data
+        assert "total" in data
+        assert isinstance(data["items"], list)
+        assert isinstance(data["total"], int)
