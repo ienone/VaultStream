@@ -16,7 +16,7 @@ from app.core.database import get_db
 from app.models import Content, ContentStatus, PushedRecord, Platform, ReviewStatus, WeiboUser, ContentSource
 from app.schemas import (
     ShareRequest, ShareResponse, ContentDetail,
-    GetContentRequest, MarkPushedRequest, ShareCardListResponse, ContentListResponse,
+    ShareCardListResponse, ContentListResponse,
     ContentUpdate, ShareCardPreview, OptimizedMedia, ReviewAction, BatchReviewRequest,
     PushedRecordResponse, WeiboUserResponse
 )
@@ -323,105 +323,6 @@ async def re_parse_content(
 
     background_tasks.add_task(worker.retry_parse, content_id, force=True)
     return {"status": "processing", "content_id": content_id, "message": "Re-parsing started in background"}
-
-# --- Bot & Distribution Support ---
-
-@router.post("/bot/get-content", response_model=List[ContentDetail])
-async def get_content_for_bot(
-    request: GetContentRequest,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """供机器人调用：获取待分发的内容"""
-    try:
-        subquery = (
-            select(PushedRecord.content_id)
-            .where(PushedRecord.target_platform == request.target_platform)
-        )
-        
-        query = select(Content).where(
-            and_(
-                Content.status == ContentStatus.PULLED,
-                ~Content.id.in_(subquery)
-            )
-        )
-        
-        if request.tag and isinstance(request.tag, str) and request.tag.strip():
-            tag_value = request.tag.strip()
-            query = query.where(Content.tags.contains([tag_value]))
-        
-        if hasattr(request, 'platform') and request.platform:
-            try:
-                platform_enum = Platform(request.platform)
-                query = query.where(Content.platform == platform_enum)
-            except ValueError:
-                raise HTTPException(status_code=400, detail=f"无效的平台: {request.platform}")
-        
-        query = query.order_by(Content.created_at.desc()).limit(request.limit)
-        
-        result = await db.execute(query)
-        contents = result.scalars().all()
-    except Exception as e:
-        logger.exception("查询待推送内容失败")
-        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)[:200]}")
-
-    return [ContentDetail.model_validate(c) for c in contents]
-
-@router.post("/bot/mark-pushed")
-async def mark_content_pushed(
-    request: MarkPushedRequest,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """供机器人调用：标记内容已推送"""
-    try:
-        result = await db.execute(select(Content).where(Content.id == request.content_id))
-        content = result.scalar_one_or_none()
-        
-        if not content:
-            raise HTTPException(status_code=404, detail="内容不存在")
-        
-        existing = await db.execute(
-            select(PushedRecord).where(
-                and_(
-                    PushedRecord.content_id == request.content_id,
-                    PushedRecord.target_id == request.target_id
-                )
-            )
-        )
-        existing_record = existing.scalar_one_or_none()
-        
-        if existing_record:
-            if request.message_id:
-                existing_record.message_id = request.message_id
-                existing_record.push_status = "success"
-                await db.commit()
-            return {"success": True, "message": "已更新", "record_id": existing_record.id}
-        
-        pushed_record = PushedRecord(
-            content_id=request.content_id,
-            target_platform=request.target_platform,
-            target_id=request.target_id,
-            message_id=request.message_id,
-            push_status="success"
-        )
-        db.add(pushed_record)
-        await db.commit()
-        
-        # 发送 SSE 事件通知前端
-        from app.core.events import event_bus
-        await event_bus.publish("content_pushed", {
-            "content_id": request.content_id,
-            "target_id": request.target_id,
-            "target_platform": request.target_platform,
-            "message_id": request.message_id,
-        })
-        
-        return {"success": True, "message": "标记成功", "record_id": pushed_record.id}
-        
-    except Exception as e:
-        logger.error(f"标记推送失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/pushed-records", response_model=List[PushedRecordResponse])
 async def list_pushed_records(

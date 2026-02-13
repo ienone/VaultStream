@@ -5,12 +5,6 @@ import '../models/content.dart';
 import '../models/header_line.dart';
 
 class ContentParser {
-  // getStoredMap 已废弃，后端直接返回映射后的URL
-  @Deprecated('Use backend-provided URLs directly')
-  static Map<String, String> getStoredMap(ContentDetail detail) {
-    return {};
-  }
-
   static List<String> extractAllImages(
     ContentDetail detail,
     String apiBaseUrl, {
@@ -45,7 +39,7 @@ class ContentParser {
       }
     }
     
-    // 无图时使用头像作为回退
+    // 无图时使用头像补充
     if (list.isEmpty && includeAvatarFallback && authorAvatar != null) {
       list.add(media_utils.mapUrl(authorAvatar, apiBaseUrl));
     }
@@ -143,7 +137,7 @@ class ContentParser {
       url = content.coverUrl!;
     }
 
-    // 无封面时，回退到作者头像
+    // 无封面时，使用作者头像
     if (url.isEmpty && content.authorAvatarUrl != null && content.authorAvatarUrl!.isNotEmpty) {
       url = content.authorAvatarUrl!;
     }

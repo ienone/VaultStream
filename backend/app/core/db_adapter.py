@@ -99,6 +99,6 @@ def get_database_adapter() -> DatabaseAdapter:
 # 全局适配器实例
 _adapter = get_database_adapter()
 
-# 导出引擎和会话工厂（保持向后兼容）
+# 导出引擎和会话工厂
 engine = _adapter.get_engine()
 AsyncSessionLocal = _adapter.get_session_maker()

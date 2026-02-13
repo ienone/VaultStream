@@ -41,30 +41,14 @@ abstract class ShareCard with _$ShareCard {
 
   /// 获取有效布局类型：后端已计算
   String get resolvedLayoutType {
-    // 后端已计算的有效布局类型
     if (effectiveLayoutType != null && effectiveLayoutType!.isNotEmpty) {
       return effectiveLayoutType!;
     }
-    // 兼容回退：根据 platform/contentType 推断（用于旧数据）
-    return _fallbackLayoutType();
-  }
-
-  String _fallbackLayoutType() {
-    if (isBilibili) {
-      if (contentType == 'article' || contentType == 'opus') return 'article';
-      return 'gallery'; // video/dynamic
-    }
-    if (isWeibo || isTwitter || isXiaohongshu) return 'gallery';
-    if (isZhihu) {
-      if (contentType == 'article' || contentType == 'answer') return 'article';
-      if (contentType == 'pin') return 'gallery';
-      return 'article';
-    }
-    return 'article'; // 默认
+    return 'article';
   }
 
   bool get isLandscapeCover {
-    // ShareCard 不再需要封面方向判断（已移除 rawMetadata）
+    // ShareCard 使用统一横版卡片展示
     return true; // Default to landscape
   }
 
@@ -129,36 +113,18 @@ abstract class ContentDetail with _$ContentDetail {
   bool get isZhihuColumn => isZhihu && contentType == 'column';
   bool get isZhihuCollection => isZhihu && contentType == 'collection';
 
-  /// 获取有效布局类型：用户覆盖 > 后端检测 > 兼容回退
+  /// 获取有效布局类型：用户覆盖 > 后端检测
   String get resolvedLayoutType {
-    // 优先用户覆盖
     if (layoutTypeOverride != null && layoutTypeOverride!.isNotEmpty) {
       return layoutTypeOverride!;
     }
-    // 其次后端提供的有效类型
     if (effectiveLayoutType != null && effectiveLayoutType!.isNotEmpty) {
       return effectiveLayoutType!;
     }
-    // 后端检测值
     if (layoutType != null && layoutType!.isNotEmpty) {
       return layoutType!;
     }
-    // 兼容回退：根据 platform/contentType 推断
-    return _fallbackLayoutType();
-  }
-
-  String _fallbackLayoutType() {
-    if (isBilibili) {
-      if (contentType == 'article' || contentType == 'opus') return 'article';
-      return 'gallery'; // video/dynamic
-    }
-    if (isWeibo || isTwitter || isXiaohongshu) return 'gallery';
-    if (isZhihu) {
-      if (contentType == 'article' || contentType == 'answer') return 'article';
-      if (contentType == 'pin') return 'gallery';
-      return 'article';
-    }
-    return 'article'; // 默认
+    return 'article';
   }
 
   factory ContentDetail.fromJson(Map<String, dynamic> json) =>

@@ -194,42 +194,24 @@ Telegram用户
     ▼
 Telegram Bot
     │
-    │ POST /api/v1/bot/get-content
+    │ GET /api/v1/bot/chats/{chat_id}
+    │ GET /api/v1/distribution-queue/items?status=scheduled&bot_chat_id=...&size=50
     ▼
-FastAPI查询待推送内容
+FastAPI查询队列项并筛选内容
     │
-    │ SELECT FROM contents
-    │ WHERE status = 'PULLED'
-    │   AND id NOT IN (已推送记录)
-    │   AND (tag匹配)
-    │ ORDER BY published_at DESC
-    │ LIMIT 1
+    │ SELECT FROM content_queue_items
+    │ WHERE status = 'scheduled'
+    │   AND bot_chat_id = ?
+    │ ORDER BY created_at DESC
+    │ LIMIT 50
     ▼
-返回Content数据
-    │
-    ▼
-Bot格式化消息
-    │
-    ├─> 标题
-    ├─> 作者
-    ├─> 简介
-    ├─> 互动数据
-    ├─> 标签
-    └─> 原始链接
+按 content_id 读取内容详情并匹配 tag/platform
     │
     ▼
-发送到Telegram频道
+Bot触发队列项即时推送
     │
-    ├─ 有封面? ─> send_photo(cover_url, caption)
-    └─ 无封面  ─> send_message(text)
-    │
-    ▼
-异步标记已推送 (不阻塞)
-    │
-    │ asyncio.create_task()
-    │
-    └─> POST /api/v1/bot/mark-pushed
-        └─> INSERT INTO pushed_records
+    └─> POST /api/v1/distribution-queue/items/{item_id}/push-now
+        └─> Worker执行推送并写入 pushed_records
     │
     ▼
 Bot回复用户: ✅ 已发送
@@ -238,15 +220,12 @@ Bot回复用户: ✅ 已发送
 ### 4.2 推送去重机制
 
 ```sql
--- 查询待推送内容时，排除已推送的
-SELECT * FROM contents
-WHERE status = 'PULLED'
-  AND id NOT IN (
-    SELECT content_id 
-    FROM pushed_records 
-    WHERE target_platform = 'TG_CHANNEL_xxx'
-  )
-ORDER BY published_at DESC;
+-- 推送时按 (content_id, target_id) 去重
+SELECT 1
+FROM pushed_records
+WHERE content_id = :content_id
+  AND target_id = :target_id
+LIMIT 1;
 ```
 
 **支持多目标**：
@@ -600,7 +579,7 @@ Worker-1  Worker-2
 - 监控队列积压情况
 - 设置失败告警阈值
 - 定期清理死信队列
-- 定期归档旧数据
+- 定期归档历史数据
 
 ❌ **避免**：
 - 生产环境开启DEBUG

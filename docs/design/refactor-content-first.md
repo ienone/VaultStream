@@ -2,7 +2,7 @@
 
 ## 背景与目标
 
-随着 `UniversalAdapter`（通用智能解析）的引入，VaultStream 的内容来源不再局限于少数几个特定平台（B站、微博等），而是扩展到了任意网页。
+随着 `UniversalAdapter`（通用智能解析）的引入，VaultStream 的内容来源覆盖任意网页。
 
 当前的架构是 **"平台驱动 (Platform-First)"** 的：
 *   后端根据 URL 域名硬编码判断 `platform`。
@@ -67,15 +67,8 @@ class Content(Base):
 
 ### 2.1 详情页路由重构
 
-废弃基于平台的路由分发，改为基于布局的分发。
+详情页路由采用基于布局类型的分发：
 
-**旧逻辑**:
-```dart
-if (content.platform == 'bilibili') return BilibiliPage(content);
-else if (content.platform == 'weibo') return WeiboPage(content);
-```
-
-**新逻辑**:
 ```dart
 switch (content.layoutType) {
   case 'video': return VideoLayout(content);
@@ -147,7 +140,7 @@ switch (content.layoutType) {
 
 ### Phase 3: 前端重构 ✅ (2026-01-31 完成)
 - [x] 前端模型添加 `layoutType/layoutTypeOverride/effectiveLayoutType` 字段。
-- [x] 实现 `resolvedLayoutType` getter（用户覆盖 > 后端检测 > 兼容回退）。
+- [x] 实现 `resolvedLayoutType` getter（用户覆盖 > 后端检测）。
 - [x] 详情页路由重构：基于 `layoutType` 分发，使用 switch-case。
 - [x] 保留竖屏 PortraitLayout、用户主页 UserProfileLayout 特殊处理。
 - [x] 通用组件完善（新增 MediaGrid）。
@@ -174,7 +167,7 @@ switch (content.layoutType) {
 - [x] 后端统一提取 `associated_question` 到顶层字段（知乎回答关联问题）
 - [x] 后端统一提取 `top_answers` 到顶层字段（知乎问题精选回答）
 - [x] `markdown_content` 已通过 `description` 字段提供（无需新增字段）
-- [x] API Schema 新增结构化字段，前端不再直接访问 rawMetadata
+- [x] API Schema 新增结构化字段，前端通过顶层字段读取数据
 - [x] 创建数据库迁移脚本 `migrations/phase7_structured_fields.py`
 
 ---

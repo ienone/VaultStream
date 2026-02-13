@@ -4,14 +4,12 @@ Bot 命令处理模块
 import time
 import httpx
 import logging
-import asyncio
 from typing import Optional
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import ContextTypes
 
 from app.core.logging import logger
 from app.core.config import settings
-from app.push.telegram import build_telegram_payload, send_to_telegram
 from .messages import HELP_TEXT_START, HELP_TEXT_FULL, MSG_API_ERROR, MSG_TIMEOUT
 from .permissions import get_permission_manager
 
@@ -202,90 +200,74 @@ async def _get_content_by_filter(
     try:
         client = await _get_client(context)
         api_base = _get_api_base(context)
-        target_platform = _get_target_platform(context)
-        
-        payload = {
-            "target_platform": target_platform,
-            "limit": 1
-        }
-        if tag: payload["tag"] = tag
-        if platform: payload["platform"] = platform
-        
-        try:
-            response = await client.post(
-                f"{api_base}/bot/get-content",
-                json=payload,
-                timeout=10.0
-            )
-        except httpx.TimeoutException:
-            await update.message.reply_text(MSG_TIMEOUT)
+        channel_id = context.bot_data.get("channel_id")
+
+        chat_resp = await client.get(f"{api_base}/bot/chats/{channel_id}", timeout=10.0)
+        if chat_resp.status_code != 200:
+            await update.message.reply_text("未找到当前频道对应的 Bot Chat 配置")
             return
-        except httpx.RequestError:
-            await update.message.reply_text(MSG_API_ERROR)
+        bot_chat_id = chat_resp.json().get("id")
+        if not bot_chat_id:
+            await update.message.reply_text("Bot Chat 配置缺少 ID")
             return
-            
-        if response.status_code != 200:
-            error_msg = "未知错误"
-            try:
-                error_msg = response.json().get('detail', '未知错误')
-            except: pass
-            await update.message.reply_text(f"获取内容失败: {error_msg}")
+
+        queue_resp = await client.get(
+            f"{api_base}/distribution-queue/items",
+            params={
+                "status": "scheduled",
+                "bot_chat_id": bot_chat_id,
+                "page": 1,
+                "size": 50,
+            },
+            timeout=10.0,
+        )
+        if queue_resp.status_code != 200:
+            await update.message.reply_text("获取队列失败")
             return
-            
-        contents = response.json()
-        if not contents:
+
+        items = (queue_resp.json() or {}).get("items", [])
+        if not items:
             await update.message.reply_text("暂无符合条件的内容")
             return
-            
-        content = contents[0]
-        content_id = content.get("id")
-        
-        # 发送到频道 (模拟)
-        # 注意：这里我们实际直接回复给用户，或者发送到频道？
-        # 原代码是 self.send_content_to_channel(content, context)
-        # 这里需要 context.bot ...
-        
-        # 复用原逻辑：发送到配置的 channel
-        channel_id = context.bot_data.get("channel_id")
-        
-        # 构建消息并发送到Channel
-        text, media_items = build_telegram_payload(content)
-        
-        # 按钮
-        keyboard = [[InlineKeyboardButton("🗑️ 删除", callback_data=f"delete_{content_id}")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await send_to_telegram(
-            context.bot,
-            channel_id,
-            text,
-            media_items,
-            reply_markup=reply_markup
-        )
-        
-        # 标记为已推送
-        asyncio.create_task(_mark_pushed_async(client, api_base, content_id, target_platform, str(channel_id)))
-        
-        # 回复触发命令的用户
-        title = content.get('title') or content.get('url', '未知内容')
+
+        selected_item = None
+        selected_content = None
+        for item in items:
+            content_id = item.get("content_id")
+            if not content_id:
+                continue
+            detail_resp = await client.get(f"{api_base}/contents/{content_id}", timeout=10.0)
+            if detail_resp.status_code != 200:
+                continue
+            content = detail_resp.json()
+            if tag and tag not in (content.get("tags") or []):
+                continue
+            if platform and str(content.get("platform", "")).lower() != platform.lower():
+                continue
+            selected_item = item
+            selected_content = content
+            break
+
+        if not selected_item or not selected_content:
+            await update.message.reply_text("暂无符合条件的内容")
+            return
+
+        item_id = selected_item.get("id")
+        push_resp = await client.post(f"{api_base}/distribution-queue/items/{item_id}/push-now", timeout=20.0)
+        if push_resp.status_code != 200:
+            error_msg = "未知错误"
+            try:
+                error_msg = push_resp.json().get("detail", "未知错误")
+            except Exception:
+                pass
+            await update.message.reply_text(f"触发推送失败: {error_msg}")
+            return
+
+        title = selected_content.get('title') or selected_content.get('url', '未知内容')
         title_short = title[:50] + "..." if len(title) > 50 else title
-        platform_name = content.get('platform', '')
-        await update.message.reply_text(f"已发送: {title_short}\n平台: {platform_name}")
+        platform_name = selected_content.get('platform', '')
+        await update.message.reply_text(f"已触发推送: {title_short}\n平台: {platform_name}")
         
     except Exception as e:
         logger.exception("获取内容失败")
         await update.message.reply_text(f"发送失败: {str(e)[:100]}")
-
-async def _mark_pushed_async(client: httpx.AsyncClient, api_base: str, content_id: int, target_platform: str, target_id: str):
-    """异步标记已推送"""
-    try:
-        await client.post(
-            f"{api_base}/bot/mark-pushed",
-            json={
-                "content_id": content_id,
-                "target_platform": target_platform,
-                "target_id": target_id
-            }
-        )
-    except Exception as e:
-        logger.warning(f"标记已推送失败 {content_id}: {e}")

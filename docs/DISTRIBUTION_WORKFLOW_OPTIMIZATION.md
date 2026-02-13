@@ -76,7 +76,7 @@ class ContentQueueItem(Base):
     completed_at = Column(DateTime)
 ```
 
-> 说明：当前模型使用 `completed_at`，不使用旧字段 `pushed_at`。
+> 说明：当前模型使用 `completed_at`。
 
 ---
 
@@ -104,7 +104,7 @@ class ContentQueueItem(Base):
 - `POST /distribution-queue/content/batch-reschedule`
 - `POST /distribution-queue/content/merge-group`
 
-> `merge-group` 当前返回语义化成功响应，不做旧式“分组实体”写入。
+> `merge-group` 返回语义化成功响应。
 
 ### 3.2 Bot 相关 API
 
@@ -172,7 +172,7 @@ class ContentQueueItem(Base):
 - 本地进程内广播（低延迟）
 - SQLite `realtime_events` outbox + 轮询消费（跨实例传播）
 
-该实现已替代“仅进程内事件总线”方案，避免多实例漏事件。
+该实现通过本地广播与 SQLite outbox 组合，保证多实例事件可见性。
 
 ---
 
@@ -182,7 +182,7 @@ class ContentQueueItem(Base):
 - 前端 Review/Queue Provider 已切换新接口。
 - 审批路径已可达：`pending` 内容可入 `approval_required` 规则队列。
 - 实时事件已支持跨实例传播。
-- 文档示例已移除旧 `/queue/*` 路径与 WebSocket 描述。
+- 文档示例统一使用 `/distribution-queue/*` 与 SSE 描述。
 
 ---
 
@@ -191,6 +191,6 @@ class ContentQueueItem(Base):
 后续文档变更请遵循：
 
 1. 以 `backend/app/routers/distribution_queue.py` 与 `backend/app/core/events.py` 为单一事实源。
-2. 所有新队列能力优先扩展 `/distribution-queue/*`，不新增平行旧路径。
+2. 队列能力统一扩展 `/distribution-queue/*`。
 3. 所有“完成时间”字段统一使用 `completed_at`。
-4. 实时能力描述统一使用 SSE，不再使用 WebSocket 术语。
+4. 实时能力描述统一使用 SSE。

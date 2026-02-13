@@ -116,14 +116,6 @@ class ContentDetail(BaseModel):
         from_attributes = True
 
 
-class GetContentRequest(BaseModel):
-    """获取待分发内容请求"""
-    tag: Optional[str] = Field(None, description="按标签筛选")
-    platform: Optional[str] = Field(None, description="按平台筛选 (twitter, bilibili)")
-    target_platform: str = Field(..., description="目标平台标识")
-    limit: int = Field(1, ge=1, le=10, description="获取数量")
-
-
 class ContentListItem(BaseModel):
     """内容列表项（精简版，用于列表展示）"""
     id: int
@@ -219,14 +211,6 @@ class BatchOperationResponse(BaseModel):
     success_ids: List[int] = Field(default_factory=list)
     failed_ids: List[int] = Field(default_factory=list)
     errors: Dict[int, str] = Field(default_factory=dict)
-
-
-class MarkPushedRequest(BaseModel):
-    """标记已推送请求"""
-    content_id: int
-    target_platform: str
-    target_id: str  # M4: 新增目标ID（如频道ID）
-    message_id: Optional[str] = None
 
 
 class ShareCard(BaseModel):

@@ -337,7 +337,7 @@ def _format_bilibili_message(content: dict) -> str:
     # 移除空行
     lines = [line for line in lines if line]
     
-    # ShareCard 用 summary 字段；兼容旧字段 description
+    # ShareCard 优先使用 summary，若为空则使用 description
     desc = content.get('summary') or content.get('description', '')
     if desc:
         clean_desc = html.escape(desc[:300] + "..." if len(desc) > 300 else desc)

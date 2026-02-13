@@ -201,7 +201,7 @@ def build_opus_archive(item: Dict[str, Any], author_avatar_url: Optional[str] = 
                 blocks.append({"type": "text", "text": cleaned})
                 text_chunks.append(cleaned)
 
-    # 5) 额外附件/外链（如果存在，旧结构兼容）
+    # 5) 额外附件/外链（如果存在）
     rich_text_nodes = (opus.get("rich_text") or {}).get("nodes")
     if isinstance(rich_text_nodes, list):
         for n in rich_text_nodes:

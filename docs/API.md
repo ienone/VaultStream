@@ -173,7 +173,11 @@ eventSource.addEventListener('queue_updated', (e) => {
 - `POST /api/v1/distribution-queue/content/batch-reschedule`
 - `POST /api/v1/distribution-queue/content/merge-group`
 
-`merge-group` 在当前 `ContentQueueItem` 模型下返回语义化成功响应（不再执行额外数据库合并步骤）。
+### 队列项维度操作
+
+- `POST /api/v1/distribution-queue/items/{item_id}/push-now`
+
+`merge-group` 在 `ContentQueueItem` 模型下返回语义化成功响应。
 
 ---
 
@@ -185,7 +189,8 @@ eventSource.addEventListener('queue_updated', (e) => {
 - `PATCH /api/v1/distribution-rules/{id}`
 - `DELETE /api/v1/distribution-rules/{id}`
 
-`POST /distribution-rules` 当前支持在请求体中附带 `targets`，实现规则创建时批量关联目标。
+`POST /distribution-rules` 的请求体不包含 `targets`。
+目标关联通过 `/api/v1/distribution-rules/{id}/targets` 系列接口管理。
 
 ### 分发目标 API
 

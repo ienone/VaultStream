@@ -72,5 +72,5 @@ app/
 from app.core.config import settings
 from app.worker import worker
 
-# 避免使用之前的旧路径 (如 app.utils)
+# 统一使用 app.* 绝对导入路径
 ```

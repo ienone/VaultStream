@@ -40,7 +40,6 @@ async def create_distribution_rule(
         raise HTTPException(status_code=400, detail="Rule name already exists")
     
     payload = rule.model_dump()
-    payload["targets"] = []
     db_rule = DistributionRule(**payload)
     db.add(db_rule)
 

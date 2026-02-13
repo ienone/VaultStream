@@ -72,12 +72,12 @@
 
 ---
 
-## 5. 与旧方案的差异
+## 5. 关键接口约定
 
-- 不再使用 `DistributionScheduler` 定时扫描模型。
-- 不再依赖旧 `/queue/*` 接口。
-- 队列完成时间使用 `completed_at`（替代历史 `pushed_at` 用法）。
-- Bot 二维码接口是 HTTP 查询，不是 WebSocket 推流。
+- 队列管理入口统一使用 `/api/v1/distribution-queue/*`。
+- Bot 手动触发使用队列项粒度接口：`POST /api/v1/distribution-queue/items/{item_id}/push-now`。
+- 队列完成时间字段为 `completed_at`。
+- Bot 二维码接口为 HTTP 查询。
 
 ---
 

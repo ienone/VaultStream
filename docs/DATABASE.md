@@ -86,7 +86,7 @@ sqlite3 data/vaultstream.db < migrations/m4_distribution_and_review.sql
 
 ## 2. `pushed_records` 表 (分发追踪)
 
-用于实现“推过不再发”逻辑。
+用于实现分发去重逻辑。
 
 | 字段名 | 类型 | 说明 |
 | :--- | :--- | :--- |

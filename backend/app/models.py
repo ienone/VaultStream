@@ -133,7 +133,7 @@ class Content(Base):
     # 平台特有 ID (如 BV号, 推文ID)
     platform_id = Column(String(100), index=True)
     
-    # 添加以下兼容性属性，以便 Pydantic 模型 ContentDetail 能够正确验证
+    # 提供以下映射属性，供 Pydantic 模型 ContentDetail 使用
     @property
     def bilibili_id(self):
         """映射 platform_id 到 bilibili_id（仅 B站有效）"""
@@ -179,29 +179,12 @@ class Content(Base):
 
     @property
     def effective_layout_type(self) -> Optional['LayoutType']:
-        """获取有效布局类型：用户覆盖 > 系统检测 > 兼容回退"""
+        """获取有效布局类型：用户覆盖 > 系统检测"""
         if self.layout_type_override:
             return self.layout_type_override
         if self.layout_type:
             return self.layout_type
-        # 兼容回退：根据 platform/content_type 推断
-        return self._fallback_layout_type()
-    
-    def _fallback_layout_type(self) -> 'LayoutType':
-        """根据旧字段推断布局类型（兼容存量数据）"""
-        if self.platform == Platform.BILIBILI:
-            if self.content_type in ('article', 'opus'):
-                return LayoutType.ARTICLE
-            return LayoutType.GALLERY  # video/dynamic 等
-        if self.platform in (Platform.WEIBO, Platform.TWITTER, Platform.XIAOHONGSHU):
-            return LayoutType.GALLERY
-        if self.platform == Platform.ZHIHU:
-            if self.content_type in ('article', 'answer'):
-                return LayoutType.ARTICLE
-            if self.content_type == 'pin':
-                return LayoutType.GALLERY
-            return LayoutType.ARTICLE
-        return LayoutType.ARTICLE  # 默认
+        return None
 
     @property
     def author_avatar_url(self) -> Optional[str]:
@@ -213,7 +196,7 @@ class Content(Base):
             if not self.raw_metadata:
                 return None
             
-            # 这里的逻辑与旧 property 一致，作为存量数据的回退
+            # 从 raw_metadata 动态提取头像信息
             if self.platform == Platform.WEIBO:
                 if self.content_type == "user_profile":
                     return self.raw_metadata.get("avatar_hd")
@@ -343,9 +326,6 @@ class DistributionRule(Base):
     # 渲染配置（用于个性化推送内容格式）
     render_config = Column(JSON, nullable=True)
 
-    # 兼容旧库结构：保留 legacy targets 列映射，业务改为使用 distribution_targets 表
-    targets = Column(JSON, nullable=False, default=list)
-    
     # 时间戳
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
@@ -578,7 +558,7 @@ class BotChat(Base):
             return "qq"
         if self.chat_type in [BotChatType.CHANNEL, BotChatType.GROUP, BotChatType.SUPERGROUP, BotChatType.PRIVATE]:
             return "telegram"
-        # 默认回退到 telegram 或抛出异常（此处回退以保持兼容性，但记录警告）
+        # 未识别类型时默认按 telegram 处理
         return "telegram"
     
     created_at = Column(DateTime, default=utcnow)

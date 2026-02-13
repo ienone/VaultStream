@@ -14,6 +14,7 @@ from app.core.events import event_bus
 from app.core.logging import logger
 from app.core.time_utils import utcnow
 from app.models import Content, ContentQueueItem, QueueItemStatus
+from app.distribution.queue_worker import get_queue_worker
 from app.schemas import (
     BatchQueueRetryRequest,
     ContentQueueItemListResponse,
@@ -142,6 +143,35 @@ async def get_queue_item(
         select(ContentQueueItem).where(ContentQueueItem.id == item_id)
     )
     item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Queue item not found")
+    return ContentQueueItemResponse.model_validate(item)
+
+
+@router.post("/items/{item_id}/push-now", response_model=ContentQueueItemResponse)
+async def push_queue_item_now(
+    item_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """立即执行单个队列项推送（用于手动触发）。"""
+    result = await db.execute(
+        select(ContentQueueItem).where(ContentQueueItem.id == item_id)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Queue item not found")
+
+    worker = get_queue_worker()
+    try:
+        await worker.process_item_now(item_id, worker_name="api-manual")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    refreshed = await db.execute(
+        select(ContentQueueItem).where(ContentQueueItem.id == item_id)
+    )
+    item = refreshed.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="Queue item not found")
     return ContentQueueItemResponse.model_validate(item)

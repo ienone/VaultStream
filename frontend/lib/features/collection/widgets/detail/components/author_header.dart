@@ -149,7 +149,7 @@ class AuthorHeader extends ConsumerWidget {
       return;
     }
     
-    // 回退：根据平台构造 URL
+    // 根据平台构造 URL
     if (detail.authorId != null && detail.authorId!.isNotEmpty) {
       String url;
       if (detail.isZhihu) {

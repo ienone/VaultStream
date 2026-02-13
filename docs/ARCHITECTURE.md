@@ -46,8 +46,8 @@ VaultStream 是一个多平台内容聚合和归档系统，支持从 B 站等�
 │  │  API Routes (app/api.py)                                     │  │
 │  │  - POST /api/v1/shares         创建分享                       │  │
 │  │  - GET  /api/v1/contents       查询内容                       │  │
-│  │  - POST /api/v1/bot/get-content  Bot获取内容                  │  │
-│  │  - POST /api/v1/bot/mark-pushed  标记已推送                   │  │
+│  │  - GET  /api/v1/distribution-queue/items  查询队列项          │  │
+│  │  - POST /api/v1/distribution-queue/items/{id}/push-now 推送   │  │
 │  │  - GET  /api/v1/health         健康检查                       │  │
 │  └──────────────────────────────────────────────────────────────┘  │
 │  ┌──────────────────────────────────────────────────────────────┐  │
@@ -153,8 +153,7 @@ VaultStream 是一个多平台内容聚合和归档系统，支持从 B 站等�
 | `/api/v1/shares` | POST | 创建内容分享 | 接收URL，识别平台，入库并入队 |
 | `/api/v1/contents` | GET | 查询内容列表 | 支持过滤、分页 |
 | `/api/v1/contents/{id}` | GET | 获取内容详情 | 包含完整元数据 |
-| `/api/v1/bot/get-content` | POST | Bot 获取待推送内容 | 返回未推送的内容 |
-| `/api/v1/bot/mark-pushed` | POST | 标记内容已推送 | 记录推送历史 |
+| `/api/v1/distribution-queue/items/{item_id}/push-now` | POST | 立即执行单个队列项推送 | 复用队列 Worker 逻辑 |
 | `/api/v1/health` | GET | 健康检查 | 返回系统状态 |
 
 ### 3.2 适配器层 (`app/adapters/`)
@@ -516,47 +515,11 @@ Worker 轮询队列
    │
    ├─> Bot 收到命令
    │
-   ├─> POST /api/v1/bot/get-content
-   │     ├─> body: {target_platform, tag, limit}
-   │     │
-   │     └─> [API] 查询待推送内容
-   │           ├─> SELECT FROM contents
-   │           │     WHERE status = 'PULLED'
-   │           │     AND id NOT IN (
-   │           │       SELECT content_id FROM pushed_records
-   │           │       WHERE target_platform = ?
-   │           │     )
-   │           │     AND (tag IS NULL OR ? = ANY(tags))
-   │           │     ORDER BY published_at DESC
-   │           │     LIMIT ?
-   │           │
-   │           └─> 返回 [Content]
-   │
-   ├─> Bot 格式化内容
-   │     └─> format_content_for_tg(content)
-   │           ├─> 标题
-   │           ├─> 作者
-   │           ├─> 简介
-   │           ├─> 互动数据
-   │           ├─> 标签
-   │           └─> 原始链接
-   │
-   ├─> Bot 发送到频道
-   │     ├─> 如果有封面图:
-   │     │     └─> bot.send_photo(channel_id, cover_url, caption)
-   │     │
-   │     └─> 否则:
-   │           └─> bot.send_message(channel_id, text)
-   │
-   ├─> 异步标记已推送 (不阻塞)
-   │     └─> asyncio.create_task(
-   │           POST /api/v1/bot/mark-pushed
-   │             ├─> body: {content_id, target_platform}
-   │             │
-   │             └─> [API] 创建推送记录
-   │                   ├─> INSERT INTO pushed_records
-   │                   └─> COMMIT
-   │         )
+   ├─> GET /api/v1/bot/chats/{chat_id}
+   ├─> GET /api/v1/distribution-queue/items?status=scheduled&bot_chat_id=...&size=50
+   ├─> 读取内容详情并按 tag/platform 筛选
+   ├─> POST /api/v1/distribution-queue/items/{item_id}/push-now
+   │     └─> [Worker] 执行推送并写入 pushed_records
    │
    └─> 回复用户: ✅ 已发送
 ```

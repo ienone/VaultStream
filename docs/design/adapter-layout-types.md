@@ -105,22 +105,11 @@
 
 ---
 
-## 前端兼容回退
+## 前端布局解析（当前实现）
 
-当后端未返回 layout_type 时，前端使用以下回退逻辑：
+前端按统一字段链路解析布局类型。
 
-```dart
-String _fallbackLayoutType() {
-  if (isBilibili) {
-    if (contentType == 'article' || contentType == 'opus') return 'article';
-    return 'gallery';
-  }
-  if (isWeibo || isTwitter || isXiaohongshu) return 'gallery';
-  if (isZhihu) {
-    if (contentType == 'article' || contentType == 'answer') return 'article';
-    if (contentType == 'pin') return 'gallery';
-    return 'article';
-  }
-  return 'article';
-}
-```
+- `ContentDetail`: `layout_type_override` > `effective_layout_type` > `layout_type` > 默认 `article`
+- `ShareCard`: `effective_layout_type` > 默认 `article`
+
+布局类型的来源由后端统一负责，前端仅消费新接口字段。

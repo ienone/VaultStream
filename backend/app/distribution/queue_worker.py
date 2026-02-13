@@ -67,6 +67,34 @@ class DistributionQueueWorker:
         self._tasks.clear()
         logger.info("🛑 分发队列 Worker 已停止")
 
+    async def process_item_now(self, item_id: int, worker_name: str = "api-manual"):
+        """立即处理指定队列项（绕过轮询，复用同一推送逻辑）。"""
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(ContentQueueItem).where(ContentQueueItem.id == item_id)
+            )
+            item = result.scalar_one_or_none()
+            if not item:
+                raise ValueError("Queue item not found")
+
+            if item.status in (
+                QueueItemStatus.SUCCESS,
+                QueueItemStatus.SKIPPED,
+                QueueItemStatus.CANCELED,
+            ):
+                raise ValueError(f"Queue item status not pushable: {item.status.value}")
+
+            now = utcnow()
+            item.status = QueueItemStatus.PROCESSING
+            item.locked_at = now
+            item.locked_by = worker_name
+            item.scheduled_at = now
+            if item.started_at is None:
+                item.started_at = now
+            await session.commit()
+
+            await self._process_item(session, item, worker_name)
+
     # ── 主循环 ────────────────────────────────────────
 
     async def _worker_loop(self, worker_name: str):
@@ -261,7 +289,7 @@ class DistributionQueueWorker:
         item.locked_at = None
         item.locked_by = None
 
-        # 兼容性：写入 PushedRecord
+        # 写入推送记录
         pushed = PushedRecord(
             content_id=item.content_id,
             target_platform=item.target_platform,
