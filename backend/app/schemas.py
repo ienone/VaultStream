@@ -410,7 +410,7 @@ def _validate_targets_list(v: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 class DistributionRuleCreate(BaseModel):
-    """创建分发规则（支持可选批量创建 targets）"""
+    """创建分发规则"""
     name: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
     match_conditions: Dict[str, Any] = Field(..., description="匹配条件 JSON")
@@ -423,30 +423,6 @@ class DistributionRuleCreate(BaseModel):
     time_window: Optional[int] = None
     template_id: Optional[str] = None
     render_config: Optional[Dict[str, Any]] = None
-    targets: List[Dict[str, Any]] = Field(default_factory=list, description="可选：批量创建分发目标")
-
-    @field_validator('targets', mode='before')
-    @classmethod
-    def validate_targets(cls, v):
-        if v is None:
-            return []
-        if not isinstance(v, list):
-            raise ValueError("targets must be a list")
-        normalized: List[Dict[str, Any]] = []
-        for item in v:
-            if not isinstance(item, dict):
-                raise ValueError("Each target must be an object")
-            if 'bot_chat_id' not in item:
-                raise ValueError("Each target must include bot_chat_id")
-            normalized.append({
-                'bot_chat_id': int(item['bot_chat_id']),
-                'enabled': bool(item.get('enabled', True)),
-                'merge_forward': bool(item.get('merge_forward', False)),
-                'use_author_name': bool(item.get('use_author_name', True)),
-                'summary': item.get('summary'),
-                'render_config_override': item.get('render_config_override'),
-            })
-        return normalized
 
 
 class DistributionRuleUpdate(BaseModel):

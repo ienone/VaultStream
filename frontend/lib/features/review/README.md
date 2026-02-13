@@ -48,4 +48,4 @@
 *   交互: 大量使用动画切换（如 `AnimatedSize`, `AnimatedCrossFade`）以提升用户体验。
 
 ## API 依赖
-主要交互后端 `/queue/*`, `/distribution/*` 以及 `/bot/*` 系列接口。
+主要交互后端 `/distribution-queue/*`, `/distribution-rules/*`、`/distribution-rules/{rule_id}/targets/*` 以及 `/bot/*` 系列接口。

@@ -11,7 +11,6 @@ part 'queue_provider.g.dart';
 class _QueueConfig {
   // SSE 事件类型
   static const eventContentPushed = 'content_pushed';
-  static const eventQueueReordered = 'queue_item_reordered';
   static const eventQueueUpdated = 'queue_updated';
   
   // 防抖延迟
@@ -84,7 +83,6 @@ class ContentQueue extends _$ContentQueue {
   void _handleSseEvent(SseEvent event) {
     // 使用常量匹配事件类型
     if (event.type == _QueueConfig.eventContentPushed || 
-        event.type == _QueueConfig.eventQueueReordered ||
         event.type == _QueueConfig.eventQueueUpdated) {
       debugPrint('[Queue] SSE event received: ${event.type}');
       

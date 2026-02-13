@@ -8,7 +8,7 @@ from httpx import AsyncClient
 
 class TestDistributionPhase2API:
     @pytest.mark.asyncio
-    async def test_create_rule_with_nested_targets(self, client: AsyncClient):
+    async def test_create_rule_then_bind_target_via_target_api(self, client: AsyncClient):
         suffix = datetime.utcnow().strftime("%H%M%S%f")
         chat_id = f"-100phase2{suffix[-6:]}"
 
@@ -28,22 +28,25 @@ class TestDistributionPhase2API:
             "/api/v1/distribution-rules",
             json={
                 "name": f"phase2-rule-{suffix}",
-                "description": "phase2 nested target create",
+                "description": "phase2 target create",
                 "match_conditions": {"tags": ["phase2"], "tags_match_mode": "any"},
                 "enabled": True,
                 "priority": 1,
                 "nsfw_policy": "block",
                 "approval_required": False,
-                "targets": [
-                    {
-                        "bot_chat_id": chat["id"],
-                        "enabled": True,
-                    }
-                ],
             },
         )
         assert rule_resp.status_code == 200
         rule = rule_resp.json()
+
+        create_target_resp = await client.post(
+            f"/api/v1/distribution-rules/{rule['id']}/targets",
+            json={
+                "bot_chat_id": chat["id"],
+                "enabled": True,
+            },
+        )
+        assert create_target_resp.status_code == 201
 
         targets_resp = await client.get(f"/api/v1/distribution-rules/{rule['id']}/targets")
         assert targets_resp.status_code == 200

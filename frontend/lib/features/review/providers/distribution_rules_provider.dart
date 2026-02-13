@@ -22,23 +22,11 @@ class DistributionRules extends _$DistributionRules {
         .toList();
   }
 
-  Future<DistributionRule> createRule(
-    DistributionRuleCreate rule, {
-    List<int> targetBotChatIds = const [],
-  }) async {
+  Future<DistributionRule> createRule(DistributionRuleCreate rule) async {
     final dio = ref.watch(apiClientProvider);
-    final payload = rule.toJson();
-    if (targetBotChatIds.isNotEmpty) {
-      payload['targets'] = targetBotChatIds
-          .map((chatId) => {
-                'bot_chat_id': chatId,
-                'enabled': true,
-              })
-          .toList();
-    }
     final response = await dio.post(
       '/distribution-rules',
-      data: payload,
+      data: rule.toJson(),
     );
     final newRule = DistributionRule.fromJson(response.data);
     ref.invalidateSelf();

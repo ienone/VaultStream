@@ -7,9 +7,11 @@ import '../../core/network/api_client.dart';
 import '../../core/network/sse_service.dart';
 import '../../core/widgets/frosted_app_bar.dart';
 import 'models/distribution_rule.dart';
+import 'models/distribution_target.dart';
 import 'models/bot_chat.dart';
 import 'models/pushed_record.dart';
 import 'models/queue_item.dart';
+import 'providers/distribution_targets_provider.dart';
 import 'providers/distribution_rules_provider.dart';
 import 'providers/pushed_records_provider.dart';
 import 'providers/bot_chats_provider.dart';
@@ -795,16 +797,25 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
   }
 
   void _showCreateRuleDialog() {
-    final chats = ref.read(botChatsProvider).valueOrNull ?? const <BotChat>[];
+    final chats = ref.read(botChatsProvider).asData?.value ?? const <BotChat>[];
     showDialog(
       context: context,
       builder: (ctx) => DistributionRuleDialog(
         availableChats: chats,
         onCreate: (rule, selectedChatIds) async {
           try {
-            await ref
+            final newRule = await ref
                 .read(distributionRulesProvider.notifier)
-                .createRule(rule, targetBotChatIds: selectedChatIds);
+                .createRule(rule);
+            final uniqueChatIds = selectedChatIds.toSet();
+            for (final chatId in uniqueChatIds) {
+              await ref
+                  .read(distributionTargetsProvider(newRule.id).notifier)
+                  .createTarget(
+                    newRule.id,
+                    DistributionTargetCreate(botChatId: chatId),
+                  );
+            }
             await _refreshChatRuleSummary();
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -828,7 +839,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       context: context,
       builder: (ctx) => DistributionRuleDialog(
         rule: rule,
-        onCreate: (_, __) {},
+        onCreate: (ruleData, selectedChatIds) {},
         onUpdate: (id, update) async {
           try {
             await ref.read(distributionRulesProvider.notifier).updateRule(id, update);

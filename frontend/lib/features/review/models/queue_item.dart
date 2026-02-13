@@ -54,10 +54,6 @@ abstract class QueueListResponse with _$QueueListResponse {
     @Default(1) int page,
     @Default(50) int size,
     @JsonKey(name: 'has_more') @Default(false) bool hasMore,
-    @JsonKey(name: 'will_push_count') @Default(0) int willPushCount,
-    @JsonKey(name: 'filtered_count') @Default(0) int filteredCount,
-    @JsonKey(name: 'pending_review_count') @Default(0) int pendingReviewCount,
-    @JsonKey(name: 'pushed_count') @Default(0) int pushedCount,
   }) = _QueueListResponse;
 
   factory QueueListResponse.fromJson(Map<String, dynamic> json) =>

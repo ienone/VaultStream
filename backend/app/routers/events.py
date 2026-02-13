@@ -23,8 +23,11 @@ async def subscribe_events(
     - content_updated: 内容更新（解析完成/编辑）
     - content_deleted: 内容删除
     - content_pushed: 内容已推送（分发）
-    - queue_item_reordered: 队列重新排序
+    - distribution_push_success: 队列项推送成功
+    - distribution_push_failed: 队列项推送失败
     - queue_updated: 队列更新
+    - bot_sync_progress: Bot 同步进度
+    - bot_sync_completed: Bot 同步完成
     - ping: 心跳保活
     
     使用方式：

@@ -11,8 +11,6 @@ abstract class DistributionRule with _$DistributionRule {
     String? description,
     @JsonKey(name: 'match_conditions')
     required Map<String, dynamic> matchConditions,
-    @Deprecated('Use DistributionTarget API instead')
-    @Default([]) List<Map<String, dynamic>> targets,
     @Default(true) bool enabled,
     @Default(0) int priority,
     @JsonKey(name: 'nsfw_policy') @Default('block') String nsfwPolicy,

@@ -342,6 +342,9 @@ class DistributionRule(Base):
 
     # 渲染配置（用于个性化推送内容格式）
     render_config = Column(JSON, nullable=True)
+
+    # 兼容旧库结构：保留 legacy targets 列映射，业务改为使用 distribution_targets 表
+    targets = Column(JSON, nullable=False, default=list)
     
     # 时间戳
     created_at = Column(DateTime, default=utcnow)
