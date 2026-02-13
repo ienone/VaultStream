@@ -1,79 +1,89 @@
-# 内容推送逻辑详解
+# 内容推送逻辑详解（当前实现）
 
-本文档详细说明了 VaultStream 的内容推送流程，包括自动调度、个性化渲染、多平台分发以及目标管理逻辑。
-
-## 1. 核心组件
-
-推送系统由以下几个核心组件组成：
-
-*   **DistributionScheduler (backend/app/distribution/scheduler.py)**: 定时任务调度器，负责扫描 `scheduled_at` 符合条件的内容。
-*   **DistributionEngine (backend/app/distribution/engine.py)**: 分发引擎，负责规则匹配、个性化模板渲染、去重检查及任务生成。
-*   **TaskWorker (backend/app/worker)**: 后台 Worker 进程，消费分发任务。
-*   **PushService (backend/app/push)**: 平台特定的推送实现。
-    *   **TelegramPushService**: 支持 HTML/Markdown 渲染。
-    *   **NapcatPushService**: 支持 QQ (OneBot 11) 协议，包含合并转发逻辑。
-
-## 2. 推送流程
-
-### 2.1 自动推送流程 (基于调度的时间线)
-
-1.  **调度**: `DistributionScheduler` 每 60 秒运行一次。
-2.  **选品**: 查询状态为 `PULLED` 且审核状态为 `APPROVED` 的内容。
-    *   **核心逻辑**: 检查 `scheduled_at <= utcnow()`。
-    *   **排序**: `queue_priority` 降序，其次 `scheduled_at` 升序。
-3.  **规则匹配与渲染**:
-    *   `DistributionEngine` 查找匹配规则。
-    *   **个性化渲染**: 检查规则或目标（Target）是否定义了 `render_config`。如果有，则覆盖系统默认模板。
-    *   **模板变量**: 支持 `{{date}}`, `{{title}}`, `{{author}}`, `{{url}}` 等占位符。
-4.  **去重与过滤**:
-    *   检查 `PushedRecord` 防止重复推送。
-    *   NSFW 策略过滤。
-5.  **分发执行**: 生成任务并异步调用各平台的 `PushService`。
-
-### 2.2 队列标准化操作
-
-*   **立即推送 (Push Now)**: 通过设置 `scheduled_at` 为过去 24 小时并将优先级设为最高 (9999)，强制内容在下一次轮询时立即发送。
-*   **合并分组 (Merge Group)**: 将多个内容的 `scheduled_at` 对齐到同一时间点。分发引擎会识别同时间的任务，对于支持的平台（如 QQ）自动采用**合并转发 (Merged Forward)** 模式。
-
-## 3. 个性化渲染 (Render Config)
-
-系统支持对每个分发规则甚至每个具体目标配置不同的渲染风格。
-
-### 3.1 内置预设模板 (Presets)
-
-1.  **Minimal (精简)**: 仅包含标题和链接，适合高频转发。
-2.  **Standard (标准)**: 包含标题、摘要和自动媒体展示。
-3.  **Detailed (详细)**: 展示全部字段、页眉页脚及完整媒体。
-4.  **Media-Only (纯图片/视频)**: 以媒体为核心，仅保留极简说明。
-
-### 3.2 渲染优先级
-
-1.  **Target Override**: 如果具体目标配置了 `render_config`，优先级最高。
-2.  **Rule Config**: 否则使用规则定义的配置。
-3.  **Global Default**: 最后回退到系统全局配置。
-
-## 4. QQ 接入 (Napcat/OneBot 11)
-
-VaultStream 通过 Napcat 接入 QQ 生态：
-
-*   **连接方式**: 使用 HTTP API 协议连接。
-*   **消息格式**: 采用 JSON Array 格式。
-*   **性能优化**: 大量内容并发时，自动在规则/目标级别通过“合并转发”减少对频道的骚扰。
-
-## 5. 目标管理 (Target Management)
-
-独立管理页面允许用户跨规则查看所有活跃目标：
-
-*   **连接测试**: 实时验证 Bot 是否能访问指定的 Telegram 频道或 QQ 群组。
-*   **状态概览**: 显示每个目标的启用状态、总推送次数、最后推送时间以及关联的规则数量。
-*   **批量更新**: 支持跨规则批量修改目标的启用状态或渲染模板。
+本文档说明 VaultStream 当前分发推送主流程，按 `ContentQueueItem` 队列模型与 `queue_worker` 实现对齐。
 
 ---
 
-## 6. 排查指南
+## 1. 核心组件
 
-1.  **检查 scheduled_at**: 确认内容是否已到达预定的推送时间。
-2.  **验证连接**: 在“目标管理”页面对目标进行“连接测试”。
-3.  **日志跟踪**: 
-    *   `Updating targeted content rendering with config...`: 检查是否有配置覆盖。
-    *   `Target connection test failed`: 目标配置可能过时或 ID 无效。
+- `DistributionEngine` (`backend/app/distribution/engine.py`)
+  - 规则匹配、审批判定、队列刷新。
+- `queue_service` (`backend/app/distribution/queue_service.py`)
+  - 入队入口，负责生成队列项与触发队列更新事件。
+- `queue_worker` (`backend/app/distribution/queue_worker.py`)
+  - 消费已排期任务并执行推送。
+- `PushService` (`backend/app/push/*`)
+  - 平台推送实现（Telegram / QQ）。
+- `EventBus` (`backend/app/core/events.py`)
+  - SSE 事件发布 + SQLite outbox 跨实例同步。
+
+---
+
+## 2. 端到端流程
+
+### 2.1 入队
+
+1. 内容满足基础条件后进入匹配。
+2. 引擎按规则筛选并展开目标（`rule × bot_chat`）。
+3. 生成/更新 `ContentQueueItem`，初始为 `pending` 或 `scheduled`。
+4. 发布 `queue_updated` 事件。
+
+### 2.2 审批与人工操作
+
+人工审批与调度统一走 `/api/v1/distribution-queue/content/*`：
+
+- `status`（`will_push` / `filtered`）
+- `reorder`
+- `push-now`
+- `schedule`
+- `batch-push-now`
+- `batch-reschedule`
+
+### 2.3 推送执行
+
+1. Worker 领取到期 `scheduled` 项并加锁。
+2. 执行平台推送。
+3. 成功：`status=success`，回写 `message_id`、`completed_at`。
+4. 失败：`status=failed`，回写 `last_error`、`last_error_type`、`last_error_at`，并计算重试。
+5. 发布：`queue_updated`、`distribution_push_success`、`distribution_push_failed`、`content_pushed`。
+
+---
+
+## 3. 队列状态语义
+
+- `pending`: 待审批或待进一步处理。
+- `scheduled`: 已进入排期，等待执行。
+- `processing`: Worker 正在处理。
+- `success`: 推送完成。
+- `failed`: 推送失败，允许重试。
+- `skipped`: 因策略/去重等跳过。
+- `canceled`: 人工取消。
+
+---
+
+## 4. 实时更新机制
+
+前端通过 SSE 订阅 `/api/v1/events/subscribe`。
+
+- 单实例：事件实时广播到本地订阅者。
+- 多实例：事件写入 `realtime_events`，由其他实例轮询消费并转发。
+
+该机制保证队列/推送状态在多实例部署下仍可被前端实时感知。
+
+---
+
+## 5. 与旧方案的差异
+
+- 不再使用 `DistributionScheduler` 定时扫描模型。
+- 不再依赖旧 `/queue/*` 接口。
+- 队列完成时间使用 `completed_at`（替代历史 `pushed_at` 用法）。
+- Bot 二维码接口是 HTTP 查询，不是 WebSocket 推流。
+
+---
+
+## 6. 排查建议
+
+1. `GET /api/v1/distribution-queue/stats` 查看整体状态分布与 `due_now`。
+2. `GET /api/v1/distribution-queue/items?status=failed` 定位失败项。
+3. 结合后端日志查看 `last_error` 与平台返回。
+4. 用 `POST /api/v1/distribution-queue/items/{item_id}/retry` 或 `batch-retry` 回放。

@@ -9,7 +9,7 @@ This document reviews the current Review, Queue, and Push behavior and proposes 
 | Phase | Description | Progress | Status |
 |-------|-------------|----------|--------|
 | **Phase 1** | Backend Foundation (render_config + Napcat + merge forward) | 100% | ✅ Complete |
-| **Phase 2** | Queue Enhancements (APIs + scheduler + events) | 100% | ✅ Complete |
+| **Phase 2** | Queue Enhancements (APIs + queue worker + events) | 100% | ✅ Complete |
 | **Phase 3** | Frontend Queue Dashboard (Material 3 + drag-drop + responsive) | 100% | ✅ Complete |
 | **Phase 4** | Rule/Target Management (editors + config override) | 100% | ✅ Complete |
 | **Phase 5** | Target Management Page (standalone + testing + presets) | 100% | ✅ Complete |
@@ -22,9 +22,9 @@ This document reviews the current Review, Queue, and Push behavior and proposes 
 
 ### 1.1 Review & Queue
 - Current:
-  - Queue is a virtual list from SQL queries.
-  - Query: `SELECT * FROM contents WHERE review_status='APPROVED' AND status='PULLED' AND scheduled_at <= NOW() ORDER BY queue_priority DESC, scheduled_at ASC`.
-  - `DistributionScheduler` polls every 60 seconds and pulls 50 items.
+   - Queue is based on `content_queue_items` (triplet model: content × rule × bot_chat).
+   - Worker consumes due items by `status='scheduled'` and `scheduled_at <= now`.
+   - Queue operations are exposed via `/api/v1/distribution-queue/*`.
 - Issues:
   - No intuitive FIFO visualization.
   - Hard to insert, reorder, or move items (only `queue_priority`).
@@ -56,17 +56,18 @@ Goal: controllable FIFO queue with precise scheduling, immediate push, and batch
 #### Backend
 
 1. Scheduling logic:
-   - Today uses `scheduled_at`. Approved content is placed at the next polling window.
-   - Immediate Push Mode:
-     1. Set `scheduled_at = utcnow()`.
-     2. Set `queue_priority = 9999`.
-     3. Call `Scheduler.trigger_run()` to wake immediately.
-   - Batch grouping: items with the same `scheduled_at` are merged and sent together.
+    - Uses `content_queue_items.scheduled_at` and worker polling.
+    - Immediate Push Mode:
+       1. Call `POST /api/v1/distribution-queue/content/{content_id}/push-now`.
+       2. Backend updates eligible queue items to immediate schedule.
+    - Batch scheduling:
+       - `POST /api/v1/distribution-queue/content/batch-reschedule`
+       - `POST /api/v1/distribution-queue/content/batch-push-now`
 
 2. API Plan:
    - `GET /items`: Frontend groups by `scheduled_at`.
-   - `POST /queue/batch-reschedule`: Batch scheduling and grouping.
-   - `POST /queue/batch-push-now`: Immediate push.
+   - `POST /distribution-queue/content/batch-reschedule`: Batch scheduling and grouping.
+   - `POST /distribution-queue/content/batch-push-now`: Immediate push.
 
 #### Frontend
 
@@ -149,7 +150,7 @@ Goal: integrate OneBot 11 and merged forwarding.
    - Implement NapcatPushService.
    - Add `render_config` to DistributionRule.
 2. Phase 2: Queue Enhancements
-   - Improve `/queue/reorder`.
+   - Improve `/distribution-queue/content/{content_id}/reorder`.
    - Frontend drag sorting.
 3. Phase 3: Personalized + Batch
    - Telegram dynamic rendering.
@@ -216,12 +217,12 @@ async def push_batch(content_ids, target_id):
 ### Backend Enhancements
 
 **New APIs**:
-1. `POST /queue/items/{content_id}/push-now` - Immediate push for single item
+1. `POST /distribution-queue/content/{content_id}/push-now` - Immediate push for single item
    - Sets `scheduled_at` to past time (-24h) with `queue_priority=9999`
    - Calls `compact_schedule()` and `trigger_run()` to wake scheduler
    - Publishes `queue_updated` event for frontend refresh
 
-2. `POST /queue/merge-group` - Merge multiple items into one time group
+2. `POST /distribution-queue/content/merge-group` - Merge multiple items into one time group
    - Aligns `scheduled_at` for all items to same timestamp
    - Supports custom time or uses earliest existing time
    - Triggers compaction and event publish
@@ -291,7 +292,7 @@ async def push_batch(content_ids, target_id):
 - ✅ Batch forward logic in distribution engine
 
 **Phase 2 (Queue Enhancements)** - ✅ 100% Complete
-- ✅ Immediate push API (`/queue/items/{id}/push-now`)
+- ✅ Immediate push API (`/distribution-queue/content/{id}/push-now`)
 - ✅ Scheduler wake-up mechanism (`trigger_run()`)
 - ✅ Batch reschedule and merge APIs
 - ✅ Event-driven refresh via SSE

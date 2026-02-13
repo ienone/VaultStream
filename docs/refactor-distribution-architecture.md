@@ -173,10 +173,10 @@ CREATE TABLE distribution_targets (
 ### Phase 2：后端 API + 引擎
 
 5. **新建 CRUD 路由**（`backend/app/routers/distribution.py` 或新文件）：
-   - `GET /api/v1/rules/{rule_id}/targets` — 获取规则的目标列表
-   - `POST /api/v1/rules/{rule_id}/targets` — 添加目标（传 bot_chat_id）
-   - `PATCH /api/v1/rules/{rule_id}/targets/{target_id}` — 更新目标配置
-   - `DELETE /api/v1/rules/{rule_id}/targets/{target_id}` — 删除目标
+   - `GET /api/v1/distribution-rules/{rule_id}/targets` — 获取规则的目标列表
+   - `POST /api/v1/distribution-rules/{rule_id}/targets` — 添加目标（传 bot_chat_id）
+   - `PATCH /api/v1/distribution-rules/{rule_id}/targets/{target_id}` — 更新目标配置
+   - `DELETE /api/v1/distribution-rules/{rule_id}/targets/{target_id}` — 删除目标
 6. **更新分发引擎** `engine.py`：
    - `create_distribution_tasks()` 改为查询 `DistributionTarget` JOIN `BotChat`
    - **新增：任务级排重**。确保同一 Content 对同一 BotChat 只产生一条任务（取优先级最高的规则或合并渲染配置）。

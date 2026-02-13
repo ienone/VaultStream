@@ -1,35 +1,19 @@
 # VaultStream API 文档
 
-> 版本: v0.3.0  
-> 更新: 2026-02-09  
-> 包含队列、分发及目标管理增强
-
-## 目录
-
-- [鉴权](#鉴权)
-- [内容管理 API](#内容管理-api)
-- [批量操作 API](#批量操作-api)
-- [实时事件 SSE](#实时事件-sse)
-- [队列管理 API](#队列管理-api)
-- [分发规则 API](#分发规则-api)
-- [Bot 管理 API](#bot-管理-api)
-- [系统 API](#系统-api)
-- [优化亮点](#优化亮点)
-- [迁移指南](#迁移指南)
+> 版本: v0.3.1  
+> 更新: 2026-02-13  
+> 本文档按当前代码实现更新（SSE + ContentQueueItem + /distribution-queue/*）
 
 ---
 
 ## 鉴权
 
-所有 API 请求需要携带 Token（可选配置）：
+所有 `/api/v1/*` 请求支持以下任一方式携带 Token：
 
-**传递方式**（二选一）：
-- Header: `X-API-Token: <your-token>`
-- Header: `Authorization: Bearer <your-token>`
+- `X-API-Token: <token>`
+- `Authorization: Bearer <token>`
 
-**配置说明**：
-- 未配置 `API_TOKEN` 环境变量时，鉴权跳过（方便本地开发）
-- 生产环境建议设置强Token
+未配置 `API_TOKEN` 时可跳过鉴权（仅建议本地开发）。
 
 ---
 
@@ -37,180 +21,42 @@
 
 ### POST /api/v1/shares
 
-提交分享URL，创建内容收藏项。
-
-**功能**：
-- 自动识别平台（Bilibili、Twitter、小红书、微博、知乎等）
-- URL规范化与去重
-- 异步解析与存档
-- 来源追踪
-
-**Request Body**：
-```json
-{
-  "url": "https://www.bilibili.com/video/BV1xx411c7mu",
-  "tags": ["技术", "教程"],
-  "source": "web",
-  "note": "可选备注（最长2000字符）",
-  "client_context": {"device": "desktop"},
-  "is_nsfw": false,
-  "layout_type_override": "gallery"
-}
-```
-
-**Response**：
-```json
-{
-  "id": 123,
-  "platform": "bilibili",
-  "url": "https://www.bilibili.com/video/BV1xx411c7mu",
-  "status": "unprocessed",
-  "created_at": "2026-02-03T10:00:00Z"
-}
-```
-
-**去重行为**：
-- 相同平台 + 相同canonical_url → 返回已有内容
-- 失败状态自动重试解析
-
+提交分享链接并创建内容。
 
 ### GET /api/v1/contents
 
-获取内容列表（支持字段过滤优化）。
+分页获取内容列表。
 
-**Query Parameters**：
-```
-page=1                     # 页码（默认1）
-size=20                    # 每页数量（默认20，最大100）
-platform=bilibili          # 平台筛选（可多选，逗号分隔）
-status=pulled              # 状态筛选
-review_status=approved     # 审核状态
-tag=技术                   # 标签筛选（可多选）
-author=作者名              # 作者筛选
-start_date=2026-01-01      # 开始日期
-end_date=2026-02-03        # 结束日期
-q=关键词                   # 全文搜索
-is_nsfw=false              # NSFW筛选
-exclude_fields=raw_metadata,extra_stats  # 🆕 排除字段（优化传输）
-```
+常用参数：
 
-**字段过滤优化**：
-- `exclude_fields`: 默认排除 `raw_metadata,extra_stats`（减少70-85%数据量）
-- 设置 `exclude_fields=` (空) 可获取全量数据
-- 列表页建议使用默认值，详情页请求全量
-
-**Response**：
-```json
-{
-  "items": [
-    {
-      "id": 123,
-      "platform": "bilibili",
-      "url": "https://...",
-      "status": "pulled",
-      "title": "视频标题",
-      "cover_url": "https://...",
-      "author_name": "作者",
-      "tags": ["技术"],
-      "is_nsfw": false,
-      "created_at": "2026-02-03T10:00:00Z",
-      "published_at": "2026-02-01T08:00:00Z"
-    }
-  ],
-  "total": 100,
-  "page": 1,
-  "size": 20,
-  "has_more": true
-}
-```
-
+- `page` / `size`
+- `platform` / `status` / `review_status`
+- `tag` / `author`
+- `start_date` / `end_date`
+- `q` / `is_nsfw`
+- `exclude_fields`（默认排除大字段）
 
 ### GET /api/v1/contents/{id}
 
-获取内容详情（完整字段）。
-
-**Response**：返回完整 `ContentDetail` 包含所有字段和元数据
-
+获取内容详情。
 
 ### PATCH /api/v1/contents/{id}
 
-更新内容元数据。
-
-**Request Body**：
-```json
-{
-  "tags": ["新标签"],
-  "title": "修改标题",
-  "description": "新描述",
-  "author_name": "作者名",
-  "cover_url": "https://...",
-  "is_nsfw": true,
-  "status": "pulled",
-  "review_status": "approved",
-  "review_note": "审核通过",
-  "reviewed_by": "admin",
-  "layout_type_override": "article"
-}
-```
-
-**实时事件**: 触发 `content_updated` SSE事件
-
+更新内容字段（如标签、审核状态、标题等）。
 
 ### DELETE /api/v1/contents/{id}
 
-删除内容及关联数据（ContentSource、PushedRecord）。
-
-**实时事件**: 触发 `content_deleted` SSE事件
-
+删除内容及关联记录。
 
 ### POST /api/v1/contents/{id}/re-parse
 
-强制重新解析内容（后台异步任务）。
+触发重新解析。
 
-**实时事件**: 触发 `content_re_parsed` SSE事件
+### 批量内容 API
 
----
-
-## 批量操作 API
-
-### POST /api/v1/contents/batch-update
-
-批量更新内容（性能优化：单次请求，6倍提速）。
-
-**Request Body**：
-```json
-{
-  "content_ids": [1, 2, 3],
-  "updates": {
-    "tags": ["批量标签"],
-    "is_nsfw": false,
-    "review_status": "approved"
-  }
-}
-```
-
-**限制**：最多100个ID
-
-**Response**：
-```json
-{
-  "success_count": 3,
-  "failed_count": 0,
-  "success_ids": [1, 2, 3],
-  "failed_ids": [],
-  "errors": {}
-}
-```
-
-
-### POST /api/v1/contents/batch-delete
-
-批量删除内容（最多100个）。
-
-
-### POST /api/v1/contents/batch-re-parse
-
-批量重新解析（最多20个，避免过载）。
+- `POST /api/v1/contents/batch-update`
+- `POST /api/v1/contents/batch-delete`
+- `POST /api/v1/contents/batch-re-parse`
 
 ---
 
@@ -218,26 +64,32 @@ exclude_fields=raw_metadata,extra_stats  # 🆕 排除字段（优化传输）
 
 ### GET /api/v1/events/subscribe
 
-订阅服务端推送事件（Server-Sent Events）。
+SSE 订阅端点。
 
-**使用方式**：
 ```javascript
 const eventSource = new EventSource('/api/v1/events/subscribe');
 
-eventSource.addEventListener('content_updated', (e) => {
+eventSource.addEventListener('queue_updated', (e) => {
   const data = JSON.parse(e.data);
-  console.log('内容更新:', data);
+  console.log('queue updated', data);
 });
 ```
 
-**支持事件**：
+当前实现中的主要事件：
 
-- `content_updated`: 内容更新
-- `content_deleted`: 内容删除
-- `content_re_parsed`: 重新解析
-- `queue_item_reordered`: 队列重排序
-- `bot_status_changed`: Bot状态变化
+- `connected`
+- `ping`
+- `content_created`
+- `content_updated`
+- `content_deleted`
+- `content_pushed`
+- `distribution_push_success`
+- `distribution_push_failed`
+- `queue_updated`
+- `bot_sync_progress`
+- `bot_sync_completed`
 
+> 说明：事件总线为「进程内广播 + SQLite outbox 轮询同步」，用于多实例场景下事件传播。
 
 ### GET /api/v1/events/health
 
@@ -245,263 +97,153 @@ eventSource.addEventListener('content_updated', (e) => {
 
 ---
 
-## 队列管理 API
+## 分发队列 API（/distribution-queue）
 
-### GET /api/v1/queue/items
+### GET /api/v1/distribution-queue/stats
 
-获取分发队列内容。
+获取队列状态统计（`pending/scheduled/processing/success/failed/skipped/canceled` 与 `due_now`）。
 
-**Query Parameters**：
-```
-rule_id=1        # 按规则筛选
-status=will_push # 状态：will_push/filtered/pending_review/pushed
-limit=50         # 返回数量
-```
+### GET /api/v1/distribution-queue/items
 
+分页获取队列项。
 
-### POST /api/v1/queue/items/{id}/move
+查询参数：
 
-移动队列项到指定状态（will_push/filtered/pending_review）。
+- `status`（支持别名：`will_push`/`filtered`/`pending_review`/`pushed`）
+- `content_id`
+- `rule_id`
+- `bot_chat_id`
+- `page`（默认 1）
+- `size`（默认 50，最大 200）
 
+### GET /api/v1/distribution-queue/items/{item_id}
 
-### POST /api/v1/queue/items/{id}/push-now
+获取单个队列项。
 
-立即推送单个项目（忽略原有排期）。
+### POST /api/v1/distribution-queue/enqueue/{content_id}
 
+手动入队。
 
-### POST /api/v1/queue/items/{id}/reorder
+请求体：
 
-重新排序队列项（优化：无跳变）。
-
-**Request Body**：
 ```json
 {
-  "index": 3
+  "force": false
 }
 ```
 
+### POST /api/v1/distribution-queue/items/{item_id}/retry
 
-### POST /api/v1/queue/merge-group
+重试单个队列项。
 
-将多个项目合并为同一时间分组（支持合并转发）。
+请求体：
 
-**Request Body**：
 ```json
 {
-  "content_ids": [1, 2, 3],
-  "scheduled_at": "2026-02-09T12:00:00Z"
+  "reset_attempts": false
 }
 ```
 
+### POST /api/v1/distribution-queue/items/{item_id}/cancel
 
-### POST /api/v1/queue/batch-push-now
+取消单个队列项。
 
-批量立即推送。
+### POST /api/v1/distribution-queue/batch-retry
 
+批量重试队列项。
 
-### POST /api/v1/queue/batch-reschedule
+请求体：
 
-批量重新排期。
+```json
+{
+  "item_ids": [1, 2, 3],
+  "status_filter": "failed",
+  "limit": 100
+}
+```
+
+### 内容维度操作
+
+- `POST /api/v1/distribution-queue/content/{content_id}/status`
+  - 支持状态：`will_push`、`filtered`
+- `POST /api/v1/distribution-queue/content/{content_id}/reorder`
+- `POST /api/v1/distribution-queue/content/{content_id}/push-now`
+- `POST /api/v1/distribution-queue/content/{content_id}/schedule`
+- `POST /api/v1/distribution-queue/content/batch-push-now`
+- `POST /api/v1/distribution-queue/content/batch-reschedule`
+- `POST /api/v1/distribution-queue/content/merge-group`
+
+`merge-group` 在当前 `ContentQueueItem` 模型下返回语义化成功响应（不再执行额外数据库合并步骤）。
 
 ---
 
 ## 分发规则 API
 
-### GET /api/v1/distribution-rules
+- `GET /api/v1/distribution-rules`
+- `POST /api/v1/distribution-rules`
+- `GET /api/v1/distribution-rules/{id}`
+- `PATCH /api/v1/distribution-rules/{id}`
+- `DELETE /api/v1/distribution-rules/{id}`
 
-获取分发规则列表。
+`POST /distribution-rules` 当前支持在请求体中附带 `targets`，实现规则创建时批量关联目标。
 
+### 分发目标 API
 
-### POST /api/v1/distribution-rules
+- `GET /api/v1/distribution-rules/{id}/targets`
+- `POST /api/v1/distribution-rules/{id}/targets`
+- `PATCH /api/v1/distribution-rules/{rule_id}/targets/{target_id}`
+- `DELETE /api/v1/distribution-rules/{rule_id}/targets/{target_id}`
 
-创建分发规则（支持标签、平台、NSFW策略等条件）。
+### 全局目标视图
 
-> **注意 (Phase 4)**: `targets` 字段已从此接口移除，请使用下方的 **分发目标 API** 管理目标。
-
-
-### PATCH /api/v1/distribution-rules/{id}
-
-更新分发规则。
-
-
-### DELETE /api/v1/distribution-rules/{id}
-
-删除分发规则。
-
-
-### 分发目标 API (Phase 4 新增)
-
-#### GET /api/v1/distribution-rules/{id}/targets
-
-获取指定规则关联的所有分发目标。
-
-#### POST /api/v1/distribution-rules/{id}/targets
-
-为规则添加一个分发目标。
-
-**Request Body**:
-```json
-{
-  "bot_chat_id": 1,
-  "enabled": true,
-  "merge_forward": false,
-  "use_author_name": true,
-  "summary": "可选汇总名称",
-  "render_config_override": null
-}
-```
-
-#### PATCH /api/v1/distribution-rules/{rule_id}/targets/{target_id}
-
-更新特定的分发目标配置。
-
-#### DELETE /api/v1/distribution-rules/{rule_id}/targets/{target_id}
-
-移除该分发目标。
-
-
-### 全局目标视图 API
-
-### GET /api/v1/targets
-
-获取所有分发目标（跨规则聚合）。
-
-**Query Parameters**:
-- `platform`: `telegram`/`qq`
-- `enabled`: `true`/`false`
-
-
-### POST /api/v1/targets/test
-
-测试目标连接性。
-
-**Request Body**:
-```json
-{
-  "platform": "telegram",
-  "target_id": "-100123456"
-}
-```
-
-
-### POST /api/v1/targets/batch-update
-
-批量更新目标的启用状态或渲染配置。
-
-
-### GET /api/v1/render-config-presets
-
-获取渲染配置预设模板列表（Minimal/Standard/Detailed/Media-Only）。
+- `GET /api/v1/targets`
+- `POST /api/v1/targets/test`
+- `POST /api/v1/targets/batch-update`
 
 ---
 
 ## Bot 管理 API
 
-### GET /api/v1/bot/chats
+### Bot Chat（运行时会话）
 
-获取Bot群组列表。
+- `GET /api/v1/bot/chats`
+- `POST /api/v1/bot/chats`
+- `GET /api/v1/bot/chats/{chat_id}`
+- `PATCH /api/v1/bot/chats/{chat_id}`
+- `DELETE /api/v1/bot/chats/{chat_id}`
+- `POST /api/v1/bot/chats/{chat_id}/toggle`
+- `PUT /api/v1/bot/chats:upsert`
+- `POST /api/v1/bot/chats/sync`
+- `GET /api/v1/bot/status`
+- `GET /api/v1/bot/runtime`
 
+### Bot Config（账号配置）
 
-### POST /api/v1/bot/chats
+- `POST /api/v1/bot-config`
+- `GET /api/v1/bot-config`
+- `PATCH /api/v1/bot-config/{id}`
+- `DELETE /api/v1/bot-config/{id}`
+- `POST /api/v1/bot-config/{id}/activate`
+- `GET /api/v1/bot-config/{id}/qr-code`
+- `POST /api/v1/bot-config/{id}/sync-chats`
 
-添加Bot群组。
-
-
-### GET /api/v1/bot/status
-
-获取Bot运行状态（是否运行、连接群组数、今日推送数等）。
-
-
-### POST /api/v1/bot/sync-chats
-
-同步Bot群组信息。
+`/bot-config/{id}/qr-code` 当前为单次查询（HTTP），不是 WebSocket 流。
 
 ---
 
 ## 系统 API
 
-### GET /api/v1/tags
-
-获取所有标签及统计。
-
-
-### GET /api/v1/dashboard/stats
-
-仪表盘统计（平台分布、每日增长、存储使用）。
-
-
-### GET /health
-
-健康检查（数据库、Redis状态）。
+- `GET /api/v1/tags`
+- `GET /api/v1/dashboard/stats`
+- `GET /health`
 
 ---
 
-## 状态码
+## 常见状态码
 
-- `200 OK`: 成功
-- `201 Created`: 创建成功
-- `400 Bad Request`: 请求参数错误
-- `401 Unauthorized`: 未授权
-- `404 Not Found`: 资源不存在
-- `500 Internal Server Error`: 服务器错误
-
----
-
-## 优化亮点
-
-### 1. 字段选择优化
-- `exclude_fields` 参数减少 **70-85%** 数据传输
-- 列表/详情分离策略
-
-### 2. 批量操作
-- 单次请求处理多项
-- 性能提升 **6倍**
-
-### 3. 实时推送
-- SSE事件驱动
-- 减少 **90%** 手动刷新
-
-### 4. 队列优化
-- 无跳变重排序
-- 优先级精确控制
-
----
-
-## 迁移指南
-
-### 从旧版API迁移
-
-**批量操作**：
-```dart
-// ❌ 旧方式（循环调用）
-for (var id in ids) {
-  await api.updateContent(id, tags: tags);
-}
-
-// ✅ 新方式（批量API）
-await api.batchUpdateTags(ids, tags);
-```
-
-**列表查询**：
-```dart
-// ✅ 默认排除大字段
-await api.getContents(page: 1);
-
-// 获取完整数据
-await api.getContents(page: 1, excludeFields: '');
-```
-
-**实时更新**：
-```dart
-// ❌ 旧方式（手动刷新）
-onPressed: () => ref.invalidate(contentsProvider);
-
-// ✅ 新方式（SSE自动刷新）
-// 订阅事件，自动更新
-```
-
----
-
-*文档版本: v0.2.0*  
-*最后更新: 2026-02-03*
-
+- `200 OK`
+- `201 Created`
+- `400 Bad Request`
+- `401 Unauthorized`
+- `404 Not Found`
+- `500 Internal Server Error`
