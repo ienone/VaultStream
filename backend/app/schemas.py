@@ -6,7 +6,7 @@ from enum import Enum
 import json
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator
-from app.models import ContentStatus, Platform, BilibiliContentType, ReviewStatus, LayoutType
+from app.models import ContentStatus, Platform, BilibiliContentType, ReviewStatus, LayoutType, QueueItemStatus
 from app.constants import SUPPORTED_PLATFORMS
 
 
@@ -860,3 +860,73 @@ class RenderConfigPresetUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     config: Optional[Dict[str, Any]] = None
+
+
+# ========== Distribution Queue Schemas ==========
+
+class ContentQueueItemResponse(BaseModel):
+    """队列项响应"""
+    id: int
+    content_id: int
+    rule_id: int
+    bot_chat_id: int
+    target_platform: str
+    target_id: str
+    status: str
+    priority: int = 0
+    scheduled_at: Optional[datetime] = None
+    needs_approval: bool = False
+    approved_at: Optional[datetime] = None
+    attempt_count: int = 0
+    max_attempts: int = 3
+    next_attempt_at: Optional[datetime] = None
+    message_id: Optional[str] = None
+    last_error: Optional[str] = None
+    last_error_type: Optional[str] = None
+    last_error_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ContentQueueItemListResponse(BaseModel):
+    """队列项列表响应"""
+    items: List[ContentQueueItemResponse]
+    total: int
+    page: int = 1
+    size: int = 50
+    has_more: bool = False
+
+
+class QueueStatsResponse(BaseModel):
+    """队列统计响应"""
+    pending: int = 0
+    scheduled: int = 0
+    processing: int = 0
+    success: int = 0
+    failed: int = 0
+    skipped: int = 0
+    canceled: int = 0
+    total: int = 0
+    due_now: int = 0
+
+
+class EnqueueContentRequest(BaseModel):
+    """手动入队请求"""
+    force: bool = Field(default=False, description="强制重新入队（即使已存在）")
+
+
+class QueueItemRetryRequest(BaseModel):
+    """重试队列项请求"""
+    reset_attempts: bool = Field(default=False, description="是否重置重试次数")
+
+
+class BatchQueueRetryRequest(BaseModel):
+    """批量重试队列项请求"""
+    item_ids: Optional[List[int]] = Field(None, description="指定重试的队列项ID")
+    status_filter: str = Field(default="failed", description="状态过滤: failed")
+    limit: int = Field(default=50, le=200, description="最大重试数量")

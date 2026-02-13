@@ -89,6 +89,9 @@ class Settings(BaseSettings):
     storage_s3_presign_urls: bool = False
     storage_s3_presign_expires: int = 3600
 
+    # 分发队列系统
+    queue_worker_count: int = 3  # 队列Worker并发数
+
     # 媒体处理
     enable_archive_media_processing: bool = True
     archive_image_webp_quality: int = 80

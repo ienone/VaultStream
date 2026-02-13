@@ -39,7 +39,6 @@ class ContentStatus(str, Enum):
     UNPROCESSED = "unprocessed"  # 未处理
     PROCESSING = "processing"    # 处理中
     PULLED = "pulled"            # 已抓取
-    DISTRIBUTED = "distributed"  # 兼容旧数据：不再作为主状态机语义
     FAILED = "failed"            # 失败
     ARCHIVED = "archived"        # 已归档
 
@@ -249,8 +248,6 @@ class Content(Base):
     created_at = Column(DateTime, default=utcnow, index=True)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     published_at = Column(DateTime)  # 原始发布时间
-    scheduled_at = Column(DateTime, index=True)  # 预期分发时间（由分发引擎计算）
-    is_manual_schedule = Column(Boolean, default=False)  # 是否为手动设定的排期
     
     # 关系
     pushed_records = relationship("PushedRecord", back_populates="content")
@@ -561,3 +558,79 @@ class BotRuntime(Base):
     last_error_at = Column(DateTime)  # 最后错误时间
     
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class QueueItemStatus(str, Enum):
+    """队列项状态"""
+    PENDING = "pending"          # 待处理
+    SCHEDULED = "scheduled"      # 已排期
+    PROCESSING = "processing"    # 推送中
+    SUCCESS = "success"          # 推送成功
+    FAILED = "failed"            # 推送失败
+    SKIPPED = "skipped"          # 已跳过（重复/NSFW等）
+    CANCELED = "canceled"        # 已取消
+
+
+class ContentQueueItem(Base):
+    """内容队列项 - 每个 (Content × Rule × BotChat) 组合是独立的队列项"""
+    __tablename__ = "content_queue_items"
+    
+    __table_args__ = (
+        UniqueConstraint("content_id", "rule_id", "bot_chat_id", name="uq_queue_content_rule_chat"),
+        Index("ix_queue_status_scheduled", "status", "scheduled_at"),
+        Index("ix_queue_content_status", "content_id", "status"),
+        Index("ix_queue_rule_status", "rule_id", "status"),
+        Index("ix_queue_chat_status", "bot_chat_id", "status"),
+        Index("ix_queue_next_attempt", "status", "next_attempt_at"),
+    )
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # 三元组关联
+    content_id = Column(Integer, ForeignKey("contents.id", ondelete="CASCADE"), nullable=False, index=True)
+    rule_id = Column(Integer, ForeignKey("distribution_rules.id", ondelete="CASCADE"), nullable=False, index=True)
+    bot_chat_id = Column(Integer, ForeignKey("bot_chats.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # 缓存的目标信息（避免推送时额外查询）
+    target_platform = Column(String(20), nullable=False)  # telegram | qq
+    target_id = Column(String(200), nullable=False)  # chat_id
+    
+    # 状态
+    status = Column(SQLEnum(QueueItemStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=QueueItemStatus.PENDING, nullable=False, index=True)
+    priority = Column(Integer, default=0, index=True)
+    scheduled_at = Column(DateTime, index=True)
+    
+    # 预处理缓存
+    rendered_payload = Column(JSON)  # 预渲染的推送内容
+    nsfw_routing_result = Column(JSON)  # NSFW 路由决策
+    passed_rate_limit = Column(Boolean, default=True)
+    rate_limit_reason = Column(String(200))
+    
+    # 审批
+    needs_approval = Column(Boolean, default=False)
+    approved_at = Column(DateTime)
+    approved_by = Column(String(100))
+    
+    # 重试与锁
+    attempt_count = Column(Integer, default=0)
+    max_attempts = Column(Integer, default=3)
+    next_attempt_at = Column(DateTime)
+    locked_at = Column(DateTime)
+    locked_by = Column(String(100))
+    
+    # 推送结果
+    message_id = Column(String(200))
+    last_error = Column(Text)
+    last_error_type = Column(String(200))
+    last_error_at = Column(DateTime)
+    
+    # 时间戳
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    
+    # 关系
+    content = relationship("Content")
+    rule = relationship("DistributionRule")
+    bot_chat = relationship("BotChat")

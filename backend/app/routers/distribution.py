@@ -380,15 +380,25 @@ async def get_all_rules_preview_stats(
 async def trigger_distribution_run(
     _: None = Depends(require_api_token),
 ):
-    """手动触发分发任务"""
-    from app.distribution import get_distribution_scheduler
+    """手动触发分发任务（对所有已审批的 pulled 内容入队）"""
+    from app.core.database import AsyncSessionLocal
     
-    scheduler = get_distribution_scheduler()
-    # 不等待任务完成，直接返回，避免阻塞
-    # 但为了给前端反馈，我们可以等待一下，反正通常很快
-    await scheduler.trigger_run()
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Content).where(
+                Content.status == ContentStatus.PULLED,
+                Content.review_status.in_([ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED]),
+            ).limit(100)
+        )
+        contents = result.scalars().all()
+        
+        from app.distribution.queue_service import enqueue_content
+        total = 0
+        for content in contents:
+            count = await enqueue_content(content.id, session=session)
+            total += count
     
-    return {"status": "triggered", "message": "分发任务已触发"}
+    return {"status": "triggered", "enqueued_count": total}
 
 
 # ========== Target Management APIs ==========

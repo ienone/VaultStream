@@ -22,12 +22,12 @@ from app.core.config import settings, validate_settings
 from app.core.database import init_db, db_ping
 from app.core.queue import task_queue
 from app.worker import worker
-from app.distribution import get_distribution_scheduler
+from app.distribution import get_queue_worker
 
 # Import new routers
 from app.routers import (
     contents, distribution, system, media, bot_management, 
-    queue, crawler, events, distribution_targets
+    crawler, events, distribution_targets, distribution_queue
 )
 
 setup_logging(level=settings.log_level, fmt=settings.log_format, debug=settings.debug)
@@ -51,19 +51,19 @@ async def lifespan(app: FastAPI):
     worker_task = asyncio.create_task(worker.start())
     logger.info("后台任务工作器已启动")
     
-    # 启动分发调度器
-    scheduler = get_distribution_scheduler(interval_seconds=60)
-    scheduler.start()
-    logger.info("分发调度器已启动")
+    # 启动分发队列 Worker
+    queue_worker = get_queue_worker(worker_count=settings.queue_worker_count)
+    queue_worker.start()
+    logger.info("分发队列 Worker 已启动 (worker_count={})", settings.queue_worker_count)
     
     yield
     
     # 关闭时
     logger.info("关闭 VaultStream 应用程序...")
     
-    # 停止调度器
-    await scheduler.stop()
-    logger.info("分发调度器已停止")
+    # 停止分发队列 Worker
+    await queue_worker.stop()
+    logger.info("分发队列 Worker 已停止")
     
     # 停止worker
     await worker.stop()
@@ -132,12 +132,12 @@ app.add_middleware(
 app.include_router(contents.router, prefix="/api/v1", tags=["contents"])
 app.include_router(distribution.router, prefix="/api/v1", tags=["distribution"])
 app.include_router(distribution_targets.router, prefix="/api/v1", tags=["distribution-targets"])
-app.include_router(queue.router, prefix="/api/v1", tags=["queue"])
 app.include_router(system.router, prefix="/api/v1", tags=["system"])
 app.include_router(media.router, prefix="/api/v1", tags=["media"])
 app.include_router(bot_management.router, prefix="/api/v1", tags=["bot"])
 app.include_router(crawler.router, prefix="/api/v1/crawler", tags=["crawler"])
 app.include_router(events.router, prefix="/api/v1", tags=["events"])
+app.include_router(distribution_queue.router, prefix="/api/v1", tags=["distribution-queue"])
 
 
 @app.get("/api")

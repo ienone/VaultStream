@@ -6,7 +6,7 @@ M4: 分发引擎模块。
 from typing import List, Dict, Any, Optional
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from app.core.logging import logger
 from app.models import Content, DistributionRule, PushedRecord, ReviewStatus, Platform, DistributionTarget, BotChat
@@ -402,132 +402,6 @@ class DistributionEngine:
 
         return output
 
-    async def get_min_interval_for_content(self, content: Content) -> int:
-        """
-        根据匹配规则计算最小间隔（秒）。
-
-        默认最小值为 300秒（5分钟）。
-        """
-        matched_rules = await self.match_rules(content)
-        if not matched_rules:
-            return 300
-
-        max_interval = 300
-        for rule in matched_rules:
-            if rule.rate_limit and rule.time_window:
-                rule_interval = rule.time_window // rule.rate_limit
-                max_interval = max(max_interval, rule_interval)
-
-        return max_interval
-
-    async def calculate_scheduled_at(self, content: Content, min_interval: Optional[int] = None) -> datetime:
-        """计算内容的 scheduled_at。"""
-        if min_interval is None:
-            min_interval = await self.get_min_interval_for_content(content)
-
-        now = datetime.utcnow()
-        result = await self.db.execute(
-            select(Content.scheduled_at)
-            .where(
-                Content.review_status.in_([ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED]),
-                Content.status == "pulled",
-                Content.scheduled_at >= now,
-            )
-            .order_by(Content.scheduled_at.asc())
-        )
-        scheduled_times = [r[0] for r in result.all()]
-
-        interval = timedelta(seconds=min_interval)
-        potential_time = now + timedelta(seconds=10)
-
-        for st in scheduled_times:
-            if st - potential_time >= interval:
-                return potential_time
-            potential_time = st + interval
-
-        return potential_time
-
-    async def compact_schedule(self, immediate_ids: Optional[List[int]] = None):
-        """紧凑队列排期（不破坏手动覆盖）。"""
-        now = datetime.utcnow()
-        result = await self.db.execute(
-            select(Content)
-            .where(
-                Content.review_status.in_([ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED]),
-                Content.status == "pulled",
-            )
-            .order_by(Content.scheduled_at.asc().nulls_last(), Content.created_at.asc())
-        )
-        contents = result.scalars().all()
-
-        if not contents:
-            return
-
-        last_time = now
-        immediate_ids_set = set(immediate_ids or [])
-
-        for content in contents:
-            if content.is_manual_schedule or content.id in immediate_ids_set:
-                min_gap_seconds = 10
-            else:
-                min_gap_seconds = await self.get_min_interval_for_content(content)
-
-            interval = timedelta(seconds=min_gap_seconds)
-
-            current_scheduled = (
-                content.scheduled_at.replace(tzinfo=None) if content.scheduled_at else None
-            )
-
-            min_allowed = last_time + (timedelta(seconds=5) if last_time == now else interval)
-
-            if not current_scheduled or current_scheduled < min_allowed:
-                content.scheduled_at = min_allowed
-            else:
-                content.scheduled_at = current_scheduled
-
-            last_time = content.scheduled_at
-
-        await self.db.commit()
-        logger.info(
-            "Queue schedule compacted: %s items, %s immediate",
-            len(contents),
-            len(immediate_ids_set),
-        )
-
-    async def move_item_to_position(self, content_id: int, new_index: int):
-        """使用新索引重排队列并重新调度。"""
-        result = await self.db.execute(
-            select(Content)
-            .where(
-                Content.review_status.in_([ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED]),
-                Content.status == "pulled",
-            )
-            .order_by(Content.scheduled_at.asc().nulls_last(), Content.created_at.asc())
-        )
-        contents = result.scalars().all()
-
-        moving_item = next((c for c in contents if c.id == content_id), None)
-        if not moving_item:
-            return
-
-        moving_item.is_manual_schedule = True
-
-        items = [c for c in contents if c.id != content_id]
-        new_index = max(0, min(new_index, len(items)))
-        items.insert(new_index, moving_item)
-
-        if new_index == 0:
-            moving_item.scheduled_at = datetime.utcnow() - timedelta(hours=1)
-        elif new_index >= len(items) - 1:
-            last_item = items[-2]
-            moving_item.scheduled_at = (last_item.scheduled_at or datetime.utcnow()) + timedelta(seconds=1)
-        else:
-            prev_item = items[new_index - 1]
-            moving_item.scheduled_at = (prev_item.scheduled_at or datetime.utcnow()) + timedelta(seconds=1)
-
-        await self.db.commit()
-        await self.compact_schedule()
-
     async def auto_approve_if_eligible(self, content: Content) -> bool:
         """如果符合规则标准，则自动批准内容。"""
         result = await self.db.execute(
@@ -543,19 +417,22 @@ class DistributionEngine:
                 content.review_status = ReviewStatus.AUTO_APPROVED
                 content.reviewed_at = datetime.utcnow()
                 content.review_note = f"Auto-approved (rule: {rule.name})"
-                content.is_manual_schedule = False
-
-                min_interval = await self.get_min_interval_for_content(content)
-                content.scheduled_at = await self.calculate_scheduled_at(content, min_interval=min_interval)
 
                 await self.db.commit()
 
                 logger.info(
-                    "Content auto-approved: content_id=%s, interval=%ss, scheduled_at=%s",
+                    "Content auto-approved: content_id=%s",
                     content.id,
-                    min_interval,
-                    content.scheduled_at,
                 )
+                
+                # 自动审批后触发队列入队
+                try:
+                    from app.distribution.queue_service import enqueue_content_background
+                    import asyncio
+                    asyncio.ensure_future(enqueue_content_background(content.id))
+                except Exception as e:
+                    logger.warning(f"Failed to enqueue after auto-approve: {e}")
+                
                 return True
 
         return False
@@ -608,7 +485,6 @@ class DistributionEngine:
 
                 if not still_valid:
                     content.review_status = ReviewStatus.PENDING
-                    content.scheduled_at = None
                     changes += 1
 
             elif content.review_status == ReviewStatus.PENDING:
@@ -619,12 +495,9 @@ class DistributionEngine:
                         content.review_status = ReviewStatus.AUTO_APPROVED
                         content.reviewed_at = datetime.utcnow()
                         content.review_note = f"Rule update auto-approved (rule: {rule.name})"
-                        content.is_manual_schedule = False
                         changes += 1
                         break
 
         if changes > 0:
             await self.db.commit()
             logger.info("Rules updated: %s content status changes", changes)
-
-        await self.compact_schedule()

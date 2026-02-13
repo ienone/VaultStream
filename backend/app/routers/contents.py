@@ -341,7 +341,7 @@ async def get_content_for_bot(
         
         query = select(Content).where(
             and_(
-                Content.status.in_([ContentStatus.PULLED, ContentStatus.DISTRIBUTED]),
+                Content.status == ContentStatus.PULLED,
                 ~Content.id.in_(subquery)
             )
         )
@@ -543,7 +543,6 @@ async def review_card(
     _: None = Depends(require_api_token),
 ):
     """审批单个卡片（轻量级接口）"""
-    from app.distribution.engine import DistributionEngine
     result = await db.execute(select(Content).where(Content.id == card_id))
     content = result.scalar_one_or_none()
     if not content:
@@ -557,14 +556,15 @@ async def review_card(
     content.reviewed_by = action.reviewed_by
     content.review_note = action.note
     
-    if is_approve:
-        engine = DistributionEngine(db)
-        content.scheduled_at = await engine.calculate_scheduled_at(content)
-    else:
-        content.scheduled_at = None
-    
     await db.commit()
-    return {"id": content.id, "review_status": content.review_status.value, "scheduled_at": content.scheduled_at}
+    
+    # 审批通过后触发队列入队
+    if is_approve:
+        from app.distribution.queue_service import enqueue_content_background
+        import asyncio
+        asyncio.ensure_future(enqueue_content_background(content.id))
+    
+    return {"id": content.id, "review_status": content.review_status.value}
 
 
 @router.post("/cards/batch-review")
@@ -574,7 +574,6 @@ async def batch_review_cards(
     _: None = Depends(require_api_token),
 ):
     """批量审批卡片（轻量级接口）"""
-    from app.distribution.engine import DistributionEngine
     if request.action not in ["approve", "reject"]:
         raise HTTPException(status_code=400, detail="Invalid action")
     
@@ -586,18 +585,21 @@ async def batch_review_cards(
     if not contents:
         raise HTTPException(status_code=404, detail="No cards found")
     
-    engine = DistributionEngine(db)
     for content in contents:
         content.review_status = review_status
         content.reviewed_at = datetime.utcnow()
         content.reviewed_by = request.reviewed_by
         content.review_note = request.note
-        if is_approve:
-            content.scheduled_at = await engine.calculate_scheduled_at(content)
-        else:
-            content.scheduled_at = None
     
     await db.commit()
+    
+    # 审批通过后触发队列入队
+    if is_approve:
+        from app.distribution.queue_service import enqueue_content_background
+        import asyncio
+        for content in contents:
+            asyncio.ensure_future(enqueue_content_background(content.id))
+    
     return {"updated": len(contents), "action": request.action}
 
 
@@ -660,7 +662,6 @@ async def review_content(
     _: None = Depends(require_api_token),
 ):
     """审批单个内容"""
-    from app.distribution.engine import DistributionEngine
     result = await db.execute(select(Content).where(Content.id == content_id))
     content = result.scalar_one_or_none()
     if not content:
@@ -673,16 +674,17 @@ async def review_content(
     content.reviewed_at = datetime.utcnow()
     content.reviewed_by = action.reviewed_by
     content.review_note = action.note
-    
-    if is_approve:
-        engine = DistributionEngine(db)
-        content.scheduled_at = await engine.calculate_scheduled_at(content)
-    else:
-        content.scheduled_at = None
         
     await db.commit()
     await db.refresh(content)
-    return {"id": content.id, "review_status": content.review_status, "reviewed_at": content.reviewed_at, "scheduled_at": content.scheduled_at}
+    
+    # 审批通过后触发队列入队
+    if is_approve:
+        from app.distribution.queue_service import enqueue_content_background
+        import asyncio
+        asyncio.ensure_future(enqueue_content_background(content.id))
+    
+    return {"id": content.id, "review_status": content.review_status, "reviewed_at": content.reviewed_at}
 
 @router.post("/contents/batch-review")
 async def batch_review_contents(
@@ -691,7 +693,6 @@ async def batch_review_contents(
     _: None = Depends(require_api_token),
 ):
     """批量审批内容"""
-    from app.distribution.engine import DistributionEngine
     if request.action not in ["approve", "reject"]:
         raise HTTPException(status_code=400, detail="Invalid action")
     
@@ -703,18 +704,21 @@ async def batch_review_contents(
     if not contents:
         raise HTTPException(status_code=404, detail="No contents found")
     
-    engine = DistributionEngine(db)
     for content in contents:
         content.review_status = review_status
         content.reviewed_at = datetime.utcnow()
         content.reviewed_by = request.reviewed_by
         content.review_note = request.note
-        if is_approve:
-            content.scheduled_at = await engine.calculate_scheduled_at(content)
-        else:
-            content.scheduled_at = None
     
     await db.commit()
+    
+    # 审批通过后触发队列入队
+    if is_approve:
+        from app.distribution.queue_service import enqueue_content_background
+        import asyncio
+        for content in contents:
+            asyncio.ensure_future(enqueue_content_background(content.id))
+    
     return {"updated": len(contents), "action": request.action, "content_ids": request.content_ids}
 
 @router.get("/contents/pending-review", response_model=ContentListResponse)

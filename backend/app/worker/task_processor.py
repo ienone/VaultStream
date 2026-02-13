@@ -8,7 +8,6 @@ from app.core.logging import logger, ensure_task_id
 from app.core.queue import task_queue
 
 from .parser import ContentParser
-from .distributor import ContentDistributor
 
 
 class TaskWorker:
@@ -17,7 +16,6 @@ class TaskWorker:
     def __init__(self):
         self.running = False
         self.parser = ContentParser()
-        self.distributor = ContentDistributor()
     
     async def start(self):
         """启动worker"""
@@ -47,9 +45,7 @@ class TaskWorker:
         
         Args:
             task_data: 任务数据，包含 content_id 和可选的 action 字段
-                      action 可以是 "parse" (默认) 或 "distribute"
         """
-        action = task_data.get("action") or "parse"
         content_id = task_data.get('content_id')
         task_id = ensure_task_id(task_data.get("task_id"))
         
@@ -57,11 +53,7 @@ class TaskWorker:
             logger.warning("任务数据缺少 content_id")
             return
         
-        # 根据 action 分发到不同的处理器
-        if action == "distribute":
-            await self.distributor.process_distribution_task(task_data, task_id)
-        else:
-            await self.parser.process_parse_task(task_data, task_id)
+        await self.parser.process_parse_task(task_data, task_id)
 
     async def retry_parse(self, content_id: int, max_retries: int = 3, force: bool = False):
         """
