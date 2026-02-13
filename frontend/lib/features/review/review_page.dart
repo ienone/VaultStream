@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/network/api_client.dart';
+import '../../core/network/sse_service.dart';
 import '../../core/widgets/frosted_app_bar.dart';
 import 'models/distribution_rule.dart';
 import 'models/bot_chat.dart';
@@ -34,18 +37,71 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
   int? _selectedRuleId;
   bool _portraitRuleConfigExpanded = false;
   Map<String, List<String>> _chatRuleNames = const {};
+  StreamSubscription<SseEvent>? _sseSub;
+  DateTime? _lastToastAt;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     Future.microtask(_refreshChatRuleSummary);
+    _bindRealtimeEvents();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _sseSub?.cancel();
     super.dispose();
+  }
+
+  void _bindRealtimeEvents() {
+    ref.read(sseServiceProvider.notifier);
+    _sseSub?.cancel();
+    _sseSub = SseEventBus().eventStream.listen((event) {
+      if (!mounted) return;
+
+      switch (event.type) {
+        case 'queue_updated':
+          ref.read(contentQueueProvider.notifier).softRefresh();
+          ref.invalidate(queueStatsProvider(_selectedRuleId));
+          break;
+        case 'content_pushed':
+        case 'distribution_push_success':
+          ref.invalidate(pushedRecordsProvider);
+          ref.invalidate(queueStatsProvider(_selectedRuleId));
+          _maybeToast('推送成功，列表已实时更新');
+          break;
+        case 'distribution_push_failed':
+          ref.invalidate(queueStatsProvider(_selectedRuleId));
+          _maybeToast('有推送失败，请在推送历史查看详情');
+          break;
+        case 'bot_sync_progress':
+          ref.invalidate(botChatsProvider);
+          ref.invalidate(botStatusProvider);
+          break;
+        case 'bot_sync_completed':
+          ref.invalidate(botChatsProvider);
+          ref.invalidate(botStatusProvider);
+          _maybeToast('群组同步完成');
+          break;
+      }
+    });
+  }
+
+  void _maybeToast(String message) {
+    final now = DateTime.now();
+    if (_lastToastAt != null && now.difference(_lastToastAt!) < const Duration(seconds: 2)) {
+      return;
+    }
+    _lastToastAt = now;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+        content: Text(message),
+      ),
+    );
   }
 
   @override

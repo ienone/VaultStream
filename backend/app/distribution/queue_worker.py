@@ -4,7 +4,6 @@
 基于队列的分发模型，支持多 Worker 并发、乐观锁、指数退避重试。
 """
 import asyncio
-import os
 from datetime import timedelta
 from typing import Optional, List
 
@@ -25,12 +24,12 @@ from app.models import (
 )
 from app.push.factory import get_push_service
 from app.worker.distributor import ContentDistributor
+from app.core.events import event_bus
 
 # ── 常量 ──────────────────────────────────────────────
 POLL_INTERVAL = 5        # 轮询间隔（秒）
 BATCH_SIZE = 10          # 每次轮询最多领取的队列项
 LOCK_TIMEOUT = 600       # 锁超时（秒），10 分钟内未完成视为过期
-WORKER_ID = f"worker-{os.getpid()}"
 
 
 class DistributionQueueWorker:
@@ -279,6 +278,30 @@ class DistributionQueueWorker:
 
         await session.commit()
 
+        await event_bus.publish("content_pushed", {
+            "content_id": item.content_id,
+            "rule_id": item.rule_id,
+            "bot_chat_id": item.bot_chat_id,
+            "target_id": actual_target_id,
+            "message_id": str(message_id),
+            "queue_item_id": item.id,
+            "timestamp": now.isoformat(),
+        })
+        await event_bus.publish("distribution_push_success", {
+            "content_id": item.content_id,
+            "queue_item_id": item.id,
+            "target_id": actual_target_id,
+            "attempt_count": item.attempt_count,
+            "timestamp": now.isoformat(),
+        })
+        await event_bus.publish("queue_updated", {
+            "action": "item_success",
+            "queue_item_id": item.id,
+            "content_id": item.content_id,
+            "status": item.status.value,
+            "timestamp": now.isoformat(),
+        })
+
         logger.info(
             f"✅ 推送成功: item_id={item.id}, content_id={item.content_id}, "
             f"target={actual_target_id}, message_id={message_id}"
@@ -319,6 +342,24 @@ class DistributionQueueWorker:
             )
 
         await session.commit()
+
+        await event_bus.publish("distribution_push_failed", {
+            "content_id": item.content_id,
+            "queue_item_id": item.id,
+            "status": item.status.value,
+            "attempt_count": item.attempt_count,
+            "max_attempts": item.max_attempts,
+            "next_attempt_at": item.next_attempt_at.isoformat() if item.next_attempt_at else None,
+            "error": str(error),
+            "timestamp": now.isoformat(),
+        })
+        await event_bus.publish("queue_updated", {
+            "action": "item_failed",
+            "queue_item_id": item.id,
+            "content_id": item.content_id,
+            "status": item.status.value,
+            "timestamp": now.isoformat(),
+        })
 
 
 # ── 全局单例 ──────────────────────────────────────────

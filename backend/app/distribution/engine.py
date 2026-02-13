@@ -75,10 +75,6 @@ class DistributionEngine:
             if conditions["is_nsfw"] != content.is_nsfw:
                 return False
 
-        if rule.approval_required:
-            if content.review_status not in [ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED]:
-                return False
-
         return True
 
     async def check_nsfw_policy(self, content: Content, rule: DistributionRule) -> bool:

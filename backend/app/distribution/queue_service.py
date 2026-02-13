@@ -12,9 +12,9 @@ from app.core.database import AsyncSessionLocal
 from app.core.logging import logger
 from app.core.time_utils import utcnow
 from app.distribution.engine import DistributionEngine
+from app.core.events import event_bus
 from app.models import (
     Content,
-    DistributionRule,
     DistributionTarget,
     BotChat,
     ContentQueueItem,
@@ -73,12 +73,18 @@ async def _enqueue_content_impl(
         )
         return 0
 
-    if content.review_status not in (ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED):
+    if content.review_status not in (
+        ReviewStatus.APPROVED,
+        ReviewStatus.AUTO_APPROVED,
+        ReviewStatus.PENDING,
+    ):
         logger.info(
             f"Content not eligible (review): content_id={content_id}, "
             f"review_status={content.review_status}"
         )
         return 0
+
+    is_reviewed = content.review_status in (ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED)
 
     # 3. 匹配规则
     engine = DistributionEngine(session)
@@ -132,6 +138,10 @@ async def _enqueue_content_impl(
             continue
 
         for target, bot_chat in pairs:
+            # 未审批内容只允许进入需要审批的规则队列
+            if not is_reviewed and not rule.approval_required:
+                continue
+
             key = (rule.id, bot_chat.id)
             existing = existing_items.get(key)
 
@@ -186,6 +196,12 @@ async def _enqueue_content_impl(
 
     if count > 0:
         await session.commit()
+        await event_bus.publish("queue_updated", {
+            "action": "enqueue",
+            "content_id": content_id,
+            "items_changed": count,
+            "timestamp": utcnow().isoformat(),
+        })
         logger.info(
             f"Enqueued content: content_id={content_id}, "
             f"rules_matched={len(matched_rules)}, items_created_or_updated={count}"

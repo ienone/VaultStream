@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/network/sse_service.dart';
 
 class BotManagementPage extends ConsumerStatefulWidget {
   const BotManagementPage({super.key});
@@ -13,11 +16,43 @@ class BotManagementPage extends ConsumerStatefulWidget {
 class _BotManagementPageState extends ConsumerState<BotManagementPage> {
   bool _loading = true;
   List<Map<String, dynamic>> _configs = const [];
+  StreamSubscription<SseEvent>? _sseSub;
+  String? _syncProgressText;
 
   @override
   void initState() {
     super.initState();
     Future.microtask(_loadConfigs);
+    _bindRealtimeEvents();
+  }
+
+  @override
+  void dispose() {
+    _sseSub?.cancel();
+    super.dispose();
+  }
+
+  void _bindRealtimeEvents() {
+    ref.read(sseServiceProvider.notifier);
+    _sseSub?.cancel();
+    _sseSub = SseEventBus().eventStream.listen((event) {
+      if (!mounted) return;
+      if (event.type == 'bot_sync_progress') {
+        final data = event.data;
+        final updated = data['updated'] ?? 0;
+        final created = data['created'] ?? 0;
+        final failed = data['failed'] ?? 0;
+        final total = data['total'] ?? 0;
+        setState(() {
+          _syncProgressText = '同步中... $updated 更新 / $created 新增 / $failed 失败 / $total 总数';
+        });
+      } else if (event.type == 'bot_sync_completed') {
+        setState(() {
+          _syncProgressText = null;
+        });
+        _loadConfigs();
+      }
+    });
   }
 
   Future<void> _loadConfigs() async {
@@ -53,6 +88,17 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  if (_syncProgressText != null)
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(_syncProgressText!),
+                    ),
                   FilledButton.icon(
                     onPressed: _showAddBotWizard,
                     icon: const Icon(Icons.add_rounded),

@@ -67,7 +67,7 @@ class ContentQueue extends _$ContentQueue {
     // 监听 SSE 事件自动刷新 - 直接订阅全局事件总线
     _sseSub?.cancel();
     _sseSub = SseEventBus().eventStream.listen(
-      (event) => _handleSseEvent(event, filter.ruleId),
+      _handleSseEvent,
       onError: (error) {
         debugPrint('[Queue] SSE stream error: $error');
       },
@@ -81,7 +81,7 @@ class ContentQueue extends _$ContentQueue {
     return _fetchQueue(ruleId: filter.ruleId, status: filter.status);
   }
 
-  void _handleSseEvent(SseEvent event, int? ruleId) {
+  void _handleSseEvent(SseEvent event) {
     // 使用常量匹配事件类型
     if (event.type == _QueueConfig.eventContentPushed || 
         event.type == _QueueConfig.eventQueueReordered ||
@@ -93,7 +93,8 @@ class ContentQueue extends _$ContentQueue {
       _debounceTimer = Timer(_QueueConfig.refreshDebounce, () {
         softRefresh();
         // 同时刷新统计数字
-        ref.invalidate(queueStatsProvider(ruleId));
+        final filter = ref.read(queueFilterProvider);
+        ref.invalidate(queueStatsProvider(filter.ruleId));
       });
     }
   }
@@ -104,7 +105,7 @@ class ContentQueue extends _$ContentQueue {
   }) async {
     final dio = ref.read(apiClientProvider);
     final response = await dio.get(
-      '/queue/items',
+      '/distribution-queue/items',
       queryParameters: {
         if (ruleId != null) 'rule_id': ruleId,
         if (status != null) 'status': status.value,
@@ -116,7 +117,7 @@ class ContentQueue extends _$ContentQueue {
   Future<void> moveToStatus(int contentId, QueueStatus newStatus, {String? reason}) async {
     final dio = ref.read(apiClientProvider);
     await dio.post(
-      '/queue/items/$contentId/move',
+      '/distribution-queue/content/$contentId/status',
       data: {
         'status': newStatus.value,
         if (reason != null) 'reason': reason,
@@ -132,7 +133,7 @@ class ContentQueue extends _$ContentQueue {
   Future<void> reorderToIndex(int contentId, int index) async {
     final dio = ref.read(apiClientProvider);
     await dio.post(
-      '/queue/items/$contentId/reorder',
+      '/distribution-queue/content/$contentId/reorder',
       data: {'index': index},
     );
     // 不立即刷新，等待SSE事件或延迟软刷新
@@ -193,7 +194,7 @@ class ContentQueue extends _$ContentQueue {
   Future<void> batchPushNow(List<int> contentIds) async {
     final dio = ref.read(apiClientProvider);
     await dio.post(
-      '/queue/batch-push-now',
+      '/distribution-queue/content/batch-push-now',
       data: {'content_ids': contentIds},
     );
     _safeInvalidate();
@@ -205,7 +206,7 @@ class ContentQueue extends _$ContentQueue {
   Future<void> batchReschedule(List<int> contentIds, DateTime startTime, {int interval = 300}) async {
     final dio = ref.read(apiClientProvider);
     await dio.post(
-      '/queue/batch-reschedule',
+      '/distribution-queue/content/batch-reschedule',
       data: {
         'content_ids': contentIds,
         'start_time': startTime.toUtc().toIso8601String(),
@@ -220,7 +221,7 @@ class ContentQueue extends _$ContentQueue {
 
   Future<void> pushNow(int contentId) async {
     final dio = ref.read(apiClientProvider);
-    await dio.post('/queue/items/$contentId/push-now');
+    await dio.post('/distribution-queue/content/$contentId/push-now');
     _safeInvalidate();
     final filter = ref.read(queueFilterProvider);
     ref.invalidate(queueStatsProvider(filter.ruleId));
@@ -229,7 +230,7 @@ class ContentQueue extends _$ContentQueue {
   Future<void> mergeGroup(List<int> contentIds, {DateTime? scheduledAt}) async {
     final dio = ref.read(apiClientProvider);
     await dio.post(
-      '/queue/merge-group',
+      '/distribution-queue/content/merge-group',
       data: {
         'content_ids': contentIds,
         if (scheduledAt != null) 'scheduled_at': scheduledAt.toUtc().toIso8601String(),
@@ -243,7 +244,7 @@ class ContentQueue extends _$ContentQueue {
   Future<void> updateSchedule(int contentId, DateTime scheduledAt) async {
     final dio = ref.read(apiClientProvider);
     await dio.post(
-      '/queue/items/$contentId/schedule',
+      '/distribution-queue/content/$contentId/schedule',
       data: {'scheduled_at': scheduledAt.toUtc().toIso8601String()},
     );
     _safeInvalidate();
@@ -275,11 +276,15 @@ class ContentQueue extends _$ContentQueue {
 @riverpod
 Future<Map<String, int>> queueStats(Ref ref, int? ruleId) async {
   final dio = ref.watch(apiClientProvider);
-  final response = await dio.get(
-    '/queue/stats',
-    queryParameters: {
-      if (ruleId != null) 'rule_id': ruleId,
-    },
-  );
-  return Map<String, int>.from(response.data);
+  final response = await dio.get('/distribution-queue/stats');
+  final data = Map<String, dynamic>.from(response.data as Map);
+
+  final mapped = <String, int>{
+    'will_push': (data['scheduled'] ?? 0) + (data['processing'] ?? 0),
+    'filtered': (data['canceled'] ?? 0) + (data['skipped'] ?? 0),
+    'pending_review': (data['pending'] ?? 0),
+    'pushed': (data['success'] ?? 0),
+    'total': (data['total'] ?? 0),
+  };
+  return mapped;
 }

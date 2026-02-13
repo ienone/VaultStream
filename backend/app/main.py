@@ -21,6 +21,7 @@ from app.core.logging import logger, setup_logging, log_context, new_request_id
 from app.core.config import settings, validate_settings
 from app.core.database import init_db, db_ping
 from app.core.queue import task_queue
+from app.core.events import event_bus
 from app.worker import worker
 from app.distribution import get_queue_worker
 
@@ -46,6 +47,9 @@ async def lifespan(app: FastAPI):
     
     # 连接Redis
     await task_queue.connect()
+
+    # 启动事件总线（跨实例事件桥接）
+    await event_bus.start()
     
     # 启动后台worker
     worker_task = asyncio.create_task(worker.start())
@@ -75,6 +79,9 @@ async def lifespan(app: FastAPI):
     
     # 断开Redis
     await task_queue.disconnect()
+
+    # 停止事件总线
+    await event_bus.stop()
     
     logger.info("应用程序关闭完成")
 

@@ -26,16 +26,19 @@ abstract class QueueItem with _$QueueItem {
   const factory QueueItem({
     required int id,
     @JsonKey(name: 'content_id') required int contentId,
+    @JsonKey(name: 'rule_id') int? ruleId,
+    @JsonKey(name: 'bot_chat_id') int? botChatId,
+    @JsonKey(name: 'target_id') String? targetId,
     String? title,
-    required String platform,
+    @JsonKey(name: 'target_platform') required String platform,
     @Default([]) List<String> tags,
     @JsonKey(name: 'is_nsfw') @Default(false) bool isNsfw,
     @JsonKey(name: 'cover_url') String? coverUrl,
     @JsonKey(name: 'author_name') String? authorName,
     required String status,
-    String? reason,
-    @JsonKey(name: 'scheduled_time') DateTime? scheduledTime,
-    @JsonKey(name: 'pushed_at') DateTime? pushedAt,
+    @JsonKey(name: 'last_error') String? reason,
+    @JsonKey(name: 'scheduled_at') DateTime? scheduledTime,
+    @JsonKey(name: 'completed_at') DateTime? pushedAt,
     @Default(0) int priority,
   }) = _QueueItem;
 
@@ -48,6 +51,9 @@ abstract class QueueListResponse with _$QueueListResponse {
   const factory QueueListResponse({
     required List<QueueItem> items,
     required int total,
+    @Default(1) int page,
+    @Default(50) int size,
+    @JsonKey(name: 'has_more') @Default(false) bool hasMore,
     @JsonKey(name: 'will_push_count') @Default(0) int willPushCount,
     @JsonKey(name: 'filtered_count') @Default(0) int filteredCount,
     @JsonKey(name: 'pending_review_count') @Default(0) int pendingReviewCount,

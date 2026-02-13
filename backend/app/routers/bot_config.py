@@ -13,6 +13,7 @@ from app.core.database import get_db
 from app.core.dependencies import require_api_token
 from app.core.logging import logger
 from app.core.time_utils import utcnow
+from app.core.events import event_bus
 from app.models import BotConfig, BotConfigPlatform, BotChat, BotChatType
 from app.schemas import (
     BotConfigCreate,
@@ -294,15 +295,43 @@ async def _sync_telegram_chats(cfg: BotConfig, db: AsyncSession) -> BotConfigSyn
             chat.sync_error = None
             updated += 1
             details.append({"chat_id": chat.chat_id, "status": "updated"})
+            await event_bus.publish("bot_sync_progress", {
+                "bot_config_id": cfg.id,
+                "chat_id": chat.chat_id,
+                "status": "updated",
+                "updated": updated,
+                "failed": failed,
+                "total": len(chats),
+                "timestamp": utcnow().isoformat(),
+            })
         except TelegramError as e:
             failed += 1
             chat.last_sync_at = utcnow()
             chat.is_accessible = False
             chat.sync_error = str(e)
             details.append({"chat_id": chat.chat_id, "status": "failed", "error": str(e)})
+            await event_bus.publish("bot_sync_progress", {
+                "bot_config_id": cfg.id,
+                "chat_id": chat.chat_id,
+                "status": "failed",
+                "error": str(e),
+                "updated": updated,
+                "failed": failed,
+                "total": len(chats),
+                "timestamp": utcnow().isoformat(),
+            })
 
     await db.commit()
     await bot.close()
+
+    await event_bus.publish("bot_sync_completed", {
+        "bot_config_id": cfg.id,
+        "total": len(chats),
+        "updated": updated,
+        "failed": failed,
+        "created": 0,
+        "timestamp": utcnow().isoformat(),
+    })
 
     return BotConfigSyncChatsResponse(
         bot_config_id=cfg.id,
@@ -367,11 +396,40 @@ async def _sync_qq_chats(cfg: BotConfig, db: AsyncSession) -> BotConfigSyncChats
                 ))
                 created += 1
             details.append({"chat_id": group_id, "title": group_name, "status": "ok"})
+            await event_bus.publish("bot_sync_progress", {
+                "bot_config_id": cfg.id,
+                "chat_id": group_id,
+                "title": group_name,
+                "status": "ok",
+                "updated": updated,
+                "created": created,
+                "failed": failed,
+                "total": len(groups),
+                "timestamp": utcnow().isoformat(),
+            })
         except Exception as e:
             failed += 1
             details.append({"status": "failed", "error": str(e)})
+            await event_bus.publish("bot_sync_progress", {
+                "bot_config_id": cfg.id,
+                "status": "failed",
+                "error": str(e),
+                "updated": updated,
+                "created": created,
+                "failed": failed,
+                "total": len(groups),
+                "timestamp": utcnow().isoformat(),
+            })
 
     await db.commit()
+    await event_bus.publish("bot_sync_completed", {
+        "bot_config_id": cfg.id,
+        "total": len(groups),
+        "updated": updated,
+        "created": created,
+        "failed": failed,
+        "timestamp": utcnow().isoformat(),
+    })
     return BotConfigSyncChatsResponse(
         bot_config_id=cfg.id,
         total=len(groups),

@@ -42,3 +42,37 @@ class TestDistributionAPI:
         assert "total" in data
         assert isinstance(data["items"], list)
         assert isinstance(data["total"], int)
+
+    @pytest.mark.asyncio
+    async def test_distribution_content_status_action(self, client: AsyncClient):
+        """Test POST /api/v1/distribution-queue/content/{content_id}/status"""
+        response = await client.post(
+            "/api/v1/distribution-queue/content/1/status",
+            json={"status": "filtered"},
+        )
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data.get("status") == "ok"
+        assert "moved" in data
+
+    @pytest.mark.asyncio
+    async def test_distribution_content_batch_actions(self, client: AsyncClient):
+        """Test migrated batch action endpoints under /distribution-queue/content/*"""
+        response = await client.post(
+            "/api/v1/distribution-queue/content/batch-push-now",
+            json={"content_ids": [1, 2]},
+        )
+        assert response.status_code == 200
+        assert "changed" in response.json()
+
+        response = await client.post(
+            "/api/v1/distribution-queue/content/batch-reschedule",
+            json={
+                "content_ids": [1],
+                "start_time": "2026-02-13T12:00:00Z",
+                "interval_seconds": 300,
+            },
+        )
+        assert response.status_code == 200
+        assert "changed" in response.json()

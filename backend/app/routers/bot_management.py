@@ -22,6 +22,7 @@ from app.schemas import (
     RepushFailedRequest, RepushFailedResponse,
     BotChatRulesResponse, BotChatRuleAssignRequest, ChatRuleBindingInfo, BotChatRuleSummaryItem,
 )
+from app.core.events import event_bus
 
 router = APIRouter()
 
@@ -560,6 +561,16 @@ async def sync_bot_chats(
             chat.sync_error = None
             updated += 1
             details.append({"chat_id": chat.chat_id, "title": chat.title, "status": "updated"})
+            await event_bus.publish("bot_sync_progress", {
+                "chat_id": chat.chat_id,
+                "title": chat.title,
+                "status": "updated",
+                "updated": updated,
+                "failed": failed,
+                "inaccessible": inaccessible,
+                "total": len(chats),
+                "timestamp": now.isoformat(),
+            })
             
         except TelegramError as e:
             error_msg = str(e)
@@ -571,16 +582,46 @@ async def sync_bot_chats(
             chat.sync_error = error_msg
             chat.last_sync_at = now
             details.append({"chat_id": chat.chat_id, "title": chat.title, "status": "failed", "error": error_msg})
+            await event_bus.publish("bot_sync_progress", {
+                "chat_id": chat.chat_id,
+                "title": chat.title,
+                "status": "failed",
+                "error": error_msg,
+                "updated": updated,
+                "failed": failed,
+                "inaccessible": inaccessible,
+                "total": len(chats),
+                "timestamp": now.isoformat(),
+            })
             logger.warning(f"同步群组失败 {chat.chat_id}: {e}")
         except Exception as e:
             failed += 1
             chat.sync_error = str(e)
             chat.last_sync_at = now
             details.append({"chat_id": chat.chat_id, "title": chat.title, "status": "error", "error": str(e)})
+            await event_bus.publish("bot_sync_progress", {
+                "chat_id": chat.chat_id,
+                "title": chat.title,
+                "status": "error",
+                "error": str(e),
+                "updated": updated,
+                "failed": failed,
+                "inaccessible": inaccessible,
+                "total": len(chats),
+                "timestamp": now.isoformat(),
+            })
             logger.error(f"同步群组异常 {chat.chat_id}: {e}")
     
     await db.commit()
     await bot.close()
+
+    await event_bus.publish("bot_sync_completed", {
+        "total": len(chats),
+        "updated": updated,
+        "failed": failed,
+        "inaccessible": inaccessible,
+        "timestamp": now.isoformat(),
+    })
     
     return BotSyncResult(
         total=len(chats),
