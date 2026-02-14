@@ -21,7 +21,7 @@ async def main():
                 and_(
                     Content.platform == Platform.TWITTER,
                     # 可以选择只重试特定状态的，或者全部重试
-                    # Content.status != ContentStatus.ARCHIVED 
+                    # Content.status == ContentStatus.PARSE_SUCCESS
                 )
             )
         )

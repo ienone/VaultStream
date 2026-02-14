@@ -15,8 +15,16 @@ class TestDistributionAPI:
         assert response.status_code == 200
         
         data = response.json()
+        assert "will_push" in data
+        assert "filtered" in data
+        assert "pending_review" in data
+        assert "pushed" in data
         assert "total" in data
         assert "due_now" in data
+        assert isinstance(data["will_push"], int)
+        assert isinstance(data["filtered"], int)
+        assert isinstance(data["pending_review"], int)
+        assert isinstance(data["pushed"], int)
         assert isinstance(data["total"], int)
         assert isinstance(data["due_now"], int)
     

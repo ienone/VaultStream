@@ -54,7 +54,7 @@ class ContentParser:
                         return
 
                     # 幂等处理
-                    if action == "parse" and content.status == ContentStatus.PULLED:
+                    if action == "parse" and content.status == ContentStatus.PARSE_SUCCESS:
                         await self._handle_archived_media_fix(session, content)
                         logger.info("内容已解析完成，跳过解析")
                         await task_queue.mark_complete(content_id)
@@ -167,7 +167,7 @@ class ContentParser:
             self._map_stats_to_content(content, parsed.stats)
 
         # 更新状态
-        content.status = ContentStatus.PULLED
+        content.status = ContentStatus.PARSE_SUCCESS
         content.last_error = None
         content.last_error_type = None
         content.last_error_detail = None
@@ -274,7 +274,7 @@ class ContentParser:
         
         # 更新数据库中的失败状态
         if content:
-            content.status = ContentStatus.FAILED
+            content.status = ContentStatus.PARSE_FAILED
             content.failure_count = (content.failure_count or 0) + 1
             content.last_error = str(error)
             content.last_error_type = type(error).__name__
@@ -290,7 +290,7 @@ class ContentParser:
                 from app.core.events import event_bus
                 await event_bus.publish("content_updated", {
                     "id": content.id,
-                    "status": "FAILED",
+                    "status": ContentStatus.PARSE_FAILED.value,
                     "error": str(error)
                 })
             except Exception:
@@ -488,7 +488,7 @@ class ContentParser:
                         logger.warning(f"重试解析：内容不存在 {content_id}")
                         return False
 
-                    if not force and content.status == ContentStatus.PULLED:
+                    if not force and content.status == ContentStatus.PARSE_SUCCESS:
                         logger.info(f"重试解析：内容已解析完成 {content_id}")
                         return True
 
@@ -512,7 +512,7 @@ class ContentParser:
                         )
                          content = result.scalar_one_or_none()
                          if content:
-                            content.status = ContentStatus.FAILED
+                            content.status = ContentStatus.PARSE_FAILED
                             content.last_error = str(e)
                             await session.commit()
                 except:

@@ -7,7 +7,7 @@
 
 功能：
     1. 创建 content_queue_items 表（如果不存在）
-    2. 为已审批的 pulled 内容自动创建队列项（回填）
+    2. 为已审批的 parse_success 内容自动创建队列项（回填）
 """
 import asyncio
 import sys
@@ -41,13 +41,13 @@ async def create_table():
 
 
 async def backfill_queue_items():
-    """为已审批的 pulled 内容回填队列项"""
+    """为已审批的 parse_success 内容回填队列项"""
     from app.distribution.queue_service import enqueue_content
     
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(Content).where(
-                Content.status == ContentStatus.PULLED,
+                Content.status == ContentStatus.PARSE_SUCCESS,
                 Content.review_status.in_([
                     ReviewStatus.APPROVED,
                     ReviewStatus.AUTO_APPROVED,

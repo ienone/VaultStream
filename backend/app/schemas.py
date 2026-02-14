@@ -169,11 +169,26 @@ class TagStats(BaseModel):
 
 class QueueStats(BaseModel):
     """队列统计"""
-    pending: int
+    unprocessed: int
     processing: int
-    failed: int
-    archived: int
+    parse_success: int
+    parse_failed: int
     total: int
+
+
+class DistributionStatusStats(BaseModel):
+    """解析成功后进入分发阶段的状态统计"""
+    will_push: int
+    filtered: int
+    pending_review: int
+    pushed: int
+    total: int
+
+
+class QueueOverviewStats(BaseModel):
+    """看板状态总览（解析 + 分发）"""
+    parse: QueueStats
+    distribution: DistributionStatusStats
 
 
 class DashboardStats(BaseModel):
@@ -561,6 +576,7 @@ class SystemSettingResponse(SystemSettingBase):
 
 class BotChatCreate(BaseModel):
     """创建 Bot 聊天关联"""
+    bot_config_id: int = Field(..., ge=1, description="所属 BotConfig ID")
     chat_id: str = Field(..., description="Telegram Chat ID")
     chat_type: str = Field(..., description="channel/group/supergroup/private")
     title: Optional[str] = None
@@ -580,6 +596,7 @@ class BotChatUpdate(BaseModel):
 class BotChatResponse(BaseModel):
     """Bot 聊天响应"""
     id: int
+    bot_config_id: int
     chat_id: str
     chat_type: str
     title: Optional[str]
@@ -614,6 +631,9 @@ class BotStatusResponse(BaseModel):
     total_pushed_today: int
     uptime_seconds: Optional[int]
     napcat_status: Optional[str] = None
+    parse_stats: QueueStats
+    distribution_stats: DistributionStatusStats
+    rule_breakdown: Dict[str, DistributionStatusStats] = Field(default_factory=dict)
 
 
 class BotSyncRequest(BaseModel):
@@ -645,6 +665,7 @@ class HealthDetailResponse(BaseModel):
 
 class BotChatUpsert(BaseModel):
     """Bot 聊天 Upsert（用于 Bot 进程上报）"""
+    bot_config_id: int = Field(..., ge=1, description="所属 BotConfig ID")
     chat_id: str = Field(..., description="Telegram Chat ID")
     chat_type: str = Field(..., description="channel/group/supergroup/private")
     title: Optional[str] = None
@@ -722,6 +743,7 @@ class BotConfigBase(BaseModel):
     bot_token: Optional[str] = None
     napcat_http_url: Optional[str] = None
     napcat_ws_url: Optional[str] = None
+    napcat_access_token: Optional[str] = None
     enabled: bool = True
     is_primary: bool = False
 
@@ -736,6 +758,7 @@ class BotConfigUpdate(BaseModel):
     bot_token: Optional[str] = None
     napcat_http_url: Optional[str] = None
     napcat_ws_url: Optional[str] = None
+    napcat_access_token: Optional[str] = None
     enabled: Optional[bool] = None
     is_primary: Optional[bool] = None
 
@@ -748,6 +771,7 @@ class BotConfigResponse(BaseModel):
     bot_token_masked: Optional[str] = None
     napcat_http_url: Optional[str] = None
     napcat_ws_url: Optional[str] = None
+    napcat_access_token_masked: Optional[str] = None
     enabled: bool
     is_primary: bool
     bot_id: Optional[str] = None
@@ -985,13 +1009,10 @@ class ContentQueueItemListResponse(BaseModel):
 
 class QueueStatsResponse(BaseModel):
     """队列统计响应"""
-    pending: int = 0
-    scheduled: int = 0
-    processing: int = 0
-    success: int = 0
-    failed: int = 0
-    skipped: int = 0
-    canceled: int = 0
+    will_push: int = 0
+    filtered: int = 0
+    pending_review: int = 0
+    pushed: int = 0
     total: int = 0
     due_now: int = 0
 

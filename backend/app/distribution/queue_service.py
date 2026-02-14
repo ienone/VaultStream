@@ -67,7 +67,7 @@ async def _enqueue_content_impl(
         return 0
 
     # 2. 资格检查
-    if content.status != ContentStatus.PULLED:
+    if content.status != ContentStatus.PARSE_SUCCESS:
         logger.info(
             f"Content not eligible (status): content_id={content_id}, status={content.status}"
         )

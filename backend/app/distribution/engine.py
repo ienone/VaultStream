@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 
 from app.core.logging import logger
-from app.models import Content, DistributionRule, PushedRecord, ReviewStatus, Platform, DistributionTarget, BotChat
+from app.models import Content, ContentStatus, DistributionRule, PushedRecord, ReviewStatus, Platform, DistributionTarget, BotChat
 from app.schemas import ShareCardPreview, OptimizedMedia
 
 
@@ -459,7 +459,7 @@ class DistributionEngine:
     async def refresh_queue_by_rules(self):
         """根据更新的规则刷新队列。"""
         result = await self.db.execute(
-            select(Content).where(Content.status == "pulled")
+            select(Content).where(Content.status == ContentStatus.PARSE_SUCCESS)
         )
         contents = result.scalars().all()
 

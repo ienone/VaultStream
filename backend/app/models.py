@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Optional, List
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum, UniqueConstraint, JSON, Index, Float
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import declarative_base, relationship, backref
 
 from app.core.time_utils import utcnow
 
@@ -38,9 +38,8 @@ class ContentStatus(str, Enum):
     """内容状态"""
     UNPROCESSED = "unprocessed"  # 未处理
     PROCESSING = "processing"    # 处理中
-    PULLED = "pulled"            # 已抓取
-    FAILED = "failed"            # 失败
-    ARCHIVED = "archived"        # 已归档
+    PARSE_SUCCESS = "parse_success"  # 解析成功
+    PARSE_FAILED = "parse_failed"    # 解析失败
 
 
 class ReviewStatus(str, Enum):
@@ -99,7 +98,11 @@ class Content(Base):
     url = Column(Text, nullable=False)  # 原始输入
     canonical_url = Column(Text, index=True)  # 用于去重的规范化URL
     clean_url = Column(Text)  # 解析后的净化URL
-    status = Column(SQLEnum(ContentStatus), default=ContentStatus.UNPROCESSED, index=True)
+    status = Column(
+        SQLEnum(ContentStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]),
+        default=ContentStatus.UNPROCESSED,
+        index=True,
+    )
     
     # 布局类型 - 内容驱动的展示形态
     layout_type = Column(SQLEnum(LayoutType, values_callable=lambda x: [e.value for e in x]), nullable=True, index=True)  # 系统检测/推荐值
@@ -357,7 +360,10 @@ class DistributionTarget(Base):
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     
     # 关系
-    rule = relationship("DistributionRule", backref="distribution_targets")
+    rule = relationship(
+        "DistributionRule",
+        backref=backref("distribution_targets", cascade="all, delete-orphan", passive_deletes=True),
+    )
     bot_chat = relationship("BotChat", backref="distribution_targets")
     
     # 唯一约束：同一规则不能重复添加同一目标
@@ -492,6 +498,7 @@ class BotConfig(Base):
     # Napcat / QQ
     napcat_http_url = Column(String(300))
     napcat_ws_url = Column(String(300))
+    napcat_access_token = Column(String(300))
 
     # 状态
     enabled = Column(Boolean, default=True, index=True)
@@ -517,7 +524,7 @@ class BotChat(Base):
         Index("ix_bot_chats_bot_config_chat", "bot_config_id", "chat_id", unique=True),
     )
 
-    bot_config_id = Column(Integer, ForeignKey("bot_configs.id", ondelete="SET NULL"), index=True)
+    bot_config_id = Column(Integer, ForeignKey("bot_configs.id", ondelete="CASCADE"), nullable=False, index=True)
     
     # Telegram 聊天信息
     chat_id = Column(String(50), nullable=False, index=True)  # Telegram/QQ chat_id

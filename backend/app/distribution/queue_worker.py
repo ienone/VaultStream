@@ -17,6 +17,7 @@ from app.models import (
     ContentQueueItem,
     QueueItemStatus,
     Content,
+    ContentStatus,
     DistributionRule,
     BotChat,
     PushedRecord,
@@ -224,7 +225,7 @@ class DistributionQueueWorker:
         if not content or content.review_status not in (
             ReviewStatus.APPROVED,
             ReviewStatus.AUTO_APPROVED,
-        ) or content.status != "pulled":
+        ) or content.status != ContentStatus.PARSE_SUCCESS:
             item.status = QueueItemStatus.SKIPPED
             item.last_error = "Content not eligible"
             item.locked_at = None

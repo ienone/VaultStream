@@ -2,7 +2,7 @@
 """
 重试失败的任务
 
-将 FAILED 状态的内容重置为 UNPROCESSED 并重新入队
+将 PARSE_FAILED 状态的内容重置为 UNPROCESSED 并重新入队
 """
 import asyncio
 import sys
@@ -28,7 +28,7 @@ async def retry_failed_tasks(platform: str = None, limit: int = 100):
     """
     async with AsyncSessionLocal() as db:
         # 查询失败的内容
-        query = select(Content).where(Content.status == ContentStatus.FAILED)
+        query = select(Content).where(Content.status == ContentStatus.PARSE_FAILED)
         
         if platform:
             try:

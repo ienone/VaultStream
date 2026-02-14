@@ -169,7 +169,7 @@ async def preview_distribution_rule(
     conditions = rule.match_conditions or {}
     
     content_query = select(Content).where(
-        Content.status == ContentStatus.PULLED
+        Content.status == ContentStatus.PARSE_SUCCESS
     ).order_by(desc(Content.created_at)).limit(limit * 2)
     
     content_result = await db.execute(content_query)
@@ -330,7 +330,7 @@ async def get_all_rules_preview_stats(
         conditions = rule.match_conditions or {}
         
         content_query = select(Content).where(
-            Content.status == ContentStatus.PULLED
+            Content.status == ContentStatus.PARSE_SUCCESS
         ).limit(100)
         
         content_result = await db.execute(content_query)
@@ -382,13 +382,13 @@ async def get_all_rules_preview_stats(
 async def trigger_distribution_run(
     _: None = Depends(require_api_token),
 ):
-    """手动触发分发任务（对所有已审批的 pulled 内容入队）"""
+    """手动触发分发任务（对所有已审批的 parse_success 内容入队）"""
     from app.core.database import AsyncSessionLocal
     
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(Content).where(
-                Content.status == ContentStatus.PULLED,
+                Content.status == ContentStatus.PARSE_SUCCESS,
                 Content.review_status.in_([ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED]),
             ).limit(100)
         )

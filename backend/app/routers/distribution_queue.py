@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, select, not_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -27,19 +27,44 @@ from app.schemas import (
 router = APIRouter(prefix="/distribution-queue", tags=["distribution-queue"])
 
 
-def _status_alias(status: Optional[str]) -> Optional[list[QueueItemStatus]]:
+def _build_status_conditions(status: Optional[str]):
     if not status:
-        return None
-    alias = {
-        "will_push": [QueueItemStatus.SCHEDULED, QueueItemStatus.PROCESSING],
-        "filtered": [QueueItemStatus.CANCELED, QueueItemStatus.SKIPPED],
-        "pending_review": [QueueItemStatus.PENDING],
-        "pushed": [QueueItemStatus.SUCCESS],
-    }
-    if status in alias:
-        return alias[status]
+        return []
+
+    if status == "pending_review":
+        return [
+            ContentQueueItem.status == QueueItemStatus.PENDING,
+            ContentQueueItem.needs_approval == True,
+            ContentQueueItem.approved_at.is_(None),
+        ]
+
+    if status == "will_push":
+        return [
+            ContentQueueItem.status.in_(
+                [
+                    QueueItemStatus.PENDING,
+                    QueueItemStatus.SCHEDULED,
+                    QueueItemStatus.PROCESSING,
+                    QueueItemStatus.FAILED,
+                ]
+            ),
+            not_(
+                and_(
+                    ContentQueueItem.status == QueueItemStatus.PENDING,
+                    ContentQueueItem.needs_approval == True,
+                    ContentQueueItem.approved_at.is_(None),
+                )
+            ),
+        ]
+
+    if status == "filtered":
+        return [ContentQueueItem.status.in_([QueueItemStatus.CANCELED, QueueItemStatus.SKIPPED])]
+
+    if status == "pushed":
+        return [ContentQueueItem.status == QueueItemStatus.SUCCESS]
+
     try:
-        return [QueueItemStatus(status)]
+        return [ContentQueueItem.status == QueueItemStatus(status)]
     except Exception:
         raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
 
@@ -50,12 +75,41 @@ async def get_queue_stats(
     _: None = Depends(require_api_token),
 ):
     """获取队列统计信息。"""
-    counts = {}
-    for status in QueueItemStatus:
-        result = await db.execute(
-            select(func.count(ContentQueueItem.id)).where(ContentQueueItem.status == status)
+    grouped_result = await db.execute(
+        select(
+            ContentQueueItem.status,
+            ContentQueueItem.needs_approval,
+            ContentQueueItem.approved_at,
+            func.count(ContentQueueItem.id),
+        ).group_by(
+            ContentQueueItem.status,
+            ContentQueueItem.needs_approval,
+            ContentQueueItem.approved_at,
         )
-        counts[status.value] = int(result.scalar() or 0)
+    )
+
+    stats = {
+        "will_push": 0,
+        "filtered": 0,
+        "pending_review": 0,
+        "pushed": 0,
+        "total": 0,
+    }
+
+    for status, needs_approval, approved_at, count in grouped_result.all():
+        count_int = int(count or 0)
+        if status == QueueItemStatus.SUCCESS:
+            bucket = "pushed"
+        elif status in (QueueItemStatus.SKIPPED, QueueItemStatus.CANCELED):
+            bucket = "filtered"
+        elif status == QueueItemStatus.PENDING and bool(needs_approval) and approved_at is None:
+            bucket = "pending_review"
+        else:
+            # 其余状态（含 FAILED）统一视为待推送阶段，便于看板聚合处理。
+            bucket = "will_push"
+
+        stats[bucket] += count_int
+        stats["total"] += count_int
 
     now = utcnow()
     due_result = await db.execute(
@@ -69,14 +123,11 @@ async def get_queue_stats(
     due_now = int(due_result.scalar() or 0)
 
     return QueueStatsResponse(
-        pending=counts.get("pending", 0),
-        scheduled=counts.get("scheduled", 0),
-        processing=counts.get("processing", 0),
-        success=counts.get("success", 0),
-        failed=counts.get("failed", 0),
-        skipped=counts.get("skipped", 0),
-        canceled=counts.get("canceled", 0),
-        total=sum(counts.values()),
+        will_push=stats["will_push"],
+        filtered=stats["filtered"],
+        pending_review=stats["pending_review"],
+        pushed=stats["pushed"],
+        total=stats["total"],
         due_now=due_now,
     )
 
@@ -95,9 +146,7 @@ async def list_queue_items(
     """获取队列项列表（分页）。"""
     conditions = []
 
-    status_list = _status_alias(status)
-    if status_list:
-        conditions.append(ContentQueueItem.status.in_(status_list))
+    conditions.extend(_build_status_conditions(status))
 
     if content_id is not None:
         conditions.append(ContentQueueItem.content_id == content_id)
