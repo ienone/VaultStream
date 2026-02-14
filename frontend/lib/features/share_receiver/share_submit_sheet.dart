@@ -84,18 +84,15 @@ class _ShareSubmitSheetState extends ConsumerState<ShareSubmitSheet> {
     try {
       final dio = ref.read(apiClientProvider);
 
-      // 合并快捷标签和手动输入的标签
-      final manualTags = _tagsController.text
-          .split(RegExp(r'[,\s，]'))
-          .where((t) => t.isNotEmpty)
-          .toList();
-      final allTags = {..._selectedTags, ...manualTags}.toList();
+      // 标签清洗在后端统一处理，前端仅传用户原始输入与快捷标签选择。
+      final selectedTags = _selectedTags.toList();
 
       await dio.post(
         '/shares',
         data: {
           'url': url,
-          'tags': allTags,
+          'tags': selectedTags,
+          'tags_text': _tagsController.text,
           'is_nsfw': _isNsfw,
           'source': 'android_share',
           'layout_type_override': _selectedLayout,

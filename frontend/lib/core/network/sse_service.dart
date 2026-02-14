@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_client_sse/flutter_client_sse.dart';
 import 'package:flutter_client_sse/constants/sse_request_type_enum.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -123,7 +122,6 @@ class SseService extends _$SseService {
     final url = '${settings.baseUrl}/events/subscribe';
     
     _eventBus.updateState(SseConnectionState.connecting);
-    debugPrint('[SSE] Connecting to $url');
     
     try {
       _subscription = SSEClient.subscribeToSSE(
@@ -137,7 +135,6 @@ class SseService extends _$SseService {
         cancelOnError: false,
       );
     } catch (e) {
-      debugPrint('[SSE] Connection failed: $e');
       _eventBus.updateState(SseConnectionState.error);
       _scheduleReconnect(isError: true);
     }
@@ -151,34 +148,23 @@ class SseService extends _$SseService {
       if (event.event == _SseConfig.eventConnected) {
         _reconnectAttempts = 0;
         _eventBus.updateState(SseConnectionState.connected);
-        debugPrint('[SSE] Connected successfully');
         return;
       }
       
       final data = jsonDecode(event.data!) as Map<String, dynamic>;
       final sseEvent = SseEvent(type: event.event!, data: data);
       
-      if (kDebugMode) {
-        debugPrint('[SSE] Event: ${event.event}');
-      }
-      
       _eventBus.addEvent(sseEvent);
-    } catch (e, stack) {
-      debugPrint('[SSE] Parse error: $e');
-      if (kDebugMode) {
-        debugPrint('[SSE] Stack trace: $stack');
-      }
+    } catch (_) {
     }
   }
   
   void _onError(dynamic error) {
-    debugPrint('[SSE] Stream error: $error');
     _eventBus.updateState(SseConnectionState.error);
     _scheduleReconnect(isError: true);
   }
   
   void _onDone() {
-    debugPrint('[SSE] Connection closed');
     _eventBus.updateState(SseConnectionState.reconnecting);
     _scheduleReconnect(isError: false);
   }
@@ -198,10 +184,8 @@ class SseService extends _$SseService {
       delay = exponentialDelay > _SseConfig.maxReconnectDelay
           ? _SseConfig.maxReconnectDelay
           : exponentialDelay;
-      debugPrint('[SSE] Reconnecting in ${delay.inSeconds}s (attempt $_reconnectAttempts)');
     } else {
       delay = _SseConfig.reconnectDelayOnClose;
-      debugPrint('[SSE] Reconnecting in ${delay.inSeconds}s');
     }
     
     _reconnectTimer = Timer(delay, _connect);
@@ -209,7 +193,6 @@ class SseService extends _$SseService {
   
   /// 手动触发重连
   void reconnect() {
-    debugPrint('[SSE] Manual reconnect triggered');
     _reconnectAttempts = 0;
     _connect();
   }

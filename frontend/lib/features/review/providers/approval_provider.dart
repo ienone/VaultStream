@@ -1,3 +1,5 @@
+// ignore_for_file: use_null_aware_elements
+
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/network/api_client.dart';
 import '../../collection/models/content.dart';
@@ -79,21 +81,26 @@ class ApprovalQueue extends _$ApprovalQueue {
       queryParameters: {
         'page': page,
         'size': size,
-        if (reviewStatus != null) 'review_status': reviewStatus,
-        if (platform != null) 'platform': platform,
+        if (reviewStatus case final reviewStatus?)
+          'review_status': reviewStatus,
+        if (platform case final platform?) 'platform': platform,
       },
     );
     return ApprovalListResponse.fromJson(response.data);
   }
 
-  Future<void> approveContent(int id, {String? note, String? reviewedBy}) async {
+  Future<void> approveContent(
+    int id, {
+    String? note,
+    String? reviewedBy,
+  }) async {
     final dio = ref.read(apiClientProvider);
     await dio.post(
       '/cards/$id/review',
       data: {
         'action': 'approve',
-        if (note != null) 'note': note,
-        if (reviewedBy != null) 'reviewed_by': reviewedBy,
+        if (note case final note?) 'note': note,
+        if (reviewedBy case final reviewedBy?) 'reviewed_by': reviewedBy,
       },
     );
     _safeInvalidate();
@@ -105,8 +112,8 @@ class ApprovalQueue extends _$ApprovalQueue {
       '/cards/$id/review',
       data: {
         'action': 'reject',
-        if (note != null) 'note': note,
-        if (reviewedBy != null) 'reviewed_by': reviewedBy,
+        if (note case final note?) 'note': note,
+        if (reviewedBy case final reviewedBy?) 'reviewed_by': reviewedBy,
       },
     );
     _safeInvalidate();
@@ -123,8 +130,8 @@ class ApprovalQueue extends _$ApprovalQueue {
       data: {
         'content_ids': ids,
         'action': 'approve',
-        if (note != null) 'note': note,
-        if (reviewedBy != null) 'reviewed_by': reviewedBy,
+        if (note case final note?) 'note': note,
+        if (reviewedBy case final reviewedBy?) 'reviewed_by': reviewedBy,
       },
     );
     _safeInvalidate();
@@ -141,8 +148,8 @@ class ApprovalQueue extends _$ApprovalQueue {
       data: {
         'content_ids': ids,
         'action': 'reject',
-        if (note != null) 'note': note,
-        if (reviewedBy != null) 'reviewed_by': reviewedBy,
+        if (note case final note?) 'note': note,
+        if (reviewedBy case final reviewedBy?) 'reviewed_by': reviewedBy,
       },
     );
     _safeInvalidate();

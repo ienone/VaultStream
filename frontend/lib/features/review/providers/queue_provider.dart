@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/sse_service.dart';
@@ -12,7 +11,7 @@ class _QueueConfig {
   // SSE 事件类型
   static const eventContentPushed = 'content_pushed';
   static const eventQueueUpdated = 'queue_updated';
-  
+
   // 防抖延迟
   static const refreshDebounce = Duration(milliseconds: 500);
 }
@@ -35,15 +34,9 @@ class QueueFilterState {
   final int? ruleId;
   final QueueStatus status;
 
-  const QueueFilterState({
-    this.ruleId,
-    this.status = QueueStatus.willPush,
-  });
+  const QueueFilterState({this.ruleId, this.status = QueueStatus.willPush});
 
-  QueueFilterState copyWith({
-    int? ruleId,
-    QueueStatus? status,
-  }) {
+  QueueFilterState copyWith({int? ruleId, QueueStatus? status}) {
     return QueueFilterState(
       ruleId: ruleId ?? this.ruleId,
       status: status ?? this.status,
@@ -55,37 +48,33 @@ class QueueFilterState {
 class ContentQueue extends _$ContentQueue {
   StreamSubscription? _sseSub;
   Timer? _debounceTimer;
-  
+
   @override
   FutureOr<QueueListResponse> build() async {
     final filter = ref.watch(queueFilterProvider);
-    
+
     // 启动 SSE 服务
     ref.watch(sseServiceProvider.notifier);
-    
+
     // 监听 SSE 事件自动刷新 - 直接订阅全局事件总线
     _sseSub?.cancel();
     _sseSub = SseEventBus().eventStream.listen(
       _handleSseEvent,
-      onError: (error) {
-        debugPrint('[Queue] SSE stream error: $error');
-      },
+      onError: (_) {},
     );
-    
+
     ref.onDispose(() {
       _sseSub?.cancel();
       _debounceTimer?.cancel();
     });
-    
+
     return _fetchQueue(ruleId: filter.ruleId, status: filter.status);
   }
 
   void _handleSseEvent(SseEvent event) {
     // 使用常量匹配事件类型
-    if (event.type == _QueueConfig.eventContentPushed || 
+    if (event.type == _QueueConfig.eventContentPushed ||
         event.type == _QueueConfig.eventQueueUpdated) {
-      debugPrint('[Queue] SSE event received: ${event.type}');
-      
       // 防抖刷新：避免短时间内多次事件触发多次请求
       _debounceTimer?.cancel();
       _debounceTimer = Timer(_QueueConfig.refreshDebounce, () {
@@ -105,24 +94,25 @@ class ContentQueue extends _$ContentQueue {
     final response = await dio.get(
       '/distribution-queue/items',
       queryParameters: {
-        if (ruleId != null) 'rule_id': ruleId,
-        if (status != null) 'status': status.value,
+        'rule_id': ?ruleId,
+        if (status case final status?) 'status': status.value,
       },
     );
     return QueueListResponse.fromJson(response.data);
   }
 
-  Future<void> moveToStatus(int contentId, QueueStatus newStatus, {String? reason}) async {
+  Future<void> moveToStatus(
+    int contentId,
+    QueueStatus newStatus, {
+    String? reason,
+  }) async {
     final dio = ref.read(apiClientProvider);
     await dio.post(
       '/distribution-queue/content/$contentId/status',
-      data: {
-        'status': newStatus.value,
-        if (reason != null) 'reason': reason,
-      },
+      data: {'status': newStatus.value, 'reason': ?reason},
     );
     _safeInvalidate();
-    
+
     // Refresh stats
     final filter = ref.read(queueFilterProvider);
     ref.invalidate(queueStatsProvider(filter.ruleId));
@@ -145,20 +135,19 @@ class ContentQueue extends _$ContentQueue {
         ruleId: filter.ruleId,
         status: filter.status,
       );
-      
+
       // 仅当数据实际变化时才更新
       final currentState = state;
       if (currentState is AsyncData) {
         final oldItems = currentState.value?.items;
         if (oldItems != null) {
           final newItems = newData.items;
-          
+
           // 比较 ID 列表、顺序和总数
           final needsUpdate = _shouldUpdate(oldItems, newItems, newData);
-          
+
           if (needsUpdate) {
             state = AsyncValue.data(newData);
-            debugPrint('[Queue] Data updated: ${newItems.length} items');
           }
         } else {
           state = AsyncValue.data(newData);
@@ -166,26 +155,30 @@ class ContentQueue extends _$ContentQueue {
       } else {
         state = AsyncValue.data(newData);
       }
-    } catch (e, stack) {
+    } catch (_) {
       // 软刷新失败不影响现有数据
-      debugPrint('[Queue] Soft refresh failed: $e');
-      if (kDebugMode) {
-        debugPrint('[Queue] Stack trace: $stack');
-      }
     }
   }
 
-  bool _shouldUpdate(List<QueueItem> oldItems, List<QueueItem> newItems, QueueListResponse newData) {
+  bool _shouldUpdate(
+    List<QueueItem> oldItems,
+    List<QueueItem> newItems,
+    QueueListResponse newData,
+  ) {
     // 检查是否需要更新
     if (oldItems.length != newItems.length) return true;
-    
+
     // 检查 ID 顺序
     for (int i = 0; i < oldItems.length; i++) {
       if (oldItems[i].contentId != newItems[i].contentId) return true;
       // 检查计划时间是否变化
       if (oldItems[i].scheduledTime != newItems[i].scheduledTime) return true;
+      // 检查状态与错误信息是否变化
+      if (oldItems[i].status != newItems[i].status) return true;
+      if (oldItems[i].reason != newItems[i].reason) return true;
+      if (oldItems[i].priority != newItems[i].priority) return true;
     }
-    
+
     return false;
   }
 
@@ -201,7 +194,11 @@ class ContentQueue extends _$ContentQueue {
     ref.invalidate(queueStatsProvider(filter.ruleId));
   }
 
-  Future<void> batchReschedule(List<int> contentIds, DateTime startTime, {int interval = 300}) async {
+  Future<void> batchReschedule(
+    List<int> contentIds,
+    DateTime startTime, {
+    int interval = 300,
+  }) async {
     final dio = ref.read(apiClientProvider);
     await dio.post(
       '/distribution-queue/content/batch-reschedule',
@@ -231,7 +228,8 @@ class ContentQueue extends _$ContentQueue {
       '/distribution-queue/content/merge-group',
       data: {
         'content_ids': contentIds,
-        if (scheduledAt != null) 'scheduled_at': scheduledAt.toUtc().toIso8601String(),
+        if (scheduledAt case final scheduledAt?)
+          'scheduled_at': scheduledAt.toUtc().toIso8601String(),
       },
     );
     _safeInvalidate();

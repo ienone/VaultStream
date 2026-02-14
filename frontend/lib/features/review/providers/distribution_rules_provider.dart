@@ -1,3 +1,5 @@
+// ignore_for_file: use_null_aware_elements
+
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/network/api_client.dart';
 import '../models/distribution_rule.dart';
@@ -15,7 +17,7 @@ class DistributionRules extends _$DistributionRules {
     final dio = ref.watch(apiClientProvider);
     final response = await dio.get(
       '/distribution-rules',
-      queryParameters: {if (enabled != null) 'enabled': enabled},
+      queryParameters: {if (enabled case final enabled?) 'enabled': enabled},
     );
     return (response.data as List)
         .map((e) => DistributionRule.fromJson(e as Map<String, dynamic>))
@@ -24,16 +26,16 @@ class DistributionRules extends _$DistributionRules {
 
   Future<DistributionRule> createRule(DistributionRuleCreate rule) async {
     final dio = ref.watch(apiClientProvider);
-    final response = await dio.post(
-      '/distribution-rules',
-      data: rule.toJson(),
-    );
+    final response = await dio.post('/distribution-rules', data: rule.toJson());
     final newRule = DistributionRule.fromJson(response.data);
     ref.invalidateSelf();
     return newRule;
   }
 
-  Future<DistributionRule> updateRule(int id, DistributionRuleUpdate update) async {
+  Future<DistributionRule> updateRule(
+    int id,
+    DistributionRuleUpdate update,
+  ) async {
     final dio = ref.watch(apiClientProvider);
     final response = await dio.patch(
       '/distribution-rules/$id',

@@ -39,15 +39,15 @@ class ApiService {
       queryParameters: {
         'page': page,
         'size': size,
-        if (tags != null && tags.isNotEmpty) 'tags': tags.join(','),
-        if (platforms != null && platforms.isNotEmpty)
+        if (tags case final tags? when tags.isNotEmpty) 'tags': tags.join(','),
+        if (platforms case final platforms? when platforms.isNotEmpty)
           'platform': platforms.join(','),
-        if (statuses != null && statuses.isNotEmpty)
+        if (statuses case final statuses? when statuses.isNotEmpty)
           'status': statuses.join(','),
-        if (author != null) 'author': author,
+        'author': ?author,
         if (startDate != null) 'start_date': startDate.toIso8601String(),
         if (endDate != null) 'end_date': endDate.toIso8601String(),
-        if (query != null) 'q': query,
+        'q': ?query,
       },
     );
     return ShareCardListResponse.fromJson(response.data);
@@ -74,16 +74,16 @@ class ApiService {
     final response = await _dio.patch(
       '/contents/$id',
       data: {
-        if (tags != null) 'tags': tags,
-        if (title != null) 'title': title,
-        if (description != null) 'description': description,
-        if (authorName != null) 'author_name': authorName,
-        if (coverUrl != null) 'cover_url': coverUrl,
-        if (isNsfw != null) 'is_nsfw': isNsfw,
-        if (status != null) 'status': status,
-        if (reviewStatus != null) 'review_status': reviewStatus,
-        if (reviewNote != null) 'review_note': reviewNote,
-        if (reviewedBy != null) 'reviewed_by': reviewedBy,
+        'tags': ?tags,
+        'title': ?title,
+        'description': ?description,
+        'author_name': ?authorName,
+        'cover_url': ?coverUrl,
+        'is_nsfw': ?isNsfw,
+        'status': ?status,
+        'review_status': ?reviewStatus,
+        'review_note': ?reviewNote,
+        'reviewed_by': ?reviewedBy,
       },
     );
     return ContentDetail.fromJson(response.data);
@@ -113,8 +113,8 @@ class ApiService {
       data: {
         'url': url,
         'tags': tags,
-        if (source != null) 'source': source,
-        if (note != null) 'note': note,
+        'source': ?source,
+        'note': ?note,
         'is_nsfw': isNsfw,
       },
     );
@@ -123,7 +123,10 @@ class ApiService {
 
   // ============ Batch Operations ============
 
-  Future<Map<String, dynamic>> batchUpdateTags(List<int> ids, List<String> tags) async {
+  Future<Map<String, dynamic>> batchUpdateTags(
+    List<int> ids,
+    List<String> tags,
+  ) async {
     final response = await _dio.post(
       '/contents/batch-update',
       data: {
@@ -146,18 +149,12 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> batchDelete(List<int> ids) async {
-    final response = await _dio.post(
-      '/contents/batch-delete',
-      data: ids,
-    );
+    final response = await _dio.post('/contents/batch-delete', data: ids);
     return response.data;
   }
 
   Future<Map<String, dynamic>> batchReParse(List<int> ids) async {
-    final response = await _dio.post(
-      '/contents/batch-re-parse',
-      data: ids,
-    );
+    final response = await _dio.post('/contents/batch-re-parse', data: ids);
     return response.data;
   }
 
@@ -166,7 +163,7 @@ class ApiService {
   Future<List<DistributionRule>> getDistributionRules({bool? enabled}) async {
     final response = await _dio.get(
       '/distribution-rules',
-      queryParameters: {if (enabled != null) 'enabled': enabled},
+      queryParameters: {'enabled': ?enabled},
     );
     return (response.data as List)
         .map((e) => DistributionRule.fromJson(e as Map<String, dynamic>))
@@ -213,8 +210,8 @@ class ApiService {
     final response = await _dio.get(
       '/pushed-records',
       queryParameters: {
-        if (contentId != null) 'content_id': contentId,
-        if (targetId != null) 'target_id': targetId,
+        'content_id': ?contentId,
+        'target_id': ?targetId,
         'limit': limit,
       },
     );
@@ -266,10 +263,7 @@ class ApiService {
   }) async {
     final response = await _dio.put(
       '/settings/$key',
-      data: {
-        'value': value,
-        if (description != null) 'description': description,
-      },
+      data: {'value': value, 'description': ?description},
     );
     return response.data;
   }
@@ -283,10 +277,7 @@ class ApiService {
   Future<List<BotChat>> getBotChats({bool? enabled, String? chatType}) async {
     final response = await _dio.get(
       '/bot/chats',
-      queryParameters: {
-        if (enabled != null) 'enabled': enabled,
-        if (chatType != null) 'chat_type': chatType,
-      },
+      queryParameters: {'enabled': ?enabled, 'chat_type': ?chatType},
     );
     return (response.data as List)
         .map((e) => BotChat.fromJson(e as Map<String, dynamic>))

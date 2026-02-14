@@ -64,9 +64,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   Widget build(BuildContext context) {
     // 监听分享内容变化
     ref.listen<SharedContent?>(shareReceiverStateProvider, (previous, next) {
-      debugPrint('📥 AppShell: 分享状态变化 previous=$previous, next=$next, isEmpty=${next?.isEmpty}');
       if (next != null && !next.isEmpty && !_isShowingSheet) {
-        debugPrint('📥 AppShell: 显示分享弹窗');
         _showShareSheet(next);
       }
     });

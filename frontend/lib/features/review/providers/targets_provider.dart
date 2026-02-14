@@ -1,3 +1,5 @@
+// ignore_for_file: use_null_aware_elements
+
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/network/api_client.dart';
 import '../models/target_list_response.dart';
@@ -20,8 +22,8 @@ class Targets extends _$Targets {
     final response = await dio.get(
       '/targets',
       queryParameters: {
-        if (platform != null) 'platform': platform,
-        if (enabled != null) 'enabled': enabled,
+        if (platform case final platform?) 'platform': platform,
+        if (enabled case final enabled?) 'enabled': enabled,
       },
     );
     return TargetListResponse.fromJson(response.data);
@@ -34,10 +36,7 @@ class Targets extends _$Targets {
     final dio = ref.watch(apiClientProvider);
     final response = await dio.post(
       '/targets/test',
-      data: {
-        'platform': platform,
-        'target_id': targetId,
-      },
+      data: {'platform': platform, 'target_id': targetId},
     );
     return response.data;
   }
@@ -57,9 +56,11 @@ class Targets extends _$Targets {
         'rule_ids': ruleIds,
         'target_platform': targetPlatform,
         'target_id': targetId,
-        if (enabled != null) 'enabled': enabled,
-        if (mergeForward != null) 'merge_forward': mergeForward,
-        if (renderConfig != null) 'render_config': renderConfig,
+        if (enabled case final enabled?) 'enabled': enabled,
+        if (mergeForward case final mergeForward?)
+          'merge_forward': mergeForward,
+        if (renderConfig case final renderConfig?)
+          'render_config': renderConfig,
       },
     );
     ref.invalidateSelf();

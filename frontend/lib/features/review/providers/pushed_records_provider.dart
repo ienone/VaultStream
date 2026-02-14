@@ -1,3 +1,5 @@
+// ignore_for_file: use_null_aware_elements
+
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/network/api_client.dart';
 import '../models/pushed_record.dart';
@@ -81,8 +83,8 @@ class PushedRecords extends _$PushedRecords {
     final response = await dio.get(
       '/pushed-records',
       queryParameters: {
-        if (contentId != null) 'content_id': contentId,
-        if (targetId != null) 'target_id': targetId,
+        if (contentId case final contentId?) 'content_id': contentId,
+        if (targetId case final targetId?) 'target_id': targetId,
         'limit': limit,
       },
     );

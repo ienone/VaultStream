@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/material.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -60,21 +59,15 @@ class ShareReceiverService {
   void initialize() {
     if (_initialized || kIsWeb) return;
     _initialized = true;
-    
-    debugPrint('📥 ShareReceiverService: 初始化分享监听...');
 
     _intentSubscription = ReceiveSharingIntent.instance.getMediaStream().listen(
       (List<SharedMediaFile> files) {
-        debugPrint('📥 ShareReceiver: 收到流分享, ${files.length} 个文件');
         _handleSharedMedia(files);
       },
-      onError: (err) {
-        debugPrint('📥 ShareReceiver stream error: $err');
-      },
+      onError: (_) {},
     );
 
     ReceiveSharingIntent.instance.getInitialMedia().then((files) {
-      debugPrint('📥 ShareReceiver: 初始分享检查, ${files.length} 个文件');
       if (files.isNotEmpty) {
         _handleSharedMedia(files);
         ReceiveSharingIntent.instance.reset();
@@ -84,13 +77,7 @@ class ShareReceiverService {
 
   void _handleSharedMedia(List<SharedMediaFile> files) {
     if (files.isEmpty) {
-      debugPrint('📥 ShareReceiver: 空文件列表，跳过');
       return;
-    }
-
-    // 打印详细信息用于调试
-    for (final file in files) {
-      debugPrint('📥 ShareReceiver 文件: type=${file.type}, path=${file.path}');
     }
 
     // 分离文本和媒体文件
@@ -100,7 +87,6 @@ class ShareReceiverService {
     for (final file in files) {
       if (file.type == SharedMediaType.text || file.type == SharedMediaType.url) {
         sharedText = file.path;
-        debugPrint('📥 ShareReceiver: 检测到文本/URL: $sharedText');
       } else {
         mediaFiles.add(file);
       }
@@ -111,10 +97,7 @@ class ShareReceiverService {
       mediaFiles: mediaFiles,
     );
 
-    debugPrint('📥 ShareReceiver: 创建 SharedContent, text=$sharedText, isEmpty=${content.isEmpty}');
-
     if (!content.isEmpty) {
-      debugPrint('📥 ShareReceiver: 设置分享内容到状态');
       _ref.read(shareReceiverStateProvider.notifier).setSharedContent(content);
     }
   }

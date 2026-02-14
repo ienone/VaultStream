@@ -19,15 +19,10 @@ void main() async {
 
   if (!kIsWeb) {
     try {
-      _initialSharedMedia = await ReceiveSharingIntent.instance.getInitialMedia();
-      debugPrint('📥 main: 初始分享内容 ${_initialSharedMedia?.length ?? 0} 个');
-      if (_initialSharedMedia != null && _initialSharedMedia!.isNotEmpty) {
-        for (final file in _initialSharedMedia!) {
-          debugPrint('📥 main: type=${file.type}, path=${file.path}');
-        }
-      }
-    } catch (e) {
-      debugPrint('📥 main: 获取初始分享失败: $e');
+      _initialSharedMedia = await ReceiveSharingIntent.instance
+          .getInitialMedia();
+    } catch (_) {
+      // Ignore startup share-intent retrieval failures and continue app bootstrap.
     }
   }
 
@@ -41,10 +36,7 @@ void main() async {
 class VaultStreamApp extends ConsumerStatefulWidget {
   final List<SharedMediaFile>? initialSharedMedia;
 
-  const VaultStreamApp({
-    super.key,
-    this.initialSharedMedia,
-  });
+  const VaultStreamApp({super.key, this.initialSharedMedia});
 
   @override
   ConsumerState<VaultStreamApp> createState() => _VaultStreamAppState();
@@ -65,29 +57,24 @@ class _VaultStreamAppState extends ConsumerState<VaultStreamApp> {
   void _handleInitialShare() {
     final files = widget.initialSharedMedia;
     if (files != null && files.isNotEmpty) {
-      debugPrint('📥 VaultStreamApp: 处理初始分享 ${files.length} 个文件');
-      
       String? sharedText;
       final mediaFiles = <SharedMediaFile>[];
 
       for (final file in files) {
-        if (file.type == SharedMediaType.text || file.type == SharedMediaType.url) {
+        if (file.type == SharedMediaType.text ||
+            file.type == SharedMediaType.url) {
           sharedText = file.path;
         } else {
           mediaFiles.add(file);
         }
       }
 
-      final content = SharedContent(
-        text: sharedText,
-        mediaFiles: mediaFiles,
-      );
+      final content = SharedContent(text: sharedText, mediaFiles: mediaFiles);
 
       if (!content.isEmpty) {
-        debugPrint('📥 VaultStreamApp: 设置分享内容到状态');
         ref.read(shareReceiverStateProvider.notifier).setSharedContent(content);
       }
-      
+
       // 重置 intent 避免重复处理
       ReceiveSharingIntent.instance.reset();
     }
@@ -123,10 +110,7 @@ class _VaultStreamAppState extends ConsumerState<VaultStreamApp> {
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
           ],
-          supportedLocales: const [
-            Locale('zh', 'CN'),
-            Locale('en', 'US'),
-          ],
+          supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
         );
       },
     );

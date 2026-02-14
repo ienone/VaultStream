@@ -18,14 +18,14 @@ const _collectionEventTypes = {
 class Collection extends _$Collection {
   Timer? _debounceTimer;
   StreamSubscription? _sseSub;
-  
+
   @override
   FutureOr<ShareCardListResponse> build() async {
     final filter = ref.watch(collectionFilterProvider);
-    
+
     // 启动 SSE 服务（确保服务已初始化）
     ref.watch(sseServiceProvider.notifier);
-    
+
     // 监听 SSE 事件，自动刷新收藏库
     _sseSub?.cancel();
     _sseSub = SseEventBus().eventStream.listen((event) {
@@ -37,12 +37,12 @@ class Collection extends _$Collection {
         });
       }
     });
-    
+
     ref.onDispose(() {
       _sseSub?.cancel();
       _debounceTimer?.cancel();
     });
-    
+
     return _fetch(
       page: 1,
       query: filter.searchQuery.isEmpty ? null : filter.searchQuery,
@@ -73,15 +73,15 @@ class Collection extends _$Collection {
       queryParameters: {
         'page': page,
         'size': size,
-        if (tags != null && tags.isNotEmpty) 'tag': tags.join(','),
-        if (platforms != null && platforms.isNotEmpty)
+        if (tags case final tags? when tags.isNotEmpty) 'tag': tags.join(','),
+        if (platforms case final platforms? when platforms.isNotEmpty)
           'platform': platforms.join(','),
-        if (statuses != null && statuses.isNotEmpty)
+        if (statuses case final statuses? when statuses.isNotEmpty)
           'status': statuses.join(','),
-        if (author != null) 'author': author,
+        'author': ?author,
         if (startDate != null) 'start_date': startDate.toIso8601String(),
         if (endDate != null) 'end_date': endDate.toIso8601String(),
-        if (query != null) 'q': query,
+        'q': ?query,
       },
     );
 
