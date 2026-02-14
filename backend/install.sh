@@ -192,9 +192,8 @@ if [ ! -f ".env" ]; then
     cp .env.example .env
     echo "已创建 .env 文件"
     echo ""
-    echo "请编辑 .env 文件，配置以下参数："
-    echo "   - TELEGRAM_BOT_TOKEN (必需)"
-    echo "   - TELEGRAM_CHANNEL_ID (必需)"
+    echo "请编辑 .env 文件，配置 API_TOKEN / 数据库 / 存储参数"
+    echo "Bot 账号在服务启动后通过 /api/v1/bot-config 创建"
     echo ""
     read -p "是否现在编辑配置文件？(y/n) " -n 1 -r
     echo

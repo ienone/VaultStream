@@ -56,9 +56,10 @@ install.bat
 编辑 `backend\.env` 文件（用记事本或 VSCode 打开）：
 
 ```dotenv
-# Telegram Bot (必须配置)
-TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
-TELEGRAM_CHANNEL_ID=@my_channel
+# Telegram Bot 权限（账号通过 /api/v1/bot-config 创建）
+TELEGRAM_ADMIN_IDS=123456,789012
+TELEGRAM_WHITELIST_IDS=
+TELEGRAM_BLACKLIST_IDS=
 
 # 数据库 (默认即可)
 DATABASE_TYPE=sqlite
@@ -171,9 +172,10 @@ nano backend/.env
 编辑以下内容：
 
 ```dotenv
-# Telegram Bot (必须配置)
-TELEGRAM_BOT_TOKEN=your_bot_token_here
-TELEGRAM_CHANNEL_ID=@your_channel_id
+# Telegram Bot 权限（账号通过 /api/v1/bot-config 创建）
+TELEGRAM_ADMIN_IDS=123456,789012
+TELEGRAM_WHITELIST_IDS=
+TELEGRAM_BLACKLIST_IDS=
 
 # 其他配置使用默认值即可
 ```

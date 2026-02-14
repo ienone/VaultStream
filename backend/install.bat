@@ -162,9 +162,7 @@ if not exist ".env" (
         copy ".env.example" ".env" >nul
         echo 已创建 .env 文件
         echo.
-        echo Telegram Bot 配置 (可选，仅在 ENABLE_BOT=True 时需要):
-        echo    - TELEGRAM_BOT_TOKEN (可选)
-        echo    - TELEGRAM_CHANNEL_ID (可选)
+        echo Telegram Bot 账号请在服务启动后通过 /api/v1/bot-config 创建
         echo.
         set /p EDIT_ENV="是否现在用编辑器打开 .env 文件？(y/n): "
         if /i "!EDIT_ENV!"=="y" (

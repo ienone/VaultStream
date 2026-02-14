@@ -120,7 +120,7 @@ class ContentQueueItem(Base):
 ### 阶段 A：配置 Bot 与会话
 
 1. 创建 Bot 配置（`POST /bot-config`）。
-2. 同步会话（`POST /bot-config/{id}/sync-chats` 或 `POST /bot/chats/sync`）。
+2. 同步会话（`POST /bot-config/{id}/sync-chats`）。
 3. 在规则中关联目标（创建规则时 `targets` 或后续 target API）。
 
 ### 阶段 B：规则匹配与入队

@@ -91,9 +91,8 @@ ARCHIVE_IMAGE_WEBP_QUALITY=80
 ARCHIVE_IMAGE_MAX_COUNT=100
 
 # Telegram Bot（可选）
-ENABLE_BOT=True
-TELEGRAM_BOT_TOKEN=your_bot_token
-TELEGRAM_CHANNEL_ID=@your_channel
+# Bot 账号通过 API 创建：POST /api/v1/bot-config
+# 并设置 is_primary=true 后再启动 app.bot.main
 
 # 代理配置（如需访问被墙平台）
 HTTP_PROXY=http://127.0.0.1:7890
@@ -108,6 +107,10 @@ LOG_LEVEL=INFO
 ### 3. 启动服务
 
 ```bash
+# 旧版本升级：迁移历史 bot_runtime / bot_chats 到 BotConfig 归属
+cd backend
+python -m migrations.m14_bind_bot_chats_to_config
+
 # 使用启动脚本（推荐）
 cd ..
 ./start.sh
@@ -122,10 +125,19 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 在另一个终端：
 
+先确保已经创建并激活主 Telegram BotConfig：
+
+```bash
+curl -X POST http://localhost:8000/api/v1/bot-config \
+   -H "Content-Type: application/json" \
+   -H "X-API-Token: <your_api_token>" \
+   -d '{"platform":"telegram","name":"main-bot","bot_token":"<token>","enabled":true,"is_primary":true}'
+```
+
 ```bash
 cd backend
 source .venv/bin/activate
-python -m app.bot
+python -m app.bot.main
 ```
 
 ## 数据目录结构

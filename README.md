@@ -279,10 +279,7 @@ flutter run -d chrome      # Web 版本
 1. **配置环境变量**:
    ```bash
    cp backend/.env.example backend/.env
-   # 编辑 .env，可选配置 (Telegram Bot):
-   # - ENABLE_BOT=True (启用 Bot，默认 False)
-   # - TELEGRAM_BOT_TOKEN (仅在 ENABLE_BOT=True 时需要)
-   # - TELEGRAM_CHANNEL_ID (仅在 ENABLE_BOT=True 时需要)
+  # 编辑 .env，配置 API_TOKEN / 数据库 / 存储参数
    ```
 
 2. **验证后端**:
@@ -291,7 +288,7 @@ flutter run -d chrome      # Web 版本
    ```
 
 3. **（可选）启动 Telegram Bot**:
-   仅当需要 Bot 功能时，在 `.env` 中设置 `ENABLE_BOT=True` 并配置，然后：
+  先通过 `POST /api/v1/bot-config` 创建并激活主 Telegram 配置，然后：
    ```bash
    cd backend
    # Windows

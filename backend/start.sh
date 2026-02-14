@@ -22,8 +22,8 @@ if [ ! -f ".env" ]; then
     cp .env.example .env
     echo "已创建 .env 文件"
     echo ""
-    echo " 请配置以下重要参数："
-    echo "   - TELEGRAM_CHANNEL_ID: 你的 Telegram 频道 ID（如 @your_channel）"
+    echo " 请配置 API_TOKEN、数据库与存储参数"
+    echo " Bot 账号在服务启动后通过 /api/v1/bot-config 创建"
     echo ""
     read -p "是否现在编辑配置？(y/n) " -n 1 -r
     echo
@@ -178,7 +178,7 @@ echo "   - 交互式API: $API_BASE_URL/redoc"
 echo "   - 媒体API: $MEDIA_BASE_URL/{key}"
 echo ""
 echo "下一步:"
-echo "   1. 在另一个终端启动 Telegram Bot: $PYTHON -m app.bot"
+echo "   1. 先创建主 BotConfig，再启动 Telegram Bot: $PYTHON -m app.bot.main"
 echo "   2. 或启动后台任务处理: $PYTHON -m app.worker"
 echo ""
 echo " 使用 Ctrl+C 停止服务"

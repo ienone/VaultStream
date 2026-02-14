@@ -70,7 +70,7 @@ import sys
 import os
 sys.path.append(os.getcwd())
 try:
-    from app.database import init_db
+    from app.core.database import init_db
     async def main():
         await init_db()
         print('Database initialized.')
@@ -82,18 +82,16 @@ except Exception as e:
 # 5. Start Application
 Write-Host "`nStarting FastAPI..." -ForegroundColor Green
 
-# Check if Telegram Bot should be started alongside
-if (Test-Path "$PSScriptRoot\.env") {
-    $envLines = Get-Content "$PSScriptRoot\.env" -ErrorAction SilentlyContinue
-    $enableBot = $envLines | Where-Object { $_ -match '^\s*ENABLE_BOT\s*=\s*[Tt]rue' }
+# Read runtime config from settings
+$apiHost = & $PYTHON -c "from app.core.config import settings; print(settings.api_host)"
+$apiPort = & $PYTHON -c "from app.core.config import settings; print(settings.api_port)"
+$debugFlag = & $PYTHON -c "from app.core.config import settings; print('true' if settings.debug else 'false')"
 
-    if ($enableBot) {
-        New-Item -ItemType Directory -Force -Path "$PSScriptRoot\..\logs" | Out-Null
-        Write-Host "Starting Telegram Bot in background..." -ForegroundColor Cyan
-        $botProcess = Start-Process -FilePath $PYTHON -ArgumentList "-m", "app.bot.main" -WorkingDirectory $PSScriptRoot -NoNewWindow -PassThru
-        Write-Host "Telegram Bot started (PID: $($botProcess.Id))" -ForegroundColor Gray
-    }
+# Launch uvicorn directly so hot-reload behavior is stable
+if ($debugFlag -eq "true") {
+    Write-Host "Hot reload: enabled" -ForegroundColor Gray
+    & $PYTHON "-m" "uvicorn" "app.main:app" "--host" "$apiHost" "--port" "$apiPort" "--reload" "--reload-dir" "$PSScriptRoot\app"
+} else {
+    Write-Host "Hot reload: disabled (DEBUG=False)" -ForegroundColor Gray
+    & $PYTHON "-m" "uvicorn" "app.main:app" "--host" "$apiHost" "--port" "$apiPort"
 }
-
-$cmdString = "$PYTHON -m app.main"
-Invoke-Expression $cmdString

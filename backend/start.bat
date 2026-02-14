@@ -28,9 +28,8 @@ if not exist ".env" (
         copy ".env.example" ".env" >nul
         echo 已创建 .env 文件
         echo.
-        echo 请配置以下重要参数:
-        echo    - TELEGRAM_BOT_TOKEN (必需)
-        echo    - TELEGRAM_CHANNEL_ID (必需)
+        echo 请按需配置 API_TOKEN、数据库与存储参数
+        echo Bot 账号请在启动后通过 /api/v1/bot-config 创建
         echo.
         set /p EDIT_ENV="是否现在编辑配置？(y/n): "
         if /i "!EDIT_ENV!"=="y" (
@@ -72,7 +71,7 @@ except Exception as e:
 
 REM 启动 Telegram Bot (可选)
 echo.
-set /p START_BOT="是否启动 Telegram Bot (需在 .env 配置)? (y/n): "
+set /p START_BOT="是否启动 Telegram Bot (需先创建主 BotConfig)? (y/n): "
 if /i "%START_BOT%"=="y" (
     echo 正在启动 Telegram Bot...
     start "VaultStream Bot" "%VENV_PY%" -m app.bot.main

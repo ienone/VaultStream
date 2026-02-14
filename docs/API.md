@@ -101,7 +101,7 @@ eventSource.addEventListener('queue_updated', (e) => {
 
 ### GET /api/v1/distribution-queue/stats
 
-获取队列状态统计（`pending/scheduled/processing/success/failed/skipped/canceled` 与 `due_now`）。
+获取队列状态统计（`will_push` / `filtered` / `pending_review` / `pushed` 与 `due_now`）。
 
 ### GET /api/v1/distribution-queue/items
 
@@ -222,6 +222,15 @@ eventSource.addEventListener('queue_updated', (e) => {
 - `GET /api/v1/bot/status`
 - `GET /api/v1/bot/runtime`
 
+`GET /api/v1/bot/status` 返回统一状态口径：
+- `parse_stats`: `unprocessed` / `processing` / `parse_success` / `parse_failed`
+- `distribution_stats`: `will_push` / `filtered` / `pending_review` / `pushed`
+- `rule_breakdown`: 按规则 ID 聚合的分发状态统计
+
+其中 `parse_success` 为当前统一的解析成功物理状态。
+
+`POST /api/v1/bot/chats` 与 `PUT /api/v1/bot/chats:upsert` 请求体必须包含 `bot_config_id`。
+
 ### Bot Config（账号配置）
 
 - `POST /api/v1/bot-config`
@@ -233,6 +242,11 @@ eventSource.addEventListener('queue_updated', (e) => {
 - `POST /api/v1/bot-config/{id}/sync-chats`
 
 `/bot-config/{id}/qr-code` 当前为单次查询（HTTP），不是 WebSocket 流。
+`/bot/chats/sync` 使用已启用且 `is_primary=true` 的 Telegram BotConfig。
+QQ 配置支持字段：`napcat_http_url`、`napcat_ws_url`、`napcat_access_token`。
+
+升级旧数据时，先执行：`python -m migrations.m14_bind_bot_chats_to_config`。
+若为较早版本数据库，再执行：`python -m migrations.m15_add_napcat_access_token`。
 
 ---
 
@@ -240,7 +254,12 @@ eventSource.addEventListener('queue_updated', (e) => {
 
 - `GET /api/v1/tags`
 - `GET /api/v1/dashboard/stats`
+- `GET /api/v1/dashboard/queue`
 - `GET /health`
+
+`GET /api/v1/dashboard/queue` 返回：
+- `parse`: 解析阶段四态统计（`unprocessed`/`processing`/`parse_success`/`parse_failed`）
+- `distribution`: 解析成功后的分发四态统计（`will_push`/`filtered`/`pending_review`/`pushed`）
 
 ---
 

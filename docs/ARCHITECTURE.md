@@ -607,9 +607,11 @@ API_PORT=8000
 API_TOKEN=your_secret_token              # API 鉴权 Token
 
 # === Telegram Bot ===
-ENABLE_BOT=false                         # 是否启用 Bot
-TELEGRAM_BOT_TOKEN=123456:ABC-DEF...     # Bot Token
-TELEGRAM_CHANNEL_ID=@your_channel        # 频道 ID
+# Bot 账号配置通过 /api/v1/bot-config 管理（数据库 bot_configs 表）
+# .env 仅保留权限相关配置：
+TELEGRAM_ADMIN_IDS=123456,789012
+TELEGRAM_WHITELIST_IDS=
+TELEGRAM_BLACKLIST_IDS=
 
 # === 全局HTTP代理（可选，用于Telegram、Twitter、YouTube等）===
 HTTP_PROXY=http://127.0.0.1:7890         # HTTP代理地址
