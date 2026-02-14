@@ -8,7 +8,6 @@ import 'providers/dashboard_provider.dart';
 import 'models/stats.dart';
 import '../collection/providers/collection_filter_provider.dart';
 import 'widgets/stat_card.dart';
-import 'widgets/bot_overview_card.dart';
 import 'widgets/queue_status_card.dart';
 import 'widgets/platform_distribution_card.dart';
 import 'widgets/growth_chart_card.dart';
@@ -72,61 +71,12 @@ class DashboardPage extends ConsumerWidget {
                     _buildStatsGrid(context, ref, statsAsync, queueAsync),
                     const SizedBox(height: 40),
                     
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        final bool isWide = constraints.maxWidth > 700;
-                        if (isWide) {
-                          return Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _buildSectionHeader(context, '队列状态', Icons.queue_rounded),
-                                    const SizedBox(height: 16),
-                                    queueAsync.when(
-                                      data: (q) => QueueStatusCard(queue: q),
-                                      loading: () => const _LoadingPlaceholder(height: 240),
-                                      error: (e, _) => _ErrorCard(message: '加载队列失败: $e'),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 24),
-                              Expanded(
-                                flex: 2,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _buildSectionHeader(context, 'Bot 概览', Icons.smart_toy_rounded),
-                                    const SizedBox(height: 16),
-                                    const BotOverviewCard(),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          );
-                        } else {
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildSectionHeader(context, '队列状态', Icons.queue_rounded),
-                              const SizedBox(height: 16),
-                              queueAsync.when(
-                                data: (q) => QueueStatusCard(queue: q),
-                                loading: () => const _LoadingPlaceholder(height: 240),
-                                error: (e, _) => _ErrorCard(message: '加载队列失败: $e'),
-                              ),
-                              const SizedBox(height: 32),
-                              _buildSectionHeader(context, 'Bot 概览', Icons.smart_toy_rounded),
-                              const SizedBox(height: 16),
-                              const BotOverviewCard(),
-                            ],
-                          );
-                        }
-                      },
+                    _buildSectionHeader(context, '队列状态', Icons.queue_rounded),
+                    const SizedBox(height: 16),
+                    queueAsync.when(
+                      data: (q) => QueueStatusCard(queue: q),
+                      loading: () => const _LoadingPlaceholder(height: 240),
+                      error: (e, _) => _ErrorCard(message: '加载队列失败: $e'),
                     ),
                     const SizedBox(height: 40),
 

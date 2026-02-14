@@ -10,7 +10,6 @@ class QueueStatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final parse = queue.parse;
-    final distribution = queue.distribution;
     final total = parse.total;
     if (total == 0) return const Center(child: Text('队列为空'));
 
@@ -60,17 +59,6 @@ class QueueStatusCard extends StatelessWidget {
               total,
               colorScheme.error,
               3,
-            ),
-            const SizedBox(height: 18),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _StatusChip(label: '待推送 ${distribution.willPush}', color: colorScheme.primary),
-                _StatusChip(label: '已过滤 ${distribution.filtered}', color: colorScheme.secondary),
-                _StatusChip(label: '待审阅 ${distribution.pendingReview}', color: colorScheme.tertiary),
-                _StatusChip(label: '已推送 ${distribution.pushed}', color: Colors.green),
-              ],
             ),
           ],
         ),
@@ -153,32 +141,5 @@ class QueueStatusCard extends StatelessWidget {
         ),
       ],
     ).animate().fadeIn(delay: (index * 100).ms).slideX(begin: 0.1, end: 0);
-  }
-}
-
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.w600,
-          fontSize: 12,
-        ),
-      ),
-    );
   }
 }
