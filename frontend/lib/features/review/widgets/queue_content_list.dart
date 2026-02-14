@@ -608,7 +608,7 @@ class _QueueItemCard extends StatelessWidget {
                                 const SizedBox(height: 8),
                                 Row(
                                   children: [
-                                    _PlatformBadge(platform: item.platform),
+                                    _PlatformBadge(platform: item.displayPlatform),
                                     if (item.isNsfw)
                                       Padding(
                                         padding: const EdgeInsets.only(left: 8),

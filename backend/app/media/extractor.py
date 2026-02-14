@@ -9,6 +9,20 @@ from typing import List, Dict, Any, Literal
 MediaType = Literal["photo", "video"]
 
 
+def _is_avatar_like(item: Dict[str, Any]) -> bool:
+    """Return True when the media item is an avatar/profile image."""
+    item_type = str(item.get("type") or "").strip().lower()
+    if item_type in {"avatar", "profile_avatar", "author_avatar"}:
+        return True
+    if bool(item.get("is_avatar")):
+        return True
+
+    url = str(item.get("url") or item.get("stored_url") or "").lower()
+    if "/avatar" in url or "avatar_" in url or "profile_image" in url:
+        return True
+    return False
+
+
 def extract_media_urls(
     raw_metadata: Dict[str, Any],
     cover_url: str = None,
@@ -55,6 +69,9 @@ def extract_media_urls(
     # 处理图片
     images = archive.get('images', [])
     for img in images:
+        if _is_avatar_like(img):
+            continue
+
         url = None
         
         if prefer_stored:
@@ -77,6 +94,9 @@ def extract_media_urls(
     if not media_items:
         stored_images = archive.get('stored_images', [])
         for img in stored_images:
+            if _is_avatar_like(img):
+                continue
+
             url = img.get('url')
             if url:
                 item = {

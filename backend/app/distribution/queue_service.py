@@ -4,8 +4,9 @@
 根据分发规则匹配结果，为每个 (Content × Rule × BotChat) 组合创建队列项。
 """
 from typing import Optional
+from datetime import datetime, timedelta
 
-from sqlalchemy import select, and_, insert
+from sqlalchemy import select, and_, insert, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
@@ -22,7 +23,77 @@ from app.models import (
     QueueItemStatus,
     ContentStatus,
     ReviewStatus,
+    PushedRecord,
 )
+
+
+async def compute_auto_scheduled_at(
+    *,
+    session: AsyncSession,
+    rule: DistributionRule,
+    bot_chat_id: int,
+    target_id: str,
+) -> datetime:
+    """根据规则限流配置计算自动排期时间。"""
+    now = utcnow()
+
+    if not rule.rate_limit or not rule.time_window or rule.rate_limit <= 0 or rule.time_window <= 0:
+        return now
+
+    min_interval_seconds = max(1, int(rule.time_window) // int(rule.rate_limit))
+
+    latest_queue_result = await session.execute(
+        select(func.max(ContentQueueItem.scheduled_at)).where(
+            and_(
+                ContentQueueItem.rule_id == rule.id,
+                ContentQueueItem.bot_chat_id == bot_chat_id,
+                ContentQueueItem.status.in_(
+                    [
+                        QueueItemStatus.PENDING,
+                        QueueItemStatus.SCHEDULED,
+                        QueueItemStatus.PROCESSING,
+                        QueueItemStatus.FAILED,
+                    ]
+                ),
+            )
+        )
+    )
+    latest_queue_time = latest_queue_result.scalar_one_or_none()
+
+    latest_pushed_result = await session.execute(
+        select(func.max(PushedRecord.pushed_at)).where(
+            and_(
+                PushedRecord.target_id == target_id,
+                PushedRecord.push_status == "success",
+            )
+        )
+    )
+    latest_pushed_time = latest_pushed_result.scalar_one_or_none()
+
+    scheduled_at = now
+    anchor = latest_queue_time or latest_pushed_time
+    if anchor and anchor + timedelta(seconds=min_interval_seconds) > scheduled_at:
+        scheduled_at = anchor + timedelta(seconds=min_interval_seconds)
+
+    window_start = now - timedelta(seconds=int(rule.time_window))
+    recent_result = await session.execute(
+        select(PushedRecord.pushed_at)
+        .where(
+            and_(
+                PushedRecord.target_id == target_id,
+                PushedRecord.push_status == "success",
+                PushedRecord.pushed_at >= window_start,
+            )
+        )
+        .order_by(PushedRecord.pushed_at.asc())
+    )
+    recent_pushes = [p for p in recent_result.scalars().all() if p is not None]
+    if len(recent_pushes) >= int(rule.rate_limit):
+        throttle_until = recent_pushes[0] + timedelta(seconds=int(rule.time_window))
+        if throttle_until > scheduled_at:
+            scheduled_at = throttle_until
+
+    return scheduled_at
 
 
 async def enqueue_content(
@@ -104,7 +175,6 @@ async def _enqueue_content_impl(
         .where(DistributionTarget.enabled == True)
         .where(BotChat.enabled == True)
         .where(BotChat.is_accessible == True)
-        .where(BotChat.can_post == True)
     )
 
     # 按 rule_id 组织
@@ -131,7 +201,6 @@ async def _enqueue_content_impl(
 
     # 7. 逐目标创建/更新队列项
     count = 0
-    scheduled_time = utcnow()
 
     for rule_id, pairs in rule_targets.items():
         rule = rules_map.get(rule_id)
@@ -180,6 +249,15 @@ async def _enqueue_content_impl(
                 and content.review_status == ReviewStatus.PENDING
             )
             status = QueueItemStatus.PENDING if needs_approval else QueueItemStatus.SCHEDULED
+            if status == QueueItemStatus.SCHEDULED:
+                scheduled_time = await compute_auto_scheduled_at(
+                    session=session,
+                    rule=rule,
+                    bot_chat_id=bot_chat.id,
+                    target_id=bot_chat.chat_id,
+                )
+            else:
+                scheduled_time = utcnow()
 
             item = ContentQueueItem(
                 content_id=content_id,
@@ -255,7 +333,6 @@ async def mark_historical_parse_success_as_pushed_for_rule(
         .where(DistributionTarget.enabled == True)
         .where(BotChat.enabled == True)
         .where(BotChat.is_accessible == True)
-        .where(BotChat.can_post == True)
     )
     if bot_chat_id is not None:
         target_query = target_query.where(DistributionTarget.bot_chat_id == bot_chat_id)

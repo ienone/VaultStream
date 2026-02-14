@@ -13,8 +13,9 @@ from app.core.dependencies import require_api_token
 from app.core.events import event_bus
 from app.core.logging import logger
 from app.core.time_utils import utcnow
-from app.models import Content, ContentQueueItem, QueueItemStatus
+from app.models import Content, ContentQueueItem, QueueItemStatus, DistributionRule, PushedRecord
 from app.distribution.queue_worker import get_queue_worker
+from app.distribution.queue_service import compute_auto_scheduled_at
 from app.schemas import (
     BatchQueueRetryRequest,
     ContentQueueItemListResponse,
@@ -46,6 +47,7 @@ def _to_queue_item_response(item: ContentQueueItem, content: Optional[Content] =
         author_name=(content.author_name if content else None),
         rule_id=item.rule_id,
         bot_chat_id=item.bot_chat_id,
+        source_platform=(content.platform.value if content and content.platform else None),
         target_platform=item.target_platform,
         target_id=item.target_id,
         status=item.status.value if hasattr(item.status, "value") else str(item.status),
@@ -111,50 +113,75 @@ def _build_status_conditions(status: Optional[str]):
 
 @router.get("/stats", response_model=QueueStatsResponse)
 async def get_queue_stats(
+    rule_id: Optional[int] = Query(None, description="按规则ID过滤"),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """获取队列统计信息。"""
-    grouped_result = await db.execute(
+    conditions = []
+    if rule_id is not None:
+        conditions.append(ContentQueueItem.rule_id == rule_id)
+
+    where_clause = and_(*conditions) if conditions else True
+
+    rows_result = await db.execute(
         select(
+            ContentQueueItem.content_id,
             ContentQueueItem.status,
             ContentQueueItem.needs_approval,
             ContentQueueItem.approved_at,
-            func.count(ContentQueueItem.id),
-        ).group_by(
-            ContentQueueItem.status,
-            ContentQueueItem.needs_approval,
-            ContentQueueItem.approved_at,
-        )
+        ).where(where_clause)
     )
+
+    grouped: dict[int, dict[str, bool]] = {}
+    for content_id, status, needs_approval, approved_at in rows_result.all():
+        flags = grouped.setdefault(
+            int(content_id),
+            {
+                "pending_review": False,
+                "will_push": False,
+                "pushed": False,
+                "filtered": False,
+            },
+        )
+
+        if status == QueueItemStatus.PENDING and bool(needs_approval) and approved_at is None:
+            flags["pending_review"] = True
+        elif status in (
+            QueueItemStatus.PENDING,
+            QueueItemStatus.SCHEDULED,
+            QueueItemStatus.PROCESSING,
+            QueueItemStatus.FAILED,
+        ):
+            flags["will_push"] = True
+        elif status == QueueItemStatus.SUCCESS:
+            flags["pushed"] = True
+        elif status in (QueueItemStatus.SKIPPED, QueueItemStatus.CANCELED):
+            flags["filtered"] = True
 
     stats = {
         "will_push": 0,
         "filtered": 0,
         "pending_review": 0,
         "pushed": 0,
-        "total": 0,
+        "total": len(grouped),
     }
 
-    for status, needs_approval, approved_at, count in grouped_result.all():
-        count_int = int(count or 0)
-        if status == QueueItemStatus.SUCCESS:
-            bucket = "pushed"
-        elif status in (QueueItemStatus.SKIPPED, QueueItemStatus.CANCELED):
-            bucket = "filtered"
-        elif status == QueueItemStatus.PENDING and bool(needs_approval) and approved_at is None:
-            bucket = "pending_review"
-        else:
-            # 其余状态（含 FAILED）统一视为待推送阶段，便于看板聚合处理。
-            bucket = "will_push"
-
-        stats[bucket] += count_int
-        stats["total"] += count_int
+    for flags in grouped.values():
+        if flags["pending_review"]:
+            stats["pending_review"] += 1
+        elif flags["will_push"]:
+            stats["will_push"] += 1
+        elif flags["pushed"]:
+            stats["pushed"] += 1
+        elif flags["filtered"]:
+            stats["filtered"] += 1
 
     now = utcnow()
     due_result = await db.execute(
-        select(func.count(ContentQueueItem.id)).where(
+        select(func.count(func.distinct(ContentQueueItem.content_id))).where(
             and_(
+                where_clause,
                 ContentQueueItem.status == QueueItemStatus.SCHEDULED,
                 ContentQueueItem.scheduled_at <= now,
             )
@@ -415,13 +442,38 @@ async def set_content_queue_status(
     items = result.scalars().all()
 
     if target_status == "will_push":
+        rules_map: dict[int, DistributionRule] = {}
+
+        async def _get_rule(rule_id: int) -> Optional[DistributionRule]:
+            if rule_id in rules_map:
+                return rules_map[rule_id]
+            rule_result = await db.execute(
+                select(DistributionRule).where(DistributionRule.id == rule_id)
+            )
+            rule = rule_result.scalar_one_or_none()
+            if rule:
+                rules_map[rule_id] = rule
+            return rule
+
         changed = 0
         for item in items:
             if item.status in (QueueItemStatus.SUCCESS, QueueItemStatus.CANCELED):
                 continue
+
+            rule = await _get_rule(item.rule_id)
+            if rule:
+                scheduled_at = await compute_auto_scheduled_at(
+                    session=db,
+                    rule=rule,
+                    bot_chat_id=item.bot_chat_id,
+                    target_id=item.target_id,
+                )
+            else:
+                scheduled_at = now
+
             item.status = QueueItemStatus.SCHEDULED
             item.needs_approval = False
-            item.scheduled_at = now
+            item.scheduled_at = scheduled_at
             item.next_attempt_at = None
             changed += 1
         await db.commit()
@@ -452,6 +504,120 @@ async def set_content_queue_status(
         return {"status": "ok", "moved": changed}
 
     raise HTTPException(status_code=400, detail="Unsupported status")
+
+
+@router.post("/content/{content_id}/repush-now")
+async def repush_now_content_queue(
+    content_id: int,
+    target_id: Optional[str] = Query(None, description="仅重推指定目标ID"),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """手动重推：删除去重记录并立即重新排期。"""
+    now = utcnow()
+
+    result = await db.execute(
+        select(ContentQueueItem).where(ContentQueueItem.content_id == content_id)
+    )
+    items = result.scalars().all()
+
+    changed = 0
+    affected_targets: set[str] = set()
+    for item in items:
+        if target_id and item.target_id != target_id:
+            continue
+        item.status = QueueItemStatus.SCHEDULED
+        item.needs_approval = False
+        item.scheduled_at = now
+        item.next_attempt_at = None
+        item.locked_at = None
+        item.locked_by = None
+        item.message_id = None
+        changed += 1
+        affected_targets.add(item.target_id)
+
+    deleted_records = 0
+    if affected_targets:
+        delete_stmt = PushedRecord.__table__.delete().where(
+            and_(
+                PushedRecord.content_id == content_id,
+                PushedRecord.target_id.in_(list(affected_targets)),
+            )
+        )
+        delete_result = await db.execute(delete_stmt)
+        deleted_records = int(delete_result.rowcount or 0)
+
+    await db.commit()
+    await event_bus.publish("queue_updated", {
+        "action": "content_repush_now",
+        "content_id": content_id,
+        "target_id": target_id,
+        "items_changed": changed,
+        "deleted_records": deleted_records,
+        "timestamp": now.isoformat(),
+    })
+    return {
+        "status": "ok",
+        "changed": changed,
+        "deleted_records": deleted_records,
+    }
+
+
+@router.post("/content/batch-repush-now")
+async def batch_repush_now_content_queue(
+    payload: dict = Body(default={}),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """批量手动重推：删除去重记录并立即重新排期。"""
+    content_ids = [int(cid) for cid in (payload.get("content_ids") or [])]
+    if not content_ids:
+        return {"status": "ok", "changed": 0, "deleted_records": 0}
+
+    now = utcnow()
+    result = await db.execute(
+        select(ContentQueueItem).where(ContentQueueItem.content_id.in_(content_ids))
+    )
+    items = result.scalars().all()
+
+    changed = 0
+    target_pairs: set[tuple[int, str]] = set()
+    for item in items:
+        item.status = QueueItemStatus.SCHEDULED
+        item.needs_approval = False
+        item.scheduled_at = now
+        item.next_attempt_at = None
+        item.locked_at = None
+        item.locked_by = None
+        item.message_id = None
+        changed += 1
+        target_pairs.add((item.content_id, item.target_id))
+
+    deleted_records = 0
+    for cid, tid in target_pairs:
+        delete_result = await db.execute(
+            PushedRecord.__table__.delete().where(
+                and_(
+                    PushedRecord.content_id == cid,
+                    PushedRecord.target_id == tid,
+                )
+            )
+        )
+        deleted_records += int(delete_result.rowcount or 0)
+
+    await db.commit()
+    await event_bus.publish("queue_updated", {
+        "action": "content_batch_repush_now",
+        "content_ids": content_ids,
+        "items_changed": changed,
+        "deleted_records": deleted_records,
+        "timestamp": now.isoformat(),
+    })
+    return {
+        "status": "ok",
+        "changed": changed,
+        "deleted_records": deleted_records,
+    }
 
 
 @router.post("/content/{content_id}/reorder")

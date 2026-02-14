@@ -589,6 +589,7 @@ class BotChatCreate(BaseModel):
 
 class BotChatUpdate(BaseModel):
     """更新 Bot 聊天配置"""
+    chat_id: Optional[str] = None
     title: Optional[str] = None
     enabled: Optional[bool] = None
     nsfw_chat_id: Optional[str] = None
@@ -973,6 +974,7 @@ class ContentQueueItemResponse(BaseModel):
     author_name: Optional[str] = None
     rule_id: int
     bot_chat_id: int
+    source_platform: Optional[str] = None
     target_platform: str
     target_id: str
     status: str

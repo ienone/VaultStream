@@ -35,11 +35,19 @@ class BotChats extends _$BotChats {
     return newChat;
   }
 
-  Future<BotChat> updateChat(String chatId, BotChatUpdate update) async {
+  Future<BotChat> updateChat(
+    String chatId,
+    BotChatUpdate update, {
+    String? newChatId,
+  }) async {
     final dio = ref.watch(apiClientProvider);
+    final payload = <String, dynamic>{...update.toJson()};
+    if (newChatId case final id?) {
+      payload['chat_id'] = id;
+    }
     final response = await dio.patch(
       '/bot/chats/$chatId',
-      data: update.toJson(),
+      data: payload,
     );
     final updatedChat = BotChat.fromJson(response.data);
     ref.invalidateSelf();
@@ -71,6 +79,7 @@ class BotChats extends _$BotChats {
 
 @riverpod
 Future<BotStatus> botStatus(Ref ref) async {
+  ref.keepAlive();
   final dio = ref.watch(apiClientProvider);
   final response = await dio.get('/bot/status');
   return BotStatus.fromJson(response.data);
@@ -78,6 +87,7 @@ Future<BotStatus> botStatus(Ref ref) async {
 
 @riverpod
 Future<BotRuntime> botRuntime(Ref ref) async {
+  ref.keepAlive();
   final dio = ref.watch(apiClientProvider);
   final response = await dio.get('/bot/runtime');
   return BotRuntime.fromJson(response.data);

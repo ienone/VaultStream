@@ -6,7 +6,7 @@ class BotChatDialog extends ConsumerStatefulWidget {
   final BotChat? chat;
   final Function(BotChatCreate) onCreate;
   final Future<int> Function(String chatType) resolveBotConfigId;
-  final Function(String, BotChatUpdate)? onUpdate;
+  final Function(String, BotChatUpdate, String?)? onUpdate;
 
   const BotChatDialog({
     super.key,
@@ -36,11 +36,13 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
   void initState() {
     super.initState();
     final chat = widget.chat;
-    _chatIdController = TextEditingController(text: chat?.chatId ?? '');
+    _chatType = chat?.chatType ?? 'channel';
+    _chatIdController = TextEditingController(
+      text: chat == null ? '' : _displayChatId(chat.chatId, _chatType),
+    );
     _titleController = TextEditingController(text: chat?.title ?? '');
     _nsfwChatIdController =
         TextEditingController(text: chat?.nsfwChatId ?? '');
-    _chatType = chat?.chatType ?? 'channel';
     _enabled = chat?.enabled ?? true;
   }
 
@@ -106,28 +108,34 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                           onChanged: (v) => setState(() => _chatType = v!),
                         ),
                         const SizedBox(height: 20),
-                        _buildTextField(
-                          controller: _chatIdController,
-                          label: _isQQType
-                              ? (_chatType == 'qq_group' ? 'QQ 群号 *' : 'QQ 号 *')
-                              : 'Chat ID *',
-                          hint: _isQQType
-                              ? (_chatType == 'qq_group' ? '例如: 123456789' : '对方的 QQ 号')
-                              : '-1001234567890 或 @channel_name',
-                          icon: _isQQType ? Icons.forum_rounded : Icons.alternate_email_rounded,
-                          keyboardType: _isQQType ? TextInputType.number : null,
-                          validator: (v) {
-                            if (v == null || v.isEmpty) {
-                              return _isQQType ? '请输入 QQ 号' : '请输入 Chat ID';
-                            }
-                            if (_isQQType && int.tryParse(v) == null) {
+                      ],
+                      _buildTextField(
+                        controller: _chatIdController,
+                        label: _isQQType
+                            ? (_chatType == 'qq_group' ? 'QQ 群号 *' : 'QQ 号 *')
+                            : 'Chat ID *',
+                        hint: _isQQType
+                            ? (_chatType == 'qq_group' ? '例如: 123456789' : '对方的 QQ 号')
+                            : '-1001234567890 或 @channel_name',
+                        icon: _isQQType ? Icons.forum_rounded : Icons.alternate_email_rounded,
+                        keyboardType: _isQQType ? TextInputType.number : null,
+                        validator: (v) {
+                          if (v == null || v.isEmpty) {
+                            return _isQQType ? '请输入 QQ 号' : '请输入 Chat ID';
+                          }
+                          final raw = v.trim();
+                          if (_isQQType) {
+                            final candidate = raw.startsWith('group:') || raw.startsWith('private:')
+                                ? raw.split(':').last
+                                : raw;
+                            if (int.tryParse(candidate) == null) {
                               return 'QQ 号必须为纯数字';
                             }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 24),
-                      ],
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 24),
                       _buildTextField(
                         controller: _titleController,
                         label: '显示名称',
@@ -291,6 +299,8 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
+    final normalizedChatId = _normalizeChatId(_chatIdController.text.trim());
+
     if (isEditing) {
       widget.onUpdate?.call(
         widget.chat!.chatId,
@@ -302,20 +312,14 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
               ? null
               : _nsfwChatIdController.text,
         ),
+        normalizedChatId,
       );
     } else {
-      var chatId = _chatIdController.text.trim();
-      if (_chatType == 'qq_group' && !chatId.startsWith('group:')) {
-        chatId = 'group:$chatId';
-      } else if (_chatType == 'qq_private' && !chatId.startsWith('private:')) {
-        chatId = 'private:$chatId';
-      }
-
       final botConfigId = await widget.resolveBotConfigId(_chatType);
       widget.onCreate(
         BotChatCreate(
           botConfigId: botConfigId,
-          chatId: chatId,
+          chatId: normalizedChatId,
           chatType: _chatType,
           title:
               _titleController.text.isEmpty ? null : _titleController.text,
@@ -328,5 +332,27 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
     }
     if (!mounted) return;
     Navigator.of(context).pop();
+  }
+
+  String _normalizeChatId(String raw) {
+    if (_chatType == 'qq_group') {
+      if (raw.startsWith('group:')) return raw;
+      return 'group:$raw';
+    }
+    if (_chatType == 'qq_private') {
+      if (raw.startsWith('private:')) return raw;
+      return 'private:$raw';
+    }
+    return raw;
+  }
+
+  String _displayChatId(String raw, String chatType) {
+    if (chatType == 'qq_group' && raw.startsWith('group:')) {
+      return raw.substring('group:'.length);
+    }
+    if (chatType == 'qq_private' && raw.startsWith('private:')) {
+      return raw.substring('private:'.length);
+    }
+    return raw;
   }
 }

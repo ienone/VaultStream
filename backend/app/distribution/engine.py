@@ -165,7 +165,7 @@ class DistributionEngine:
         
         实现要点：
         - 跨规则排重：同一 Content 对同一 BotChat 只产生一条任务（保留优先级最高规则）
-        - 权限前置校验：检查 BotChat.enabled, is_accessible, can_post
+        - 可用性前置校验：检查 BotChat.enabled, is_accessible
         - 批量查询优化：一次性获取所有规则目标，预加载 BotChat 表规避循环内查询
         """
         if content.review_status not in [ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED]:
@@ -186,7 +186,6 @@ class DistributionEngine:
             .where(DistributionTarget.enabled == True)
             .where(BotChat.enabled == True)
             .where(BotChat.is_accessible == True)
-            .where(BotChat.can_post == True)
         )
         
         # 按 rule_id 组织目标
@@ -273,17 +272,13 @@ class DistributionEngine:
         return tasks
     
     async def _check_bot_chat_accessible(self, bot_chat: BotChat) -> bool:
-        """前置权限校验：检查 BotChat 是否可访问且可发送"""
+        """前置可用性校验：检查 BotChat 是否启用且可访问"""
         if not bot_chat.enabled:
             logger.debug(f"BotChat disabled: chat_id={bot_chat.chat_id}")
             return False
         
         if not bot_chat.is_accessible:
             logger.warning(f"BotChat not accessible: chat_id={bot_chat.chat_id}")
-            return False
-        
-        if not bot_chat.can_post:
-            logger.warning(f"BotChat cannot post: chat_id={bot_chat.chat_id}")
             return False
         
         return True

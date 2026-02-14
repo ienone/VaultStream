@@ -147,6 +147,7 @@ class DistributionQueueWorker:
 
         stmt = (
             select(ContentQueueItem)
+            .join(BotChat, BotChat.id == ContentQueueItem.bot_chat_id)
             .where(
                 and_(
                     or_(
@@ -165,6 +166,8 @@ class DistributionQueueWorker:
                         ContentQueueItem.locked_at.is_(None),
                         ContentQueueItem.locked_at < lock_expire,
                     ),
+                    BotChat.enabled == True,
+                    BotChat.is_accessible == True,
                 )
             )
             .order_by(
@@ -220,6 +223,20 @@ class DistributionQueueWorker:
             select(BotChat).where(BotChat.id == item.bot_chat_id)
         )
         bot_chat = bot_chat_result.scalar_one_or_none()
+
+        # 1.1 目标可用性兜底（防止领取后被关闭/失联）
+        if not bot_chat or not bool(bot_chat.enabled) or not bool(bot_chat.is_accessible):
+            item.status = QueueItemStatus.SCHEDULED
+            item.last_error = "Target disabled or inaccessible"
+            item.locked_at = None
+            item.locked_by = None
+            await session.commit()
+            logger.info(
+                "⏸️ 队列项暂缓 (目标不可用): item_id=%s, bot_chat_id=%s",
+                item.id,
+                item.bot_chat_id,
+            )
+            return
 
         # 2. 资格检查
         if not content or content.review_status not in (
@@ -277,16 +294,34 @@ class DistributionQueueWorker:
             return
 
         if not message_id:
-            await self._handle_failure(
-                session, item, RuntimeError("Push returned no message_id")
-            )
-            return
+            if item.target_platform == "telegram":
+                fallback_message_id = (
+                    f"telegram-noid-{int(utcnow().timestamp() * 1000)}-"
+                    f"{item.id}-{item.attempt_count or 0}"
+                )
+                logger.warning(
+                    "Telegram push returned no message_id; treating as success to avoid duplicate retries: "
+                    "item_id={}, content_id={}, target_id={}",
+                    item.id,
+                    item.content_id,
+                    actual_target_id,
+                )
+                message_id = fallback_message_id
+            else:
+                await self._handle_failure(
+                    session, item, RuntimeError("Push returned no message_id")
+                )
+                return
 
         # 7. 成功处理
         now = utcnow()
         item.status = QueueItemStatus.SUCCESS
         item.message_id = str(message_id)
         item.completed_at = now
+        item.last_error = None
+        item.last_error_type = None
+        item.last_error_at = None
+        item.next_attempt_at = None
         item.locked_at = None
         item.locked_by = None
 

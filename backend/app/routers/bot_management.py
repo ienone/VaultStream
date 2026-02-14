@@ -322,6 +322,23 @@ async def update_bot_chat(
         raise HTTPException(status_code=404, detail="Chat not found")
     
     update_data = update.model_dump(exclude_unset=True)
+
+    if "chat_id" in update_data:
+        new_chat_id = str(update_data["chat_id"] or "").strip()
+        if not new_chat_id:
+            raise HTTPException(status_code=400, detail="chat_id cannot be empty")
+
+        duplicate_result = await db.execute(
+            select(BotChat).where(
+                BotChat.chat_id == new_chat_id,
+                BotChat.id != db_chat.id,
+            )
+        )
+        if duplicate_result.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Chat already exists")
+
+        update_data["chat_id"] = new_chat_id
+
     for key, value in update_data.items():
         setattr(db_chat, key, value)
     

@@ -272,7 +272,12 @@ class ContentQueue extends _$ContentQueue {
 @riverpod
 Future<Map<String, int>> queueStats(Ref ref, int? ruleId) async {
   final dio = ref.watch(apiClientProvider);
-  final response = await dio.get('/distribution-queue/stats');
+  final response = await dio.get(
+    '/distribution-queue/stats',
+    queryParameters: {
+      if (ruleId != null) 'rule_id': ruleId,
+    },
+  );
   final data = Map<String, dynamic>.from(response.data as Map);
 
   final mapped = <String, int>{

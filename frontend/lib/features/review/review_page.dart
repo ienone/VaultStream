@@ -69,6 +69,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
           break;
         case 'content_pushed':
         case 'distribution_push_success':
+          ref.invalidate(botChatsProvider);
           ref.invalidate(pushedRecordsProvider);
           ref.invalidate(queueStatsProvider(_selectedRuleId));
           _maybeToast('推送成功，列表已实时更新');
@@ -487,6 +488,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
 
   Widget _buildStatusTabs() {
     final filter = ref.watch(queueFilterProvider);
+    final rulesAsync = ref.watch(distributionRulesProvider);
     final statsAsync = ref.watch(queueStatsProvider(_selectedRuleId));
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -499,7 +501,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         ),
       ),
       child: statsAsync.when(
-        loading: () => const LinearProgressIndicator(),
+        loading: () => rulesAsync.isLoading
+            ? const SizedBox.shrink()
+            : const LinearProgressIndicator(),
         error: (e, st) => const SizedBox.shrink(),
         data: (stats) {
           final willPush = stats['will_push'] ?? 0;
@@ -948,10 +952,10 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
 
   Future<void> _retryPush(PushedRecord record) async {
     try {
-      await ref.read(pushedRecordsProvider.notifier).deleteRecord(record.id);
-      await ref.read(contentQueueProvider.notifier).moveToStatus(
-        record.contentId,
-        QueueStatus.willPush,
+      final dio = ref.read(apiClientProvider);
+      await dio.post(
+        '/distribution-queue/content/${record.contentId}/repush-now',
+        queryParameters: {'target_id': record.targetId},
       );
       ref.invalidate(pushedRecordsProvider);
       ref.invalidate(contentQueueProvider);
@@ -959,7 +963,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       ref.read(queueFilterProvider.notifier).setStatus(QueueStatus.willPush);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已重置状态，内容已移至待推送队列')),
+          const SnackBar(content: Text('已加入立即重推队列')),
         );
       }
     } catch (e) {
@@ -1003,9 +1007,13 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         chat: chat,
         resolveBotConfigId: _resolveBotConfigId,
         onCreate: (_) {},
-        onUpdate: (chatId, update) async {
+        onUpdate: (chatId, update, newChatId) async {
           try {
-            await ref.read(botChatsProvider.notifier).updateChat(chatId, update);
+            await ref.read(botChatsProvider.notifier).updateChat(
+              chatId,
+              update,
+              newChatId: newChatId,
+            );
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('配置更新成功')),

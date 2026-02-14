@@ -30,6 +30,7 @@ abstract class QueueItem with _$QueueItem {
     @JsonKey(name: 'bot_chat_id') int? botChatId,
     @JsonKey(name: 'target_id') String? targetId,
     String? title,
+    @JsonKey(name: 'source_platform') String? sourcePlatform,
     @JsonKey(name: 'target_platform') required String platform,
     @Default([]) List<String> tags,
     @JsonKey(name: 'is_nsfw') @Default(false) bool isNsfw,
@@ -41,6 +42,10 @@ abstract class QueueItem with _$QueueItem {
     @JsonKey(name: 'completed_at') DateTime? pushedAt,
     @Default(0) int priority,
   }) = _QueueItem;
+
+  const QueueItem._();
+
+  String get displayPlatform => sourcePlatform ?? platform;
 
   factory QueueItem.fromJson(Map<String, dynamic> json) =>
       _$QueueItemFromJson(json);
