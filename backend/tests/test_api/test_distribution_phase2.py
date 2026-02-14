@@ -7,14 +7,31 @@ from httpx import AsyncClient
 
 
 class TestDistributionPhase2API:
+    @staticmethod
+    async def _create_primary_bot_config(client: AsyncClient, suffix: str) -> int:
+        cfg_resp = await client.post(
+            "/api/v1/bot-config",
+            json={
+                "platform": "telegram",
+                "name": f"phase2-primary-{suffix}",
+                "bot_token": f"123456:{suffix}",
+                "enabled": True,
+                "is_primary": True,
+            },
+        )
+        assert cfg_resp.status_code == 201
+        return cfg_resp.json()["id"]
+
     @pytest.mark.asyncio
     async def test_create_rule_then_bind_target_via_target_api(self, client: AsyncClient):
         suffix = datetime.utcnow().strftime("%H%M%S%f")
         chat_id = f"-100phase2{suffix[-6:]}"
+        bot_config_id = await self._create_primary_bot_config(client, suffix)
 
         chat_resp = await client.post(
             "/api/v1/bot/chats",
             json={
+                "bot_config_id": bot_config_id,
                 "chat_id": chat_id,
                 "chat_type": "channel",
                 "title": f"Phase2 Chat {suffix}",
@@ -58,10 +75,12 @@ class TestDistributionPhase2API:
     async def test_assign_rules_for_chat(self, client: AsyncClient):
         suffix = datetime.utcnow().strftime("%H%M%S%f")
         chat_id = f"-100bind{suffix[-6:]}"
+        bot_config_id = await self._create_primary_bot_config(client, suffix)
 
         chat_resp = await client.post(
             "/api/v1/bot/chats",
             json={
+                "bot_config_id": bot_config_id,
                 "chat_id": chat_id,
                 "chat_type": "group",
                 "title": f"RuleBinding Chat {suffix}",
@@ -98,6 +117,55 @@ class TestDistributionPhase2API:
         assert summary_resp.status_code == 200
         summary_list = summary_resp.json()
         assert any(item["chat_id"] == chat_id for item in summary_list)
+
+    @pytest.mark.asyncio
+    async def test_delete_rule_with_targets(self, client: AsyncClient):
+        suffix = datetime.utcnow().strftime("%H%M%S%f")
+        chat_id = f"-100del{suffix[-6:]}"
+        bot_config_id = await self._create_primary_bot_config(client, suffix)
+
+        chat_resp = await client.post(
+            "/api/v1/bot/chats",
+            json={
+                "bot_config_id": bot_config_id,
+                "chat_id": chat_id,
+                "chat_type": "channel",
+                "title": f"Delete Rule Chat {suffix}",
+                "enabled": True,
+            },
+        )
+        assert chat_resp.status_code == 200
+        chat = chat_resp.json()
+
+        rule_resp = await client.post(
+            "/api/v1/distribution-rules",
+            json={
+                "name": f"phase2-delete-{suffix}",
+                "match_conditions": {"tags": ["delete", "target"], "tags_match_mode": "any"},
+                "enabled": True,
+                "priority": 1,
+                "nsfw_policy": "block",
+                "approval_required": False,
+            },
+        )
+        assert rule_resp.status_code == 200
+        rule = rule_resp.json()
+
+        create_target_resp = await client.post(
+            f"/api/v1/distribution-rules/{rule['id']}/targets",
+            json={
+                "bot_chat_id": chat["id"],
+                "enabled": True,
+            },
+        )
+        assert create_target_resp.status_code == 201
+
+        delete_rule_resp = await client.delete(f"/api/v1/distribution-rules/{rule['id']}")
+        assert delete_rule_resp.status_code == 200
+        assert delete_rule_resp.json()["status"] == "deleted"
+
+        verify_resp = await client.get(f"/api/v1/distribution-rules/{rule['id']}")
+        assert verify_resp.status_code == 404
 
     @pytest.mark.asyncio
     async def test_bot_config_crud_and_activate(self, client: AsyncClient):

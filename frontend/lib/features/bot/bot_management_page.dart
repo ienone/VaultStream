@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -44,7 +45,8 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
         final failed = data['failed'] ?? 0;
         final total = data['total'] ?? 0;
         setState(() {
-          _syncProgressText = '同步中... $updated 更新 / $created 新增 / $failed 失败 / $total 总数';
+          _syncProgressText =
+              '同步中... $updated 更新 / $created 新增 / $failed 失败 / $total 总数';
         });
       } else if (event.type == 'bot_sync_completed') {
         setState(() {
@@ -72,7 +74,9 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('加载失败: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('加载失败: $e')));
       }
     }
   }
@@ -92,9 +96,14 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
                     Container(
                       width: double.infinity,
                       margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(_syncProgressText!),
@@ -150,7 +159,8 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
           itemBuilder: (context) => [
             const PopupMenuItem(value: 'activate', child: Text('设为主 Bot')),
             const PopupMenuItem(value: 'sync', child: Text('同步群组')),
-            if (platform == 'qq') const PopupMenuItem(value: 'qr', child: Text('获取登录二维码')),
+            if (platform == 'qq')
+              const PopupMenuItem(value: 'qr', child: Text('获取登录二维码')),
             const PopupMenuItem(value: 'edit', child: Text('编辑')),
             const PopupMenuItem(value: 'delete', child: Text('删除')),
           ],
@@ -171,7 +181,11 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
     final data = (response.data as Map).cast<String, dynamic>();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('同步完成: updated=${data['updated']} created=${data['created']} failed=${data['failed']}')),
+      SnackBar(
+        content: Text(
+          '同步完成: updated=${data['updated']} created=${data['created']} failed=${data['failed']}',
+        ),
+      ),
     );
     await _loadConfigs();
   }
@@ -185,9 +199,14 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Napcat 登录二维码'),
-        content: SelectableText(data['qr_code']?.toString() ?? data['message']?.toString() ?? '暂无二维码'),
+        content: SelectableText(
+          data['qr_code']?.toString() ?? data['message']?.toString() ?? '暂无二维码',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('关闭')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('关闭'),
+          ),
         ],
       ),
     );
@@ -200,61 +219,129 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
   }
 
   Future<void> _showEditDialog(Map<String, dynamic> cfg) async {
-    final nameController = TextEditingController(text: (cfg['name'] ?? '').toString());
+    final nameController = TextEditingController(
+      text: (cfg['name'] ?? '').toString(),
+    );
     final tokenController = TextEditingController();
-    final httpController = TextEditingController(text: (cfg['napcat_http_url'] ?? '').toString());
-    final wsController = TextEditingController(text: (cfg['napcat_ws_url'] ?? '').toString());
+    final httpController = TextEditingController(
+      text: (cfg['napcat_http_url'] ?? '').toString(),
+    );
+    final wsController = TextEditingController(
+      text: (cfg['napcat_ws_url'] ?? '').toString(),
+    );
     final enabled = ValueNotifier<bool>(cfg['enabled'] == true);
+    String? nameError;
+    String? httpUrlError;
 
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('编辑 Bot 配置'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: nameController, decoration: const InputDecoration(labelText: '名称')),
-              if (cfg['platform'] == 'telegram')
-                TextField(controller: tokenController, decoration: const InputDecoration(labelText: '新 Token（可留空）')),
-              if (cfg['platform'] == 'qq') ...[
-                TextField(controller: httpController, decoration: const InputDecoration(labelText: 'Napcat HTTP URL')),
-                TextField(controller: wsController, decoration: const InputDecoration(labelText: 'Napcat WS URL')),
-              ],
-              ValueListenableBuilder<bool>(
-                valueListenable: enabled,
-                builder: (context, value, _) => SwitchListTile(
-                  value: value,
-                  onChanged: (v) => enabled.value = v,
-                  title: const Text('启用'),
-                ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) => AlertDialog(
+          title: const Text('编辑 Bot 配置'),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildDialogTextField(
+                    controller: nameController,
+                    labelText: '名称',
+                    errorText: nameError,
+                  ),
+                  if (cfg['platform'] == 'telegram') ...[
+                    const SizedBox(height: 12),
+                    _buildDialogTextField(
+                      controller: tokenController,
+                      labelText: '新 Token（可留空）',
+                    ),
+                  ],
+                  if (cfg['platform'] == 'qq') ...[
+                    const SizedBox(height: 12),
+                    _buildDialogTextField(
+                      controller: httpController,
+                      labelText: 'Napcat HTTP URL',
+                      errorText: httpUrlError,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildDialogTextField(
+                      controller: wsController,
+                      labelText: 'Napcat WS URL',
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: enabled,
+                    builder: (context, value, _) => SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: value,
+                      onChanged: (v) => enabled.value = v,
+                      title: const Text('启用'),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                setStateDialog(() {
+                  nameError = null;
+                  httpUrlError = null;
+                });
+
+                final trimmedName = nameController.text.trim();
+                final trimmedHttp = httpController.text.trim();
+                if (trimmedName.isEmpty) {
+                  setStateDialog(() => nameError = '名称为必填项');
+                  return;
+                }
+                if (cfg['platform'] == 'qq' && trimmedHttp.isEmpty) {
+                  setStateDialog(
+                    () => httpUrlError = 'QQ/Napcat 至少需要填写 HTTP URL',
+                  );
+                  return;
+                }
+
+                final dio = ref.read(apiClientProvider);
+                final payload = <String, dynamic>{
+                  'name': trimmedName,
+                  'enabled': enabled.value,
+                };
+                if (cfg['platform'] == 'telegram' &&
+                    tokenController.text.trim().isNotEmpty) {
+                  payload['bot_token'] = tokenController.text.trim();
+                }
+                if (cfg['platform'] == 'qq') {
+                  payload['napcat_http_url'] = trimmedHttp;
+                  payload['napcat_ws_url'] = wsController.text.trim();
+                }
+                try {
+                  await dio.patch('/bot-config/${cfg['id']}', data: payload);
+                  if (ctx.mounted) Navigator.of(ctx).pop();
+                  await _loadConfigs();
+                } on DioException catch (e) {
+                  final detail = e.response?.data is Map
+                      ? (e.response?.data['detail']?.toString() ??
+                            e.message ??
+                            '请求失败')
+                      : (e.message ?? '请求失败');
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('保存失败: $detail')));
+                }
+              },
+              child: const Text('保存'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('取消')),
-          FilledButton(
-            onPressed: () async {
-              final dio = ref.read(apiClientProvider);
-              final payload = <String, dynamic>{
-                'name': nameController.text.trim(),
-                'enabled': enabled.value,
-              };
-              if (cfg['platform'] == 'telegram' && tokenController.text.trim().isNotEmpty) {
-                payload['bot_token'] = tokenController.text.trim();
-              }
-              if (cfg['platform'] == 'qq') {
-                payload['napcat_http_url'] = httpController.text.trim();
-                payload['napcat_ws_url'] = wsController.text.trim();
-              }
-              await dio.patch('/bot-config/${cfg['id']}', data: payload);
-              if (ctx.mounted) Navigator.of(ctx).pop();
-              await _loadConfigs();
-            },
-            child: const Text('保存'),
-          ),
-        ],
       ),
     );
   }
@@ -267,50 +354,89 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
     final wsController = TextEditingController();
 
     int step = 0;
+    String? nameError;
+    String? tokenError;
+    String? httpUrlError;
+    const stepTitles = ['选择平台', '输入凭证', '创建并同步'];
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setStateDialog) => AlertDialog(
           title: const Text('添加 Bot'),
           content: SizedBox(
-            width: 460,
-            child: Stepper(
-              currentStep: step,
-              controlsBuilder: (context, details) => const SizedBox.shrink(),
-              steps: [
-                Step(
-                  title: const Text('选择平台'),
-                  isActive: step >= 0,
-                  content: SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(value: 'telegram', label: Text('Telegram')),
-                      ButtonSegment(value: 'qq', label: Text('QQ/Napcat')),
-                    ],
-                    selected: {platform},
-                    onSelectionChanged: (s) => setStateDialog(() => platform = s.first),
-                  ),
+            width: 560,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 460),
+              child: SingleChildScrollView(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildWizardTimeline(currentStep: step),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${step + 1}  ${stepTitles[step]}',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 14),
+                          if (step == 0)
+                            SegmentedButton<String>(
+                              segments: const [
+                                ButtonSegment(
+                                  value: 'telegram',
+                                  label: Text('Telegram'),
+                                ),
+                                ButtonSegment(
+                                  value: 'qq',
+                                  label: Text('QQ/Napcat'),
+                                ),
+                              ],
+                              selected: {platform},
+                              onSelectionChanged: (s) =>
+                                  setStateDialog(() => platform = s.first),
+                            ),
+                          if (step == 1)
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _buildDialogTextField(
+                                  controller: nameController,
+                                  labelText: 'Bot 名称',
+                                  errorText: nameError,
+                                ),
+                                if (platform == 'telegram') ...[
+                                  const SizedBox(height: 12),
+                                  _buildDialogTextField(
+                                    controller: tokenController,
+                                    labelText: 'Bot Token',
+                                    errorText: tokenError,
+                                  ),
+                                ],
+                                if (platform == 'qq') ...[
+                                  const SizedBox(height: 12),
+                                  _buildDialogTextField(
+                                    controller: httpController,
+                                    labelText: 'Napcat HTTP URL',
+                                    errorText: httpUrlError,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _buildDialogTextField(
+                                    controller: wsController,
+                                    labelText: 'Napcat WS URL',
+                                  ),
+                                ],
+                              ],
+                            ),
+                          if (step == 2) const Text('保存配置后自动触发一次同步。'),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                Step(
-                  title: const Text('输入凭证'),
-                  isActive: step >= 1,
-                  content: Column(
-                    children: [
-                      TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Bot 名称')),
-                      if (platform == 'telegram')
-                        TextField(controller: tokenController, decoration: const InputDecoration(labelText: 'Bot Token')),
-                      if (platform == 'qq') ...[
-                        TextField(controller: httpController, decoration: const InputDecoration(labelText: 'Napcat HTTP URL')),
-                        TextField(controller: wsController, decoration: const InputDecoration(labelText: 'Napcat WS URL')),
-                      ],
-                    ],
-                  ),
-                ),
-                Step(
-                  title: const Text('创建并同步'),
-                  isActive: step >= 2,
-                  content: const Text('保存配置后自动触发一次同步。'),
-                ),
-              ],
+              ),
             ),
           ),
           actions: [
@@ -326,32 +452,152 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
             ),
             FilledButton(
               onPressed: () async {
+                setStateDialog(() {
+                  nameError = null;
+                  tokenError = null;
+                  httpUrlError = null;
+                });
+
                 if (step < 2) {
+                  if (step == 1) {
+                    final trimmedName = nameController.text.trim();
+                    final trimmedToken = tokenController.text.trim();
+                    final trimmedHttp = httpController.text.trim();
+
+                    if (trimmedName.isEmpty) {
+                      setStateDialog(() => nameError = 'Bot 名称为必填项');
+                      return;
+                    }
+                    if (platform == 'telegram' && trimmedToken.isEmpty) {
+                      setStateDialog(
+                        () => tokenError = 'Telegram Bot Token 为必填项',
+                      );
+                      return;
+                    }
+                    if (platform == 'qq' && trimmedHttp.isEmpty) {
+                      setStateDialog(
+                        () => httpUrlError = 'QQ/Napcat 至少需要填写 HTTP URL',
+                      );
+                      return;
+                    }
+                  }
                   setStateDialog(() => step += 1);
                   return;
                 }
                 final dio = ref.read(apiClientProvider);
+                final trimmedName = nameController.text.trim();
+                final trimmedToken = tokenController.text.trim();
+                final trimmedHttp = httpController.text.trim();
                 final payload = <String, dynamic>{
                   'platform': platform,
-                  'name': nameController.text.trim().isEmpty ? '$platform-bot' : nameController.text.trim(),
+                  'name': trimmedName,
                   'enabled': true,
                 };
                 if (platform == 'telegram') {
-                  payload['bot_token'] = tokenController.text.trim();
+                  payload['bot_token'] = trimmedToken;
                 } else {
-                  payload['napcat_http_url'] = httpController.text.trim();
+                  payload['napcat_http_url'] = trimmedHttp;
                   payload['napcat_ws_url'] = wsController.text.trim();
                 }
-                final createResp = await dio.post('/bot-config', data: payload);
-                final cfg = (createResp.data as Map).cast<String, dynamic>();
-                await dio.post('/bot-config/${cfg['id']}/sync-chats');
-                if (ctx.mounted) Navigator.of(ctx).pop();
-                await _loadConfigs();
+                try {
+                  final createResp = await dio.post(
+                    '/bot-config',
+                    data: payload,
+                  );
+                  final cfg = (createResp.data as Map).cast<String, dynamic>();
+                  await dio.post('/bot-config/${cfg['id']}/sync-chats');
+                  if (ctx.mounted) Navigator.of(ctx).pop();
+                  await _loadConfigs();
+                } on DioException catch (e) {
+                  final detail = e.response?.data is Map
+                      ? (e.response?.data['detail']?.toString() ??
+                            e.message ??
+                            '请求失败')
+                      : (e.message ?? '请求失败');
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('创建失败: $detail')));
+                }
               },
               child: Text(step < 2 ? '下一步' : '完成'),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildDialogTextField({
+    required TextEditingController controller,
+    required String labelText,
+    String? errorText,
+  }) {
+    return TextField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: labelText,
+        errorText: errorText,
+        floatingLabelBehavior: FloatingLabelBehavior.always,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWizardTimeline({required int currentStep}) {
+    const circleSize = 34.0;
+    final scheme = Theme.of(context).colorScheme;
+
+    Widget buildCircle(int index) {
+      final isActive = currentStep == index;
+      final isComplete = currentStep > index;
+      final bgColor = (isActive || isComplete)
+          ? scheme.primaryContainer
+          : scheme.surfaceContainerHighest;
+      final fgColor = (isActive || isComplete)
+          ? scheme.onPrimaryContainer
+          : scheme.onSurfaceVariant;
+
+      return Container(
+        width: circleSize,
+        height: circleSize,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: bgColor,
+          shape: BoxShape.circle,
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Text(
+          '${index + 1}',
+          style: TextStyle(fontWeight: FontWeight.w700, color: fgColor),
+        ),
+      );
+    }
+
+    Widget buildLine(bool active) {
+      return Container(
+        width: 2,
+        height: 38,
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        color: active
+            ? scheme.primaryContainer
+            : scheme.outlineVariant.withValues(alpha: 0.7),
+      );
+    }
+
+    return SizedBox(
+      width: circleSize,
+      child: Column(
+        children: [
+          buildCircle(0),
+          buildLine(currentStep > 0),
+          buildCircle(1),
+          buildLine(currentStep > 1),
+          buildCircle(2),
+        ],
       ),
     );
   }

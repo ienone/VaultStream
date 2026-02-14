@@ -44,10 +44,13 @@ async def _validate_bot_config_payload(payload: BotConfigCreate | BotConfigUpdat
         # QQ 至少要求一个地址可用
         napcat_http_url = getattr(payload, "napcat_http_url", None)
         napcat_ws_url = getattr(payload, "napcat_ws_url", None)
+        napcat_access_token = getattr(payload, "napcat_access_token", None)
         if napcat_http_url is not None and not napcat_http_url.strip():
             raise HTTPException(status_code=400, detail="napcat_http_url cannot be empty")
         if napcat_ws_url is not None and not napcat_ws_url.strip():
             raise HTTPException(status_code=400, detail="napcat_ws_url cannot be empty")
+        if napcat_access_token is not None and not napcat_access_token.strip():
+            raise HTTPException(status_code=400, detail="napcat_access_token cannot be empty")
 
 
 async def _to_bot_config_response(db: AsyncSession, cfg: BotConfig) -> BotConfigResponse:
@@ -62,6 +65,7 @@ async def _to_bot_config_response(db: AsyncSession, cfg: BotConfig) -> BotConfig
         bot_token_masked=_mask_token(cfg.bot_token),
         napcat_http_url=cfg.napcat_http_url,
         napcat_ws_url=cfg.napcat_ws_url,
+        napcat_access_token_masked=_mask_token(cfg.napcat_access_token),
         enabled=bool(cfg.enabled),
         is_primary=bool(cfg.is_primary),
         bot_id=cfg.bot_id,
@@ -86,6 +90,7 @@ async def create_bot_config(
         bot_token=payload.bot_token,
         napcat_http_url=payload.napcat_http_url,
         napcat_ws_url=payload.napcat_ws_url,
+        napcat_access_token=payload.napcat_access_token,
         enabled=payload.enabled,
         is_primary=payload.is_primary,
     )
@@ -162,6 +167,12 @@ async def delete_bot_config(
     if not cfg:
         raise HTTPException(status_code=404, detail="Bot config not found")
 
+    # 强制收口：每个 chat 必须隶属某个 bot_config，禁止删除仍被引用的配置
+    chat_count_result = await db.execute(select(func.count(BotChat.id)).where(BotChat.bot_config_id == cfg.id))
+    chat_count = int(chat_count_result.scalar() or 0)
+    if chat_count > 0:
+        raise HTTPException(status_code=400, detail=f"Bot config has bound chats: {chat_count}")
+
     await db.delete(cfg)
     await db.commit()
 
@@ -215,8 +226,11 @@ async def get_napcat_qr_code(
 
     endpoint = cfg.napcat_http_url.rstrip("/") + "/get_qrcode"
     try:
+        headers = {}
+        if cfg.napcat_access_token:
+            headers["Authorization"] = f"Bearer {cfg.napcat_access_token}"
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(endpoint)
+            resp = await client.get(endpoint, headers=headers)
             if resp.status_code != 200:
                 return BotConfigQrCodeResponse(
                     bot_config_id=cfg.id,
@@ -355,8 +369,11 @@ async def _sync_qq_chats(cfg: BotConfig, db: AsyncSession) -> BotConfigSyncChats
     failed = 0
 
     try:
+        headers = {}
+        if cfg.napcat_access_token:
+            headers["Authorization"] = f"Bearer {cfg.napcat_access_token}"
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(endpoint)
+            resp = await client.get(endpoint, headers=headers)
             payload = resp.json()
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to fetch napcat group list: {e}")

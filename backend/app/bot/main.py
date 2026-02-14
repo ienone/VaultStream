@@ -3,7 +3,9 @@ Bot 主程序模块
 
 负责 Bot 应用的初始化、配置和启动
 """
+import asyncio
 import httpx
+from sqlalchemy import select
 from telegram import BotCommand, Update, ChatMemberUpdated
 from telegram.ext import (
     Application,
@@ -13,6 +15,9 @@ from telegram.ext import (
 )
 from app.core.logging import logger
 from app.core.config import settings
+from app.core.db_adapter import AsyncSessionLocal
+from app.models import BotChat
+from app.services.bot_config_runtime import get_primary_telegram_runtime
 
 from .permissions import PermissionManager
 from .commands import (
@@ -29,8 +34,11 @@ class VaultStreamBot:
     
     def __init__(self):
         self.api_base = f"http://localhost:{settings.api_port}/api/v1"
-        self.target_platform = f"TG_CHANNEL_{settings.telegram_channel_id}"
+        self.target_platform = "TG_PRIMARY_BOT"
         self.api_token = settings.api_token.get_secret_value() if settings.api_token else ""
+        self.bot_token: str | None = None
+        self.channel_id: str | None = None
+        self.bot_config_id: int | None = None
         
         # 解析权限配置
         self.admin_ids = self._parse_ids(settings.telegram_admin_ids)
@@ -42,6 +50,23 @@ class VaultStreamBot:
         )
         
         logger.info(f"Bot 权限配置: admins={len(self.admin_ids)}, whitelist={len(self.whitelist_ids)}, blacklist={len(self.blacklist_ids)}")
+
+    async def _load_runtime_config(self) -> bool:
+        async with AsyncSessionLocal() as db:
+            cfg, default_chat_id = await get_primary_telegram_runtime(db)
+            if not cfg or not cfg.bot_token:
+                logger.error("未找到可用的主 Telegram BotConfig（enabled + is_primary）")
+                return False
+
+            self.bot_token = cfg.bot_token
+            self.channel_id = default_chat_id
+            self.bot_config_id = cfg.id
+            self.target_platform = f"TG_BOTCFG_{cfg.id}"
+
+            if not self.channel_id:
+                logger.warning("当前主 BotConfig 未绑定任何启用的 BotChat，/get 系列命令将无法按频道拉取队列")
+
+            return True
 
     def _parse_ids(self, ids_str: str) -> set:
         """解析ID列表字符串"""
@@ -103,6 +128,7 @@ class VaultStreamBot:
                 pass
             
             payload = {
+                "bot_config_id": self.bot_config_id,
                 "chat_id": str(chat.id),
                 "chat_type": chat.type,
                 "title": chat.title,
@@ -133,7 +159,8 @@ class VaultStreamBot:
             application.bot_data["permission_manager"] = self.permission_manager
             application.bot_data["api_base"] = self.api_base
             application.bot_data["target_platform"] = self.target_platform
-            application.bot_data["channel_id"] = settings.telegram_channel_id
+            application.bot_data["channel_id"] = self.channel_id
+            application.bot_data["bot_config_id"] = self.bot_config_id
             application.bot_data["bot_instance"] = self
             
             # 创建并注入 http_client
@@ -156,14 +183,29 @@ class VaultStreamBot:
             ]
             await application.bot.set_my_commands(commands)
             
-            # 验证频道访问权限并上报
-            try:
-                chat = await application.bot.get_chat(settings.telegram_channel_id)
-                logger.info(f"频道访问验证成功: {chat.title or chat.username}")
-                # 上报频道信息
-                await self._upsert_chat(client, chat, application.bot)
-            except Exception as e:
-                logger.error(f"无法访问频道 {settings.telegram_channel_id}: {e}")
+            if self.channel_id:
+                try:
+                    chat = await application.bot.get_chat(self.channel_id)
+                    logger.info(f"频道访问验证成功: {chat.title or chat.username}")
+                    await self._upsert_chat(client, chat, application.bot)
+                except Exception as e:
+                    logger.error(f"无法访问默认频道 {self.channel_id}: {e}")
+
+            async with AsyncSessionLocal() as db:
+                if self.bot_config_id is not None:
+                    chats_result = await db.execute(
+                        select(BotChat.chat_id)
+                        .where(BotChat.bot_config_id == self.bot_config_id)
+                        .where(BotChat.enabled == True)
+                        .order_by(BotChat.id.asc())
+                    )
+                    chat_ids = [row[0] for row in chats_result.all()]
+                    for chat_id in chat_ids:
+                        try:
+                            chat = await application.bot.get_chat(chat_id)
+                            await self._upsert_chat(client, chat, application.bot)
+                        except Exception as e:
+                            logger.warning(f"启动同步 chat 失败 chat_id={chat_id}: {e}")
                 
             # 验证后端API连接
             try:
@@ -202,14 +244,13 @@ class VaultStreamBot:
 
     def run(self):
         """运行Bot"""
-        if not settings.telegram_bot_token or not settings.telegram_bot_token.get_secret_value():
-            logger.error("未配置 TELEGRAM_BOT_TOKEN")
+        if not asyncio.run(self._load_runtime_config()):
             return
         
         logger.info("正在启动 Telegram Bot...")
         
         # 创建应用构建器
-        builder = Application.builder().token(settings.telegram_bot_token.get_secret_value())
+        builder = Application.builder().token(self.bot_token)
         
         # 配置代理
         if hasattr(settings, 'http_proxy') and settings.http_proxy:

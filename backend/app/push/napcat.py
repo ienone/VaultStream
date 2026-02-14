@@ -13,9 +13,9 @@ from typing import Dict, Any, List, Optional
 
 import httpx
 
-from app.core.config import settings
 from app.core.logging import logger
 from app.core.storage import get_storage_backend
+from app.services.bot_config_runtime import get_primary_qq_runtime_from_db
 from app.utils.text_formatters import format_content_with_render_config, strip_markdown
 from app.media.extractor import extract_media_urls
 from .base import BasePushService
@@ -65,13 +65,16 @@ class NapcatPushService(BasePushService):
 
     def __init__(self):
         self._client: Optional[httpx.AsyncClient] = None
+        self._bot_uin: Optional[str] = None
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
-            base_url = settings.napcat_api_base.rstrip("/")
+            base_url, access_token, bot_uin = await get_primary_qq_runtime_from_db()
+            base_url = base_url.rstrip("/")
+            self._bot_uin = bot_uin
             headers = {}
-            if settings.napcat_access_token:
-                headers["Authorization"] = f"Bearer {settings.napcat_access_token.get_secret_value()}"
+            if access_token:
+                headers["Authorization"] = f"Bearer {access_token}"
             self._client = httpx.AsyncClient(base_url=base_url, headers=headers, timeout=30.0)
         return self._client
 
@@ -196,7 +199,7 @@ class NapcatPushService(BasePushService):
                 "type": "node",
                 "data": {
                     "name": str(name),
-                    "uin": settings.napcat_bot_uin,
+                    "uin": self._bot_uin or "0",
                     "content": node_segments,
                 },
             }

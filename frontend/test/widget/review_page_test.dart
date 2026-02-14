@@ -24,12 +24,15 @@ class MockDio extends Mock implements Dio {
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) {
-    return Future.value(Response(
-      requestOptions: RequestOptions(path: path),
-      data: {'status': 'success'} as T,
-      statusCode: 200,
-    ));
+    return Future.value(
+      Response(
+        requestOptions: RequestOptions(path: path),
+        data: {'status': 'success'} as T,
+        statusCode: 200,
+      ),
+    );
   }
+
   @override
   Future<Response<T>> get<T>(
     String path, {
@@ -39,49 +42,86 @@ class MockDio extends Mock implements Dio {
     CancelToken? cancelToken,
     ProgressCallback? onReceiveProgress,
   }) {
-    return Future.value(Response(
-      requestOptions: RequestOptions(path: path),
-      data: null as T,
-      statusCode: 200,
-    ));
+    return Future.value(
+      Response(
+        requestOptions: RequestOptions(path: path),
+        data: null as T,
+        statusCode: 200,
+      ),
+    );
   }
 }
 
 void main() {
   group('ReviewPage Widget Tests', () {
-    testWidgets('ReviewPage renders correctly with initial state', (WidgetTester tester) async {
+    testWidgets('ReviewPage renders correctly with initial state', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(home: ReviewPage()),
-        ),
+        const ProviderScope(child: MaterialApp(home: ReviewPage())),
       );
       await tester.pumpAndSettle();
 
       expect(find.text('审批与分发'), findsOneWidget);
-      expect(find.byIcon(Icons.schedule_send), findsAny); // Found in SegmentedButton
+      expect(
+        find.byIcon(Icons.schedule_send),
+        findsAny,
+      ); // Found in SegmentedButton
     });
 
-    testWidgets('ReviewPage fetches and displays data', (WidgetTester tester) async {
+    testWidgets('ReviewPage fetches and displays data', (
+      WidgetTester tester,
+    ) async {
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 2.0;
       addTearDown(tester.view.resetPhysicalSize);
 
       final mockDistributionRules = [
-        DistributionRule(id: 1, name: 'Rule 1', matchConditions: {}, enabled: true, priority: 1, nsfwPolicy: 'block', approvalRequired: false, createdAt: DateTime.now(), updatedAt: DateTime.now()),
+        DistributionRule(
+          id: 1,
+          name: 'Rule 1',
+          matchConditions: {},
+          enabled: true,
+          priority: 1,
+          nsfwPolicy: 'block',
+          approvalRequired: false,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        ),
       ];
       final mockQueueItems = [
-        QueueItem(id: 1, contentId: 101, title: 'Item 1', platform: 'twitter', status: 'will_push'),
+        QueueItem(
+          id: 1,
+          contentId: 101,
+          title: 'Item 1',
+          platform: 'twitter',
+          status: 'will_push',
+        ),
       ];
       final mockBotChats = [
-        BotChat(id: 1, chatId: '123', chatType: 'group', title: 'Chat 1', enabled: true, createdAt: DateTime.now(), updatedAt: DateTime.now()),
+        BotChat(
+          id: 1,
+          chatId: '123',
+          chatType: 'group',
+          title: 'Chat 1',
+          enabled: true,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        ),
       ];
 
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            distributionRulesProvider.overrideWith(() => MockDistributionRules(mockDistributionRules)),
-            contentQueueProvider.overrideWith(() => MockContentQueue(mockQueueItems)),
-            queueStatsProvider(null).overrideWith((ref) => Future.value({'will_push': 1})),
+            distributionRulesProvider.overrideWith(
+              () => MockDistributionRules(mockDistributionRules),
+            ),
+            contentQueueProvider.overrideWith(
+              () => MockContentQueue(mockQueueItems),
+            ),
+            queueStatsProvider(
+              null,
+            ).overrideWith((ref) => Future.value({'will_push': 1})),
             botChatsProvider.overrideWith(() => MockBotChats(mockBotChats)),
             apiClientProvider.overrideWith((ref) => MockDio()),
           ],
@@ -92,7 +132,7 @@ void main() {
 
       expect(find.text('Item 1'), findsOneWidget);
       expect(find.textContaining('待推送 (1)'), findsAny);
-      
+
       // Open dropdown to see Rule 1
       await tester.tap(find.byType(DropdownMenu<int?>));
       await tester.pumpAndSettle();
@@ -113,7 +153,7 @@ class MockContentQueue extends ContentQueue {
   MockContentQueue(this._items);
   @override
   FutureOr<QueueListResponse> build() {
-    return QueueListResponse(items: _items, total: _items.length, willPushCount: _items.length);
+    return QueueListResponse(items: _items, total: _items.length);
   }
 }
 

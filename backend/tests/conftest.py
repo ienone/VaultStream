@@ -57,6 +57,7 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
                 bot_token VARCHAR(300),
                 napcat_http_url VARCHAR(300),
                 napcat_ws_url VARCHAR(300),
+                napcat_access_token VARCHAR(300),
                 enabled BOOLEAN DEFAULT 1,
                 is_primary BOOLEAN DEFAULT 0,
                 bot_id VARCHAR(50),
@@ -65,6 +66,11 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """))
+
+        cfg_table_info = await conn.execute(text("PRAGMA table_info(bot_configs)"))
+        cfg_columns = [row[1] for row in cfg_table_info.fetchall()]
+        if "napcat_access_token" not in cfg_columns:
+            await conn.execute(text("ALTER TABLE bot_configs ADD COLUMN napcat_access_token VARCHAR(300)"))
 
         table_info = await conn.execute(text("PRAGMA table_info(bot_chats)"))
         columns = [row[1] for row in table_info.fetchall()]

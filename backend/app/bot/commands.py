@@ -9,7 +9,6 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from app.core.logging import logger
-from app.core.config import settings
 from .messages import HELP_TEXT_START, HELP_TEXT_FULL, MSG_API_ERROR, MSG_TIMEOUT
 from .permissions import get_permission_manager
 
@@ -201,6 +200,10 @@ async def _get_content_by_filter(
         client = await _get_client(context)
         api_base = _get_api_base(context)
         channel_id = context.bot_data.get("channel_id")
+
+        if not channel_id:
+            await update.message.reply_text("当前 BotConfig 未绑定默认频道，请先在 Bot 配置里同步并绑定 BotChat")
+            return
 
         chat_resp = await client.get(f"{api_base}/bot/chats/{channel_id}", timeout=10.0)
         if chat_resp.status_code != 200:

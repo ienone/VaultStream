@@ -14,7 +14,22 @@ from app.core.dependencies import require_api_token
 from app.core.logging import logger
 from app.core.config import settings
 from app.core.time_utils import utcnow
-from app.models import BotChat, BotChatType, PushedRecord, DistributionRule, DistributionTarget, BotRuntime, Task, TaskStatus
+from app.models import (
+    BotChat,
+    BotChatType,
+    PushedRecord,
+    DistributionRule,
+    DistributionTarget,
+    BotRuntime,
+    Task,
+    TaskStatus,
+    BotConfig,
+    BotConfigPlatform,
+    Content,
+    ContentStatus,
+    ContentQueueItem,
+    QueueItemStatus,
+)
 from app.schemas import (
     BotChatCreate, BotChatUpdate, BotChatResponse,
     BotStatusResponse, BotSyncRequest, StorageStatsResponse, HealthDetailResponse,
@@ -23,8 +38,98 @@ from app.schemas import (
     BotChatRulesResponse, BotChatRuleAssignRequest, ChatRuleBindingInfo, BotChatRuleSummaryItem,
 )
 from app.core.events import event_bus
+from app.services.bot_config_runtime import get_primary_bot_config
 
 router = APIRouter()
+
+
+def _empty_distribution_bucket() -> dict[str, int]:
+    return {
+        "will_push": 0,
+        "filtered": 0,
+        "pending_review": 0,
+        "pushed": 0,
+        "total": 0,
+    }
+
+
+def _classify_distribution_status(
+    status: QueueItemStatus,
+    needs_approval: bool,
+    approved_at: Optional[datetime],
+) -> str:
+    # 业务语义：解析成功后的看板只保留四种分发状态。
+    if status == QueueItemStatus.SUCCESS:
+        return "pushed"
+    if status in (QueueItemStatus.SKIPPED, QueueItemStatus.CANCELED):
+        return "filtered"
+    if status == QueueItemStatus.PENDING and needs_approval and approved_at is None:
+        return "pending_review"
+    # FAILED 归入 will_push，表示仍处于待处理队列（可重试或手动干预）。
+    if status in (QueueItemStatus.PENDING, QueueItemStatus.SCHEDULED, QueueItemStatus.PROCESSING, QueueItemStatus.FAILED):
+        return "will_push"
+    return "filtered"
+
+
+async def _build_pipeline_stats(db: AsyncSession) -> tuple[dict, dict, dict[str, dict]]:
+    parse_stats = {
+        "unprocessed": 0,
+        "processing": 0,
+        "parse_success": 0,
+        "parse_failed": 0,
+        "total": 0,
+    }
+
+    content_status_result = await db.execute(
+        select(Content.status, func.count(Content.id)).group_by(Content.status)
+    )
+    for status, count in content_status_result.all():
+        count_int = int(count or 0)
+        parse_stats["total"] += count_int
+        if status == ContentStatus.UNPROCESSED:
+            parse_stats["unprocessed"] += count_int
+        elif status == ContentStatus.PROCESSING:
+            parse_stats["processing"] += count_int
+        elif status == ContentStatus.PARSE_SUCCESS:
+            parse_stats["parse_success"] += count_int
+        elif status == ContentStatus.PARSE_FAILED:
+            parse_stats["parse_failed"] += count_int
+
+    distribution_stats = _empty_distribution_bucket()
+    rule_breakdown: dict[str, dict] = {}
+
+    queue_rows = await db.execute(
+        select(
+            ContentQueueItem.rule_id,
+            ContentQueueItem.status,
+            ContentQueueItem.needs_approval,
+            ContentQueueItem.approved_at,
+            func.count(ContentQueueItem.id),
+        )
+        .join(Content, Content.id == ContentQueueItem.content_id)
+        .where(Content.status == ContentStatus.PARSE_SUCCESS)
+        .group_by(
+            ContentQueueItem.rule_id,
+            ContentQueueItem.status,
+            ContentQueueItem.needs_approval,
+            ContentQueueItem.approved_at,
+        )
+    )
+
+    for rule_id, status, needs_approval, approved_at, count in queue_rows.all():
+        count_int = int(count or 0)
+        bucket_key = _classify_distribution_status(status, bool(needs_approval), approved_at)
+
+        distribution_stats[bucket_key] += count_int
+        distribution_stats["total"] += count_int
+
+        rule_key = str(rule_id)
+        if rule_key not in rule_breakdown:
+            rule_breakdown[rule_key] = _empty_distribution_bucket()
+        rule_breakdown[rule_key][bucket_key] += count_int
+        rule_breakdown[rule_key]["total"] += count_int
+
+    return parse_stats, distribution_stats, rule_breakdown
 
 
 # ========== Bot Chat 管理 ==========
@@ -59,6 +164,11 @@ async def create_bot_chat(
     _: None = Depends(require_api_token),
 ):
     """手动添加 Bot 群组/频道"""
+    config_result = await db.execute(select(BotConfig).where(BotConfig.id == chat.bot_config_id))
+    db_config = config_result.scalar_one_or_none()
+    if not db_config:
+        raise HTTPException(status_code=400, detail=f"Bot config not found: {chat.bot_config_id}")
+
     # 检查是否已存在
     result = await db.execute(
         select(BotChat).where(BotChat.chat_id == chat.chat_id)
@@ -67,6 +177,7 @@ async def create_bot_chat(
         raise HTTPException(status_code=400, detail="Chat already exists")
     
     db_chat = BotChat(
+        bot_config_id=chat.bot_config_id,
         chat_id=chat.chat_id,
         chat_type=BotChatType(chat.chat_type),
         title=chat.title,
@@ -287,6 +398,11 @@ async def upsert_bot_chat(
     _: None = Depends(require_api_token),
 ):
     """Upsert Bot 群组/频道（用于 Bot 进程上报）"""
+    config_result = await db.execute(select(BotConfig).where(BotConfig.id == chat.bot_config_id))
+    db_config = config_result.scalar_one_or_none()
+    if not db_config:
+        raise HTTPException(status_code=400, detail=f"Bot config not found: {chat.bot_config_id}")
+
     result = await db.execute(
         select(BotChat).where(BotChat.chat_id == chat.chat_id)
     )
@@ -295,6 +411,7 @@ async def upsert_bot_chat(
     now = utcnow()
     if db_chat:
         # 更新已存在的记录
+        db_chat.bot_config_id = chat.bot_config_id
         db_chat.chat_type = BotChatType(chat.chat_type)
         db_chat.title = chat.title
         db_chat.username = chat.username
@@ -311,6 +428,7 @@ async def upsert_bot_chat(
     else:
         # 创建新记录
         db_chat = BotChat(
+            bot_config_id=chat.bot_config_id,
             chat_id=chat.chat_id,
             chat_type=BotChatType(chat.chat_type),
             title=chat.title,
@@ -428,13 +546,22 @@ async def get_bot_status(
     _: None = Depends(require_api_token),
 ):
     """获取 Bot 运行状态"""
+    primary_tg_cfg = await get_primary_bot_config(db, BotConfigPlatform.TELEGRAM, enabled_only=False)
+
     # 获取运行时状态
     runtime_result = await db.execute(select(BotRuntime).where(BotRuntime.id == 1))
     runtime = runtime_result.scalar_one_or_none()
     
-    # 统计关联的群组数
-    result = await db.execute(select(func.count(BotChat.id)).where(BotChat.enabled == True))
-    chat_count = result.scalar() or 0
+    # 统计主 Telegram 配置下关联且启用的群组数
+    chat_count = 0
+    if primary_tg_cfg and primary_tg_cfg.enabled:
+        result = await db.execute(
+            select(func.count(BotChat.id)).where(
+                BotChat.bot_config_id == primary_tg_cfg.id,
+                BotChat.enabled == True,
+            )
+        )
+        chat_count = int(result.scalar() or 0)
     
     # 统计今日推送数
     today_start = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -448,13 +575,23 @@ async def get_bot_status(
     # 判断是否在线
     is_running = False
     uptime_seconds = None
-    bot_username = None
+    bot_username = primary_tg_cfg.bot_username if primary_tg_cfg else None
     bot_id = None
     now = utcnow()
+    has_enabled_primary_tg = bool(primary_tg_cfg and primary_tg_cfg.enabled and (primary_tg_cfg.bot_token or '').strip())
+    if primary_tg_cfg and primary_tg_cfg.bot_id:
+        try:
+            bot_id = int(primary_tg_cfg.bot_id)
+        except (TypeError, ValueError):
+            bot_id = None
     
-    if runtime:
+    if runtime and has_enabled_primary_tg:
         bot_username = runtime.bot_username
-        bot_id = int(runtime.bot_id) if runtime.bot_id else None
+        if runtime.bot_id:
+            try:
+                bot_id = int(runtime.bot_id)
+            except (TypeError, ValueError):
+                bot_id = None
         if runtime.last_heartbeat_at:
             time_since_heartbeat = (now - runtime.last_heartbeat_at).total_seconds()
             is_running = time_since_heartbeat < 120
@@ -463,22 +600,25 @@ async def get_bot_status(
     
     # Napcat 连接检查
     napcat_status = None
-    if settings.enable_napcat and settings.napcat_api_base:
+    qq_cfg = await get_primary_bot_config(db, BotConfigPlatform.QQ, enabled_only=True)
+    if qq_cfg and qq_cfg.napcat_http_url:
         import httpx
         try:
             headers = {}
-            if settings.napcat_access_token:
-                headers["Authorization"] = f"Bearer {settings.napcat_access_token.get_secret_value()}"
+            if qq_cfg.napcat_access_token:
+                headers["Authorization"] = f"Bearer {qq_cfg.napcat_access_token}"
             async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.get(f"{settings.napcat_api_base.rstrip('/')}/get_login_info", headers=headers)
+                resp = await client.get(f"{qq_cfg.napcat_http_url.rstrip('/')}/get_login_info", headers=headers)
                 if resp.status_code == 200:
                     napcat_status = "online"
                 else:
                     napcat_status = f"error:{resp.status_code}"
         except Exception as e:
             napcat_status = f"offline:{e}"
-    elif settings.enable_napcat:
+    elif qq_cfg:
         napcat_status = "misconfigured"
+
+    parse_stats, distribution_stats, rule_breakdown = await _build_pipeline_stats(db)
 
     return BotStatusResponse(
         is_running=is_running,
@@ -488,6 +628,9 @@ async def get_bot_status(
         total_pushed_today=today_pushed,
         uptime_seconds=uptime_seconds,
         napcat_status=napcat_status,
+        parse_stats=parse_stats,
+        distribution_stats=distribution_stats,
+        rule_breakdown=rule_breakdown,
     )
 
 
@@ -505,12 +648,13 @@ async def sync_bot_chats(
     """
     from telegram import Bot
     from telegram.error import TelegramError
-    
-    if not settings.telegram_bot_token or not settings.telegram_bot_token.get_secret_value():
-        raise HTTPException(status_code=400, detail="未配置 TELEGRAM_BOT_TOKEN")
+
+    cfg = await get_primary_bot_config(db, BotConfigPlatform.TELEGRAM, enabled_only=True)
+    if not cfg or not cfg.bot_token:
+        raise HTTPException(status_code=400, detail="未找到可用的主 Telegram BotConfig")
     
     # 构建查询
-    query = select(BotChat)
+    query = select(BotChat).where(BotChat.bot_config_id == cfg.id)
     if request and request.chat_id:
         query = query.where(BotChat.chat_id == request.chat_id)
     else:
@@ -523,7 +667,7 @@ async def sync_bot_chats(
         return BotSyncResult(total=0, updated=0, failed=0, inaccessible=0, details=[])
     
     # 创建 Bot 实例
-    bot = Bot(token=settings.telegram_bot_token.get_secret_value())
+    bot = Bot(token=cfg.bot_token)
     now = utcnow()
     
     updated = 0
@@ -743,9 +887,23 @@ async def get_health_detail(
     
     # Bot 状态
     bot_parts = []
-    if settings.enable_bot:
+    telegram_primary_result = await db.execute(
+        select(func.count(BotConfig.id)).where(
+            BotConfig.platform == BotConfigPlatform.TELEGRAM,
+            BotConfig.enabled == True,
+            BotConfig.is_primary == True,
+        )
+    )
+    if (telegram_primary_result.scalar() or 0) > 0:
         bot_parts.append("telegram:enabled")
-    if settings.enable_napcat:
+    qq_primary_result = await db.execute(
+        select(func.count(BotConfig.id)).where(
+            BotConfig.platform == BotConfigPlatform.QQ,
+            BotConfig.enabled == True,
+            BotConfig.is_primary == True,
+        )
+    )
+    if (qq_primary_result.scalar() or 0) > 0:
         bot_parts.append("napcat:enabled")
     bot_status = ", ".join(bot_parts) if bot_parts else "disabled"
     
@@ -800,6 +958,7 @@ def _chat_to_response(chat: BotChat, rule_info: Optional[dict] = None) -> BotCha
 
     return BotChatResponse(
         id=chat.id,
+        bot_config_id=chat.bot_config_id,
         chat_id=chat.chat_id,
         chat_type=chat.chat_type.value if chat.chat_type else "unknown",
         title=chat.title,

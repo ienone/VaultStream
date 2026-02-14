@@ -24,11 +24,6 @@ class Settings(BaseSettings):
     # 队列配置（仅支持 SQLite 任务表）
     queue_type: Literal["sqlite"] = "sqlite"
 
-    # Telegram Bot 配置
-    enable_bot: bool = False
-    telegram_bot_token: SecretStr = SecretStr("")
-    telegram_channel_id: str = ""
-
     # Bot 权限控制
     telegram_admin_ids: str = ""  # 管理员用户ID列表，逗号分隔，如 "123456,789012"
     telegram_whitelist_ids: str = ""  # 白名单用户ID列表，逗号分隔。为空则允许所有用户
@@ -109,8 +104,4 @@ def validate_settings() -> None:
     if settings.app_env == "prod" and settings.debug:
         raise RuntimeError("DEBUG must be False in production")
 
-    if settings.enable_bot:
-        if not settings.telegram_bot_token or not settings.telegram_bot_token.get_secret_value():
-            raise RuntimeError("ENABLE_BOT is True but TELEGRAM_BOT_TOKEN is missing")
-        if not settings.telegram_channel_id:
-            raise RuntimeError("ENABLE_BOT is True but TELEGRAM_CHANNEL_ID is missing")
+    return None

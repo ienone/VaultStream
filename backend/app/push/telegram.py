@@ -15,6 +15,7 @@ from telegram.error import TelegramError
 from app.core.logging import logger
 from app.core.config import settings
 from app.core.storage import get_storage_backend
+from app.services.bot_config_runtime import get_primary_telegram_token_from_db
 from app.utils.text_formatters import format_content_for_tg, format_content_with_render_config
 from app.media.extractor import extract_media_urls
 from .base import BasePushService
@@ -47,7 +48,7 @@ class TelegramPushService(BasePushService):
             Telegram Bot实例
         """
         if self._bot is None:
-            bot_token = settings.telegram_bot_token.get_secret_value()
+            bot_token = await get_primary_telegram_token_from_db()
             
             # 配置代理 (通过环境变量，httpx 会自动读取)
             if hasattr(settings, 'http_proxy') and settings.http_proxy:
