@@ -22,6 +22,7 @@ from app.schemas import (
 )
 from app.core.logging import logger
 from app.core.config import settings
+from app.core.queue import task_queue
 from app.worker import worker
 from app.core.storage import get_storage_backend, LocalStorageBackend
 from app.adapters import AdapterFactory
@@ -98,6 +99,7 @@ async def create_share(
         content = await service.create_share(
             url=share.url,
             tags=share.tags,
+            tags_text=share.tags_text,
             source_name=share.source,
             note=share.note,
             is_nsfw=share.is_nsfw,
@@ -229,8 +231,12 @@ async def update_content(
             content.cover_color = await extract_cover_color(content.cover_url)
     if request.is_nsfw is not None:
         content.is_nsfw = request.is_nsfw
+    enqueue_parse = False
     if request.status is not None:
+        previous_status = content.status
         content.status = request.status
+        if request.status == ContentStatus.UNPROCESSED and previous_status != ContentStatus.UNPROCESSED:
+            enqueue_parse = True
     if request.review_status is not None:
         content.review_status = request.review_status
     if request.review_note is not None:
@@ -242,6 +248,10 @@ async def update_content(
         
     await db.commit()
     await db.refresh(content)
+
+    if enqueue_parse:
+        await task_queue.enqueue({'content_id': content.id, 'action': 'parse'})
+        logger.info(f"Content status reset to unprocessed, parse re-enqueued: {content.id}")
     
     # 广播更新事件
     await event_bus.publish("content_updated", {

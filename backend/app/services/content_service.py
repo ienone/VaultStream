@@ -1,3 +1,4 @@
+import re
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -12,10 +13,34 @@ class ContentService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @staticmethod
+    def _normalize_tags(tags: Optional[List[str]], tags_text: Optional[str] = None) -> List[str]:
+        # 统一在后端收口标签清洗，避免各端分词/去重口径不一致。
+        candidates: List[str] = []
+        for tag in tags or []:
+            if tag is None:
+                continue
+            candidates.extend(re.split(r"[,，\s]+", str(tag)))
+        if tags_text:
+            candidates.extend(re.split(r"[,，\s]+", tags_text))
+
+        normalized: List[str] = []
+        seen: set[str] = set()
+        for raw in candidates:
+            clean = raw.strip()
+            if not clean:
+                continue
+            if clean in seen:
+                continue
+            seen.add(clean)
+            normalized.append(clean)
+        return normalized
+
     async def create_share(
         self, 
         url: str, 
         tags: List[str] = None, 
+        tags_text: str = None,
         source_name: str = None, 
         note: str = None,
         is_nsfw: bool = False,
@@ -23,6 +48,8 @@ class ContentService:
         layout_type_override: str = None
     ) -> Content:
         """核心分享创建业务逻辑"""
+        normalized_tags = self._normalize_tags(tags, tags_text)
+
         # 1. 规范化
         url_for_detect = normalize_bilibili_url(url)
         url_for_detect = canonicalize_url(url_for_detect)
@@ -49,7 +76,7 @@ class ContentService:
                 url=url,
                 canonical_url=canonical_url,
                 clean_url=canonical_url,
-                tags=tags or [],
+                tags=normalized_tags,
                 source=source_name,
                 is_nsfw=is_nsfw,
                 status=ContentStatus.UNPROCESSED,
@@ -61,7 +88,7 @@ class ContentService:
         else:
             # 存量合并：标签合并
             existing_tags = set(content.tags or [])
-            incoming_tags = set(tags or [])
+            incoming_tags = set(normalized_tags)
             content.tags = list(existing_tags.union(incoming_tags))
             if source_name:
                 content.source = source_name
@@ -74,7 +101,7 @@ class ContentService:
             ContentSource(
                 content_id=content.id,
                 source=source_name,
-                tags_snapshot=tags,
+                tags_snapshot=normalized_tags,
                 note=note,
                 client_context=client_context,
             )
@@ -83,8 +110,12 @@ class ContentService:
         await self.db.commit()
         await self.db.refresh(content)
 
-        # 6. 异步入队
-        if is_new:
+        # 6. 异步入队（新增内容，或存量仍处于待解析状态）
+        should_enqueue_parse = is_new or content.status in (
+            ContentStatus.UNPROCESSED,
+            ContentStatus.PARSE_FAILED,
+        )
+        if should_enqueue_parse:
             await task_queue.enqueue({'content_id': content.id, 'action': 'parse'})
             logger.info(f"New content enqueued: {content.id}")
             
