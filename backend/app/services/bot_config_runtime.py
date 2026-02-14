@@ -28,7 +28,21 @@ async def get_primary_bot_config(
         query = query.where(BotConfig.enabled == True)
 
     result = await db.execute(query)
-    return result.scalar_one_or_none()
+    cfg = result.scalar_one_or_none()
+    if cfg:
+        return cfg
+
+    fallback_query = (
+        select(BotConfig)
+        .where(BotConfig.platform == platform)
+        .order_by(BotConfig.id.asc())
+        .limit(1)
+    )
+    if enabled_only:
+        fallback_query = fallback_query.where(BotConfig.enabled == True)
+
+    fallback_result = await db.execute(fallback_query)
+    return fallback_result.scalar_one_or_none()
 
 
 async def get_primary_telegram_runtime(

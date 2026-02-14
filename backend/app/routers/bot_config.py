@@ -3,6 +3,7 @@ Bot 配置管理 API（Phase 2）
 包含：BotConfig CRUD、主 Bot 切换、二维码获取、按配置同步群组
 """
 from typing import List, Dict, Any
+import os
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,6 +16,12 @@ from app.core.logging import logger
 from app.core.time_utils import utcnow
 from app.core.events import event_bus
 from app.models import BotConfig, BotConfigPlatform, BotChat, BotChatType
+from app.services.bot_config_runtime import get_primary_bot_config
+from app.services.telegram_bot_service import (
+    restart_telegram_bot,
+    start_telegram_bot,
+    stop_telegram_bot,
+)
 from app.schemas import (
     BotConfigCreate,
     BotConfigUpdate,
@@ -25,6 +32,16 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/bot-config", tags=["bot-config"])
+
+
+async def _sync_telegram_bot_process(db: AsyncSession, *, reason: str) -> dict[str, Any]:
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return {"status": "skipped", "reason": f"{reason}:pytest"}
+
+    cfg = await get_primary_bot_config(db, BotConfigPlatform.TELEGRAM, enabled_only=True)
+    if cfg and cfg.bot_token and cfg.bot_token.strip():
+        return restart_telegram_bot(reason=reason)
+    return stop_telegram_bot(reason=f"{reason}:no_enabled_telegram")
 
 
 def _mask_token(token: str | None) -> str | None:
@@ -84,6 +101,12 @@ async def create_bot_config(
 ):
     await _validate_bot_config_payload(payload, payload.platform)
 
+    same_platform_count_result = await db.execute(
+        select(func.count(BotConfig.id)).where(BotConfig.platform == BotConfigPlatform(payload.platform))
+    )
+    same_platform_count = int(same_platform_count_result.scalar() or 0)
+    force_primary = same_platform_count == 0
+
     db_cfg = BotConfig(
         platform=BotConfigPlatform(payload.platform),
         name=payload.name,
@@ -92,7 +115,7 @@ async def create_bot_config(
         napcat_ws_url=payload.napcat_ws_url,
         napcat_access_token=payload.napcat_access_token,
         enabled=payload.enabled,
-        is_primary=payload.is_primary,
+        is_primary=(payload.is_primary or force_primary),
     )
     db.add(db_cfg)
     await db.flush()
@@ -107,6 +130,10 @@ async def create_bot_config(
 
     await db.commit()
     await db.refresh(db_cfg)
+
+    if db_cfg.platform == BotConfigPlatform.TELEGRAM:
+        sync_result = await _sync_telegram_bot_process(db, reason=f"create_config:{db_cfg.id}")
+        logger.info("Telegram bot sync after create: {}", sync_result)
 
     logger.info("Bot 配置已创建: id={} name={} platform={}", db_cfg.id, db_cfg.name, db_cfg.platform.value)
     return await _to_bot_config_response(db, db_cfg)
@@ -152,6 +179,10 @@ async def update_bot_config(
     await db.commit()
     await db.refresh(cfg)
 
+    if cfg.platform == BotConfigPlatform.TELEGRAM:
+        sync_result = await _sync_telegram_bot_process(db, reason=f"update_config:{cfg.id}")
+        logger.info("Telegram bot sync after update: {}", sync_result)
+
     logger.info("Bot 配置已更新: id={} name={}", cfg.id, cfg.name)
     return await _to_bot_config_response(db, cfg)
 
@@ -167,14 +198,17 @@ async def delete_bot_config(
     if not cfg:
         raise HTTPException(status_code=404, detail="Bot config not found")
 
-    # 强制收口：每个 chat 必须隶属某个 bot_config，禁止删除仍被引用的配置
-    chat_count_result = await db.execute(select(func.count(BotChat.id)).where(BotChat.bot_config_id == cfg.id))
-    chat_count = int(chat_count_result.scalar() or 0)
-    if chat_count > 0:
-        raise HTTPException(status_code=400, detail=f"Bot config has bound chats: {chat_count}")
+    # 简化管理：允许删除配置并清理其关联的 chats（其下分发目标会通过外键级联删除）
+    await db.execute(
+        BotChat.__table__.delete().where(BotChat.bot_config_id == cfg.id)
+    )
 
     await db.delete(cfg)
     await db.commit()
+
+    if cfg.platform == BotConfigPlatform.TELEGRAM:
+        sync_result = await _sync_telegram_bot_process(db, reason=f"delete_config:{config_id}")
+        logger.info("Telegram bot sync after delete: {}", sync_result)
 
     logger.info("Bot 配置已删除: id={} name={}", config_id, cfg.name)
 
@@ -199,12 +233,38 @@ async def activate_bot_config(
     cfg.updated_at = utcnow()
     await db.commit()
 
+    if cfg.platform == BotConfigPlatform.TELEGRAM:
+        sync_result = await _sync_telegram_bot_process(db, reason=f"activate_config:{cfg.id}")
+        logger.info("Telegram bot sync after activate: {}", sync_result)
+
     logger.info("Bot 主配置已切换: id={} platform={}", cfg.id, cfg.platform.value)
     return BotConfigActivateResponse(
         id=cfg.id,
         platform=cfg.platform.value,
         is_primary=True,
     )
+
+
+@router.post("/service/telegram/start")
+async def start_telegram_service(
+    _: None = Depends(require_api_token),
+):
+    return start_telegram_bot(reason="api_manual_start")
+
+
+@router.post("/service/telegram/stop")
+async def stop_telegram_service(
+    _: None = Depends(require_api_token),
+):
+    return stop_telegram_bot(reason="api_manual_stop")
+
+
+@router.post("/service/telegram/restart")
+async def restart_telegram_service(
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    return await _sync_telegram_bot_process(db, reason="api_manual_restart")
 
 
 @router.get("/{config_id}/qr-code", response_model=BotConfigQrCodeResponse)
