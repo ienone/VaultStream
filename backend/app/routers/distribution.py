@@ -25,6 +25,30 @@ from app.core.dependencies import require_api_token
 
 router = APIRouter()
 
+_TELEGRAM_CHAT_TYPES = {"channel", "group", "supergroup", "private"}
+_QQ_CHAT_TYPES = {"qq_group", "qq_private"}
+
+
+def _normalize_chat_type(chat_type: Any) -> str:
+    if isinstance(chat_type, str):
+        return chat_type
+    return str(getattr(chat_type, "value", chat_type))
+
+
+def _platform_from_chat_type(chat_type: Any) -> str:
+    normalized = _normalize_chat_type(chat_type)
+    if normalized in _QQ_CHAT_TYPES:
+        return Platform.QQ.value
+    return Platform.TELEGRAM.value
+
+
+def _chat_types_for_platform(platform: str) -> set[str]:
+    if platform == Platform.TELEGRAM.value:
+        return _TELEGRAM_CHAT_TYPES
+    if platform == Platform.QQ.value:
+        return _QQ_CHAT_TYPES
+    raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
+
 
 @router.post("/distribution-rules", response_model=DistributionRuleResponse)
 async def create_distribution_rule(
@@ -429,7 +453,7 @@ async def list_all_targets(
     
     # 应用过滤条件
     if platform:
-        stmt = stmt.where(BotChat.chat_type == platform)
+        stmt = stmt.where(BotChat.chat_type.in_(_chat_types_for_platform(platform)))
     
     if enabled is not None:
         stmt = stmt.where(DistributionTarget.enabled == enabled)
@@ -441,7 +465,7 @@ async def list_all_targets(
     target_map: Dict[tuple, Dict] = {}  # key: (platform, target_id)
     
     for dt, chat, rule in all_records:
-        target_platform = chat.chat_type
+        target_platform = _platform_from_chat_type(chat.chat_type)
         target_id = chat.chat_id
         
         key = (target_platform, target_id)
@@ -636,9 +660,10 @@ async def batch_update_targets(
     try:
         # 适配 Phase 4: 使用 SQL 直接批量更新 distribution_targets 表
         # 1. 找到对应的 BotChat ID
+        chat_types = _chat_types_for_platform(request.target_platform)
         chat_query = select(BotChat.id).where(
             and_(
-                BotChat.chat_type == request.target_platform,
+                BotChat.chat_type.in_(chat_types),
                 BotChat.chat_id == str(request.target_id)
             )
         )
@@ -700,8 +725,6 @@ async def list_render_config_presets(
     _: None = Depends(require_api_token),
 ):
     """List all render config presets (built-in + custom)"""
-    # For now, only return built-in presets
-    # TODO: Add custom preset storage in database
     return BUILTIN_PRESETS
 
 
@@ -714,7 +737,5 @@ async def get_render_config_preset(
     for preset in BUILTIN_PRESETS:
         if preset.id == preset_id:
             return preset
-    
-    # TODO: Check custom presets in database
-    
+
     raise HTTPException(status_code=404, detail="Preset not found")

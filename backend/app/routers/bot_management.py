@@ -14,6 +14,7 @@ from app.core.dependencies import require_api_token
 from app.core.logging import logger
 from app.core.config import settings
 from app.core.time_utils import utcnow
+from app.distribution.queue_service import mark_historical_parse_success_as_pushed_for_rule
 from app.models import (
     BotChat,
     BotChatType,
@@ -35,7 +36,7 @@ from app.schemas import (
     BotStatusResponse, BotSyncRequest, StorageStatsResponse, HealthDetailResponse,
     BotChatUpsert, BotHeartbeat, BotRuntimeResponse, BotSyncResult,
     RepushFailedRequest, RepushFailedResponse,
-    BotChatRulesResponse, BotChatRuleAssignRequest, ChatRuleBindingInfo, BotChatRuleSummaryItem,
+    BotChatRulesResponse, BotChatRuleAssignRequest, ChatRuleBindingInfo,
 )
 from app.core.events import event_bus
 from app.services.bot_config_runtime import get_primary_bot_config
@@ -211,30 +212,6 @@ async def get_bot_chat(
     return _chat_to_response(chat, rule_map.get(chat.id))
 
 
-@router.get("/bot/chats/rules/summary", response_model=List[BotChatRuleSummaryItem])
-async def get_bot_chat_rules_summary(
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """获取所有群组的规则摘要（用于群组卡片展示）"""
-    chats_result = await db.execute(select(BotChat.id, BotChat.chat_id).order_by(BotChat.id.asc()))
-    chat_rows = chats_result.all()
-    if not chat_rows:
-        return []
-
-    rule_map = await _load_chat_rule_map(db, [row.id for row in chat_rows])
-    items: List[BotChatRuleSummaryItem] = []
-    for row in chat_rows:
-        info = rule_map.get(row.id) or {"ids": [], "names": []}
-        items.append(BotChatRuleSummaryItem(
-            chat_id=row.chat_id,
-            rule_ids=info["ids"],
-            rule_names=info["names"],
-            rule_count=len(info["ids"]),
-        ))
-    return items
-
-
 @router.get("/bot/chats/{chat_id}/rules", response_model=BotChatRulesResponse)
 async def get_bot_chat_rules(
     chat_id: str,
@@ -299,6 +276,7 @@ async def assign_bot_chat_rules(
     existing_ids = {t.rule_id for t in existing_targets}
 
     # 删除不需要的绑定
+    added_rule_ids: list[int] = []
     for target in existing_targets:
         if target.rule_id not in desired_ids:
             await db.delete(target)
@@ -313,6 +291,14 @@ async def assign_bot_chat_rules(
                 merge_forward=False,
                 use_author_name=True,
             ))
+            added_rule_ids.append(rule_id)
+
+    for rule_id in added_rule_ids:
+        await mark_historical_parse_success_as_pushed_for_rule(
+            session=db,
+            rule_id=rule_id,
+            bot_chat_id=chat.id,
+        )
 
     await db.commit()
 
@@ -359,6 +345,18 @@ async def delete_bot_chat(
     db_chat = result.scalar_one_or_none()
     if not db_chat:
         raise HTTPException(status_code=404, detail="Chat not found")
+
+    # 显式清理依赖记录，避免 ORM 在删除父记录时尝试将外键置空触发 NOT NULL 约束。
+    await db.execute(
+        DistributionTarget.__table__.delete().where(
+            DistributionTarget.bot_chat_id == db_chat.id
+        )
+    )
+    await db.execute(
+        ContentQueueItem.__table__.delete().where(
+            ContentQueueItem.bot_chat_id == db_chat.id
+        )
+    )
     
     await db.delete(db_chat)
     await db.commit()
@@ -651,7 +649,8 @@ async def sync_bot_chats(
 
     cfg = await get_primary_bot_config(db, BotConfigPlatform.TELEGRAM, enabled_only=True)
     if not cfg or not cfg.bot_token:
-        raise HTTPException(status_code=400, detail="未找到可用的主 Telegram BotConfig")
+        logger.warning("跳过群组同步：未找到可用的主 Telegram BotConfig")
+        return BotSyncResult(total=0, updated=0, failed=0, inaccessible=0, details=[])
     
     # 构建查询
     query = select(BotChat).where(BotChat.bot_config_id == cfg.id)

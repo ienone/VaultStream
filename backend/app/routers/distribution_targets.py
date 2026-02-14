@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.dependencies import require_api_token
 from app.core.logging import logger
+from app.distribution.queue_service import mark_historical_parse_success_as_pushed_for_rule
 from app.models import DistributionTarget, DistributionRule, BotChat
 from app.schemas import (
     DistributionTargetCreate,
@@ -94,12 +95,19 @@ async def create_rule_target(
         render_config_override=target.render_config_override,
     )
     db.add(db_target)
+
+    inserted = await mark_historical_parse_success_as_pushed_for_rule(
+        session=db,
+        rule_id=rule_id,
+        bot_chat_id=target.bot_chat_id,
+    )
+
     await db.commit()
     await db.refresh(db_target)
     
     logger.info(
         f"Created distribution target: rule={rule.name}, chat={chat.chat_id}, "
-        f"enabled={db_target.enabled}"
+        f"enabled={db_target.enabled}, backfilled_success={inserted}"
     )
     
     return DistributionTargetResponse.model_validate(db_target)

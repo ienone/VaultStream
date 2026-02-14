@@ -1,7 +1,7 @@
 """
 分发队列管理 API（ContentQueueItem 架构）
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
@@ -25,6 +25,46 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/distribution-queue", tags=["distribution-queue"])
+
+
+def _as_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _to_queue_item_response(item: ContentQueueItem, content: Optional[Content] = None) -> ContentQueueItemResponse:
+    return ContentQueueItemResponse(
+        id=item.id,
+        content_id=item.content_id,
+        title=(content.title if content else None),
+        tags=((content.tags or []) if content else []),
+        is_nsfw=bool(content.is_nsfw) if content else False,
+        cover_url=(content.cover_url if content else None),
+        author_name=(content.author_name if content else None),
+        rule_id=item.rule_id,
+        bot_chat_id=item.bot_chat_id,
+        target_platform=item.target_platform,
+        target_id=item.target_id,
+        status=item.status.value if hasattr(item.status, "value") else str(item.status),
+        priority=item.priority or 0,
+        scheduled_at=_as_utc(item.scheduled_at),
+        needs_approval=bool(item.needs_approval),
+        approved_at=_as_utc(item.approved_at),
+        attempt_count=item.attempt_count or 0,
+        max_attempts=item.max_attempts or 3,
+        next_attempt_at=_as_utc(item.next_attempt_at),
+        message_id=item.message_id,
+        last_error=item.last_error,
+        last_error_type=item.last_error_type,
+        last_error_at=_as_utc(item.last_error_at),
+        started_at=_as_utc(item.started_at),
+        completed_at=_as_utc(item.completed_at),
+        created_at=_as_utc(item.created_at) or datetime.now(timezone.utc),
+        updated_at=_as_utc(item.updated_at) or datetime.now(timezone.utc),
+    )
 
 
 def _build_status_conditions(status: Optional[str]):
@@ -164,16 +204,17 @@ async def list_queue_items(
 
     offset = (page - 1) * size
     result = await db.execute(
-        select(ContentQueueItem)
+        select(ContentQueueItem, Content)
+        .join(Content, Content.id == ContentQueueItem.content_id, isouter=True)
         .where(where_clause)
         .order_by(ContentQueueItem.created_at.desc())
         .offset(offset)
         .limit(size)
     )
-    items = result.scalars().all()
+    rows = result.all()
 
     return ContentQueueItemListResponse(
-        items=[ContentQueueItemResponse.model_validate(item) for item in items],
+        items=[_to_queue_item_response(item, content) for item, content in rows],
         total=total,
         page=page,
         size=size,
@@ -189,12 +230,16 @@ async def get_queue_item(
 ):
     """获取单个队列项。"""
     result = await db.execute(
-        select(ContentQueueItem).where(ContentQueueItem.id == item_id)
+        select(ContentQueueItem, Content)
+        .join(Content, Content.id == ContentQueueItem.content_id, isouter=True)
+        .where(ContentQueueItem.id == item_id)
     )
-    item = result.scalar_one_or_none()
+    row = result.first()
+    item = row[0] if row else None
+    content = row[1] if row else None
     if not item:
         raise HTTPException(status_code=404, detail="Queue item not found")
-    return ContentQueueItemResponse.model_validate(item)
+    return _to_queue_item_response(item, content)
 
 
 @router.post("/items/{item_id}/push-now", response_model=ContentQueueItemResponse)
@@ -218,12 +263,16 @@ async def push_queue_item_now(
         raise HTTPException(status_code=400, detail=str(e))
 
     refreshed = await db.execute(
-        select(ContentQueueItem).where(ContentQueueItem.id == item_id)
+        select(ContentQueueItem, Content)
+        .join(Content, Content.id == ContentQueueItem.content_id, isouter=True)
+        .where(ContentQueueItem.id == item_id)
     )
-    item = refreshed.scalar_one_or_none()
+    row = refreshed.first()
+    item = row[0] if row else None
+    content = row[1] if row else None
     if not item:
         raise HTTPException(status_code=404, detail="Queue item not found")
-    return ContentQueueItemResponse.model_validate(item)
+    return _to_queue_item_response(item, content)
 
 
 @router.post("/enqueue/{content_id}")

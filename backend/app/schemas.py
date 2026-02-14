@@ -18,6 +18,7 @@ class ShareRequest(BaseModel):
     """分享请求"""
     url: str = Field(..., description="要分享的URL")
     tags: List[str] = Field(default_factory=list, description="标签列表")
+    tags_text: Optional[str] = Field(None, description="原始标签输入文本（后端统一拆分清洗）")
     source: Optional[str] = Field(None, description="来源标识")
     note: Optional[str] = Field(None, description="备注", max_length=NOTE_MAX_LENGTH)
     client_context: Optional[Dict[str, Any]] = Field(None, description="客户端上下文（可选）")
@@ -448,7 +449,7 @@ class DistributionRuleResponse(BaseModel):
     match_conditions: Dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
     priority: int = 0
-    nsfw_policy: str = "inherit"
+    nsfw_policy: str = "block"
     approval_required: bool = False
     auto_approve_conditions: Optional[Dict[str, Any]] = None
     rate_limit: Optional[int] = None
@@ -728,14 +729,6 @@ class BotChatRuleAssignRequest(BaseModel):
     rule_ids: List[int] = Field(default_factory=list)
 
 
-class BotChatRuleSummaryItem(BaseModel):
-    """群组规则摘要"""
-    chat_id: str
-    rule_ids: List[int] = Field(default_factory=list)
-    rule_names: List[str] = Field(default_factory=list)
-    rule_count: int = 0
-
-
 class BotConfigBase(BaseModel):
     """Bot 配置基础字段"""
     platform: str = Field(..., pattern=r"^(telegram|qq)$")
@@ -973,6 +966,11 @@ class ContentQueueItemResponse(BaseModel):
     """队列项响应"""
     id: int
     content_id: int
+    title: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    is_nsfw: bool = False
+    cover_url: Optional[str] = None
+    author_name: Optional[str] = None
     rule_id: int
     bot_chat_id: int
     target_platform: str

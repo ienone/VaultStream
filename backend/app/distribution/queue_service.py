@@ -5,7 +5,7 @@
 """
 from typing import Optional
 
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
@@ -15,6 +15,7 @@ from app.distribution.engine import DistributionEngine
 from app.core.events import event_bus
 from app.models import (
     Content,
+    DistributionRule,
     DistributionTarget,
     BotChat,
     ContentQueueItem,
@@ -221,3 +222,118 @@ async def enqueue_content_background(content_id: int) -> None:
             await _enqueue_content_impl(content_id, session, force=False)
     except Exception:
         logger.exception(f"Background enqueue failed: content_id={content_id}")
+
+
+async def mark_historical_parse_success_as_pushed_for_rule(
+    *,
+    session: AsyncSession,
+    rule_id: int,
+    bot_chat_id: Optional[int] = None,
+) -> int:
+    """
+    将历史 parse_success 内容在指定规则（可选限定到指定 bot_chat）下标记为已推送。
+
+    用途：
+    1) 迁移脚本回填历史数据；
+    2) 新增规则目标/规则绑定时，避免出现“历史内容悬空待推送”。
+
+    Returns:
+        新插入的 success 队列项数量
+    """
+    rule_result = await session.execute(
+        select(DistributionRule).where(DistributionRule.id == rule_id)
+    )
+    rule = rule_result.scalar_one_or_none()
+    if not rule:
+        logger.warning("Backfill skipped, rule not found: rule_id=%s", rule_id)
+        return 0
+
+    target_query = (
+        select(DistributionTarget, BotChat)
+        .join(BotChat, DistributionTarget.bot_chat_id == BotChat.id)
+        .where(DistributionTarget.rule_id == rule_id)
+        .where(DistributionTarget.enabled == True)
+        .where(BotChat.enabled == True)
+        .where(BotChat.is_accessible == True)
+        .where(BotChat.can_post == True)
+    )
+    if bot_chat_id is not None:
+        target_query = target_query.where(DistributionTarget.bot_chat_id == bot_chat_id)
+
+    targets_result = await session.execute(target_query)
+    target_pairs = targets_result.all()
+    if not target_pairs:
+        return 0
+
+    target_chat_ids = [int(chat.id) for _, chat in target_pairs]
+    existing_result = await session.execute(
+        select(ContentQueueItem.content_id, ContentQueueItem.bot_chat_id)
+        .where(ContentQueueItem.rule_id == rule_id)
+        .where(ContentQueueItem.bot_chat_id.in_(target_chat_ids))
+    )
+    existing_keys = {(int(content_id), int(chat_id)) for content_id, chat_id in existing_result.all()}
+
+    contents_result = await session.execute(
+        select(Content)
+        .where(Content.status == ContentStatus.PARSE_SUCCESS)
+        .order_by(Content.id.asc())
+    )
+    contents = contents_result.scalars().all()
+    if not contents:
+        return 0
+
+    engine = DistributionEngine(session)
+    now = utcnow()
+    rows = []
+
+    for content in contents:
+        matched = await engine._check_match(content, rule)
+        for _, bot_chat in target_pairs:
+            key = (int(content.id), int(bot_chat.id))
+            if key in existing_keys:
+                continue
+
+            if matched:
+                status = QueueItemStatus.SUCCESS
+                last_error = None
+                completed_at = now
+                approved_at = now
+            else:
+                status = QueueItemStatus.SKIPPED
+                last_error = "Filtered by rule conditions"
+                completed_at = now
+                approved_at = None
+
+            rows.append(
+                {
+                    "content_id": int(content.id),
+                    "rule_id": int(rule_id),
+                    "bot_chat_id": int(bot_chat.id),
+                    "target_platform": bot_chat.platform_type,
+                    "target_id": bot_chat.chat_id,
+                    "status": status,
+                    "priority": 0,
+                    "scheduled_at": now,
+                    "needs_approval": False,
+                    "approved_at": approved_at,
+                    "started_at": now,
+                    "completed_at": completed_at,
+                    "last_error": last_error,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            )
+
+    if not rows:
+        return 0
+
+    await session.execute(insert(ContentQueueItem), rows)
+    inserted = len(rows)
+    if inserted > 0:
+        logger.info(
+            "Backfilled historical queue items by rule: rule_id={}, bot_chat_id={}, inserted={}",
+            rule_id,
+            bot_chat_id,
+            inserted,
+        )
+    return inserted
