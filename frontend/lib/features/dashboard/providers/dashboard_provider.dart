@@ -12,10 +12,10 @@ Future<DashboardStats> dashboardStats(Ref ref) async {
 }
 
 @riverpod
-Future<QueueStats> queueStats(Ref ref) async {
+Future<QueueOverviewStats> queueStats(Ref ref) async {
   final dio = ref.watch(apiClientProvider);
   final response = await dio.get('/dashboard/queue');
-  return QueueStats.fromJson(response.data);
+  return QueueOverviewStats.fromJson(response.data);
 }
 
 @riverpod

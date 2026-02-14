@@ -235,9 +235,9 @@ class ApiService {
     return DashboardStats.fromJson(response.data);
   }
 
-  Future<QueueStats> getQueueStats() async {
+  Future<QueueOverviewStats> getQueueStats() async {
     final response = await _dio.get('/dashboard/queue');
-    return QueueStats.fromJson(response.data);
+    return QueueOverviewStats.fromJson(response.data);
   }
 
   Future<List<TagStats>> getTags() async {

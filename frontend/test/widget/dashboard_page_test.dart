@@ -20,12 +20,21 @@ void main() {
       storageUsageBytes: 1024 * 1024 * 100, // 100 MB
     );
 
-    final mockQueue = QueueStats(
-      pending: 2,
-      processing: 1,
-      failed: 0,
-      archived: 15,
-      total: 18,
+    final mockQueue = QueueOverviewStats(
+      parse: QueueStats(
+        unprocessed: 2,
+        processing: 1,
+        parseSuccess: 15,
+        parseFailed: 0,
+        total: 18,
+      ),
+      distribution: DistributionStats(
+        willPush: 3,
+        filtered: 2,
+        pendingReview: 1,
+        pushed: 12,
+        total: 18,
+      ),
     );
     
     final mockHealth = SystemHealth(
@@ -78,12 +87,21 @@ void main() {
       storageUsageBytes: 1024 * 1024 * 100,
     );
 
-    final mockQueue = QueueStats(
-      pending: 2,
-      processing: 1,
-      failed: 0,
-      archived: 15,
-      total: 18,
+    final mockQueue = QueueOverviewStats(
+      parse: QueueStats(
+        unprocessed: 2,
+        processing: 1,
+        parseSuccess: 15,
+        parseFailed: 0,
+        total: 18,
+      ),
+      distribution: DistributionStats(
+        willPush: 3,
+        filtered: 2,
+        pendingReview: 1,
+        pushed: 12,
+        total: 18,
+      ),
     );
     
     final mockHealth = SystemHealth(

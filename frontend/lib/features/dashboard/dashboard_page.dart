@@ -181,7 +181,7 @@ class DashboardPage extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     AsyncValue<DashboardStats> statsAsync,
-    AsyncValue<QueueStats> queueAsync,
+    AsyncValue<QueueOverviewStats> queueAsync,
   ) {
     final isWide = MediaQuery.of(context).size.width > 900;
     
@@ -217,7 +217,7 @@ class DashboardPage extends ConsumerWidget {
         StatCard(
           label: '队列积压',
           value: queueAsync.when(
-            data: (q) => q.pending.toString(),
+            data: (q) => q.parse.unprocessed.toString(),
             loading: () => '...',
             error: (_, _) => '!',
           ),
@@ -228,13 +228,13 @@ class DashboardPage extends ConsumerWidget {
         StatCard(
           label: '解析失败',
           value: queueAsync.when(
-            data: (q) => q.failed.toString(),
+            data: (q) => q.parse.parseFailed.toString(),
             loading: () => '...',
             error: (_, _) => '!',
           ),
           icon: Icons.error_outline_rounded,
           color: Theme.of(context).colorScheme.error,
-          onTap: () => _navigateToCollection(context, ref, statuses: ['failed']),
+          onTap: () => _navigateToCollection(context, ref, statuses: ['parse_failed']),
         ),
       ],
     );

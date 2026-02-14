@@ -98,6 +98,9 @@ abstract class BotStatus with _$BotStatus {
     @JsonKey(name: 'total_pushed_today') required int totalPushedToday,
     @JsonKey(name: 'uptime_seconds') int? uptimeSeconds,
     @JsonKey(name: 'napcat_status') String? napcatStatus,
+    @JsonKey(name: 'parse_stats') ParseStats? parseStats,
+    @JsonKey(name: 'distribution_stats') DistributionStats? distributionStats,
+    @JsonKey(name: 'rule_breakdown') @Default({}) Map<String, DistributionStats> ruleBreakdown,
   }) = _BotStatus;
 
   bool get isNapcatOnline => napcatStatus == 'online';
@@ -113,6 +116,34 @@ abstract class BotStatus with _$BotStatus {
 
   factory BotStatus.fromJson(Map<String, dynamic> json) =>
       _$BotStatusFromJson(json);
+}
+
+@freezed
+abstract class ParseStats with _$ParseStats {
+  const factory ParseStats({
+    required int unprocessed,
+    required int processing,
+    @JsonKey(name: 'parse_success') required int parseSuccess,
+    @JsonKey(name: 'parse_failed') required int parseFailed,
+    required int total,
+  }) = _ParseStats;
+
+  factory ParseStats.fromJson(Map<String, dynamic> json) =>
+      _$ParseStatsFromJson(json);
+}
+
+@freezed
+abstract class DistributionStats with _$DistributionStats {
+  const factory DistributionStats({
+    @JsonKey(name: 'will_push') required int willPush,
+    required int filtered,
+    @JsonKey(name: 'pending_review') required int pendingReview,
+    required int pushed,
+    required int total,
+  }) = _DistributionStats;
+
+  factory DistributionStats.fromJson(Map<String, dynamic> json) =>
+      _$DistributionStatsFromJson(json);
 }
 
 @freezed

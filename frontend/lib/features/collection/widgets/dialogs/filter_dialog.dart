@@ -35,7 +35,7 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
   List<String> _tagSuggestions = [];
 
   final List<String> _platforms = ['bilibili', 'twitter', 'xiaohongshu', 'douyin', 'weibo', 'zhihu'];
-  final List<String> _statuses = ['unprocessed', 'processing', 'pulled', 'failed', 'archived'];
+  final List<String> _statuses = ['unprocessed', 'processing', 'parse_success', 'parse_failed'];
 
   final Map<String, String> _platformLabels = {
     'bilibili': 'Bilibili', 'twitter': 'Twitter/X', 'xiaohongshu': '小红书',
@@ -43,7 +43,7 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
   };
 
   final Map<String, String> _statusLabels = {
-    'unprocessed': '未处理', 'processing': '处理中', 'pulled': '已拉取', 'failed': '失败', 'archived': '已归档',
+    'unprocessed': '未处理', 'processing': '处理中', 'parse_success': '解析成功', 'parse_failed': '解析失败',
   };
 
   @override

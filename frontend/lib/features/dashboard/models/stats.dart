@@ -6,15 +6,40 @@ part 'stats.g.dart';
 @freezed
 abstract class QueueStats with _$QueueStats {
   const factory QueueStats({
-    required int pending,
+    required int unprocessed,
     required int processing,
-    required int failed,
-    required int archived,
+    @JsonKey(name: 'parse_success') required int parseSuccess,
+    @JsonKey(name: 'parse_failed') required int parseFailed,
     required int total,
   }) = _QueueStats;
 
   factory QueueStats.fromJson(Map<String, dynamic> json) =>
       _$QueueStatsFromJson(json);
+}
+
+@freezed
+abstract class DistributionStats with _$DistributionStats {
+  const factory DistributionStats({
+    @JsonKey(name: 'will_push') required int willPush,
+    required int filtered,
+    @JsonKey(name: 'pending_review') required int pendingReview,
+    required int pushed,
+    required int total,
+  }) = _DistributionStats;
+
+  factory DistributionStats.fromJson(Map<String, dynamic> json) =>
+      _$DistributionStatsFromJson(json);
+}
+
+@freezed
+abstract class QueueOverviewStats with _$QueueOverviewStats {
+  const factory QueueOverviewStats({
+    required QueueStats parse,
+    required DistributionStats distribution,
+  }) = _QueueOverviewStats;
+
+  factory QueueOverviewStats.fromJson(Map<String, dynamic> json) =>
+      _$QueueOverviewStatsFromJson(json);
 }
 
 @freezed

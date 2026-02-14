@@ -528,7 +528,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                 ButtonSegment<QueueStatus>(
                   value: QueueStatus.pendingReview,
                   icon: const Icon(Icons.rate_review_rounded, size: 18),
-                  label: Text('待审批 ($pending)'),
+                  label: Text('待审阅 ($pending)'),
                 ),
                 ButtonSegment<QueueStatus>(
                   value: QueueStatus.pushed,

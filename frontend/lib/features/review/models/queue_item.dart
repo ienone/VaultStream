@@ -6,7 +6,7 @@ part 'queue_item.g.dart';
 enum QueueStatus {
   willPush('will_push', '待推送'),
   filtered('filtered', '不推送'),
-  pendingReview('pending_review', '待审批'),
+  pendingReview('pending_review', '待审阅'),
   pushed('pushed', '已推送');
 
   const QueueStatus(this.value, this.label);

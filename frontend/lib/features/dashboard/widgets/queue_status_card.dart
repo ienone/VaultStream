@@ -3,13 +3,15 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../models/stats.dart';
 
 class QueueStatusCard extends StatelessWidget {
-  final QueueStats queue;
+  final QueueOverviewStats queue;
 
   const QueueStatusCard({super.key, required this.queue});
 
   @override
   Widget build(BuildContext context) {
-    final total = queue.total;
+    final parse = queue.parse;
+    final distribution = queue.distribution;
+    final total = parse.total;
     if (total == 0) return const Center(child: Text('队列为空'));
 
     final colorScheme = Theme.of(context).colorScheme;
@@ -27,7 +29,7 @@ class QueueStatusCard extends StatelessWidget {
             _buildQueueRow(
               context,
               '未处理',
-              queue.pending,
+              parse.unprocessed,
               total,
               colorScheme.tertiary,
               0,
@@ -35,8 +37,8 @@ class QueueStatusCard extends StatelessWidget {
             const SizedBox(height: 16),
             _buildQueueRow(
               context,
-              '待推送',
-              queue.processing,
+              '解析中',
+              parse.processing,
               total,
               colorScheme.primary,
               1,
@@ -44,20 +46,31 @@ class QueueStatusCard extends StatelessWidget {
             const SizedBox(height: 16),
             _buildQueueRow(
               context,
-              '解析失败',
-              queue.failed,
+              '解析成功',
+              parse.parseSuccess,
               total,
-              colorScheme.error,
+              colorScheme.secondary,
               2,
             ),
             const SizedBox(height: 16),
             _buildQueueRow(
               context,
-              '已推送',
-              queue.archived,
+              '解析失败',
+              parse.parseFailed,
               total,
-              Colors.green,
+              colorScheme.error,
               3,
+            ),
+            const SizedBox(height: 18),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _StatusChip(label: '待推送 ${distribution.willPush}', color: colorScheme.primary),
+                _StatusChip(label: '已过滤 ${distribution.filtered}', color: colorScheme.secondary),
+                _StatusChip(label: '待审阅 ${distribution.pendingReview}', color: colorScheme.tertiary),
+                _StatusChip(label: '已推送 ${distribution.pushed}', color: Colors.green),
+              ],
             ),
           ],
         ),
@@ -140,5 +153,32 @@ class QueueStatusCard extends StatelessWidget {
         ),
       ],
     ).animate().fadeIn(delay: (index * 100).ms).slideX(begin: 0.1, end: 0);
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+        ),
+      ),
+    );
   }
 }

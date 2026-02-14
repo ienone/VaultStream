@@ -278,10 +278,10 @@ Future<Map<String, int>> queueStats(Ref ref, int? ruleId) async {
   final data = Map<String, dynamic>.from(response.data as Map);
 
   final mapped = <String, int>{
-    'will_push': (data['scheduled'] ?? 0) + (data['processing'] ?? 0),
-    'filtered': (data['canceled'] ?? 0) + (data['skipped'] ?? 0),
-    'pending_review': (data['pending'] ?? 0),
-    'pushed': (data['success'] ?? 0),
+    'will_push': (data['will_push'] ?? 0),
+    'filtered': (data['filtered'] ?? 0),
+    'pending_review': (data['pending_review'] ?? 0),
+    'pushed': (data['pushed'] ?? 0),
     'total': (data['total'] ?? 0),
   };
   return mapped;

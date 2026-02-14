@@ -84,6 +84,72 @@ class BotStatusCard extends ConsumerWidget {
                     ),
                 ],
               ),
+              if (status.parseStats != null) ...[
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _buildStatChip(
+                      context,
+                      icon: Icons.inbox_rounded,
+                      label: '未处理 ${status.parseStats!.unprocessed}',
+                      color: colorScheme.outline,
+                    ),
+                    _buildStatChip(
+                      context,
+                      icon: Icons.sync_rounded,
+                      label: '解析中 ${status.parseStats!.processing}',
+                      color: colorScheme.primary,
+                    ),
+                    _buildStatChip(
+                      context,
+                      icon: Icons.check_circle_rounded,
+                      label: '解析成功 ${status.parseStats!.parseSuccess}',
+                      color: Colors.green,
+                    ),
+                    _buildStatChip(
+                      context,
+                      icon: Icons.error_outline_rounded,
+                      label: '解析失败 ${status.parseStats!.parseFailed}',
+                      color: colorScheme.error,
+                    ),
+                  ],
+                ),
+              ],
+              if (status.distributionStats != null) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _buildStatChip(
+                      context,
+                      icon: Icons.schedule_send_rounded,
+                      label: '待推送 ${status.distributionStats!.willPush}',
+                      color: colorScheme.primary,
+                    ),
+                    _buildStatChip(
+                      context,
+                      icon: Icons.filter_alt_off_rounded,
+                      label: '已过滤 ${status.distributionStats!.filtered}',
+                      color: colorScheme.secondary,
+                    ),
+                    _buildStatChip(
+                      context,
+                      icon: Icons.rate_review_rounded,
+                      label: '待审阅 ${status.distributionStats!.pendingReview}',
+                      color: colorScheme.tertiary,
+                    ),
+                    _buildStatChip(
+                      context,
+                      icon: Icons.send_rounded,
+                      label: '已推送 ${status.distributionStats!.pushed}',
+                      color: Colors.green,
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 32),
               Row(
                 children: [
