@@ -33,8 +33,8 @@ PREVIEW_CONTENT_IDS = [6, 8, 9]
 DEFAULT_RENDER_CONFIG_PRESETS = [
     {
         "id": "minimal",
-        "name": "Minimal",
-        "description": "Minimal display with title and link only",
+        "name": "极简",
+        "description": "仅显示标题与链接，适合精简推送",
         "is_builtin": True,
         "config": {
             "show_platform_id": False,
@@ -50,8 +50,8 @@ DEFAULT_RENDER_CONFIG_PRESETS = [
     },
     {
         "id": "standard",
-        "name": "Standard",
-        "description": "Balanced display with summary and media",
+        "name": "标准",
+        "description": "平衡展示摘要与媒体，适合日常使用",
         "is_builtin": True,
         "config": {
             "show_platform_id": True,
@@ -67,8 +67,8 @@ DEFAULT_RENDER_CONFIG_PRESETS = [
     },
     {
         "id": "detailed",
-        "name": "Detailed",
-        "description": "Full display with all fields and media",
+        "name": "详细",
+        "description": "完整展示字段与媒体，信息最丰富",
         "is_builtin": True,
         "config": {
             "show_platform_id": True,
@@ -79,13 +79,13 @@ DEFAULT_RENDER_CONFIG_PRESETS = [
             "media_mode": "all",
             "link_mode": "original",
             "header_text": "📰 {{date}}",
-            "footer_text": "Powered by VaultStream"
+            "footer_text": "由 VaultStream 提供"
         }
     },
     {
         "id": "media_only",
-        "name": "Media Only",
-        "description": "Media-focused with minimal text",
+        "name": "媒体优先",
+        "description": "以媒体为主，文本最少",
         "is_builtin": True,
         "config": {
             "show_platform_id": False,

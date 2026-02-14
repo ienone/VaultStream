@@ -106,10 +106,17 @@ class ContentQueueItem(Base):
 
 > `merge-group` 返回语义化成功响应。
 
+目标平台语义约束：
+
+- `/api/v1/targets` 返回的 `target_platform` 统一为 `telegram` / `qq`。
+- `/api/v1/targets?platform=...` 与 `/api/v1/targets/batch-update` 仅接受 `telegram|qq`。
+
 ### 3.2 Bot 相关 API
 
 - Bot Chat：`/api/v1/bot/chats/*`，同步入口为 `POST /api/v1/bot/chats/sync`
 - Bot Config：`/api/v1/bot-config/*`，支持 `activate` / `qr-code` / `sync-chats`
+
+`BotChat` 响应直接返回 `applied_rule_ids`、`applied_rule_names`、`applied_rule_count`，前端无需额外摘要接口二次拼装。
 
 `GET /api/v1/bot-config/{id}/qr-code` 当前为 HTTP 单次查询，不是 WebSocket 流。
 
@@ -121,7 +128,7 @@ class ContentQueueItem(Base):
 
 1. 创建 Bot 配置（`POST /bot-config`）。
 2. 同步会话（`POST /bot-config/{id}/sync-chats`）。
-3. 在规则中关联目标（创建规则时 `targets` 或后续 target API）。
+3. 通过目标接口关联规则与目标（`/distribution-rules/{id}/targets` 系列）。
 
 ### 阶段 B：规则匹配与入队
 

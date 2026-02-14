@@ -35,8 +35,8 @@
 sequenceDiagram
     participant User as 用户
     participant API as FastAPI
-    participant DB as PostgreSQL
-    participant Queue as Redis队列
+    participant DB as SQLite
+    participant Queue as Tasks队列
     participant Worker as 后台Worker
     participant Adapter as 平台适配器
     participant Platform as 外部平台API
@@ -56,7 +56,7 @@ sequenceDiagram
         API-->>User: 返回content_id (已存在)
     end
 
-    Worker->>Queue: 轮询获取任务(BRPOP)
+    Worker->>Queue: 轮询获取任务(数据库任务表)
     Queue-->>Worker: 返回任务{content_id}
     Worker->>DB: 获取Content记录
     Worker->>DB: 更新status=PROCESSING
@@ -68,7 +68,7 @@ sequenceDiagram
     
     Worker->>Worker: 处理归档媒体(可选)
     Worker->>DB: 更新Content所有字段
-    Worker->>DB: 更新status=PULLED
+    Worker->>DB: 更新status=PARSE_SUCCESS
     Worker->>Queue: 标记任务完成
 ```
 
@@ -83,7 +83,7 @@ sequenceDiagram
     │                 │
     │ 解析成功         │ 解析失败
     ▼                 ▼
-  PULLED           FAILED
+    PARSE_SUCCESS    PARSE_FAILED
                       │
                       │ 重试 (最多3次)
                       └────────────┐

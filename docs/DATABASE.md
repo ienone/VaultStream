@@ -12,7 +12,7 @@
 | `url` | Text | 原始提交链接 |
 | `canonical_url` | Text | 规范化后的去重键（用于 `(platform, canonical_url)` 去重） |
 | `clean_url` | Text | 净化后的标准链接 |
-| `status` | Enum | 状态机: `unprocessed`, `processing`, `pulled`, `distributed`, `failed` |
+| `status` | Enum | 状态机: `unprocessed`, `processing`, `parse_success`, `parse_failed` |
 | `tags` | JSON | 用户自定义标签列表 `["Tech", "Meme"]` |
 | `is_nsfw` | Boolean | 是否为敏感内容 |
 | `source` | String | 来源标识 (如 `web_test`, `ios_shortcut`) |
@@ -72,7 +72,7 @@ sqlite3 data/vaultstream.db < migrations/m4_distribution_and_review.sql
 
 ## 5. 任务队列表 (`tasks`)
 
-由于后端移除了 Redis 依赖，采用 SQLite 表模拟简单的任务队列。支持原子取任务 (`SELECT FOR UPDATE SKIP LOCKED` 语义在 SQLite 中通过文件锁实现并发安全)。
+后端采用数据库任务表执行解析任务分发，不依赖 Redis。
 
 | 字段名 | 类型 | 说明 |
 | :--- | :--- | :--- |
@@ -92,6 +92,35 @@ sqlite3 data/vaultstream.db < migrations/m4_distribution_and_review.sql
 | :--- | :--- | :--- |
 | `id` | Integer | 主键 |
 | `content_id` | Integer | 外键，关联 `contents.id` |
-| `target_platform` | String | 目标平台标识 (如 `TG_CHANNEL_A`) |
+| `target_platform` | String | 目标平台标识（统一为 `telegram` / `qq`） |
 | `message_id` | String | 推送成功后的消息 ID (用于后续更新或撤回) |
 | `pushed_at` | DateTime | 推送时间 |
+
+## 6. `content_sources` 表（来源流水）
+
+用于记录每次分享请求的来源快照，便于审计与回放。
+
+| 字段名 | 类型 | 说明 |
+| :--- | :--- | :--- |
+| `id` | Integer | 自增主键 |
+| `content_id` | Integer | 外键，关联 `contents.id` |
+| `source` | String | 来源标识（如 `android_share`） |
+| `tags_snapshot` | JSON | 后端标准化后的标签快照 |
+| `note` | Text | 用户备注 |
+| `client_context` | JSON | 客户端上下文 |
+| `created_at` | DateTime | 记录创建时间 |
+
+## 7. 迁移执行基线（当前实现）
+
+全新或回放环境请确保以下迁移链已经执行到位：
+
+- 分发目标重构：`m8_distribution_target_refactor.py`、`m9_finalize_targets_migration.py`
+- 旧排期字段收口：`m11_drop_legacy_content_schedule_columns.sql`
+- Bot 配置链路：`m12_add_bot_config_table.sql`、`m14_bind_bot_chats_to_config.py`、`m15_add_napcat_access_token.py`
+- 状态机统一：`m17_replace_legacy_content_status.sql`
+
+治理约束：
+
+- 运行时只依赖当前结构，不保留旧字段兼容分支。
+- 中间态/一次性迁移脚本仅用于升级，不应作为运行时逻辑输入。
+- 已归档的一次性迁移脚本统一放置在 `scripts/archive/`（例如 `scripts/archive/migrate_remove_old_scheduling.py`）。

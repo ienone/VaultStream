@@ -23,6 +23,12 @@
 
 提交分享链接并创建内容。
 
+标签字段说明：
+- `tags`: 快捷标签数组（可选）
+- `tags_text`: 原始标签输入文本（可选）
+
+服务端会统一对 `tags + tags_text` 做拆分、去空白与去重，支持逗号、中文逗号与空白分隔。
+
 ### GET /api/v1/contents
 
 分页获取内容列表。
@@ -204,6 +210,9 @@ eventSource.addEventListener('queue_updated', (e) => {
 - `GET /api/v1/targets`
 - `POST /api/v1/targets/test`
 - `POST /api/v1/targets/batch-update`
+
+`GET /api/v1/targets` 返回的 `target_platform` 统一为 `telegram` 或 `qq`（不再暴露 `group/supergroup/channel/qq_group` 等 chat_type 细分值）。
+`GET /api/v1/targets?platform=...` 与 `POST /api/v1/targets/batch-update` 的 `target_platform` 仅接受 `telegram|qq`。
 
 ---
 
