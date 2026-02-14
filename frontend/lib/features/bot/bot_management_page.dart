@@ -132,6 +132,7 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
     final platform = (cfg['platform'] ?? '').toString();
     final subtitle = [
       '平台: $platform',
+      '状态: ${cfg['enabled'] == true ? '启用' : '禁用'}',
       '群组数: ${cfg['chat_count'] ?? 0}',
       if (cfg['bot_username'] != null) '@${cfg['bot_username']}',
     ].join('  ·  ');
@@ -326,6 +327,17 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
                   await dio.patch('/bot-config/${cfg['id']}', data: payload);
                   if (ctx.mounted) Navigator.of(ctx).pop();
                   await _loadConfigs();
+                  if (!mounted) return;
+                  final isTelegram = cfg['platform'] == 'telegram';
+                  final enabledNow = enabled.value;
+                  final tokenUpdated = tokenController.text.trim().isNotEmpty;
+                  if (isTelegram && (enabledNow || tokenUpdated)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Telegram 配置已保存。若状态仍未运行，请确认“设为主 Bot”后重启后端或手动启动 app.bot.main。'),
+                      ),
+                    );
+                  }
                 } on DioException catch (e) {
                   final detail = e.response?.data is Map
                       ? (e.response?.data['detail']?.toString() ??
@@ -488,10 +500,15 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
                 final trimmedName = nameController.text.trim();
                 final trimmedToken = tokenController.text.trim();
                 final trimmedHttp = httpController.text.trim();
+                final hasPrimaryTelegram = _configs.any(
+                  (c) => c['platform'] == 'telegram' && c['is_primary'] == true,
+                );
                 final payload = <String, dynamic>{
                   'platform': platform,
                   'name': trimmedName,
                   'enabled': true,
+                  if (platform == 'telegram' && !hasPrimaryTelegram)
+                    'is_primary': true,
                 };
                 if (platform == 'telegram') {
                   payload['bot_token'] = trimmedToken;
@@ -508,6 +525,14 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
                   await dio.post('/bot-config/${cfg['id']}/sync-chats');
                   if (ctx.mounted) Navigator.of(ctx).pop();
                   await _loadConfigs();
+                  if (!mounted) return;
+                  if (platform == 'telegram' && cfg['is_primary'] != true) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('已创建 Telegram Bot。请在该条目的菜单中执行“设为主 Bot”，然后重启后端以启动 Bot。'),
+                      ),
+                    );
+                  }
                 } on DioException catch (e) {
                   final detail = e.response?.data is Map
                       ? (e.response?.data['detail']?.toString() ??

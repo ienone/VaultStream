@@ -9,6 +9,7 @@ abstract class BotChat with _$BotChat {
 
   const factory BotChat({
     required int id,
+    @JsonKey(name: 'bot_config_id') required int botConfigId,
     @JsonKey(name: 'chat_id') required String chatId,
     @JsonKey(name: 'chat_type') required String chatType,
     String? title,
@@ -24,6 +25,9 @@ abstract class BotChat with _$BotChat {
     @JsonKey(name: 'is_accessible') @Default(true) bool isAccessible,
     @JsonKey(name: 'last_sync_at') DateTime? lastSyncAt,
     @JsonKey(name: 'sync_error') String? syncError,
+    @JsonKey(name: 'applied_rule_ids') @Default([]) List<int> appliedRuleIds,
+    @JsonKey(name: 'applied_rule_names') @Default([]) List<String> appliedRuleNames,
+    @JsonKey(name: 'applied_rule_count') @Default(0) int appliedRuleCount,
     @JsonKey(name: 'created_at') required DateTime createdAt,
     @JsonKey(name: 'updated_at') required DateTime updatedAt,
   }) = _BotChat;
@@ -61,6 +65,7 @@ abstract class BotChat with _$BotChat {
 @freezed
 abstract class BotChatCreate with _$BotChatCreate {
   const factory BotChatCreate({
+    @JsonKey(name: 'bot_config_id') required int botConfigId,
     @JsonKey(name: 'chat_id') required String chatId,
     @JsonKey(name: 'chat_type') required String chatType,
     String? title,

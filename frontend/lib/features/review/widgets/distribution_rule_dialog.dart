@@ -201,8 +201,8 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
                           value: _tagsMatchMode,
                           icon: Icons.api_rounded,
                           entries: const [
-                            DropdownMenuEntry(value: 'any', label: '包含任一 (Any)'),
-                            DropdownMenuEntry(value: 'all', label: '包含所有 (All)'),
+                            DropdownMenuEntry(value: 'any', label: '包含任一'),
+                            DropdownMenuEntry(value: 'all', label: '包含全部'),
                           ],
                           onChanged: (v) => setState(() => _tagsMatchMode = v!),
                         ),

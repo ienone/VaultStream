@@ -5,12 +5,14 @@ import '../models/bot_chat.dart';
 class BotChatDialog extends ConsumerStatefulWidget {
   final BotChat? chat;
   final Function(BotChatCreate) onCreate;
+  final Future<int> Function(String chatType) resolveBotConfigId;
   final Function(String, BotChatUpdate)? onUpdate;
 
   const BotChatDialog({
     super.key,
     this.chat,
     required this.onCreate,
+    required this.resolveBotConfigId,
     this.onUpdate,
   });
 
@@ -169,7 +171,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                 ),
                 const SizedBox(width: 12),
                 FilledButton(
-                  onPressed: _submit,
+                  onPressed: () => _submit(),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -286,7 +288,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
     );
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
     if (isEditing) {
@@ -309,8 +311,10 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
         chatId = 'private:$chatId';
       }
 
+      final botConfigId = await widget.resolveBotConfigId(_chatType);
       widget.onCreate(
         BotChatCreate(
+          botConfigId: botConfigId,
           chatId: chatId,
           chatType: _chatType,
           title:
@@ -322,6 +326,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
         ),
       );
     }
+    if (!mounted) return;
     Navigator.of(context).pop();
   }
 }

@@ -36,9 +36,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   bool _isSyncingChats = false;
+  bool _isControllingTelegram = false;
   int? _selectedRuleId;
   bool _portraitRuleConfigExpanded = false;
-  Map<String, List<String>> _chatRuleNames = const {};
   StreamSubscription<SseEvent>? _sseSub;
   DateTime? _lastToastAt;
 
@@ -46,7 +46,6 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    Future.microtask(_refreshChatRuleSummary);
     _bindRealtimeEvents();
   }
 
@@ -231,9 +230,6 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
               leading: const Icon(Icons.search_rounded, size: 20),
               elevation: WidgetStateProperty.all(0),
               backgroundColor: WidgetStateProperty.all(colorScheme.surfaceContainerHigh),
-              onChanged: (value) {
-                // TODO: Implement rule filtering if needed
-              },
             ),
           ),
           Expanded(
@@ -621,8 +617,12 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
             children: [
               BotStatusCard(
                 isSyncing: _isSyncingChats,
+                isControllingTelegram: _isControllingTelegram,
                 onSync: _syncBotChats,
-                onTriggerPush: _triggerPush,
+                onRefreshStatus: _refreshBotStatus,
+                onStartTelegram: _startTelegramService,
+                onStopTelegram: _stopTelegramService,
+                onRestartTelegram: _restartTelegramService,
               ),
               const SizedBox(height: 32),
               Row(
@@ -643,7 +643,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                       child: BotChatCard(
                         index: entry.key,
                         chat: entry.value,
-                        appliedRuleNames: _chatRuleNames[entry.value.chatId] ?? const [],
+                        appliedRuleNames: entry.value.appliedRuleNames,
                         onConfigureRules: () => _showConfigureChatRulesDialog(entry.value),
                         onEdit: () => _showEditBotChatDialog(entry.value),
                         onDelete: () => _confirmDeleteBotChat(entry.value),
@@ -686,8 +686,8 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
 
     try {
       final result = await ref.read(botChatsProvider.notifier).syncChats();
-      await _refreshChatRuleSummary();
       if (mounted) {
+        ref.invalidate(botChatsProvider);
         ref.invalidate(botStatusProvider);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -708,32 +708,62 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
     }
   }
 
-  Future<void> _triggerPush() async {
+  void _refreshBotStatus() {
+    ref.invalidate(botStatusProvider);
+  }
+
+  Future<void> _operateTelegramService({
+    required String action,
+    required String successMessage,
+  }) async {
+    if (_isControllingTelegram) return;
+    setState(() => _isControllingTelegram = true);
+
     try {
       final dio = ref.read(apiClientProvider);
-      await dio.post('/distribution/trigger-run');
+      await dio.post('/bot-config/service/telegram/$action');
       if (mounted) {
+        ref.invalidate(botStatusProvider);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            content: const Text('已触发分发任务，正在后台处理...'),
+            content: Text(successMessage),
           ),
         );
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            ref.invalidate(botStatusProvider);
-            ref.invalidate(queueStatsProvider(_selectedRuleId));
-          }
-        });
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('触发失败: $e')),
+          SnackBar(content: Text('操作失败: $e')),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() => _isControllingTelegram = false);
+      }
     }
+  }
+
+  Future<void> _startTelegramService() async {
+    await _operateTelegramService(
+      action: 'start',
+      successMessage: 'Telegram Bot 已启动',
+    );
+  }
+
+  Future<void> _stopTelegramService() async {
+    await _operateTelegramService(
+      action: 'stop',
+      successMessage: 'Telegram Bot 已停止',
+    );
+  }
+
+  Future<void> _restartTelegramService() async {
+    await _operateTelegramService(
+      action: 'restart',
+      successMessage: 'Telegram Bot 已重启',
+    );
   }
 
   Widget _buildHistoryTab() {
@@ -816,7 +846,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                     DistributionTargetCreate(botChatId: chatId),
                   );
             }
-            await _refreshChatRuleSummary();
+            ref.invalidate(botChatsProvider);
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('规则创建成功')),
@@ -945,10 +975,10 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
     showDialog(
       context: context,
       builder: (ctx) => BotChatDialog(
+        resolveBotConfigId: _resolveBotConfigId,
         onCreate: (chat) async {
           try {
             await ref.read(botChatsProvider.notifier).createChat(chat);
-            await _refreshChatRuleSummary();
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('群组添加成功')),
@@ -971,11 +1001,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       context: context,
       builder: (ctx) => BotChatDialog(
         chat: chat,
+        resolveBotConfigId: _resolveBotConfigId,
         onCreate: (_) {},
         onUpdate: (chatId, update) async {
           try {
             await ref.read(botChatsProvider.notifier).updateChat(chatId, update);
-            await _refreshChatRuleSummary();
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('配置更新成功')),
@@ -991,6 +1021,37 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         },
       ),
     );
+  }
+
+  Future<int> _resolveBotConfigId(String chatType) async {
+    final platform = (chatType == 'qq_group' || chatType == 'qq_private')
+        ? 'qq'
+        : 'telegram';
+
+    final dio = ref.read(apiClientProvider);
+    final response = await dio.get('/bot-config');
+    final configs = (response.data as List<dynamic>)
+        .whereType<Map<String, dynamic>>()
+        .where((item) => item['platform'] == platform)
+        .toList();
+
+    if (configs.isEmpty) {
+      throw Exception('未找到可用的 ${platform.toUpperCase()} Bot 配置，请先在 Bot 管理页创建配置');
+    }
+
+    for (final item in configs) {
+      if (item['is_primary'] == true && item['enabled'] == true) {
+        return (item['id'] as num).toInt();
+      }
+    }
+
+    for (final item in configs) {
+      if (item['enabled'] == true) {
+        return (item['id'] as num).toInt();
+      }
+    }
+
+    return (configs.first['id'] as num).toInt();
   }
 
   void _confirmDeleteBotChat(BotChat chat) {
@@ -1010,7 +1071,6 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
               Navigator.pop(ctx);
               try {
                 await ref.read(botChatsProvider.notifier).deleteChat(chat.chatId);
-                await _refreshChatRuleSummary();
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('群组已删除')),
@@ -1037,36 +1097,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
   Future<void> _toggleBotChatEnabled(BotChat chat) async {
     try {
       await ref.read(botChatsProvider.notifier).toggleChat(chat.chatId);
-      await _refreshChatRuleSummary();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('操作失败: $e')),
         );
-      }
-    }
-  }
-
-  Future<void> _refreshChatRuleSummary() async {
-    try {
-      final dio = ref.read(apiClientProvider);
-      final response = await dio.get('/bot/chats/rules/summary');
-      final data = response.data as List<dynamic>;
-      final map = <String, List<String>>{};
-      for (final item in data) {
-        final json = item as Map<String, dynamic>;
-        final chatId = (json['chat_id'] ?? '').toString();
-        final names = (json['rule_names'] as List<dynamic>? ?? const [])
-            .map((e) => e.toString())
-            .toList();
-        map[chatId] = names;
-      }
-      if (mounted) {
-        setState(() => _chatRuleNames = map);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _chatRuleNames = const {});
       }
     }
   }
@@ -1133,7 +1168,6 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                     '/bot/chats/${chat.chatId}/rules',
                     data: {'rule_ids': selected.toList()..sort()},
                   );
-                  await _refreshChatRuleSummary();
                   if (mounted) {
                     ref.invalidate(botChatsProvider);
                     ScaffoldMessenger.of(context).showSnackBar(

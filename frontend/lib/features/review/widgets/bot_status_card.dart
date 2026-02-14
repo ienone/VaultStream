@@ -6,14 +6,22 @@ import '../models/bot_chat.dart';
 
 class BotStatusCard extends ConsumerWidget {
   final VoidCallback? onSync;
-  final VoidCallback? onTriggerPush;
+  final VoidCallback? onRefreshStatus;
+  final VoidCallback? onStartTelegram;
+  final VoidCallback? onStopTelegram;
+  final VoidCallback? onRestartTelegram;
   final bool isSyncing;
+  final bool isControllingTelegram;
 
   const BotStatusCard({
     super.key,
     this.onSync,
-    this.onTriggerPush,
+    this.onRefreshStatus,
+    this.onStartTelegram,
+    this.onStopTelegram,
+    this.onRestartTelegram,
     this.isSyncing = false,
+    this.isControllingTelegram = false,
   });
 
   @override
@@ -55,101 +63,9 @@ class BotStatusCard extends ConsumerWidget {
           data: (status) => Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildBotRow(context, ref, status, theme, colorScheme),
+              _buildBotRow(context, status, theme, colorScheme),
               const SizedBox(height: 24),
               const Divider(height: 1),
-              const SizedBox(height: 24),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  _buildStatChip(
-                    context,
-                    icon: Icons.groups_rounded,
-                    label: '${status.connectedChats} 个群组',
-                    color: colorScheme.primary,
-                  ),
-                  _buildStatChip(
-                    context,
-                    icon: Icons.send_rounded,
-                    label: '今日推送 ${status.totalPushedToday}',
-                    color: colorScheme.secondary,
-                  ),
-                  if (status.uptimeSeconds != null)
-                    _buildStatChip(
-                      context,
-                      icon: Icons.timer_outlined,
-                      label: 'TG 在线 ${status.uptimeFormatted}',
-                      color: colorScheme.tertiary,
-                    ),
-                ],
-              ),
-              if (status.parseStats != null) ...[
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    _buildStatChip(
-                      context,
-                      icon: Icons.inbox_rounded,
-                      label: '未处理 ${status.parseStats!.unprocessed}',
-                      color: colorScheme.outline,
-                    ),
-                    _buildStatChip(
-                      context,
-                      icon: Icons.sync_rounded,
-                      label: '解析中 ${status.parseStats!.processing}',
-                      color: colorScheme.primary,
-                    ),
-                    _buildStatChip(
-                      context,
-                      icon: Icons.check_circle_rounded,
-                      label: '解析成功 ${status.parseStats!.parseSuccess}',
-                      color: Colors.green,
-                    ),
-                    _buildStatChip(
-                      context,
-                      icon: Icons.error_outline_rounded,
-                      label: '解析失败 ${status.parseStats!.parseFailed}',
-                      color: colorScheme.error,
-                    ),
-                  ],
-                ),
-              ],
-              if (status.distributionStats != null) ...[
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    _buildStatChip(
-                      context,
-                      icon: Icons.schedule_send_rounded,
-                      label: '待推送 ${status.distributionStats!.willPush}',
-                      color: colorScheme.primary,
-                    ),
-                    _buildStatChip(
-                      context,
-                      icon: Icons.filter_alt_off_rounded,
-                      label: '已过滤 ${status.distributionStats!.filtered}',
-                      color: colorScheme.secondary,
-                    ),
-                    _buildStatChip(
-                      context,
-                      icon: Icons.rate_review_rounded,
-                      label: '待审阅 ${status.distributionStats!.pendingReview}',
-                      color: colorScheme.tertiary,
-                    ),
-                    _buildStatChip(
-                      context,
-                      icon: Icons.send_rounded,
-                      label: '已推送 ${status.distributionStats!.pushed}',
-                      color: Colors.green,
-                    ),
-                  ],
-                ),
-              ],
               const SizedBox(height: 32),
               Row(
                 children: [
@@ -172,16 +88,62 @@ class BotStatusCard extends ConsumerWidget {
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: FilledButton.icon(
-                      onPressed: onTriggerPush,
-                      icon: const Icon(Icons.rocket_launch_rounded),
-                      label: const Text('立即推送'),
+                    child: FilledButton.tonalIcon(
+                      onPressed: onRefreshStatus,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('刷新状态'),
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
                     ),
-                  ).animate(onPlay: (c) => c.repeat()).shimmer(delay: 3.seconds, duration: 2.seconds, color: Colors.white24),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: isControllingTelegram ? null : onStartTelegram,
+                      icon: const Icon(Icons.play_arrow_rounded),
+                      label: const Text('启动'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: isControllingTelegram ? null : onStopTelegram,
+                      icon: const Icon(Icons.stop_rounded),
+                      label: const Text('停止'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: isControllingTelegram ? null : onRestartTelegram,
+                      icon: isControllingTelegram
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.restart_alt_rounded),
+                      label: Text(isControllingTelegram ? '处理中...' : '重启'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -191,84 +153,91 @@ class BotStatusCard extends ConsumerWidget {
     ).animate().fadeIn().scale(begin: const Offset(0.98, 0.98), curve: Curves.easeOutCubic);
   }
 
-  Widget _buildBotRow(BuildContext context, WidgetRef ref, BotStatus status, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildBotRow(BuildContext context, BotStatus status, ThemeData theme, ColorScheme colorScheme) {
     return Column(
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            _buildStatusIndicator(status.isRunning, colorScheme, Icons.smart_toy_rounded),
-            const SizedBox(width: 20),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Text(
-                        'Telegram Bot',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: -0.5,
+                      _buildStatusIndicator(status.isRunning, colorScheme, Icons.smart_toy_rounded),
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'Telegram Bot',
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: -0.5,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                _buildStatusBadge(status.isRunning),
+                              ],
+                            ),
+                            if (status.botUsername != null)
+                              Text(
+                                '@${status.botUsername}',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: colorScheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      _buildStatusBadge(status.isRunning),
                     ],
                   ),
-                  if (status.botUsername != null)
-                    Text(
-                      '@${status.botUsername}',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
+                  if (status.isNapcatEnabled) ...[
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        _buildStatusIndicator(status.isNapcatOnline, colorScheme, Icons.forum_rounded),
+                        const SizedBox(width: 20),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    'QQ Bot (Napcat)',
+                                    style: theme.textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: -0.5,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  _buildStatusBadge(status.isNapcatOnline, labels: _napcatStatusLabel(status.napcatStatus)),
+                                ],
+                              ),
+                              if (!status.isNapcatOnline && status.napcatStatus != null)
+                                Text(
+                                  _napcatStatusDetail(status.napcatStatus!),
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: colorScheme.error,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
+                  ],
                 ],
               ),
             ),
-            IconButton.filledTonal(
-              onPressed: () => ref.invalidate(botStatusProvider),
-              icon: const Icon(Icons.refresh_rounded),
-              tooltip: '刷新状态',
-            ),
           ],
         ),
-        if (status.isNapcatEnabled) ...[
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              _buildStatusIndicator(status.isNapcatOnline, colorScheme, Icons.forum_rounded),
-              const SizedBox(width: 20),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          'QQ Bot (Napcat)',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        _buildStatusBadge(status.isNapcatOnline, labels: _napcatStatusLabel(status.napcatStatus)),
-                      ],
-                    ),
-                    if (!status.isNapcatOnline && status.napcatStatus != null)
-                      Text(
-                        _napcatStatusDetail(status.napcatStatus!),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.error,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
       ],
     );
   }
@@ -327,30 +296,4 @@ class BotStatusCard extends ConsumerWidget {
     );
   }
 
-  Widget _buildStatChip(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.1)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(fontSize: 13, color: color, fontWeight: FontWeight.w600),
-          ),
-        ],
-      ),
-    );
-  }
 }

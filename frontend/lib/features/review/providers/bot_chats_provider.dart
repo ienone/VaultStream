@@ -1,3 +1,5 @@
+// ignore_for_file: use_null_aware_elements
+
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/network/api_client.dart';
 import '../models/bot_chat.dart';
@@ -16,8 +18,8 @@ class BotChats extends _$BotChats {
     final response = await dio.get(
       '/bot/chats',
       queryParameters: {
-        if (enabled != null) 'enabled': enabled,
-        if (chatType != null) 'chat_type': chatType,
+        if (enabled case final enabled?) 'enabled': enabled,
+        if (chatType case final chatType?) 'chat_type': chatType,
       },
     );
     return (response.data as List)

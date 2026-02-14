@@ -57,16 +57,32 @@ void main() {
     testWidgets('ReviewPage renders correctly with initial state', (
       WidgetTester tester,
     ) async {
+      final mockDistributionRules = <DistributionRule>[];
+      final mockQueueItems = <QueueItem>[];
+      final mockBotChats = <BotChat>[];
+
       await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: ReviewPage())),
+        ProviderScope(
+          overrides: [
+            distributionRulesProvider.overrideWith(
+              () => MockDistributionRules(mockDistributionRules),
+            ),
+            contentQueueProvider.overrideWith(
+              () => MockContentQueue(mockQueueItems),
+            ),
+            queueStatsProvider(
+              null,
+            ).overrideWith((ref) => Future.value({'will_push': 0})),
+            botChatsProvider.overrideWith(() => MockBotChats(mockBotChats)),
+            apiClientProvider.overrideWith((ref) => MockDio()),
+          ],
+          child: const MaterialApp(home: ReviewPage()),
+        ),
       );
       await tester.pumpAndSettle();
 
       expect(find.text('审批与分发'), findsOneWidget);
-      expect(
-        find.byIcon(Icons.schedule_send),
-        findsAny,
-      ); // Found in SegmentedButton
+      expect(find.byType(TabBar), findsOneWidget);
     });
 
     testWidgets('ReviewPage fetches and displays data', (
@@ -101,6 +117,7 @@ void main() {
       final mockBotChats = [
         BotChat(
           id: 1,
+          botConfigId: 1,
           chatId: '123',
           chatType: 'group',
           title: 'Chat 1',
