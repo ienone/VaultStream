@@ -32,30 +32,7 @@ class StoredObject:
     url: Optional[str] = None
 
 
-class StorageBackend:
-    """存储后端基类"""
-    async def put_bytes(self, *, key: str, data: bytes, content_type: str) -> StoredObject:
-        """存储字节数据"""
-        raise NotImplementedError
-
-    async def exists(self, *, key: str) -> bool:
-        """检查对象是否存在"""
-        raise NotImplementedError
-
-    async def get_bytes(self, key: str) -> bytes:
-        """读取对象的字节数据"""
-        raise NotImplementedError
-
-    def get_url(self, *, key: str) -> Optional[str]:
-        """获取对象的访问URL"""
-        return None
-
-    def get_local_path(self, *, key: str) -> Optional[str]:
-        """获取对象的本地文件路径（如果可用）"""
-        return None
-
-
-class LocalStorageBackend(StorageBackend):
+class LocalStorageBackend:
     def __init__(self, root_dir: str, public_base_url: Optional[str] = None):
         self.root_dir = os.path.abspath(root_dir)
         self.public_base_url = public_base_url.strip().rstrip("/") if public_base_url else None
@@ -118,10 +95,10 @@ class LocalStorageBackend(StorageBackend):
         return StoredObject(key=key, size=len(data), content_type=content_type, url=self.get_url(key=key))
 
 
-_backend_singleton: StorageBackend | None = None
+_backend_singleton: LocalStorageBackend | None = None
 
 
-def get_storage_backend() -> StorageBackend:
+def get_storage_backend() -> LocalStorageBackend:
     """获取基于配置的单例存储后端。
 
     配置项:
@@ -137,12 +114,6 @@ def get_storage_backend() -> StorageBackend:
     backend = getattr(settings, "storage_backend", "local")
     public_base_url_raw = getattr(settings, "storage_public_base_url", None)
     public_base_url = (public_base_url_raw or "").strip() or None
-
-    if backend == "s3":
-        raise RuntimeError(
-            "S3/MinIO 存储后端已移除。当前仅支持本地文件存储。"
-            "如需 S3 支持，请参考文档重新实现 S3StorageBackend。"
-        )
 
     root = getattr(settings, "storage_local_root", "data/storage")
     _backend_singleton = LocalStorageBackend(root_dir=root, public_base_url=public_base_url)

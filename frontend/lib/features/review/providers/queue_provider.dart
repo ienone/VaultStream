@@ -222,21 +222,6 @@ class ContentQueue extends _$ContentQueue {
     ref.invalidate(queueStatsProvider(filter.ruleId));
   }
 
-  Future<void> mergeGroup(List<int> contentIds, {DateTime? scheduledAt}) async {
-    final dio = ref.read(apiClientProvider);
-    await dio.post(
-      '/distribution-queue/content/merge-group',
-      data: {
-        'content_ids': contentIds,
-        if (scheduledAt case final scheduledAt?)
-          'scheduled_at': scheduledAt.toUtc().toIso8601String(),
-      },
-    );
-    _safeInvalidate();
-    final filter = ref.read(queueFilterProvider);
-    ref.invalidate(queueStatsProvider(filter.ruleId));
-  }
-
   Future<void> updateSchedule(int contentId, DateTime scheduledAt) async {
     final dio = ref.read(apiClientProvider);
     await dio.post(

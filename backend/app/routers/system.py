@@ -11,7 +11,7 @@ from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db, db_ping
-from app.models import SystemSetting, Content, ContentStatus, ContentQueueItem, QueueItemStatus
+from app.models import SystemSetting, Content
 from app.schemas import (
     SystemSettingResponse, SystemSettingUpdate, DashboardStats, 
     QueueStats, TagStats, QueueOverviewStats, DistributionStatusStats
@@ -26,18 +26,18 @@ router = APIRouter()
 @router.get("/health")
 async def health_check():
     """健康检查"""
-    redis_ok = await task_queue.ping()
+    queue_ok = await task_queue.ping()
     db_ok = await db_ping()
     queue_size = await task_queue.get_queue_size()
     
-    status = "ok" if (redis_ok and db_ok) else "degraded"
+    status = "ok" if (queue_ok and db_ok) else "degraded"
     
     return {
         "status": status,
         "queue_size": queue_size,
         "components": {
             "db": "ok" if db_ok else "error",
-            "redis": "ok" if redis_ok else "error"
+            "queue": "ok" if queue_ok else "error"
         }
     }
 
@@ -84,62 +84,10 @@ async def get_dashboard_queue(
     _: None = Depends(require_api_token),
 ):
     """看板状态统计：顶层解析状态 + 解析成功下的分发状态。"""
-    parse_stats = {
-        "unprocessed": 0,
-        "processing": 0,
-        "parse_success": 0,
-        "parse_failed": 0,
-        "total": 0,
-    }
+    from app.services.dashboard_service import build_parse_stats, build_distribution_stats
 
-    status_query = select(Content.status, func.count(Content.id)).group_by(Content.status)
-    for status, count in (await db.execute(status_query)).all():
-        count_int = int(count or 0)
-        parse_stats["total"] += count_int
-        if status == ContentStatus.UNPROCESSED:
-            parse_stats["unprocessed"] += count_int
-        elif status == ContentStatus.PROCESSING:
-            parse_stats["processing"] += count_int
-        elif status == ContentStatus.PARSE_SUCCESS:
-            parse_stats["parse_success"] += count_int
-        elif status == ContentStatus.PARSE_FAILED:
-            parse_stats["parse_failed"] += count_int
-
-    distribution_stats = {
-        "will_push": 0,
-        "filtered": 0,
-        "pending_review": 0,
-        "pushed": 0,
-        "total": 0,
-    }
-    queue_query = (
-        select(
-            ContentQueueItem.status,
-            ContentQueueItem.needs_approval,
-            ContentQueueItem.approved_at,
-            func.count(ContentQueueItem.id),
-        )
-        .join(Content, Content.id == ContentQueueItem.content_id)
-        .where(Content.status == ContentStatus.PARSE_SUCCESS)
-        .group_by(
-            ContentQueueItem.status,
-            ContentQueueItem.needs_approval,
-            ContentQueueItem.approved_at,
-        )
-    )
-    for status, needs_approval, approved_at, count in (await db.execute(queue_query)).all():
-        count_int = int(count or 0)
-        if status == QueueItemStatus.SUCCESS:
-            bucket = "pushed"
-        elif status in (QueueItemStatus.SKIPPED, QueueItemStatus.CANCELED):
-            bucket = "filtered"
-        elif status == QueueItemStatus.PENDING and bool(needs_approval) and approved_at is None:
-            bucket = "pending_review"
-        else:
-            bucket = "will_push"
-
-        distribution_stats[bucket] += count_int
-        distribution_stats["total"] += count_int
+    parse_stats = await build_parse_stats(db)
+    distribution_stats, _ = await build_distribution_stats(db)
 
     return {
         "parse": QueueStats(**parse_stats),

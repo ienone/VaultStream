@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from app.core.logging import logger, setup_logging, log_context, new_request_id
 
 from app.core.config import settings, validate_settings
-from app.core.database import init_db, db_ping
+from app.core.database import init_db
 from app.core.queue import task_queue
 from app.core.events import event_bus
 from app.worker import worker
@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("数据库初始化完成")
     
-    # 连接Redis
+    # 连接任务队列
     await task_queue.connect()
 
     # 启动事件总线（跨实例事件桥接）
@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         pass
     
-    # 断开Redis
+    # 断开任务队列
     await task_queue.disconnect()
 
     # 停止事件总线
@@ -160,18 +160,9 @@ async def api_root():
 
 @app.get("/health")
 async def health_root():
-    """健康检查（根路径）。
-
-    M0 约束：只返回可公开的运行状态，不暴露任何敏感配置。
-    """
-    redis_ok = await task_queue.ping()
-    db_ok = await db_ping()
-    status = "ok" if (redis_ok and db_ok) else "degraded"
-    return {
-        "status": status,
-        "db": "ok" if db_ok else "error",
-        "redis": "ok" if redis_ok else "error",
-    }
+    """健康检查（根路径）— 代理到 /api/v1/health"""
+    from app.routers.system import health_check
+    return await health_check()
 
 
 # 挂载媒体文件目录（供 frontend 访问归档的图片视频）

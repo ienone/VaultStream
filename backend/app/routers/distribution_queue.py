@@ -799,16 +799,3 @@ async def batch_reschedule_content_queue(
         "timestamp": utcnow().isoformat(),
     })
     return {"status": "ok", "changed": changed}
-
-
-@router.post("/content/merge-group")
-async def merge_group_content_queue(
-    payload: dict = Body(default={}),
-    _: None = Depends(require_api_token),
-):
-    """队列模型不需要显式 merge-group，保留语义化成功响应。"""
-    return {
-        "status": "ok",
-        "message": "merge-group is not required in ContentQueueItem model",
-        "content_ids": payload.get("content_ids") or [],
-    }

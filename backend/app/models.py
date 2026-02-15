@@ -5,24 +5,11 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, List
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum, UniqueConstraint, JSON, Index, Float
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, relationship, backref
 
 from app.core.time_utils import utcnow
 
 Base = declarative_base()
-
-
-# JSON 类型适配器：PostgreSQL 用 JSONB，SQLite 用 JSON
-def get_json_type():
-    """根据数据库类型返回合适的 JSON 字段类型"""
-    try:
-        from app.core.config import settings
-        if settings.database_type == "postgresql":
-            return JSONB
-    except:
-        pass
-    return JSON
 
 
 class LayoutType(str, Enum):
@@ -398,35 +385,6 @@ class Task(Base):
     completed_at = Column(DateTime)
 
 
-class WeiboUser(Base):
-    """微博用户存档表"""
-    __tablename__ = "weibo_users"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    platform_id = Column(String(50), nullable=False, unique=True, index=True) # Weibo UID
-    
-    nick_name = Column(String(100), nullable=False)
-    avatar_hd = Column(Text)
-    description = Column(Text)
-    
-    followers_count = Column(Integer, default=0)
-    friends_count = Column(Integer, default=0)
-    statuses_count = Column(Integer, default=0)
-    
-    verified = Column(Boolean, default=False)
-    verified_type = Column(Integer)
-    verified_reason = Column(Text)
-    
-    gender = Column(String(10)) # m, f
-    location = Column(String(100))
-    
-    # 原始数据
-    raw_data = Column(JSON)
-    
-    created_at = Column(DateTime, default=utcnow)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
-
-
 class SystemSetting(Base):
     """系统动态设置表"""
     __tablename__ = "system_settings"
@@ -436,33 +394,6 @@ class SystemSetting(Base):
     category = Column(String(50), index=True) # platform, storage, general, etc.
     description = Column(Text)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
-
-class DiscoveryTopic(Base):
-    """发现主题（用户订阅）"""
-    __tablename__ = "discover_topics"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), nullable=False)  # 如 "AI", "Game"
-    keywords = Column(JSON)  # 关键词列表 ["LLM", "GPT"]
-    platforms = Column(JSON)  # 目标平台 ["zhihu", "bilibili"]
-    enabled = Column(Boolean, default=True, index=True)
-    priority = Column(Integer, default=5)
-    
-    created_at = Column(DateTime, default=utcnow)
-
-class DiscoverySource(Base):
-    """发现源配置"""
-    __tablename__ = "discover_sources"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    type = Column(String(50), nullable=False)  # 'platform_hot', 'rss', 'custom'
-    name = Column(String(100), nullable=False)
-    config = Column(JSON)  # 具体配置
-    schedule = Column(String(100))  # Cron 表达式
-    enabled = Column(Boolean, default=True, index=True)
-    last_run_at = Column(DateTime)
-    
-    created_at = Column(DateTime, default=utcnow)
 
 class BotChatType(str, Enum):
     """Bot 聊天类型"""

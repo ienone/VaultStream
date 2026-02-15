@@ -8,25 +8,19 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy import select, and_, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.concurrency import run_in_threadpool
-import mimetypes
-import os
 
 from app.core.database import get_db
-from app.models import Content, ContentStatus, PushedRecord, Platform, ReviewStatus, WeiboUser, ContentSource
+from app.models import Content, ContentStatus, PushedRecord, Platform, ReviewStatus, ContentSource
 from app.schemas import (
     ShareRequest, ShareResponse, ContentDetail,
     ShareCardListResponse, ContentListResponse,
-    ContentUpdate, ShareCardPreview, OptimizedMedia, ReviewAction, BatchReviewRequest,
-    PushedRecordResponse, WeiboUserResponse
+    ContentUpdate, ReviewAction, BatchReviewRequest,
+    PushedRecordResponse
 )
 from app.core.logging import logger
 from app.core.config import settings
 from app.core.queue import task_queue
 from app.worker import worker
-from app.core.storage import get_storage_backend, LocalStorageBackend
-from app.adapters import AdapterFactory
-
 from app.core.dependencies import require_api_token, get_content_service, get_content_repo
 from app.services.content_service import ContentService
 from app.repositories.content_repository import ContentRepository
@@ -118,27 +112,6 @@ async def create_share(
     except Exception as e:
         logger.exception("Failed to create share")
         raise HTTPException(status_code=500, detail="Internal server error")
-
-@router.get("/tags")
-async def list_all_tags(
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """获取所有标签及其计数"""
-    result = await db.execute(select(Content.tags).where(Content.tags != None))
-    all_tag_lists = result.scalars().all()
-    
-    tag_counts = {}
-    for tags in all_tag_lists:
-        if isinstance(tags, list):
-            for t in tags:
-                tag_counts[t] = tag_counts.get(t, 0) + 1
-                
-    return sorted(
-        [{"name": k, "count": v} for k, v in tag_counts.items()],
-        key=lambda x: x["count"],
-        reverse=True
-    )
 
 # --- Content CRUD ---
 
@@ -514,211 +487,3 @@ async def batch_review_cards(
     return {"updated": len(contents), "action": request.action}
 
 
-@router.get("/contents/{content_id}/preview", response_model=ShareCardPreview)
-async def get_content_preview(
-    content_id: int,
-    db: AsyncSession = Depends(get_db),
-    storage: LocalStorageBackend = Depends(get_storage_backend),
-    _: None = Depends(require_api_token),
-):
-    """获取内容的分享卡片预览"""
-    result = await db.execute(select(Content).where(Content.id == content_id))
-    content = result.scalar_one_or_none()
-    
-    if not content:
-        raise HTTPException(status_code=404, detail="Content not found")
-    
-    optimized_media = []
-    base_url = settings.base_url or "http://localhost:8000"
-    
-    if content.media_urls:
-        for media_url in content.media_urls:
-            if media_url.startswith("local://"):
-                key = media_url.replace("local://", "")
-                proxy_url = f"{base_url}/api/v1/media/{key}"
-                file_path = storage._full_path(key)
-                size_bytes = os.path.getsize(file_path) if os.path.exists(file_path) else None
-                mime_type, _ = mimetypes.guess_type(key)
-                media_type = "image" if mime_type and mime_type.startswith("image/") else "video"
-                optimized_media.append(OptimizedMedia(type=media_type, url=proxy_url, size_bytes=size_bytes))
-            else:
-                optimized_media.append(OptimizedMedia(type="image", url=media_url))
-    
-    summary = None
-    if content.description:
-        summary = content.description[:200] + ("..." if len(content.description) > 200 else "")
-    
-    return ShareCardPreview(
-        id=content.id,
-        platform=content.platform,
-        title=content.title,
-        summary=summary,
-        author_name=content.author_name,
-        cover_url=content.cover_url,
-        optimized_media=optimized_media,
-        source_url=content.clean_url or content.url,
-        tags=content.tags or [],
-        published_at=content.published_at,
-        view_count=content.view_count,
-        like_count=content.like_count
-    )
-
-# --- Reviews ---
-
-@router.post("/contents/{content_id}/review")
-async def review_content(
-    content_id: int,
-    action: ReviewAction,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """审批单个内容"""
-    result = await db.execute(select(Content).where(Content.id == content_id))
-    content = result.scalar_one_or_none()
-    if not content:
-        raise HTTPException(status_code=404, detail="Content not found")
-    if action.action not in ["approve", "reject"]:
-        raise HTTPException(status_code=400, detail="Invalid action")
-    
-    is_approve = action.action == "approve"
-    content.review_status = ReviewStatus.APPROVED if is_approve else ReviewStatus.REJECTED
-    content.reviewed_at = datetime.utcnow()
-    content.reviewed_by = action.reviewed_by
-    content.review_note = action.note
-        
-    await db.commit()
-    await db.refresh(content)
-    
-    # 审批通过后触发队列入队
-    if is_approve:
-        from app.distribution.queue_service import enqueue_content_background
-        import asyncio
-        asyncio.ensure_future(enqueue_content_background(content.id))
-    
-    return {"id": content.id, "review_status": content.review_status, "reviewed_at": content.reviewed_at}
-
-@router.post("/contents/batch-review")
-async def batch_review_contents(
-    request: BatchReviewRequest,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """批量审批内容"""
-    if request.action not in ["approve", "reject"]:
-        raise HTTPException(status_code=400, detail="Invalid action")
-    
-    is_approve = request.action == "approve"
-    review_status = ReviewStatus.APPROVED if is_approve else ReviewStatus.REJECTED
-    
-    result = await db.execute(select(Content).where(Content.id.in_(request.content_ids)))
-    contents = result.scalars().all()
-    if not contents:
-        raise HTTPException(status_code=404, detail="No contents found")
-    
-    for content in contents:
-        content.review_status = review_status
-        content.reviewed_at = datetime.utcnow()
-        content.reviewed_by = request.reviewed_by
-        content.review_note = request.note
-    
-    await db.commit()
-    
-    # 审批通过后触发队列入队
-    if is_approve:
-        from app.distribution.queue_service import enqueue_content_background
-        import asyncio
-        for content in contents:
-            asyncio.ensure_future(enqueue_content_background(content.id))
-    
-    return {"updated": len(contents), "action": request.action, "content_ids": request.content_ids}
-
-@router.get("/contents/pending-review", response_model=ContentListResponse)
-async def get_pending_review_contents(
-    page: int = Query(1, ge=1),
-    size: int = Query(20, ge=1, le=100),
-    platform: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """获取待审批内容列表"""
-    query = select(Content).where(Content.review_status == ReviewStatus.PENDING)
-    if platform:
-        try:
-            platform_enum = Platform(platform)
-            query = query.where(Content.platform == platform_enum)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid platform")
-    
-    count_result = await db.execute(select(func.count()).select_from(query.subquery()))
-    total = count_result.scalar() or 0
-    
-    offset = (page - 1) * size
-    query = query.order_by(desc(Content.created_at)).offset(offset).limit(size)
-    result = await db.execute(query)
-    contents = result.scalars().all()
-    
-    return ContentListResponse(
-        items=[ContentDetail.model_validate(c) for c in contents],
-        total=total,
-        page=page,
-        size=size,
-        has_more=offset + size < total
-    )
-
-# --- Platform Specific (Weibo) ---
-
-@router.post("/weibo/users/{uid}/archive", response_model=WeiboUserResponse)
-async def archive_weibo_user(
-    uid: str,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """存档微博用户数据"""
-    try:
-        adapter = AdapterFactory.create(Platform.WEIBO)
-        if not hasattr(adapter, 'fetch_user_profile'):
-             raise HTTPException(status_code=500, detail="Adapter does not support user fetching")
-        
-        user_data = await run_in_threadpool(adapter.fetch_user_profile, uid)
-        
-        result = await db.execute(select(WeiboUser).where(WeiboUser.platform_id == uid))
-        db_user = result.scalar_one_or_none()
-        
-        if not db_user:
-            db_user = WeiboUser(
-                platform_id=uid,
-                nick_name=user_data.get('nick_name', ''),
-                avatar_hd=user_data.get('avatar_hd', ''),
-                description=user_data.get('description', ''),
-                followers_count=user_data.get('followers_count', 0),
-                friends_count=user_data.get('friends_count', 0),
-                statuses_count=user_data.get('statuses_count', 0),
-                verified=user_data.get('verified', False),
-                verified_type=user_data.get('verified_type'),
-                verified_reason=user_data.get('verified_reason'),
-                gender=user_data.get('gender', ''),
-                location=user_data.get('location', ''),
-                raw_data=user_data.get('raw_data', {})
-            )
-            db.add(db_user)
-        else:
-            db_user.nick_name = user_data.get('nick_name', '')
-            db_user.avatar_hd = user_data.get('avatar_hd', '')
-            db_user.description = user_data.get('description', '')
-            db_user.followers_count = user_data.get('followers_count', 0)
-            db_user.friends_count = user_data.get('friends_count', 0)
-            db_user.statuses_count = user_data.get('statuses_count', 0)
-            db_user.verified = user_data.get('verified', False)
-            db_user.verified_type = user_data.get('verified_type')
-            db_user.verified_reason = user_data.get('verified_reason')
-            db_user.gender = user_data.get('gender', '')
-            db_user.location = user_data.get('location', '')
-            db_user.raw_data = user_data.get('raw_data', {})
-            
-        await db.commit()
-        await db.refresh(db_user)
-        return db_user
-
-    except Exception as e:
-        logger.exception(f"Weibo user archive failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))

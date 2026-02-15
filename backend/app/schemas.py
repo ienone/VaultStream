@@ -536,21 +536,6 @@ class PushedRecordResponse(BaseModel):
         from_attributes = True
 
 
-class WeiboUserResponse(BaseModel):
-    """微博用户响应"""
-    id: int
-    platform_id: str
-    nick_name: str
-    avatar_hd: Optional[str]
-    description: Optional[str]
-    followers_count: int
-    friends_count: int
-    statuses_count: int
-    verified: bool
-    class Config:
-        from_attributes = True
-
-
 class SystemSettingBase(BaseModel):
     """系统设置基础"""
     value: Any
@@ -649,18 +634,6 @@ class StorageStatsResponse(BaseModel):
     media_count: int
     by_platform: Dict[str, int]
     by_type: Dict[str, int]
-
-
-class HealthDetailResponse(BaseModel):
-    """健康检查详细响应"""
-    status: str
-    database: str
-    storage: str
-    bot: Optional[str]
-    queue_pending: int
-    queue_failed: int
-    uptime_seconds: int
-    version: str
 
 
 # ========== Bot Runtime Schema ==========
@@ -798,19 +771,6 @@ class BotConfigQrCodeResponse(BaseModel):
     status: str
     qr_code: Optional[str] = None
     message: Optional[str] = None
-
-
-class RepushFailedRequest(BaseModel):
-    """重新推送失败任务请求"""
-    limit: int = Field(default=10, le=100)
-    older_than_minutes: int = Field(default=5, ge=1)
-    task_ids: Optional[List[int]] = None
-
-
-class RepushFailedResponse(BaseModel):
-    """重新推送失败任务响应"""
-    repushed_count: int
-    task_ids: List[int]
 
 
 # ========== 规则预览 Schema ==========

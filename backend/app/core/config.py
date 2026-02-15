@@ -73,17 +73,6 @@ class Settings(BaseSettings):
     # LocalFS
     storage_local_root: str = "data/storage"
 
-    # S3/MinIO
-    storage_s3_endpoint: Optional[str] = None
-    storage_s3_region: str = "us-east-1"
-    storage_s3_bucket: Optional[str] = None
-    storage_s3_access_key: Optional[SecretStr] = None
-    storage_s3_secret_key: Optional[SecretStr] = None
-
-    # S3/MinIO URL 渲染
-    storage_s3_presign_urls: bool = False
-    storage_s3_presign_expires: int = 3600
-
     # 分发队列系统
     queue_worker_count: int = 3  # 队列Worker并发数
 

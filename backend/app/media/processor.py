@@ -18,7 +18,7 @@ from typing import Any, Optional
 import httpx
 
 from app.core.logging import logger
-from app.core.storage import StorageBackend
+from app.core.storage import LocalStorageBackend
 
 
 def _request_headers_for_url(url: str) -> dict[str, str]:
@@ -263,7 +263,7 @@ async def extract_cover_color(url: str, timeout_seconds: float = 10.0) -> Option
 async def store_archive_images_as_webp(
     *,
     archive: dict[str, Any],
-    storage: StorageBackend,
+    storage: LocalStorageBackend,
     namespace: str,
     quality: int = 80,
     timeout_seconds: float = 30.0,
@@ -435,7 +435,7 @@ async def store_archive_images_as_webp(
 async def store_archive_videos(
     *,
     archive: dict[str, Any],
-    storage: StorageBackend,
+    storage: LocalStorageBackend,
     namespace: str,
     timeout_seconds: float = 120.0,
     max_videos: Optional[int] = None,

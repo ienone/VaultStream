@@ -337,15 +337,6 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
               ),
               const SizedBox(width: 8),
               FilledButton.tonalIcon(
-                onPressed: _batchMergeGroup,
-                icon: const Icon(Icons.merge_rounded, size: 18),
-                label: const Text('合并推送'),
-                style: FilledButton.styleFrom(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.tonalIcon(
                 onPressed: _batchReschedule,
                 icon: const Icon(Icons.schedule_send_rounded, size: 18),
                 label: const Text('批量排期'),
@@ -401,29 +392,6 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('批量推送任务已创建')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('操作失败: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _batchMergeGroup() async {
-    final ids = _selectedIds.toList();
-    setState(() {
-      _isSelectionMode = false;
-      _selectedIds.clear();
-    });
-
-    try {
-      await ref.read(contentQueueProvider.notifier).mergeGroup(ids);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已合并为一组')),
         );
       }
     } catch (e) {

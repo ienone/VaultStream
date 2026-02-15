@@ -1,53 +1,16 @@
 """
-队列适配器层 - 支持 SQLite 任务表和 Redis 切换
+任务队列 - 基于 SQLite 任务表
 """
-from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any
 import asyncio
-from datetime import datetime, timezone
+from typing import Optional, Dict, Any
 from sqlalchemy import select, update, and_
 
-from app.core.config import settings
 from app.core.logging import logger, log_context, ensure_task_id
 from app.core.time_utils import utcnow
 
 
-class QueueAdapter(ABC):
-    """队列适配器基类"""
-    
-    @abstractmethod
-    async def connect(self):
-        """连接队列"""
-        pass
-    
-    @abstractmethod
-    async def disconnect(self):
-        """断开连接"""
-        pass
-    
-    @abstractmethod
-    async def ping(self) -> bool:
-        """健康检查"""
-        pass
-    
-    @abstractmethod
-    async def enqueue(self, task_data: Dict[str, Any]) -> bool:
-        """入队"""
-        pass
-    
-    @abstractmethod
-    async def dequeue(self, timeout: int = 5) -> Optional[Dict[str, Any]]:
-        """出队"""
-        pass
-    
-    @abstractmethod
-    async def mark_complete(self, content_id: int):
-        """标记完成"""
-        pass
-
-
-class SQLiteQueueAdapter(QueueAdapter):
-    """基于 SQLite 任务表的队列（轻量模式）"""
+class TaskQueue:
+    """基于 SQLite 任务表的队列"""
     
     DEFAULT_TASK_SCHEMA_VERSION = 1
     
@@ -55,17 +18,14 @@ class SQLiteQueueAdapter(QueueAdapter):
         self._session_maker = None
     
     async def connect(self):
-        """初始化会话工厂"""
         from app.core.database import AsyncSessionLocal
         self._session_maker = AsyncSessionLocal
         logger.info("SQLite 队列已连接")
     
     async def disconnect(self):
-        """断开连接（无需操作）"""
         logger.info("SQLite 队列已断开")
     
     async def ping(self) -> bool:
-        """健康检查"""
         try:
             from app.models import Task
             async with self._session_maker() as session:
@@ -75,7 +35,6 @@ class SQLiteQueueAdapter(QueueAdapter):
             return False
     
     async def enqueue(self, task_data: Dict[str, Any]) -> bool:
-        """将任务加入队列（写入任务表）"""
         try:
             from app.models import Task, TaskStatus
             
@@ -103,61 +62,73 @@ class SQLiteQueueAdapter(QueueAdapter):
                 await session.commit()
                 
                 with log_context(task_id=task_id, content_id=content_id):
-                    logger.info(f"任务已入队 (SQLite): task_db_id={task.id}")
+                    logger.info(f"任务已入队: task_db_id={task.id}")
             
             return True
         except Exception as e:
-            logger.error(f"任务入队失败 (SQLite): {e}")
+            logger.error(f"任务入队失败: {e}")
             return False
     
     async def dequeue(self, timeout: int = 5) -> Optional[Dict[str, Any]]:
-        """从队列取出任务（原子性获取）"""
+        """从队列取出任务（CAS 原子性获取，兼容 SQLite）"""
         from app.models import Task, TaskStatus
         
-        # 轮询模式（简化实现）
-        max_attempts = timeout
-        for attempt in range(max_attempts):
+        for _ in range(timeout):
             try:
                 async with self._session_maker() as session:
-                    async with session.begin():
-                        # 使用 SELECT FOR UPDATE SKIP LOCKED 实现原子性
-                        stmt = (
-                            select(Task)
-                            .where(Task.status == TaskStatus.PENDING)
-                            .order_by(Task.priority.desc(), Task.created_at)
-                            .limit(1)
-                            .with_for_update(skip_locked=True)
+                    # 1. 查找候选任务
+                    stmt = (
+                        select(Task.id)
+                        .where(Task.status == TaskStatus.PENDING)
+                        .order_by(Task.priority.desc(), Task.created_at)
+                        .limit(1)
+                    )
+                    result = await session.execute(stmt)
+                    row = result.first()
+                    
+                    if not row:
+                        await asyncio.sleep(1)
+                        continue
+                    
+                    candidate_id = row[0]
+                    
+                    # 2. CAS 更新：仅当状态仍为 PENDING 时才标记为 RUNNING
+                    cas_stmt = (
+                        update(Task)
+                        .where(and_(Task.id == candidate_id, Task.status == TaskStatus.PENDING))
+                        .values(
+                            status=TaskStatus.RUNNING,
+                            started_at=utcnow(),
+                            retry_count=Task.retry_count + 1,
                         )
-                        
-                        result = await session.execute(stmt)
-                        task = result.scalar_one_or_none()
-                        
-                        if not task:
-                            await asyncio.sleep(1)
-                            continue
-                        
-                        # 标记为运行中
-                        task.status = TaskStatus.RUNNING
-                        task.started_at = utcnow()
-                        task.retry_count += 1
-                        await session.commit()
-                        
-                        return task.payload
+                    )
+                    cas_result = await session.execute(cas_stmt)
+                    
+                    if cas_result.rowcount == 0:
+                        # 被其他 worker 抢占，重试
+                        continue
+                    
+                    await session.commit()
+                    
+                    # 3. 重新读取 payload
+                    task = (await session.execute(
+                        select(Task).where(Task.id == candidate_id)
+                    )).scalar_one()
+                    
+                    return task.payload
                     
             except Exception as e:
-                logger.error(f"任务出队失败 (SQLite): {e}")
+                logger.error(f"任务出队失败: {e}")
                 await asyncio.sleep(1)
         
         return None
     
     async def mark_complete(self, content_id: int):
-        """标记任务完成"""
         try:
             from app.models import Task, TaskStatus
             from sqlalchemy import cast, String
             
             async with self._session_maker() as session:
-                # 使用 cast 来兼容 SQLite 的 JSON 查询
                 stmt = (
                     update(Task)
                     .where(
@@ -166,19 +137,15 @@ class SQLiteQueueAdapter(QueueAdapter):
                             Task.status == TaskStatus.RUNNING
                         )
                     )
-                    .values(
-                        status=TaskStatus.COMPLETED,
-                        completed_at=utcnow()
-                    )
+                    .values(status=TaskStatus.COMPLETED, completed_at=utcnow())
                 )
                 await session.execute(stmt)
                 await session.commit()
                 logger.info(f"任务已完成: {content_id}")
         except Exception as e:
-            logger.error(f"标记任务完成失败 (SQLite): {e}")
+            logger.error(f"标记任务完成失败: {e}")
     
     async def push_dead_letter(self, task_data: Dict[str, Any], *, reason: str):
-        """将任务标记为失败"""
         try:
             from app.models import Task, TaskStatus
             from sqlalchemy import cast, String
@@ -193,19 +160,14 @@ class SQLiteQueueAdapter(QueueAdapter):
                             Task.status == TaskStatus.RUNNING
                         )
                     )
-                    .values(
-                        status=TaskStatus.FAILED,
-                        last_error=reason,
-                        completed_at=utcnow()
-                    )
+                    .values(status=TaskStatus.FAILED, last_error=reason, completed_at=utcnow())
                 )
                 await session.execute(stmt)
                 await session.commit()
         except Exception as e:
-            logger.error(f"写入死信队列失败 (SQLite): {e}")
+            logger.error(f"写入死信队列失败: {e}")
     
     async def is_processing(self, content_id: int) -> bool:
-        """检查任务是否正在处理"""
         try:
             from app.models import Task, TaskStatus
             from sqlalchemy import cast, String
@@ -220,11 +182,10 @@ class SQLiteQueueAdapter(QueueAdapter):
                 result = await session.execute(stmt)
                 return result.scalar_one_or_none() is not None
         except Exception as e:
-            logger.error(f"检查任务状态失败 (SQLite): {e}")
+            logger.error(f"检查任务状态失败: {e}")
             return False
     
     async def get_queue_size(self) -> int:
-        """获取队列大小"""
         try:
             from app.models import Task, TaskStatus
             from sqlalchemy import func
@@ -234,18 +195,5 @@ class SQLiteQueueAdapter(QueueAdapter):
                 result = await session.execute(stmt)
                 return result.scalar() or 0
         except Exception as e:
-            logger.error(f"获取队列大小失败 (SQLite): {e}")
+            logger.error(f"获取队列大小失败: {e}")
             return 0
-
-
-def get_queue_adapter() -> QueueAdapter:
-    """根据配置获取队列适配器"""
-    queue_type = settings.queue_type
-    
-    if queue_type == "sqlite":
-        return SQLiteQueueAdapter()
-    else:
-        raise ValueError(
-            f"不支持的队列类型: {queue_type}。"
-            f"当前仅支持 'sqlite'。如需 Redis 支持，请参考文档重新实现 RedisQueueAdapter。"
-        )

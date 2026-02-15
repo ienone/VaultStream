@@ -16,6 +16,7 @@ from app.core.logging import logger
 from app.core.time_utils import utcnow
 from app.core.events import event_bus
 from app.models import BotConfig, BotConfigPlatform, BotChat, BotChatType
+from app.services.telegram_sync import refresh_telegram_chats
 from app.services.bot_config_runtime import get_primary_bot_config
 from app.services.telegram_bot_service import (
     restart_telegram_bot,
@@ -336,84 +337,20 @@ async def sync_bot_config_chats(
 
 async def _sync_telegram_chats(cfg: BotConfig, db: AsyncSession) -> BotConfigSyncChatsResponse:
     """Telegram: 验证 token 并刷新该配置下已知 chat 的元信息"""
-    from telegram import Bot
-    from telegram.error import TelegramError
-
-    if not cfg.bot_token:
-        raise HTTPException(status_code=400, detail="bot_token is required for telegram sync")
-
-    bot = Bot(token=cfg.bot_token)
-    details: List[Dict[str, Any]] = []
-    updated = 0
-    failed = 0
-
     try:
-        me = await bot.get_me()
-        cfg.bot_id = str(me.id)
-        cfg.bot_username = me.username
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid telegram bot token: {e}")
-
-    chats_result = await db.execute(select(BotChat).where(BotChat.bot_config_id == cfg.id))
-    chats = chats_result.scalars().all()
-
-    for chat in chats:
-        try:
-            tg_chat = await bot.get_chat(chat.chat_id)
-            chat.title = tg_chat.title
-            chat.username = tg_chat.username
-            chat.description = tg_chat.description
-            chat.chat_type = BotChatType(tg_chat.type)
-            chat.last_sync_at = utcnow()
-            chat.is_accessible = True
-            chat.sync_error = None
-            updated += 1
-            details.append({"chat_id": chat.chat_id, "status": "updated"})
-            await event_bus.publish("bot_sync_progress", {
-                "bot_config_id": cfg.id,
-                "chat_id": chat.chat_id,
-                "status": "updated",
-                "updated": updated,
-                "failed": failed,
-                "total": len(chats),
-                "timestamp": utcnow().isoformat(),
-            })
-        except TelegramError as e:
-            failed += 1
-            chat.last_sync_at = utcnow()
-            chat.is_accessible = False
-            chat.sync_error = str(e)
-            details.append({"chat_id": chat.chat_id, "status": "failed", "error": str(e)})
-            await event_bus.publish("bot_sync_progress", {
-                "bot_config_id": cfg.id,
-                "chat_id": chat.chat_id,
-                "status": "failed",
-                "error": str(e),
-                "updated": updated,
-                "failed": failed,
-                "total": len(chats),
-                "timestamp": utcnow().isoformat(),
-            })
-
-    await db.commit()
-    await bot.close()
-
-    await event_bus.publish("bot_sync_completed", {
-        "bot_config_id": cfg.id,
-        "total": len(chats),
-        "updated": updated,
-        "failed": failed,
-        "created": 0,
-        "timestamp": utcnow().isoformat(),
-    })
+        result = await refresh_telegram_chats(
+            db, bot_config=cfg, enabled_only=False, fetch_permissions=False,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     return BotConfigSyncChatsResponse(
         bot_config_id=cfg.id,
-        total=len(chats),
-        updated=updated,
-        created=0,
-        failed=failed,
-        details=details,
+        total=result["total"],
+        updated=result["updated"],
+        created=result["created"],
+        failed=result["failed"],
+        details=result["details"],
     )
 
 

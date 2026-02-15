@@ -8,7 +8,7 @@
 """
 from .url_utils import canonicalize_url, normalize_bilibili_url, normalize_datetime_for_db
 from .text_formatters import format_content_for_tg
-from .formatters import format_number, parse_tags
+from .formatters import format_number
 
 __all__ = [
     'canonicalize_url',
@@ -16,5 +16,4 @@ __all__ = [
     'normalize_datetime_for_db',
     'format_content_for_tg',
     'format_number',
-    'parse_tags',
 ]

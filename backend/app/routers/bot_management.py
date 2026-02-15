@@ -4,7 +4,6 @@
 调用方式：需要 API Token
 """
 from typing import List, Optional
-from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy import select, func, desc, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,114 +21,25 @@ from app.models import (
     DistributionRule,
     DistributionTarget,
     BotRuntime,
-    Task,
-    TaskStatus,
     BotConfig,
     BotConfigPlatform,
     Content,
-    ContentStatus,
-    ContentQueueItem,
-    QueueItemStatus,
 )
 from app.schemas import (
     BotChatCreate, BotChatUpdate, BotChatResponse,
-    BotStatusResponse, BotSyncRequest, StorageStatsResponse, HealthDetailResponse,
+    BotStatusResponse, BotSyncRequest, StorageStatsResponse,
     BotChatUpsert, BotHeartbeat, BotRuntimeResponse, BotSyncResult,
-    RepushFailedRequest, RepushFailedResponse,
     BotChatRulesResponse, BotChatRuleAssignRequest, ChatRuleBindingInfo,
 )
-from app.core.events import event_bus
 from app.services.bot_config_runtime import get_primary_bot_config
 
 router = APIRouter()
 
 
-def _empty_distribution_bucket() -> dict[str, int]:
-    return {
-        "will_push": 0,
-        "filtered": 0,
-        "pending_review": 0,
-        "pushed": 0,
-        "total": 0,
-    }
-
-
-def _classify_distribution_status(
-    status: QueueItemStatus,
-    needs_approval: bool,
-    approved_at: Optional[datetime],
-) -> str:
-    # 业务语义：解析成功后的看板只保留四种分发状态。
-    if status == QueueItemStatus.SUCCESS:
-        return "pushed"
-    if status in (QueueItemStatus.SKIPPED, QueueItemStatus.CANCELED):
-        return "filtered"
-    if status == QueueItemStatus.PENDING and needs_approval and approved_at is None:
-        return "pending_review"
-    # FAILED 归入 will_push，表示仍处于待处理队列（可重试或手动干预）。
-    if status in (QueueItemStatus.PENDING, QueueItemStatus.SCHEDULED, QueueItemStatus.PROCESSING, QueueItemStatus.FAILED):
-        return "will_push"
-    return "filtered"
-
-
 async def _build_pipeline_stats(db: AsyncSession) -> tuple[dict, dict, dict[str, dict]]:
-    parse_stats = {
-        "unprocessed": 0,
-        "processing": 0,
-        "parse_success": 0,
-        "parse_failed": 0,
-        "total": 0,
-    }
-
-    content_status_result = await db.execute(
-        select(Content.status, func.count(Content.id)).group_by(Content.status)
-    )
-    for status, count in content_status_result.all():
-        count_int = int(count or 0)
-        parse_stats["total"] += count_int
-        if status == ContentStatus.UNPROCESSED:
-            parse_stats["unprocessed"] += count_int
-        elif status == ContentStatus.PROCESSING:
-            parse_stats["processing"] += count_int
-        elif status == ContentStatus.PARSE_SUCCESS:
-            parse_stats["parse_success"] += count_int
-        elif status == ContentStatus.PARSE_FAILED:
-            parse_stats["parse_failed"] += count_int
-
-    distribution_stats = _empty_distribution_bucket()
-    rule_breakdown: dict[str, dict] = {}
-
-    queue_rows = await db.execute(
-        select(
-            ContentQueueItem.rule_id,
-            ContentQueueItem.status,
-            ContentQueueItem.needs_approval,
-            ContentQueueItem.approved_at,
-            func.count(ContentQueueItem.id),
-        )
-        .join(Content, Content.id == ContentQueueItem.content_id)
-        .where(Content.status == ContentStatus.PARSE_SUCCESS)
-        .group_by(
-            ContentQueueItem.rule_id,
-            ContentQueueItem.status,
-            ContentQueueItem.needs_approval,
-            ContentQueueItem.approved_at,
-        )
-    )
-
-    for rule_id, status, needs_approval, approved_at, count in queue_rows.all():
-        count_int = int(count or 0)
-        bucket_key = _classify_distribution_status(status, bool(needs_approval), approved_at)
-
-        distribution_stats[bucket_key] += count_int
-        distribution_stats["total"] += count_int
-
-        rule_key = str(rule_id)
-        if rule_key not in rule_breakdown:
-            rule_breakdown[rule_key] = _empty_distribution_bucket()
-        rule_breakdown[rule_key][bucket_key] += count_int
-        rule_breakdown[rule_key]["total"] += count_int
-
+    from app.services.dashboard_service import build_parse_stats, build_distribution_stats
+    parse_stats = await build_parse_stats(db)
+    distribution_stats, rule_breakdown = await build_distribution_stats(db, include_rule_breakdown=True)
     return parse_stats, distribution_stats, rule_breakdown
 
 
@@ -661,178 +571,30 @@ async def sync_bot_chats(
     同步 Bot 群组元信息
     遍历数据库中已知的群组，调用 Telegram API 刷新信息
     """
-    from telegram import Bot
-    from telegram.error import TelegramError
+    from app.services.telegram_sync import refresh_telegram_chats
 
     cfg = await get_primary_bot_config(db, BotConfigPlatform.TELEGRAM, enabled_only=True)
     if not cfg or not cfg.bot_token:
         logger.warning("跳过群组同步：未找到可用的主 Telegram BotConfig")
         return BotSyncResult(total=0, updated=0, failed=0, inaccessible=0, details=[])
-    
-    # 构建查询
-    query = select(BotChat).where(BotChat.bot_config_id == cfg.id)
-    if request and request.chat_id:
-        query = query.where(BotChat.chat_id == request.chat_id)
-    else:
-        query = query.where(BotChat.enabled == True)
-    
-    result = await db.execute(query)
-    chats = result.scalars().all()
-    
-    if not chats:
-        return BotSyncResult(total=0, updated=0, failed=0, inaccessible=0, details=[])
-    
-    # 创建 Bot 实例
-    bot = Bot(token=cfg.bot_token)
-    now = utcnow()
-    
-    updated = 0
-    failed = 0
-    inaccessible = 0
-    details = []
-    
-    for chat in chats:
-        try:
-            # 获取群组信息
-            tg_chat = await bot.get_chat(chat.chat_id)
-            
-            # 更新信息
-            chat.title = tg_chat.title
-            chat.username = tg_chat.username
-            chat.description = tg_chat.description
-            chat.chat_type = BotChatType(tg_chat.type)
-            
-            # 获取成员数（可能失败）
-            try:
-                chat.member_count = await bot.get_chat_member_count(chat.chat_id)
-            except:
-                pass
-            
-            # 获取 Bot 权限
-            try:
-                bot_member = await bot.get_chat_member(chat.chat_id, (await bot.get_me()).id)
-                chat.is_admin = bot_member.status in ['administrator', 'creator']
-                chat.can_post = getattr(bot_member, 'can_post_messages', True) if chat.is_admin else False
-            except:
-                pass
-            
-            chat.is_accessible = True
-            chat.last_sync_at = now
-            chat.sync_error = None
-            updated += 1
-            details.append({"chat_id": chat.chat_id, "title": chat.title, "status": "updated"})
-            await event_bus.publish("bot_sync_progress", {
-                "chat_id": chat.chat_id,
-                "title": chat.title,
-                "status": "updated",
-                "updated": updated,
-                "failed": failed,
-                "inaccessible": inaccessible,
-                "total": len(chats),
-                "timestamp": now.isoformat(),
-            })
-            
-        except TelegramError as e:
-            error_msg = str(e)
-            if "chat not found" in error_msg.lower() or "forbidden" in error_msg.lower():
-                chat.is_accessible = False
-                inaccessible += 1
-            else:
-                failed += 1
-            chat.sync_error = error_msg
-            chat.last_sync_at = now
-            details.append({"chat_id": chat.chat_id, "title": chat.title, "status": "failed", "error": error_msg})
-            await event_bus.publish("bot_sync_progress", {
-                "chat_id": chat.chat_id,
-                "title": chat.title,
-                "status": "failed",
-                "error": error_msg,
-                "updated": updated,
-                "failed": failed,
-                "inaccessible": inaccessible,
-                "total": len(chats),
-                "timestamp": now.isoformat(),
-            })
-            logger.warning(f"同步群组失败 {chat.chat_id}: {e}")
-        except Exception as e:
-            failed += 1
-            chat.sync_error = str(e)
-            chat.last_sync_at = now
-            details.append({"chat_id": chat.chat_id, "title": chat.title, "status": "error", "error": str(e)})
-            await event_bus.publish("bot_sync_progress", {
-                "chat_id": chat.chat_id,
-                "title": chat.title,
-                "status": "error",
-                "error": str(e),
-                "updated": updated,
-                "failed": failed,
-                "inaccessible": inaccessible,
-                "total": len(chats),
-                "timestamp": now.isoformat(),
-            })
-            logger.error(f"同步群组异常 {chat.chat_id}: {e}")
-    
-    await db.commit()
-    await bot.close()
 
-    await event_bus.publish("bot_sync_completed", {
-        "total": len(chats),
-        "updated": updated,
-        "failed": failed,
-        "inaccessible": inaccessible,
-        "timestamp": now.isoformat(),
-    })
-    
+    try:
+        result = await refresh_telegram_chats(
+            db,
+            bot_config=cfg,
+            chat_id_filter=(request.chat_id if request else None),
+            enabled_only=(not (request and request.chat_id)),
+            fetch_permissions=True,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     return BotSyncResult(
-        total=len(chats),
-        updated=updated,
-        failed=failed,
-        inaccessible=inaccessible,
-        details=details,
-    )
-
-
-# ========== 重推失败任务 ==========
-
-@router.post("/tasks/repush-failed", response_model=RepushFailedResponse)
-async def repush_failed_tasks(
-    request: RepushFailedRequest,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """重新推送失败的任务"""
-    now = utcnow()
-    cutoff_time = now - timedelta(minutes=request.older_than_minutes)
-    
-    # 构建查询
-    query = select(Task).where(
-        Task.status == TaskStatus.FAILED,
-        Task.updated_at < cutoff_time,
-    )
-    
-    if request.task_ids:
-        query = query.where(Task.id.in_(request.task_ids))
-    
-    query = query.limit(request.limit)
-    
-    result = await db.execute(query)
-    tasks = result.scalars().all()
-    
-    repushed_ids = []
-    for task in tasks:
-        task.status = TaskStatus.PENDING
-        task.attempts = 0
-        task.error = None
-        task.next_run_at = now
-        repushed_ids.append(task.id)
-    
-    await db.commit()
-    
-    logger.info(f"重新推送 {len(repushed_ids)} 个失败任务")
-    
-    return RepushFailedResponse(
-        repushed_count=len(repushed_ids),
-        task_ids=repushed_ids,
+        total=result["total"],
+        updated=result["updated"],
+        failed=result["failed"],
+        inaccessible=result.get("inaccessible", 0),
+        details=result["details"],
     )
 
 
@@ -877,73 +639,6 @@ async def get_storage_stats(
         by_type=by_type,
     )
 
-
-# ========== 健康检查详细 ==========
-
-@router.get("/health/detail", response_model=HealthDetailResponse)
-async def get_health_detail(
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """获取详细健康检查信息"""
-    from app.models import Task, TaskStatus
-    import time
-    
-    # 数据库检查
-    try:
-        await db.execute(select(func.count()).select_from(BotChat))
-        db_status = "healthy"
-    except Exception as e:
-        db_status = f"error: {e}"
-    
-    # 存储检查
-    from pathlib import Path
-    storage_path = Path(settings.storage_local_root)
-    storage_status = "healthy" if storage_path.exists() else "missing"
-    
-    # Bot 状态
-    bot_parts = []
-    telegram_primary_result = await db.execute(
-        select(func.count(BotConfig.id)).where(
-            BotConfig.platform == BotConfigPlatform.TELEGRAM,
-            BotConfig.enabled == True,
-            BotConfig.is_primary == True,
-        )
-    )
-    if (telegram_primary_result.scalar() or 0) > 0:
-        bot_parts.append("telegram:enabled")
-    qq_primary_result = await db.execute(
-        select(func.count(BotConfig.id)).where(
-            BotConfig.platform == BotConfigPlatform.QQ,
-            BotConfig.enabled == True,
-            BotConfig.is_primary == True,
-        )
-    )
-    if (qq_primary_result.scalar() or 0) > 0:
-        bot_parts.append("napcat:enabled")
-    bot_status = ", ".join(bot_parts) if bot_parts else "disabled"
-    
-    # 队列状态
-    result = await db.execute(
-        select(func.count(Task.id)).where(Task.status == TaskStatus.PENDING)
-    )
-    queue_pending = result.scalar() or 0
-    
-    result = await db.execute(
-        select(func.count(Task.id)).where(Task.status == TaskStatus.FAILED)
-    )
-    queue_failed = result.scalar() or 0
-    
-    return HealthDetailResponse(
-        status="healthy" if db_status == "healthy" else "degraded",
-        database=db_status,
-        storage=storage_status,
-        bot=bot_status,
-        queue_pending=queue_pending,
-        queue_failed=queue_failed,
-        uptime_seconds=0,  # TODO: 从进程启动时间计算
-        version="0.1.0",
-    )
 
 
 # ========== 辅助函数 ==========
