@@ -228,6 +228,7 @@ class DistributionQueueWorker:
         if not bot_chat or not bool(bot_chat.enabled) or not bool(bot_chat.is_accessible):
             item.status = QueueItemStatus.SCHEDULED
             item.last_error = "Target disabled or inaccessible"
+            item.last_error_type = "target_unavailable"
             item.locked_at = None
             item.locked_by = None
             await session.commit()
@@ -245,6 +246,7 @@ class DistributionQueueWorker:
         ) or content.status != ContentStatus.PARSE_SUCCESS:
             item.status = QueueItemStatus.SKIPPED
             item.last_error = "Content not eligible"
+            item.last_error_type = "content_not_eligible"
             item.locked_at = None
             item.locked_by = None
             await session.commit()
@@ -266,6 +268,7 @@ class DistributionQueueWorker:
         if dedupe_result.scalar_one_or_none():
             item.status = QueueItemStatus.SKIPPED
             item.last_error = "Already pushed (dedupe)"
+            item.last_error_type = "already_pushed_dedupe"
             item.locked_at = None
             item.locked_by = None
             await session.commit()

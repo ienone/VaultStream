@@ -214,21 +214,6 @@ class ContentUpdate(BaseModel):
     layout_type_override: Optional[LayoutType] = None  # 用户覆盖布局类型
 
 
-class BatchUpdateRequest(BaseModel):
-    """批量更新请求"""
-    content_ids: List[int] = Field(..., min_items=1, max_items=100, description="内容ID列表")
-    updates: ContentUpdate = Field(..., description="更新内容")
-
-
-class BatchOperationResponse(BaseModel):
-    """批量操作响应"""
-    success_count: int
-    failed_count: int
-    success_ids: List[int] = Field(default_factory=list)
-    failed_ids: List[int] = Field(default_factory=list)
-    errors: Dict[int, str] = Field(default_factory=dict)
-
-
 class ShareCard(BaseModel):
     """合规分享卡片（对外输出用）- 轻量级列表展示。
 
@@ -283,39 +268,6 @@ class ShareCardListResponse(BaseModel):
     has_more: bool
 
 
-# ========== M4: 分发规则与审批流 Schema ==========
-
-class OptimizedMedia(BaseModel):
-    """优化后的媒体资源（Share Card 使用）"""
-    type: str  # "image", "video", "audio"
-    url: str  # 代理URL或优化后的URL
-    thumbnail_url: Optional[str] = None
-    width: Optional[int] = None
-    height: Optional[int] = None
-    size_bytes: Optional[int] = None
-
-
-class ShareCardPreview(BaseModel):
-    """分享卡片预览（完整版）"""
-    id: int
-    platform: Platform
-    title: Optional[str]
-    summary: Optional[str]
-    author_name: Optional[str]
-    cover_url: Optional[str]
-    optimized_media: List[OptimizedMedia] = Field(default_factory=list)
-    source_url: str  # 原始来源链接
-    tags: List[str]
-    published_at: Optional[datetime]
-    
-    # 互动数据
-    view_count: int = 0
-    like_count: int = 0
-    
-    class Config:
-        from_attributes = True
-
-
 class RenderConfig(BaseModel):
     """渲染配置结构（可嵌套或扁平使用）"""
     # Display control
@@ -332,81 +284,6 @@ class RenderConfig(BaseModel):
     # Template text
     header_text: str = Field(default="", description="Header text with variable support")
     footer_text: str = Field(default="", description="Footer text with variable support")
-
-
-class DistributionTarget(BaseModel):
-    """分发目标配置"""
-    platform: str = Field(..., description="Platform name: telegram/qq")
-    target_id: str = Field(..., description="Channel/Group ID")
-    enabled: bool = Field(default=True, description="Enable this target")
-    
-    # 批量转发选项（仅适用于 QQ）
-    merge_forward: bool = Field(default=False, description="Use merged forward mode (QQ only)")
-    use_author_name: bool = Field(default=False, description="Show original author name")
-    summary: str = Field(default="", description="Display name for merged forward")
-    
-    # 可选的渲染配置覆盖（如果需要针对特定目标调整展示）
-    render_config: Optional[Dict[str, Any]] = Field(None, description="Per-target render config override")
-
-
-def _validate_targets_list(v: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Helper to validate target schema to ensure consistency"""
-    if v is None:
-        return v
-        
-    for target in v:
-        # Required fields
-        if 'platform' not in target or 'target_id' not in target:
-            raise ValueError("Each target must have 'platform' and 'target_id'")
-        
-        # Platform validation
-        platform = target['platform']
-        if platform not in SUPPORTED_PLATFORMS:
-            raise ValueError(f"Invalid platform: {platform}. Must be one of {SUPPORTED_PLATFORMS}")
-        
-        # Validate and normalize target_id
-        target_id = str(target['target_id']).strip()
-        if not target_id:
-            raise ValueError("target_id cannot be empty or whitespace-only")
-        
-        # Platform-specific validation
-        if platform == Platform.TELEGRAM.value:
-            # Telegram: numeric chat ID or @username
-            if not (target_id.startswith('@') or target_id.lstrip('-').isdigit()):
-                raise ValueError(
-                    f"Invalid Telegram target_id: '{target_id}'. "
-                    "Must be numeric chat ID or @username"
-                )
-        elif platform == Platform.QQ.value:
-            # QQ: numeric group/user ID or group:numeric
-            if target_id.startswith('group:'):
-                group_id = target_id.split(':', 1)[1]
-                if not group_id.isdigit():
-                    raise ValueError(
-                        f"Invalid QQ group ID: '{target_id}'. "
-                        "Group ID must be numeric"
-                    )
-            elif not target_id.isdigit():
-                raise ValueError(
-                    f"Invalid QQ target_id: '{target_id}'. "
-                    "Must be numeric or 'group:numeric' format"
-                )
-        
-        # Update target_id after validation
-        target['target_id'] = target_id
-        
-        # Optional fields with defaults
-        target.setdefault('enabled', True)
-        target.setdefault('merge_forward', False)
-        target.setdefault('use_author_name', False)
-        target.setdefault('summary', '')
-        
-        # Validate render_config if present
-        if 'render_config' in target and target['render_config'] is not None:
-            if not isinstance(target['render_config'], dict):
-                raise ValueError("render_config must be a dictionary")
-    
-    return v
 
 
 class DistributionRuleCreate(BaseModel):
@@ -784,12 +661,9 @@ class RulePreviewRequest(BaseModel):
 class PreviewItemStatus(str, Enum):
     """预览项状态"""
     WILL_PUSH = "will_push"
-    FILTERED_NSFW = "filtered_nsfw"
-    FILTERED_TAG = "filtered_tag"
-    FILTERED_PLATFORM = "filtered_platform"
+    FILTERED = "filtered"
     PENDING_REVIEW = "pending_review"
-    RATE_LIMITED = "rate_limited"
-    ALREADY_PUSHED = "already_pushed"
+    PUSHED = "pushed"
 
 
 class RulePreviewItem(BaseModel):
@@ -800,6 +674,7 @@ class RulePreviewItem(BaseModel):
     tags: List[str] = Field(default_factory=list)
     is_nsfw: bool = False
     status: str
+    reason_code: Optional[str] = None
     reason: Optional[str] = None
     scheduled_time: Optional[datetime] = None
     thumbnail_url: Optional[str] = None
@@ -816,7 +691,6 @@ class RulePreviewResponse(BaseModel):
     will_push_count: int
     filtered_count: int
     pending_review_count: int
-    rate_limited_count: int
     items: List[RulePreviewItem]
 
 
@@ -827,7 +701,6 @@ class RulePreviewStats(BaseModel):
     will_push: int
     filtered: int
     pending_review: int
-    rate_limited: int
 
 
 # ========== Target Management Schema ==========
@@ -946,6 +819,7 @@ class ContentQueueItemResponse(BaseModel):
     max_attempts: int = 3
     next_attempt_at: Optional[datetime] = None
     message_id: Optional[str] = None
+    reason_code: Optional[str] = None
     last_error: Optional[str] = None
     last_error_type: Optional[str] = None
     last_error_at: Optional[datetime] = None

@@ -12,7 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import AsyncSessionLocal
 from app.core.logging import logger
 from app.core.time_utils import utcnow
-from app.distribution.engine import DistributionEngine
+from app.distribution.decision import (
+    DECISION_FILTERED,
+    DECISION_PENDING_REVIEW,
+    evaluate_target_decision,
+)
 from app.core.events import event_bus
 from app.models import (
     Content,
@@ -158,16 +162,19 @@ async def _enqueue_content_impl(
 
     is_reviewed = content.review_status in (ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED)
 
-    # 3. 匹配规则
-    engine = DistributionEngine(session)
-    matched_rules = await engine.match_rules(content)
-
-    if not matched_rules:
-        logger.info(f"No matching rules for content: content_id={content_id}")
+    # 3. 加载启用规则
+    rules_result = await session.execute(
+        select(DistributionRule)
+        .where(DistributionRule.enabled == True)
+        .order_by(DistributionRule.priority.desc(), DistributionRule.id)
+    )
+    all_rules = rules_result.scalars().all()
+    if not all_rules:
+        logger.info(f"No enabled rules for content: content_id={content_id}")
         return 0
 
     # 4. 批量查询所有匹配规则的目标（避免 N+1）
-    rule_ids = [r.id for r in matched_rules]
+    rule_ids = [r.id for r in all_rules]
     targets_result = await session.execute(
         select(DistributionTarget, BotChat)
         .join(BotChat, DistributionTarget.bot_chat_id == BotChat.id)
@@ -197,10 +204,11 @@ async def _enqueue_content_impl(
     }
 
     # 6. 构建规则 ID -> 规则对象映射
-    rules_map = {r.id: r for r in matched_rules}
+    rules_map = {r.id: r for r in all_rules}
 
     # 7. 逐目标创建/更新队列项
     count = 0
+    matched_rule_ids: set[int] = set()
 
     for rule_id, pairs in rule_targets.items():
         rule = rules_map.get(rule_id)
@@ -208,8 +216,23 @@ async def _enqueue_content_impl(
             continue
 
         for target, bot_chat in pairs:
+            decision = evaluate_target_decision(
+                content=content,
+                rule=rule,
+                bot_chat=bot_chat,
+                require_approval=True,
+            )
+            if decision.bucket == DECISION_FILTERED:
+                continue
+
+            matched_rule_ids.add(rule.id)
+
             # 未审批内容只允许进入需要审批的规则队列
-            if not is_reviewed and not rule.approval_required:
+            if (
+                not is_reviewed
+                and not rule.approval_required
+                and decision.bucket != DECISION_PENDING_REVIEW
+            ):
                 continue
 
             key = (rule.id, bot_chat.id)
@@ -226,12 +249,27 @@ async def _enqueue_content_impl(
 
                 # 已失败且强制：重置为 PENDING
                 if existing.status == QueueItemStatus.FAILED and force:
-                    existing.status = QueueItemStatus.PENDING
+                    existing.status = (
+                        QueueItemStatus.PENDING
+                        if decision.bucket == DECISION_PENDING_REVIEW
+                        else QueueItemStatus.SCHEDULED
+                    )
                     existing.attempt_count = 0
                     existing.last_error = None
                     existing.last_error_type = None
                     existing.last_error_at = None
                     existing.next_attempt_at = None
+                    existing.target_id = decision.target_id or bot_chat.chat_id
+                    existing.nsfw_routing_result = decision.nsfw_routing_result
+                    if existing.status == QueueItemStatus.SCHEDULED:
+                        existing.scheduled_at = await compute_auto_scheduled_at(
+                            session=session,
+                            rule=rule,
+                            bot_chat_id=bot_chat.id,
+                            target_id=existing.target_id,
+                        )
+                    else:
+                        existing.scheduled_at = utcnow()
                     existing.updated_at = utcnow()
                     count += 1
                     logger.info(
@@ -244,17 +282,14 @@ async def _enqueue_content_impl(
                 continue
 
             # 新建队列项
-            needs_approval = (
-                rule.approval_required
-                and content.review_status == ReviewStatus.PENDING
-            )
+            needs_approval = decision.bucket == DECISION_PENDING_REVIEW
             status = QueueItemStatus.PENDING if needs_approval else QueueItemStatus.SCHEDULED
             if status == QueueItemStatus.SCHEDULED:
                 scheduled_time = await compute_auto_scheduled_at(
                     session=session,
                     rule=rule,
                     bot_chat_id=bot_chat.id,
-                    target_id=bot_chat.chat_id,
+                    target_id=decision.target_id or bot_chat.chat_id,
                 )
             else:
                 scheduled_time = utcnow()
@@ -264,11 +299,12 @@ async def _enqueue_content_impl(
                 rule_id=rule.id,
                 bot_chat_id=bot_chat.id,
                 target_platform=bot_chat.platform_type,
-                target_id=bot_chat.chat_id,
+                target_id=decision.target_id or bot_chat.chat_id,
                 status=status,
                 priority=rule.priority + content.queue_priority,
                 scheduled_at=scheduled_time,
                 needs_approval=needs_approval,
+                nsfw_routing_result=decision.nsfw_routing_result,
             )
             session.add(item)
             count += 1
@@ -283,7 +319,7 @@ async def _enqueue_content_impl(
         })
         logger.info(
             f"Enqueued content: content_id={content_id}, "
-            f"rules_matched={len(matched_rules)}, items_created_or_updated={count}"
+            f"rules_matched={len(matched_rule_ids)}, items_created_or_updated={count}"
         )
 
     return count
@@ -359,25 +395,32 @@ async def mark_historical_parse_success_as_pushed_for_rule(
     if not contents:
         return 0
 
-    engine = DistributionEngine(session)
     now = utcnow()
     rows = []
 
     for content in contents:
-        matched = await engine._check_match(content, rule)
         for _, bot_chat in target_pairs:
             key = (int(content.id), int(bot_chat.id))
             if key in existing_keys:
                 continue
 
-            if matched:
+            decision = evaluate_target_decision(
+                content=content,
+                rule=rule,
+                bot_chat=bot_chat,
+                require_approval=True,
+            )
+
+            if decision.bucket != DECISION_FILTERED:
                 status = QueueItemStatus.SUCCESS
                 last_error = None
+                last_error_type = None
                 completed_at = now
                 approved_at = now
             else:
                 status = QueueItemStatus.SKIPPED
-                last_error = "Filtered by rule conditions"
+                last_error = decision.reason or "Filtered by unified decision"
+                last_error_type = decision.reason_code or "filtered_by_decision"
                 completed_at = now
                 approved_at = None
 
@@ -387,7 +430,7 @@ async def mark_historical_parse_success_as_pushed_for_rule(
                     "rule_id": int(rule_id),
                     "bot_chat_id": int(bot_chat.id),
                     "target_platform": bot_chat.platform_type,
-                    "target_id": bot_chat.chat_id,
+                    "target_id": decision.target_id or bot_chat.chat_id,
                     "status": status,
                     "priority": 0,
                     "scheduled_at": now,
@@ -396,6 +439,8 @@ async def mark_historical_parse_success_as_pushed_for_rule(
                     "started_at": now,
                     "completed_at": completed_at,
                     "last_error": last_error,
+                    "last_error_type": last_error_type,
+                    "nsfw_routing_result": decision.nsfw_routing_result,
                     "created_at": now,
                     "updated_at": now,
                 }
