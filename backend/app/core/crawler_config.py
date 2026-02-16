@@ -2,18 +2,7 @@
 爬虫配置管理
 
 根据域名/地区配置不同的等待时间和爬取策略。
-支持通过 SystemSetting 在前端配置。
-
-规则组结构：
-{
-    "rule_group_id": {
-        "name": "规则组名称",
-        "delay": 20.0,
-        "domains": ["domain1.com", "domain2.com"],
-        "enabled": true,
-        "priority": 10  # 优先级，数字越大优先级越高
-    }
-}
+使用内置规则组进行匹配，不依赖运行时数据库配置。
 """
 from typing import Optional, TypedDict, List
 from urllib.parse import urlparse
@@ -137,46 +126,10 @@ def find_matching_rule_sync(domain: str) -> tuple[Optional[str], Optional[RuleGr
 
 
 async def find_matching_rule(domain: str) -> tuple[Optional[str], Optional[RuleGroup], float]:
-    """
-    异步版本：查找匹配域名的规则组
-    
-    Returns:
-        (规则组ID, 规则组, 延迟时间)
-    """
-    from app.services.settings_service import get_setting_value
-    
-    matched: list[tuple[str, RuleGroup, int, bool]] = []  # (id, group, priority, is_builtin)
-    
-    # 1. 检查用户自定义规则组
-    try:
-        custom_groups = await get_setting_value("crawler_rule_groups", default={})
-        if isinstance(custom_groups, dict):
-            for group_id, group in custom_groups.items():
-                if not group.get("enabled", True):
-                    continue
-                for pattern in group.get("domains", []):
-                    if match_domain(domain, pattern):
-                        matched.append((group_id, group, group.get("priority", 0), False))
-                        break
-    except Exception:
-        pass
-    
-    # 2. 检查内置规则组
-    for group_id, group in BUILTIN_RULE_GROUPS.items():
-        if not group.get("enabled", True):
-            continue
-        for pattern in group.get("domains", []):
-            if match_domain(domain, pattern):
-                matched.append((group_id, group, group.get("priority", 0), True))
-                break
-    
-    if not matched:
+    """异步兼容包装：复用同步规则匹配实现。"""
+    group_id, group = find_matching_rule_sync(domain)
+    if not group:
         return None, None, DEFAULT_DELAY
-    
-    # 按优先级排序（用户规则在同等优先级下优先）
-    matched.sort(key=lambda x: (x[2], not x[3]), reverse=True)
-    group_id, group, _, _ = matched[0]
-    
     return group_id, group, group.get("delay", DEFAULT_DELAY)
 
 
@@ -190,14 +143,9 @@ async def get_delay_for_url(url: str) -> float:
     Returns:
         等待时间（秒）
     """
-    from app.services.settings_service import get_setting_value
-    
     domain = extract_domain(url)
     if not domain:
-        try:
-            return float(await get_setting_value("crawler_default_delay", DEFAULT_DELAY))
-        except Exception:
-            return DEFAULT_DELAY
+        return DEFAULT_DELAY
     
     # 查找匹配的规则组
     _, _, delay = await find_matching_rule(domain)
@@ -205,11 +153,7 @@ async def get_delay_for_url(url: str) -> float:
     if delay != DEFAULT_DELAY:
         return delay
     
-    # 使用默认延迟
-    try:
-        return float(await get_setting_value("crawler_default_delay", DEFAULT_DELAY))
-    except Exception:
-        return DEFAULT_DELAY
+    return DEFAULT_DELAY
 
 
 def get_delay_for_url_sync(url: str) -> float:
@@ -234,7 +178,3 @@ def get_delay_for_url_sync(url: str) -> float:
     
     return DEFAULT_DELAY
 
-
-# ========== 设置键常量 ==========
-SETTING_KEY_DEFAULT_DELAY = "crawler_default_delay"
-SETTING_KEY_RULE_GROUPS = "crawler_rule_groups"
