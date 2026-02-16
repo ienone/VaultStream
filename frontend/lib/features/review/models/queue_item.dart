@@ -37,6 +37,7 @@ abstract class QueueItem with _$QueueItem {
     @JsonKey(name: 'cover_url') String? coverUrl,
     @JsonKey(name: 'author_name') String? authorName,
     required String status,
+    @JsonKey(name: 'reason_code') String? reasonCode,
     @JsonKey(name: 'last_error') String? reason,
     @JsonKey(name: 'scheduled_at') DateTime? scheduledTime,
     @JsonKey(name: 'completed_at') DateTime? pushedAt,
@@ -46,6 +47,30 @@ abstract class QueueItem with _$QueueItem {
   const QueueItem._();
 
   String get displayPlatform => sourcePlatform ?? platform;
+
+  String? get displayReason {
+    final message = reason?.trim();
+    if (message != null && message.isNotEmpty) {
+      return message;
+    }
+
+    return switch (reasonCode) {
+      'nsfw_blocked' => 'NSFW 内容被阻止',
+      'nsfw_separate_unconfigured_blocked' => 'NSFW 分离路由未配置，已阻止',
+      'nsfw_condition_mismatch' => 'NSFW 条件不匹配',
+      'platform_mismatch' => '平台条件不匹配',
+      'tags_excluded' => '命中排除标签',
+      'tags_not_all_matched' => '未命中全部必需标签',
+      'tags_not_any_matched' => '未命中任一必需标签',
+      'approval_required' => '等待人工审批',
+      'already_pushed_dedupe' => '已推送（去重跳过）',
+      'content_not_eligible' => '内容状态不满足推送条件',
+      'target_unavailable' => '目标不可用，暂缓推送',
+      'manual_filtered' => '已手动过滤',
+      'manual_canceled' => '已手动取消',
+      _ => null,
+    };
+  }
 
   factory QueueItem.fromJson(Map<String, dynamic> json) =>
       _$QueueItemFromJson(json);

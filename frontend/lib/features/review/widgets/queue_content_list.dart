@@ -523,6 +523,7 @@ class _QueueItemCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isWillPush = currentStatus == QueueStatus.willPush;
+    final reasonText = (item.displayReason ?? '').trim();
 
     final card = Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -593,6 +594,17 @@ class _QueueItemCard extends StatelessWidget {
                                       ),
                                   ],
                                 ),
+                                if (!isWillPush && reasonText.isNotEmpty) ...[
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    reasonText,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: colorScheme.error,
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),

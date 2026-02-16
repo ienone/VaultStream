@@ -8,7 +8,7 @@ void main() {
         'id': 10,
         'content_id': 100,
         'title': 'Test Item',
-        'platform': 'bilibili',
+        'target_platform': 'bilibili',
         'tags': ['anime'],
         'is_nsfw': false,
         'status': 'will_push',
@@ -21,6 +21,20 @@ void main() {
       expect(item.contentId, 100);
       expect(item.status, 'will_push');
       expect(item.priority, 5);
+    });
+
+    test('displayReason should map from reason_code when reason is empty', () {
+      final json = {
+        'id': 11,
+        'content_id': 101,
+        'target_platform': 'telegram',
+        'status': 'filtered',
+        'reason_code': 'manual_filtered',
+      };
+
+      final item = QueueItem.fromJson(json);
+      expect(item.reasonCode, 'manual_filtered');
+      expect(item.displayReason, '已手动过滤');
     });
 
     test('QueueStatus.fromValue should parse values correctly', () {
