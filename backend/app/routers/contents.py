@@ -25,6 +25,9 @@ from app.core.dependencies import require_api_token, get_content_service, get_co
 from app.services.content_service import ContentService
 from app.repositories.content_repository import ContentRepository
 from app.core.events import event_bus
+from app.services.content_presenter import (
+    compute_effective_layout_type, compute_display_title, compute_author_avatar_url,
+)
 
 router = APIRouter()
 
@@ -384,20 +387,17 @@ async def list_share_cards(
         if cover_url and "/api/v1/media/" in cover_url:
             thumbnail_url = f"{cover_url}?size=thumb"
         
-        # 计算有效布局类型
-        effective_layout = c.effective_layout_type.value if c.effective_layout_type else None
-        
         items.append({
             "id": c.id,
             "platform": c.platform,
             "url": c.url,
             "clean_url": c.clean_url,
             "content_type": c.content_type,
-            "effective_layout_type": effective_layout,
-            "title": c.display_title,  # 使用 display_title（自动从正文生成标题）
+            "effective_layout_type": compute_effective_layout_type(c),
+            "title": compute_display_title(c),
             "author_name": c.author_name,
             "author_id": c.author_id,
-            "author_avatar_url": _transform_media_url(c.author_avatar_url, base_url),
+            "author_avatar_url": _transform_media_url(compute_author_avatar_url(c), base_url),
             "cover_url": cover_url,
             "thumbnail_url": thumbnail_url,
             "cover_color": c.cover_color,

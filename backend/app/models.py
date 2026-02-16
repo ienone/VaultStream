@@ -81,7 +81,7 @@ class Content(Base):
     )
     
     id = Column(Integer, primary_key=True, index=True)
-    platform = Column(SQLEnum(Platform), nullable=False, index=True)
+    platform = Column(SQLEnum(Platform, native_enum=False, values_callable=lambda x: [e.value for e in x]), nullable=False, index=True)  # 按枚举 value（小写）存储
     url = Column(Text, nullable=False)  # 原始输入
     canonical_url = Column(Text, index=True)  # 用于去重的规范化URL
     clean_url = Column(Text)  # 解析后的净化URL
@@ -123,21 +123,6 @@ class Content(Base):
     # 平台特有 ID (如 BV号, 推文ID)
     platform_id = Column(String(100), index=True)
     
-    # 提供以下映射属性，供 Pydantic 模型 ContentDetail 使用
-    @property
-    def bilibili_id(self):
-        """映射 platform_id 到 bilibili_id（仅 B站有效）"""
-        if self.platform == Platform.BILIBILI:
-            return self.platform_id
-        return None
-
-    @property
-    def bilibili_type(self):
-        """映射 content_type 到 bilibili_type（仅 B站有效）"""
-        if self.platform == Platform.BILIBILI:
-            return self.content_type
-        return None
-    
     # 通用互动数据
     view_count = Column(Integer, default=0)
     like_count = Column(Integer, default=0)
@@ -156,60 +141,11 @@ class Content(Base):
     description = Column(Text)  # 完整内容文本
     author_name = Column(String(200))
     author_id = Column(String(100))
-    _author_avatar_url = Column("author_avatar_url", Text)
+    author_avatar_url = Column("author_avatar_url", Text)  # 直接存储，展示逻辑由 content_presenter 提供
     author_url = Column(Text)  # 作者主页链接
     cover_url = Column(Text)
     source_tags = Column(JSON, default=list)  # 平台原生标签
 
-    @property
-    def display_title(self) -> str:
-        """获取显示用标题：优先使用 title，否则从 description 生成"""
-        from app.adapters.utils import ensure_title
-        return ensure_title(self.title, self.description, max_len=60, fallback="无标题")
-
-    @property
-    def effective_layout_type(self) -> Optional['LayoutType']:
-        """获取有效布局类型：用户覆盖 > 系统检测"""
-        if self.layout_type_override:
-            return self.layout_type_override
-        if self.layout_type:
-            return self.layout_type
-        return None
-
-    @property
-    def author_avatar_url(self) -> Optional[str]:
-        """获取作者头像 URL，如果数据库字段为空则尝试从元数据中动态提取"""
-        if self._author_avatar_url:
-            return self._author_avatar_url
-            
-        try:
-            if not self.raw_metadata:
-                return None
-            
-            # 从 raw_metadata 动态提取头像信息
-            if self.platform == Platform.WEIBO:
-                if self.content_type == "user_profile":
-                    return self.raw_metadata.get("avatar_hd")
-                return self.raw_metadata.get("user", {}).get("avatar_hd") or \
-                       self.raw_metadata.get("user", {}).get("profile_image_url")
-            
-            if self.platform == Platform.BILIBILI:
-                return self.raw_metadata.get("author", {}).get("face") or \
-                       self.raw_metadata.get("owner", {}).get("face")
-            
-            if self.platform == Platform.TWITTER:
-                return self.raw_metadata.get("user", {}).get("profile_image_url_https")
-                
-            if self.platform == Platform.ZHIHU:
-                return self.raw_metadata.get("author", {}).get("avatarUrl") or \
-                       self.raw_metadata.get("author", {}).get("avatar_url")
-        except Exception:
-            pass
-        return None
-
-    @author_avatar_url.setter
-    def author_avatar_url(self, value: str):
-        self._author_avatar_url = value
     cover_color = Column(String(20))  # M5: 封面主色调 (Hex)
     media_urls = Column(JSON, default=list)  # 媒体资源URL列表
     
@@ -374,7 +310,7 @@ class Task(Base):
     id = Column(Integer, primary_key=True, index=True)
     task_type = Column(String(100), nullable=False)  # "parse_content"
     payload = Column(JSON, nullable=False)  # {"content_id": 123}
-    status = Column(SQLEnum(TaskStatus), default=TaskStatus.PENDING, index=True)
+    status = Column(SQLEnum(TaskStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=TaskStatus.PENDING, index=True)  # 按枚举 value（小写）存储
     priority = Column(Integer, default=0, index=True)  # 越大越优先
     retry_count = Column(Integer, default=0)
     max_retries = Column(Integer, default=3)
@@ -459,7 +395,7 @@ class BotChat(Base):
     
     # Telegram 聊天信息
     chat_id = Column(String(50), nullable=False, index=True)  # Telegram/QQ chat_id
-    chat_type = Column(SQLEnum(BotChatType), nullable=False)  # channel/group/supergroup/private
+    chat_type = Column(SQLEnum(BotChatType, native_enum=False, values_callable=lambda x: [e.value for e in x]), nullable=False)  # 按枚举 value（小写）存储
     title = Column(String(200))  # 群组/频道名称
     username = Column(String(100))  # @username（可选）
     description = Column(Text)  # 群组描述

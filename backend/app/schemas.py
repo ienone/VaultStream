@@ -5,13 +5,46 @@ from datetime import datetime
 from enum import Enum
 import json
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, field_validator
-from app.models import ContentStatus, Platform, BilibiliContentType, ReviewStatus, LayoutType, QueueItemStatus
+from pydantic import BaseModel, Field, field_validator, model_validator
+from app.models import ContentStatus, Platform, ReviewStatus, LayoutType, QueueItemStatus
 from app.constants import SUPPORTED_PLATFORMS
 
 
 NOTE_MAX_LENGTH = 2000 # 备注内容的最大长度
 CLIENT_CONTEXT_MAX_BYTES = 4096 # JSON序列化后最大4KB
+
+
+class ContentPushPayload(BaseModel):
+    """推送 payload — 供 push service 消费的内容数据。
+
+    通过 model_validate(orm_obj) 从 Content ORM 对象自动映射，
+    替代 ContentDistributor 中的手动字段赋值。
+    """
+    id: int
+    title: Optional[str] = None
+    platform: Optional[str] = None
+    cover_url: Optional[str] = None
+    raw_metadata: Optional[Dict[str, Any]] = None
+    canonical_url: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    is_nsfw: bool = False
+    description: Optional[str] = None
+    author_name: Optional[str] = None
+    author_id: Optional[str] = None
+    published_at: Optional[datetime] = None
+    view_count: int = 0
+    like_count: int = 0
+    collect_count: int = 0
+    share_count: int = 0
+    comment_count: int = 0
+    extra_stats: Dict[str, Any] = Field(default_factory=dict)
+    content_type: Optional[str] = None
+    clean_url: Optional[str] = None
+    url: Optional[str] = None
+    render_config: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True
 
 
 class ShareRequest(BaseModel):
@@ -100,10 +133,6 @@ class ContentDetail(BaseModel):
     comment_count: int = 0 # 评论次数
     extra_stats: Dict[str, Any] = Field(default_factory=dict) # 平台特有扩展数据
 
-    # B站特有
-    bilibili_type: Optional[BilibiliContentType]
-    bilibili_id: Optional[str]
-    
     # Phase 7: 结构化字段（已完成raw_metadata迁移）
     associated_question: Optional[Dict[str, Any]] = None  # 知乎回答关联的问题
     top_answers: Optional[List[Dict[str, Any]]] = None  # 知乎问题的精选回答
@@ -115,6 +144,27 @@ class ContentDetail(BaseModel):
     
     class Config:
         from_attributes = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _compute_derived_fields(cls, data):
+        """ORM property 已迁移到 content_presenter，此处在反序列化时补算派生字段"""
+        from app.services.content_presenter import (
+            compute_effective_layout_type, compute_author_avatar_url,
+        )
+        # data 可能是 ORM 对象（from_attributes）或 dict
+        if isinstance(data, dict):
+            return data
+        # ORM 对象：补算派生字段（原 model property 已迁移到 content_presenter）
+        obj = data
+        if not getattr(obj, '_presenter_patched', False):
+            object.__setattr__(obj, 'effective_layout_type', compute_effective_layout_type(obj))
+            # author_avatar_url: 数据库列值可能为空，用 presenter 补算 fallback
+            avatar = compute_author_avatar_url(obj)
+            if avatar and not obj.author_avatar_url:
+                object.__setattr__(obj, 'author_avatar_url', avatar)
+            object.__setattr__(obj, '_presenter_patched', True)
+        return obj
 
 
 class ContentListItem(BaseModel):
