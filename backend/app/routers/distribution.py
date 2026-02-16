@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models import DistributionRule, Content, PushedRecord, ReviewStatus, ContentStatus, DistributionTarget, BotChat
-from app.constants import Platform, PREVIEW_CONTENT_IDS, DEFAULT_RENDER_CONFIG_PRESETS
+from app.constants import Platform, DEFAULT_RENDER_CONFIG_PRESETS
 from app.schemas import (
     DistributionRuleCreate, DistributionRuleUpdate, DistributionRuleResponse,
     RulePreviewResponse, RulePreviewItem, RulePreviewStats,
@@ -582,13 +582,10 @@ async def list_all_targets(
         from collections import defaultdict
         all_target_ids = [key[1] for key in target_map.keys()]
         
-        # Single query to fetch all push records (only for preview content types)
+        # 统计该 target 的所有推送记录，不再按 content_id 过滤（移除硬编码 ID 依赖）
         push_result = await db.execute(
             select(PushedRecord).where(
-                and_(
-                    PushedRecord.target_id.in_(all_target_ids),
-                    PushedRecord.content_id.in_(PREVIEW_CONTENT_IDS)
-                )
+                PushedRecord.target_id.in_(all_target_ids)
             )
         )
         all_pushes = push_result.scalars().all()

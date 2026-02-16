@@ -4,7 +4,7 @@
 from typing import Optional
 from app.adapters.base import PlatformAdapter
 from app.adapters.bilibili import BilibiliAdapter
-from app.adapters.twitter_fx import TwitterFxAdapter
+from app.adapters.twitter import TwitterAdapter
 from app.adapters.xiaohongshu import XiaohongshuAdapter
 from app.adapters.weibo import WeiboAdapter
 from app.adapters.zhihu import ZhihuAdapter
@@ -21,7 +21,7 @@ class AdapterFactory:
         if platform == Platform.BILIBILI:
             return BilibiliAdapter(**kwargs)
         elif platform == Platform.TWITTER:
-            return TwitterFxAdapter(**kwargs)
+            return TwitterAdapter(**kwargs)
         elif platform == Platform.XIAOHONGSHU:
             return XiaohongshuAdapter(**kwargs)
         elif platform == Platform.WEIBO:

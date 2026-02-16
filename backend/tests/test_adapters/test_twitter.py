@@ -4,7 +4,7 @@ Twitter/X Adapter Tests
 import pytest
 from typing import Dict
 
-from app.adapters.twitter_fx import TwitterFxAdapter
+from app.adapters.twitter import TwitterAdapter
 from tests.test_adapters.base import AdapterTestBase
 
 
@@ -17,7 +17,7 @@ class TestTwitterAdapter(AdapterTestBase):
     
     @property
     def adapter_class(self):
-        return TwitterFxAdapter
+        return TwitterAdapter
     
     def get_test_urls(self) -> Dict[str, str]:
         """Fallback URLs if database is empty"""

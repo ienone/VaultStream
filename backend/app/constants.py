@@ -13,21 +13,13 @@ class Platform(str, Enum):
 
 class ContentType(str, Enum):
     """内容类型枚举"""
-    # 基于现有数据库 content_id 值的映射
-    # content_id=6: Bilibili视频
-    # content_id=8: 推文
-    # content_id=9: Zhihu内容
-    BILIBILI_VIDEO = "6"
-    TWEET = "8"
-    ZHIHU = "9"
+    BILIBILI_VIDEO = "bilibili_video"
+    TWEET = "tweet"
+    ZHIHU = "zhihu"
 
 
 # 平台常量列表
 SUPPORTED_PLATFORMS = [Platform.TELEGRAM.value, Platform.QQ.value]
-
-# 测试用内容ID列表（用于目标预览）
-# 注意：这些是整数值，对应数据库中的content_id
-PREVIEW_CONTENT_IDS = [6, 8, 9]
 
 # Render Config Presets (Raw data to avoid circular imports with schemas)
 DEFAULT_RENDER_CONFIG_PRESETS = [

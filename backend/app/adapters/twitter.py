@@ -1,6 +1,7 @@
 """
-Twitter/X 平台适配器 - 使用 FxTwitter API
-无需登录/cookies，通过第三方服务获取推文内容
+Twitter/X 平台适配器
+
+通过 FxTwitter API 获取推文内容，无需登录/cookies。
 """
 import re
 from datetime import datetime
@@ -21,9 +22,11 @@ from app.models import TwitterContentType
 from app.core.config import settings
 
 
-class TwitterFxAdapter(PlatformAdapter):
+class TwitterAdapter(PlatformAdapter):
     """
-    Twitter/X 适配器 - 使用 FxTwitter API
+    Twitter/X 平台适配器
+    
+    内部使用 FxTwitter API 实现，无需登录或 API key。
     
     优势:
     - ✅ 无需登录或 cookies
