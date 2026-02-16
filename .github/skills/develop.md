@@ -13,9 +13,6 @@
 
 - Python 解释器固定使用：根目录 `.venv/python.exe`
 - 后端相关命令统一从仓库根目录执行，并显式使用该解释器。
-- 示例：
-  - 全量后端测试：`cd backend && .venv/python -m pytest tests/`
-  - 单测：`cd backend && .venv/python -m pytest tests/test_file.py -k test_name`
 
 ## 2. 标准修改流程（每次任务都遵循）
 
