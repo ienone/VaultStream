@@ -4,7 +4,7 @@
 调用方式：需要 API Token
 """
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, desc, and_, update
 from sqlalchemy.orm import selectinload
@@ -18,10 +18,19 @@ from app.schemas import (
     RulePreviewResponse, RulePreviewItem, RulePreviewStats,
     TargetUsageInfo, TargetListResponse, TargetTestRequest, TargetTestResponse,
     BatchTargetUpdateRequest, BatchTargetUpdateResponse,
-    RenderConfigPreset, RenderConfigPresetCreate, RenderConfigPresetUpdate
+    RenderConfigPreset, RenderConfigPresetCreate, RenderConfigPresetUpdate,
+    DistributionTargetCreate, DistributionTargetUpdate, DistributionTargetResponse,
 )
 from app.core.logging import logger
 from app.core.dependencies import require_api_token
+from app.distribution.decision import (
+    DECISION_FILTERED,
+    DECISION_PENDING_REVIEW,
+    DECISION_WILL_PUSH,
+    DistributionDecision,
+    evaluate_target_decision,
+)
+from app.distribution.queue_service import mark_historical_parse_success_as_pushed_for_rule
 
 router = APIRouter()
 
@@ -48,6 +57,43 @@ def _chat_types_for_platform(platform: str) -> set[str]:
     if platform == Platform.QQ.value:
         return _QQ_CHAT_TYPES
     raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
+
+
+def _resolve_preview_decision(
+    *,
+    content: Content,
+    rule: DistributionRule,
+    chats: List[BotChat],
+) -> DistributionDecision:
+    if not chats:
+        return DistributionDecision(
+            bucket=DECISION_FILTERED,
+            reason_code="no_enabled_targets",
+            reason="规则没有可用目标",
+        )
+
+    pending_decision: Optional[DistributionDecision] = None
+    first_filtered: Optional[DistributionDecision] = None
+
+    for chat in chats:
+        decision = evaluate_target_decision(
+            content=content,
+            rule=rule,
+            bot_chat=chat,
+            require_approval=True,
+        )
+        if decision.bucket == DECISION_WILL_PUSH:
+            return decision
+        if decision.bucket == DECISION_PENDING_REVIEW and pending_decision is None:
+            pending_decision = decision
+        if decision.bucket == DECISION_FILTERED and first_filtered is None:
+            first_filtered = decision
+
+    return pending_decision or first_filtered or DistributionDecision(
+        bucket=DECISION_FILTERED,
+        reason_code="no_eligible_target",
+        reason="无可用目标",
+    )
 
 
 @router.post("/distribution-rules", response_model=DistributionRuleResponse)
@@ -165,18 +211,7 @@ async def preview_distribution_rule(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
-    """
-    预览规则下的内容分发情况
-    
-    返回匹配该规则的内容列表，包含每条内容的预计分发状态：
-    - will_push: 将被推送
-    - filtered_nsfw: 因 NSFW 策略被过滤
-    - filtered_tag: 因标签不匹配被过滤
-    - filtered_platform: 因平台不匹配被过滤
-    - pending_review: 待人工审批
-    - rate_limited: 因频率限制暂缓
-    - already_pushed: 已推送过
-    """
+    """预览规则下的内容分发情况（统一状态：will_push/filtered/pending_review）。"""
     # 加载关联的目标和 BotChat 以支持预览逻辑
     result = await db.execute(
         select(DistributionRule)
@@ -190,8 +225,6 @@ async def preview_distribution_rule(
     if not rule:
         raise HTTPException(status_code=404, detail="Distribution rule not found")
     
-    conditions = rule.match_conditions or {}
-    
     content_query = select(Content).where(
         Content.status == ContentStatus.PARSE_SUCCESS
     ).order_by(desc(Content.created_at)).limit(limit * 2)
@@ -203,103 +236,26 @@ async def preview_distribution_rule(
     will_push_count = 0
     filtered_count = 0
     pending_review_count = 0
-    rate_limited_count = 0
     
-    # 适配 Phase 4: 使用 distribution_targets 关系表
-    targets = rule.distribution_targets
-    target_ids = [t.bot_chat.chat_id for t in targets if t.enabled and t.bot_chat.enabled]
-    
-    window_start = datetime.utcnow() - timedelta(seconds=rule.time_window or 3600)
-    pushed_counts: dict[str, int] = {}
-    if target_ids:
-        for tid in target_ids:
-            count_result = await db.execute(
-                select(PushedRecord).where(
-                    and_(
-                        PushedRecord.target_id == tid,
-                        PushedRecord.pushed_at >= window_start
-                    )
-                )
-            )
-            pushed_counts[tid] = len(count_result.scalars().all())
+    chats = [
+        target.bot_chat
+        for target in rule.distribution_targets
+        if target.enabled and target.bot_chat and target.bot_chat.enabled
+    ]
     
     for content in all_contents:
         if len(preview_items) >= limit:
             break
         
-        status = "will_push"
-        reason = None
-        
-        if "platform" in conditions:
-            if conditions["platform"] != content.platform.value:
-                status = "filtered_platform"
-                reason = f"平台不匹配: 需要 {conditions['platform']}, 实际 {content.platform.value}"
-        
-        if status == "will_push" and "tags" in conditions:
-            required_tags = conditions.get("tags", [])
-            tags_match_mode = conditions.get("tags_match_mode", "any")
-            exclude_tags = conditions.get("tags_exclude", [])
-            content_tags = content.tags or []
-            
-            if exclude_tags and any(tag in content_tags for tag in exclude_tags):
-                status = "filtered_tag"
-                reason = f"包含排除标签: {[t for t in exclude_tags if t in content_tags]}"
-            elif required_tags:
-                if tags_match_mode == "all":
-                    if not all(tag in content_tags for tag in required_tags):
-                        status = "filtered_tag"
-                        reason = f"标签不完全匹配: 需要全部 {required_tags}"
-                else:
-                    if not any(tag in content_tags for tag in required_tags):
-                        status = "filtered_tag"
-                        reason = f"标签不匹配: 需要任一 {required_tags}"
-        
-        if status == "will_push" and "is_nsfw" in conditions:
-            if conditions["is_nsfw"] != content.is_nsfw:
-                status = "filtered_nsfw"
-                reason = f"NSFW状态不匹配: 规则要求 is_nsfw={conditions['is_nsfw']}"
-        
-        if status == "will_push" and content.is_nsfw:
-            nsfw_policy = rule.nsfw_policy
-            if nsfw_policy == "block":
-                status = "filtered_nsfw"
-                reason = "NSFW内容被阻止 (策略: block)"
-        
-        if status == "will_push" and rule.approval_required:
-            if content.review_status not in [ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED]:
-                status = "pending_review"
-                reason = f"需要人工审批 (当前状态: {content.review_status.value})"
-        
-        if status == "will_push" and target_ids:
-            for tid in target_ids:
-                pushed_result = await db.execute(
-                    select(PushedRecord).where(
-                        and_(
-                            PushedRecord.content_id == content.id,
-                            PushedRecord.target_id == tid
-                        )
-                    )
-                )
-                if pushed_result.scalar_one_or_none():
-                    status = "already_pushed"
-                    reason = f"已推送到 {tid}"
-                    break
-        
-        if status == "will_push" and rule.rate_limit and target_ids:
-            for tid in target_ids:
-                if pushed_counts.get(tid, 0) >= rule.rate_limit:
-                    status = "rate_limited"
-                    reason = f"频率限制: {tid} 在 {rule.time_window or 3600}秒内已推送 {pushed_counts[tid]} 条 (限制 {rule.rate_limit})"
-                    break
-        
-        if status == "will_push":
+        decision = _resolve_preview_decision(content=content, rule=rule, chats=chats)
+        status = decision.bucket
+
+        if status == DECISION_WILL_PUSH:
             will_push_count += 1
-        elif status.startswith("filtered"):
+        elif status == DECISION_FILTERED:
             filtered_count += 1
-        elif status == "pending_review":
+        elif status == DECISION_PENDING_REVIEW:
             pending_review_count += 1
-        elif status == "rate_limited":
-            rate_limited_count += 1
         
         thumbnail = content.cover_url
         if not thumbnail and content.raw_metadata and isinstance(content.raw_metadata, dict):
@@ -318,7 +274,8 @@ async def preview_distribution_rule(
             tags=content.tags or [],
             is_nsfw=content.is_nsfw,
             status=status,
-            reason=reason,
+            reason_code=decision.reason_code,
+            reason=decision.reason,
             scheduled_time=content.created_at,
             thumbnail_url=thumbnail
         ))
@@ -330,7 +287,6 @@ async def preview_distribution_rule(
         will_push_count=will_push_count,
         filtered_count=filtered_count,
         pending_review_count=pending_review_count,
-        rate_limited_count=rate_limited_count,
         items=preview_items
     )
 
@@ -340,7 +296,7 @@ async def get_all_rules_preview_stats(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
-    """获取所有规则的预览统计"""
+    """获取所有规则的预览统计（统一状态口径）。"""
     result = await db.execute(
         select(DistributionRule)
         .where(DistributionRule.enabled == True)
@@ -351,8 +307,6 @@ async def get_all_rules_preview_stats(
     stats_list: List[RulePreviewStats] = []
     
     for rule in rules:
-        conditions = rule.match_conditions or {}
-        
         content_query = select(Content).where(
             Content.status == ContentStatus.PARSE_SUCCESS
         ).limit(100)
@@ -363,29 +317,24 @@ async def get_all_rules_preview_stats(
         will_push = 0
         filtered = 0
         pending_review = 0
-        rate_limited = 0
+
+        chats_result = await db.execute(
+            select(DistributionTarget)
+            .options(selectinload(DistributionTarget.bot_chat))
+            .where(DistributionTarget.rule_id == rule.id)
+            .where(DistributionTarget.enabled == True)
+        )
+        chats = [
+            t.bot_chat
+            for t in chats_result.scalars().all()
+            if t.bot_chat and t.bot_chat.enabled
+        ]
         
         for content in contents:
-            matched = True
-            
-            if "platform" in conditions and conditions["platform"] != content.platform.value:
-                matched = False
-            
-            if matched and "tags" in conditions:
-                required_tags = conditions.get("tags", [])
-                content_tags = content.tags or []
-                if required_tags and not any(tag in content_tags for tag in required_tags):
-                    matched = False
-            
-            if matched and "is_nsfw" in conditions and conditions["is_nsfw"] != content.is_nsfw:
-                matched = False
-            
-            if not matched:
-                continue
-            
-            if content.is_nsfw and rule.nsfw_policy == "block":
+            decision = _resolve_preview_decision(content=content, rule=rule, chats=chats)
+            if decision.bucket == DECISION_FILTERED:
                 filtered += 1
-            elif rule.approval_required and content.review_status not in [ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED]:
+            elif decision.bucket == DECISION_PENDING_REVIEW:
                 pending_review += 1
             else:
                 will_push += 1
@@ -396,7 +345,6 @@ async def get_all_rules_preview_stats(
             will_push=will_push,
             filtered=filtered,
             pending_review=pending_review,
-            rate_limited=rate_limited
         ))
     
     return stats_list
@@ -425,6 +373,145 @@ async def trigger_distribution_run(
             total += count
     
     return {"status": "triggered", "enqueued_count": total}
+
+
+@router.get("/distribution-rules/{rule_id}/targets", response_model=List[DistributionTargetResponse])
+async def list_rule_targets(
+    rule_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """获取规则的所有分发目标"""
+    rule_result = await db.execute(
+        select(DistributionRule).where(DistributionRule.id == rule_id)
+    )
+    if not rule_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+    result = await db.execute(
+        select(DistributionTarget)
+        .where(DistributionTarget.rule_id == rule_id)
+        .order_by(DistributionTarget.created_at.asc())
+    )
+    targets = result.scalars().all()
+    return [DistributionTargetResponse.model_validate(t) for t in targets]
+
+
+@router.post("/distribution-rules/{rule_id}/targets", response_model=DistributionTargetResponse, status_code=201)
+async def create_rule_target(
+    rule_id: int,
+    target: DistributionTargetCreate,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """为规则添加分发目标"""
+    rule_result = await db.execute(
+        select(DistributionRule).where(DistributionRule.id == rule_id)
+    )
+    rule = rule_result.scalar_one_or_none()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+    chat_result = await db.execute(
+        select(BotChat).where(BotChat.id == target.bot_chat_id)
+    )
+    chat = chat_result.scalar_one_or_none()
+    if not chat:
+        raise HTTPException(status_code=404, detail="BotChat not found")
+
+    existing = await db.execute(
+        select(DistributionTarget).where(
+            DistributionTarget.rule_id == rule_id,
+            DistributionTarget.bot_chat_id == target.bot_chat_id
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Target already exists for rule '{rule.name}' and chat '{chat.chat_id}'"
+        )
+
+    db_target = DistributionTarget(
+        rule_id=rule_id,
+        bot_chat_id=target.bot_chat_id,
+        enabled=target.enabled,
+        merge_forward=target.merge_forward,
+        use_author_name=target.use_author_name,
+        summary=target.summary,
+        render_config_override=target.render_config_override,
+    )
+    db.add(db_target)
+
+    inserted = await mark_historical_parse_success_as_pushed_for_rule(
+        session=db,
+        rule_id=rule_id,
+        bot_chat_id=target.bot_chat_id,
+    )
+
+    await db.commit()
+    await db.refresh(db_target)
+
+    logger.info(
+        f"Created distribution target: rule={rule.name}, chat={chat.chat_id}, "
+        f"enabled={db_target.enabled}, backfilled_success={inserted}"
+    )
+
+    return DistributionTargetResponse.model_validate(db_target)
+
+
+@router.patch("/distribution-rules/{rule_id}/targets/{target_id}", response_model=DistributionTargetResponse)
+async def update_rule_target(
+    rule_id: int,
+    target_id: int,
+    update: DistributionTargetUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """更新分发目标配置"""
+    result = await db.execute(
+        select(DistributionTarget).where(
+            DistributionTarget.id == target_id,
+            DistributionTarget.rule_id == rule_id
+        )
+    )
+    db_target = result.scalar_one_or_none()
+    if not db_target:
+        raise HTTPException(status_code=404, detail="Target not found")
+
+    update_data = update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_target, key, value)
+
+    await db.commit()
+    await db.refresh(db_target)
+
+    logger.info(f"Updated distribution target: id={target_id}")
+
+    return DistributionTargetResponse.model_validate(db_target)
+
+
+@router.delete("/distribution-rules/{rule_id}/targets/{target_id}", status_code=204)
+async def delete_rule_target(
+    rule_id: int,
+    target_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """删除分发目标"""
+    result = await db.execute(
+        select(DistributionTarget).where(
+            DistributionTarget.id == target_id,
+            DistributionTarget.rule_id == rule_id
+        )
+    )
+    db_target = result.scalar_one_or_none()
+    if not db_target:
+        raise HTTPException(status_code=404, detail="Target not found")
+
+    await db.delete(db_target)
+    await db.commit()
+
+    logger.info(f"Deleted distribution target: id={target_id}")
 
 
 # ========== Target Management APIs ==========

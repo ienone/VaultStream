@@ -17,6 +17,7 @@ from app.distribution.queue_service import mark_historical_parse_success_as_push
 from app.models import (
     BotChat,
     BotChatType,
+    ContentQueueItem,
     PushedRecord,
     DistributionRule,
     DistributionTarget,

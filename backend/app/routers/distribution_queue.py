@@ -59,6 +59,7 @@ def _to_queue_item_response(item: ContentQueueItem, content: Optional[Content] =
         max_attempts=item.max_attempts or 3,
         next_attempt_at=_as_utc(item.next_attempt_at),
         message_id=item.message_id,
+        reason_code=item.last_error_type,
         last_error=item.last_error,
         last_error_type=item.last_error_type,
         last_error_at=_as_utc(item.last_error_at),
@@ -345,6 +346,9 @@ async def retry_queue_item(
     item.locked_by = None
     item.next_attempt_at = None
     item.scheduled_at = utcnow()
+    item.last_error = None
+    item.last_error_type = None
+    item.last_error_at = None
     if request.reset_attempts:
         item.attempt_count = 0
 
@@ -375,6 +379,9 @@ async def cancel_queue_item(
     item.status = QueueItemStatus.CANCELED
     item.locked_at = None
     item.locked_by = None
+    item.last_error = "Canceled manually"
+    item.last_error_type = "manual_canceled"
+    item.last_error_at = utcnow()
 
     await db.commit()
 
@@ -414,6 +421,9 @@ async def batch_retry_queue_items(
         item.locked_by = None
         item.next_attempt_at = None
         item.scheduled_at = now
+        item.last_error = None
+        item.last_error_type = None
+        item.last_error_at = None
         retried_ids.append(item.id)
 
     await db.commit()
@@ -475,6 +485,9 @@ async def set_content_queue_status(
             item.needs_approval = False
             item.scheduled_at = scheduled_at
             item.next_attempt_at = None
+            item.last_error = None
+            item.last_error_type = None
+            item.last_error_at = None
             changed += 1
         await db.commit()
         await event_bus.publish("queue_updated", {
@@ -487,12 +500,16 @@ async def set_content_queue_status(
 
     if target_status == "filtered":
         changed = 0
+        reason = str(payload.get("reason") or "Filtered manually").strip() or "Filtered manually"
         for item in items:
             if item.status == QueueItemStatus.SUCCESS:
                 continue
             item.status = QueueItemStatus.CANCELED
             item.locked_at = None
             item.locked_by = None
+            item.last_error = reason
+            item.last_error_type = "manual_filtered"
+            item.last_error_at = now
             changed += 1
         await db.commit()
         await event_bus.publish("queue_updated", {
@@ -533,6 +550,9 @@ async def repush_now_content_queue(
         item.locked_at = None
         item.locked_by = None
         item.message_id = None
+        item.last_error = None
+        item.last_error_type = None
+        item.last_error_at = None
         changed += 1
         affected_targets.add(item.target_id)
 
@@ -590,6 +610,9 @@ async def batch_repush_now_content_queue(
         item.locked_at = None
         item.locked_by = None
         item.message_id = None
+        item.last_error = None
+        item.last_error_type = None
+        item.last_error_at = None
         changed += 1
         target_pairs.add((item.content_id, item.target_id))
 
@@ -671,6 +694,9 @@ async def push_now_content_queue(
             item.status = QueueItemStatus.SCHEDULED
             item.scheduled_at = now
             item.next_attempt_at = None
+            item.last_error = None
+            item.last_error_type = None
+            item.last_error_at = None
             changed += 1
 
     await db.commit()
@@ -708,6 +734,9 @@ async def schedule_content_queue(
             item.status = QueueItemStatus.SCHEDULED
             item.scheduled_at = scheduled_at
             item.next_attempt_at = None
+            item.last_error = None
+            item.last_error_type = None
+            item.last_error_at = None
             changed += 1
 
     await db.commit()
@@ -743,6 +772,9 @@ async def batch_push_now_content_queue(
             item.status = QueueItemStatus.SCHEDULED
             item.scheduled_at = now
             item.next_attempt_at = None
+            item.last_error = None
+            item.last_error_type = None
+            item.last_error_at = None
             changed += 1
 
     await db.commit()
@@ -789,6 +821,9 @@ async def batch_reschedule_content_queue(
                 item.status = QueueItemStatus.SCHEDULED
                 item.scheduled_at = scheduled
                 item.next_attempt_at = None
+                item.last_error = None
+                item.last_error_type = None
+                item.last_error_at = None
                 changed += 1
 
     await db.commit()
