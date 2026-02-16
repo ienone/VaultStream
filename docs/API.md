@@ -113,6 +113,11 @@ eventSource.addEventListener('queue_updated', (e) => {
 
 分页获取队列项。
 
+返回项包含统一原因字段：
+
+- `reason_code`：机器可读原因码（如 `manual_filtered`、`nsfw_blocked`、`already_pushed_dedupe`）
+- `last_error`：面向展示的原因文案（可选）
+
 查询参数：
 
 - `status`（支持别名：`will_push`/`filtered`/`pending_review`/`pushed`）

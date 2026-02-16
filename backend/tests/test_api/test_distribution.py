@@ -50,6 +50,8 @@ class TestDistributionAPI:
         assert "total" in data
         assert isinstance(data["items"], list)
         assert isinstance(data["total"], int)
+        if data["items"]:
+            assert "reason_code" in data["items"][0]
 
     @pytest.mark.asyncio
     async def test_distribution_content_status_action(self, client: AsyncClient):

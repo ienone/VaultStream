@@ -364,7 +364,7 @@ class QueueItemStatus: PENDING, SCHEDULED, PROCESSING, SUCCESS, FAILED, SKIPPED,
 |------|--------|------|
 | 分享入口 | `ShareRequest` / `ShareResponse` | URL 提交 |
 | 内容展示 | `ContentDetail` / `ContentListItem` | 完整详情 / 列表精简 |
-| 分享卡片 | `ShareCard` / `ShareCardPreview` | 对外合规分享 (不含 raw_metadata) |
+| 分享卡片 | `ShareCard` / `ShareCardListResponse` | 对外合规分享 (不含 raw_metadata) |
 | 分发规则 | `DistributionRuleCreate/Update/Response` | 规则 CRUD |
 | 审批 | `ReviewAction` / `BatchReviewRequest` | 单个/批量审批 |
 | 队列 | `ContentQueueItemResponse` / `QueueStatsResponse` | 队列管理 |
@@ -384,7 +384,7 @@ class QueueItemStatus: PENDING, SCHEDULED, PROCESSING, SUCCESS, FAILED, SKIPPED,
 |---------|------|----------|
 | `contents.py` | `/api/v1` | `POST /shares`, `GET/PATCH/DELETE /contents/{id}`, 审批流 |
 | `distribution.py` | `/api/v1` | `CRUD /distribution-rules`, 预览, 渲染配置预设 |
-| `distribution_targets.py` | `/api/v1` | 分发目标管理, 连接测试 |
+| `distribution.py` | `/api/v1` | 分发规则 + 分发目标管理 |
 | `distribution_queue.py` | `/api/v1` | 队列统计, 手动入队/重试/取消 |
 | `system.py` | `/api/v1` | `/health`, `/dashboard/stats`, `/settings` |
 | `media.py` | `/api/v1` | `GET /media/{key}` (本地代理), `GET /proxy/image` (远程代理) |
