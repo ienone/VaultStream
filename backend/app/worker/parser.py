@@ -147,8 +147,8 @@ class ContentParser:
             except Exception as e:
                 logger.warning("Archive media processing skipped: {}", f"{type(e).__name__}: {e}")
         
-        # 补充封面颜色
-        if not getattr(parsed, "cover_color", None) and parsed.cover_url:
+        # 补充封面颜色（本地 URL 跳过，后续从已存储的图片读取）
+        if not getattr(parsed, "cover_color", None) and parsed.cover_url and not parsed.cover_url.startswith("local://"):
             parsed.cover_color = await extract_cover_color(parsed.cover_url)
 
         # 同步回内容记录
@@ -367,7 +367,7 @@ class ContentParser:
         if archive.get("markdown"):
             parsed.description = archive["markdown"]
         
-        # 更新 media_urls
+        # 更新 media_urls — 优先使用本地 local:// 协议
         stored_images = archive.get("stored_images", [])
         if stored_images:
             local_urls = []
@@ -375,10 +375,11 @@ class ContentParser:
                 # 排除头像
                 if img.get("type") == "avatar" or img.get("is_avatar"):
                     continue
-                if img.get("url"):
-                    local_urls.append(img["url"])
-                elif img.get("key"):
+                # 优先使用 local:// 协议（内容寻址存储），回退到远程 url
+                if img.get("key"):
                     local_urls.append(f"local://{img['key']}")
+                elif img.get("url"):
+                    local_urls.append(img["url"])
 
             if local_urls:
                 unique_local_urls = list(dict.fromkeys(local_urls))

@@ -4,11 +4,11 @@
 该模块包含:
 - url_utils: URL处理相关工具
 - text_formatters: 文本格式化工具
-- formatters: 数字、时间等格式化工具
+- datetime_utils: 时间规范化工具
 """
-from .url_utils import canonicalize_url, normalize_bilibili_url, normalize_datetime_for_db
-from .text_formatters import format_content_for_tg
-from .formatters import format_number
+from .url_utils import canonicalize_url, normalize_bilibili_url
+from .datetime_utils import normalize_datetime_for_db
+from .text_formatters import format_content_for_tg, format_number
 
 __all__ = [
     'canonicalize_url',

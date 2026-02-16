@@ -8,7 +8,18 @@ import re
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-from .formatters import format_number
+
+def format_number(num) -> str:
+    """格式化数字，超过1万显示为“万”单位。"""
+    if not num:
+        return "0"
+    try:
+        n = int(num)
+        if n >= 10000:
+            return f"{n / 10000:.2f}万"
+        return str(n)
+    except Exception:
+        return str(num)
 
 
 def strip_markdown(text: str) -> str:

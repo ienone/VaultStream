@@ -3,7 +3,6 @@ URL处理工具模块
 
 提供URL规范化、平台特定URL处理等功能
 """
-from datetime import datetime, timezone
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 
 
@@ -15,36 +14,6 @@ _TRACKING_QUERY_KEYS = {
     "from_source",
     "vd_source",
 }
-
-
-def normalize_datetime_for_db(dt: datetime | None) -> datetime | None:
-    """
-    将 datetime 规范化为 UTC 且去除 tzinfo（返回 naive UTC datetime），或返回 None
-    
-    原因：模型中使用的 `utcnow()` 返回的是无时区（naive）的 UTC 时间，为避免
-    将带时区的 datetime 直接写入导致 asyncpg 抛出类型不匹配错误，
-    我们在写入 DB 前将带时区 datetime 转为 UTC 并去除 tzinfo
-    
-    Args:
-        dt: 待规范化的datetime对象，可以为None
-        
-    Returns:
-        规范化后的naive UTC datetime，或None
-        
-    Examples:
-        >>> from datetime import datetime, timezone
-        >>> dt = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-        >>> result = normalize_datetime_for_db(dt)
-        >>> result.tzinfo is None
-        True
-    """
-    if dt is None:
-        return None
-    if not isinstance(dt, datetime):
-        return dt
-    if dt.tzinfo is None:
-        return dt
-    return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def canonicalize_url(url: str) -> str:
