@@ -78,6 +78,22 @@ class LocalStorageBackend:
         safe_key = key.lstrip("/")
         return f"{self.public_base_url}/{safe_key}"
 
+    async def delete(self, *, key: str) -> bool:
+        """删除存储对象，返回是否成功删除"""
+        path = self._full_path(key)
+
+        def remove_file() -> bool:
+            if os.path.exists(path):
+                os.remove(path)
+                return True
+            return False
+
+        try:
+            return await asyncio.to_thread(remove_file)
+        except Exception as e:
+            logger.error(f"Delete object failed: {key}, {e}")
+            return False
+
     async def put_bytes(self, *, key: str, data: bytes, content_type: str) -> StoredObject:
         path = self._full_path(key)
         os.makedirs(os.path.dirname(path), exist_ok=True)

@@ -43,6 +43,25 @@ def _parse_list_param(values: Optional[List[str]]) -> Optional[List[str]]:
             result.append(v)
     return result if result else None
 
+def _extract_local_key(url: Optional[str]) -> Optional[str]:
+    """从 local:// URL 中提取存储 key"""
+    if url and url.startswith("local://"):
+        return url.replace("local://", "")
+    return None
+
+def _collect_local_media_keys(content: Content) -> list[str]:
+    """收集内容中所有 local:// 引用的存储 key"""
+    keys: set[str] = set()
+    for url in (content.cover_url, content.author_avatar_url):
+        key = _extract_local_key(url)
+        if key:
+            keys.add(key)
+    for url in (content.media_urls or []):
+        key = _extract_local_key(url)
+        if key:
+            keys.add(key)
+    return list(keys)
+
 def _transform_media_url(url: Optional[str], base_url: str) -> Optional[str]:
     """将 local:// 协议的 URL 转换为 HTTP 代理 URL"""
     if url and url.startswith("local://"):
@@ -246,21 +265,31 @@ async def delete_content(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
-    """删除内容 (仅数据库记录)"""
+    """删除内容（含数据库记录和已归档的本地媒体文件）"""
     result = await db.execute(select(Content).where(Content.id == content_id))
     content = result.scalar_one_or_none()
     
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
     
-    await db.execute(select(ContentSource).where(ContentSource.content_id == content_id))
+    # 收集 local:// 媒体引用并清理存储文件
+    local_keys = _collect_local_media_keys(content)
+    if local_keys:
+        from app.core.storage import get_storage_backend
+        storage = get_storage_backend()
+        for key in local_keys:
+            try:
+                await storage.delete(key=key)
+            except Exception as e:
+                logger.warning(f"清理媒体文件失败: key={key}, err={e}")
+    
     await db.execute(ContentSource.__table__.delete().where(ContentSource.content_id == content_id))
     await db.execute(PushedRecord.__table__.delete().where(PushedRecord.content_id == content_id))
     
     await db.delete(content)
     await db.commit()
     
-    logger.info(f"内容已删除: content_id={content_id}")
+    logger.info(f"内容已删除: content_id={content_id}, 清理媒体文件={len(local_keys)}个")
     
     # 广播删除事件
     await event_bus.publish("content_deleted", {"id": content_id})
