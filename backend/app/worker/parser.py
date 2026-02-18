@@ -174,7 +174,6 @@ class ContentParser:
         content.last_error_at = None
 
         await session.commit()
-        await session.commit()
         logger.info("内容解析完成")
         
         # 广播更新事件

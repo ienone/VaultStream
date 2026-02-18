@@ -82,8 +82,7 @@ class DistributionEngine:
                 # 自动审批后触发队列入队
                 try:
                     from app.distribution.queue_service import enqueue_content_background
-                    import asyncio
-                    asyncio.ensure_future(enqueue_content_background(content.id))
+                    await enqueue_content_background(content.id)
                 except Exception as e:
                     logger.warning(f"Failed to enqueue after auto-approve: {e}")
                 

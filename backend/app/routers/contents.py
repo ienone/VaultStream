@@ -474,8 +474,10 @@ async def review_card(
     # 审批通过后触发队列入队
     if is_approve:
         from app.distribution.queue_service import enqueue_content_background
-        import asyncio
-        asyncio.ensure_future(enqueue_content_background(content.id))
+        try:
+            await enqueue_content_background(content.id)
+        except Exception as e:
+            logger.error(f"审批通过后分发入队失败: content_id={content.id}, err={e}")
     
     return {"id": content.id, "review_status": content.review_status.value}
 
@@ -509,9 +511,11 @@ async def batch_review_cards(
     # 审批通过后触发队列入队
     if is_approve:
         from app.distribution.queue_service import enqueue_content_background
-        import asyncio
         for content in contents:
-            asyncio.ensure_future(enqueue_content_background(content.id))
+            try:
+                await enqueue_content_background(content.id)
+            except Exception as e:
+                logger.error(f"批量审批分发入队失败: content_id={content.id}, err={e}")
     
     return {"updated": len(contents), "action": request.action}
 
