@@ -51,6 +51,11 @@ frontend/.flutter-plugins-dependencies
 frontend/.metadata
 frontend/.packages
 
+# local-only scripts
+scripts/
+backend/scripts/
+frontend/scripts/
+
 
 # 临时文件
 experiments/
