@@ -6,7 +6,7 @@
 from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
-from sqlalchemy import select, and_, func, desc
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -19,14 +19,13 @@ from app.schemas import (
 )
 from app.core.logging import logger
 from app.core.config import settings
-from app.core.queue import task_queue
 from app.worker import worker
 from app.core.dependencies import require_api_token, get_content_service, get_content_repo
 from app.services.content_service import ContentService
 from app.repositories.content_repository import ContentRepository
-from app.core.events import event_bus
 from app.services.content_presenter import (
     compute_effective_layout_type, compute_display_title, compute_author_avatar_url,
+    transform_media_url, transform_content_detail,
 )
 
 router = APIRouter()
@@ -42,65 +41,6 @@ def _parse_list_param(values: Optional[List[str]]) -> Optional[List[str]]:
         else:
             result.append(v)
     return result if result else None
-
-def _extract_local_key(url: Optional[str]) -> Optional[str]:
-    """从 local:// URL 中提取存储 key"""
-    if url and url.startswith("local://"):
-        return url.replace("local://", "")
-    return None
-
-def _collect_local_media_keys(content: Content) -> list[str]:
-    """收集内容中所有 local:// 引用的存储 key"""
-    keys: set[str] = set()
-    for url in (content.cover_url, content.author_avatar_url):
-        key = _extract_local_key(url)
-        if key:
-            keys.add(key)
-    for url in (content.media_urls or []):
-        key = _extract_local_key(url)
-        if key:
-            keys.add(key)
-    return list(keys)
-
-def _transform_media_url(url: Optional[str], base_url: str) -> Optional[str]:
-    """将 local:// 协议的 URL 转换为 HTTP 代理 URL"""
-    if url and url.startswith("local://"):
-        key = url.replace("local://", "")
-        return f"{base_url}/api/v1/media/{key}"
-    return url
-
-def _transform_content_detail(content: ContentDetail, base_url: str) -> ContentDetail:
-    """转换内容详情中的所有媒体链接"""
-    content.cover_url = _transform_media_url(content.cover_url, base_url)
-    content.author_avatar_url = _transform_media_url(content.author_avatar_url, base_url)
-    if content.media_urls:
-        content.media_urls = [_transform_media_url(u, base_url) for u in content.media_urls if u]
-    
-    # Phase 7: 转换 top_answers 中的头像/封面
-    if content.top_answers:
-        for ans in content.top_answers:
-            if ans.get("author_avatar_url"):
-                ans["author_avatar_url"] = _transform_media_url(ans["author_avatar_url"], base_url)
-            if ans.get("cover_url"):
-                ans["cover_url"] = _transform_media_url(ans["cover_url"], base_url)
-    
-    # 转换 associated_question 中的封面
-    if content.associated_question:
-        if content.associated_question.get("cover_url"):
-            content.associated_question["cover_url"] = _transform_media_url(
-                content.associated_question["cover_url"], base_url
-            )
-                
-    # 转换 Markdown 正文中的 local:// 图片链接 (完整处理)
-    if content.description and "local://" in content.description:
-        import re
-        def replacer(match):
-            key = match.group(1)
-            return f"{base_url}/api/v1/media/{key}"
-        local_pattern = r'local://([a-zA-Z0-9_/.-]+)'
-        content.description = re.sub(local_pattern, replacer, content.description)
-
-    return content
 
 # --- Sharing ---
 
@@ -168,10 +108,9 @@ async def list_contents(
         is_nsfw=is_nsfw
     )
     
-    # 转换 Pydantic 模型并处理 local:// URL
     base_url = settings.base_url or "http://localhost:8000"
     items_pydantic = [
-        _transform_content_detail(ContentDetail.model_validate(c), base_url)
+        transform_content_detail(ContentDetail.model_validate(c), base_url)
         for c in items
     ]
     
@@ -196,105 +135,50 @@ async def get_content_detail(
         raise HTTPException(status_code=404, detail="Content not found")
         
     base_url = settings.base_url or "http://localhost:8000"
-    return _transform_content_detail(ContentDetail.model_validate(content), base_url)
+    return transform_content_detail(ContentDetail.model_validate(content), base_url)
 
 @router.patch("/contents/{content_id}", response_model=ContentDetail)
 async def update_content(
     content_id: int,
     request: ContentUpdate,
-    db: AsyncSession = Depends(get_db),
+    service: ContentService = Depends(get_content_service),
     _: None = Depends(require_api_token),
 ):
     """修改内容"""
-    result = await db.execute(select(Content).where(Content.id == content_id))
-    content = result.scalar_one_or_none()
-    if not content:
-        raise HTTPException(status_code=404, detail="Content not found")
-    
-    if request.tags is not None:
-        content.tags = request.tags
-    if request.title is not None:
-        content.title = request.title
-    if request.description is not None:
-        content.description = request.description
-    if request.author_name is not None:
-        content.author_name = request.author_name
-    if request.cover_url is not None:
-        if content.cover_url != request.cover_url:
-            content.cover_url = request.cover_url
-            from app.media.color import extract_cover_color
-            content.cover_color = await extract_cover_color(content.cover_url)
-    if request.is_nsfw is not None:
-        content.is_nsfw = request.is_nsfw
-    enqueue_parse = False
-    if request.status is not None:
-        previous_status = content.status
-        content.status = request.status
-        if request.status == ContentStatus.UNPROCESSED and previous_status != ContentStatus.UNPROCESSED:
-            enqueue_parse = True
-    if request.review_status is not None:
-        content.review_status = request.review_status
-    if request.review_note is not None:
-        content.review_note = request.review_note
-    if request.reviewed_by is not None:
-        content.reviewed_by = request.reviewed_by
-    if request.layout_type_override is not None:
-        content.layout_type_override = request.layout_type_override
-        
-    await db.commit()
-    await db.refresh(content)
+    updates = {
+        k: v for k, v in {
+            "tags": request.tags,
+            "title": request.title,
+            "description": request.description,
+            "author_name": request.author_name,
+            "cover_url": request.cover_url,
+            "is_nsfw": request.is_nsfw,
+            "status": request.status,
+            "review_status": request.review_status,
+            "review_note": request.review_note,
+            "reviewed_by": request.reviewed_by,
+            "layout_type_override": request.layout_type_override,
+        }.items() if v is not None
+    }
+    try:
+        content = await service.update_content(content_id, updates)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
-    if enqueue_parse:
-        await task_queue.enqueue({'content_id': content.id, 'action': 'parse'})
-        logger.info(f"Content status reset to unprocessed, parse re-enqueued: {content.id}")
-    
-    # 广播更新事件
-    await event_bus.publish("content_updated", {
-        "id": content.id,
-        "title": content.title,
-        "status": content.status.value if content.status else None,
-        "platform": content.platform.value if content.platform else None,
-    })
-    
     base_url = settings.base_url or "http://localhost:8000"
-    return _transform_content_detail(ContentDetail.model_validate(content), base_url)
+    return transform_content_detail(ContentDetail.model_validate(content), base_url)
 
 @router.delete("/contents/{content_id}")
 async def delete_content(
     content_id: int,
-    db: AsyncSession = Depends(get_db),
+    service: ContentService = Depends(get_content_service),
     _: None = Depends(require_api_token),
 ):
     """删除内容（含数据库记录和已归档的本地媒体文件）"""
-    result = await db.execute(select(Content).where(Content.id == content_id))
-    content = result.scalar_one_or_none()
-    
-    if not content:
-        raise HTTPException(status_code=404, detail="Content not found")
-    
-    # 收集 local:// 媒体引用并清理存储文件
-    local_keys = _collect_local_media_keys(content)
-    if local_keys:
-        from app.core.storage import get_storage_backend
-        storage = get_storage_backend()
-        for key in local_keys:
-            try:
-                await storage.delete(key=key)
-            except Exception as e:
-                logger.warning(f"清理媒体文件失败: key={key}, err={e}")
-    
-    await db.execute(ContentSource.__table__.delete().where(ContentSource.content_id == content_id))
-    await db.execute(PushedRecord.__table__.delete().where(PushedRecord.content_id == content_id))
-    
-    await db.delete(content)
-    await db.commit()
-    
-    logger.info(f"内容已删除: content_id={content_id}, 清理媒体文件={len(local_keys)}个")
-    
-    # 广播删除事件
-    await event_bus.publish("content_deleted", {"id": content_id})
-    
-    return {"status": "deleted", "content_id": content_id}
+    try:
+        return await service.delete_content(content_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 @router.post("/contents/{content_id}/retry")
 async def retry_content(
@@ -410,8 +294,7 @@ async def list_share_cards(
     base_url = settings.base_url or "http://localhost:8000"
     items = []
     for c in contents:
-        cover_url = _transform_media_url(c.cover_url, base_url)
-        # 生成缩略图URL (添加 ?size=thumb 参数)
+        cover_url = transform_media_url(c.cover_url, base_url)
         thumbnail_url = None
         if cover_url and "/api/v1/media/" in cover_url:
             thumbnail_url = f"{cover_url}?size=thumb"
@@ -426,7 +309,7 @@ async def list_share_cards(
             "title": compute_display_title(c),
             "author_name": c.author_name,
             "author_id": c.author_id,
-            "author_avatar_url": _transform_media_url(compute_author_avatar_url(c), base_url),
+            "author_avatar_url": transform_media_url(compute_author_avatar_url(c), base_url),
             "cover_url": cover_url,
             "thumbnail_url": thumbnail_url,
             "cover_color": c.cover_color,
@@ -448,75 +331,78 @@ async def list_share_cards(
     }
 
 
+@router.get("/cards/{card_id}")
+async def get_share_card(
+    card_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """单条分享卡片（供 SSE 增量刷新使用）"""
+    result = await db.execute(select(Content).where(Content.id == card_id))
+    c = result.scalar_one_or_none()
+    if not c:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    base_url = settings.base_url or "http://localhost:8000"
+    cover_url = transform_media_url(c.cover_url, base_url)
+    thumbnail_url = None
+    if cover_url and "/api/v1/media/" in cover_url:
+        thumbnail_url = f"{cover_url}?size=thumb"
+
+    return {
+        "id": c.id,
+        "platform": c.platform,
+        "url": c.url,
+        "clean_url": c.clean_url,
+        "content_type": c.content_type,
+        "effective_layout_type": compute_effective_layout_type(c),
+        "title": compute_display_title(c),
+        "author_name": c.author_name,
+        "author_id": c.author_id,
+        "author_avatar_url": transform_media_url(compute_author_avatar_url(c), base_url),
+        "cover_url": cover_url,
+        "thumbnail_url": thumbnail_url,
+        "cover_color": c.cover_color,
+        "tags": c.tags or [],
+        "is_nsfw": c.is_nsfw or False,
+        "published_at": c.published_at,
+        "created_at": c.created_at,
+        "review_status": c.review_status,
+        "view_count": c.view_count or 0,
+        "like_count": c.like_count or 0,
+    }
+
+
 @router.post("/cards/{card_id}/review")
 async def review_card(
     card_id: int,
     action: ReviewAction,
-    db: AsyncSession = Depends(get_db),
+    service: ContentService = Depends(get_content_service),
     _: None = Depends(require_api_token),
 ):
     """审批单个卡片（轻量级接口）"""
-    result = await db.execute(select(Content).where(Content.id == card_id))
-    content = result.scalar_one_or_none()
-    if not content:
-        raise HTTPException(status_code=404, detail="Card not found")
-    if action.action not in ["approve", "reject"]:
-        raise HTTPException(status_code=400, detail="Invalid action")
-    
-    is_approve = action.action == "approve"
-    content.review_status = ReviewStatus.APPROVED if is_approve else ReviewStatus.REJECTED
-    content.reviewed_at = datetime.utcnow()
-    content.reviewed_by = action.reviewed_by
-    content.review_note = action.note
-    
-    await db.commit()
-    
-    # 审批通过后触发队列入队
-    if is_approve:
-        from app.distribution.queue_service import enqueue_content_background
-        try:
-            await enqueue_content_background(content.id)
-        except Exception as e:
-            logger.error(f"审批通过后分发入队失败: content_id={content.id}, err={e}")
-    
-    return {"id": content.id, "review_status": content.review_status.value}
+    try:
+        return await service.review_card(
+            card_id, action=action.action,
+            reviewed_by=action.reviewed_by, note=action.note,
+        )
+    except ValueError as e:
+        status = 400 if "Invalid" in str(e) else 404
+        raise HTTPException(status_code=status, detail=str(e))
 
 
 @router.post("/cards/batch-review")
 async def batch_review_cards(
     request: BatchReviewRequest,
-    db: AsyncSession = Depends(get_db),
+    service: ContentService = Depends(get_content_service),
     _: None = Depends(require_api_token),
 ):
     """批量审批卡片（轻量级接口）"""
-    if request.action not in ["approve", "reject"]:
-        raise HTTPException(status_code=400, detail="Invalid action")
-    
-    is_approve = request.action == "approve"
-    review_status = ReviewStatus.APPROVED if is_approve else ReviewStatus.REJECTED
-    
-    result = await db.execute(select(Content).where(Content.id.in_(request.content_ids)))
-    contents = result.scalars().all()
-    if not contents:
-        raise HTTPException(status_code=404, detail="No cards found")
-    
-    for content in contents:
-        content.review_status = review_status
-        content.reviewed_at = datetime.utcnow()
-        content.reviewed_by = request.reviewed_by
-        content.review_note = request.note
-    
-    await db.commit()
-    
-    # 审批通过后触发队列入队
-    if is_approve:
-        from app.distribution.queue_service import enqueue_content_background
-        for content in contents:
-            try:
-                await enqueue_content_background(content.id)
-            except Exception as e:
-                logger.error(f"批量审批分发入队失败: content_id={content.id}, err={e}")
-    
-    return {"updated": len(contents), "action": request.action}
-
-
+    try:
+        return await service.batch_review_cards(
+            content_ids=request.content_ids, action=request.action,
+            reviewed_by=request.reviewed_by, note=request.note,
+        )
+    except ValueError as e:
+        status = 400 if "Invalid" in str(e) else 404
+        raise HTTPException(status_code=status, detail=str(e))

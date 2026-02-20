@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     base_url: Optional[str] = None  # 外部访问的基础 URL，例如 https://vault.example.com
     debug: bool = True
     debug_sql: bool = False
+    slow_query_threshold_ms: int = 500  # 慢查询日志阈值（毫秒），0 表示关闭
 
     # API 鉴权（简单 Token）
     api_token: SecretStr = SecretStr("")
@@ -75,6 +76,11 @@ class Settings(BaseSettings):
 
     # 分发队列系统
     queue_worker_count: int = 3  # 队列Worker并发数
+    parse_worker_count: int = 1  # 解析任务Worker并发数
+
+    # 事件总线
+    enable_event_outbox_polling: bool = False  # 单实例部署时可关闭 outbox 轮询
+    max_sse_subscribers: int = 100  # SSE 最大连接数上限
 
     # 媒体处理
     enable_archive_media_processing: bool = True

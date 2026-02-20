@@ -1,9 +1,9 @@
 from typing import List, Optional, Tuple
 from sqlalchemy import select, and_, or_, func, desc, text
+from sqlalchemy.orm import defer
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Content, ContentStatus, Platform, ReviewStatus
 from datetime import datetime
-import json
 
 class ContentRepository:
     def __init__(self, db: AsyncSession):
@@ -41,27 +41,20 @@ class ContentRepository:
             conditions.append(Content.created_at <= end_date)
         
         if tags:
-            # 针对 SQLite 的鲁棒性标签过滤方案
-            # 标签在数据库中以 JSON 字符串存储，如 '["tag1", "tag2"]'
-            # 使用 LIKE '%"tag"%' 匹配可以精准锁定被引号包裹的独立标签
-            tag_conditions = []
-            for t in tags:
-                # 1. 尝试标准的 JSON 包含 (兼容性)
-                tag_conditions.append(Content.tags.contains(t))
-                
-                # 2. 提供针对 SQLite 的字符串级精准匹配: "%"tag"%"
-                # 注意: 这里使用前后引号确保匹配的是完整标签而非子串
-                tag_conditions.append(Content.tags.like(f'%"{t}"%'))
-                
-                # 3. 针对 Unicode 转义存储 (如中文标签 "\u516b...")
-                try:
-                    escaped_tag = json.dumps(t, ensure_ascii=True)[1:-1]
-                    if escaped_tag != t:
-                        tag_conditions.append(Content.tags.like(f'%"{escaped_tag}"%'))
-                except Exception:
-                    pass
-            
-            conditions.append(or_(*tag_conditions))
+            # 使用 SQLite json_each() 将 JSON 数组展开为行，再用 IN 匹配
+            # 条件数恒定为 1，不随标签数量膨胀
+            placeholders = ", ".join(f":tag_{i}" for i in range(len(tags)))
+            tag_subquery = text(
+                f"SELECT DISTINCT c.id FROM contents c, json_each(c.tags) AS je "
+                f"WHERE je.value IN ({placeholders})"
+            )
+            params = {f"tag_{i}": t for i, t in enumerate(tags)}
+            tag_ids_result = await self.db.execute(tag_subquery, params)
+            tag_ids = [row[0] for row in tag_ids_result.all()]
+            if tag_ids:
+                conditions.append(Content.id.in_(tag_ids))
+            else:
+                conditions.append(text("0 = 1"))
 
         if q:
             # 整合 FTS5 与 ILIKE
@@ -87,9 +80,10 @@ class ContentRepository:
         count_stmt = select(func.count()).select_from(Content).where(and_(*conditions))
         total = (await self.db.execute(count_stmt)).scalar() or 0
 
-        # 分页查询
+        # 分页查询（列表场景跳过加载 raw_metadata / last_error_detail 大字段）
         stmt = (
             select(Content)
+            .options(defer(Content.raw_metadata), defer(Content.last_error_detail))
             .where(and_(*conditions))
             .order_by(desc(Content.created_at))
             .offset((page - 1) * size)

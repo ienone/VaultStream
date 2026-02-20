@@ -4,6 +4,7 @@
 处理内容解析、元数据提取、媒体下载等逻辑
 """
 import asyncio
+import json
 import traceback
 from typing import Optional, Dict, Any
 from sqlalchemy import select
@@ -129,6 +130,11 @@ class ContentParser:
         content.layout_type = parsed.layout_type  # 新增: 保存布局类型
         content.title = parsed.title
         content.description = parsed.description
+        # P2-4: 防止超大正文导致单行数据膨胀
+        _MAX_DESCRIPTION_LEN = 200_000  # 200KB 字符上限
+        if content.description and len(content.description) > _MAX_DESCRIPTION_LEN:
+            content.description = content.description[:_MAX_DESCRIPTION_LEN]
+            logger.warning(f"正文超长截断: content_id={content.id}, original_len={len(parsed.description)}")
         content.author_name = parsed.author_name
         content.author_id = parsed.author_id
         content.author_avatar_url = parsed.author_avatar_url
@@ -155,7 +161,7 @@ class ContentParser:
         content.cover_url = parsed.cover_url
         content.media_urls = parsed.media_urls
         content.author_avatar_url = parsed.author_avatar_url
-        content.raw_metadata = parsed.raw_metadata
+        content.raw_metadata = self._truncate_raw_metadata(parsed.raw_metadata, content.id)
         
         content.cover_color = getattr(parsed, "cover_color", None)
         if not content.cover_color and isinstance(content.raw_metadata, dict) and "archive" in content.raw_metadata:
@@ -318,6 +324,56 @@ class ContentParser:
                 logger.info(f"内容已自动审批: content_id={content.id}")
         except Exception as e:
             logger.warning(f"自动审批检查失败: {e}", exc_info=True)
+
+    _MAX_RAW_METADATA_BYTES = 512 * 1024  # 512KB
+
+    def _truncate_raw_metadata(self, metadata: Any, content_id: int) -> Any:
+        """对 raw_metadata 进行大小控制，防止单行数据膨胀。"""
+        if not isinstance(metadata, dict):
+            return metadata
+
+        try:
+            raw = json.dumps(metadata, ensure_ascii=False)
+        except (TypeError, ValueError):
+            return metadata
+
+        if len(raw.encode("utf-8")) <= self._MAX_RAW_METADATA_BYTES:
+            return metadata
+
+        original_size = len(raw.encode("utf-8"))
+
+        # 阶段 1: 移除已冗余的大字段（archive 中已归档数据的源文件）
+        archive = metadata.get("archive")
+        if isinstance(archive, dict):
+            for key in ("markdown", "html", "raw_html"):
+                archive.pop(key, None)
+            for img in archive.get("images", []):
+                if isinstance(img, dict):
+                    img.pop("data", None)
+                    img.pop("base64", None)
+            for vid in archive.get("videos", []):
+                if isinstance(vid, dict):
+                    vid.pop("data", None)
+
+        # 阶段 2: 递归裁剪超长字符串值
+        def _trim(obj, max_str: int = 2000):
+            if isinstance(obj, str) and len(obj) > max_str:
+                return obj[:max_str] + f"...[truncated, original {len(obj)} chars]"
+            if isinstance(obj, dict):
+                return {k: _trim(v, max_str) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [_trim(v, max_str) for v in obj]
+            return obj
+
+        metadata = _trim(metadata)
+        metadata["_truncated"] = True
+
+        final_size = len(json.dumps(metadata, ensure_ascii=False).encode("utf-8"))
+        logger.warning(
+            f"raw_metadata 超大截断: content_id={content_id}, "
+            f"{original_size // 1024}KB → {final_size // 1024}KB"
+        )
+        return metadata
 
     def _get_platform_cookies(self, platform: Platform) -> dict:
         """获取平台cookies"""

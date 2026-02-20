@@ -31,10 +31,10 @@ class ContentStatus(str, Enum):
 
 class ReviewStatus(str, Enum):
     """内容审核状态（M4 审批流）"""
-    PENDING = "PENDING"      # 待审核
-    APPROVED = "APPROVED"    # 已批准
-    REJECTED = "REJECTED"    # 已拒绝
-    AUTO_APPROVED = "AUTO_APPROVED"  # 自动批准
+    PENDING = "pending"          # 待审核
+    APPROVED = "approved"        # 已批准
+    REJECTED = "rejected"        # 已拒绝
+    AUTO_APPROVED = "auto_approved"  # 自动批准
 
 
 class Platform(str, Enum):

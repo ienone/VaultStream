@@ -1,6 +1,7 @@
 
 import asyncio
 import json
+import time
 import uuid
 from typing import Any, AsyncGenerator, List
 
@@ -33,8 +34,13 @@ class EventBus:
         await cls._init_last_seen_event_id()
 
         cls._running = True
-        cls._poll_task = asyncio.create_task(cls._poll_remote_events(), name="event-bus-poller")
-        logger.info(f"EventBus started ({cls._instance_id})")
+
+        from app.core.config import settings
+        if settings.enable_event_outbox_polling:
+            cls._poll_task = asyncio.create_task(cls._poll_remote_events(), name="event-bus-poller")
+            logger.info(f"EventBus started ({cls._instance_id}) with outbox polling")
+        else:
+            logger.info(f"EventBus started ({cls._instance_id}) without outbox polling (single-instance mode)")
 
     @classmethod
     async def stop(cls) -> None:
@@ -53,9 +59,17 @@ class EventBus:
     @classmethod
     async def subscribe(cls) -> AsyncGenerator[Any, None]:
         """订阅事件流"""
+        from app.core.config import settings
+
         queue: asyncio.Queue = asyncio.Queue(maxsize=cls._MAX_LOCAL_QUEUE_SIZE)
         
         async with cls._lock:
+            if len(cls._subscribers) >= settings.max_sse_subscribers:
+                logger.warning(
+                    f"SSE subscriber rejected: limit reached ({settings.max_sse_subscribers})"
+                )
+                yield {"event": "error", "data": {"message": "Too many connections"}}
+                return
             cls._subscribers.append(queue)
             subscriber_count = len(cls._subscribers)
         
@@ -83,14 +97,15 @@ class EventBus:
     @classmethod
     async def publish(cls, event: str, data: dict):
         """发布事件：本地广播 + 写入 outbox 供其他实例同步。"""
+        event_id = await cls._persist_outbox_event(event=event, data=data)
+
         message = {"event": event, "data": data}
+        if event_id is not None:
+            message["id"] = event_id
 
         await cls._broadcast_local(message)
 
-        try:
-            await cls._persist_outbox_event(event=event, data=data)
-        except Exception as e:
-            logger.error(f"Failed to persist outbox event '{event}': {e}")
+    _BROADCAST_SLOW_THRESHOLD_MS = 50  # 广播超过此阈值时记录 warning
 
     @classmethod
     async def _broadcast_local(cls, message: dict) -> None:
@@ -104,6 +119,8 @@ class EventBus:
             logger.debug(f"No subscribers for event '{message.get('event')}', skipping")
             return
         
+        t0 = time.monotonic()
+
         # 广播给所有订阅者，失败的跳过
         failed_queues = []
         for queue in subscribers:
@@ -122,11 +139,19 @@ class EventBus:
                 for queue in failed_queues:
                     if queue in cls._subscribers:
                         cls._subscribers.remove(queue)
-            logger.info(f"Removed {len(failed_queues)} failed subscribers")
-        
-        logger.debug(
-            f"Published event '{message.get('event')}' to {len(subscribers) - len(failed_queues)} subscribers"
-        )
+            logger.info(f"Removed {len(failed_queues)} failed/slow subscribers")
+
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        if elapsed_ms > cls._BROADCAST_SLOW_THRESHOLD_MS:
+            logger.warning(
+                f"Slow broadcast: event='{message.get('event')}', "
+                f"subscribers={len(subscribers)}, elapsed={elapsed_ms:.1f}ms"
+            )
+        else:
+            logger.debug(
+                f"Published event '{message.get('event')}' to "
+                f"{len(subscribers) - len(failed_queues)} subscribers ({elapsed_ms:.1f}ms)"
+            )
 
     @classmethod
     async def _ensure_event_table(cls) -> None:
@@ -152,21 +177,56 @@ class EventBus:
             cls._last_seen_event_id = int(result.scalar() or 0)
 
     @classmethod
-    async def _persist_outbox_event(cls, event: str, data: dict) -> None:
-        payload = json.dumps(data, ensure_ascii=False)
-        async with AsyncSessionLocal() as session:
-            await session.execute(
-                text("""
-                    INSERT INTO realtime_events (event_type, payload, source_instance)
-                    VALUES (:event_type, :payload, :source_instance)
-                """),
-                {
-                    "event_type": event,
-                    "payload": payload,
-                    "source_instance": cls._instance_id,
-                },
-            )
-            await session.commit()
+    async def _persist_outbox_event(cls, event: str, data: dict) -> int | None:
+        """持久化事件到 outbox 表，返回事件 ID（用于 SSE Last-Event-ID）。"""
+        try:
+            payload = json.dumps(data, ensure_ascii=False)
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    text("""
+                        INSERT INTO realtime_events (event_type, payload, source_instance)
+                        VALUES (:event_type, :payload, :source_instance)
+                    """),
+                    {
+                        "event_type": event,
+                        "payload": payload,
+                        "source_instance": cls._instance_id,
+                    },
+                )
+                await session.commit()
+                return result.lastrowid
+        except Exception as e:
+            logger.error(f"Failed to persist outbox event '{event}': {e}")
+            return None
+
+    @classmethod
+    async def replay_events_since(cls, last_event_id: int) -> list[dict]:
+        """从指定 event ID 之后重放事件，用于 SSE 断线续传。"""
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    text("""
+                        SELECT id, event_type, payload
+                        FROM realtime_events
+                        WHERE id > :last_id
+                        ORDER BY id ASC
+                        LIMIT :limit
+                    """),
+                    {"last_id": last_event_id, "limit": 500},
+                )
+                rows = result.fetchall()
+
+            events = []
+            for row in rows:
+                try:
+                    data = json.loads(row[2]) if isinstance(row[2], str) else row[2]
+                except Exception:
+                    continue
+                events.append({"id": int(row[0]), "event": row[1], "data": data})
+            return events
+        except Exception as e:
+            logger.error(f"Failed to replay events since {last_event_id}: {e}")
+            return []
 
     @classmethod
     async def _poll_remote_events(cls) -> None:
@@ -205,7 +265,7 @@ class EventBus:
                         logger.warning(f"Invalid event payload for id={event_id}, skipping")
                         continue
 
-                    await cls._broadcast_local({"event": event_type, "data": data})
+                    await cls._broadcast_local({"event": event_type, "data": data, "id": event_id})
 
                 await asyncio.sleep(cls._POLL_INTERVAL_SECONDS)
             except asyncio.CancelledError:

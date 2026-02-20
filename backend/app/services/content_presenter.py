@@ -3,6 +3,7 @@
 
 原则：ORM 模型只负责数据存储映射，展示/计算逻辑由本模块提供。
 """
+import re
 from typing import Optional
 from app.models import LayoutType, Platform
 
@@ -53,4 +54,41 @@ def compute_author_avatar_url(content) -> Optional[str]:
     except Exception:
         pass
     return None
+
+
+def transform_media_url(url: Optional[str], base_url: str) -> Optional[str]:
+    """将 local:// 协议的 URL 转换为 HTTP 代理 URL"""
+    if url and url.startswith("local://"):
+        key = url.replace("local://", "")
+        return f"{base_url}/api/v1/media/{key}"
+    return url
+
+
+def transform_content_detail(content, base_url: str):
+    """转换内容详情中的所有媒体链接（Pydantic ContentDetail 对象）"""
+    content.cover_url = transform_media_url(content.cover_url, base_url)
+    content.author_avatar_url = transform_media_url(content.author_avatar_url, base_url)
+    if content.media_urls:
+        content.media_urls = [transform_media_url(u, base_url) for u in content.media_urls if u]
+
+    if content.top_answers:
+        for ans in content.top_answers:
+            if ans.get("author_avatar_url"):
+                ans["author_avatar_url"] = transform_media_url(ans["author_avatar_url"], base_url)
+            if ans.get("cover_url"):
+                ans["cover_url"] = transform_media_url(ans["cover_url"], base_url)
+
+    if content.associated_question:
+        if content.associated_question.get("cover_url"):
+            content.associated_question["cover_url"] = transform_media_url(
+                content.associated_question["cover_url"], base_url
+            )
+
+    if content.description and "local://" in content.description:
+        _local_pattern = re.compile(r'local://([a-zA-Z0-9_/.-]+)')
+        content.description = _local_pattern.sub(
+            lambda m: f"{base_url}/api/v1/media/{m.group(1)}", content.description
+        )
+
+    return content
 

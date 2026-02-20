@@ -3,8 +3,9 @@ SSE (Server-Sent Events) 实时事件推送路由
 """
 import asyncio
 import json
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from fastapi.responses import StreamingResponse
+from typing import Optional
 from app.core.events import event_bus
 from app.core.dependencies import require_api_token
 from app.core.logging import logger
@@ -14,9 +15,10 @@ router = APIRouter()
 
 @router.get("/events/subscribe")
 async def subscribe_events(
+    last_event_id: Optional[str] = Header(None, alias="Last-Event-ID"),
     _: None = Depends(require_api_token),
 ):
-    """SSE事件订阅端点
+    """SSE事件订阅端点，支持 Last-Event-ID 断线续传。
     
     客户端通过此端点订阅实时事件：
     - content_created: 内容新增（收藏库）
@@ -30,44 +32,57 @@ async def subscribe_events(
     - bot_sync_completed: Bot 同步完成
     - ping: 心跳保活
     
-    使用方式：
-    ```javascript
-    const eventSource = new EventSource('/api/v1/events/subscribe');
-    eventSource.addEventListener('content_pushed', (e) => {
-      const data = JSON.parse(e.data);
-      console.log('Content pushed:', data);
-    });
-    ```
+    断线续传：客户端重连时携带 `Last-Event-ID` 头，服务端会先重放该 ID
+    之后的所有事件，再进入实时推送。
     """
+    # 解析 Last-Event-ID（可能来自 Header 或 query param）
+    replay_from_id: int | None = None
+    if last_event_id:
+        try:
+            replay_from_id = int(last_event_id)
+        except (ValueError, TypeError):
+            pass
+
     async def event_stream():
         client_id = id(asyncio.current_task())
         try:
-            logger.info(f"SSE client connected: {client_id}")
+            logger.info(f"SSE client connected: {client_id}, last_event_id={replay_from_id}")
             
             # 发送连接成功消息
             yield f"event: connected\ndata: {json.dumps({'message': 'Connected to VaultStream events', 'client_id': client_id}, ensure_ascii=False)}\n\n"
-            
-            # 订阅事件流
+
+            # 断线续传：重放 Last-Event-ID 之后的事件
+            if replay_from_id is not None:
+                missed_events = await event_bus.replay_events_since(replay_from_id)
+                if missed_events:
+                    logger.info(f"Replaying {len(missed_events)} missed events for client {client_id}")
+                for evt in missed_events:
+                    event_data = json.dumps(evt["data"], ensure_ascii=False)
+                    yield f"id: {evt['id']}\nevent: {evt['event']}\ndata: {event_data}\n\n"
+
+            # 订阅实时事件流
             async for message in event_bus.subscribe():
                 try:
                     event_type = message.get("event", "message")
                     data = message.get("data", {})
+                    event_id = message.get("id")
                     
-                    # SSE格式: event: xxx\ndata: {...}\n\n
                     event_data = json.dumps(data, ensure_ascii=False)
-                    yield f"event: {event_type}\ndata: {event_data}\n\n"
+                    # 包含 id 字段以支持客户端 Last-Event-ID 自动追踪
+                    if event_id is not None:
+                        yield f"id: {event_id}\nevent: {event_type}\ndata: {event_data}\n\n"
+                    else:
+                        yield f"event: {event_type}\ndata: {event_data}\n\n"
                     
                 except Exception as e:
                     logger.error(f"Error formatting SSE message: {e}")
-                    # 继续处理下一个消息，不中断连接
                     continue
                 
         except asyncio.CancelledError:
             logger.info(f"SSE client disconnected normally: {client_id}")
-            raise  # 重新抛出，确保清理逻辑执行
+            raise
         except Exception as e:
             logger.error(f"SSE event stream error for client {client_id}: {e}", exc_info=True)
-            # 发送错误事件，然后关闭连接
             try:
                 yield f"event: error\ndata: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
             except:
@@ -79,7 +94,7 @@ async def subscribe_events(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # 禁用 Nginx 缓冲
+            "X-Accel-Buffering": "no",
         },
     )
 

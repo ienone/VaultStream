@@ -52,8 +52,12 @@ async def lifespan(app: FastAPI):
     await event_bus.start()
     
     # 启动后台worker
-    worker_task = asyncio.create_task(worker.start())
-    logger.info("后台任务工作器已启动")
+    from app.worker.task_processor import TaskWorker
+    parse_workers = []
+    for i in range(settings.parse_worker_count):
+        w = TaskWorker()
+        parse_workers.append(asyncio.create_task(w.start()))
+    logger.info("后台任务工作器已启动 (worker_count={})", settings.parse_worker_count)
     
     # 启动分发队列 Worker
     queue_worker = get_queue_worker(worker_count=settings.queue_worker_count)
@@ -70,12 +74,14 @@ async def lifespan(app: FastAPI):
     logger.info("分发队列 Worker 已停止")
     
     # 停止worker
-    await worker.stop()
-    worker_task.cancel()
-    try:
-        await worker_task
-    except asyncio.CancelledError:
-        pass
+    for task in parse_workers:
+        task.cancel()
+    for task in parse_workers:
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+    logger.info("后台任务工作器已停止")
     
     # 断开任务队列
     await task_queue.disconnect()
