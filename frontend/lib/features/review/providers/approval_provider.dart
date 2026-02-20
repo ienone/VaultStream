@@ -35,7 +35,7 @@ class ApprovalFilterState {
   final int size;
 
   const ApprovalFilterState({
-    this.reviewStatus = 'PENDING',
+    this.reviewStatus = 'pending',
     this.platform,
     this.page = 1,
     this.size = 20,

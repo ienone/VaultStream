@@ -86,12 +86,13 @@ class SseEventBus {
   }
 }
 
-/// SSE 服务 - 连接后端实时事件流
+/// SSE 服务 - 连接后端实时事件流（支持 Last-Event-ID 断线续传）
 @Riverpod(keepAlive: true)
 class SseService extends _$SseService {
   StreamSubscription? _subscription;
   Timer? _reconnectTimer;
   int _reconnectAttempts = 0;
+  String? _lastEventId;
   final _eventBus = SseEventBus();
   
   @override
@@ -123,11 +124,19 @@ class SseService extends _$SseService {
     
     _eventBus.updateState(SseConnectionState.connecting);
     
+    final headers = <String, String>{
+      'X-API-Token': settings.apiToken,
+    };
+    // 断线续传：携带 Last-Event-ID
+    if (_lastEventId != null) {
+      headers['Last-Event-ID'] = _lastEventId!;
+    }
+    
     try {
       _subscription = SSEClient.subscribeToSSE(
         method: SSERequestType.GET,
         url: url,
-        header: {'X-API-Token': settings.apiToken},
+        header: headers,
       ).listen(
         _onData,
         onError: _onError,
@@ -144,6 +153,11 @@ class SseService extends _$SseService {
     if (event.event == null || event.data == null) return;
     
     try {
+      // 追踪 Last-Event-ID
+      if (event.id != null && (event.id as String).isNotEmpty) {
+        _lastEventId = event.id as String;
+      }
+
       // 连接成功，重置重连计数
       if (event.event == _SseConfig.eventConnected) {
         _reconnectAttempts = 0;
