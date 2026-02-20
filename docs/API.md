@@ -40,7 +40,6 @@
 - `tag` / `author`
 - `start_date` / `end_date`
 - `q` / `is_nsfw`
-- `exclude_fields`（默认排除大字段）
 
 ### GET /api/v1/contents/{id}
 
@@ -52,17 +51,11 @@
 
 ### DELETE /api/v1/contents/{id}
 
-删除内容及关联记录。
+删除内容及关联记录。同时清理 `local://` 引用的本地媒体文件（含引用计数检查，仅在无其他内容引用时删除物理文件）。
 
 ### POST /api/v1/contents/{id}/re-parse
 
 触发重新解析。
-
-### 批量内容 API
-
-- `POST /api/v1/contents/batch-update`
-- `POST /api/v1/contents/batch-delete`
-- `POST /api/v1/contents/batch-re-parse`
 
 ---
 
