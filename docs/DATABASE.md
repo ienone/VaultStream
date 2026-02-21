@@ -31,7 +31,9 @@
 | `comment_count` | Integer | 评论数 |
 | 扩展数据 | | |
 | `extra_stats` | JSON | 平台特有数据 (如 B 站投币 `coin`、弹幕 `danmaku`) |
-| `raw_metadata` | JSON | 原始 API 返回的完整 JSON 报文 |
+| `archive_metadata` | JSON | [Archive Blob] 归档存档信息，包含 `processed_archive` (归档) 与 `raw_api_response` (原始响应) |
+| `context_data` | JSON | [Context Slot] 结构化关联上下文 (如知乎关联问题、微博引用内容) |
+| `rich_payload` | JSON | [Rich Payload] 富媒体/交互组件载荷 (用于前端动态组件渲染) |
 | 时间戳 | | |
 | `published_at` | DateTime | 内容在原平台的发布时间 |视频解析
 | `created_at` | DateTime | 记录创建时间 |

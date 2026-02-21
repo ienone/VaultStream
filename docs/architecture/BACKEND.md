@@ -328,9 +328,14 @@ WeiboUser (微博用户, 独立表)
 | `status` | Enum(ContentStatus) | UNPROCESSED → PROCESSING → PARSE_SUCCESS/FAILED |
 | `review_status` | Enum(ReviewStatus) | PENDING → APPROVED/REJECTED/AUTO_APPROVED |
 | `layout_type` / `layout_type_override` | Enum(LayoutType) | 系统检测/用户覆盖的布局类型 |
-| `raw_metadata` | JSON | 平台原始数据 + archive 归档信息 |
+| `archive_metadata` | JSON | 归档存档信息 (含 `processed_archive` 与 `raw_api_response`) |
+| `context_data` | JSON | 结构化关联上下文 (Context Slot) |
+| `rich_payload` | JSON | 富媒体/交互组件载荷 (Rich Payload) |
+| `extra_stats` | JSON | 平台特有互动/扩展统计数据 |
 | `tags` | JSON | 用户标签列表 |
 | `media_urls` | JSON | 媒体资源 URL 列表 (支持 `local://` 协议) |
+| `published_at` | DateTime | 内容在原平台的发布时间 |
+| `created_at` | DateTime | 记录创建时间 |
 
 #### 关键枚举
 
