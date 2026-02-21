@@ -3,8 +3,6 @@ import '../../../models/content.dart';
 import 'author_header.dart';
 import 'tags_section.dart';
 import 'unified_stats.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:frontend/core/utils/media_utils.dart';
 import '../../renderers/context_card_renderer.dart';
 import '../../renderers/payload_block_renderer.dart';
 
