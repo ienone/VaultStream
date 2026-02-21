@@ -131,7 +131,7 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
         }
         answer_data['archive'] = archive
 
-    # Phase 7: 提取 associated_question 到顶层字段
+    # 提取 associated_question 到顶层字段（兼容性保留）
     associated_question = {
         "id": question_id,
         "title": question_title,
@@ -144,7 +144,7 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
         "like_count": question_data.get('voteupCount', 0) if isinstance(question_data, dict) else 0,
     }
 
-    # V2: Context Data
+    # Context Data
     context_data = {
         "type": "question",
         "title": question_title,
@@ -157,7 +157,7 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
         }
     }
 
-    # V2: Archive Metadata
+    # Archive Metadata
     archive_metadata = {
         "version": 2,
         "raw_entity_data": answer_data,

@@ -39,7 +39,7 @@ class ParsedContent:
     stats: Dict[str, int] = field(default_factory=dict)  # 通用互动数据
     source_tags: List[str] = field(default_factory=list)  # 平台原生标签
     
-    # New V2 Fields
+    # 结构化扩展组件
     context_data: Optional[Dict[str, Any]] = None  # [Context Slot] 关联上下文
     rich_payload: Optional[Dict[str, Any]] = None  # [Rich Payload] 富媒体/交互组件块
     archive_metadata: Optional[Dict[str, Any]] = None  # [Archive Blob] 原始元数据

@@ -136,7 +136,7 @@ class ContentDetail(BaseModel):
     comment_count: int = 0 # 评论次数
     extra_stats: Dict[str, Any] = Field(default_factory=dict) # 平台特有扩展数据
 
-    # New V2 Fields (Structured Extensions)
+    # 结构化扩展组件
     context_data: Optional[Dict[str, Any]] = None  # [Context Slot] 关联上下文
     rich_payload: Optional[Dict[str, Any]] = None  # [Rich Payload] 富媒体/交互组件块
 

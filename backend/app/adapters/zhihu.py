@@ -306,7 +306,7 @@ class ZhihuAdapter(PlatformAdapter):
                 processed_html, markdown_content, media_urls, author.avatar_url)
         }
         
-        # Phase 7: 提取 associated_question 到顶层字段
+        # 提取 associated_question 到顶层字段（兼容性保留）
         associated_question = {
             "id": question_id,
             "title": question_title,
@@ -316,7 +316,7 @@ class ZhihuAdapter(PlatformAdapter):
             "follower_count": question_data.get('follower_count', 0),
         }
         
-        # V2: Context Data
+        # Context Data
         context_data = {
             "type": "question",
             "title": question_title,

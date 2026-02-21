@@ -143,17 +143,15 @@ class Content(Base):
     cover_url = Column(Text)
     source_tags = Column(JSON, default=list)  # 平台原生标签
 
-    cover_color = Column(String(20))  # M5: 封面主色调 (Hex)
+    cover_color = Column(String(20))  # 封面主色调 (Hex)
     media_urls = Column(JSON, default=list)  # 媒体资源URL列表
     
-    # --- 2. 结构化扩展组件 (API 必须返回，取代泄漏字段) ---
     # [Context Slot] 关联上下文: {"type": "parent/reference", "title": "...", "url": "...", "cover": "..."}
     context_data = Column(JSON, nullable=True)
 
     # [Rich Payload] 富媒体/交互组件块: {"blocks": [{"type": "sub_item/poll/media_grid", "data": {...}}]}
     rich_payload = Column(JSON, nullable=True)
 
-    # --- 3. 存档与内部字段 (API 严禁返回) ---
     # [Archive Blob] 原始元数据: 仅用于后端审计和重解析
     archive_metadata = Column(JSON)
     

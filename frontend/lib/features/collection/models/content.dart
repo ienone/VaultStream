@@ -94,7 +94,7 @@ abstract class ContentDetail with _$ContentDetail {
     @JsonKey(name: 'comment_count') @Default(0) int commentCount,
     @JsonKey(name: 'extra_stats') @Default({}) Map<String, dynamic> extraStats,
     
-    // New V2 Fields
+    // 结构化扩展组件
     @JsonKey(name: 'context_data') Map<String, dynamic>? contextData,
     @JsonKey(name: 'rich_payload') Map<String, dynamic>? richPayload,
   }) = _ContentDetail;
