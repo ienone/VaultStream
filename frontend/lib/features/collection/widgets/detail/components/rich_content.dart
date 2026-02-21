@@ -6,10 +6,6 @@ import '../../../models/content.dart';
 import '../../../utils/content_parser.dart';
 
 import '../markdown/markdown_config.dart';
-import 'author_header.dart';
-import 'unified_stats.dart';
-import 'zhihu_question_stats.dart';
-import 'zhihu_top_answers.dart';
 import 'media_gallery_item.dart';
 
 class RichContent extends StatelessWidget {
@@ -18,8 +14,6 @@ class RichContent extends StatelessWidget {
   final String? apiToken;
   final Map<String, GlobalKey> headerKeys;
   final bool useHero;
-  final bool hideZhihuHeader;
-  final bool hideTopAnswers;
   final bool hideMedia;
   final Color? contentColor;
 
@@ -30,10 +24,11 @@ class RichContent extends StatelessWidget {
     this.apiToken,
     required this.headerKeys,
     this.useHero = true,
-    this.hideZhihuHeader = false,
-    this.hideTopAnswers = false,
     this.hideMedia = false,
     this.contentColor,
+    // Deprecated parameters kept for compatibility but ignored
+    bool hideZhihuHeader = false,
+    bool hideTopAnswers = false,
   });
 
   @override
@@ -48,45 +43,7 @@ class RichContent extends StatelessWidget {
 
     if (markdown.isNotEmpty) {
       final style = _getMarkdownStyle(theme);
-      // ... 其余逻辑保持一致
-
-      // Phase 7: 使用结构化字段 associatedQuestion 而非 rawMetadata
-      final questionInfo = detail.isZhihuAnswer
-          ? detail.associatedQuestion
-          : null;
-
-      if (!hideZhihuHeader && detail.isZhihuAnswer && questionInfo != null) {
-        children.addAll([
-          GestureDetector(
-            onTap: () {
-              if (questionInfo['url'] != null) {
-                launchUrl(
-                  Uri.parse(questionInfo['url']),
-                  mode: LaunchMode.externalApplication,
-                );
-              }
-            },
-            child: Text(
-              questionInfo['title'] ?? '未知问题',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w900,
-                color: theme.colorScheme.primary,
-                height: 1.3,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          ZhihuQuestionStats(stats: questionInfo),
-          const SizedBox(height: 24),
-          AuthorHeader(detail: detail),
-          const SizedBox(height: 12),
-          UnifiedStats(detail: detail),
-          const SizedBox(height: 32),
-          const Divider(),
-          const SizedBox(height: 32),
-        ]);
-      }
-
+      
       children.add(
         RepaintBoundary(
           child: MarkdownBody(
@@ -121,17 +78,6 @@ class RichContent extends StatelessWidget {
           ),
         ),
       );
-
-      if (!hideTopAnswers &&
-          detail.isZhihuQuestion &&
-          detail.topAnswers != null &&
-          detail.topAnswers!.isNotEmpty) {
-        children.add(
-          ZhihuTopAnswers(
-            topAnswers: detail.topAnswers!,
-          ),
-        );
-      }
     } else {
       if (detail.description != null && detail.description!.isNotEmpty) {
         children.add(
@@ -150,75 +96,17 @@ class RichContent extends StatelessWidget {
         );
         children.add(const SizedBox(height: 24));
       }
-
-      // 知乎精选回答（移到图片之前显示）
-      if (!hideTopAnswers &&
-          detail.isZhihuQuestion &&
-          detail.topAnswers != null &&
-          detail.topAnswers!.isNotEmpty) {
-        children.add(
-          ZhihuTopAnswers(
-            topAnswers: detail.topAnswers!,
-          ),
-        );
-      }
-
-      // 知乎问题：图片显示在回答之后
-      if (detail.isZhihuQuestion && mediaUrls.isNotEmpty) {
-        children.add(const SizedBox(height: 16));
-        if (mediaUrls.length == 1) {
-          children.add(
-            MediaGalleryItem(
-              images: mediaUrls,
-              index: 0,
-              apiBaseUrl: apiBaseUrl,
-              apiToken: apiToken,
-              contentId: detail.id,
-              contentColor: contentColor,
-              heroTag: 'content-image-${detail.id}',
-              fit: BoxFit.contain,
-            ),
-          );
-        } else {
-          children.add(
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 1.0,
-              ),
-              itemCount: mediaUrls.length,
-              itemBuilder: (context, index) {
-                final String heroTag = index == 0
-                    ? 'content-image-${detail.id}'
-                    : 'image-$index-${detail.id}';
-                return MediaGalleryItem(
-                  images: mediaUrls,
-                  index: index,
-                  apiBaseUrl: apiBaseUrl,
-                  apiToken: apiToken,
-                  contentId: detail.id,
-                  contentColor: contentColor,
-                  heroTag: heroTag,
-                );
-              },
-            ),
-          );
-        }
-        children.add(const SizedBox(height: 24));
-      }
     }
 
     bool showMediaGrid = false;
-    // 知乎问题的图片已在上面单独处理（在回答之前显示）
-    if (detail.isZhihuQuestion) {
-      showMediaGrid = false; // 不在这里重复显示
-    } else if (detail.resolvedLayoutType == 'gallery' || detail.resolvedLayoutType == 'video') {
+    // Generic media grid logic
+    if (detail.resolvedLayoutType == 'gallery' || detail.resolvedLayoutType == 'video') {
       showMediaGrid = mediaUrls.isNotEmpty;
     } else {
+      // For articles/questions, show media if no markdown body (fallback) or explicitly handled
+      // But typically inline images are in markdown.
+      // If explicit media_urls exist and not in markdown, we might want to show them?
+      // For now, keep simple: if markdown empty, show grid.
       if (markdown.isEmpty && mediaUrls.isNotEmpty) {
         showMediaGrid = true;
       }

@@ -3,10 +3,10 @@ import '../../../models/content.dart';
 import 'author_header.dart';
 import 'tags_section.dart';
 import 'unified_stats.dart';
-import 'small_stat_item.dart';
-import 'zhihu_top_answers.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:frontend/core/utils/media_utils.dart';
+import '../../renderers/context_card_renderer.dart';
+import '../../renderers/payload_block_renderer.dart';
 
 /// 详情页侧边栏信息组件
 /// 整合了作者信息、统计数据、标签、正文和（可选的）知乎关联问题
@@ -32,17 +32,13 @@ class ContentSideInfoCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    // 知乎回答时获取所属问题信息
-    final questionInfo = detail.isZhihuAnswer ? detail.associatedQuestion : null;
-
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 1. 知乎关联问题（如有）
-        if (questionInfo != null) ...[
-          _buildQuestionSection(context, questionInfo),
-          const SizedBox(height: 24),
-        ],
+        // 1. 关联上下文 (Context Data)
+        ContextCardRenderer(content: detail),
+        // Spacer handled by renderer margin or add here if needed?
+        // Renderer has bottom margin 16.
 
         // 2. 作者信息
         AuthorHeader(detail: detail),
@@ -97,15 +93,9 @@ class ContentSideInfoCard extends StatelessWidget {
           ),
         ],
 
-        // 6. 知乎精选回答（如有）
-        if (detail.isZhihuQuestion &&
-            detail.topAnswers != null &&
-            detail.topAnswers!.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          ZhihuTopAnswers(
-            topAnswers: detail.topAnswers!,
-          ),
-        ],
+        // 6. 富媒体负载 (Rich Payload) - e.g. Top Answers
+        const SizedBox(height: 24),
+        PayloadBlockRenderer(content: detail),
       ],
     );
 
@@ -130,81 +120,6 @@ class ContentSideInfoCard extends StatelessWidget {
         ],
       ),
       child: content,
-    );
-  }
-
-  Widget _buildQuestionSection(
-    BuildContext context,
-    Map<String, dynamic> questionInfo,
-  ) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(
-              Icons.help_outline_rounded,
-              size: 20,
-              color: contentColor ?? colorScheme.primary,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '所属问题',
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: contentColor ?? colorScheme.primary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        InkWell(
-          onTap: () {
-            if (questionInfo['url'] != null) {
-              launchUrl(
-                Uri.parse(questionInfo['url']),
-                mode: LaunchMode.externalApplication,
-              );
-            }
-          },
-          borderRadius: BorderRadius.circular(12),
-          child: Text(
-            questionInfo['title'] ?? '未知问题',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w900,
-              height: 1.4,
-              decoration: TextDecoration.underline,
-              decorationColor: colorScheme.outlineVariant,
-              decorationStyle: TextDecorationStyle.dashed,
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 16,
-          runSpacing: 8,
-          children: [
-            SmallStatItem(
-              icon: Icons.person_add_alt,
-              label: '关注',
-              value: formatCount(questionInfo['follower_count']),
-            ),
-            SmallStatItem(
-              icon: Icons.remove_red_eye_outlined,
-              label: '浏览',
-              value: formatCount(questionInfo['view_count']),
-            ),
-            SmallStatItem(
-              icon: Icons.question_answer_outlined,
-              label: '回答',
-              value: formatCount(questionInfo['answer_count']),
-            ),
-          ],
-        ),
-      ],
     );
   }
 }

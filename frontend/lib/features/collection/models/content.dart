@@ -93,8 +93,10 @@ abstract class ContentDetail with _$ContentDetail {
     @JsonKey(name: 'share_count') @Default(0) int shareCount,
     @JsonKey(name: 'comment_count') @Default(0) int commentCount,
     @JsonKey(name: 'extra_stats') @Default({}) Map<String, dynamic> extraStats,
-    @JsonKey(name: 'associated_question') Map<String, dynamic>? associatedQuestion,
-    @JsonKey(name: 'top_answers') List<Map<String, dynamic>>? topAnswers,
+    
+    // New V2 Fields
+    @JsonKey(name: 'context_data') Map<String, dynamic>? contextData,
+    @JsonKey(name: 'rich_payload') Map<String, dynamic>? richPayload,
   }) = _ContentDetail;
 
   bool get isTwitter =>
@@ -113,18 +115,16 @@ abstract class ContentDetail with _$ContentDetail {
   bool get isZhihuColumn => isZhihu && contentType == 'column';
   bool get isZhihuCollection => isZhihu && contentType == 'collection';
 
-  /// 获取有效布局类型：用户覆盖 > 后端检测
+  /// 获取有效布局类型：直接使用后端计算结果
   String get resolvedLayoutType {
-    if (layoutTypeOverride != null && layoutTypeOverride!.isNotEmpty) {
-      return layoutTypeOverride!;
-    }
     if (effectiveLayoutType != null && effectiveLayoutType!.isNotEmpty) {
       return effectiveLayoutType!;
     }
-    if (layoutType != null && layoutType!.isNotEmpty) {
-      return layoutType!;
+    // Fallback if backend didn't provide it (should not happen with V2)
+    if (layoutTypeOverride != null && layoutTypeOverride!.isNotEmpty) {
+      return layoutTypeOverride!;
     }
-    return 'article';
+    return layoutType ?? 'article';
   }
 
   factory ContentDetail.fromJson(Map<String, dynamic> json) =>
