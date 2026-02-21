@@ -131,19 +131,6 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
         }
         answer_data['archive'] = archive
 
-    # 提取 associated_question 到顶层字段（兼容性保留）
-    associated_question = {
-        "id": question_id,
-        "title": question_title,
-        "url": f"https://www.zhihu.com/question/{question_id}" if question_id else None,
-        "visit_count": question_data.get('visitCount', 0) if isinstance(question_data, dict) else 0,
-        "answer_count": question_data.get('answerCount', 0) if isinstance(question_data, dict) else 0,
-        "follower_count": question_data.get('followerCount', 0) if isinstance(question_data, dict) else 0,
-        "comment_count": question_data.get('commentCount', 0) if isinstance(question_data, dict) else 0,
-        "view_count": question_data.get('visitCount', 0) if isinstance(question_data, dict) else 0,
-        "like_count": question_data.get('voteupCount', 0) if isinstance(question_data, dict) else 0,
-    }
-
     # Context Data
     context_data = {
         "type": "question",
@@ -151,9 +138,9 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
         "url": f"https://www.zhihu.com/question/{question_id}" if question_id else None,
         "id": str(question_id) if question_id else None,
         "stats": {
-            "answer_count": associated_question.get("answer_count"),
-            "follower_count": associated_question.get("follower_count"),
-            "visit_count": associated_question.get("visit_count")
+            "answer_count": question_data.get('answerCount', 0) if isinstance(question_data, dict) else 0,
+            "follower_count": question_data.get('followerCount', 0) if isinstance(question_data, dict) else 0,
+            "visit_count": question_data.get('visitCount', 0) if isinstance(question_data, dict) else 0,
         }
     }
 

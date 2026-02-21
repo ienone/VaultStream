@@ -189,6 +189,23 @@ class ContentService:
         return None
 
     @classmethod
+    def _collect_local_keys_from_json(cls, value: object, keys: set[str]) -> None:
+        """递归扫描 JSON 结构中的 local:// URL，覆盖 dict/list/str 组合场景。"""
+        if isinstance(value, str):
+            key = cls._extract_local_key(value)
+            if key:
+                keys.add(key)
+            return
+        if isinstance(value, dict):
+            for nested_value in value.values():
+                cls._collect_local_keys_from_json(nested_value, keys)
+            return
+        if isinstance(value, list):
+            for nested_value in value:
+                cls._collect_local_keys_from_json(nested_value, keys)
+            return
+
+    @classmethod
     def _collect_local_media_keys(cls, content: Content) -> list[str]:
         """收集内容中所有 local:// 引用的存储 key（全字段覆盖）"""
         keys: set[str] = set()
@@ -201,19 +218,10 @@ class ContentService:
             if key:
                 keys.add(key)
         
-        if content.rich_payload:
-            if content.rich_payload.context_data:
-                for item in content.rich_payload.context_data:
-                    if item.type == "image" and item.url:
-                        key = cls._extract_local_key(item.url)
-                        if key:
-                            keys.add(key)
-            if content.rich_payload.payload_blocks:
-                for block in content.rich_payload.payload_blocks:
-                    if block.type == "image" and block.content:
-                        key = cls._extract_local_key(block.content)
-                        if key:
-                            keys.add(key)
+        # 结构化字段和归档字段均可能包含 local:// 资源引用。
+        cls._collect_local_keys_from_json(content.context_data, keys)
+        cls._collect_local_keys_from_json(content.rich_payload, keys)
+        cls._collect_local_keys_from_json(content.archive_metadata, keys)
                             
         if content.description and "local://" in content.description:
             for match in re.finditer(r'local://([a-zA-Z0-9_/.-]+)', content.description):

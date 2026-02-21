@@ -289,14 +289,7 @@ class ZhihuAdapter(PlatformAdapter):
             "voteup_count": data.get('voteup_count', 0),
             "comment_count": data.get('comment_count', 0),
         }
-        
-        raw_metadata = dict(data)
-        raw_metadata['associated_question'] = {
-            "id": question_id,
-            "title": question_title,
-            "url": f"https://www.zhihu.com/question/{question_id}" if question_id else None,
-        }
-        raw_metadata['stats'] = stats
+
         # archive_metadata replaces this usage eventually
         archive_metadata = {
             "version": 2,
@@ -304,16 +297,6 @@ class ZhihuAdapter(PlatformAdapter):
             "processed_archive": self._build_archive("zhihu_answer", 
                 f"回答：{question_title}" if question_title else f"知乎回答 {answer_id}",
                 processed_html, markdown_content, media_urls, author.avatar_url)
-        }
-        
-        # 提取 associated_question 到顶层字段（兼容性保留）
-        associated_question = {
-            "id": question_id,
-            "title": question_title,
-            "url": f"https://www.zhihu.com/question/{question_id}" if question_id else None,
-            "visit_count": question_data.get('visit_count', 0),
-            "answer_count": question_data.get('answer_count', 0),
-            "follower_count": question_data.get('follower_count', 0),
         }
         
         # Context Data
@@ -380,9 +363,6 @@ class ZhihuAdapter(PlatformAdapter):
             "comment_count": data.get('comment_count', 0),
         }
         
-        raw_metadata = dict(data)
-        raw_metadata['stats'] = stats
-        
         archive_metadata = {
             "version": 2,
             "raw_api_response": data,
@@ -441,9 +421,6 @@ class ZhihuAdapter(PlatformAdapter):
             "follower_count": data.get('follower_count', 0),
         }
         
-        raw_metadata = dict(data)
-        raw_metadata['stats'] = stats
-        
         archive_metadata = {
             "version": 2,
             "raw_api_response": data
@@ -490,9 +467,6 @@ class ZhihuAdapter(PlatformAdapter):
             "question_count": data.get('question_count', 0),
         }
         
-        raw_metadata = dict(data)
-        raw_metadata['stats'] = stats
-        
         return ParsedContent(
             platform="zhihu",
             content_type="user_profile",
@@ -531,9 +505,6 @@ class ZhihuAdapter(PlatformAdapter):
             "followers": data.get('followers', 0),
             "articles_count": data.get('articles_count', 0) or data.get('items_count', 0),
         }
-        
-        raw_metadata = dict(data)
-        raw_metadata['stats'] = stats
         
         updated = data.get('updated')
         published_at = datetime.fromtimestamp(updated) if updated else datetime.now()
@@ -578,9 +549,6 @@ class ZhihuAdapter(PlatformAdapter):
             "item_count": collection_data.get('item_count', 0) or collection_data.get('answer_count', 0),
             "follower_count": collection_data.get('follower_count', 0),
         }
-        
-        raw_metadata = dict(data)
-        raw_metadata['stats'] = stats
         
         created = collection_data.get('created_time')
         published_at = datetime.fromtimestamp(created) if created else datetime.now()
