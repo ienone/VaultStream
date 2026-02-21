@@ -42,6 +42,10 @@ class ContentPushPayload(BaseModel):
     clean_url: Optional[str] = None
     url: Optional[str] = None
     render_config: Optional[Dict[str, Any]] = None
+    
+    # New V2 fields
+    context_data: Optional[Dict[str, Any]] = None
+    rich_payload: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True
@@ -133,7 +137,11 @@ class ContentDetail(BaseModel):
     comment_count: int = 0 # 评论次数
     extra_stats: Dict[str, Any] = Field(default_factory=dict) # 平台特有扩展数据
 
-    # Phase 7: 结构化字段（已完成raw_metadata迁移）
+    # New V2 Fields (Structured Extensions)
+    context_data: Optional[Dict[str, Any]] = None  # [Context Slot] 关联上下文
+    rich_payload: Optional[Dict[str, Any]] = None  # [Rich Payload] 富媒体/交互组件块
+
+    # DEPRECATED: Use context_data / rich_payload instead
     associated_question: Optional[Dict[str, Any]] = None  # 知乎回答关联的问题
     top_answers: Optional[List[Dict[str, Any]]] = None  # 知乎问题的精选回答
     
