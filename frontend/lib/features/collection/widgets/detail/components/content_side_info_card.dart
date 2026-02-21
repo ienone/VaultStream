@@ -35,15 +35,16 @@ class ContentSideInfoCard extends StatelessWidget {
       children: [
         // 1. 关联上下文 (Context Data)
         ContextCardRenderer(content: detail),
-        // Spacer handled by renderer margin or add here if needed?
-        // Renderer has bottom margin 16.
+        if (detail.contextData != null) const SizedBox(height: 16),
 
         // 2. 作者信息
         AuthorHeader(detail: detail),
         const SizedBox(height: 24),
 
         // 2.5 标题 (Fix for Task 12 & 14)
-        if (detail.title != null && detail.title!.trim().isNotEmpty && detail.title != '-') ...[
+        if (detail.title != null &&
+            detail.title!.trim().isNotEmpty &&
+            detail.title != '-') ...[
           Text(
             detail.title!.trim(),
             style: theme.textTheme.headlineSmall?.copyWith(

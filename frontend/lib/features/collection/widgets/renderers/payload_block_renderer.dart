@@ -23,7 +23,7 @@ class PayloadBlockRenderer extends StatelessWidget {
         final data = block['data'] as Map<String, dynamic>?;
 
         if (type == 'sub_item' && data != null) {
-            return _buildSubItem(context, data);
+          return _buildSubItem(context, data);
         }
         return const SizedBox.shrink();
       }).toList(),
@@ -31,49 +31,62 @@ class PayloadBlockRenderer extends StatelessWidget {
   }
 
   Widget _buildSubItem(BuildContext context, Map<String, dynamic> data) {
-      final title = data['title'] as String?;
-      final excerpt = data['excerpt'] as String?;
-      final url = data['url'] as String?;
-      
-      return Card(
-          margin: const EdgeInsets.only(bottom: 8),
-          elevation: 1,
-          child: InkWell(
-            onTap: url != null ? () => launchUrl(Uri.parse(url)) : null,
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Row(
-                children: [
-                    Expanded(
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                                if (title != null)
-                                    Text(
-                                        title, 
-                                        style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                                        maxLines: 1, 
-                                        overflow: TextOverflow.ellipsis
-                                    ),
-                                if (excerpt != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4.0),
-                                      child: Text(
-                                          excerpt, 
-                                          style: Theme.of(context).textTheme.bodySmall,
-                                          maxLines: 2, 
-                                          overflow: TextOverflow.ellipsis
-                                      ),
-                                    ),
-                            ],
+    final title = data['title'] as String?;
+    final excerpt = data['excerpt'] as String?;
+    final url = data['url'] as String?;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 1,
+      child: InkWell(
+        onTap: url != null
+            ? () async {
+                try {
+                  final uri = Uri.parse(url);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri);
+                  }
+                } catch (_) {
+                  // Ignore invalid or unsupported URLs.
+                }
+              }
+            : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (title != null)
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
                         ),
-                    ),
-                    const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey),
-                ],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    if (excerpt != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4.0),
+                        child: Text(
+                          excerpt,
+                          style: Theme.of(context).textTheme.bodySmall,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
+              const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey),
+            ],
           ),
-      );
+        ),
+      ),
+    );
   }
 }

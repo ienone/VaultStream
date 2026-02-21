@@ -70,54 +70,66 @@ class PortraitLayout extends StatelessWidget {
 
           // 2. Info Container
           Container(
-            decoration: BoxDecoration(
-              color: isDark
-                  ? colorScheme.surfaceContainer
-                  : colorScheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(32),
-              border: Border.all(
-                color: colorScheme.outlineVariant.withValues(alpha: 0.2),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: (contentColor ?? colorScheme.primary).withValues(alpha: 0.08),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ContextCardRenderer(content: detail),
-                AuthorHeader(detail: detail),
-                const SizedBox(height: 24),
-                if (detail.resolvedLayoutType != 'gallery' &&
-                    (detail.title != null && detail.title!.isNotEmpty))
-                  Text(
-                    detail.title ?? '无标题内容',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      height: 1.2,
-                      letterSpacing: -0.8,
-                      color: colorScheme.onSurface,
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? colorScheme.surfaceContainer
+                      : colorScheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(32),
+                  border: Border.all(
+                    color: colorScheme.outlineVariant.withValues(alpha: 0.2),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: (contentColor ?? colorScheme.primary).withValues(
+                        alpha: 0.08,
+                      ),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
                     ),
-                  ).animate().fadeIn(delay: 200.ms).slideX(begin: -0.05, end: 0),
-                const SizedBox(height: 24),
-                UnifiedStats(detail: detail, useContainer: false),
-                const SizedBox(height: 20),
-                if (detail.isBilibili && detail.platformId != null)
-                  BvidCard(detail: detail),
-                const SizedBox(height: 20),
-                TagsSection(detail: detail),
-              ],
-            ),
-          ).animate().fadeIn(duration: 500.ms).scale(begin: const Offset(0.98, 0.98), curve: Curves.easeOutCubic),
-          
+                  ],
+                ),
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ContextCardRenderer(content: detail),
+                    if (detail.contextData != null) const SizedBox(height: 16),
+                    AuthorHeader(detail: detail),
+                    const SizedBox(height: 24),
+                    if (detail.resolvedLayoutType != 'gallery' &&
+                        (detail.title != null && detail.title!.isNotEmpty))
+                      Text(
+                            detail.title ?? '无标题内容',
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              height: 1.2,
+                              letterSpacing: -0.8,
+                              color: colorScheme.onSurface,
+                            ),
+                          )
+                          .animate()
+                          .fadeIn(delay: 200.ms)
+                          .slideX(begin: -0.05, end: 0),
+                    const SizedBox(height: 24),
+                    UnifiedStats(detail: detail, useContainer: false),
+                    const SizedBox(height: 20),
+                    if (detail.isBilibili && detail.platformId != null)
+                      BvidCard(detail: detail),
+                    const SizedBox(height: 20),
+                    TagsSection(detail: detail),
+                  ],
+                ),
+              )
+              .animate()
+              .fadeIn(duration: 500.ms)
+              .scale(
+                begin: const Offset(0.98, 0.98),
+                curve: Curves.easeOutCubic,
+              ),
+
           const SizedBox(height: 32),
-          
+
           // 3. Rich Content (Description)
           RichContent(
             detail: detail,
@@ -127,7 +139,7 @@ class PortraitLayout extends StatelessWidget {
             contentColor: contentColor,
             hideMedia: isVideoLayout, // Don't show cover twice for video layout
           ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.05, end: 0),
-          
+
           const SizedBox(height: 24),
           PayloadBlockRenderer(content: detail),
           const SizedBox(height: 48),

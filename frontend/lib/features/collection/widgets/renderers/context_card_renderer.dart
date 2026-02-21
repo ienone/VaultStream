@@ -19,10 +19,21 @@ class ContextCardRenderer extends StatelessWidget {
 
     if (type == 'question') {
       return Card(
-        margin: const EdgeInsets.only(bottom: 16),
+        margin: EdgeInsets.zero,
         elevation: 1,
         child: InkWell(
-          onTap: url != null ? () => launchUrl(Uri.parse(url)) : null,
+          onTap: url != null
+              ? () async {
+                  try {
+                    final uri = Uri.parse(url);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri);
+                    }
+                  } catch (_) {
+                    // Ignore invalid or unsupported URLs.
+                  }
+                }
+              : null,
           borderRadius: BorderRadius.circular(12),
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -31,14 +42,18 @@ class ContextCardRenderer extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.help_outline, size: 16, color: Theme.of(context).primaryColor),
+                    Icon(
+                      Icons.help_outline,
+                      size: 16,
+                      color: Theme.of(context).primaryColor,
+                    ),
                     const SizedBox(width: 8),
                     Text(
-                      '关联问题', 
+                      '关联问题',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).primaryColor,
-                        fontWeight: FontWeight.bold
-                      )
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ],
                 ),
@@ -46,7 +61,7 @@ class ContextCardRenderer extends StatelessWidget {
                 Text(
                   title ?? '未命名问题',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
                 if (stats != null) ...[
@@ -74,7 +89,9 @@ class ContextCardRenderer extends StatelessWidget {
   Widget _buildStat(BuildContext context, String text) {
     return Text(
       text,
-      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+      style: Theme.of(
+        context,
+      ).textTheme.bodySmall?.copyWith(color: Colors.grey),
     );
   }
 }
