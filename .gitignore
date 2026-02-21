@@ -51,17 +51,23 @@ frontend/.flutter-plugins-dependencies
 frontend/.metadata
 frontend/.packages
 
-# local-only scripts
+# local-only scripts & debug tools
 scripts/
 backend/scripts/
 frontend/scripts/
+tools/
+backend/tools/
+backend/demo/
 
+# AI/IDE personal config
+.gemini/
 
 # 临时文件
 experiments/
 *.tmp
 *.bak
 nohup.out
+package-lock.json
 项目背景与现状.md
 img
 up1.md
