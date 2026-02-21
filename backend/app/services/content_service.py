@@ -200,17 +200,21 @@ class ContentService:
             key = cls._extract_local_key(url)
             if key:
                 keys.add(key)
-        if content.top_answers:
-            for ans in content.top_answers:
-                if isinstance(ans, dict):
-                    for field in ("author_avatar_url", "cover_url"):
-                        key = cls._extract_local_key(ans.get(field))
+        
+        if content.rich_payload:
+            if content.rich_payload.context_data:
+                for item in content.rich_payload.context_data:
+                    if item.type == "image" and item.url:
+                        key = cls._extract_local_key(item.url)
                         if key:
                             keys.add(key)
-        if content.associated_question and isinstance(content.associated_question, dict):
-            key = cls._extract_local_key(content.associated_question.get("cover_url"))
-            if key:
-                keys.add(key)
+            if content.rich_payload.payload_blocks:
+                for block in content.rich_payload.payload_blocks:
+                    if block.type == "image" and block.content:
+                        key = cls._extract_local_key(block.content)
+                        if key:
+                            keys.add(key)
+                            
         if content.description and "local://" in content.description:
             for match in re.finditer(r'local://([a-zA-Z0-9_/.-]+)', content.description):
                 keys.add(match.group(1))
@@ -226,8 +230,9 @@ class ContentService:
                 Content.author_avatar_url == local_url,
                 Content.media_urls.like(f'%{local_url}%'),
                 Content.description.like(f'%{local_url}%'),
-                Content.top_answers.like(f'%{local_url}%'),
-                Content.associated_question.like(f'%{local_url}%'),
+                Content.context_data.like(f'%{local_url}%'),
+                Content.rich_payload.like(f'%{local_url}%'),
+                Content.archive_metadata.like(f'%{local_url}%'),
             )
         )
         ref_count = (await self.db.execute(ref_stmt)).scalar() or 0
