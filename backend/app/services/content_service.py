@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models import Content, ContentStatus, ContentSource, PushedRecord, Platform, ReviewStatus
 from app.adapters import AdapterFactory
 from app.utils.url_utils import normalize_bilibili_url, canonicalize_url
+from app.utils.tags import normalize_tags
 from app.core.queue import task_queue
 from app.core.logging import logger
 from app.core.events import event_bus
@@ -14,29 +15,6 @@ from app.core.events import event_bus
 class ContentService:
     def __init__(self, db: AsyncSession):
         self.db = db
-
-    @staticmethod
-    def _normalize_tags(tags: Optional[List[str]], tags_text: Optional[str] = None) -> List[str]:
-        # 统一在后端收口标签清洗，避免各端分词/去重口径不一致。
-        candidates: List[str] = []
-        for tag in tags or []:
-            if tag is None:
-                continue
-            candidates.extend(re.split(r"[,，\s]+", str(tag)))
-        if tags_text:
-            candidates.extend(re.split(r"[,，\s]+", tags_text))
-
-        normalized: List[str] = []
-        seen: set[str] = set()
-        for raw in candidates:
-            clean = raw.strip()
-            if not clean:
-                continue
-            if clean in seen:
-                continue
-            seen.add(clean)
-            normalized.append(clean)
-        return normalized
 
     async def create_share(
         self, 
@@ -50,7 +28,7 @@ class ContentService:
         layout_type_override: str = None
     ) -> Content:
         """核心分享创建业务逻辑"""
-        normalized_tags = self._normalize_tags(tags, tags_text)
+        normalized_tags = normalize_tags(tags, tags_text)
 
         # 1. 规范化
         url_for_detect = normalize_bilibili_url(url)
