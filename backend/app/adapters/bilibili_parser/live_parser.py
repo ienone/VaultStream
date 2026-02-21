@@ -96,6 +96,22 @@ async def parse_live(
         # 提取主播信息
         author_uid = room_info.get('uid')
         
+        # 构建存档结构（用于媒体存档）
+        archive = {
+            "version": 2,
+            "type": "bilibili_live",
+            "title": room_info.get('title', ''),
+            "plain_text": room_info.get('description', ''),
+            "markdown": room_info.get('description', ''),
+            "images": [{"url": room_info.get('cover')}] if room_info.get('cover') else [],
+            "links": [],
+            "stored_images": []
+        }
+
+        # 添加头像（标记为type:avatar，避免被添加到media_urls）
+        if room_info.get('face'):
+            archive["images"].append({"url": room_info.get('face'), "type": "avatar"})
+
         # 构建ParsedContent
         # 直播间封面展示，layout_type设为GALLERY
         return ParsedContent(
@@ -113,6 +129,9 @@ async def parse_live(
             cover_url=room_info.get('cover'),
             media_urls=[room_info.get('cover')] if room_info.get('cover') else [],
             published_at=None,
-            archive_metadata={"raw_api_response": dict(room_info)},
+            archive_metadata={
+                "raw_api_response": dict(room_info),
+                "archive": archive
+            },
             stats=stats
         )

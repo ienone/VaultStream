@@ -95,6 +95,11 @@ async def parse_video(
             'danmaku': stat.get('danmaku', 0)
         }
 
+        # 提取UP主信息
+        owner = item.get('owner', {})
+        author_mid = owner.get('mid')
+        author_avatar_url = owner.get('face')
+
         # 构建存档结构（用于媒体存档）
         archive = {
             "version": 2,
@@ -109,13 +114,11 @@ async def parse_video(
             "stored_videos": []
         }
         
-        # 保留原始元数据并附加archive
-        archive_metadata = prune_metadata(dict(item))
-        archive_metadata['archive'] = archive
+        # 添加头像（标记为type:avatar，避免被添加到media_urls）
+        if author_avatar_url:
+            archive["images"].append({"url": author_avatar_url, "type": "avatar"})
         
-        # 提取UP主信息
-        owner = item.get('owner', {})
-        author_mid = owner.get('mid')
+        # 保留原始元数据并附加archive
         
         # 构建ParsedContent
         # 视频当前只存封面不存视频，layout_type设为GALLERY

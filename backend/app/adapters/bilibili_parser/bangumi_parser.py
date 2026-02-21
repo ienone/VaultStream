@@ -95,6 +95,18 @@ async def parse_bangumi(
             'danmaku': stat.get('danmakus', 0)
         }
         
+        # 构建存档结构（用于媒体存档）
+        archive = {
+            "version": 2,
+            "type": "bilibili_bangumi",
+            "title": item.get('title', ''),
+            "plain_text": item.get('evaluate', ''),
+            "markdown": item.get('evaluate', ''),
+            "images": [{"url": item.get('cover')}] if item.get('cover') else [],
+            "links": [],
+            "stored_images": []
+        }
+
         # 构建ParsedContent
         # 番剧封面展示，layout_type设为GALLERY
         return ParsedContent(
@@ -110,6 +122,9 @@ async def parse_bangumi(
             cover_url=item.get('cover'),
             media_urls=[item.get('cover')] if item.get('cover') else [],
             published_at=None,
-            archive_metadata={"raw_api_response": prune_metadata(dict(item))},
+            archive_metadata={
+                "raw_api_response": prune_metadata(dict(item)),
+                "archive": archive
+            },
             stats=stats
         )

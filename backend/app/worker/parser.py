@@ -444,8 +444,11 @@ class ContentParser:
         if stored_images:
             local_urls = []
             for img in stored_images:
-                # 排除头像
-                if img.get("type") == "avatar" or img.get("is_avatar"):
+                # 排除头像和非内容相关的图片（如知乎精选回答的头像与配图）
+                img_type = img.get("type")
+                if img_type and img_type not in ("image", "gallery"):
+                    continue
+                if img.get("is_avatar"):
                     continue
                 # 优先使用 local:// 协议（内容寻址存储），回退到远程 url
                 if img.get("key"):
@@ -461,10 +464,11 @@ class ContentParser:
             # 同步更新头像
             for img in stored_images:
                 if img.get("type") == "avatar" or img.get("is_avatar"):
-                    if img.get("url"):
-                        parsed.author_avatar_url = img["url"]
-                    elif img.get("key"):
+                    # 优先使用 local:// 协议，以便后端 API 统一替换为代理 URL
+                    if img.get("key"):
                         parsed.author_avatar_url = f"local://{img['key']}"
+                    elif img.get("url"):
+                        parsed.author_avatar_url = img["url"]
                     break
             
             # 同步更新 rich_payload 子项中的头像和封面（如知乎问题精选回答）
