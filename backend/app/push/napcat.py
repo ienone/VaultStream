@@ -99,9 +99,11 @@ class NapcatPushService(BasePushService):
         if media_mode == "none":
             return []
 
-        archive_metadata = content.get("archive_metadata") or {}
         cover_url = content.get("cover_url")
-        media_items = extract_media_urls(archive_metadata, cover_url)
+        media_items = content.get("media_items") or []
+        if not media_items:
+            archive_metadata = content.get("archive_metadata") or {}
+            media_items = extract_media_urls(archive_metadata, cover_url)
 
         if media_mode == "cover" and media_items:
             photos = [m for m in media_items if m["type"] == "photo"]

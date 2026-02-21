@@ -98,20 +98,9 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
         "comment_count": answer_data.get('commentCount', 0),
     }
 
-    # Enrich raw_metadata with question info and stats for frontend
+    # 归档仅保留必要审计信息；前端消费的关联信息由 context_data 提供。
     if isinstance(answer_data, dict):
-        answer_data['associated_question'] = {
-            "id": question_id,
-            "title": question_title,
-            "url": f"https://www.zhihu.com/question/{question_id}" if question_id else None,
-            "visit_count": question_data.get('visitCount', 0) if isinstance(question_data, dict) else 0,
-            "answer_count": question_data.get('answerCount', 0) if isinstance(question_data, dict) else 0,
-            "follower_count": question_data.get('followerCount', 0) if isinstance(question_data, dict) else 0,
-            "comment_count": question_data.get('commentCount', 0) if isinstance(question_data, dict) else 0,
-            "view_count": question_data.get('visitCount', 0) if isinstance(question_data, dict) else 0,
-            "like_count": question_data.get('voteupCount', 0) if isinstance(question_data, dict) else 0,
-        }
-        # Also include answer's own stats in metadata for easier access
+        # Include answer's own stats in archive metadata for debug/reparse usage.
         answer_data['stats'] = stats
 
         # Construct Archive

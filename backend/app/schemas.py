@@ -45,7 +45,8 @@ class ContentPushPayload(BaseModel):
     # New V2 fields
     context_data: Optional[Dict[str, Any]] = None
     rich_payload: Optional[Dict[str, Any]] = None
-    archive_metadata: Optional[Dict[str, Any]] = None
+    # 推送链路只暴露最小媒体集合，避免泄露 archive_metadata 原始归档数据
+    media_items: List[Dict[str, Any]] = Field(default_factory=list)
 
     class Config:
         from_attributes = True

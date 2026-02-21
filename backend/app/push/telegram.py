@@ -107,9 +107,11 @@ class TelegramPushService(BasePushService):
         else:
             text = format_content_for_tg(content)
         
-        archive_metadata = content.get('archive_metadata', {})
         cover_url = content.get('cover_url')
-        media_items = extract_media_urls(archive_metadata, cover_url)
+        media_items = content.get('media_items') or []
+        if not media_items:
+            archive_metadata = content.get('archive_metadata', {})
+            media_items = extract_media_urls(archive_metadata, cover_url)
 
         media_mode = self._get_media_mode(render_config)
         if media_mode == "none":

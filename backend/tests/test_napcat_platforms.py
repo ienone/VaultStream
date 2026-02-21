@@ -45,7 +45,7 @@ def build_payload(content: Content) -> dict:
         "title": content.title,
         "platform": content.platform.value if content.platform else None,
         "cover_url": content.cover_url,
-        "raw_metadata": content.raw_metadata,
+        "archive_metadata": content.archive_metadata,
         "canonical_url": content.canonical_url,
         "tags": content.tags,
         "is_nsfw": content.is_nsfw,
@@ -98,7 +98,7 @@ async def main():
             # Prefer content with stored images
             chosen = None
             for c in candidates:
-                meta = c.raw_metadata or {}
+                meta = c.archive_metadata or {}
                 imgs = (meta.get("archive") or {}).get("images", [])
                 has_stored = any(i.get("stored_key") for i in imgs)
                 if has_stored:
@@ -121,7 +121,7 @@ async def main():
             md_tag = " [MD stripped]" if md_changed else ""
 
             # Diagnostic: check media resolution
-            meta = chosen.raw_metadata or {}
+            meta = chosen.archive_metadata or {}
             imgs = (meta.get("archive") or {}).get("images", [])
             vids = (meta.get("archive") or {}).get("videos", [])
             stored_count = sum(1 for i in imgs if i.get("stored_key"))

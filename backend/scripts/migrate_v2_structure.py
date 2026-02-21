@@ -213,5 +213,15 @@ async def migrate():
         else:
             logger.info("No content items needed migration.")
 
+        # 3. Final cleanup: clear legacy columns for all rows to avoid mixed-era ambiguity.
+        cleanup_updates = 0
+        for legacy_col in ("raw_metadata", "associated_question", "top_answers"):
+            if legacy_col in existing_columns:
+                await db.execute(text(f"UPDATE contents SET {legacy_col} = NULL WHERE {legacy_col} IS NOT NULL"))
+                cleanup_updates += 1
+        if cleanup_updates:
+            await db.commit()
+            logger.info("Legacy columns cleanup completed for all rows.")
+
 if __name__ == "__main__":
     asyncio.run(migrate())
