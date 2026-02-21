@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:frontend/core/utils/media_utils.dart';
+import 'package:frontend/core/utils/safe_url_launcher.dart';
 import '../../../models/content.dart';
 import '../../../utils/content_parser.dart';
 
@@ -47,18 +47,7 @@ class RichContent extends StatelessWidget {
             data: markdown,
             selectable: true,
             onTapLink: (text, href, title) async {
-              if (href == null) return;
-              try {
-                final uri = Uri.parse(href);
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(
-                    uri,
-                    mode: LaunchMode.externalApplication,
-                  );
-                }
-              } catch (_) {
-                // Ignore malformed/unsupported links to avoid crashing markdown taps.
-              }
+              await SafeUrlLauncher.openExternal(context, href);
             },
             styleSheet: style,
             builders: {

@@ -170,3 +170,17 @@ def extract_media_urls(
                     media_items.append({'type': 'photo', 'url': url})
     
     return media_items
+
+
+def pick_preview_thumbnail(
+    archive_metadata: Dict[str, Any],
+    cover_url: str = None,
+) -> str | None:
+    """返回用于列表预览的首图 URL。"""
+    items = extract_media_urls(archive_metadata or {}, cover_url=cover_url)
+    if not items:
+        return cover_url
+    first = items[0]
+    if isinstance(first, dict):
+        return first.get("url") or cover_url
+    return cover_url

@@ -12,6 +12,25 @@ from app.media_processing import store_archive_images_as_webp
 from app.storage import get_storage_backend
 from app.config import settings
 
+
+def _get_metadata(content: Content):
+    """兼容新旧字段：优先 archive_metadata，回退 raw_metadata。"""
+    archive_meta = getattr(content, "archive_metadata", None)
+    if isinstance(archive_meta, dict):
+        return archive_meta
+    raw_meta = getattr(content, "raw_metadata", None)
+    if isinstance(raw_meta, dict):
+        return raw_meta
+    return None
+
+
+def _set_metadata(content: Content, meta: dict):
+    """统一写回新字段，旧库结构下回退写 raw_metadata。"""
+    if hasattr(content, "archive_metadata"):
+        content.archive_metadata = meta
+    elif hasattr(content, "raw_metadata"):
+        content.raw_metadata = meta
+
 async def migrate_bilibili():
     storage = get_storage_backend()
     if hasattr(storage, "ensure_bucket"):
@@ -25,7 +44,7 @@ async def migrate_bilibili():
         
         count = 0
         for content in contents:
-            meta = content.raw_metadata
+            meta = _get_metadata(content)
             if not isinstance(meta, dict):
                 continue
             
@@ -67,7 +86,7 @@ async def migrate_bilibili():
             if archive:
                 # Update metadata
                 meta['archive'] = archive
-                content.raw_metadata = meta # Trigger SQLAlchemy detection
+                _set_metadata(content, meta)
                 
                 # Process media immediately
                 if settings.enable_archive_media_processing:

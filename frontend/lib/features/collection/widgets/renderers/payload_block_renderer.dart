@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:frontend/core/utils/safe_url_launcher.dart';
 import '../../models/content.dart';
 
 class PayloadBlockRenderer extends StatelessWidget {
@@ -38,20 +38,18 @@ class PayloadBlockRenderer extends StatelessWidget {
     final excerpt = data['excerpt'] as String?;
     final url = data['url'] as String?;
 
+    if ((title == null || title.trim().isEmpty) &&
+        (excerpt == null || excerpt.trim().isEmpty)) {
+      return const SizedBox.shrink();
+    }
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       elevation: 1,
       child: InkWell(
         onTap: url != null
             ? () async {
-                try {
-                  final uri = Uri.parse(url);
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri);
-                  }
-                } catch (_) {
-                  // Ignore invalid or unsupported URLs.
-                }
+                await SafeUrlLauncher.openExternal(context, url);
               }
             : null,
         borderRadius: BorderRadius.circular(12),

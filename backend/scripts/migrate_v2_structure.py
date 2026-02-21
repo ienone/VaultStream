@@ -84,6 +84,7 @@ async def migrate():
         rows = result.mappings().all()
         
         migrated_count = 0
+        migrated_ids: List[int] = []
         
         for row in rows:
             content_id = row['id']
@@ -206,6 +207,7 @@ async def migrate():
                 query = text(f"UPDATE contents SET {', '.join(set_clauses)} WHERE id = :id")
                 await db.execute(query, params)
                 migrated_count += 1
+                migrated_ids.append(content_id)
                 
         if migrated_count > 0:
             await db.commit()
@@ -213,15 +215,32 @@ async def migrate():
         else:
             logger.info("No content items needed migration.")
 
-        # 3. Final cleanup: clear legacy columns for all rows to avoid mixed-era ambiguity.
+        # 3. Final cleanup: only clear legacy columns for rows that were successfully migrated.
+        # 这样可以避免“部分迁移失败时全量清空旧列”导致的数据不可逆丢失。
         cleanup_updates = 0
-        for legacy_col in ("raw_metadata", "associated_question", "top_answers"):
-            if legacy_col in existing_columns:
-                await db.execute(text(f"UPDATE contents SET {legacy_col} = NULL WHERE {legacy_col} IS NOT NULL"))
-                cleanup_updates += 1
-        if cleanup_updates:
+        if migrated_ids:
+            id_params: Dict[str, Any] = {}
+            id_placeholders: List[str] = []
+            for index, content_id in enumerate(migrated_ids):
+                key = f"id_{index}"
+                id_params[key] = content_id
+                id_placeholders.append(f":{key}")
+            in_clause = ", ".join(id_placeholders)
+
+            for legacy_col in ("raw_metadata", "associated_question", "top_answers"):
+                if legacy_col in existing_columns:
+                    await db.execute(
+                        text(
+                            f"UPDATE contents SET {legacy_col} = NULL "
+                            f"WHERE id IN ({in_clause}) AND {legacy_col} IS NOT NULL"
+                        ),
+                        id_params,
+                    )
+                    cleanup_updates += 1
+        if cleanup_updates > 0:
             await db.commit()
-            logger.info("Legacy columns cleanup completed for all rows.")
+            logger.info("Legacy columns cleanup completed for migrated rows only.")
+
 
 if __name__ == "__main__":
     asyncio.run(migrate())

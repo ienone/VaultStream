@@ -6,6 +6,7 @@
 import asyncio
 import json
 import traceback
+from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -526,16 +527,18 @@ class ContentParser:
         if need_media:
             logger.info("内容已解析完成，但存在未处理图片；开始补处理归档媒体")
             try:
+                @dataclass
                 class _ParsedLike:
-                    def __init__(self):
-                        self.archive_metadata = meta
-                        self.rich_payload = None
-                        self.cover_url = None
-                        self.media_urls = []
-                        self.description = None
-                        self.author_avatar_url = None
+                    # 保持与 _maybe_process_private_archive_media 依赖字段一致，
+                    # 避免后续扩展时因 mock 字段缺失引发隐藏错误。
+                    archive_metadata: Dict[str, Any]
+                    rich_payload: Optional[Dict[str, Any]] = None
+                    cover_url: Optional[str] = None
+                    media_urls: list[str] = field(default_factory=list)
+                    description: Optional[str] = None
+                    author_avatar_url: Optional[str] = None
 
-                parsed_like = _ParsedLike()
+                parsed_like = _ParsedLike(archive_metadata=meta)
                 await self._maybe_process_private_archive_media(parsed_like)
                 
                 content.archive_metadata = meta

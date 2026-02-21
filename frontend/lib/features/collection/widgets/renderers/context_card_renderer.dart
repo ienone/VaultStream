@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:frontend/core/utils/safe_url_launcher.dart';
 import '../../models/content.dart';
 
 class ContextCardRenderer extends StatelessWidget {
@@ -26,14 +26,7 @@ class ContextCardRenderer extends StatelessWidget {
         child: InkWell(
           onTap: url != null
               ? () async {
-                  try {
-                    final uri = Uri.parse(url);
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri);
-                    }
-                  } catch (_) {
-                    // Ignore invalid or unsupported URLs.
-                  }
+                  await SafeUrlLauncher.openExternal(context, url);
                 }
               : null,
           borderRadius: BorderRadius.circular(12),
