@@ -62,7 +62,7 @@ BROWSER_USE_DISABLE_EXTENSIONS=true
 
 ### 错误处理
 
-*   LLM 故障: 如果 LLM API 调用失败或返回非 JSON 格式，适配器会自动降级 (Fallback)，直接返回网页的原始 Markdown 内容，并在 `raw_metadata` 中标记错误。
+*   LLM 故障: 如果 LLM API 调用失败或返回非 JSON 格式，适配器会自动降级 (Fallback)，直接返回网页的原始 Markdown 内容，并在 `archive_metadata` 中标记错误。
 *   浏览器故障: 自动捕获 Playwright 超时或 Crash，并返回错误信息。
 
 ## 常见问题

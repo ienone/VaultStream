@@ -10,8 +10,6 @@ Set-Location $PSScriptRoot
 # Priority:
 # 1. Local Conda (.venv/python.exe)
 # 2. Root Conda (../.venv/python.exe)
-# 3. Local Venv (.venv/Scripts/python.exe)
-# 4. Root Venv (../.venv/Scripts/python.exe)
 
 $paths = @(
     "$PSScriptRoot\.venv\python.exe",

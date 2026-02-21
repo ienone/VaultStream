@@ -19,8 +19,8 @@ async def check_zhihu():
             print(f"Content ID: {content.id} ({content.content_type})")
             print(f"  Title: {content.title}")
             print(f"  Cover URL: {content.cover_url}")
-            if content.raw_metadata and 'archive' in content.raw_metadata:
-                archive = content.raw_metadata['archive']
+            if content.archive_metadata and 'archive' in content.archive_metadata:
+                archive = content.archive_metadata['archive']
                 stored = archive.get('stored_images', [])
                 print(f"  Stored Images: {len(stored)}")
                 if stored:

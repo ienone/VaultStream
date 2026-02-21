@@ -52,7 +52,7 @@ class TestWeiboAdapter(AdapterTestBase):
         
         url = urls["status"]
         result = await self._test_archive_structure(adapter, url)
-        archive = result.raw_metadata.get("archive")
+        archive = result.archive_metadata.get("archive")
         
         if archive and archive.get("images"):
             # Verify images have URLs

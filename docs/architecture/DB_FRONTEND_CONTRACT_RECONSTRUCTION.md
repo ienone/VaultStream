@@ -10,7 +10,7 @@
     3.  **存档存储层 (Archive Storage):** JSONB 列。存储原始数据，仅供后端审计与二次解析，**API 严禁返回**。
 
 *   **前端零平台逻辑：** 
-    前端不再包含 `if (isZhihu)` 或读取 `raw_metadata` 的逻辑。UI 只根据数据呈现的 "模式"（UI Patterns）进行渲染。
+    前端不再包含 `if (isZhihu)` 或读取 `archive_metadata` 的逻辑。UI 只根据数据呈现的 "模式"（UI Patterns）进行渲染。
 
 ---
 
@@ -62,7 +62,7 @@ class Content(Base):
     # --- 3. 存档与内部字段 (API 严禁返回) ---
     
     # [Archive Blob] 原始元数据
-    # 取代 raw_metadata，仅用于后端审计和重解析
+    # 仅用于后端审计和重解析
     archive_metadata = Column(JSON) 
     
     # 软删除支持
@@ -85,7 +85,7 @@ class Content(Base):
     *   遍历旧 `contents` 表。
     *   **提取 Context:** 将 `associated_question` 转换为 `context_data = {"type": "question", ...}`。
     *   **提取 Blocks:** 将 `top_answers` 转换为 `rich_payload = {"blocks": [{"type": "sub_item", ...}]}`。
-    *   **归档:** 将 `raw_metadata` 移动到 `archive_metadata`。
+    *   **存档:** 更新元数据到 `archive_metadata`。
     *   **映射:** 将 `extra_stats` 中的通用计数写入主表列。
     *   插入 `contents_new`。
 4.  **切换表名：**
@@ -115,7 +115,6 @@ class ContentDetail(BaseModel):
     
     # 禁止字段
     # archive_metadata: NEVER include this
-    # raw_metadata: REMOVED
     
     class Config:
         from_attributes = True
@@ -136,7 +135,7 @@ class ContentDetail with _$ContentDetail {
     required int id,
     // ... 
     
-    // 移除 associated_question, top_answers, raw_metadata
+    // 移除泄漏字段
     
     // 新增通用容器
     @JsonKey(name: 'context_data') Map<String, dynamic>? contextData,

@@ -151,6 +151,7 @@ async def parse_user(uid: str, url: str, headers: Dict[str, str], cookies: Dict[
     if user_info.get('avatar_hd'):
         archive["images"].append({
             "url": user_info.get('avatar_hd'),
+            "type": "avatar",
             "width": None, 
             "height": None
         })

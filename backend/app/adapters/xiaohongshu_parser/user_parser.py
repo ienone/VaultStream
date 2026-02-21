@@ -172,13 +172,17 @@ async def parse_user(
     
     # 构建存档
     archive = {
-        "version": 1,
+        "version": 2,
         "type": "xiaohongshu_user",
-        "user_id": user_id,
-        "nickname": nickname,
-        "desc": desc,
-        "avatar": avatar,
+        "title": nickname,
+        "plain_text": desc,
+        "images": [],
+        "links": [],
+        "stored_images": []
     }
+    
+    if avatar:
+        archive["images"].append({"url": avatar, "type": "avatar"})
     
     archive_metadata = dict(user) if isinstance(user, dict) else {"user": user}
     archive_metadata["archive"] = archive

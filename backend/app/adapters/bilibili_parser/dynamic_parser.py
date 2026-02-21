@@ -29,7 +29,7 @@ def build_opus_archive(item: Dict[str, Any], author_avatar_url: Optional[str] = 
     """
     从Polymer动态详情中提取可存档的完整图文内容
     
-    目标：用于个人浏览记录存档（raw_metadata内），不影响对外分享字段
+    目标：用于个人浏览记录存档（archive_metadata内），不影响对外分享字段
     
     Args:
         item: 动态详情数据
@@ -374,7 +374,7 @@ async def parse_dynamic(
         module_author = modules_map.get('module_author', {})
         author_face = module_author.get('face')
 
-        # 构建存档数据（完整图文），放进raw_metadata里，传入头像URL
+        # 构建存档数据（完整图文），放进archive_metadata里，传入头像URL
         try:
             archive = build_opus_archive(item, author_avatar_url=author_face)
             logger.info(

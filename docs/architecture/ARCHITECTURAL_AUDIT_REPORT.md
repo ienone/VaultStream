@@ -12,14 +12,14 @@ VaultStream 目前处于功能快速迭代后的稳定期，架构整体清晰�
 
 ### 2.1 平台特有数据的"泄漏"与契约断层
 **问题描述:** 
-设计初衷是将平台特有数据封装在 `raw_metadata` (JSON) 中以保持通用性。但在演进中出现了两个极端：
+设计初衷是将平台特有数据封装在 `archive_metadata` (JSON) 中以保持通用性。但在演进中出现了两个极端：
 1.  **字段泄漏:** 知乎特有的 `associated_question` 和 `top_answers` 被提升到了 `Content` 数据库主表列和前端 `ContentDetail` 模型中，破坏了通用架构。
-2.  **契约臃肿:** `raw_metadata` 包含了大量未经清洗的平台原始响应（如完整的 HTML、Base64 碎片、冗余追踪码），这些数据在 API 传输中造成了巨大的带宽浪费。
+2.  **契约臃肿:** `archive_metadata` 包含了大量未经清洗的平台原始响应（如完整的 HTML、Base64 碎片、冗余追踪码），这些数据在 API 传输中造成了巨大的带宽浪费。
 
 **建议 (三层数据契约架构):**
 - **标准化核心层 (Standardized Core):** 强制适配器在解析阶段将点赞、播放、评论等指标映射到主表的 `like_count`, `view_count` 等通用字段，禁止仅存储在 `extra_stats` 中。
 - **结构化扩展层 (Structured Extensions):** 引入 `extensions` JSONB 字段。适配器负责将平台特性解析为“UI 模式组件”（如 `parent_context`, `sub_items`），前端仅识别组件模式而非平台逻辑。
-- **存档存储层 (Archive Storage):** `raw_metadata` 仅用于后端审计和二次解析，**彻底从 API 响应中剥离**，实现传输脱敏与减负。
+- **存档存储层 (Archive Storage):** `archive_metadata` 仅用于后端审计和二次解析，**彻底从 API 响应中剥离**，实现传输脱敏与减负。
 
 **影响:**
 - **解耦 UI 逻辑:** 前端不再判断 `if (isZhihu)`，而是根据 `extensions` 中的组件类型进行渲染。
@@ -86,9 +86,9 @@ VaultStream 目前处于功能快速迭代后的稳定期，架构整体清晰�
     - 废弃 `Content.associated_question` 和 `top_answers` 物理列。
 2.  **适配器重构:**
     - 更新适配器接口，强制在 `parse` 阶段输出标准化的 `extensions` 结构。
-    - 确保 `archive_metadata` (原 `raw_metadata`) 仅包含必要存档，不含 Base64 等冗余。
+    - 确保 `archive_metadata` 仅包含必要存档，不含 Base64 等冗余。
 3.  **API 减负:**
-    - 修改 Pydantic Schema，从 `ContentDetail` 及其子类中移除 `raw_metadata` 字段。
+    - 修改 Pydantic Schema，从 `ContentDetail` 及其子类中移除 `archive_metadata` 字段。
     - 增加 `extensions` 字段映射。
 4.  **软删除引入:**
     - 给 `Content` 表增加 `deleted_at` 字段，更新 `delete_content` 为逻辑删除，保留 URL 指纹防止重复采集。
@@ -100,4 +100,4 @@ VaultStream 目前处于功能快速迭代后的稳定期，架构整体清晰�
 
 ---
 **总结:**
-VaultStream 核心架构稳固，但随着业务复杂度增加，特定的业务逻辑开始侵入通用模型。及时收敛这些"特例"（尤其是知乎相关逻辑），回归 `raw_metadata` + `Adapter` 的通用处理模式，是保持系统长期可维护性的关键。
+VaultStream 核心架构稳固，但随着业务复杂度增加，特定的业务逻辑开始侵入通用模型。及时收敛这些"特例"（尤其是知乎相关逻辑），回归 `archive_metadata` + `Adapter` 的通用处理模式，是保持系统长期可维护性的关键。

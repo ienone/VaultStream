@@ -56,8 +56,21 @@ def parse_people(html_content: str, url: str) -> Optional[ParsedContent]:
     
     description = headline if headline else ""
 
-    url_token = user_data.get('urlToken')
+    url_token = user_data.get('url_token') or user_data.get('urlToken')
     
+    # 归档元数据映射：确保头像被处理
+    archive = {
+        "version": 2,
+        "type": "zhihu_user",
+        "title": f"{name} 的知乎主页",
+        "plain_text": description,
+        "images": [],
+        "links": [],
+        "stored_images": []
+    }
+    if avatar_url:
+        archive["images"].append({"url": avatar_url, "type": "avatar"})
+
     return ParsedContent(
         platform="zhihu",
         content_type="user_profile",
@@ -72,7 +85,10 @@ def parse_people(html_content: str, url: str) -> Optional[ParsedContent]:
         cover_url=avatar_url,
         media_urls=[avatar_url] if avatar_url else [],
         published_at=datetime.now(), # User profile doesn't have a specific pub date
-        archive_metadata={"raw_api_response": user_data},
+        archive_metadata={
+            "raw_api_response": user_data,
+            "archive": archive
+        },
         stats=stats,
         layout_type=LAYOUT_GALLERY,
     )

@@ -12,7 +12,7 @@ async def fix_data():
         count = 0
         for content in contents:
             updated = False
-            meta = content.raw_metadata
+            meta = content.archive_metadata
             if not isinstance(meta, dict):
                 continue
                 

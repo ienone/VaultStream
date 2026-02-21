@@ -53,7 +53,7 @@ class TestTwitterAdapter(AdapterTestBase):
         
         for content_type, url in list(urls.items())[:1]:
             result = await self._test_archive_structure(adapter, url)
-            archive = result.raw_metadata.get("archive")
+            archive = result.archive_metadata.get("archive")
             
             if archive:
                 # Twitter archive should have version and images/videos

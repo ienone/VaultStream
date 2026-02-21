@@ -59,9 +59,9 @@ class AdapterTestBase(ABC):
         return result
     
     async def _test_archive_structure(self, adapter: PlatformAdapter, url: str):
-        """Validate archive structure in raw_metadata"""
+        """Validate archive structure in archive_metadata"""
         result = await adapter.parse(url)
-        archive = result.raw_metadata.get("archive")
+        archive = result.archive_metadata.get("archive")
         
         if archive:
             # Validate common archive fields

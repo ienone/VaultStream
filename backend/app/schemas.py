@@ -193,7 +193,7 @@ class ContentListItem(BaseModel):
     created_at: datetime
     published_at: Optional[datetime] = None
     
-    # 排除：raw_metadata, extra_stats, 所有统计字段
+    # 排除：archive_metadata, extra_stats, 所有统计字段
     
     class Config:
         from_attributes = True
@@ -272,7 +272,7 @@ class ContentUpdate(BaseModel):
 class ShareCard(BaseModel):
     """合规分享卡片（对外输出用）- 轻量级列表展示。
 
-    与"私有存档 raw_metadata"严格隔离：这里不允许出现 raw_metadata、client_context 等全量信息。
+    与"私有存档 archive_metadata"严格隔离：这里不允许出现 archive_metadata、client_context 等全量信息。
     优化后仅包含列表展示必需字段，移除 description, summary, media_urls 等详情页字段。
     """
 

@@ -52,7 +52,7 @@ class TestXiaohongshuAdapter(AdapterTestBase):
         
         url = urls["note"]
         result = await self._test_archive_structure(adapter, url)
-        archive = result.raw_metadata.get("archive")
+        archive = result.archive_metadata.get("archive")
         
         if archive:
             # Xiaohongshu archive should have version and blocks

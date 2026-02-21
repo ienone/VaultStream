@@ -284,7 +284,7 @@ def _format_bilibili_message(content: dict) -> str:
     Returns:
         格式化后的消息文本（HTML格式）
     """
-    # 分享卡片（ShareCard）不包含 raw_metadata：避免对外泄露"私有存档"信息
+    # 分享卡片（ShareCard）不包含 archive_metadata：避免对外泄露"私有存档"信息
     url = content.get('clean_url') or content.get('url') or ""
     content_type = content.get('content_type')
     

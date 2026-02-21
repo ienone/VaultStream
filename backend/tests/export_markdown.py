@@ -2,7 +2,7 @@
 
 """Export one archived content to Markdown.
 
-This reads Content.raw_metadata.archive and emits a Markdown file.
+This reads Content.archive_metadata.archive and emits a Markdown file.
 
 Features:
 - Optionally re-run private archive image processing (download -> WebP -> store to MinIO/S3/LocalFS)
@@ -75,28 +75,28 @@ async def _load_content(content_id: int) -> Content:
         return content
 
 
-async def _persist_raw_metadata(content_id: int, raw_metadata: dict[str, Any]) -> None:
+async def _persist_archive_metadata(content_id: int, archive_metadata: dict[str, Any]) -> None:
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Content).where(Content.id == content_id))
         content = result.scalar_one()
-        content.raw_metadata = raw_metadata
+        content.archive_metadata = archive_metadata
         await session.commit()
 
 
 async def _maybe_process_images(
     *,
     content_id: int,
-    raw_metadata: dict[str, Any],
+    archive_metadata: dict[str, Any],
     quality: int,
     max_images: Optional[int],
 ) -> dict[str, Any]:
-    archive = raw_metadata.get("archive")
+    archive = archive_metadata.get("archive")
     if not isinstance(archive, dict):
-        return raw_metadata
+        return archive_metadata
 
     images = archive.get("images")
     if not isinstance(images, list) or not images:
-        return raw_metadata
+        return archive_metadata
 
     storage = get_storage_backend()
     ensure_bucket = getattr(storage, "ensure_bucket", None)
@@ -111,8 +111,8 @@ async def _maybe_process_images(
         max_images=max_images,
     )
 
-    await _persist_raw_metadata(content_id, raw_metadata)
-    return raw_metadata
+    await _persist_archive_metadata(content_id, archive_metadata)
+    return archive_metadata
 
 
 async def _export(
@@ -124,21 +124,21 @@ async def _export(
     max_images: Optional[int],
 ) -> None:
     content = await _load_content(content_id)
-    raw = content.raw_metadata
+    raw = content.archive_metadata
     if not isinstance(raw, dict):
-        raise SystemExit("raw_metadata is empty or invalid; nothing to export")
+        raise SystemExit("archive_metadata is empty or invalid; nothing to export")
 
     if process_missing_images:
         raw = await _maybe_process_images(
             content_id=content_id,
-            raw_metadata=raw,
+            archive_metadata=raw,
             quality=quality,
             max_images=max_images,
         )
 
     archive = raw.get("archive")
     if not isinstance(archive, dict):
-        raise SystemExit("raw_metadata.archive not found; this content may not support archive export")
+        raise SystemExit("archive_metadata.archive not found; this content may not support archive export")
 
     title = _coalesce(archive.get("title"), content.title) or f"Content {content_id}"
     md = archive.get("markdown")

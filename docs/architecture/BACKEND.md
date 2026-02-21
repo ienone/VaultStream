@@ -369,13 +369,13 @@ class QueueItemStatus: PENDING, SCHEDULED, PROCESSING, SUCCESS, FAILED, SKIPPED,
 |------|--------|------|
 | 分享入口 | `ShareRequest` / `ShareResponse` | URL 提交 |
 | 内容展示 | `ContentDetail` / `ContentListItem` | 完整详情 / 列表精简 |
-| 分享卡片 | `ShareCard` / `ShareCardListResponse` | 对外合规分享 (不含 raw_metadata) |
+| 分享卡片 | `ShareCard` / `ShareCardListResponse` | 对外合规分享 (不含 archive_metadata) |
 | 分发规则 | `DistributionRuleCreate/Update/Response` | 规则 CRUD |
 | 审批 | `ReviewAction` / `BatchReviewRequest` | 单个/批量审批 |
 | 队列 | `ContentQueueItemResponse` / `QueueStatsResponse` | 队列管理 |
 | Bot | `BotConfigCreate/Response` / `BotChatResponse` | Bot 管理 |
 
-**安全隔离原则**：`ShareCard` 系列 Schema 严格排除 `raw_metadata`、`client_context` 等敏感字段。
+**安全隔离原则**：`ShareCard` 系列 Schema 严格排除 `archive_metadata`、`client_context` 等敏感字段。
 
 ---
 
@@ -545,7 +545,7 @@ class ParsedContent:
     cover_url / cover_color
     media_urls: list
     published_at: Optional[datetime]
-    raw_metadata: dict     # 平台原始数据 + archive 归档
+    archive_metadata: dict  # 平台原始数据 + archive 归档
     stats: dict            # {view, like, favorite, share, reply, ...}
     source_tags: list      # 平台原生标签
     associated_question / top_answers  # 知乎结构化字段
@@ -626,7 +626,7 @@ TaskWorker (全局单例)
 
 ```python
 async def _build_content_payload(content, rule, target_render_config) → dict:
-    # 组装: id, title, platform, cover_url, raw_metadata,
+    # 组装: id, title, platform, cover_url, archive_metadata,
     #       tags, description, author, stats, urls...
     # 合并 render_config: target override > rule default
 ```
@@ -897,7 +897,7 @@ es.addEventListener('content_updated', (e) => {
 
 ```
 解析阶段:
-  adapter.parse() → raw_metadata.archive.images[].url (远程 CDN)
+  adapter.parse() → archive_metadata.archive.images[].url (远程 CDN)
     └→ processor.store_archive_images_as_webp()
          ├→ download → webp 转码 → local storage
          └→ media_urls = ["local://vaultstream/blobs/sha256/ab/cd/..."]

@@ -46,7 +46,7 @@ class TestUniversalAdapter:
             result = await adapter.parse(url)
         
         print(f"\n[Blog] Title: {result.title}")
-        print(f"[Blog] Summary: {result.raw_metadata.get('summary')}")
+        print(f"[Blog] Summary: {result.archive_metadata.get('summary')}")
         
         assert result.title is not None
         assert result.platform == "universal"

@@ -42,7 +42,7 @@ async def run_debug_test(name: str, url: str):
         parsed: ParsedContent = await adapter.parse(url)
         
         # 提取中间调试信息
-        selector = parsed.raw_metadata.get("archive", {}).get("llm_selector", "Unknown")
+        selector = parsed.archive_metadata.get("archive", {}).get("llm_selector", "Unknown")
         print(f"[{name}] Target Selector Found: {selector}")
         
         # 保存 Markdown 正文
@@ -50,7 +50,7 @@ async def run_debug_test(name: str, url: str):
             f.write(parsed.description or "")
         
         # 保存结构化 JSON
-        targeting = parsed.raw_metadata.get("archive", {}).get("llm_targeting", {})
+        targeting = parsed.archive_metadata.get("archive", {}).get("llm_targeting", {})
         debug_info = {
             "title": parsed.title,
             "author": parsed.author_name,
@@ -60,9 +60,9 @@ async def run_debug_test(name: str, url: str):
             "image_count": len(parsed.media_urls),
             "media_urls_preview": parsed.media_urls[:5],
             "cover": parsed.cover_url,
-            "summary": parsed.raw_metadata.get("summary"),
+            "summary": parsed.archive_metadata.get("summary"),
             "tags": parsed.source_tags,
-            "publish_date": parsed.raw_metadata.get("publish_date"),
+            "publish_date": parsed.archive_metadata.get("publish_date"),
             "llm_reasoning": targeting.get("reasoning")  # 新增：LLM 识别推理
         }
         
