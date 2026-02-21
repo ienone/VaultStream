@@ -3,7 +3,7 @@ from markdownify import markdownify as md
 from bs4 import BeautifulSoup
 from .models import ZhihuQuestion, ZhihuAuthor
 from .base import extract_initial_data, preprocess_zhihu_html, extract_images
-from app.adapters.base import ParsedContent, LAYOUT_ARTICLE
+from app.adapters.base import ParsedContent, LAYOUT_ARTICLE, LAYOUT_GALLERY
 from datetime import datetime
 
 def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
@@ -150,13 +150,13 @@ def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
                     {
                         "type": "sub_item",
                         "data": {
-                            "title": ans.get("author", {}).get("name"),
-                            "author_name": ans.get("author", {}).get("name"),
+                            "title": f"{ans.get('author_name', 'Unknown')} 的回答",
+                            "author_name": ans.get("author_name"),
                             "author_avatar_url": ans.get("author_avatar_url"),
                             "excerpt": ans.get("excerpt"),
-                            "voteup_count": ans.get("voteup_count"),
+                            "voteup_count": ans.get("like_count", 0),
                             "url": ans.get("url"),
-                            "cover_url": ans.get("cover_url") or ans.get("thumbnail"),
+                            "cover_url": ans.get("cover_url"),
                         },
                     }
                     for ans in top_answers
@@ -208,6 +208,6 @@ def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
         published_at=published_at,
         archive_metadata=question_data,
         stats=stats,
-        layout_type=LAYOUT_ARTICLE,
+        layout_type=LAYOUT_GALLERY,
         rich_payload=rich_payload,
     )

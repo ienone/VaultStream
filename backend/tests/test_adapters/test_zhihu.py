@@ -41,9 +41,9 @@ class TestZhihuAdapter(AdapterTestBase):
             assert result.content_type in ["answer", "article", "question", "pin", "user_profile"]
             
             # 校验布局类型
-            if result.content_type in ["answer", "article", "question"]:
+            if result.content_type in ["answer", "article"]:
                 assert result.layout_type == "article"
-            elif result.content_type in ["pin", "user_profile"]:
+            elif result.content_type in ["question", "pin", "user_profile"]:
                 assert result.layout_type == "gallery"
     
     @pytest.mark.asyncio
@@ -62,8 +62,8 @@ class TestZhihuAdapter(AdapterTestBase):
             assert result.content_id is not None
             
             # Check if archive exists and has expected structure
-            if result.raw_metadata.get("archive"):
-                archive = result.raw_metadata["archive"]
+            if result.archive_metadata.get("archive"):
+                archive = result.archive_metadata["archive"]
                 assert "type" in archive
                 assert archive["type"].startswith("zhihu_")
     

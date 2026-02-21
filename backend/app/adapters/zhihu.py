@@ -421,9 +421,24 @@ class ZhihuAdapter(PlatformAdapter):
             "follower_count": data.get('follower_count', 0),
         }
         
+        # Build archive structure for media processing
+        archive_images = [{"url": u} for u in media_urls]
+        if author_data and author_data.get('avatar_url'):
+            archive_images.append({"url": author_data.get('avatar_url'), "type": "avatar"})
+
         archive_metadata = {
             "version": 2,
-            "raw_api_response": data
+            "raw_api_response": data,
+            "archive": {
+                "version": 2,
+                "type": "zhihu_question",
+                "title": title,
+                "plain_text": BeautifulSoup(processed_html, 'html.parser').get_text("\n"),
+                "markdown": markdown_content,
+                "images": archive_images,
+                "links": [],
+                "stored_images": [],
+            }
         }
         
         return ParsedContent(
@@ -431,7 +446,7 @@ class ZhihuAdapter(PlatformAdapter):
             content_type="question",
             content_id=question_id,
             clean_url=url.split('?')[0],
-            layout_type=LAYOUT_ARTICLE,  # 知乎问题为长文布局
+            layout_type=LAYOUT_GALLERY,  # 知乎问题使用画廊布局（卡片置于右侧）
             title=title,
             description=markdown_content,
             author_name=author_name,
