@@ -24,7 +24,7 @@ def _is_avatar_like(item: Dict[str, Any]) -> bool:
 
 
 def extract_media_urls(
-    raw_metadata: Dict[str, Any],
+    archive_metadata: Dict[str, Any],
     cover_url: str = None,
     prefer_stored: bool = False
 ) -> List[Dict[str, Any]]:
@@ -41,7 +41,7 @@ def extract_media_urls(
     3. 如果都没有，使用 cover_url
     
     Args:
-        raw_metadata: 内容的 raw_metadata 字段
+        archive_metadata: 内容的 archive_metadata 字段
         cover_url: 封面图URL（兜底）
         prefer_stored: 是否优先使用存储的URL（默认False，优先原始URL）
     
@@ -63,7 +63,16 @@ def extract_media_urls(
             {"type": "photo", "url": "http://local/2.webp"}
         ]
     """
-    archive = raw_metadata.get('archive', {})
+    # 兼容两种归档结构：
+    # 1) archive_metadata["archive"]（多数解析器）
+    # 2) archive_metadata["processed_archive"]（部分 V2 解析器）
+    archive: Dict[str, Any] = {}
+    if isinstance(archive_metadata, dict):
+        if isinstance(archive_metadata.get('archive'), dict):
+            archive = archive_metadata.get('archive') or {}
+        elif isinstance(archive_metadata.get('processed_archive'), dict):
+            archive = archive_metadata.get('processed_archive') or {}
+
     media_items = []
     
     # 处理图片
@@ -147,5 +156,31 @@ def extract_media_urls(
                 'type': 'photo',
                 'url': cover_url.strip()
             })
+
+    # 兜底兼容：若无 archive 结构但 metadata 里有旧字段 media/pics，也尽量提取。
+    if not media_items and isinstance(archive_metadata, dict):
+        legacy_media = archive_metadata.get('media') or archive_metadata.get('pics') or []
+        if isinstance(legacy_media, list):
+            for media in legacy_media:
+                if isinstance(media, dict):
+                    url = media.get('url') or media.get('thumbnail_url')
+                else:
+                    url = media if isinstance(media, str) else None
+                if url:
+                    media_items.append({'type': 'photo', 'url': url})
     
     return media_items
+
+
+def pick_preview_thumbnail(
+    archive_metadata: Dict[str, Any],
+    cover_url: str = None,
+) -> str | None:
+    """返回用于列表预览的首图 URL。"""
+    items = extract_media_urls(archive_metadata or {}, cover_url=cover_url)
+    if not items:
+        return cover_url
+    first = items[0]
+    if isinstance(first, dict):
+        return first.get("url") or cover_url
+    return cover_url

@@ -36,13 +36,13 @@ class ParsedContent:
     media_urls: list = field(default_factory=list)
     published_at: Optional[datetime] = None
     
-    raw_metadata: Dict[str, Any] = field(default_factory=dict)
     stats: Dict[str, int] = field(default_factory=dict)  # 通用互动数据
     source_tags: List[str] = field(default_factory=list)  # 平台原生标签
     
-    # Phase 7: 结构化字段 - 消除前端从 rawMetadata 挖掘
-    associated_question: Optional[Dict[str, Any]] = None  # 知乎回答关联的问题
-    top_answers: Optional[List[Dict[str, Any]]] = None  # 知乎问题的精选回答
+    # 结构化扩展组件
+    context_data: Optional[Dict[str, Any]] = None  # [Context Slot] 关联上下文
+    rich_payload: Optional[Dict[str, Any]] = None  # [Rich Payload] 富媒体/交互组件块
+    archive_metadata: Optional[Dict[str, Any]] = None  # [Archive Blob] 原始元数据
     
     def __post_init__(self):
         # 强约束：必需的标识符必须存在
@@ -62,8 +62,6 @@ class ParsedContent:
 
         if not isinstance(self.media_urls, list):
             raise ValueError("ParsedContent.media_urls 必须是列表")
-        if not isinstance(self.raw_metadata, dict):
-            raise ValueError("ParsedContent.raw_metadata 必须是字典")
         if not isinstance(self.stats, dict):
             raise ValueError("ParsedContent.stats 必须是字典")
 

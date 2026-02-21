@@ -173,7 +173,7 @@ async def parse_user(uid: str, url: str, headers: Dict[str, str], cookies: Dict[
         cover_url=author_avatar_url,
         media_urls=[author_avatar_url] if author_avatar_url else [],
         published_at=datetime.now(), 
-        raw_metadata={
+        archive_metadata={
             **user_info,
             "archive": archive  # worker需要此字段进行颜色提取
         },

@@ -40,7 +40,7 @@ SAMPLE_CONTENT = {
     "canonical_url": "https://example.com/content/123",
     "tags": ["tech", "test", "demo"],
     "cover_url": None,
-    "raw_metadata": {
+    "archive_metadata": {
         "archive": {
             "images": [
                 {"url": "file:///C:/Users/86138/Documents/coding/VaultStream/data/test.png"},

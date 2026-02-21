@@ -91,7 +91,7 @@ class TelegramPushService(BasePushService):
         构建 Telegram 发送载荷
         
         Args:
-            content: 内容数据（包含 title, raw_metadata 等）
+            content: 内容数据（包含 title, archive_metadata 等）
         
         Returns:
             Tuple[str, List[Dict]]: (格式化后的文本, 媒体项列表)
@@ -107,9 +107,11 @@ class TelegramPushService(BasePushService):
         else:
             text = format_content_for_tg(content)
         
-        raw_metadata = content.get('raw_metadata', {})
         cover_url = content.get('cover_url')
-        media_items = extract_media_urls(raw_metadata, cover_url)
+        media_items = content.get('media_items') or []
+        if not media_items:
+            archive_metadata = content.get('archive_metadata', {})
+            media_items = extract_media_urls(archive_metadata, cover_url)
 
         media_mode = self._get_media_mode(render_config)
         if media_mode == "none":

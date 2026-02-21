@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models import Content, ContentStatus, ContentSource, PushedRecord, Platform, ReviewStatus
 from app.adapters import AdapterFactory
 from app.utils.url_utils import normalize_bilibili_url, canonicalize_url
+from app.utils.tags import normalize_tags
 from app.core.queue import task_queue
 from app.core.logging import logger
 from app.core.events import event_bus
@@ -14,29 +15,6 @@ from app.core.events import event_bus
 class ContentService:
     def __init__(self, db: AsyncSession):
         self.db = db
-
-    @staticmethod
-    def _normalize_tags(tags: Optional[List[str]], tags_text: Optional[str] = None) -> List[str]:
-        # 统一在后端收口标签清洗，避免各端分词/去重口径不一致。
-        candidates: List[str] = []
-        for tag in tags or []:
-            if tag is None:
-                continue
-            candidates.extend(re.split(r"[,，\s]+", str(tag)))
-        if tags_text:
-            candidates.extend(re.split(r"[,，\s]+", tags_text))
-
-        normalized: List[str] = []
-        seen: set[str] = set()
-        for raw in candidates:
-            clean = raw.strip()
-            if not clean:
-                continue
-            if clean in seen:
-                continue
-            seen.add(clean)
-            normalized.append(clean)
-        return normalized
 
     async def create_share(
         self, 
@@ -50,7 +28,7 @@ class ContentService:
         layout_type_override: str = None
     ) -> Content:
         """核心分享创建业务逻辑"""
-        normalized_tags = self._normalize_tags(tags, tags_text)
+        normalized_tags = normalize_tags(tags, tags_text)
 
         # 1. 规范化
         url_for_detect = normalize_bilibili_url(url)
@@ -211,6 +189,23 @@ class ContentService:
         return None
 
     @classmethod
+    def _collect_local_keys_from_json(cls, value: object, keys: set[str]) -> None:
+        """递归扫描 JSON 结构中的 local:// URL，覆盖 dict/list/str 组合场景。"""
+        if isinstance(value, str):
+            key = cls._extract_local_key(value)
+            if key:
+                keys.add(key)
+            return
+        if isinstance(value, dict):
+            for nested_value in value.values():
+                cls._collect_local_keys_from_json(nested_value, keys)
+            return
+        if isinstance(value, list):
+            for nested_value in value:
+                cls._collect_local_keys_from_json(nested_value, keys)
+            return
+
+    @classmethod
     def _collect_local_media_keys(cls, content: Content) -> list[str]:
         """收集内容中所有 local:// 引用的存储 key（全字段覆盖）"""
         keys: set[str] = set()
@@ -222,17 +217,12 @@ class ContentService:
             key = cls._extract_local_key(url)
             if key:
                 keys.add(key)
-        if content.top_answers:
-            for ans in content.top_answers:
-                if isinstance(ans, dict):
-                    for field in ("author_avatar_url", "cover_url"):
-                        key = cls._extract_local_key(ans.get(field))
-                        if key:
-                            keys.add(key)
-        if content.associated_question and isinstance(content.associated_question, dict):
-            key = cls._extract_local_key(content.associated_question.get("cover_url"))
-            if key:
-                keys.add(key)
+        
+        # 结构化字段和归档字段均可能包含 local:// 资源引用。
+        cls._collect_local_keys_from_json(content.context_data, keys)
+        cls._collect_local_keys_from_json(content.rich_payload, keys)
+        cls._collect_local_keys_from_json(content.archive_metadata, keys)
+                            
         if content.description and "local://" in content.description:
             for match in re.finditer(r'local://([a-zA-Z0-9_/.-]+)', content.description):
                 keys.add(match.group(1))
@@ -248,8 +238,9 @@ class ContentService:
                 Content.author_avatar_url == local_url,
                 Content.media_urls.like(f'%{local_url}%'),
                 Content.description.like(f'%{local_url}%'),
-                Content.top_answers.like(f'%{local_url}%'),
-                Content.associated_question.like(f'%{local_url}%'),
+                Content.context_data.like(f'%{local_url}%'),
+                Content.rich_payload.like(f'%{local_url}%'),
+                Content.archive_metadata.like(f'%{local_url}%'),
             )
         )
         ref_count = (await self.db.execute(ref_stmt)).scalar() or 0

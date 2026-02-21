@@ -431,16 +431,16 @@ async def parse_dynamic(
         author_id = str(author_mid) if author_mid else None
         author_url = f"https://space.bilibili.com/{author_mid}" if author_mid else None
 
-        # raw_metadata：保留原始item，并附加archive（便于后续浏览功能开发）
-        raw_metadata = dict(item) if isinstance(item, dict) else {"item": item}
-        raw_metadata.setdefault("archive", {})
-        raw_metadata["archive"] = archive
+        # archive_metadata：保留原始item，并附加archive（便于后续浏览功能开发）
+        archive_metadata = dict(item) if isinstance(item, dict) else {"item": item}
+        archive_metadata.setdefault("archive", {})
+        archive_metadata["archive"] = archive
 
         logger.info(
             "Dynamic parsed with archive attached: dynamic_id={}, has_archive={}, archive_keys={}",
             dynamic_id,
-            bool(raw_metadata.get("archive")),
-            list((raw_metadata.get("archive") or {}).keys()),
+            bool(archive_metadata.get("archive")),
+            list((archive_metadata.get("archive") or {}).keys()),
         )
 
         module_content = modules_map.get('module_content', {})
@@ -493,6 +493,6 @@ async def parse_dynamic(
             cover_url=pics[0] if pics else None,
             media_urls=pics,
             published_at=datetime.fromtimestamp(module_author.get('pub_ts')) if module_author.get('pub_ts') else None,
-            raw_metadata=raw_metadata,
+            archive_metadata=archive_metadata,
             stats=stats
         )

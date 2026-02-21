@@ -139,10 +139,32 @@ def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
     created = question_data.get('created')
     published_at = datetime.fromtimestamp(created) if created else None
     
+    rich_payload = None
+
     # Add answers to metadata
     if isinstance(question_data, dict):
-        question_data['top_answers'] = top_answers
-        # Ensure stats are also in raw_metadata for frontend to find them if it looks there
+        # Keep answers in rich_payload (UI component blocks) instead of removed top_answers field.
+        if top_answers:
+            rich_payload = {
+                "blocks": [
+                    {
+                        "type": "sub_item",
+                        "data": {
+                            "title": ans.get("author", {}).get("name"),
+                            "author_name": ans.get("author", {}).get("name"),
+                            "author_avatar_url": ans.get("author_avatar_url"),
+                            "excerpt": ans.get("excerpt"),
+                            "voteup_count": ans.get("voteup_count"),
+                            "url": ans.get("url"),
+                            "cover_url": ans.get("cover_url") or ans.get("thumbnail"),
+                        },
+                    }
+                    for ans in top_answers
+                    if isinstance(ans, dict)
+                ]
+            }
+
+        # Ensure stats are available in archive_metadata for troubleshooting/re-parse flows.
         question_data['stats'] = stats
         
         # Build archive structure for media processing
@@ -184,8 +206,8 @@ def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
         cover_url=media_urls[0] if media_urls else (top_answers[0]['cover_url'] if top_answers and top_answers[0].get('cover_url') else None), 
         media_urls=media_urls,
         published_at=published_at,
-        raw_metadata=question_data,
+        archive_metadata=question_data,
         stats=stats,
         layout_type=LAYOUT_ARTICLE,
-        top_answers=top_answers,  # Phase 7: 提取 top_answers 到顶层字段
+        rich_payload=rich_payload,
     )

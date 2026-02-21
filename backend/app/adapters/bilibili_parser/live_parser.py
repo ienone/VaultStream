@@ -113,6 +113,6 @@ async def parse_live(
             cover_url=room_info.get('cover'),
             media_urls=[room_info.get('cover')] if room_info.get('cover') else [],
             published_at=None,
-            raw_metadata=dict(room_info),
+            archive_metadata={"raw_api_response": dict(room_info)},
             stats=stats
         )

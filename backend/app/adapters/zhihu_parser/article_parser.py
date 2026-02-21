@@ -110,7 +110,7 @@ def parse_article(html_content: str, url: str) -> Optional[ParsedContent]:
         cover_url=cover_url,
         media_urls=media_urls,
         published_at=published_at,
-        raw_metadata=article_data,
+        archive_metadata=article_data,
         stats=stats,
         layout_type=LAYOUT_ARTICLE,
     )

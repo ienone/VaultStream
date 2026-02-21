@@ -6,6 +6,7 @@
 import asyncio
 import json
 import traceback
+from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -142,9 +143,9 @@ class ContentParser:
         content.source_tags = parsed.source_tags or []
         content.published_at = parsed.published_at
         
-        # Phase 7: 保存结构化字段
-        content.associated_question = getattr(parsed, 'associated_question', None)
-        content.top_answers = getattr(parsed, 'top_answers', None)
+        # 保存结构化扩展字段（V2）
+        content.context_data = getattr(parsed, 'context_data', None)
+        content.rich_payload = getattr(parsed, 'rich_payload', None)
 
         # 私有归档媒体处理
         if settings.enable_archive_media_processing:
@@ -161,11 +162,15 @@ class ContentParser:
         content.cover_url = parsed.cover_url
         content.media_urls = parsed.media_urls
         content.author_avatar_url = parsed.author_avatar_url
-        content.raw_metadata = self._truncate_raw_metadata(parsed.raw_metadata, content.id)
+        content.archive_metadata = self._truncate_archive_metadata(
+            getattr(parsed, 'archive_metadata', None),
+            content.id,
+        )
         
         content.cover_color = getattr(parsed, "cover_color", None)
-        if not content.cover_color and isinstance(content.raw_metadata, dict) and "archive" in content.raw_metadata:
-            content.cover_color = content.raw_metadata["archive"].get("dominant_color")
+        archive = self._extract_archive_blob(content.archive_metadata)
+        if not content.cover_color and isinstance(archive, dict):
+            content.cover_color = archive.get("dominant_color")
 
         # 统一 ID 和互动数据
         content.platform_id = parsed.content_id
@@ -325,10 +330,22 @@ class ContentParser:
         except Exception as e:
             logger.warning(f"自动审批检查失败: {e}", exc_info=True)
 
-    _MAX_RAW_METADATA_BYTES = 512 * 1024  # 512KB
+    _MAX_ARCHIVE_METADATA_BYTES = 512 * 1024  # 512KB
 
-    def _truncate_raw_metadata(self, metadata: Any, content_id: int) -> Any:
-        """对 raw_metadata 进行大小控制，防止单行数据膨胀。"""
+    def _extract_archive_blob(self, metadata: Any) -> Dict[str, Any]:
+        """从 archive_metadata 中提取可用于媒体处理的 archive 数据。"""
+        if not isinstance(metadata, dict):
+            return {}
+        archive = metadata.get("archive")
+        if isinstance(archive, dict):
+            return archive
+        processed_archive = metadata.get("processed_archive")
+        if isinstance(processed_archive, dict):
+            return processed_archive
+        return {}
+
+    def _truncate_archive_metadata(self, metadata: Any, content_id: int) -> Any:
+        """对 archive_metadata 进行大小控制，防止单行数据膨胀。"""
         if not isinstance(metadata, dict):
             return metadata
 
@@ -337,13 +354,13 @@ class ContentParser:
         except (TypeError, ValueError):
             return metadata
 
-        if len(raw.encode("utf-8")) <= self._MAX_RAW_METADATA_BYTES:
+        if len(raw.encode("utf-8")) <= self._MAX_ARCHIVE_METADATA_BYTES:
             return metadata
 
         original_size = len(raw.encode("utf-8"))
 
         # 阶段 1: 移除已冗余的大字段（archive 中已归档数据的源文件）
-        archive = metadata.get("archive")
+        archive = self._extract_archive_blob(metadata)
         if isinstance(archive, dict):
             for key in ("markdown", "html", "raw_html"):
                 archive.pop(key, None)
@@ -370,7 +387,7 @@ class ContentParser:
 
         final_size = len(json.dumps(metadata, ensure_ascii=False).encode("utf-8"))
         logger.warning(
-            f"raw_metadata 超大截断: content_id={content_id}, "
+            f"archive_metadata 超大截断: content_id={content_id}, "
             f"{original_size // 1024}KB → {final_size // 1024}KB"
         )
         return metadata
@@ -390,11 +407,11 @@ class ContentParser:
 
     async def _maybe_process_private_archive_media(self, parsed) -> None:
         """处理私有归档媒体"""
-        meta = getattr(parsed, "raw_metadata", None)
+        meta = getattr(parsed, "archive_metadata", None)
         if not isinstance(meta, dict):
             return
 
-        archive = meta.get("archive")
+        archive = self._extract_archive_blob(meta)
         if not isinstance(archive, dict):
             return
 
@@ -450,9 +467,10 @@ class ContentParser:
                         parsed.author_avatar_url = f"local://{img['key']}"
                     break
             
-            # 同步更新 top_answers 中的头像和封面 (知乎问题等)
-            top_answers = meta.get("top_answers", [])
-            if top_answers:
+            # 同步更新 rich_payload 子项中的头像和封面（如知乎问题精选回答）
+            payload = getattr(parsed, "rich_payload", None)
+            blocks = payload.get("blocks") if isinstance(payload, dict) else []
+            if isinstance(blocks, list) and blocks:
                 # 构建原始URL到存储URL的映射
                 url_mapping = {}
                 for img in stored_images:
@@ -461,12 +479,17 @@ class ContentParser:
                     if orig_url and stored_url:
                         url_mapping[orig_url] = stored_url
                 
-                # 更新 top_answers 中的 URL
-                for ans in top_answers:
-                    if ans.get("author_avatar_url") in url_mapping:
-                        ans["author_avatar_url"] = url_mapping[ans["author_avatar_url"]]
-                    if ans.get("cover_url") in url_mapping:
-                        ans["cover_url"] = url_mapping[ans["cover_url"]]
+                # 更新 rich_payload blocks 中的 URL
+                for block in blocks:
+                    if not isinstance(block, dict):
+                        continue
+                    data = block.get("data")
+                    if not isinstance(data, dict):
+                        continue
+                    if data.get("author_avatar_url") in url_mapping:
+                        data["author_avatar_url"] = url_mapping[data["author_avatar_url"]]
+                    if data.get("cover_url") in url_mapping:
+                        data["cover_url"] = url_mapping[data["cover_url"]]
         
         # 处理视频
         if archive.get("videos"):
@@ -490,8 +513,8 @@ class ContentParser:
         if not settings.enable_archive_media_processing:
             return
 
-        meta = content.raw_metadata
-        archive = meta.get("archive") if isinstance(meta, dict) else None
+        meta = content.archive_metadata
+        archive = self._extract_archive_blob(meta)
         images = archive.get("images") if isinstance(archive, dict) else None
         
         need_media = False
@@ -504,18 +527,21 @@ class ContentParser:
         if need_media:
             logger.info("内容已解析完成，但存在未处理图片；开始补处理归档媒体")
             try:
+                @dataclass
                 class _ParsedLike:
-                    def __init__(self):
-                        self.raw_metadata = meta
-                        self.cover_url = None
-                        self.media_urls = []
-                        self.description = None
-                        self.author_avatar_url = None
+                    # 保持与 _maybe_process_private_archive_media 依赖字段一致，
+                    # 避免后续扩展时因 mock 字段缺失引发隐藏错误。
+                    archive_metadata: Dict[str, Any]
+                    rich_payload: Optional[Dict[str, Any]] = None
+                    cover_url: Optional[str] = None
+                    media_urls: list[str] = field(default_factory=list)
+                    description: Optional[str] = None
+                    author_avatar_url: Optional[str] = None
 
-                parsed_like = _ParsedLike()
+                parsed_like = _ParsedLike(archive_metadata=meta)
                 await self._maybe_process_private_archive_media(parsed_like)
                 
-                content.raw_metadata = meta
+                content.archive_metadata = meta
                 if parsed_like.cover_url:
                     content.cover_url = parsed_like.cover_url
                 if parsed_like.media_urls:

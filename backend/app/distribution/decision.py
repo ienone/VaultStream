@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from app.models import BotChat, Content, DistributionRule, ReviewStatus
+from app.utils.tags import normalize_tags
 
 
 DECISION_WILL_PUSH = "will_push"
@@ -26,19 +27,6 @@ class DistributionDecision:
     nsfw_routing_result: Optional[Dict[str, Any]] = None
 
 
-def _normalize_tags(values: Any) -> list[str]:
-    if not isinstance(values, list):
-        return []
-    normalized: list[str] = []
-    for value in values:
-        if value is None:
-            continue
-        text = str(value).strip().lower()
-        if text:
-            normalized.append(text)
-    return normalized
-
-
 def check_match_conditions(content: Content, conditions: Dict[str, Any]) -> DistributionDecision:
     conditions = conditions or {}
 
@@ -50,9 +38,9 @@ def check_match_conditions(content: Content, conditions: Dict[str, Any]) -> Dist
             reason=f"平台不匹配: 需要 {platform}, 实际 {content.platform.value}",
         )
 
-    content_tags = _normalize_tags(content.tags or [])
+    content_tags = normalize_tags(content.tags or [], lower=True)
 
-    exclude_tags = _normalize_tags(conditions.get("tags_exclude", []))
+    exclude_tags = normalize_tags(conditions.get("tags_exclude", []), lower=True)
     if exclude_tags:
         hit_exclude = [tag for tag in exclude_tags if tag in content_tags]
         if hit_exclude:
@@ -62,7 +50,7 @@ def check_match_conditions(content: Content, conditions: Dict[str, Any]) -> Dist
                 reason=f"包含排除标签: {hit_exclude}",
             )
 
-    required_tags = _normalize_tags(conditions.get("tags", []))
+    required_tags = normalize_tags(conditions.get("tags", []), lower=True)
     if required_tags:
         tags_match_mode = str(conditions.get("tags_match_mode", "any")).strip().lower() or "any"
         if tags_match_mode == "all":
@@ -157,9 +145,9 @@ def check_auto_approve_conditions(content: Content, conditions: Dict[str, Any]) 
         return False
 
     if "tags" in conditions:
-        required_tags = _normalize_tags(conditions.get("tags", []))
+        required_tags = normalize_tags(conditions.get("tags", []), lower=True)
         if required_tags:
-            content_tags = _normalize_tags(content.tags or [])
+            content_tags = normalize_tags(content.tags or [], lower=True)
             if not all(tag in content_tags for tag in required_tags):
                 return False
 

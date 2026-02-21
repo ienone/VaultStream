@@ -5,6 +5,7 @@
 """
 from app.models import Content, DistributionRule
 from app.schemas import ContentPushPayload
+from app.media.extractor import extract_media_urls
 
 
 class ContentDistributor:
@@ -29,5 +30,11 @@ class ContentDistributor:
         if target_render_config:
             base = payload.get("render_config") or {}
             payload["render_config"] = {**base, **target_render_config}
+
+        # 推送链路使用预提取媒体列表，避免把 archive_metadata 透传给外部推送服务。
+        payload["media_items"] = extract_media_urls(
+            content.archive_metadata or {},
+            content.cover_url,
+        )
 
         return payload

@@ -15,6 +15,25 @@ from app.storage import get_storage_backend
 from app.config import settings
 from app.adapters.zhihu_parser.base import preprocess_zhihu_html, extract_images
 
+
+def _get_metadata(content: Content):
+    """兼容新旧字段：优先 archive_metadata，回退 raw_metadata。"""
+    archive_meta = getattr(content, "archive_metadata", None)
+    if isinstance(archive_meta, dict):
+        return archive_meta
+    raw_meta = getattr(content, "raw_metadata", None)
+    if isinstance(raw_meta, dict):
+        return raw_meta
+    return None
+
+
+def _set_metadata(content: Content, meta: dict):
+    """统一写回新字段，旧库结构下回退写 raw_metadata。"""
+    if hasattr(content, "archive_metadata"):
+        content.archive_metadata = meta
+    elif hasattr(content, "raw_metadata"):
+        content.raw_metadata = meta
+
 async def migrate_zhihu():
     storage = get_storage_backend()
     if hasattr(storage, "ensure_bucket"):
@@ -28,9 +47,10 @@ async def migrate_zhihu():
         
         count = 0
         for content in contents:
-            if not content.raw_metadata or not isinstance(content.raw_metadata, dict):
+            origin_meta = _get_metadata(content)
+            if not origin_meta or not isinstance(origin_meta, dict):
                 continue
-            meta = dict(content.raw_metadata)
+            meta = dict(origin_meta)
 
             
             # Check if archive already exists? 
@@ -97,7 +117,7 @@ async def migrate_zhihu():
             
             # Update metadata
             meta['archive'] = archive
-            content.raw_metadata = meta 
+            _set_metadata(content, meta)
             
             # Process media immediately
             if settings.enable_archive_media_processing:

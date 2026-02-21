@@ -24,7 +24,6 @@ class ContentPushPayload(BaseModel):
     title: Optional[str] = None
     platform: Optional[str] = None
     cover_url: Optional[str] = None
-    raw_metadata: Optional[Dict[str, Any]] = None
     canonical_url: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
     is_nsfw: bool = False
@@ -42,6 +41,12 @@ class ContentPushPayload(BaseModel):
     clean_url: Optional[str] = None
     url: Optional[str] = None
     render_config: Optional[Dict[str, Any]] = None
+    
+    # New V2 fields
+    context_data: Optional[Dict[str, Any]] = None
+    rich_payload: Optional[Dict[str, Any]] = None
+    # 推送链路只暴露最小媒体集合，避免泄露 archive_metadata 原始归档数据
+    media_items: List[Dict[str, Any]] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -133,10 +138,10 @@ class ContentDetail(BaseModel):
     comment_count: int = 0 # 评论次数
     extra_stats: Dict[str, Any] = Field(default_factory=dict) # 平台特有扩展数据
 
-    # Phase 7: 结构化字段（已完成raw_metadata迁移）
-    associated_question: Optional[Dict[str, Any]] = None  # 知乎回答关联的问题
-    top_answers: Optional[List[Dict[str, Any]]] = None  # 知乎问题的精选回答
-    
+    # 结构化扩展组件
+    context_data: Optional[Dict[str, Any]] = None  # [Context Slot] 关联上下文
+    rich_payload: Optional[Dict[str, Any]] = None  # [Rich Payload] 富媒体/交互组件块
+
     # 时间
     created_at: datetime
     updated_at: datetime

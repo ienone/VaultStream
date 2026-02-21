@@ -72,7 +72,7 @@ def parse_people(html_content: str, url: str) -> Optional[ParsedContent]:
         cover_url=avatar_url,
         media_urls=[avatar_url] if avatar_url else [],
         published_at=datetime.now(), # User profile doesn't have a specific pub date
-        raw_metadata=user_data,
+        archive_metadata={"raw_api_response": user_data},
         stats=stats,
         layout_type=LAYOUT_GALLERY,
     )

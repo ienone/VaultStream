@@ -133,9 +133,6 @@ class Content(Base):
     # 平台特有扩展数据 (如 B站投币、转发等)
     extra_stats = Column(JSON, default=dict)
     
-    # 元数据（JSON存储）
-    raw_metadata = Column(JSON)  # 原始平台数据
-    
     # 提取的通用字段
     title = Column(Text)
     description = Column(Text)  # 完整内容文本
@@ -146,12 +143,20 @@ class Content(Base):
     cover_url = Column(Text)
     source_tags = Column(JSON, default=list)  # 平台原生标签
 
-    cover_color = Column(String(20))  # M5: 封面主色调 (Hex)
+    cover_color = Column(String(20))  # 封面主色调 (Hex)
     media_urls = Column(JSON, default=list)  # 媒体资源URL列表
     
-    # Phase 7: 结构化字段 - 消除前端从 rawMetadata 挖掘
-    associated_question = Column(JSON, nullable=True)  # 知乎回答关联的问题
-    top_answers = Column(JSON, nullable=True)  # 知乎问题的精选回答
+    # [Context Slot] 关联上下文: {"type": "parent/reference", "title": "...", "url": "...", "cover": "..."}
+    context_data = Column(JSON, nullable=True)
+
+    # [Rich Payload] 富媒体/交互组件块: {"blocks": [{"type": "sub_item/poll/media_grid", "data": {...}}]}
+    rich_payload = Column(JSON, nullable=True)
+
+    # [Archive Blob] 原始元数据: 仅用于后端审计和重解析
+    archive_metadata = Column(JSON)
+    
+    # 软删除支持
+    deleted_at = Column(DateTime, nullable=True)
     
     # 时间戳
     created_at = Column(DateTime, default=utcnow, index=True)

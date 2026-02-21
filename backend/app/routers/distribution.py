@@ -31,6 +31,7 @@ from app.distribution.decision import (
     evaluate_target_decision,
 )
 from app.distribution.queue_service import mark_historical_parse_success_as_pushed_for_rule
+from app.media.extractor import pick_preview_thumbnail
 
 router = APIRouter()
 
@@ -257,15 +258,10 @@ async def preview_distribution_rule(
         elif status == DECISION_PENDING_REVIEW:
             pending_review_count += 1
         
-        thumbnail = content.cover_url
-        if not thumbnail and content.raw_metadata and isinstance(content.raw_metadata, dict):
-            media_list = content.raw_metadata.get("media") or content.raw_metadata.get("pics") or []
-            if media_list and isinstance(media_list, list) and len(media_list) > 0:
-                first_media = media_list[0]
-                if isinstance(first_media, dict):
-                    thumbnail = first_media.get("thumbnail_url") or first_media.get("url")
-                elif isinstance(first_media, str):
-                    thumbnail = first_media
+        thumbnail = pick_preview_thumbnail(
+            content.archive_metadata or {},
+            cover_url=content.cover_url,
+        )
         
         preview_items.append(RulePreviewItem(
             content_id=content.id,

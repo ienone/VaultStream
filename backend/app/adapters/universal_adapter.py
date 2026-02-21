@@ -570,9 +570,9 @@ class UniversalAdapter(PlatformAdapter):
                 stats={
                     "view_count": 0, "like_count": 0, "comment_count": 0, "share_count": 0
                 },
-                raw_metadata={
-                    "summary": meta.get("summary"),
-                    "publish_date": meta.get("publish_date"),
-                    "archive": archive
+                archive_metadata={
+                    "version": 2,
+                    "archive": archive,
+                    "meta": meta
                 }
             )
