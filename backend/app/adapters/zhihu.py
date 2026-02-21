@@ -344,10 +344,8 @@ class ZhihuAdapter(PlatformAdapter):
             cover_url=data.get('thumbnail') or (media_urls[0] if media_urls else None),
             media_urls=media_urls,
             published_at=published_at,
-            raw_metadata=raw_metadata, # Keep for compat
             archive_metadata=archive_metadata,
             stats=stats,
-            associated_question=associated_question, # Keep for compat
             context_data=context_data,
         )
 
@@ -411,7 +409,6 @@ class ZhihuAdapter(PlatformAdapter):
             cover_url=cover_url,
             media_urls=media_urls,
             published_at=published_at,
-            raw_metadata=raw_metadata,
             archive_metadata=archive_metadata,
             stats=stats
         )
@@ -466,7 +463,6 @@ class ZhihuAdapter(PlatformAdapter):
             cover_url=media_urls[0] if media_urls else None,
             media_urls=media_urls,
             published_at=published_at,
-            raw_metadata=raw_metadata,
             archive_metadata=archive_metadata,
             stats=stats
         )
@@ -512,8 +508,8 @@ class ZhihuAdapter(PlatformAdapter):
             cover_url=avatar_url,
             media_urls=[avatar_url] if avatar_url else [],
             published_at=datetime.now(),
-            raw_metadata=raw_metadata,
-            stats=stats
+            stats=stats,
+            archive_metadata={"raw_api_response": data}
         )
 
     def _build_column_from_api(self, data: Dict, url: str) -> ParsedContent:
@@ -557,8 +553,8 @@ class ZhihuAdapter(PlatformAdapter):
             cover_url=image_url,
             media_urls=[image_url] if image_url else [],
             published_at=published_at,
-            raw_metadata=raw_metadata,
-            stats=stats
+            stats=stats,
+            archive_metadata={"raw_api_response": data}
         )
 
     def _build_collection_from_api(self, data: Dict, url: str) -> ParsedContent:
@@ -604,8 +600,8 @@ class ZhihuAdapter(PlatformAdapter):
             cover_url=creator_avatar,
             media_urls=[],
             published_at=published_at,
-            raw_metadata=raw_metadata,
-            stats=stats
+            stats=stats,
+            archive_metadata={"raw_api_response": data}
         )
 
     def _build_archive(self, content_type: str, title: str, processed_html: str, 

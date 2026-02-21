@@ -178,10 +178,8 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
         cover_url=answer_data.get('thumbnail') or (media_urls[0] if media_urls else None),
         media_urls=media_urls,
         published_at=published_at,
-        raw_metadata=answer_data,
         archive_metadata=archive_metadata,
         stats=stats,
         layout_type=LAYOUT_ARTICLE,
-        associated_question=associated_question,
         context_data=context_data,
     )

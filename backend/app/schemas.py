@@ -24,7 +24,6 @@ class ContentPushPayload(BaseModel):
     title: Optional[str] = None
     platform: Optional[str] = None
     cover_url: Optional[str] = None
-    raw_metadata: Optional[Dict[str, Any]] = None
     canonical_url: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
     is_nsfw: bool = False
@@ -141,10 +140,6 @@ class ContentDetail(BaseModel):
     context_data: Optional[Dict[str, Any]] = None  # [Context Slot] 关联上下文
     rich_payload: Optional[Dict[str, Any]] = None  # [Rich Payload] 富媒体/交互组件块
 
-    # DEPRECATED: Use context_data / rich_payload instead
-    associated_question: Optional[Dict[str, Any]] = None  # 知乎回答关联的问题
-    top_answers: Optional[List[Dict[str, Any]]] = None  # 知乎问题的精选回答
-    
     # 时间
     created_at: datetime
     updated_at: datetime
