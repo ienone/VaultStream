@@ -1,8 +1,6 @@
 name: Multi-Platform Build
 
 on:
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -52,7 +50,6 @@ jobs:
           GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
 
       - name: Build Release APK
-        if: github.event_name != 'pull_request'
         run: |
           flutter build apk --release \
             --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL || 'http://localhost:8000' }} \
@@ -68,7 +65,6 @@ jobs:
           path: frontend/build/app/outputs/flutter-apk/app-debug.apk
 
       - name: Upload Release APK
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: vaultstream-android-release
