@@ -123,4 +123,10 @@ def transform_content_detail(content, base_url: str):
             lambda m: f"{base_url}/api/v1/media/{m.group(1)}", content.description
         )
 
+    # 清理 U+FFFD 替换字符，避免客户端 UTF-8 解码报错
+    if content.description:
+        content.description = content.description.replace('\ufffd', '')
+    if content.title:
+        content.title = content.title.replace('\ufffd', '')
+
     return content

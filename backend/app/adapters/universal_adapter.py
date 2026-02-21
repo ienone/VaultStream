@@ -24,6 +24,7 @@ from app.adapters.base import PlatformAdapter, ParsedContent, LAYOUT_ARTICLE, LA
 from app.adapters.errors import RetryableAdapterError
 from app.core.llm_factory import LLMFactory
 from app.core.crawler_config import get_delay_for_url_sync
+from app.utils.html_preprocess import preprocess_code_blocks
 
 
 # LLM 增强版结构化识别 Prompt - 同时识别正文、封面图、作者头像
@@ -234,10 +235,13 @@ class UniversalAdapter(PlatformAdapter):
         md_text = md_text.replace('&lt;', '<')
         md_text = md_text.replace('&gt;', '>')
         
-        # 8. 移除过多的连续空行
+        # 8. 移除 U+FFFD 替换字符（爬取时编码异常的残留）
+        md_text = md_text.replace('\ufffd', '')
+        
+        # 9. 移除过多的连续空行
         md_text = re.sub(r'\n{3,}', '\n\n', md_text)
         
-        # 9. 修复列表项之间的空行（保持列表连续性）
+        # 10. 修复列表项之间的空行（保持列表连续性）
         md_text = re.sub(r'(\n- [^\n]+)\n{2,}(- )', r'\1\n\2', md_text)
         md_text = re.sub(r'(\n\d+\. [^\n]+)\n{2,}(\d+\. )', r'\1\n\2', md_text)
         
@@ -463,7 +467,8 @@ class UniversalAdapter(PlatformAdapter):
                 target_node = soup.select_one(selector) if selector != "body" else None
                 if not target_node: target_node = soup.body
                 
-                local_md = self.md_generator.generate_markdown(str(target_node))
+                clean_html = preprocess_code_blocks(str(target_node))
+                local_md = self.md_generator.generate_markdown(clean_html)
                 description = local_md.raw_markdown if hasattr(local_md, 'raw_markdown') else str(local_md)
             except Exception as e:
                 logger.warning(f"UniversalAdapter: Local conversion failed: {e}")
