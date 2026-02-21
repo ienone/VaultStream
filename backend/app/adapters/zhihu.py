@@ -297,9 +297,14 @@ class ZhihuAdapter(PlatformAdapter):
             "url": f"https://www.zhihu.com/question/{question_id}" if question_id else None,
         }
         raw_metadata['stats'] = stats
-        raw_metadata['archive'] = self._build_archive("zhihu_answer", 
-            f"回答：{question_title}" if question_title else f"知乎回答 {answer_id}",
-            processed_html, markdown_content, media_urls, author.avatar_url)
+        # archive_metadata replaces this usage eventually
+        archive_metadata = {
+            "version": 2,
+            "raw_api_response": data,
+            "processed_archive": self._build_archive("zhihu_answer", 
+                f"回答：{question_title}" if question_title else f"知乎回答 {answer_id}",
+                processed_html, markdown_content, media_urls, author.avatar_url)
+        }
         
         # Phase 7: 提取 associated_question 到顶层字段
         associated_question = {
@@ -309,6 +314,19 @@ class ZhihuAdapter(PlatformAdapter):
             "visit_count": question_data.get('visit_count', 0),
             "answer_count": question_data.get('answer_count', 0),
             "follower_count": question_data.get('follower_count', 0),
+        }
+        
+        # V2: Context Data
+        context_data = {
+            "type": "question",
+            "title": question_title,
+            "url": f"https://www.zhihu.com/question/{question_id}" if question_id else None,
+            "id": str(question_id) if question_id else None,
+            "stats": {
+                "answer_count": question_data.get('answer_count', 0),
+                "follower_count": question_data.get('follower_count', 0),
+                "visit_count": question_data.get('visit_count', 0)
+            }
         }
         
         return ParsedContent(
@@ -326,9 +344,11 @@ class ZhihuAdapter(PlatformAdapter):
             cover_url=data.get('thumbnail') or (media_urls[0] if media_urls else None),
             media_urls=media_urls,
             published_at=published_at,
-            raw_metadata=raw_metadata,
+            raw_metadata=raw_metadata, # Keep for compat
+            archive_metadata=archive_metadata,
             stats=stats,
-            associated_question=associated_question,
+            associated_question=associated_question, # Keep for compat
+            context_data=context_data,
         )
 
     def _build_article_from_api(self, data: Dict, url: str) -> ParsedContent:
@@ -364,8 +384,13 @@ class ZhihuAdapter(PlatformAdapter):
         
         raw_metadata = dict(data)
         raw_metadata['stats'] = stats
-        raw_metadata['archive'] = self._build_archive("zhihu_article", title, 
-            processed_html, markdown_content, media_urls, author.avatar_url)
+        
+        archive_metadata = {
+            "version": 2,
+            "raw_api_response": data,
+            "processed_archive": self._build_archive("zhihu_article", title, 
+                processed_html, markdown_content, media_urls, author.avatar_url)
+        }
         
         cover_url = data.get('title_image') or data.get('image_url')
         if not cover_url and media_urls:
@@ -387,6 +412,7 @@ class ZhihuAdapter(PlatformAdapter):
             media_urls=media_urls,
             published_at=published_at,
             raw_metadata=raw_metadata,
+            archive_metadata=archive_metadata,
             stats=stats
         )
 
@@ -421,6 +447,11 @@ class ZhihuAdapter(PlatformAdapter):
         raw_metadata = dict(data)
         raw_metadata['stats'] = stats
         
+        archive_metadata = {
+            "version": 2,
+            "raw_api_response": data
+        }
+        
         return ParsedContent(
             platform="zhihu",
             content_type="question",
@@ -436,6 +467,7 @@ class ZhihuAdapter(PlatformAdapter):
             media_urls=media_urls,
             published_at=published_at,
             raw_metadata=raw_metadata,
+            archive_metadata=archive_metadata,
             stats=stats
         )
 

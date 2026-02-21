@@ -144,6 +144,26 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
         "like_count": question_data.get('voteupCount', 0) if isinstance(question_data, dict) else 0,
     }
 
+    # V2: Context Data
+    context_data = {
+        "type": "question",
+        "title": question_title,
+        "url": f"https://www.zhihu.com/question/{question_id}" if question_id else None,
+        "id": str(question_id) if question_id else None,
+        "stats": {
+            "answer_count": associated_question.get("answer_count"),
+            "follower_count": associated_question.get("follower_count"),
+            "visit_count": associated_question.get("visit_count")
+        }
+    }
+
+    # V2: Archive Metadata
+    archive_metadata = {
+        "version": 2,
+        "raw_entity_data": answer_data,
+        "processed_archive": answer_data.get('archive')
+    }
+
     return ParsedContent(
         platform="zhihu",
         content_type="answer",
@@ -159,7 +179,9 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
         media_urls=media_urls,
         published_at=published_at,
         raw_metadata=answer_data,
+        archive_metadata=archive_metadata,
         stats=stats,
         layout_type=LAYOUT_ARTICLE,
         associated_question=associated_question,
+        context_data=context_data,
     )

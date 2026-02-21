@@ -573,6 +573,10 @@ class UniversalAdapter(PlatformAdapter):
                 raw_metadata={
                     "summary": meta.get("summary"),
                     "publish_date": meta.get("publish_date"),
-                    "archive": archive
+                },
+                archive_metadata={
+                    "version": 2,
+                    "archive": archive,
+                    "meta": meta
                 }
             )
