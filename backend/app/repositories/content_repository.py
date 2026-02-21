@@ -80,10 +80,10 @@ class ContentRepository:
         count_stmt = select(func.count()).select_from(Content).where(and_(*conditions))
         total = (await self.db.execute(count_stmt)).scalar() or 0
 
-        # 分页查询（列表场景跳过加载 raw_metadata / last_error_detail 大字段）
+        # 分页查询（列表场景跳过加载 archive_metadata / last_error_detail 大字段）
         stmt = (
             select(Content)
-            .options(defer(Content.raw_metadata), defer(Content.last_error_detail))
+            .options(defer(Content.archive_metadata), defer(Content.last_error_detail))
             .where(and_(*conditions))
             .order_by(desc(Content.created_at))
             .offset((page - 1) * size)

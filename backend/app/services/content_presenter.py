@@ -4,7 +4,7 @@
 原则：ORM 模型只负责数据存储映射，展示/计算逻辑由本模块提供。
 """
 import re
-from typing import Optional
+from typing import Optional, Dict, Any
 from app.models import LayoutType, Platform
 
 
@@ -23,6 +23,27 @@ def compute_display_title(content, max_len: int = 60, fallback: str = "无标题
     return ensure_title(content.title, content.description, max_len=max_len, fallback=fallback)
 
 
+def _get_metadata_source(content) -> Dict[str, Any]:
+    """Helper to extract the actual metadata dict from archive_metadata"""
+    if not content.archive_metadata:
+        return {}
+    
+    am = content.archive_metadata
+    if not isinstance(am, dict):
+        return {}
+    
+    # 1. New V2 Zhihu
+    if "raw_api_response" in am:
+        return am["raw_api_response"]
+        
+    # 2. New V2 Universal
+    if "meta" in am:
+        return am.get("meta", {})
+        
+    # 3. Legacy migrated data (direct dict)
+    return am
+
+
 def compute_author_avatar_url(content) -> Optional[str]:
     """获取作者头像 URL，如果数据库字段为空则尝试从元数据中动态提取"""
     # 优先使用数据库中已存储的值
@@ -31,26 +52,27 @@ def compute_author_avatar_url(content) -> Optional[str]:
         return db_value
 
     try:
-        if not content.raw_metadata:
+        meta = _get_metadata_source(content)
+        if not meta:
             return None
 
-        # 从 raw_metadata 动态提取头像信息（各平台逻辑不同）
+        # 从 metadata 动态提取头像信息（各平台逻辑不同）
         if content.platform == Platform.WEIBO:
             if content.content_type == "user_profile":
-                return content.raw_metadata.get("avatar_hd")
-            return (content.raw_metadata.get("user", {}).get("avatar_hd") or
-                    content.raw_metadata.get("user", {}).get("profile_image_url"))
+                return meta.get("avatar_hd")
+            return (meta.get("user", {}).get("avatar_hd") or
+                    meta.get("user", {}).get("profile_image_url"))
 
         if content.platform == Platform.BILIBILI:
-            return (content.raw_metadata.get("author", {}).get("face") or
-                    content.raw_metadata.get("owner", {}).get("face"))
+            return (meta.get("author", {}).get("face") or
+                    meta.get("owner", {}).get("face"))
 
         if content.platform == Platform.TWITTER:
-            return content.raw_metadata.get("user", {}).get("profile_image_url_https")
+            return meta.get("user", {}).get("profile_image_url_https")
 
         if content.platform == Platform.ZHIHU:
-            return (content.raw_metadata.get("author", {}).get("avatarUrl") or
-                    content.raw_metadata.get("author", {}).get("avatar_url"))
+            return (meta.get("author", {}).get("avatarUrl") or
+                    meta.get("author", {}).get("avatar_url"))
     except Exception:
         pass
     return None
@@ -71,17 +93,28 @@ def transform_content_detail(content, base_url: str):
     if content.media_urls:
         content.media_urls = [transform_media_url(u, base_url) for u in content.media_urls if u]
 
-    if content.top_answers:
-        for ans in content.top_answers:
-            if ans.get("author_avatar_url"):
-                ans["author_avatar_url"] = transform_media_url(ans["author_avatar_url"], base_url)
-            if ans.get("cover_url"):
-                ans["cover_url"] = transform_media_url(ans["cover_url"], base_url)
+    # V2 Rich Payload (Blocks)
+    if content.rich_payload and "blocks" in content.rich_payload:
+        blocks = content.rich_payload["blocks"]
+        if isinstance(blocks, list):
+            for block in blocks:
+                if not isinstance(block, dict): continue
+                data = block.get("data")
+                if isinstance(data, dict):
+                    if data.get("cover_url"):
+                        data["cover_url"] = transform_media_url(data["cover_url"], base_url)
+                    if data.get("author_avatar_url"):
+                        data["author_avatar_url"] = transform_media_url(data["author_avatar_url"], base_url)
 
-    if content.associated_question:
-        if content.associated_question.get("cover_url"):
-            content.associated_question["cover_url"] = transform_media_url(
-                content.associated_question["cover_url"], base_url
+    # V2 Context Data
+    if content.context_data:
+        if content.context_data.get("cover_url"):
+            content.context_data["cover_url"] = transform_media_url(
+                content.context_data["cover_url"], base_url
+            )
+        if content.context_data.get("author_avatar_url"):
+            content.context_data["author_avatar_url"] = transform_media_url(
+                content.context_data["author_avatar_url"], base_url
             )
 
     if content.description and "local://" in content.description:
@@ -91,4 +124,3 @@ def transform_content_detail(content, base_url: str):
         )
 
     return content
-

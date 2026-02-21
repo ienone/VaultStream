@@ -105,10 +105,9 @@ async def parse_note(
         except (ValueError, TypeError):
             pass
     
-    # 将archive放入raw_metadata
-    raw_metadata = dict(note)
-    raw_metadata["archive"] = archive
-    raw_metadata["source_tags"] = source_tags
+    # 将archive放入archive_metadata
+    archive_metadata = dict(note)
+    archive_metadata["archive"] = archive
     
     raw_title = archive.get("title")
     description = archive.get("plain_text", "")
@@ -130,8 +129,9 @@ async def parse_note(
         cover_url=cover_url,
         media_urls=media_urls,
         published_at=published_at,
-        raw_metadata=raw_metadata,
-        stats=stats
+        archive_metadata=archive_metadata,
+        stats=stats,
+        source_tags=source_tags
     )
 
 

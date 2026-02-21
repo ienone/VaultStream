@@ -180,8 +180,8 @@ async def parse_user(
         "avatar": avatar,
     }
     
-    raw_metadata = dict(user) if isinstance(user, dict) else {"user": user}
-    raw_metadata["archive"] = archive
+    archive_metadata = dict(user) if isinstance(user, dict) else {"user": user}
+    archive_metadata["archive"] = archive
     
     return ParsedContent(
         platform='xiaohongshu',
@@ -197,6 +197,6 @@ async def parse_user(
         cover_url=avatar,
         media_urls=[avatar] if avatar else [],
         published_at=None,
-        raw_metadata=raw_metadata,
+        archive_metadata=archive_metadata,
         stats=stats,
     )
