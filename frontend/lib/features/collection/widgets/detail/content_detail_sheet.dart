@@ -136,8 +136,6 @@ class ContentDetailSheet extends ConsumerWidget {
                         apiBaseUrl: apiBaseUrl,
                         apiToken: apiToken,
                         headerKeys: const {},
-                        hideZhihuHeader: true, // SideInfoCard 已经处理了
-                        hideTopAnswers: true, // SideInfoCard 已经处理了
                       ),
 
                       const SizedBox(height: 24),

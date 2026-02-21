@@ -44,8 +44,6 @@ class ArticleLandscapeLayout extends StatelessWidget {
               apiBaseUrl: apiBaseUrl,
               apiToken: apiToken,
               headerKeys: headerKeys,
-              hideZhihuHeader: true,
-              hideTopAnswers: true,
               contentColor: contentColor,
             ),
           ),

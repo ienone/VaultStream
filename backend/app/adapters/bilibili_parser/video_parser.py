@@ -110,8 +110,8 @@ async def parse_video(
         }
         
         # 保留原始元数据并附加archive
-        raw_metadata = prune_metadata(dict(item))
-        raw_metadata['archive'] = archive
+        archive_metadata = prune_metadata(dict(item))
+        archive_metadata['archive'] = archive
         
         # 提取UP主信息
         owner = item.get('owner', {})
@@ -134,6 +134,6 @@ async def parse_video(
             cover_url=item.get('pic'),
             media_urls=[item.get('pic')] if item.get('pic') else [],
             published_at=datetime.fromtimestamp(item.get('pubdate')) if item.get('pubdate') else None,
-            raw_metadata=raw_metadata,
+            archive_metadata=archive_metadata,
             stats=stats
         )

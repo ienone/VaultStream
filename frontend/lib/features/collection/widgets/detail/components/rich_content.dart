@@ -26,9 +26,6 @@ class RichContent extends StatelessWidget {
     this.useHero = true,
     this.hideMedia = false,
     this.contentColor,
-    // Deprecated parameters kept for compatibility but ignored
-    bool hideZhihuHeader = false,
-    bool hideTopAnswers = false,
   });
 
   @override
@@ -49,12 +46,18 @@ class RichContent extends StatelessWidget {
           child: MarkdownBody(
             data: markdown,
             selectable: true,
-            onTapLink: (text, href, title) {
-              if (href != null) {
-                launchUrl(
-                  Uri.parse(href),
-                  mode: LaunchMode.externalApplication,
-                );
+            onTapLink: (text, href, title) async {
+              if (href == null) return;
+              try {
+                final uri = Uri.parse(href);
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(
+                    uri,
+                    mode: LaunchMode.externalApplication,
+                  );
+                }
+              } catch (_) {
+                // Ignore malformed/unsupported links to avoid crashing markdown taps.
               }
             },
             styleSheet: style,

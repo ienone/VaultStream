@@ -110,6 +110,6 @@ async def parse_bangumi(
             cover_url=item.get('cover'),
             media_urls=[item.get('cover')] if item.get('cover') else [],
             published_at=None,
-            raw_metadata=prune_metadata(dict(item)),
+            archive_metadata={"raw_api_response": prune_metadata(dict(item))},
             stats=stats
         )

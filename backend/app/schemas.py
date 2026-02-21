@@ -45,6 +45,7 @@ class ContentPushPayload(BaseModel):
     # New V2 fields
     context_data: Optional[Dict[str, Any]] = None
     rich_payload: Optional[Dict[str, Any]] = None
+    archive_metadata: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True

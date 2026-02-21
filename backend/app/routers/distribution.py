@@ -258,8 +258,15 @@ async def preview_distribution_rule(
             pending_review_count += 1
         
         thumbnail = content.cover_url
-        if not thumbnail and content.raw_metadata and isinstance(content.raw_metadata, dict):
-            media_list = content.raw_metadata.get("media") or content.raw_metadata.get("pics") or []
+        if not thumbnail and content.archive_metadata and isinstance(content.archive_metadata, dict):
+            archive = content.archive_metadata.get("archive")
+            if not isinstance(archive, dict):
+                archive = content.archive_metadata.get("processed_archive")
+            media_list = []
+            if isinstance(archive, dict):
+                media_list = archive.get("images") or []
+            if not media_list:
+                media_list = content.archive_metadata.get("media") or content.archive_metadata.get("pics") or []
             if media_list and isinstance(media_list, list) and len(media_list) > 0:
                 first_media = media_list[0]
                 if isinstance(first_media, dict):

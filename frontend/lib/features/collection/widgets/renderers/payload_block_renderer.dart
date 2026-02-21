@@ -12,15 +12,18 @@ class PayloadBlockRenderer extends StatelessWidget {
     final payload = content.richPayload;
     if (payload == null) return const SizedBox.shrink();
 
-    final blocks = payload['blocks'] as List<dynamic>?;
-    if (blocks == null || blocks.isEmpty) return const SizedBox.shrink();
+    final blocksRaw = payload['blocks'];
+    if (blocksRaw is! List || blocksRaw.isEmpty) return const SizedBox.shrink();
+    final List<dynamic> blocks = List<dynamic>.from(blocksRaw);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: blocks.map<Widget>((block) {
-        if (block is! Map<String, dynamic>) return const SizedBox.shrink();
-        final type = block['type'] as String?;
-        final data = block['data'] as Map<String, dynamic>?;
+        if (block is! Map) return const SizedBox.shrink();
+        final blockMap = Map<String, dynamic>.from(block);
+        final type = blockMap['type'] as String?;
+        final dataRaw = blockMap['data'];
+        final data = dataRaw is Map ? Map<String, dynamic>.from(dataRaw) : null;
 
         if (type == 'sub_item' && data != null) {
           return _buildSubItem(context, data);

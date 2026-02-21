@@ -15,7 +15,9 @@ class ContextCardRenderer extends StatelessWidget {
     final type = contextData['type'] as String?;
     final title = contextData['title'] as String?;
     final url = contextData['url'] as String?;
-    final stats = contextData['stats'] as Map<String, dynamic>?;
+    final statsRaw = contextData['stats'];
+    final Map<String, dynamic>? stats =
+        statsRaw is Map ? Map<String, dynamic>.from(statsRaw) : null;
 
     if (type == 'question') {
       return Card(

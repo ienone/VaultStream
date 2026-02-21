@@ -276,8 +276,8 @@ class TwitterAdapter(PlatformAdapter):
         if author_avatar_url:
             archive_images.append({"url": author_avatar_url, "type": "avatar"})
         
-        # 构建元数据
-        raw_metadata = {
+        # 构建归档元数据
+        archive_metadata = {
             "source": "fxtwitter_api",
             "api_version": "1.0",
             "tweet_id": tweet.get("id"),
@@ -354,5 +354,5 @@ class TwitterAdapter(PlatformAdapter):
             media_urls=media_urls,
             published_at=published_at,
             stats=stats,
-            raw_metadata=raw_metadata
+            archive_metadata=archive_metadata
         )

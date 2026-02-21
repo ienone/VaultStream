@@ -131,8 +131,8 @@ async def parse_article(
             archive["images"].append({"url": author_avatar_url, "type": "avatar"})
         
         # 保留原始元数据并附加archive
-        raw_metadata = dict(item)
-        raw_metadata['archive'] = archive
+        archive_metadata = dict(item)
+        archive_metadata['archive'] = archive
         
         # 提取作者信息
         author_mid = item.get('mid')
@@ -153,6 +153,6 @@ async def parse_article(
             cover_url=item.get('banner_url') or (image_urls[0] if image_urls else None),
             media_urls=image_urls,
             published_at=datetime.fromtimestamp(item.get('publish_time')) if item.get('publish_time') else None,
-            raw_metadata=raw_metadata,
+            archive_metadata=archive_metadata,
             stats=stats
         )

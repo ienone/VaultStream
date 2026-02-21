@@ -135,9 +135,9 @@ async def parse_weibo(
             except ValueError:
                 pass
 
-        # 将archive放入raw_metadata
-        raw_metadata = data
-        raw_metadata["archive"] = archive
+        # 将archive放入archive_metadata
+        archive_metadata = data
+        archive_metadata["archive"] = archive
 
         return ParsedContent(
             platform="weibo",
@@ -154,7 +154,7 @@ async def parse_weibo(
             cover_url=cover_url,
             media_urls=media_urls,
             published_at=published_at,
-            raw_metadata=raw_metadata,
+            archive_metadata=archive_metadata,
             stats={
                 "repost": reposts_count,
                 "reply": comments_count,
