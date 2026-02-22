@@ -10,12 +10,7 @@ from datetime import datetime
 
 from app.core.logging import logger
 from app.models import Content, ContentStatus, DistributionRule, ReviewStatus
-from app.distribution.decision import (
-    DECISION_FILTERED,
-    check_auto_approve_conditions,
-    check_match_conditions,
-    evaluate_target_decision,
-)
+from app.distribution.decision import check_match_conditions, check_auto_approve_conditions, DECISION_FILTERED
 
 
 class DistributionEngine:
@@ -44,17 +39,8 @@ class DistributionEngine:
 
     async def _check_match(self, content: Content, rule: DistributionRule) -> bool:
         """检查内容是否匹配规则条件。"""
-        match_decision = check_match_conditions(content, rule.match_conditions or {})
-        if match_decision.bucket == DECISION_FILTERED:
-            return False
-
-        nsfw_decision = evaluate_target_decision(
-            content=content,
-            rule=rule,
-            bot_chat=None,
-            require_approval=False,
-        )
-        return nsfw_decision.bucket != DECISION_FILTERED
+        decision = check_match_conditions(content, rule.match_conditions or {})
+        return decision.bucket != DECISION_FILTERED
 
     async def auto_approve_if_eligible(self, content: Content) -> bool:
         """如果符合规则标准，则自动批准内容。"""
