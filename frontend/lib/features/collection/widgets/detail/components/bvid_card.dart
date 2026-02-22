@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../../../core/constants/platform_constants.dart';
 import '../../../models/content.dart';
 
 class BvidCard extends StatelessWidget {
@@ -11,7 +12,7 @@ class BvidCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    if (detail.platformId == null || !detail.isBilibili) {
+    if (detail.platformId == null || !detail.platform.isBilibili) {
       return const SizedBox.shrink();
     }
     return Container(

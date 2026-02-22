@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../../core/utils/media_utils.dart' as media_utils;
+import '../../../core/constants/platform_constants.dart';
 import '../models/content.dart';
 import '../models/header_line.dart';
 
@@ -69,7 +70,7 @@ class ContentParser {
 
   static bool hasMarkdown(ContentDetail detail) {
     if (detail.isZhihuArticle || detail.isZhihuAnswer) return true;
-    return detail.isBilibili && (detail.description?.contains('![') ?? false);
+    return detail.platform.isBilibili && (detail.description?.contains('![') ?? false);
   }
 
   static String getMarkdownContent(ContentDetail detail) {

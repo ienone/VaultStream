@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../../../../../core/constants/platform_constants.dart';
 import '../../../models/content.dart';
 import '../../../utils/content_parser.dart';
 import '../components/author_header.dart';
@@ -32,7 +33,7 @@ class PortraitLayout extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
-    final bool isVideoLayout = detail.resolvedLayoutType == 'video';
+    final bool isVideoLayout = detail.layoutType == 'video';
     final mediaUrls = ContentParser.extractAllMedia(detail, apiBaseUrl);
 
     return SingleChildScrollView(
@@ -97,7 +98,7 @@ class PortraitLayout extends StatelessWidget {
                     if (detail.contextData != null) const SizedBox(height: 16),
                     AuthorHeader(detail: detail),
                     const SizedBox(height: 24),
-                    if (detail.resolvedLayoutType != 'gallery' &&
+                    if (detail.layoutType != 'gallery' &&
                         (detail.title != null && detail.title!.isNotEmpty))
                       Text(
                             detail.title ?? '无标题内容',
@@ -114,7 +115,7 @@ class PortraitLayout extends StatelessWidget {
                     const SizedBox(height: 24),
                     UnifiedStats(detail: detail, useContainer: false),
                     const SizedBox(height: 20),
-                    if (detail.isBilibili && detail.platformId != null)
+                    if (detail.platform.isBilibili && detail.platformId != null)
                       BvidCard(detail: detail),
                     const SizedBox(height: 20),
                     TagsSection(detail: detail),

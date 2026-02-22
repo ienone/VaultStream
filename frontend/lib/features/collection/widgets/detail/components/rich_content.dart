@@ -92,7 +92,7 @@ class RichContent extends StatelessWidget {
 
     bool showMediaGrid = false;
     // Generic media grid logic
-    if (detail.resolvedLayoutType == 'gallery' || detail.resolvedLayoutType == 'video') {
+    if (detail.layoutType == 'gallery' || detail.layoutType == 'video') {
       showMediaGrid = mediaUrls.isNotEmpty;
     } else {
       // For articles/questions, show media if no markdown body (fallback) or explicitly handled

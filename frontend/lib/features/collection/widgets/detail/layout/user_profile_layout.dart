@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:frontend/core/utils/media_utils.dart';
 import '../../../../../core/network/image_headers.dart';
+import '../../../../../core/constants/platform_constants.dart';
 import '../../../models/content.dart';
 import '../../../utils/content_parser.dart';
 import '../components/unified_stats.dart';
@@ -180,13 +181,13 @@ class UserProfileLayout extends StatelessWidget {
   void _launchAuthorProfile(ContentDetail detail) {
     if (detail.authorId != null && detail.authorId!.isNotEmpty) {
       String url;
-      if (detail.isZhihu) {
+      if (detail.platform.isZhihu) {
         url = "https://www.zhihu.com/people/${detail.authorId}";
-      } else if (detail.isBilibili) {
+      } else if (detail.platform.isBilibili) {
         url = "https://space.bilibili.com/${detail.authorId}";
-      } else if (detail.isTwitter) {
+      } else if (detail.platform.isTwitter) {
         url = "https://twitter.com/i/user/${detail.authorId}";
-      } else if (detail.isWeibo) {
+      } else if (detail.platform.isWeibo) {
         url = "https://weibo.com/u/${detail.authorId}";
       } else {
         return;

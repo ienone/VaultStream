@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:frontend/core/utils/media_utils.dart';
 import '../../../../../core/network/api_client.dart';
 import '../../../../../core/network/image_headers.dart';
+import '../../../../../core/constants/platform_constants.dart';
 import '../../../models/content.dart';
 import '../../../utils/content_parser.dart';
 
@@ -18,7 +19,7 @@ class AuthorHeader extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final bool isBilibili = detail.isBilibili;
+    final bool isBilibili = detail.platform.isBilibili;
 
     String? avatarUrl;
     if (detail.contentType == 'user_profile') {
@@ -152,15 +153,15 @@ class AuthorHeader extends ConsumerWidget {
     // 根据平台构造 URL
     if (detail.authorId != null && detail.authorId!.isNotEmpty) {
       String url;
-      if (detail.isZhihu) {
+      if (detail.platform.isZhihu) {
         url = "https://www.zhihu.com/people/${detail.authorId}";
-      } else if (detail.isBilibili) {
+      } else if (detail.platform.isBilibili) {
         url = "https://space.bilibili.com/${detail.authorId}";
-      } else if (detail.isTwitter) {
+      } else if (detail.platform.isTwitter) {
         url = "https://twitter.com/i/user/${detail.authorId}";
-      } else if (detail.isWeibo) {
+      } else if (detail.platform.isWeibo) {
         url = "https://weibo.com/u/${detail.authorId}";
-      } else if (detail.isXiaohongshu) {
+      } else if (detail.platform.isXiaohongshu) {
         url = "https://www.xiaohongshu.com/user/profile/${detail.authorId}";
       } else {
         return;

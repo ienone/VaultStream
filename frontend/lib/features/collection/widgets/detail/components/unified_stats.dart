@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/core/utils/media_utils.dart';
+import '../../../../../core/constants/platform_constants.dart';
 import '../../../models/content.dart';
 import 'unified_stat_item.dart';
 
@@ -18,10 +19,10 @@ class UnifiedStats extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final stats = detail.extraStats;
-    final bool isBilibili = detail.isBilibili;
-    final bool isWeibo = detail.platform.toLowerCase() == 'weibo';
-    final bool isZhihu = detail.isZhihu;
-    final bool isXiaohongshu = detail.isXiaohongshu;
+    final bool isBilibili = detail.platform.isBilibili;
+    final bool isWeibo = detail.platform.isWeibo;
+    final bool isZhihu = detail.platform.isZhihu;
+    final bool isXiaohongshu = detail.platform.isXiaohongshu;
     final bool isUserProfile = detail.contentType == 'user_profile';
     final bool isColumn = detail.contentType == 'column';
     final bool isCollection = detail.contentType == 'collection';

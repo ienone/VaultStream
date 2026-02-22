@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../../core/constants/platform_constants.dart';
 import 'models/content.dart';
 import 'providers/collection_provider.dart';
 import 'utils/content_parser.dart';
@@ -136,7 +137,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                 backgroundColor: Colors.transparent,
                 appBar: AppBar(
                   title: Text(
-                    detail.isTwitter ? '推文详情' : '内容详情',
+                    detail.platform.isTwitter ? '推文详情' : '内容详情',
                     style: customTheme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                       color: colorScheme.onSurface,
@@ -262,7 +263,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         }
         
         // 基于 layoutType 分发（内容驱动）
-        final layoutType = detail.resolvedLayoutType;
+        final layoutType = detail.layoutType;
         
         switch (layoutType) {
           case 'article':
@@ -282,7 +283,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           
           case 'video':
             // 视频布局 - 使用VideoLandscapeLayout（仅封面）
-            if (detail.isBilibili) {
+            if (detail.platform.isBilibili) {
               return VideoLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, onImageTap: (imgs, idx) => _showFullScreenImage(context, imgs, idx, apiBaseUrl, apiToken, detail.id));
             }
             // 其他平台视频暂时用Gallery布局

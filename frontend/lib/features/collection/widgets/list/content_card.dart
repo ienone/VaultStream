@@ -38,7 +38,7 @@ class ContentCard extends ConsumerWidget {
       baseUrl: apiBaseUrl,
       apiToken: apiToken,
     );
-    final layoutType = content.resolvedLayoutType;
+    final layoutType = content.layoutType;
     final isGallery = layoutType == 'gallery';
     final hasImage = imageUrl.isNotEmpty;
 
