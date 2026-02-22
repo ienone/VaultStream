@@ -1,3 +1,5 @@
+import 'package:frontend/features/collection/models/content.dart';
+
 /// 平台常量定义
 class PlatformConstants {
   PlatformConstants._();
@@ -26,4 +28,28 @@ class PlatformConstants {
   static String getName(String platform) {
     return platformNames[platform] ?? platform;
   }
+}
+
+/// 平台类型检查扩展
+extension PlatformCheck on String {
+  bool get isTwitter =>
+      toLowerCase() == 'twitter' || toLowerCase() == 'x';
+
+  bool get isBilibili => toLowerCase() == 'bilibili';
+
+  bool get isXiaohongshu => toLowerCase() == 'xiaohongshu';
+  
+  bool get isWeibo => toLowerCase() == 'weibo';
+  
+  bool get isZhihu => toLowerCase() == 'zhihu';
+}
+
+/// 内容类型扩展
+extension ContentTypeCheck on ContentDetail {
+  bool get isZhihuArticle => platform.isZhihu && contentType == 'article';
+  bool get isZhihuAnswer => platform.isZhihu && contentType == 'answer';
+  bool get isZhihuPin => platform.isZhihu && contentType == 'pin';
+  bool get isZhihuQuestion => platform.isZhihu && contentType == 'question';
+  bool get isZhihuColumn => platform.isZhihu && contentType == 'column';
+  bool get isZhihuCollection => platform.isZhihu && contentType == 'collection';
 }

@@ -13,7 +13,7 @@ abstract class ShareCard with _$ShareCard {
     required String url,
     @JsonKey(name: 'clean_url') String? cleanUrl,
     @JsonKey(name: 'content_type') String? contentType,
-    @JsonKey(name: 'effective_layout_type') String? effectiveLayoutType,
+    @JsonKey(name: 'effective_layout_type') String? layoutType,
     String? title,
     @JsonKey(name: 'author_name') String? authorName,
     @JsonKey(name: 'author_id') String? authorId,
@@ -29,23 +29,6 @@ abstract class ShareCard with _$ShareCard {
     @JsonKey(name: 'view_count') @Default(0) int viewCount,
     @JsonKey(name: 'like_count') @Default(0) int likeCount,
   }) = _ShareCard;
-
-  bool get isTwitter =>
-      platform.toLowerCase() == 'twitter' || platform.toLowerCase() == 'x';
-
-  bool get isBilibili => platform.toLowerCase() == 'bilibili';
-
-  bool get isXiaohongshu => platform.toLowerCase() == 'xiaohongshu';
-  bool get isWeibo => platform.toLowerCase() == 'weibo';
-  bool get isZhihu => platform.toLowerCase() == 'zhihu';
-
-  /// 获取有效布局类型：后端已计算
-  String get resolvedLayoutType {
-    if (effectiveLayoutType != null && effectiveLayoutType!.isNotEmpty) {
-      return effectiveLayoutType!;
-    }
-    return 'article';
-  }
 
   bool get isLandscapeCover {
     // ShareCard 使用统一横版卡片展示
@@ -65,9 +48,7 @@ abstract class ContentDetail with _$ContentDetail {
     required String platform,
     @JsonKey(name: 'platform_id') String? platformId,
     @JsonKey(name: 'content_type') String? contentType,
-    @JsonKey(name: 'layout_type') String? layoutType,
-    @JsonKey(name: 'layout_type_override') String? layoutTypeOverride,
-    @JsonKey(name: 'effective_layout_type') String? effectiveLayoutType,
+    @JsonKey(name: 'effective_layout_type') String? layoutType,
     required String url,
     @JsonKey(name: 'clean_url') String? cleanUrl,
     required String status,
@@ -98,34 +79,6 @@ abstract class ContentDetail with _$ContentDetail {
     @JsonKey(name: 'context_data') Map<String, dynamic>? contextData,
     @JsonKey(name: 'rich_payload') Map<String, dynamic>? richPayload,
   }) = _ContentDetail;
-
-  bool get isTwitter =>
-      platform.toLowerCase() == 'twitter' || platform.toLowerCase() == 'x';
-
-  bool get isBilibili => platform.toLowerCase() == 'bilibili';
-
-  bool get isXiaohongshu => platform.toLowerCase() == 'xiaohongshu';
-  bool get isWeibo => platform.toLowerCase() == 'weibo';
-  bool get isZhihu => platform.toLowerCase() == 'zhihu';
-
-  bool get isZhihuArticle => isZhihu && contentType == 'article';
-  bool get isZhihuAnswer => isZhihu && contentType == 'answer';
-  bool get isZhihuPin => isZhihu && contentType == 'pin';
-  bool get isZhihuQuestion => isZhihu && contentType == 'question';
-  bool get isZhihuColumn => isZhihu && contentType == 'column';
-  bool get isZhihuCollection => isZhihu && contentType == 'collection';
-
-  /// 获取有效布局类型：直接使用后端计算结果
-  String get resolvedLayoutType {
-    if (effectiveLayoutType != null && effectiveLayoutType!.isNotEmpty) {
-      return effectiveLayoutType!;
-    }
-    // Fallback if backend didn't provide it (should not happen with V2)
-    if (layoutTypeOverride != null && layoutTypeOverride!.isNotEmpty) {
-      return layoutTypeOverride!;
-    }
-    return layoutType ?? 'article';
-  }
 
   factory ContentDetail.fromJson(Map<String, dynamic> json) =>
       _$ContentDetailFromJson(json);
