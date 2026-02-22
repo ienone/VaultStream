@@ -8,7 +8,7 @@ import httpx
 from datetime import datetime
 from typing import Optional, Dict, Any
 from app.core.logging import logger
-from app.adapters.base import ParsedContent, LAYOUT_GALLERY
+from app.adapters.base import PlatformAdapter, ParsedContent, LAYOUT_GALLERY
 from app.adapters.errors import (
     AuthRequiredAdapterError,
     NonRetryableAdapterError,
@@ -101,28 +101,19 @@ async def parse_video(
         author_avatar_url = owner.get('face')
 
         # 构建存档结构（用于媒体存档）
-        archive = {
-            "version": 2,
-            "type": "bilibili_video",
-            "title": item.get('title', ''),
-            "plain_text": item.get('desc', ''),
-            "markdown": item.get('desc', ''),
-            "images": [{"url": item.get('pic')}] if item.get('pic') else [],
-            "videos": [],  # TODO: 支持视频下载
-            "links": [],
-            "stored_images": [],
-            "stored_videos": []
-        }
-        
-        # 添加头像（标记为type:avatar，避免被添加到media_urls）
-        if author_avatar_url:
-            archive["images"].append({"url": author_avatar_url, "type": "avatar"})
-        
-        # 保留原始元数据并附加archive
+        images = [{"url": item.get('pic')}] if item.get('pic') else []
+        archive_metadata = PlatformAdapter.build_standard_archive(
+            item=item,
+            archive_type="bilibili_video",
+            title=item.get('title', ''),
+            description=item.get('desc', ''),
+            images=images,
+            author_avatar_url=author_avatar_url
+        )
         
         # 构建ParsedContent
         # 视频当前只存封面不存视频，layout_type设为GALLERY
-        return ParsedContent(
+        return PlatformAdapter.create_parsed_content(
             platform='bilibili',
             content_type=BilibiliContentType.VIDEO.value,
             content_id=bvid or f"av{aid}",

@@ -446,7 +446,7 @@ class ContentParser:
             for img in stored_images:
                 # 排除头像和非内容相关的图片（如知乎精选回答的头像与配图）
                 img_type = img.get("type")
-                if img_type and img_type not in ("image", "gallery"):
+                if img_type and img_type not in ("image", "gallery", "cover"):
                     continue
                 if img.get("is_avatar"):
                     continue
@@ -459,17 +459,41 @@ class ContentParser:
             if local_urls:
                 unique_local_urls = list(dict.fromkeys(local_urls))
                 parsed.media_urls = unique_local_urls
-                parsed.cover_url = unique_local_urls[0]
+
+            # 构建原始URL到存储URL的映射
+            url_mapping = {}
+            for img in stored_images:
+                orig_url = img.get("orig_url") or img.get("url")
+                stored_url = f"local://{img['key']}" if img.get("key") else img.get("url")
+                if orig_url and stored_url:
+                    url_mapping[orig_url] = stored_url
+
+            # 同步更新封面
+            for img in stored_images:
+                stored_url = f"local://{img['key']}" if img.get("key") else img.get("url")
+                if stored_url and img.get("type") == "cover":
+                    parsed.cover_url = stored_url
+                    break
+            
+            # 如果没有明确的 cover_url，回退映射
+            if parsed.cover_url and not parsed.cover_url.startswith("local://"):
+                if parsed.cover_url in url_mapping:
+                    parsed.cover_url = url_mapping[parsed.cover_url]
+            # 如果依然为空，取 local_urls 第一张
+            if not parsed.cover_url and local_urls:
+                parsed.cover_url = local_urls[0]
 
             # 同步更新头像
             for img in stored_images:
-                if img.get("type") == "avatar" or img.get("is_avatar"):
-                    # 优先使用 local:// 协议，以便后端 API 统一替换为代理 URL
-                    if img.get("key"):
-                        parsed.author_avatar_url = f"local://{img['key']}"
-                    elif img.get("url"):
-                        parsed.author_avatar_url = img["url"]
+                stored_url = f"local://{img['key']}" if img.get("key") else img.get("url")
+                if stored_url and (img.get("type") == "avatar" or img.get("is_avatar")):
+                    parsed.author_avatar_url = stored_url
                     break
+            
+            # 如果没有明确的 avatar，回退映射
+            if parsed.author_avatar_url and not parsed.author_avatar_url.startswith("local://"):
+                if parsed.author_avatar_url in url_mapping:
+                    parsed.author_avatar_url = url_mapping[parsed.author_avatar_url]
             
             # 同步更新 rich_payload 子项中的头像和封面（如知乎问题精选回答）
             payload = getattr(parsed, "rich_payload", None)

@@ -598,12 +598,28 @@ Return:
 JSON:"""
 
 
-def _build_metadata_section(lines: list[str], blocks: list[dict]) -> str:
+def _build_metadata_section(lines: list[str], blocks: list[dict], dom_info: dict = None) -> str:
     """Extract and format metadata block texts for Layer 2."""
-    if not blocks:
+    sections = []
+    
+    if dom_info:
+        meta_lines = []
+        if dom_info.get("page_title"):
+            meta_lines.append(f"Page Title: {dom_info['page_title']}")
+        if dom_info.get("og_metadata"):
+            for k, v in dom_info["og_metadata"].items():
+                meta_lines.append(f"OG Meta {k}: {v}")
+        if dom_info.get("image_summary") and dom_info["image_summary"] != "(no images found)":
+            meta_lines.append(f"Important Images:\n{dom_info['image_summary']}")
+        
+        if meta_lines:
+            sections.append(
+                f"### Global Page Meta & Images (From full HTML)\n```\n" + "\n".join(meta_lines) + "\n```"
+            )
+
+    if not blocks and not sections:
         return "(no metadata blocks identified)"
 
-    sections = []
     for i, block in enumerate(blocks):
         start = block.get("start_line", 1) - 1
         end = block.get("end_line", 1)
@@ -642,6 +658,7 @@ async def layer2_extract(
     scan_result: dict,
     llm_config: dict,
     verbose: bool = True,
+    dom_info: dict = None,
 ) -> Tuple[dict, dict, list, list, list, str]:
     """
     Layer 2: Metadata extraction + content cleaning.
@@ -658,7 +675,7 @@ async def layer2_extract(
     blocks = scan_result.get("metadata_blocks", [])
 
     body_line_count = body_end - body_start + 1
-    metadata_section = _build_metadata_section(lines, blocks)
+    metadata_section = _build_metadata_section(lines, blocks, dom_info)
     
     # Token Optimization: Truncate middle of very long bodies for Layer 2 context
     # Layer 2 needs header/footer context for metadata, but not the full middle text.
@@ -816,6 +833,7 @@ async def process_content(
     llm_calls = 0
     selector = ""
     cover_url = ""
+    dom_info = {}
 
     if fetch_result.content_type == "markdown":
         # ═══ Markdown Path: skip DOM analysis + conversion ═══
@@ -856,7 +874,7 @@ async def process_content(
     # ═══ Layer 2: Extract + Clean ═══
     lines = markdown.split("\n")
     common_fields, extension_fields, tags, heading_fixes, body_removals, summary = (
-        await layer2_extract(lines, scan_result, llm_config, verbose)
+        await layer2_extract(lines, scan_result, llm_config, verbose, dom_info=dom_info)
     )
     llm_calls += 1
 

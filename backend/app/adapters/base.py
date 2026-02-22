@@ -84,3 +84,47 @@ class PlatformAdapter(ABC):
         """解析内容"""
         pass
 
+    @staticmethod
+    def build_standard_archive(
+        item: Dict[str, Any], 
+        archive_type: str, 
+        title: str = "", 
+        description: str = "", 
+        images: Optional[List[Dict[str, Any]]] = None,
+        author_avatar_url: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """工厂基类方法：构建标准化的 archive_metadata"""
+        import copy
+        images_list = copy.deepcopy(images) if images else []
+        
+        # 组装头像，过滤空数据
+        if author_avatar_url:
+            # 避免重复添加
+            if not any(img.get("type") == "avatar" and img.get("url") == author_avatar_url for img in images_list):
+                images_list.append({"url": author_avatar_url, "type": "avatar"})
+        
+        archive = {
+            "version": 2,
+            "type": archive_type,
+            "title": title,
+            "plain_text": description,
+            "markdown": description,
+            "images": images_list,
+            "videos": [],
+            "links": [],
+            "stored_images": [],
+            "stored_videos": []
+        }
+        
+        archive_metadata = copy.deepcopy(item) if isinstance(item, dict) else {"item": copy.deepcopy(item)}
+        archive_metadata["archive"] = archive
+        return archive_metadata
+
+    @staticmethod
+    def create_parsed_content(**kwargs) -> ParsedContent:
+        """工厂基类方法：创建 ParsedContent，自动处理空数据和一些标准化逻辑"""
+        # 确保 media_urls 中剔除了可能为空的 URL
+        if "media_urls" in kwargs and kwargs["media_urls"]:
+            kwargs["media_urls"] = [url for url in kwargs["media_urls"] if url]
+        return ParsedContent(**kwargs)
+

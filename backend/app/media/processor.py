@@ -308,8 +308,12 @@ async def store_archive_images_as_webp(
             orig_url = orig_url.strip()
             
             # URL编码：处理中文字符和空格等特殊字符
-            from urllib.parse import urlsplit, urlunsplit, quote
-            parts = urlsplit(orig_url)
+            from urllib.parse import urlsplit, urlunsplit, quote, unquote
+            
+            # 首先解码，防止已被错误编码的 URL 再次被编码
+            decoded_orig_url = unquote(orig_url)
+            
+            parts = urlsplit(decoded_orig_url)
             # 只编码路径部分，保留已编码的字符
             encoded_path = quote(parts.path, safe='/%')
             encoded_query = quote(parts.query, safe='=&%')
