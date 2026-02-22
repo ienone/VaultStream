@@ -35,6 +35,7 @@ loguru
 # 测试
 pytest
 pytest-asyncio
+python-dateutil
 
 # 图片转码（可选：用于导出/归档时将图片转为 WebP）
 Pillow
@@ -48,5 +49,6 @@ browser-use
 crawl4ai
 playwright
 langchain-openai
+openai
 langchain-anthropic
 nest_asyncio
