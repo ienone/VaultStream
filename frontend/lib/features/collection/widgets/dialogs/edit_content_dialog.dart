@@ -29,7 +29,7 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
     super.initState();
     _titleController = TextEditingController(text: widget.content.title);
     _descriptionController = TextEditingController(
-      text: widget.content.description,
+      text: widget.content.body,
     );
     _authorController = TextEditingController(text: widget.content.authorName);
     _tagsController = TextEditingController(
@@ -67,7 +67,7 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
         '/contents/${widget.content.id}',
         data: {
           'title': _titleController.text.trim(),
-          'description': _descriptionController.text.trim(),
+          'body': _descriptionController.text.trim(),
           'author_name': _authorController.text.trim(),
           'cover_url': _coverUrlController.text.trim(),
           'tags': tags,

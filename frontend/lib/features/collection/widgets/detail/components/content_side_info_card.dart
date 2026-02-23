@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:gap/gap.dart';
 import '../../../models/content.dart';
 import 'author_header.dart';
 import 'tags_section.dart';
 import 'unified_stats.dart';
+import 'summary_section.dart';
 import '../../renderers/context_card_renderer.dart';
 import '../../renderers/payload_block_renderer.dart';
 
@@ -60,7 +62,11 @@ class ContentSideInfoCard extends StatelessWidget {
         // 3. 统计数据
         UnifiedStats(detail: detail, useContainer: false),
 
-        // 4. 标签
+        // 4. 摘要区域
+        const Gap(16),
+        SummarySection(detail: detail),
+
+        // 5. 标签
         if (detail.tags.isNotEmpty || detail.sourceTags.isNotEmpty) ...[
           const SizedBox(height: 24),
           const Divider(height: 1),
@@ -68,10 +74,10 @@ class ContentSideInfoCard extends StatelessWidget {
           TagsSection(detail: detail),
         ],
 
-        // 5. 正文内容（如开启）
+        // 6. 正文内容（如开启）
         if (showDescription &&
-            detail.description != null &&
-            detail.description!.isNotEmpty) ...[
+            detail.body != null &&
+            detail.body!.isNotEmpty) ...[
           const SizedBox(height: 24),
           const Divider(height: 1),
           const SizedBox(height: 24),
@@ -83,7 +89,7 @@ class ContentSideInfoCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              detail.description!,
+              detail.body!,
               style: theme.textTheme.bodyLarge?.copyWith(
                 height: 1.8,
                 fontSize: 16,
@@ -92,14 +98,15 @@ class ContentSideInfoCard extends StatelessWidget {
           ),
         ],
 
-        // 6. 富媒体负载 (Rich Payload) - e.g. Top Answers
+        // 7. 富媒体负载 (Rich Payload) - e.g. Top Answers
         const SizedBox(height: 24),
         PayloadBlockRenderer(content: detail),
       ],
     );
 
     if (!useContainer) {
-      return Padding(padding: padding ?? EdgeInsets.zero, child: content);
+      return Padding(
+          padding: padding ?? EdgeInsets.zero, child: content);
     }
 
     return Container(

@@ -1,10 +1,12 @@
 // ignore_for_file: use_build_context_synchronously
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/constants/platform_constants.dart';
+import '../../core/network/sse_service.dart';
 import 'models/content.dart';
 import 'providers/collection_provider.dart';
 import 'utils/content_parser.dart';
@@ -18,6 +20,7 @@ import 'widgets/dialogs/edit_content_dialog.dart';
 import '../../theme/app_theme.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/dynamic_color_helper.dart';
+import '../settings/providers/settings_provider.dart';
 
 class ContentDetailPage extends ConsumerStatefulWidget {
   final int contentId;
@@ -40,12 +43,34 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   final Map<String, GlobalKey> _headerKeys = {};
   String? _activeHeader;
   Color? _contentColor;
+  bool _isGeneratingSummary = false;
+  StreamSubscription<SseEvent>? _sseSub;
 
   @override
   void initState() {
     super.initState();
     _imagePageController = PageController();
     _contentScrollController.addListener(_onScroll);
+    _bindRealtimeEvents();
+  }
+
+  void _bindRealtimeEvents() {
+    ref.read(sseServiceProvider.notifier);
+    _sseSub?.cancel();
+    _sseSub = SseEventBus().eventStream.listen((event) {
+      if (!mounted) return;
+
+      if (event.type == 'content_updated') {
+        final data = event.data;
+        if (data['id'] == widget.contentId) {
+          ref.invalidate(contentDetailProvider(widget.contentId));
+          // 如果正在生成摘要，收到更新事件说明生成已完成
+          if (_isGeneratingSummary) {
+            setState(() => _isGeneratingSummary = false);
+          }
+        }
+      }
+    });
   }
 
   DateTime _lastScrollCheck = DateTime.now();
@@ -83,6 +108,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
   @override
   void dispose() {
+    _sseSub?.cancel();
     _contentScrollController.removeListener(_onScroll);
     _imagePageController.dispose();
     _contentScrollController.dispose();
@@ -180,8 +206,29 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   }
 
   Widget _buildActionButtons(ContentDetail detail, ColorScheme colorScheme) {
+    final settingsAsync = ref.watch(systemSettingsProvider);
+    final bool summaryEnabled = settingsAsync.when(
+      data: (settings) => settings.any((s) => s.key == 'enable_auto_summary' && s.value == true),
+      loading: () => false,
+      error: (_, _) => false,
+    );
+
     return Row(
       children: [
+        if (summaryEnabled) ...[
+          IconButton.filledTonal(
+            tooltip: detail.summary == null || detail.summary!.isEmpty ? '生成摘要' : '更新摘要',
+            icon: _isGeneratingSummary
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.auto_awesome_rounded, size: 20),
+            onPressed: _isGeneratingSummary ? null : () => _generateSummary(detail.id),
+          ),
+          const SizedBox(width: 8),
+        ],
         IconButton.filledTonal(
           tooltip: '重新解析',
           icon: const Icon(Icons.refresh_rounded, size: 20),
@@ -339,6 +386,25 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       ref.invalidate(contentDetailProvider(contentId));
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('请求失败: $e')));
+    }
+  }
+
+  Future<void> _generateSummary(int contentId) async {
+    setState(() => _isGeneratingSummary = true);
+    try {
+      await ref.read(apiClientProvider).post('/contents/$contentId/generate-summary', queryParameters: {'force': true});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('摘要已更新')));
+      }
+      ref.invalidate(contentDetailProvider(contentId));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('摘要生成失败: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isGeneratingSummary = false);
+      }
     }
   }
 

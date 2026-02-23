@@ -7,6 +7,7 @@ import '../../../../../core/constants/platform_constants.dart';
 import '../../../models/content.dart';
 import '../../../utils/content_parser.dart';
 import '../components/unified_stats.dart';
+import '../components/summary_section.dart';
 
 class UserProfileLayout extends StatelessWidget {
   final ContentDetail detail;
@@ -152,12 +153,14 @@ class UserProfileLayout extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 40),
-                    if (detail.description != null &&
-                        detail.description!.isNotEmpty)
+                    SummarySection(detail: detail),
+                    const SizedBox(height: 40),
+                    if (detail.body != null &&
+                        detail.body!.isNotEmpty)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                         child: Text(
-                          detail.description!,
+                          detail.body!,
                           style: theme.textTheme.headlineSmall?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                             height: 1.6,

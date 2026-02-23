@@ -9,6 +9,7 @@ import '../components/rich_content.dart';
 import '../components/tags_section.dart';
 import '../components/unified_stats.dart';
 import '../components/media_gallery_item.dart';
+import '../components/summary_section.dart';
 import '../../renderers/context_card_renderer.dart';
 import '../../renderers/payload_block_renderer.dart';
 
@@ -114,6 +115,8 @@ class PortraitLayout extends StatelessWidget {
                           .slideX(begin: -0.05, end: 0),
                     const SizedBox(height: 24),
                     UnifiedStats(detail: detail, useContainer: false),
+                    const SizedBox(height: 24),
+                    SummarySection(detail: detail),
                     const SizedBox(height: 20),
                     if (detail.platform.isBilibili && detail.platformId != null)
                       BvidCard(detail: detail),

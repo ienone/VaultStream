@@ -7,6 +7,7 @@ import '../components/author_header.dart';
 import '../components/bvid_card.dart';
 import '../components/tags_section.dart';
 import '../components/unified_stats.dart';
+import '../components/summary_section.dart';
 
 class VideoLandscapeLayout extends StatelessWidget {
   final ContentDetail detail;
@@ -131,6 +132,8 @@ class VideoLandscapeLayout extends StatelessWidget {
                       const SizedBox(height: 20),
                       UnifiedStats(detail: detail, useContainer: false), // Use internal layout
                       const SizedBox(height: 16),
+                      SummarySection(detail: detail),
+                      const SizedBox(height: 16),
                       if (detail.platformId != null) BvidCard(detail: detail),
                       const SizedBox(height: 20),
                       TagsSection(detail: detail),
@@ -141,9 +144,9 @@ class VideoLandscapeLayout extends StatelessWidget {
                 const SizedBox(height: 24),
                 
                 // Bottom: Description (Scrollable)
-                if (detail.description != null &&
-                    detail.description!.isNotEmpty &&
-                    detail.description != '-')
+                if (detail.body != null &&
+                    detail.body!.isNotEmpty &&
+                    detail.body != '-')
                   Expanded(
                     child: Container(
                       padding: const EdgeInsets.all(24),
@@ -178,7 +181,7 @@ class VideoLandscapeLayout extends StatelessWidget {
                           Expanded(
                             child: SingleChildScrollView(
                               child: Text(
-                                detail.description!,
+                                detail.body!,
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   height: 1.6,
                                   fontSize: 15,

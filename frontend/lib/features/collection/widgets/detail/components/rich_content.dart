@@ -71,7 +71,7 @@ class RichContent extends StatelessWidget {
         ),
       );
     } else {
-      if (detail.description != null && detail.description!.isNotEmpty) {
+      if (detail.body != null && detail.body!.isNotEmpty) {
         children.add(
           Container(
             width: double.infinity,
@@ -81,7 +81,7 @@ class RichContent extends StatelessWidget {
               borderRadius: BorderRadius.circular(24),
             ),
             child: Text(
-              detail.description!,
+              detail.body!,
               style: theme.textTheme.bodyLarge?.copyWith(height: 1.6),
             ),
           ),
@@ -168,8 +168,8 @@ class RichContent extends StatelessWidget {
   }
 
   String _getMarkdownContent(ContentDetail detail) {
-    // 直接使用 description 字段（后端已经在 archive.markdown 中填充）
-    return detail.description ?? '';
+    // 直接使用 body 字段（后端已经在 archive.markdown 中填充）
+    return detail.body ?? '';
   }
 
   static final Map<String, String> _markdownCache = {};

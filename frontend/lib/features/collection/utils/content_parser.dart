@@ -70,11 +70,11 @@ class ContentParser {
 
   static bool hasMarkdown(ContentDetail detail) {
     if (detail.isZhihuArticle || detail.isZhihuAnswer) return true;
-    return detail.platform.isBilibili && (detail.description?.contains('![') ?? false);
+    return detail.platform.isBilibili && (detail.body?.contains('![') ?? false);
   }
 
   static String getMarkdownContent(ContentDetail detail) {
-    return detail.description ?? '';
+    return detail.body ?? '';
   }
 
   static List<HeaderLine> extractHeaders(String markdown) {
