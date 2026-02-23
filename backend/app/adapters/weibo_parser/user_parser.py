@@ -166,7 +166,7 @@ async def parse_user(uid: str, url: str, headers: Dict[str, str], cookies: Dict[
         clean_url=url,
         layout_type=LAYOUT_GALLERY,  # 用户主页展示头像等，归类为Gallery
         title=f"微博博主: {user_info.get('nick_name', uid)}",
-        description=user_info.get('description', ''),
+        body=user_info.get('description', ''),
         author_name=user_info.get('nick_name', ''),
         author_id=uid,
         author_avatar_url=author_avatar_url,

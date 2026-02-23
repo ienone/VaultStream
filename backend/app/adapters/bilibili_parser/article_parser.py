@@ -145,7 +145,7 @@ async def parse_article(
             clean_url=url,
             layout_type=LAYOUT_ARTICLE,
             title=item.get('title'),
-            description=markdown_content,
+            body=markdown_content,
             author_name=item.get('author_name'),
             author_id=str(author_mid) if author_mid else None,
             author_avatar_url=author_avatar_url,

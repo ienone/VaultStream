@@ -146,7 +146,7 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
         content_id=str(answer_id),
         clean_url=url,
         title=f"回答：{question_title}" if question_title else f"知乎回答 {answer_id}",
-        description=full_description,
+        body=full_description,
         author_name=author.name,
         author_id=author.url_token or str(author.id),
         author_avatar_url=author.avatar_url,

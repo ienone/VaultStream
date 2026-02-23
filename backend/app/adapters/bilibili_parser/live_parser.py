@@ -121,7 +121,7 @@ async def parse_live(
             clean_url=url,
             layout_type=LAYOUT_GALLERY,
             title=room_info.get('title'),
-            description=room_info.get('description'),
+            body=room_info.get('description'),
             author_name=room_info.get('uname'),
             author_id=str(author_uid) if author_uid else None,
             author_avatar_url=room_info.get('face'),

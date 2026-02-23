@@ -194,7 +194,7 @@ async def parse_user(
         clean_url=url,
         layout_type=LAYOUT_GALLERY,  # 用户主页为Gallery布局
         title=nickname or "小红书用户",
-        description=desc,
+        body=desc,
         author_name=nickname,
         author_id=user_id,
         author_avatar_url=avatar,

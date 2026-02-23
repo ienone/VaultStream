@@ -121,7 +121,7 @@ async def parse_note(
         clean_url=url,
         layout_type=LAYOUT_GALLERY,  # 小红书笔记默认为Gallery布局
         title=title,
-        description=description,
+        body=description,
         author_name=author_name or "未知用户",
         author_id=str(author_id) if author_id else None,
         author_avatar_url=author_avatar,

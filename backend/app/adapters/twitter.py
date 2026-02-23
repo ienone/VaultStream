@@ -148,7 +148,8 @@ class TwitterAdapter(PlatformAdapter):
         
         try:
             # 创建 HTTP 客户端（使用代理如果配置了）
-            proxy = settings.http_proxy or settings.https_proxy
+            from app.services.settings_service import get_setting_value
+            proxy = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
             timeout = httpx.Timeout(30.0, read=60.0)
             
             # 设置请求头（模拟浏览器避免被拦截）
@@ -345,7 +346,7 @@ class TwitterAdapter(PlatformAdapter):
             clean_url=original_url,
             layout_type=LAYOUT_GALLERY,  # Twitter推文默认为Gallery布局
             title=generate_title_from_text(text, max_len=60, fallback=f"@{screen_name or 'unknown'} 的推文"),
-            description=text,
+            body=text,
             author_name=author.get('name'),
             author_id=screen_name,  # 使用 screen_name 作为 author_id
             author_avatar_url=author.get('avatar_url'),  # 添加作者头像URL

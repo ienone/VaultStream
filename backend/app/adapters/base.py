@@ -26,7 +26,7 @@ class ParsedContent:
     layout_type: LayoutTypeStr  # 布局类型 - 必填
     
     title: Optional[str] = None
-    description: Optional[str] = None
+    body: Optional[str] = None
     author_name: Optional[str] = None
     author_id: Optional[str] = None
     author_avatar_url: Optional[str] = None

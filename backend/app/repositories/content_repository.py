@@ -68,7 +68,7 @@ class ContentRepository:
 
             like_cond = or_(
                 Content.title.ilike(f"%{q}%"),
-                Content.description.ilike(f"%{q}%"),
+                Content.body.ilike(f"%{q}%"),
                 Content.author_name.ilike(f"%{q}%")
             )
             if fts_ids:

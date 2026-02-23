@@ -40,18 +40,28 @@ class VaultStreamBot:
         self.channel_id: str | None = None
         self.bot_config_id: int | None = None
         
-        # 解析权限配置
-        self.admin_ids = self._parse_ids(settings.telegram_admin_ids)
-        self.whitelist_ids = self._parse_ids(settings.telegram_whitelist_ids)
-        self.blacklist_ids = self._parse_ids(settings.telegram_blacklist_ids)
+        self.admin_ids = []
+        self.whitelist_ids = []
+        self.blacklist_ids = []
+        
+        from app.bot.permissions import PermissionManager
+        self.permission_manager = PermissionManager([], [], [])
+
+    async def _load_runtime_config(self) -> bool:
+        from app.services.settings_service import get_setting_value
+        admin_ids = await get_setting_value("telegram_admin_ids", settings.telegram_admin_ids)
+        whitelist_ids = await get_setting_value("telegram_whitelist_ids", settings.telegram_whitelist_ids)
+        blacklist_ids = await get_setting_value("telegram_blacklist_ids", settings.telegram_blacklist_ids)
+        
+        self.admin_ids = self._parse_ids(admin_ids)
+        self.whitelist_ids = self._parse_ids(whitelist_ids)
+        self.blacklist_ids = self._parse_ids(blacklist_ids)
         
         self.permission_manager = PermissionManager(
             self.admin_ids, self.whitelist_ids, self.blacklist_ids
         )
-        
         logger.info(f"Bot 权限配置: admins={len(self.admin_ids)}, whitelist={len(self.whitelist_ids)}, blacklist={len(self.blacklist_ids)}")
-
-    async def _load_runtime_config(self) -> bool:
+        
         async with AsyncSessionLocal() as db:
             cfg, default_chat_id = await get_primary_telegram_runtime(db)
             if not cfg or not cfg.bot_token:

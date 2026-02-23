@@ -82,16 +82,16 @@ def generate_title_from_text(
 
 def ensure_title(
     title: Optional[str],
-    description: Optional[str],
+    body: Optional[str],
     max_len: int = 60,
     fallback: str = "无标题"
 ) -> str:
     """
-    确保返回一个有效的标题：优先使用 title，否则从 description 生成
+    确保返回一个有效的标题：优先使用 title，否则从 body 生成
     
     Args:
         title: 原始标题（可能为空）
-        description: 正文内容
+        body: 正文内容
         max_len: 从正文生成标题时的最大长度
         fallback: 都无法生成时的回退值
     
@@ -111,7 +111,7 @@ def ensure_title(
         return title.strip()
     
     # 从正文生成
-    generated = generate_title_from_text(description, max_len=max_len)
+    generated = generate_title_from_text(body, max_len=max_len)
     if generated:
         return generated
     

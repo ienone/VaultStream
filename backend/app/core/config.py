@@ -67,6 +67,16 @@ class Settings(BaseSettings):
     # Twitter/X 配置
     # FxTwitter API 无需凭证
 
+    # LLM 配置 (Text)
+    text_llm_api_key: Optional[SecretStr] = None
+    text_llm_base_url: Optional[str] = None
+    text_llm_model: str = "deepseek-chat"
+
+    # LLM 配置 (Vision)
+    vision_llm_api_key: Optional[SecretStr] = None
+    vision_llm_base_url: Optional[str] = None
+    vision_llm_model: str = "qwen-vl-max"
+
     # 存储后端配置
     storage_backend: Literal["local", "s3"] = "local"
     storage_public_base_url: Optional[str] = None
@@ -81,6 +91,9 @@ class Settings(BaseSettings):
     # 事件总线
     enable_event_outbox_polling: bool = False  # 单实例部署时可关闭 outbox 轮询
     max_sse_subscribers: int = 100  # SSE 最大连接数上限
+
+    # 摘要生成
+    enable_auto_summary: bool = False
 
     # 媒体处理
     enable_archive_media_processing: bool = True

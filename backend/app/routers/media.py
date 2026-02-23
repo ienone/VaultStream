@@ -95,7 +95,8 @@ async def proxy_image(
     logger.info(f"图片代理缓存未命中，开始下载: {url}")
     
     headers = _request_headers_for_url(url)
-    proxy = settings.http_proxy or settings.https_proxy
+    from app.services.settings_service import get_setting_value
+    proxy = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
     
     try:
         async with httpx.AsyncClient(proxy=proxy, timeout=httpx.Timeout(10.0, connect=5.0)) as client:

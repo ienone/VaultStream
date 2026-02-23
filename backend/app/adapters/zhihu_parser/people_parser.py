@@ -77,7 +77,7 @@ def parse_people(html_content: str, url: str) -> Optional[ParsedContent]:
         content_id=str(user_data.get('id', url_token)),
         clean_url=url,
         title=f"{name} 的知乎主页",
-        description=description,
+        body=description,
         author_name=name,
         author_id=url_token,
         author_avatar_url=avatar_url,

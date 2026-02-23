@@ -18,6 +18,7 @@ from typing import Any, Optional
 import httpx
 
 from app.core.logging import logger
+from app.core.config import settings
 from app.core.storage import LocalStorageBackend
 
 
@@ -246,8 +247,8 @@ async def extract_cover_color(url: str, timeout_seconds: float = 10.0) -> Option
     if not url:
         return None
     
-    from app.core.config import settings
-    proxy = settings.http_proxy if hasattr(settings, 'http_proxy') and settings.http_proxy else None
+    from app.services.settings_service import get_setting_value
+    proxy = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
     
     headers = _request_headers_for_url(url)
     try:
@@ -293,8 +294,8 @@ async def store_archive_images_as_webp(
     count = 0
     
     # 配置代理（如 Twitter 图片需要代理）
-    from app.core.config import settings
-    proxy = settings.http_proxy if hasattr(settings, 'http_proxy') and settings.http_proxy else None
+    from app.services.settings_service import get_setting_value
+    proxy = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
     
     async with httpx.AsyncClient(proxy=proxy, timeout=timeout_seconds, follow_redirects=True) as client:
         for img in images:
@@ -473,8 +474,8 @@ async def store_archive_videos(
     count = 0
     
     # 配置代理（如 Twitter 视频需要代理）
-    from app.core.config import settings
-    proxy = settings.http_proxy if hasattr(settings, 'http_proxy') and settings.http_proxy else None
+    from app.services.settings_service import get_setting_value
+    proxy = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
     
     async with httpx.AsyncClient(proxy=proxy, timeout=timeout_seconds, follow_redirects=True) as client:
         for vid in videos:

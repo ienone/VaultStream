@@ -91,7 +91,7 @@ def _apply_template(text: str, content: Dict[str, Any]) -> str:
     if not text:
         return ""
     date_value = datetime.utcnow().strftime("%Y-%m-%d")
-    title_value = str(content.get("title") or content.get("description") or "")
+    title_value = str(content.get("title") or content.get("body") or "")
     return text.replace("{{date}}", date_value).replace("{{title}}", title_value)
 
 
@@ -127,7 +127,7 @@ def format_content_with_render_config(
         lines.append(f"平台：{escape(str(label))}")
 
     if config.get("show_title"):
-        title = str(content_dict.get("title") or content_dict.get("description") or "")
+        title = str(content_dict.get("title") or content_dict.get("body") or "")
         if title:
             title_text = escape(title)
             if rich_text:
@@ -146,7 +146,7 @@ def format_content_with_render_config(
 
     content_mode = config.get("content_mode", "summary")
     if content_mode and content_mode != "hidden":
-        desc = content_dict.get("summary") or content_dict.get("description") or ""
+        desc = content_dict.get("summary") or content_dict.get("body") or ""
         if desc:
             if content_mode == "summary" and len(desc) > 200:
                 desc = desc[:200] + "..."
@@ -258,7 +258,7 @@ def _format_twitter_message(content: dict) -> str:
         lines.append(" | ".join(stats_parts))
     
     # 正文内容
-    desc = content.get('summary') or content.get('description', '')
+    desc = content.get('summary') or content.get('body', '')
     if desc:
         clean_desc = html.escape(desc[:500] + "..." if len(desc) > 500 else desc)
         lines.append(f"\n{clean_desc}")
@@ -348,8 +348,8 @@ def _format_bilibili_message(content: dict) -> str:
     # 移除空行
     lines = [line for line in lines if line]
     
-    # ShareCard 优先使用 summary，若为空则使用 description
-    desc = content.get('summary') or content.get('description', '')
+    # ShareCard 优先使用 summary，若为空则使用 body
+    desc = content.get('summary') or content.get('body', '')
     if desc:
         clean_desc = html.escape(desc[:300] + "..." if len(desc) > 300 else desc)
         lines.append(f"\n简介：\n{clean_desc}")
@@ -390,8 +390,8 @@ def _format_default_message(content: dict) -> str:
     if stats:
         text_parts.append(" | ".join(stats))
 
-    if content.get('description'):
-        desc = content['description']
+    if content.get('body'):
+        desc = content['body']
         clean_desc = html.escape(desc[:200] + "..." if len(desc) > 200 else desc)
         text_parts.append(f"\n{clean_desc}")
         

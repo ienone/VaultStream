@@ -27,7 +27,8 @@ class ContentPushPayload(BaseModel):
     canonical_url: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
     is_nsfw: bool = False
-    description: Optional[str] = None
+    body: Optional[str] = None
+    summary: Optional[str] = None
     author_name: Optional[str] = None
     author_id: Optional[str] = None
     published_at: Optional[datetime] = None
@@ -122,7 +123,8 @@ class ContentDetail(BaseModel):
 
     # 通用字段
     title: Optional[str] # 内容标题
-    description: Optional[str] # 内容描述
+    body: Optional[str] # 正文（Markdown/纯文本）
+    summary: Optional[str] = None # 摘要（LLM生成或截取）
     author_name: Optional[str] # 作者名称
     author_id: Optional[str] # 作者平台ID
     author_avatar_url: Optional[str] = None # 作者头像URL
@@ -258,7 +260,8 @@ class ContentUpdate(BaseModel):
     """内容修改请求"""
     tags: Optional[List[str]] = None
     title: Optional[str] = None
-    description: Optional[str] = None
+    body: Optional[str] = None
+    summary: Optional[str] = None
     author_name: Optional[str] = None
     cover_url: Optional[str] = None
     is_nsfw: Optional[bool] = None

@@ -198,7 +198,7 @@ def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
         content_id=str(question_id),
         clean_url=url,
         title=question_data.get('title'),
-        description=full_description,
+        body=full_description,
         author_name=author.name,
         author_id=author.url_token or str(author.id),
         author_url=f"https://www.zhihu.com/people/{author.url_token}" if author.url_token else None,

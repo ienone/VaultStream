@@ -146,7 +146,7 @@ async def parse_weibo(
             clean_url=url,
             layout_type=LAYOUT_GALLERY,  # 微博默认为Gallery布局
             title=title[:100], 
-            description=description,
+            body=description,
             author_name=author_name,
             author_id=author_id,
             author_avatar_url=author_avatar_url,

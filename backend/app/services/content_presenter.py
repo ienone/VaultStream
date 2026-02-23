@@ -18,9 +18,9 @@ def compute_effective_layout_type(content) -> Optional[str]:
 
 
 def compute_display_title(content, max_len: int = 60, fallback: str = "无标题") -> str:
-    """获取显示用标题：优先使用 title，否则从 description 生成"""
+    """获取显示用标题：优先使用 title，否则从 body 生成"""
     from app.adapters.utils import ensure_title
-    return ensure_title(content.title, content.description, max_len=max_len, fallback=fallback)
+    return ensure_title(content.title, content.body, max_len=max_len, fallback=fallback)
 
 
 def _get_metadata_source(content) -> Dict[str, Any]:
@@ -117,15 +117,20 @@ def transform_content_detail(content, base_url: str):
                 content.context_data["author_avatar_url"], base_url
             )
 
-    if content.description and "local://" in content.description:
+    if content.body and "local://" in content.body:
         _local_pattern = re.compile(r'local://([a-zA-Z0-9_/.-]+)')
-        content.description = _local_pattern.sub(
-            lambda m: f"{base_url}/api/v1/media/{m.group(1)}", content.description
+        content.body = _local_pattern.sub(
+            lambda m: f"{base_url}/api/v1/media/{m.group(1)}", content.body
         )
 
+    # 摘要回退：如无 LLM 摘要则截取正文
+    if not content.summary and content.body:
+        from app.services.content_summary_service import fallback_summary
+        content.summary = fallback_summary(content.body)
+
     # 清理 U+FFFD 替换字符，避免客户端 UTF-8 解码报错
-    if content.description:
-        content.description = content.description.replace('\ufffd', '')
+    if content.body:
+        content.body = content.body.replace('\ufffd', '')
     if content.title:
         content.title = content.title.replace('\ufffd', '')
 

@@ -223,8 +223,8 @@ class ContentService:
         cls._collect_local_keys_from_json(content.rich_payload, keys)
         cls._collect_local_keys_from_json(content.archive_metadata, keys)
                             
-        if content.description and "local://" in content.description:
-            for match in re.finditer(r'local://([a-zA-Z0-9_/.-]+)', content.description):
+        if content.body and "local://" in content.body:
+            for match in re.finditer(r'local://([a-zA-Z0-9_/.-]+)', content.body):
                 keys.add(match.group(1))
         return list(keys)
 
@@ -237,7 +237,7 @@ class ContentService:
                 Content.cover_url == local_url,
                 Content.author_avatar_url == local_url,
                 Content.media_urls.like(f'%{local_url}%'),
-                Content.description.like(f'%{local_url}%'),
+                Content.body.like(f'%{local_url}%'),
                 Content.context_data.like(f'%{local_url}%'),
                 Content.rich_payload.like(f'%{local_url}%'),
                 Content.archive_metadata.like(f'%{local_url}%'),

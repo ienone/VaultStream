@@ -135,7 +135,8 @@ class Content(Base):
     
     # 提取的通用字段
     title = Column(Text)
-    description = Column(Text)  # 完整内容文本
+    body = Column(Text)  # 正文（Markdown/纯文本）
+    summary = Column(Text)  # 摘要（LLM生成或截取）
     author_name = Column(String(200))
     author_id = Column(String(100))
     author_avatar_url = Column("author_avatar_url", Text)  # 直接存储，展示逻辑由 content_presenter 提供

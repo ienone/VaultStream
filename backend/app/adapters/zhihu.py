@@ -103,12 +103,10 @@ class ZhihuAdapter(PlatformAdapter):
     async def clean_url(self, url: str) -> str:
         return url.split('?')[0]
 
-    def _get_proxy_url(self) -> Optional[str]:
-        proxy_url = None
-        if settings.https_proxy:
-            proxy_url = settings.https_proxy
-        elif settings.http_proxy:
-            proxy_url = settings.http_proxy
+    async def _get_proxy_url(self) -> Optional[str]:
+        from app.services.settings_service import get_setting_value
+        proxy_url = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
+        
         if proxy_url and proxy_url.startswith("socks://"):
             proxy_url = proxy_url.replace("socks://", "socks5://")
         return proxy_url
@@ -160,7 +158,7 @@ class ZhihuAdapter(PlatformAdapter):
     async def _api_request(self, content_type: str, content_id: str, use_cookies: bool = False) -> Optional[Dict[str, Any]]:
         """通用API请求方法"""
         api_url = self._build_api_url(content_type, content_id)
-        proxy_url = self._get_proxy_url()
+        proxy_url = await self._get_proxy_url()
         cookies = self.cookies if use_cookies else {}
         
         async with httpx.AsyncClient(
@@ -319,7 +317,7 @@ class ZhihuAdapter(PlatformAdapter):
             clean_url=url.split('?')[0],
             layout_type=LAYOUT_ARTICLE,  # 知乎回答为长文布局
             title=f"回答：{question_title}" if question_title else f"知乎回答 {answer_id}",
-            description=markdown_content,
+            body=markdown_content,
             author_name=author.name,
             author_id=author.url_token or str(author.id),
             author_avatar_url=author.avatar_url,
@@ -381,7 +379,7 @@ class ZhihuAdapter(PlatformAdapter):
             clean_url=url.split('?')[0],
             layout_type=LAYOUT_ARTICLE,  # 知乎文章为长文布局
             title=title,
-            description=markdown_content,
+            body=markdown_content,
             author_name=author.name,
             author_id=author.url_token or str(author.id),
             author_avatar_url=author.avatar_url,
@@ -448,7 +446,7 @@ class ZhihuAdapter(PlatformAdapter):
             clean_url=url.split('?')[0],
             layout_type=LAYOUT_GALLERY,  # 知乎问题使用画廊布局（卡片置于右侧）
             title=title,
-            description=markdown_content,
+            body=markdown_content,
             author_name=author_name,
             author_id=author_id,
             author_url=f"https://www.zhihu.com/people/{author_id}" if author_id else None,
@@ -489,7 +487,7 @@ class ZhihuAdapter(PlatformAdapter):
             clean_url=url.split('?')[0],
             layout_type=LAYOUT_GALLERY,  # 用户主页为Gallery布局
             title=f"{name} 的知乎主页",
-            description=headline,
+            body=headline,
             author_name=name,
             author_id=url_token,
             author_avatar_url=avatar_url,
@@ -531,7 +529,7 @@ class ZhihuAdapter(PlatformAdapter):
             clean_url=url.split('?')[0],
             layout_type=LAYOUT_ARTICLE,  # 专栏为文章布局
             title=f"专栏：{title}" if title else f"知乎专栏 {column_id}",
-            description=intro,
+            body=intro,
             author_name=author_name,
             author_id=author_id,
             author_avatar_url=author_avatar,
@@ -575,7 +573,7 @@ class ZhihuAdapter(PlatformAdapter):
             clean_url=url.split('?')[0],
             layout_type=LAYOUT_GALLERY,  # 收藏夹为Gallery布局
             title=f"收藏夹：{title}" if title else f"知乎收藏夹 {collection_id}",
-            description=description,
+            body=description,
             author_name=creator_name,
             author_id=creator_id,
             author_avatar_url=creator_avatar,
@@ -646,7 +644,7 @@ class ZhihuAdapter(PlatformAdapter):
 
     async def _parse_via_html(self, url: str, clean_url: str, content_type: str) -> ParsedContent:
         """通过HTML页面解析"""
-        proxy_url = self._get_proxy_url()
+        proxy_url = await self._get_proxy_url()
     
         async with httpx.AsyncClient(
             headers=self.HEADERS, 

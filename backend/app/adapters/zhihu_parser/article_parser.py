@@ -102,7 +102,7 @@ def parse_article(html_content: str, url: str) -> Optional[ParsedContent]:
         content_id=str(article_id),
         clean_url=url,
         title=article_data.get('title'),
-        description=markdown_content,
+        body=markdown_content,
         author_name=author.name,
         author_id=author.url_token or str(author.id),
         author_avatar_url=author.avatar_url,

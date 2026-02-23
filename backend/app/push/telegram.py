@@ -51,10 +51,13 @@ class TelegramPushService(BasePushService):
             bot_token = await get_primary_telegram_token_from_db()
             
             # 配置代理 (通过环境变量，httpx 会自动读取)
-            if hasattr(settings, 'http_proxy') and settings.http_proxy:
-                os.environ['HTTP_PROXY'] = settings.http_proxy
-                os.environ['HTTPS_PROXY'] = settings.http_proxy
-                logger.debug(f"已设置代理环境变量: {settings.http_proxy}")
+            from app.services.settings_service import get_setting_value
+            proxy = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
+            
+            if proxy:
+                os.environ['HTTP_PROXY'] = proxy
+                os.environ['HTTPS_PROXY'] = proxy
+                logger.debug(f"已设置代理环境变量: {proxy}")
             
             request = HTTPXRequest(
                 connect_timeout=10.0,

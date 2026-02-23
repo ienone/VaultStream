@@ -181,7 +181,7 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
         content_id=str(pin_id),
         clean_url=url,
         title=pin_title,
-        description=description,
+        body=description,
         author_name=author.name,
         author_id=author.url_token or str(author.id),
         author_avatar_url=author.avatar_url,

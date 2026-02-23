@@ -57,7 +57,7 @@ def infer_layout_type(metadata: dict, content: str, media_urls: list) -> str:
 class UniversalAdapter(PlatformAdapter):
     def __init__(self, **kwargs):
         self.cookies = kwargs.get("cookies", {})
-        self.llm_config = LLMFactory.get_crawl4ai_config("text")
+        self.llm_config = None # Will be initialized in parse
         self.user_data_dir = os.getenv("CHROME_USER_DATA_DIR")
         self.max_retries = 2
         # magic=True 可能导致 Pjax 站点页面导航错误，默认关闭
@@ -70,6 +70,7 @@ class UniversalAdapter(PlatformAdapter):
         return url
 
     async def parse(self, url: str) -> ParsedContent:
+        self.llm_config = await LLMFactory.get_crawl4ai_config("text")
         if sys.platform == 'win32':
             return await self._parse_in_thread(url)
         else:
@@ -186,7 +187,7 @@ class UniversalAdapter(PlatformAdapter):
             clean_url=url,
             layout_type=layout_type,
             title=common.get("title") or "Untitled",
-            description=process_result.cleaned_markdown,
+            body=process_result.cleaned_markdown,
             author_name=common.get("author_name"),
             author_avatar_url=common.get("author_avatar_url"),
             cover_url=cover_url,

@@ -149,7 +149,7 @@ async def update_content(
         k: v for k, v in {
             "tags": request.tags,
             "title": request.title,
-            "description": request.description,
+            "body": request.body,
             "author_name": request.author_name,
             "cover_url": request.cover_url,
             "is_nsfw": request.is_nsfw,
@@ -207,6 +207,23 @@ async def retry_content(
     except Exception as e:
         logger.error(f"重试接口失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/contents/{content_id}/generate-summary")
+async def generate_content_summary(
+    content_id: int,
+    force: bool = Query(False, description="强制重新生成（覆盖已有摘要）"),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """为指定内容生成 AI 摘要"""
+    from app.services.content_summary_service import generate_summary_for_content
+    try:
+        content = await generate_summary_for_content(db, content_id, force=force)
+        return {"summary": content.summary, "content_id": content_id}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"摘要生成失败: {e}")
 
 @router.post("/contents/{content_id}/re-parse")
 async def re_parse_content(

@@ -87,7 +87,8 @@ class WeiboAdapter(PlatformAdapter):
                 }
                 
                 # 配置代理
-                proxy = settings.http_proxy or settings.https_proxy
+                from app.services.settings_service import get_setting_value
+                proxy = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
                 
                 # 对mapp链接使用GET请求，因为HEAD常常不能正确重定向
                 async with httpx.AsyncClient(headers=headers, follow_redirects=True, timeout=10.0, proxy=proxy) as client:
@@ -171,7 +172,8 @@ class WeiboAdapter(PlatformAdapter):
 
         # 准备代理
         proxies = None
-        global_proxy = settings.http_proxy or settings.https_proxy
+        from app.services.settings_service import get_setting_value
+        global_proxy = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
         if global_proxy:
             global_proxy = global_proxy.strip()
             proxies = {

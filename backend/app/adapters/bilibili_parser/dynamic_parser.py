@@ -485,7 +485,7 @@ async def parse_dynamic(
             clean_url=url,
             layout_type=layout,
             title=title,
-            description=summary,
+            body=summary,
             author_name=module_author.get('name') or "未知用户",
             author_id=author_id,
             author_avatar_url=author_face,

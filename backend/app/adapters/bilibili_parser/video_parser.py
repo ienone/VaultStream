@@ -120,7 +120,7 @@ async def parse_video(
             clean_url=url,
             layout_type=LAYOUT_GALLERY,
             title=item.get('title'),
-            description=item.get('desc'),
+            body=item.get('desc'),
             author_name=owner.get('name'),
             author_id=str(author_mid) if author_mid else None,
             author_avatar_url=owner.get('face'),

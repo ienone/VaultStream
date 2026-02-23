@@ -116,7 +116,7 @@ async def parse_bangumi(
             clean_url=url,
             layout_type=LAYOUT_GALLERY,
             title=item.get('title'),
-            description=item.get('evaluate'),
+            body=item.get('evaluate'),
             author_name="Bilibili Bangumi",
             author_id="0",
             cover_url=item.get('cover'),

@@ -26,6 +26,10 @@ build/
 *.swp
 *.swo
 
+# Android Signatures
+*.jks
+*.keystore
+
 # Monorepo: backend runtime
 backend/.env
 backend/data/
