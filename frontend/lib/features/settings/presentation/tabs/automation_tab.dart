@@ -14,7 +14,7 @@ class AutomationTab extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       children: [
-        const SectionHeader(title: 'AI 发现与分析'),
+        const SectionHeader(title: 'AI 发现', icon: Icons.auto_awesome_rounded),
         _buildAiSettings(context, ref, settingsAsync),
         const SizedBox(height: 40),
       ],
@@ -38,11 +38,6 @@ class AutomationTab extends ConsumerWidget {
               orElse: () => const SystemSetting(key: '', value: false),
             ).value as bool? ?? false;
             
-        final prompt = settings.firstWhere(
-              (s) => s.key == 'universal_adapter_prompt',
-              orElse: () => const SystemSetting(key: '', value: ''),
-            ).value as String? ?? '';
-            
         final topics = settings.firstWhere(
               (s) => s.key == 'discovery_topics',
               orElse: () => const SystemSetting(key: '', value: []),
@@ -58,25 +53,18 @@ class AutomationTab extends ConsumerWidget {
           children: [
             SettingGroup(
               children: [
-                SettingTile(
-                  title: '启用 AI 自动发现',
-                  subtitle: '根据订阅主题自动抓取相关内容',
-                  icon: Icons.auto_awesome_rounded,
-                  trailing: Switch(
-                    value: enableAi,
-                    thumbIcon: WidgetStateProperty.resolveWith<Icon?>((states) {
-                      if (states.contains(WidgetState.selected)) {
-                        return const Icon(Icons.check);
-                      }
-                      return null;
-                    }),
-                    onChanged: (val) => ref
-                        .read(systemSettingsProvider.notifier)
-                        .updateSetting('enable_ai_discovery', val, category: 'ai'),
+                Opacity(
+                  opacity: 0.5,
+                  child: SettingTile(
+                    title: '启用 AI 自动发现 (开发中)',
+                    subtitle: '根据订阅主题自动抓取相关内容',
+                    icon: Icons.auto_awesome_rounded,
+                    trailing: Switch(
+                      value: enableAi,
+                      onChanged: null,
+                    ),
+                    onTap: null,
                   ),
-                  onTap: () => ref
-                      .read(systemSettingsProvider.notifier)
-                      .updateSetting('enable_ai_discovery', !enableAi, category: 'ai'),
                 ),
                 SettingTile(
                   title: '启用 AI 自动生成摘要',
@@ -92,22 +80,19 @@ class AutomationTab extends ConsumerWidget {
                       .read(systemSettingsProvider.notifier)
                       .updateSetting('enable_auto_summary', !enableAutoSummary, category: 'llm'),
                 ),
-                ExpandableSettingTile(
-                  title: '订阅主题管理',
-                  subtitle: '${topicList.length} 个关注主题',
-                  icon: Icons.topic_rounded,
-                  expandedContent: _buildTopicsEditor(context, ref, topicList),
-                ),
-                ExpandableSettingTile(
-                  title: '通用解析 Prompt',
-                  subtitle: '自定义 LLM 解析指令',
-                  icon: Icons.psychology_rounded,
-                  expandedContent: _buildPromptEditor(context, ref, prompt),
+                Opacity(
+                  opacity: 0.5,
+                  child: SettingTile(
+                    title: '订阅主题管理 (开发中)',
+                    subtitle: '${topicList.length} 个关注主题',
+                    icon: Icons.topic_rounded,
+                    onTap: null,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 32),
-            const SectionHeader(title: '大模型引擎 (LLM)'),
+            const SectionHeader(title: '大模型引擎 (LLM)', icon: Icons.psychology_rounded),
             SettingGroup(
               children: [
                 ExpandableSettingTile(
@@ -219,94 +204,6 @@ class AutomationTab extends ConsumerWidget {
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (_, _) => const Text('加载失败'),
-    );
-  }
-
-  Widget _buildTopicsEditor(BuildContext context, WidgetRef ref, List<String> currentTopics) {
-    final controller = TextEditingController();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: currentTopics.map((t) => Chip(
-            label: Text(t),
-            onDeleted: () {
-              final newTopics = List<String>.from(currentTopics)..remove(t);
-              ref.read(systemSettingsProvider.notifier).updateSetting('discovery_topics', newTopics, category: 'ai');
-            },
-          )).toList(),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: controller,
-                decoration: InputDecoration(
-                  hintText: '添加新主题...',
-                  isDense: true,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onSubmitted: (val) {
-                  if (val.trim().isNotEmpty && !currentTopics.contains(val.trim())) {
-                    final newTopics = List<String>.from(currentTopics)..add(val.trim());
-                    ref.read(systemSettingsProvider.notifier).updateSetting('discovery_topics', newTopics, category: 'ai');
-                    controller.clear();
-                  }
-                },
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.add_circle_rounded),
-              onPressed: () {
-                if (controller.text.trim().isNotEmpty && !currentTopics.contains(controller.text.trim())) {
-                  final newTopics = List<String>.from(currentTopics)..add(controller.text.trim());
-                  ref.read(systemSettingsProvider.notifier).updateSetting('discovery_topics', newTopics, category: 'ai');
-                  controller.clear();
-                }
-              },
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPromptEditor(BuildContext context, WidgetRef ref, String currentPrompt) {
-    final controller = TextEditingController(text: currentPrompt);
-    return Column(
-      children: [
-        TextField(
-          controller: controller,
-          maxLines: 8,
-          decoration: InputDecoration(
-            hintText: 'Enter LLM Prompt...',
-            filled: true,
-            fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide.none,
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Align(
-          alignment: Alignment.centerRight,
-          child: FilledButton.tonal(
-            onPressed: () async {
-              await ref.read(systemSettingsProvider.notifier).updateSetting('universal_adapter_prompt', controller.text, category: 'ai');
-              if (context.mounted) {
-                showToast(context, 'Prompt 已更新');
-              }
-            },
-            child: const Text('保存配置'),
-          ),
-        ),
-      ],
     );
   }
 }
