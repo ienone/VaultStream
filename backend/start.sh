@@ -9,6 +9,13 @@ VENV_DIR=".venv"
 PYTHON="$VENV_DIR/bin/python"
 
 # 检查虚拟环境
+VENV_DIR=".venv"
+if [ -d "vaultstream_env" ]; then
+    VENV_DIR="vaultstream_env"
+fi
+
+PYTHON="$VENV_DIR/bin/python"
+
 if [ ! -x "$PYTHON" ]; then
     echo " 未找到虚拟环境 ($VENV_DIR)，请先运行 ./install.sh"
     exit 1

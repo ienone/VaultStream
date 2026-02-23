@@ -1,30 +1,27 @@
-# VaultStream 轻量模式部署
-# 当前不需要 Docker 服务，直接运行 ./start.sh 即可
+version: '3.8'
 
-# 如需使用 Docker 运行应用本身，可取消下面的注释：
-# services:
-#   app:
-#     build: .
-#     container_name: vaultstream_app
-#     ports:
-#       - "8000:8000"
-#     volumes:
-#       - ./data:/app/data  # SQLite 数据库 + 本地媒体存储
-#       - ./logs:/app/logs  # 日志文件
-#     environment:
-#       - DATABASE_TYPE=sqlite
-#       - SQLITE_DB_PATH=/app/data/vaultstream.db
-#       - QUEUE_TYPE=sqlite
-#       - STORAGE_BACKEND=local
-#       - STORAGE_LOCAL_ROOT=/app/data/media
-#       - STORAGE_PUBLIC_BASE_URL=http://localhost:8000/api/v1
-#     restart: unless-stopped
+services:
+  vaultstream:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    image: vaultstream:latest
+    container_name: vaultstream
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data  # 挂载数据目录 (SQLite + Media)
+      - ./logs:/app/logs  # 挂载日志目录
+      - ./.env:/app/.env  # 挂载配置文件
+    environment:
+      - TZ=Asia/Shanghai
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-# ============================================================================
-# PostgreSQL/Redis/MinIO 服务定义已移除
-# ============================================================================
-# 如需使用生产模式，请参考 git 历史或文档重新添加：
-# - PostgreSQL 服务
-# - Redis 服务  
-# - MinIO 服务
-# ============================================================================
+# 注意：
+# 1. 首次运行前请确保目录下存在 .env 文件
+# 2. 如果没有 .env，请复制 .env.example 并重命名
