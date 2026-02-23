@@ -5,15 +5,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'theme/app_theme.dart';
 import 'routing/app_router.dart';
 import 'core/providers/theme_provider.dart';
 import 'features/share_receiver/share_receiver_service.dart';
 
 List<SharedMediaFile>? _initialSharedMedia;
+late final SharedPreferences sharedPrefs;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  sharedPrefs = await SharedPreferences.getInstance();
 
   timeago.setLocaleMessages('zh_CN', timeago.ZhCnMessages());
 
