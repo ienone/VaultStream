@@ -210,7 +210,7 @@ class PushedRecord(Base):
     
     # M4 扩展字段
     target_platform = Column(String(100), nullable=False)  # "telegram", "qq" 等
-    target_id = Column(String(200), nullable=False, index=True)  # 频道/群组 ID（如 @channel_name, -1001234567890）
+    target_id = Column(String(200), nullable=False)  # 频道/群组 ID（如 @channel_name, -1001234567890）
     message_id = Column(String(200))  # 推送后的消息ID（用于更新/撤回）
     
     # 推送状态

@@ -340,7 +340,7 @@ async def mark_historical_parse_success_as_pushed_for_rule(
     将历史 parse_success 内容在指定规则（可选限定到指定 bot_chat）下标记为已推送。
 
     用途：
-    1) 迁移脚本回填历史数据；
+    1) 处理脚本回填历史数据；
     2) 新增规则目标/规则绑定时，避免出现“历史内容悬空待推送”。
 
     Returns:

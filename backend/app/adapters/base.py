@@ -89,7 +89,7 @@ class PlatformAdapter(ABC):
         item: Dict[str, Any], 
         archive_type: str, 
         title: str = "", 
-        description: str = "", 
+        body: str = "", 
         images: Optional[List[Dict[str, Any]]] = None,
         author_avatar_url: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -107,8 +107,8 @@ class PlatformAdapter(ABC):
             "version": 2,
             "type": archive_type,
             "title": title,
-            "plain_text": description,
-            "markdown": description,
+            "plain_text": body,
+            "markdown": body,
             "images": images_list,
             "videos": [],
             "links": [],

@@ -135,7 +135,7 @@ fi
 echo ""
 echo "轻量模式：无需 Docker 服务"
 
-# 运行数据库迁移
+# 数据库架构初始化
 echo ""
 echo "初始化数据库..."
 "$PYTHON" -c "

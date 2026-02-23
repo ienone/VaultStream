@@ -8,17 +8,6 @@ from sqlalchemy import select
 from app.models import SystemSetting
 from app.core.db_adapter import AsyncSessionLocal
 
-# Default values
-DEFAULT_UNIVERSAL_PROMPT = """
-Analyze the web page content. 
-1. Extract the main article/post content, ignoring navigation, sidebars, ads, and footers.
-2. Extract metadata like author, publish date, and tags.
-3. CRITICAL: Look for interaction metrics (views, likes, comments, shares) usually found at the top or bottom of the post.
-4. Keep the 'content' field in clean Markdown format.
-5. Detect content type: 'article' for long-form text, 'video' if main content is video, 'gallery' if image-focused, 'audio' for podcasts.
-6. Extract video_url if there's a main video element, audio_url if there's a podcast/audio player.
-"""
-
 # Simple in-memory cache
 _SETTINGS_CACHE = {}
 
@@ -78,9 +67,6 @@ async def get_setting_value(key: str, default: Any = None) -> Any:
     # Return default if provided, otherwise check for known defaults
     if default is not None:
         return default
-        
-    if key == "universal_adapter_prompt":
-        return DEFAULT_UNIVERSAL_PROMPT
         
     return None
 

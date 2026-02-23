@@ -77,7 +77,7 @@ class TestContentsAPI:
         
         data = response.json()
         assert data["id"] == content.id
-        assert data["platform"] == content.platform
+        assert data["platform"] == (content.platform.value if hasattr(content.platform, 'value') else content.platform)
     
     @pytest.mark.asyncio
     async def test_delete_content(self, client: AsyncClient):

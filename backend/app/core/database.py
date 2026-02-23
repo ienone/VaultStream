@@ -11,12 +11,12 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # 一次性数据迁移：ReviewStatus 大写 → 小写
+    # 一次性数据更新：ReviewStatus 大写 → 小写
     await _migrate_review_status_lowercase()
 
 
 async def _migrate_review_status_lowercase():
-    """将 review_status 列中的大写枚举值迁移为小写（幂等）"""
+    """将 review_status 列中的大写枚举值转换为小写（幂等）"""
     mapping = {
         "PENDING": "pending",
         "APPROVED": "approved",

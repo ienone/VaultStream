@@ -272,7 +272,7 @@ async def store_archive_images_as_webp(
 ) -> dict[str, Any]:
     """下载并存储存档中的图片为WebP格式，更新存档引用。
 
-    期望存档结构类似于 bilibili_opus 存档 v2：
+    期望存档结构类似于 bilibili_opus 存档：
     - archive['images'] 是包含至少 {'url': 'https://...'} 的字典列表
 
     更新内容：

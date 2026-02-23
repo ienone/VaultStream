@@ -137,7 +137,7 @@ class ContentParser:
         content.source_tags = parsed.source_tags or []
         content.published_at = parsed.published_at
         
-        # 保存结构化扩展字段（V2）
+        # 保存结构化扩展字段
         content.context_data = getattr(parsed, 'context_data', None)
         content.rich_payload = getattr(parsed, 'rich_payload', None)
 

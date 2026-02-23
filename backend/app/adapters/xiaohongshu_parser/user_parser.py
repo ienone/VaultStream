@@ -1,7 +1,7 @@
 """
 小红书用户信息解析器
 
-负责解析小红书用户主页，从原xiaohongshu.py迁移而来
+负责解析小红书用户主页
 """
 from datetime import datetime
 from typing import Dict, Any, Optional

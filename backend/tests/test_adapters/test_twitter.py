@@ -40,7 +40,7 @@ class TestTwitterAdapter(AdapterTestBase):
             assert result.content_type == "tweet"
             assert result.layout_type == "gallery"
             # Twitter should have media or text
-            assert result.media_urls or result.description
+            assert result.media_urls or result.body
     
     @pytest.mark.asyncio
     @pytest.mark.integration

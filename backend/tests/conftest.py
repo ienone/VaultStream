@@ -1,24 +1,28 @@
 """
 Pytest Fixtures for Backend Tests
 """
+import os
 import pytest
 import asyncio
 from typing import AsyncGenerator, Dict, List
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import select, text
+
+# Set test database path in environment before importing app/settings
+TEST_DB_PATH = os.path.abspath("data/test_vaultstream.db")
+os.environ["SQLITE_DB_PATH"] = TEST_DB_PATH
 
 from app.main import app
 from app.core.config import settings
 from app.core.database import init_db
 from app.models import Base, Content
-import os
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import select, text
 
-# Override the database URL for testing if needed
-# Use absolute path to avoid ambiguity during tests
-_db_path = os.path.abspath(settings.sqlite_db_path)
-DB_URL = f"sqlite+aiosqlite:///{_db_path}"
+DB_URL = f"sqlite+aiosqlite:///{TEST_DB_PATH}"
+
+# Ensure data directory exists
+os.makedirs("data", exist_ok=True)
 
 engine = create_async_engine(DB_URL, echo=False)
 TestingSessionLocal = sessionmaker(
@@ -27,6 +31,21 @@ TestingSessionLocal = sessionmaker(
     expire_on_commit=False,
     autoflush=False,
 )
+
+# Ensure we start fresh globally
+if os.path.exists(TEST_DB_PATH):
+    try:
+        os.remove(TEST_DB_PATH)
+    except OSError:
+        pass
+
+@pytest.fixture(scope="session", autouse=True)
+async def setup_test_db():
+    """Create a clean database for the test session."""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
+    yield
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -47,42 +66,6 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 @pytest.fixture(scope="function")
 async def client() -> AsyncGenerator[AsyncClient, None]:
     """Provide an authenticated AsyncClient."""
-    await init_db()
-    async with engine.begin() as conn:
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS bot_configs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                platform VARCHAR(20) NOT NULL,
-                name VARCHAR(100) NOT NULL,
-                bot_token VARCHAR(300),
-                napcat_http_url VARCHAR(300),
-                napcat_ws_url VARCHAR(300),
-                napcat_access_token VARCHAR(300),
-                enabled BOOLEAN DEFAULT 1,
-                is_primary BOOLEAN DEFAULT 0,
-                bot_id VARCHAR(50),
-                bot_username VARCHAR(100),
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """))
-
-        cfg_table_info = await conn.execute(text("PRAGMA table_info(bot_configs)"))
-        cfg_columns = [row[1] for row in cfg_table_info.fetchall()]
-        if "napcat_access_token" not in cfg_columns:
-            await conn.execute(text("ALTER TABLE bot_configs ADD COLUMN napcat_access_token VARCHAR(300)"))
-
-        table_info = await conn.execute(text("PRAGMA table_info(bot_chats)"))
-        columns = [row[1] for row in table_info.fetchall()]
-        if "bot_config_id" not in columns:
-            await conn.execute(text("ALTER TABLE bot_chats ADD COLUMN bot_config_id INTEGER"))
-
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_bot_configs_platform ON bot_configs(platform)"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_bot_configs_enabled ON bot_configs(enabled)"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_bot_configs_is_primary ON bot_configs(is_primary)"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_bot_chats_bot_config_id ON bot_chats(bot_config_id)"))
-        await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_bot_chats_bot_config_chat ON bot_chats(bot_config_id, chat_id)"))
-
     transport = ASGITransport(app=app)
     headers = {"X-API-Token": settings.api_token.get_secret_value() if settings.api_token else ""}
     async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as c:

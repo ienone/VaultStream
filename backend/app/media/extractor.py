@@ -63,15 +63,10 @@ def extract_media_urls(
             {"type": "photo", "url": "http://local/2.webp"}
         ]
     """
-    # 兼容两种归档结构：
-    # 1) archive_metadata["archive"]（多数解析器）
-    # 2) archive_metadata["processed_archive"]（部分 V2 解析器）
     archive: Dict[str, Any] = {}
     if isinstance(archive_metadata, dict):
         if isinstance(archive_metadata.get('archive'), dict):
             archive = archive_metadata.get('archive') or {}
-        elif isinstance(archive_metadata.get('processed_archive'), dict):
-            archive = archive_metadata.get('processed_archive') or {}
 
     media_items = []
     
@@ -156,18 +151,6 @@ def extract_media_urls(
                 'type': 'photo',
                 'url': cover_url.strip()
             })
-
-    # 兜底兼容：若无 archive 结构但 metadata 里有旧字段 media/pics，也尽量提取。
-    if not media_items and isinstance(archive_metadata, dict):
-        legacy_media = archive_metadata.get('media') or archive_metadata.get('pics') or []
-        if isinstance(legacy_media, list):
-            for media in legacy_media:
-                if isinstance(media, dict):
-                    url = media.get('url') or media.get('thumbnail_url')
-                else:
-                    url = media if isinstance(media, str) else None
-                if url:
-                    media_items.append({'type': 'photo', 'url': url})
     
     return media_items
 

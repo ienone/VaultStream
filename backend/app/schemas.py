@@ -43,7 +43,7 @@ class ContentPushPayload(BaseModel):
     url: Optional[str] = None
     render_config: Optional[Dict[str, Any]] = None
     
-    # New V2 fields
+    # New structured fields
     context_data: Optional[Dict[str, Any]] = None
     rich_payload: Optional[Dict[str, Any]] = None
     # 推送链路只暴露最小媒体集合，避免泄露 archive_metadata 原始归档数据
@@ -155,14 +155,14 @@ class ContentDetail(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _compute_derived_fields(cls, data):
-        """ORM property 已迁移到 content_presenter，此处在反序列化时补算派生字段"""
+        """ORM property 已移动到 content_presenter，此处在反序列化时补算派生字段"""
         from app.services.content_presenter import (
             compute_effective_layout_type, compute_author_avatar_url,
         )
         # data 可能是 ORM 对象（from_attributes）或 dict
         if isinstance(data, dict):
             return data
-        # ORM 对象：补算派生字段（原 model property 已迁移到 content_presenter）
+        # ORM 对象：补算派生字段（原 model property 已移动到 content_presenter）
         obj = data
         if not getattr(obj, '_presenter_patched', False):
             object.__setattr__(obj, 'effective_layout_type', compute_effective_layout_type(obj))
