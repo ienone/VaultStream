@@ -187,8 +187,12 @@ class AppTheme {
       ),
 
       // M3 2024 组件更新
-      sliderTheme: const SliderThemeData(),
-      progressIndicatorTheme: const ProgressIndicatorThemeData(),
+      sliderTheme: const SliderThemeData(
+        year2023: false,
+      ),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        year2023: false,
+      ),
 
       // Expressive Segmented Button
       segmentedButtonTheme: SegmentedButtonThemeData(
