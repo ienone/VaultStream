@@ -1,33 +1,42 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart'; // 引入go_router库，用于路由管理
-import 'package:riverpod_annotation/riverpod_annotation.dart'; // 引入riverpod_annotation库，用于Riverpod状态管理的注解支持
+import 'package:go_router/go_router.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-// 引入自行构建的各个页面和布局组件
 import '../features/collection/collection_page.dart';
 import '../features/collection/content_detail_page.dart';
 import '../features/dashboard/dashboard_page.dart';
 import '../features/review/review_page.dart';
 import '../features/settings/settings_page.dart';
+import '../features/auth/presentation/login_page.dart';
 import '../layout/app_shell.dart';
+import '../core/providers/local_settings_provider.dart';
 
-part 'app_router.g.dart'; // 生成的代码文件，源于Riverpod的代码生成
-// riverpod_annotation库使用代码生成来简化provider的创建和管理
+part 'app_router.g.dart';
 
-final _rootNavigatorKey = GlobalKey<NavigatorState>(); // 定义一个全局的导航键，用于管理应用的导航状态
+final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
-@riverpod // 使用@riverpod注解定义一个Riverpod provider
-// goRouterProvider是一个GoRouter类型的provider，负责提供应用的路由配置
-// GoRouter是go_router库中的一个类，用于管理应用的路由和导航
-// Ref类型的ref参数用于访问和监听其他providers，用于在运行过程中获取依赖的状态或数据
+@riverpod
 GoRouter goRouter(Ref ref) {
-  //返回的GoRouter对象定义了应用的路由结构
   return GoRouter(
-    navigatorKey: _rootNavigatorKey, // 设置导航键
-    initialLocation: '/dashboard', // 设置初始路由位置为/dashboard(仪表盘页面)
+    navigatorKey: _rootNavigatorKey,
+    initialLocation: '/dashboard',
+    redirect: (context, state) {
+      final settings = ref.read(localSettingsProvider);
+      final isLoggingIn = state.matchedLocation == '/login';
+      final hasConfig = settings.baseUrl.isNotEmpty && settings.apiToken.isNotEmpty;
+
+      if (!hasConfig) {
+        if (!isLoggingIn) return '/login';
+      } else {
+        if (isLoggingIn) return '/dashboard';
+      }
+      return null;
+    },
     routes: [
-      // 定义应用的路由列表
-      // 使用StatefulShellRoute.indexedStack定义一个带有底部导航栏的路由结构
-      // IndexedStack是一种布局方式，可以在多个子页面之间切换，同时保持它们的状态
+      GoRoute(
+        path: '/login',
+        builder: (context, state) => const LoginPage(),
+      ),
       StatefulShellRoute.indexedStack(
         // builder用于构建StatefulShellRoute的UI
         // context参数是用于构建Widget的BuildContext对象
