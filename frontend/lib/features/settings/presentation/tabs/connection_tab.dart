@@ -18,7 +18,7 @@ class ConnectionTab extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       children: [
-        const SectionHeader(title: '服务器与通信'),
+        const SectionHeader(title: '服务器与通信', icon: Icons.lan_rounded),
         SettingGroup(
           children: [
             ExpandableSettingTile(
@@ -42,10 +42,10 @@ class ConnectionTab extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 32),
-        const SectionHeader(title: '平台集成 (Cookies)'),
+        const SectionHeader(title: '链接与账号', icon: Icons.link_rounded),
         _buildPlatformSettingsSection(context, ref, settingsAsync),
         const SizedBox(height: 32),
-        const SectionHeader(title: '高级连接设置'),
+        const SectionHeader(title: '高级连接设置', icon: Icons.tune_rounded),
         SettingGroup(
           children: [
             ExpandableSettingTile(

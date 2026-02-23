@@ -148,6 +148,6 @@ class ContentParser {
 
 
   /// 格式化数字显示
-  /// 从 ContentMediaHelper 迁移，直接调用 media_utils
+  /// 直接调用 media_utils 处理媒体资源。
   static String formatCount(dynamic count) => media_utils.formatCount(count);
 }

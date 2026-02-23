@@ -3,20 +3,30 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 class SectionHeader extends StatelessWidget {
   final String title;
+  final IconData? icon;
 
-  const SectionHeader({super.key, required this.title});
+  const SectionHeader({super.key, required this.title, this.icon});
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-          color: Theme.of(context).colorScheme.outline,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 0.5,
-        ),
+      padding: const EdgeInsets.fromLTRB(4, 8, 8, 16),
+      child: Row(
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 20, color: colorScheme.primary),
+            const SizedBox(width: 12),
+          ],
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: colorScheme.onSurface,
+            ),
+          ),
+        ],
       ),
     );
   }

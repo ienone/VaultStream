@@ -16,7 +16,7 @@ class SystemTab extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       children: [
-        const SectionHeader(title: '外观模式'),
+        const SectionHeader(title: '外观模式', icon: Icons.palette_rounded),
         SettingGroup(
           children: [
             SettingTile(
@@ -28,10 +28,10 @@ class SystemTab extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 32),
-        const SectionHeader(title: '存储与归档策略'),
+        const SectionHeader(title: '存储与归档策略', icon: Icons.storage_rounded),
         _buildStorageSettings(context, ref, settingsAsync),
         const SizedBox(height: 32),
-        const SectionHeader(title: '关于与许可'),
+        const SectionHeader(title: '关于与许可', icon: Icons.info_rounded),
         SettingGroup(
           children: [
             SettingTile(

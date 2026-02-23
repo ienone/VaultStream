@@ -17,20 +17,12 @@ class SettingsPage extends ConsumerStatefulWidget {
 class _SettingsPageState extends ConsumerState<SettingsPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  int _selectedIndex = 0;
 
   final List<String> _tabTitles = [
     '连接与账号',
     'AI 发现',
     '推送与通知',
     '外观与系统',
-  ];
-
-  final List<IconData> _tabIcons = [
-    Icons.cloud_sync_rounded,
-    Icons.auto_awesome_rounded,
-    Icons.notifications_active_rounded,
-    Icons.settings_suggest_rounded,
   ];
 
   final List<Widget> _tabs = const [
@@ -44,13 +36,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: _tabs.length, vsync: this);
-    _tabController.addListener(() {
-      if (!_tabController.indexIsChanging) {
-        setState(() {
-          _selectedIndex = _tabController.index;
-        });
-      }
-    });
   }
 
   @override
@@ -61,66 +46,29 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isWideScreen = constraints.maxWidth > 800;
+    final theme = Theme.of(context);
 
-        if (isWideScreen) {
-          return Scaffold(
-            appBar: const FrostedAppBar(title: Text('设置')),
-            body: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                NavigationRail(
-                  selectedIndex: _selectedIndex,
-                  onDestinationSelected: (index) {
-                    setState(() {
-                      _selectedIndex = index;
-                      _tabController.index = index;
-                    });
-                  },
-                  labelType: NavigationRailLabelType.all,
-                  destinations: List.generate(_tabTitles.length, (index) {
-                    return NavigationRailDestination(
-                      icon: Icon(_tabIcons[index]),
-                      label: Text(_tabTitles[index]),
-                    );
-                  }),
-                ),
-                const VerticalDivider(thickness: 1, width: 1),
-                Expanded(
-                  child: IndexedStack(
-                    index: _selectedIndex,
-                    children: _tabs,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
-        // Narrow screen layout
-        return Scaffold(
-          appBar: FrostedAppBar(
-            title: const Text('设置'),
-            bottom: TabBar(
-              controller: _tabController,
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              tabs: List.generate(_tabTitles.length, (index) {
-                return Tab(
-                  text: _tabTitles[index],
-                  icon: Icon(_tabIcons[index]),
-                );
-              }),
-            ),
-          ),
-          body: TabBarView(
-            controller: _tabController,
-            children: _tabs,
-          ),
-        );
-      },
+    return Scaffold(
+      appBar: FrostedAppBar(
+        title: const Text('设置'),
+        bottom: TabBar(
+          controller: _tabController,
+          dividerColor: Colors.transparent,
+          indicatorSize: TabBarIndicatorSize.label,
+          indicatorWeight: 3,
+          labelStyle: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
+          unselectedLabelStyle: theme.textTheme.labelLarge,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          tabs: List.generate(_tabTitles.length, (index) {
+            return Tab(text: _tabTitles[index]);
+          }),
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: _tabs,
+      ),
     );
   }
 }
