@@ -130,12 +130,6 @@ class ContentParser:
         content.content_type = parsed.content_type
         content.layout_type = parsed.layout_type  # 新增: 保存布局类型
         content.title = parsed.title
-        content.description = parsed.description
-        # P2-4: 防止超大正文导致单行数据膨胀
-        _MAX_DESCRIPTION_LEN = 200_000  # 200KB 字符上限
-        if content.description and len(content.description) > _MAX_DESCRIPTION_LEN:
-            content.description = content.description[:_MAX_DESCRIPTION_LEN]
-            logger.warning(f"正文超长截断: content_id={content.id}, original_len={len(parsed.description)}")
         content.author_name = parsed.author_name
         content.author_id = parsed.author_id
         content.author_avatar_url = parsed.author_avatar_url
@@ -147,18 +141,32 @@ class ContentParser:
         content.context_data = getattr(parsed, 'context_data', None)
         content.rich_payload = getattr(parsed, 'rich_payload', None)
 
-        # 私有归档媒体处理
-        if settings.enable_archive_media_processing:
+        # 私有归档媒体处理（可能更新 parsed.body / media_urls / cover_url 等）
+        from app.services.settings_service import get_setting_value
+        enable_processing = await get_setting_value("enable_archive_media_processing", settings.enable_archive_media_processing)
+        if enable_processing:
             try:
                 await self._maybe_process_private_archive_media(parsed)
             except Exception as e:
                 logger.warning("Archive media processing skipped: {}", f"{type(e).__name__}: {e}")
         
+        # 若存档中有 markdown 且解析器未使用，优先用 archive markdown 作为正文
+        if not getattr(parsed, '_body_is_markdown', False):
+            archive_blob = self._extract_archive_blob(getattr(parsed, 'archive_metadata', None))
+            if isinstance(archive_blob, dict) and archive_blob.get("markdown"):
+                parsed.body = archive_blob["markdown"]
+
         # 补充封面颜色（本地 URL 跳过，后续从已存储的图片读取）
         if not getattr(parsed, "cover_color", None) and parsed.cover_url and not parsed.cover_url.startswith("local://"):
             parsed.cover_color = await extract_cover_color(parsed.cover_url)
 
-        # 同步回内容记录
+        # 同步回内容记录（在媒体处理之后，确保拿到更新后的值）
+        content.body = parsed.body
+        # P2-4: 防止超大正文导致单行数据膨胀
+        _MAX_BODY_LEN = 200_000  # 200KB 字符上限
+        if content.body and len(content.body) > _MAX_BODY_LEN:
+            content.body = content.body[:_MAX_BODY_LEN]
+            logger.warning(f"正文超长截断: content_id={content.id}, original_len={len(parsed.body)}")
         content.cover_url = parsed.cover_url
         content.media_urls = parsed.media_urls
         content.author_avatar_url = parsed.author_avatar_url
@@ -187,6 +195,15 @@ class ContentParser:
         await session.commit()
         logger.info("内容解析完成")
         
+        # 自动生成摘要
+        enable_auto_summary = await get_setting_value("enable_auto_summary", settings.enable_auto_summary)
+        from app.services.content_summary_service import generate_summary_for_content
+        try:
+            await generate_summary_for_content(session, content.id, allow_llm=enable_auto_summary)
+            logger.info(f"摘要处理完成: content_id={content.id}, auto_ai={enable_auto_summary}")
+        except Exception as e:
+            logger.warning(f"摘要生成/处理失败: {e}")
+
         # 广播更新事件
         from app.core.events import event_bus
         await event_bus.publish("content_updated", {
@@ -423,8 +440,11 @@ class ContentParser:
             await ensure_bucket()
 
         namespace = "vaultstream"
-        quality = int(getattr(settings, "archive_image_webp_quality", 80) or 80)
-        max_count = getattr(settings, "archive_image_max_count", None)
+        from app.services.settings_service import get_setting_value
+        quality = int(await get_setting_value("archive_image_webp_quality", settings.archive_image_webp_quality) or 80)
+        max_count = await get_setting_value("archive_image_max_count", settings.archive_image_max_count)
+        if max_count is not None:
+            max_count = int(max_count)
 
         # 处理图片
         await store_archive_images_as_webp(
@@ -437,7 +457,7 @@ class ContentParser:
         
         # 更新 markdown 引用
         if archive.get("markdown"):
-            parsed.description = archive["markdown"]
+            parsed.body = archive["markdown"]
         
         # 更新 media_urls — 优先使用本地 local:// 协议
         stored_images = archive.get("stored_images", [])
@@ -538,7 +558,9 @@ class ContentParser:
 
     async def _handle_archived_media_fix(self, session: AsyncSession, content: Content):
         """补处理归档媒体（针对已解析但未归档的情况）"""
-        if not settings.enable_archive_media_processing:
+        from app.services.settings_service import get_setting_value
+        enable_processing = await get_setting_value("enable_archive_media_processing", settings.enable_archive_media_processing)
+        if not enable_processing:
             return
 
         meta = content.archive_metadata
@@ -563,7 +585,7 @@ class ContentParser:
                     rich_payload: Optional[Dict[str, Any]] = None
                     cover_url: Optional[str] = None
                     media_urls: list[str] = field(default_factory=list)
-                    description: Optional[str] = None
+                    body: Optional[str] = None
                     author_avatar_url: Optional[str] = None
 
                 parsed_like = _ParsedLike(archive_metadata=meta)
