@@ -110,7 +110,7 @@ VaultStream/
 │   │   ├── test_api/               # API 集成测试
 │   │   ├── export_markdown.py      # 导出工具
 │   │   └── check_tags.py           # 标签检查工具
-│   ├── migrations/                  # 数据库迁移 (预留)
+│   ├── migrations/                  # 数据库架构管理
 │   ├── scripts/                     # 部署和维护脚本
 │   ├── systemd/                     # Systemd service 配置
 │   ├── tools/                       # 杂项工具
@@ -457,15 +457,11 @@ curl http://localhost:8000/health
 
 MIT License - 详见 [LICENSE](LICENSE) 文件
 
-## 🙏 致谢
-
-感谢所有为这个项目做出贡献的开发者！
 
 ## 📧 联系方式
 
 - 问题报告: [GitHub Issues](https://github.com/ienone/VaultStream/issues)
 - 功能建议: [GitHub Discussions](https://github.com/ienone/VaultStream/discussions)
-- 邮件: your-email@example.com
 
 ---
 

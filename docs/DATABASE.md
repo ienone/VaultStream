@@ -52,7 +52,7 @@
 
 注意：这些字段由 worker 在解析异常时写入；成功解析后会清理 `last_error*` 字段但保留 `failure_count` 作为历史统计。
 
-迁移：使用仓库内的 SQL 迁移脚本执行（位于 `backend/migrations/`）。例如：
+架构初始化：使用仓库内的 SQL 脚本执行（位于 `backend/migrations/`）。例如：
 
 ```bash
 cd backend
@@ -112,9 +112,9 @@ sqlite3 data/vaultstream.db < migrations/m4_distribution_and_review.sql
 | `client_context` | JSON | 客户端上下文 |
 | `created_at` | DateTime | 记录创建时间 |
 
-## 7. 迁移执行基线（当前实现）
+## 7. 架构初始化基线（当前实现）
 
-全新或回放环境请确保以下迁移链已经执行到位：
+全新或回放环境请确保以下架构脚本已经执行到位：
 
 - 分发目标重构：`m8_distribution_target_refactor.py`、`m9_finalize_targets_migration.py`
 - 旧排期字段收口：`m11_drop_legacy_content_schedule_columns.sql`
@@ -124,5 +124,5 @@ sqlite3 data/vaultstream.db < migrations/m4_distribution_and_review.sql
 治理约束：
 
 - 运行时只依赖当前结构，不保留旧字段兼容分支。
-- 中间态/一次性迁移脚本仅用于升级，不应作为运行时逻辑输入。
-- 已归档的一次性迁移脚本统一放置在 `scripts/archive/`（例如 `scripts/archive/migrate_remove_old_scheduling.py`）。
+- 中间态/一次性变更脚本仅用于升级，不应作为运行时逻辑输入。
+- 已归档的一次性数据处理脚本统一放置在 `scripts/archive/`。

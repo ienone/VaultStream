@@ -8,7 +8,7 @@
 - Database: 默认使用 SQLite（项目内有数据库适配层，位于 `backend/app/db_adapter.py`）
 - Feature 组织: `lib/features/{feature}/[models|providers|widgets|pages]`（当前已有 `collection`、`review`、`dashboard` 等模块）
 
-说明：仓库中保留若干 SQL 迁移脚本（`backend/migrations/`），部分脚本包含 PostgreSQL 专用语法（如 JSONB）。当前代码默认使用 SQLite 适配器；如需切换到 PostgreSQL，需要复现/实现 PostgreSQLAdapter 并按需运行相应迁移。
+说明：仓库中保留若干 SQL 架构脚本（`backend/migrations/`），部分脚本包含 PostgreSQL 专用语法（如 JSONB）。当前代码默认使用 SQLite 适配器；如需切换到 PostgreSQL，需要复现/实现 PostgreSQLAdapter 并按需运行相应架构变更。
 
 ## 2. 视觉规范（Material 3 Expressive）
 - 主题入口：请在 `frontend/lib/theme/app_theme.dart` 中查看与修改全局 `ColorScheme`、`Typography` 与 `Shape`。
@@ -33,12 +33,12 @@
 - 鉴权：后端要求 `X-API-Token` Header，或使用 `Authorization: Bearer <token>`（优先使用 `X-API-Token`）。前端的 `api_client` 必须在请求中注入此 header 并在 401/403 时做友好提示。
 - 错误处理：后端通过 FastAPI 的 `HTTPException` 返回状态码与 `detail`。前端应统一在 `api_client.dart` 解析并转为用户提示（SnackBar / 对话框），并对网络异常提供重试路径。
 
-## 5. 数据库与迁移
+## 5. 数据库与架构管理
 - 默认：SQLite（由 `backend/app/db_adapter.py` 的 `SQLiteAdapter` 管理）。适配器已设置若干 PRAGMA（WAL、cache、mmap 等）以提高本地性能。
 - 搜索：项目优先尝试 FTS5 全文索引（若可用），没有时降级到 ILIKE。请在 `backend/app/api.py` 的搜索逻辑中查看实现细节。
-- 迁移策略：
+- 架构变更策略：
   - 所有结构变更必须在 `backend/migrations/` 新增脚本并在测试环境验证。
-  - 注意：仓库中存在 PostgreSQL 专用迁移（例如 JSONB 相关）。如果目标环境为 PostgreSQL，请先实现/启用 PostgreSQL 适配器并使用对应迁移脚本；否则不要在 SQLite 上直接执行 JSONB 脚本。
+  - 注意：仓库中存在 PostgreSQL 专用脚本（例如 JSONB 相关）。如果目标环境为 PostgreSQL，请先实现/启用 PostgreSQL 适配器并使用对应脚本；否则不要在 SQLite 上直接执行 JSONB 脚本。
 
 ## 6. 前端实现与复用建议
 - 以 `collection` 页面为模板（路径：frontend/lib/features/collection/collection_page.dart）复用以下要素：
@@ -55,14 +55,14 @@
 - 骨架与动画：使用轻量动画（`AnimatedOpacity`、`AnimatedSize`、简易 shimmer 或基于 `AnimationController` 的呼吸效果），避免多个复杂动画同时运行。
 
 ## 8. CI/CD、运行与验证
-- 迁移：任何数据库结构变更都必须伴随 `backend/migrations/` 下的新脚本并在测试环境验证。对于生产环境，先执行备份与回滚验证。
+- 架构变更：任何数据库结构变更都必须伴随 `backend/migrations/` 下的新脚本并在测试环境验证。对于生产环境，先执行备份与回滚验证。
 - 启动：后端通过 `backend/start.sh` 或 docker-compose 启动；前端通过 Flutter 常规方式运行。
 
 ## 9. 交接与优先任务（给接手者的建议）
 1. 本地复现：先启动后端与前端并确认 `collection` 页面可正常加载与分页。
 2. 抽取复用：将 `collection` 的分页、骨架、卡片抽为共享组件库，供其它列表页面复用。
 3. API 差异表：列出新页面所需字段与后端实际返回字段的差异，必要时向后端提出小范围 API 扩展。
-4. 迁移准备：任何数据库 schema 变更前准备好迁移脚本与回滚步骤并在 dev 环境测试。
+4. 变更准备：任何数据库 schema 变更前准备好变更脚本与回滚步骤并在 dev 环境测试。
 5. 性能验证：在低端设备上进行滚动/切换基线测试，优先修复明显卡顿点（图片解码、网络阻塞、过度重绘）。
 
 ---
