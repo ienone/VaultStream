@@ -186,6 +186,10 @@ class AppTheme {
         hintStyle: WidgetStateProperty.all(textTheme.bodyLarge?.copyWith(color: scheme.outline)),
       ),
 
+      // M3 2024 组件更新
+      sliderTheme: const SliderThemeData(),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(),
+
       // Expressive Segmented Button
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: SegmentedButton.styleFrom(

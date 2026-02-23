@@ -45,7 +45,7 @@ void main() {
 
       expect(content.id, 2);
       expect(content.title, null);
-      expect(content.description, null);
+      expect(content.body, null);
       expect(content.coverUrl, null);
     });
   });
