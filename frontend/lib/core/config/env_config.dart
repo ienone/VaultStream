@@ -6,7 +6,7 @@ class EnvConfig {
 
   static const String apiToken = String.fromEnvironment(
     'API_TOKEN',
-    defaultValue: '114514', // 建议通过 --dart-define 传入
+    defaultValue: '', // 不再提供硬编码默认值，强制走 ConnectPage
   );
 
   static const bool debugLog = bool.fromEnvironment(

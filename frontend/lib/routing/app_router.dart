@@ -7,35 +7,70 @@ import '../features/collection/content_detail_page.dart';
 import '../features/dashboard/dashboard_page.dart';
 import '../features/review/review_page.dart';
 import '../features/settings/settings_page.dart';
-import '../features/auth/presentation/login_page.dart';
+import '../features/auth/presentation/connect_page.dart';
+import '../features/auth/presentation/onboarding_page.dart';
 import '../layout/app_shell.dart';
 import '../core/providers/local_settings_provider.dart';
+import '../core/providers/system_status_provider.dart';
 
 part 'app_router.g.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
-@riverpod
+@Riverpod(keepAlive: true)
 GoRouter goRouter(Ref ref) {
+  final listenable = ValueNotifier<int>(0);
+
+  // 当配置或系统状态发生改变时，通知路由重新验证
+  ref.listen(localSettingsProvider, (_, __) {
+    listenable.value++;
+  });
+  ref.listen(systemStatusProvider, (_, __) {
+    listenable.value++;
+  });
+
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/dashboard',
+    refreshListenable: listenable,
     redirect: (context, state) {
       final settings = ref.read(localSettingsProvider);
-      final isLoggingIn = state.matchedLocation == '/login';
-      final hasConfig = settings.baseUrl.isNotEmpty && settings.apiToken.isNotEmpty;
+      final systemStatus = ref.read(systemStatusProvider);
+
+      final isConnecting = state.matchedLocation == '/connect';
+      final isOnboarding = state.matchedLocation == '/onboarding';
+
+      final hasConfig =
+          settings.baseUrl.isNotEmpty && settings.apiToken.isNotEmpty;
 
       if (!hasConfig) {
-        if (!isLoggingIn) return '/login';
-      } else {
-        if (isLoggingIn) return '/dashboard';
+        if (!isConnecting) return '/connect';
+        return null;
       }
-      return null;
+
+      // 如果已连接，检查是否需要引导
+      return systemStatus.when(
+        data: (status) {
+          if (status.needsSetup) {
+            if (!isOnboarding) return '/onboarding';
+            return null;
+          } else {
+            if (isOnboarding || isConnecting) return '/dashboard';
+            return null;
+          }
+        },
+        loading: () => null,
+        error: (_, _) => null,
+      );
     },
     routes: [
       GoRoute(
-        path: '/login',
-        builder: (context, state) => const LoginPage(),
+        path: '/connect',
+        builder: (context, state) => const ConnectPage(),
+      ),
+      GoRoute(
+        path: '/onboarding',
+        builder: (context, state) => const OnboardingPage(),
       ),
       StatefulShellRoute.indexedStack(
         // builder用于构建StatefulShellRoute的UI
@@ -78,7 +113,9 @@ GoRouter goRouter(Ref ref) {
                           initialColor: color,
                         ),
                         transitionDuration: const Duration(milliseconds: 400),
-                        reverseTransitionDuration: const Duration(milliseconds: 400),
+                        reverseTransitionDuration: const Duration(
+                          milliseconds: 400,
+                        ),
                         transitionsBuilder:
                             (context, animation, secondaryAnimation, child) {
                               return FadeTransition(
