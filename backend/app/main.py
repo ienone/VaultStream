@@ -133,10 +133,11 @@ async def request_id_middleware(request: Request, call_next):
     return JSONResponse(status_code=500, content={"detail": "internal error"}, headers={"X-Request-Id": request_id})
 
 # CORS中间件
+_cors_origins = [o.strip() for o in settings.cors_allowed_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 生产环境需要限制
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=("*" not in _cors_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )

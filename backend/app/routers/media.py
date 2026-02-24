@@ -4,7 +4,11 @@
 调用方式：无需 API Token (方便前端直接加载)，但部分接口可能限制来源
 """
 import os
+import ipaddress
 import mimetypes
+import socket
+from urllib.parse import urlparse
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
@@ -14,6 +18,25 @@ from app.core.config import settings
 from app.core.storage import get_storage_backend, LocalStorageBackend
 
 router = APIRouter()
+
+
+def _is_safe_url(url: str) -> bool:
+    """检查 URL 是否安全（防止 SSRF 访问内网）"""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        # 解析域名到 IP 并检查是否为私有/保留地址
+        for info in socket.getaddrinfo(hostname, None):
+            addr = ipaddress.ip_address(info[4][0])
+            if addr.is_private or addr.is_reserved or addr.is_loopback or addr.is_link_local:
+                return False
+    except (ValueError, socket.gaierror):
+        return False
+    return True
 
 @router.get("/media/{key:path}")
 async def proxy_media(
@@ -31,8 +54,16 @@ async def proxy_media(
     """
     if not isinstance(storage, LocalStorageBackend):
         raise HTTPException(status_code=400, detail="Only local storage proxy is supported")
-        
+
+    # 路径穿越防护
+    if ".." in key:
+        raise HTTPException(status_code=400, detail="Invalid media key")
+
     file_path = storage._full_path(key)
+    # 确保解析后的路径仍在存储根目录内
+    if not os.path.realpath(file_path).startswith(os.path.realpath(storage.root_dir)):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Media not found")
         
@@ -70,6 +101,10 @@ async def proxy_image(
         _sha256_bytes,
     )
     
+    # SSRF 防护：禁止访问内网地址
+    if not _is_safe_url(url):
+        raise HTTPException(status_code=400, detail="目标 URL 不允许访问（内网地址或无效协议）")
+
     # 1. 生成缓存key（使用URL的MD5作为命名空间）
     url_hash = hashlib.md5(url.encode()).hexdigest()
     cache_namespace = f"proxy_cache/{url_hash[:2]}/{url_hash[2:4]}"

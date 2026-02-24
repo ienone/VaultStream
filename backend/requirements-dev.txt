@@ -1,0 +1,4 @@
+# 开发/测试依赖（使用镜像不需要）
+-r requirements.txt
+pytest
+pytest-asyncio

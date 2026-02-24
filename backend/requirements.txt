@@ -9,32 +9,18 @@ aiosqlite  # SQLite 异步驱动
 sqlalchemy
 alembic
 
-# PostgreSQL 和 Redis（已移除）
-# asyncpg  # PostgreSQL 异步驱动（生产模式）
-# redis
-# aioredis
-
 # HTTP 客户端
 httpx[socks]
-aiohttp
 requests
 
 # 小红书签名
 xhshow
 
-# Twitter 爬取
-
-
 # Telegram Bot
 python-telegram-bot
 
 # 工具库
-python-dotenv
 loguru
-
-# 测试
-pytest
-pytest-asyncio
 python-dateutil
 
 # 图片转码（可选：用于导出/归档时将图片转为 WebP）
@@ -44,11 +30,8 @@ Pillow
 markdownify
 beautifulsoup4
 
-# 智能爬虫与发现层 (Native Crawler & Discovery)
-browser-use
+# 爬虫与发现层 (Native Crawler & Discovery)
 crawl4ai
 playwright
 langchain-openai
 openai
-langchain-anthropic
-nest_asyncio

@@ -28,8 +28,8 @@ app/
 - config.py: 环境配置加载 (`settings`)
 - database.py: 数据库连接管理 (`get_db`, `init_db`)
 - logging.py: 全局日志配置 (`logger`)
-- storage.py: 文件存储后端接口 (`S3`, `Local`)
-- queue.py: Redis 任务队列接口
+- storage.py: 文件存储后端接口 (`Local`)
+- queue.py: SQLite 任务队列接口
 
 ### 2. `worker/` (后台任务)
 原 `worker.py` 已拆分，负责处理异步任务。

@@ -87,11 +87,5 @@ WEIBO_COOKIE=\"SUB=...; _s_tentry=...;\"
 
 ---
 
-## 6. 开发者参考
-
-### 6.1 核心组件
-- `weibo.py`: 位于 `backend/app/adapters/weibo.py`。
-- `_build_weibo_archive`: 负责将复杂的嵌套 JSON 转换为统一的归档模型。
-
-### 6.2 扩展建议
+## 6 扩展建议
 - “超话”内容和“微栏目”等特殊识别有待实现。

@@ -189,9 +189,11 @@ async def _try_crawl4ai(url: str, cookies: Optional[dict] = None) -> Optional[Fe
             browser_cookies.append({"name": k, "value": v, "url": url})
 
     browser_config = BrowserConfig(
+        browser_type="webkit",  
         headless=True,
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        cookies=browser_cookies
+        light_mode=True,  # 禁用非必要后台功能，降低资源消耗
+        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+        cookies=browser_cookies,
     )
     run_config = CrawlerRunConfig(
         cache_mode=CacheMode.ENABLED,

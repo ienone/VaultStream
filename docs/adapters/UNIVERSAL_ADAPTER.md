@@ -15,28 +15,28 @@
 
 确保 `backend/requirements.txt` 中已安装以下库：
 - `crawl4ai`
-- `browser-use`
 - `playwright`
 - `langchain-openai`
+- `openai`
 
 ### 2. 环境变量 (`backend/.env`)
 
 为了平衡性能与成本，我们采用双模型策略：
 
 ```ini
-# --- 1. 视觉模型 (用于主动发现/复杂任务) ---
+# --- 1. 视觉模型 ---
 # 参考: Qwen-VL-Max (阿里), 
 VISION_LLM_API_KEY=sk-xxx
 VISION_LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 VISION_LLM_MODEL=qwen-vl-max
 
 # --- 2. 文本模型 (用于通用解析/清洗) ---
-# 推荐: DeepSeek, Qwen-Turbo (成本极低)
+# 参考: DeepSeek
 TEXT_LLM_API_KEY=sk-xxx
 TEXT_LLM_BASE_URL=https://api.deepseek.com
 TEXT_LLM_MODEL=deepseek-chat
 
-# --- 3. 浏览器配置 (用于突破登录墙) ---
+# --- 3. 浏览器配置 ---
 CHROME_PATH=C:\Program Files\Google\Chrome\Application\chrome.exe
 CHROME_USER_DATA_DIR=C:\Users\YourUser\AppData\Local\Google\Chrome\User Data
 BROWSER_USE_DISABLE_EXTENSIONS=true
@@ -59,13 +59,3 @@ BROWSER_USE_DISABLE_EXTENSIONS=true
     *   负责动态加载模型配置。
     *   负责处理 Pydantic 兼容性补丁（Monkey Patch）。
     *   提供统一的错误日志记录。
-
-### 错误处理
-
-*   LLM 故障: 如果 LLM API 调用失败或返回非 JSON 格式，适配器会自动降级 (Fallback)，直接返回网页的原始 Markdown 内容，并在 `archive_metadata` 中标记错误。
-*   浏览器故障: 自动捕获 Playwright 超时或 Crash，并返回错误信息。
-
-## 常见问题
-
-Q: 启动非常慢，且报 Timeout 错误？
-A: 检查 `.env` 中是否设置了 `BROWSER_USE_DISABLE_EXTENSIONS=true`，否则 `browser-use` 可能会因为尝试下载外网扩展导致超时。

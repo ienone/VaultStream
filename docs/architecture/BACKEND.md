@@ -913,12 +913,12 @@ API 输出:
 
 ---
 
-## 16. 模块交互矩阵
+## 16. 模块交互逻辑
 
 | 调用方 ↓ / 被调方 → | core | adapters | worker | distribution | push | media | bot |
 |---------------------|------|----------|--------|-------------|------|-------|-----|
 | **routers** | ✅ DB/Config/Deps | ✅ 平台检测 | ✅ 重试 | ✅ 入队/规则 | — | ✅ 代理 | — |
-| **services** | ✅ DB/Queue/Events | ✅ 工厂 | — | — | — | — | — |
+| **services** | ✅ DB/Queue/Events | ✅ 队列 | — | — | — | — | — |
 | **worker** | ✅ DB/Queue/Config | ✅ 解析 | ✅ (自身) | ✅ 自动审批 | — | ✅ 转码 | — |
 | **distribution** | ✅ DB/Events | — | ✅ Distributor | ✅ (自身) | ✅ 推送 | — | — |
 | **push** | ✅ Config/Storage | — | — | — | ✅ (自身) | ✅ 提取 | — |
@@ -956,7 +956,7 @@ API 输出:
 ### 17.3 健康检查
 
 ```
-GET /health → { status, db, redis }
+GET /health → { status, db }
 GET /api/v1/health → { status, queue_size, components }
 ```
 

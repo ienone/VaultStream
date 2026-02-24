@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     debug_sql: bool = False
     slow_query_threshold_ms: int = 500  # 慢查询日志阈值（毫秒），0 表示关闭
 
+    # CORS 允许的来源（逗号分隔），"*" 表示全部允许（仅限开发环境）
+    cors_allowed_origins: str = "*"
+
     # API 鉴权（简单 Token）
     api_token: SecretStr = SecretStr("")
 
@@ -111,5 +114,12 @@ def validate_settings() -> None:
 
     if settings.app_env == "prod" and settings.debug:
         raise RuntimeError("DEBUG must be False in production")
+
+    if settings.app_env == "prod":
+        token = settings.api_token.get_secret_value()
+        if not token:
+            raise RuntimeError("API_TOKEN must be set in production (APP_ENV=prod)")
+        if settings.cors_allowed_origins == "*":
+            raise RuntimeError("CORS_ALLOWED_ORIGINS must not be '*' in production")
 
     return None

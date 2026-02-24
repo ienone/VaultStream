@@ -40,7 +40,7 @@ void main() {
     final mockHealth = SystemHealth(
         status: 'ok',
         queueSize: 0,
-        components: {'db': 'ok', 'redis': 'ok'}
+        components: {'db': 'ok'}
     );
 
     await tester.pumpWidget(
@@ -107,7 +107,7 @@ void main() {
     final mockHealth = SystemHealth(
         status: 'ok',
         queueSize: 0,
-        components: {'db': 'ok', 'redis': 'ok'}
+        components: {'db': 'ok'}
     );
 
     await tester.pumpWidget(

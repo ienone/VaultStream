@@ -380,7 +380,7 @@ final tokenProvider = FutureProvider<String?>((ref) async {
 # 开发构建 (带热重载)
 flutter run -d chrome
 
-# 生产构建
+# release构建
 flutter build web --release
 
 # 输出目录: build/web/
