@@ -1,11 +1,11 @@
 {
-    "name": "frontend",
-    "short_name": "frontend",
+    "name": "VaultStream",
+    "short_name": "VaultStream",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#1E3A5F",
+    "theme_color": "#1E3A5F",
+    "description": "私有内容存档与分享系统——多平台采集、本地存储、自动推送",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
