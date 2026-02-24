@@ -4,7 +4,7 @@
 ![Flutter](https://img.shields.io/badge/Flutter-3.10%2B-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-私有内容存档与分发系统。从多个平台采集内容，本地化存储，按规则自动推送到 Telegram / QQ 等渠道。
+私有内容存档与分享系统。从多个平台采集内容，本地化存储，按规则自动推送到 Telegram / QQ 等渠道。
 
 ---
 
@@ -30,38 +30,77 @@
 - 响应式布局，Material 3 主题
 - 收藏浏览、审批面板、仪表板、分发规则配置
 
+## 架构
+
+flutter+fastapi+sqlite
+
 ---
 
 ## 部署
 
-### Docker（推荐）
+每个 [Release](https://github.com/ienone/VaultStream/releases) 提供开箱即用的部署包，前端网页已内嵌。
+
+| 文件 | 说明 |
+|------|------|
+| `vaultstream-vX.X.X.zip` | 完整部署包（前端网页 + 后端） |
+| `app-release.apk` | Android 客户端 |
+
+### 快速部署（推荐）
 
 ```bash
-git clone https://github.com/ienone/VaultStream.git
-cd VaultStream/backend
-cp .env.example .env   # 编辑配置
-docker compose up -d
+# 1. 下载并解压
+unzip vaultstream-vX.X.X.zip && cd backend
+
+# 2. 配置（仅需修改两项）
+cp .env.example .env
 ```
 
-生产环境 `.env` 必须配置：
+编辑 `.env`，填写你的域名：
 
 ```ini
-APP_ENV=prod
-DEBUG=False
-API_TOKEN=<你的密钥>
+BASE_URL=https://your-domain.com            # 用于生成图片链接，不设置则图片无法加载
 CORS_ALLOWED_ORIGINS=https://your-domain.com
 ```
 
-### 前端构建
+```bash
+# 3. 启动
+docker compose up -d
 
-在本地构建 Flutter Web 静态文件，部署到服务器由 Nginx 托管：
+# 4. 获取 API 密钥（首次启动自动生成，复制后填入前端连接页）
+docker logs vaultstream
+```
+
+LLM Key、Bot Token、平台 Cookie 等均可在前端引导界面中配置，无需写入 `.env`。
+
+### Nginx 反向代理
+
+参考配置见 [`backend/systemd/nginx.conf.example`](backend/systemd/nginx.conf.example)：
+
+```nginx
+# 前端（Nginx 直接托管 backend/static/，不经过 FastAPI）
+root /opt/vaultstream/backend/static;
+location / { try_files $uri $uri/ /index.html; }
+
+# 媒体文件（直接读取，带静态缓存）
+location /media/ { alias /opt/vaultstream/backend/data/media/; expires 30d; }
+
+# 后端 API（SSE 必须关闭 buffering）
+location /api/ { proxy_pass http://127.0.0.1:8000; proxy_buffering off; }
+```
+
+### 从源码构建
 
 ```bash
-cd frontend
-flutter pub get
-dart run build_runner build
+git clone https://github.com/ienone/VaultStream.git
+cd VaultStream/frontend
+flutter pub get && dart run build_runner build --delete-conflicting-outputs
 flutter build web --release
-# 产物在 build/web/，上传到服务器即可
+
+# 将前端产物复制到后端（FastAPI 自动托管）
+cp -r build/web ../backend/static
+
+cd ../backend && cp .env.example .env
+docker compose up -d
 ```
 
 ---
@@ -69,16 +108,74 @@ flutter build web --release
 ## 使用方式
 
 1. 访问前端页面，通过界面添加内容链接、管理标签、浏览存档
-2. 在前端「分发规则」页面配置推送目标和匹配条件，内容解析成功后自动推送
-3. （可选）启动 Telegram Bot，直接向 Bot 发送链接即可入库：
-   ```bash
-   # Docker 内
-   docker exec vaultstream python -m app.bot
-   # 或手动部署
-   .venv/bin/python -m app.bot
-   ```
+2. 在前端「审批与分发」页面配置推送规则和目标群组，内容解析成功后自动推送
+3. （可选）配置 Telegram Bot 或 QQ Bot，直接向 Bot 发送链接即可入库
 
-API 文档：启动后访问 http://localhost:8000/docs
+API 文档：启动后访问 `http://localhost:8000/docs`
+
+---
+
+## 推送机器人配置（可选）
+
+### Telegram Bot
+
+1. 在 Telegram 中找到 **[@BotFather](https://t.me/BotFather)**，发送 `/newbot`，按提示创建后获得 **Bot Token**（格式：`12345678:ABC-DEF...`）
+2. 打开 VaultStream 前端，首次访问时**引导界面**会引导填写 Token；或在 **设置 → 推送与通知** 中配置
+3. 配置完成后向 Bot 发送 `/start`，Bot 即可接收链接并入库
+
+> **获取自己的 Telegram 用户 ID**：向 [@userinfobot](https://t.me/userinfobot) 发送任意消息即可获取。在管理员 ID 字段填入后，Bot 将只响应该用户的命令。
+
+### QQ Bot（通过 Napcat） 
+
+QQ Bot 需要先在服务器上独立部署 [NapCatQQ](https://github.com/NapNeko/NapCatQQ)（基于 QQNT 协议的 OneBot 11 实现）。
+
+**部署 Napcat（与 VaultStream 同服务器）：**
+
+```bash
+# 参考 Napcat 官方文档
+# 启动后默认监听 3000 端口（HTTP 模式）
+# 扫码登录 QQ 账号后即可使用
+```
+
+**在 VaultStream 中配置：**
+
+1. 打开 **设置 → 推送与通知**
+2. 选择平台为 **QQ (Napcat)**
+3. 填入 Napcat 服务地址（例如 `http://127.0.0.1:3000`）
+4. 保存后即可在「审批与分发 → Bot 群组」中同步 QQ 群列表
+
+---
+
+## 推送规则说明
+
+内容入库后，VaultStream 通过「**分发规则**」决定将哪些内容推送到哪些群组。
+
+### 规则工作流
+
+```
+内容入库 → 匹配规则 → 进入推送队列 → 审批（可选）→ 推送至目标群组
+```
+
+### 配置步骤
+
+1. **进入「审批与分发」** → 点击「新建规则」
+2. **设置匹配条件**（可组合）：
+   - 来源平台（Bilibili / 知乎 / 微博 等）
+   - 标签（如 `技术`、`设计`）
+   - NSFW 过滤
+3. **绑定推送目标**：将规则关联到一个或多个 Bot 群组/频道
+4. **选择审批模式**：
+   - `自动推送` — 匹配后立即推送，无需人工审核
+   - `待审阅` — 进入待审队列，手动点击确认后推送
+
+### 示例
+
+| 规则名 | 匹配条件 | 推送目标 | 模式 |
+|--------|---------|---------|------|
+| 知乎精选 | 平台=知乎，标签=`技术` | TG 频道 A | 自动 |
+| 微博观察 | 平台=微博 | TG 群组 B | 待审阅 |
+
+> **提示**：同一条内容可同时匹配多条规则，会分别推送到各自目标。
 
 ---
 
