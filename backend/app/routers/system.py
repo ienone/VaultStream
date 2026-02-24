@@ -41,6 +41,29 @@ async def health_check():
         }
     }
 
+@router.get("/init-status")
+async def get_init_status(
+    db: AsyncSession = Depends(get_db)
+):
+    """获取初始化状态（无需 Token）"""
+    from app.models import BotConfig, SystemSetting
+    
+    # 检查数据库中是否已配置核心 AI Key (忽略 .env 环境变量以便强制在前端走一遍引导流程)
+    setting_result = await db.execute(
+        select(SystemSetting.value).where(SystemSetting.key == "text_llm_api_key")
+    )
+    llm_key_in_db = setting_result.scalar_one_or_none()
+    
+    # 检查是否有 Bot 配置
+    bot_result = await db.execute(select(func.count()).select_from(BotConfig))
+    bot_count = bot_result.scalar() or 0
+    
+    return {
+        "needs_setup": not bool(llm_key_in_db),
+        "has_bot": bot_count > 0,
+        "version": "0.1.0"
+    }
+
 @router.get("/dashboard/stats", response_model=DashboardStats)
 async def get_dashboard_stats(
     db: AsyncSession = Depends(get_db),

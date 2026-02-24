@@ -53,7 +53,7 @@ class DistributionQueueWorker:
                 name=f"queue-worker-{i}",
             )
             self._tasks.append(task)
-        logger.info(f"🚀 分发队列 Worker 已启动: {self.worker_count} 个并发")
+        logger.info("分发队列Worker启动 worker_count={}", self.worker_count)
 
     async def stop(self):
         """停止所有 worker"""
@@ -66,7 +66,7 @@ class DistributionQueueWorker:
             except asyncio.CancelledError:
                 pass
         self._tasks.clear()
-        logger.info("🛑 分发队列 Worker 已停止")
+        logger.info("分发队列Worker停止")
 
     async def process_item_now(self, item_id: int, worker_name: str = "api-manual"):
         """立即处理指定队列项（绕过轮询，复用同一推送逻辑）。"""
@@ -100,7 +100,7 @@ class DistributionQueueWorker:
 
     async def _worker_loop(self, worker_name: str):
         """单个 worker 的主循环。"""
-        logger.info(f"🔄 Worker {worker_name} 开始运行")
+        logger.info("Worker {} 开始运行", worker_name)
         while self.running:
             try:
                 async with AsyncSessionLocal() as session:
@@ -114,8 +114,7 @@ class DistributionQueueWorker:
                             await self._process_item(session, item, worker_name)
                         except Exception as e:
                             logger.error(
-                                f"❌ Worker {worker_name} 处理队列项失败: "
-                                f"item_id={item.id}, error={e}",
+                                f"Worker {worker_name} 处理失败 item_id={item.id} error={e}",
                                 exc_info=True,
                             )
                             await session.rollback()
@@ -123,7 +122,7 @@ class DistributionQueueWorker:
                 raise
             except Exception as e:
                 logger.error(
-                    f"❌ Worker {worker_name} 循环异常: {e}",
+                    f"Worker {worker_name} 循环异常: {e}",
                     exc_info=True,
                 )
                 await asyncio.sleep(10)
@@ -194,8 +193,7 @@ class DistributionQueueWorker:
         await session.commit()
 
         logger.debug(
-            f"🔒 Worker {worker_name} 领取 {len(items)} 个队列项: "
-            f"ids={[i.id for i in items]}"
+            f"Worker {worker_name} 领取 {len(items)} 项 ids={[i.id for i in items]}"
         )
         return items
 
@@ -233,7 +231,7 @@ class DistributionQueueWorker:
             item.locked_by = None
             await session.commit()
             logger.info(
-                "⏸️ 队列项暂缓 (目标不可用): item_id=%s, bot_chat_id=%s",
+                "队列项暂缓(目标不可用) item_id=%s bot_chat_id=%s",
                 item.id,
                 item.bot_chat_id,
             )
@@ -251,8 +249,7 @@ class DistributionQueueWorker:
             item.locked_by = None
             await session.commit()
             logger.info(
-                f"⏭️ 队列项已跳过 (内容不符合): item_id={item.id}, "
-                f"content_id={item.content_id}"
+                f"队列项跳过(不符合) item_id={item.id} content_id={item.content_id}"
             )
             return
 
@@ -273,8 +270,7 @@ class DistributionQueueWorker:
             item.locked_by = None
             await session.commit()
             logger.info(
-                f"⏭️ 队列项已跳过 (重复): item_id={item.id}, "
-                f"content_id={item.content_id}, target_id={item.target_id}"
+                f"队列项跳过(重复) item_id={item.id} content_id={item.content_id} target_id={item.target_id}"
             )
             return
 
@@ -370,8 +366,7 @@ class DistributionQueueWorker:
         })
 
         logger.info(
-            f"✅ 推送成功: item_id={item.id}, content_id={item.content_id}, "
-            f"target={actual_target_id}, message_id={message_id}"
+            f"推送成功 item_id={item.id} content_id={item.content_id} target={actual_target_id} message_id={message_id}"
         )
 
     # ── 失败处理 ──────────────────────────────────────
@@ -394,8 +389,8 @@ class DistributionQueueWorker:
         if item.attempt_count >= (item.max_attempts or 3):
             item.status = QueueItemStatus.FAILED
             logger.error(
-                f"❌ 推送最终失败 (已达最大重试): item_id={item.id}, "
-                f"content_id={item.content_id}, attempts={item.attempt_count}, "
+                f"推送最终失败(已达最大重试) item_id={item.id} "
+                f"content_id={item.content_id} attempts={item.attempt_count} "
                 f"error={error}"
             )
         else:
@@ -403,9 +398,9 @@ class DistributionQueueWorker:
             delay = min(60 * (2 ** item.attempt_count), 3600)
             item.next_attempt_at = now + timedelta(seconds=delay)
             logger.warning(
-                f"🔄 推送失败，将重试: item_id={item.id}, "
-                f"content_id={item.content_id}, attempt={item.attempt_count}, "
-                f"next_attempt_at={item.next_attempt_at}, error={error}"
+                f"推送失败将重试 item_id={item.id} "
+                f"content_id={item.content_id} attempt={item.attempt_count} "
+                f"next_attempt_at={item.next_attempt_at} error={error}"
             )
 
         await session.commit()

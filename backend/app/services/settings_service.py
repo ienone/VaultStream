@@ -99,6 +99,18 @@ async def set_setting_value(key: str, value: Any, category: str = "general", des
         
         # Update cache
         _SETTINGS_CACHE[key] = value
+
+        # 同步更新全局 settings 对象（如果存在对应字段）
+        from app.core.config import settings
+        if hasattr(settings, key):
+            from pydantic import SecretStr
+            # 处理 SecretStr 包装
+            field_type = settings.__annotations__.get(key)
+            if field_type == SecretStr or "SecretStr" in str(field_type):
+                setattr(settings, key, SecretStr(str(value)))
+            else:
+                setattr(settings, key, value)
+        
         return setting
 
 

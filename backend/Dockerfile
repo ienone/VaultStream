@@ -27,7 +27,7 @@ RUN apt-get update \
 # 复制依赖文件
 COPY requirements.txt .
 
-# 安装 Python 依赖 + Playwright WebKit（比 Chromium 轻约 200MB，内存低约 50%）
+# 安装 Python 依赖 + Playwright WebKit
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt \
     && playwright install --with-deps webkit

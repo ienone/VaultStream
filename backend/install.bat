@@ -160,9 +160,16 @@ if not exist ".env" (
     echo 创建配置文件...
     if exist ".env.example" (
         copy ".env.example" ".env" >nul
+
+        REM 自动生成 API_TOKEN
+        for /f "tokens=*" %%t in ('"!VENV_PY!" -c "import secrets; print(secrets.token_urlsafe(32))"') do set GENERATED_TOKEN=%%t
+        "!VENV_PY!" -c "import re,sys; t=sys.argv[1]; f=open('.env','r',encoding='utf-8'); c=f.read(); f.close(); c=re.sub(r'^API_TOKEN=$','API_TOKEN='+t,c,flags=re.M); f=open('.env','w',encoding='utf-8'); f.write(c); f.close()" "!GENERATED_TOKEN!"
+
         echo 已创建 .env 文件
+        echo 已自动生成 API_TOKEN: !GENERATED_TOKEN!
         echo.
-        echo Telegram Bot 账号请在服务启动后通过 /api/v1/bot-config 创建
+        echo 请编辑 .env 文件，配置 Telegram 权限、LLM 密钥等
+        echo Bot 账号在服务启动后通过 /api/v1/bot-config 创建
         echo.
         set /p EDIT_ENV="是否现在用编辑器打开 .env 文件？(y/n): "
         if /i "!EDIT_ENV!"=="y" (

@@ -34,6 +34,38 @@ from app.routers import (
 setup_logging(level=settings.log_level, fmt=settings.log_format, debug=settings.debug)
 
 
+async def _bootstrap_system_settings():
+    """初始化系统设置，如生成 API Token"""
+    from app.services.settings_service import get_setting_value, set_setting_value
+    from pydantic import SecretStr
+    import secrets
+
+    # 1. 检查 API Token
+    token = await get_setting_value("api_token")
+    env_token = settings.api_token.get_secret_value()
+
+    if not token and not env_token:
+        # 生成新 Token
+        new_token = f"VS_{secrets.token_urlsafe(32)}"
+        await set_setting_value("api_token", new_token, category="security", description="自动生成的 API 访问密钥")
+        
+        # 更新内存中的 settings 对象，确保后续鉴权通过
+        settings.api_token = SecretStr(new_token)
+        
+        # 醒目打印
+        print("\n" + "="*70)
+        print("  " + "首次启动! 请复制以下 API 访问密钥以连接前端:".center(66))
+        print("\n" + f"  {new_token}  ".center(70, " "))
+        print("\n" + "  该密钥已安全存储在数据库中，您稍后可在设置页面修改。".center(66))
+        print("="*70 + "\n")
+    elif env_token:
+        # 如果环境变量有，确保内存中使用环境变量的
+        settings.api_token = SecretStr(env_token)
+    elif token:
+        # 如果数据库有，确保内存中同步数据库的
+        settings.api_token = SecretStr(token)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
@@ -44,6 +76,9 @@ async def lifespan(app: FastAPI):
     # 初始化数据库
     await init_db()
     logger.info("数据库初始化完成")
+
+    # 自举 API Token
+    await _bootstrap_system_settings()
     
     # 连接任务队列
     await task_queue.connect()

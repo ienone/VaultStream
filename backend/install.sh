@@ -190,9 +190,14 @@ echo ""
 if [ ! -f ".env" ]; then
     echo "创建配置文件..."
     cp .env.example .env
+
+    # 自动生成 API_TOKEN
+    GENERATED_TOKEN=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))" 2>/dev/null || openssl rand -base64 32 | tr -d '/+=' | head -c 43)
+    sed -i.bak "s/^API_TOKEN=$/API_TOKEN=${GENERATED_TOKEN}/" .env && rm -f .env.bak
     echo "已创建 .env 文件"
+    echo "已自动生成 API_TOKEN: ${GENERATED_TOKEN}"
     echo ""
-    echo "请编辑 .env 文件，配置 API_TOKEN / 数据库 / 存储参数"
+    echo "请编辑 .env 文件，配置 Telegram 权限、LLM 密钥等"
     echo "Bot 账号在服务启动后通过 /api/v1/bot-config 创建"
     echo ""
     read -p "是否现在编辑配置文件？(y/n) " -n 1 -r
