@@ -116,9 +116,6 @@ def validate_settings() -> None:
         raise RuntimeError("DEBUG must be False in production")
 
     if settings.app_env == "prod":
-        token = settings.api_token.get_secret_value()
-        if not token:
-            raise RuntimeError("API_TOKEN must be set in production (APP_ENV=prod)")
         if settings.cors_allowed_origins == "*":
             raise RuntimeError("CORS_ALLOWED_ORIGINS must not be '*' in production")
 

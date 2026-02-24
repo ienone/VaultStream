@@ -310,40 +310,35 @@ def _format_bilibili_message(content: dict) -> str:
     live_status = extra.get('live_status', 0)
 
     # 根据类型定制图标和标签
-    type_icon = "📺"
-    type_name = '视频'
+    type_label = "[视频]"
     
     stats_lines = []
     if content_type == 'live':
-        type_icon = "🌐"
         status_text = "直播中" if live_status == 1 else ("轮播中" if live_status == 2 else "未开播")
-        type_name = f"直播 ({status_text})"
+        type_label = f"[直播 {status_text}]"
         # 直播间特有统计：人气值
         stats_lines.append(f"人气：{format_number(view)}")
     elif content_type == 'article':
-        type_icon = "📝"
-        type_name = "专栏"
+        type_label = "[专栏]"
         stats_lines.append(f"阅读：{format_number(view)} | 点赞：{format_number(like)} | 评论：{format_number(reply)}")
     elif content_type == 'dynamic':
-        type_icon = "📱"
-        type_name = "动态"
+        type_label = "[动态]"
         stats_lines.append(f"点赞：{format_number(like)} | 转发：{format_number(share)} | 评论：{format_number(reply)}")
     else:
         # 视频/番剧通用模板
         if content_type == 'bangumi':
-            type_icon = "🎬"
-            type_name = '番剧/电影'
+            type_label = "[番剧/电影]"
         
         stats_lines.append(f"播放：{format_number(view)} | 弹幕：{format_number(danmaku)} | 收藏：{format_number(favorite)}")
         stats_lines.append(f"点赞：{format_number(like)} | 硬币：{format_number(coin)} | 评论：{format_number(reply)}")
 
     lines = [
-        f"<b>{type_icon} {title}</b>",
-        f"类型：{type_name} | UP：{author}",
+        f"<b>{type_label} {title}</b>",
+        f"UP：{author}",
         f"日期：{pub_at}" if pub_at else "",
     ]
     lines.extend(stats_lines)
-    lines.append(f"\n🔗 {url}")
+    lines.append(f"\n链接：{url}")
     
     # 移除空行
     lines = [line for line in lines if line]
@@ -375,18 +370,18 @@ def _format_default_message(content: dict) -> str:
     url = content.get('clean_url') or content.get('url') or ""
     
     if content.get('title'):
-        text_parts.append(f"<b>📌 {html.escape(str(content['title']))}</b>")
+        text_parts.append(f"<b>{html.escape(str(content['title']))}</b>")
     if content.get('author_name'):
-        text_parts.append(f"👤 {html.escape(str(content['author_name']))}")
+        text_parts.append(f"作者：{html.escape(str(content['author_name']))}")
     
     # 互动数据
     stats = []
     if content.get('view_count'): 
-        stats.append(f"👁️ {format_number(content['view_count'])}")
+        stats.append(f"浏览 {format_number(content['view_count'])}")
     if content.get('like_count'): 
-        stats.append(f"👍 {format_number(content['like_count'])}")
+        stats.append(f"点赞 {format_number(content['like_count'])}")
     if content.get('collect_count'): 
-        stats.append(f"⭐ {format_number(content['collect_count'])}")
+        stats.append(f"收藏 {format_number(content['collect_count'])}")
     if stats:
         text_parts.append(" | ".join(stats))
 
@@ -399,5 +394,5 @@ def _format_default_message(content: dict) -> str:
         tags_str = " ".join([f"#{tag}" for tag in content['tags']])
         text_parts.append(f"\n{tags_str}")
         
-    text_parts.append(f"\n🔗 {url}")
+    text_parts.append(f"\n链接：{url}")
     return "\n".join(text_parts)

@@ -70,8 +70,8 @@ DEFAULT_RENDER_CONFIG_PRESETS = [
             "content_mode": "full",
             "media_mode": "all",
             "link_mode": "original",
-            "header_text": "📰 {{date}}",
-            "footer_text": "由 VaultStream 提供"
+            "header_text": "日期 {{date}}",
+            "footer_text": ""
         }
     },
     {

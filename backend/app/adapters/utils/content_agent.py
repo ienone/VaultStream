@@ -115,9 +115,9 @@ def tool_analyze_dom(html: str, url: str, verbose: bool = True) -> dict:
 
     if verbose:
         if auto_selector:
-            logger.debug(f"  ✅ 自动识别选择器: {auto_selector}")
+            logger.debug("auto selector: {}", auto_selector)
         else:
-            logger.debug(f"  ⏭️  未匹配已知选择器, 需要 LLM 定标")
+            logger.debug("no known selector matched, fallback to LLM targeting")
 
     return {
         "og_metadata": og,
@@ -247,7 +247,7 @@ def tool_convert_html(html: str, url: str, selector: str = "body", verbose: bool
         md = result.raw_markdown if hasattr(result, "raw_markdown") else str(result)
     except Exception as e:
         if verbose:
-            logger.warning(f"  ⚠️  转换失败 ({e}), 回退 body text")
+            logger.warning("conversion failed ({}), fallback to body text", e)
         md = soup.body.get_text() if soup.body else ""
 
     md = _cleanup_markdown(_fix_links(md, url))
@@ -355,7 +355,7 @@ async def llm_target_selector(
     )
 
     if verbose:
-        logger.debug(f"  🎯 LLM 定标 ({model})...")
+        logger.debug("LLM targeting ({})", model)
 
     try:
         resp = client.chat.completions.create(
@@ -367,11 +367,11 @@ async def llm_target_selector(
         if match:
             result = json.loads(match.group())
             if verbose:
-                logger.info(f"  ✅ 选择器: {result.get('content_selector', 'body')}")
+                logger.info("selector: {}", result.get('content_selector', 'body'))
             return result
     except Exception as e:
         if verbose:
-            logger.warning(f"  ⚠️  定标失败: {e}")
+            logger.warning("targeting failed: {}", e)
 
     return {"content_selector": "body"}
 
@@ -479,7 +479,7 @@ async def layer1_scan(
     preview = _build_scan_preview(lines)
 
     if verbose:
-        logger.debug(f"  🔍 Layer 1: 结构扫描 ({total} 行, {model})...")
+        logger.debug("Layer 1: structural scan ({} lines, {})", total, model)
 
     messages = [
         {"role": "system", "content": _LAYER1_SYSTEM},
@@ -505,11 +505,11 @@ async def layer1_scan(
                 start = result["body_start_line"]
                 end = result["body_end_line"]
                 blocks = result.get("metadata_blocks", [])
-                logger.info(f"  ✅ 正文范围: 行 {start}-{end} ({end - start + 1} 行)")
+                logger.info("body range: L{}-L{} ({} lines)", start, end, end - start + 1)
             return result
     except Exception as e:
         if verbose:
-            logger.warning(f"  ⚠️  Layer 1 失败: {e}")
+            logger.warning("Layer 1 failed: {}", e)
 
     return {"body_start_line": 1, "body_end_line": len(lines), "metadata_blocks": []}
 
@@ -692,7 +692,7 @@ async def layer2_extract(
 
     if verbose:
         logger.debug(
-            f"  🔍 Layer 2: 提取+清洗 "
+            f"Layer 2: extract+clean "
             f"({body_line_count} 行正文, {len(blocks)} 个元数据块, {model})..."
         )
 
@@ -741,14 +741,14 @@ async def layer2_extract(
 
             if verbose:
                 logger.info(
-                    f"  ✅ 提取: {len(common_fields)} 通用字段, "
-                    f"{len(extension_fields)} 扩展字段, {len(tags)} 标签"
+                    "extracted: {} common, {} ext, {} tags",
+                    len(common_fields), len(extension_fields), len(tags),
                 )
 
             return common_fields, extension_fields, tags, heading_fixes, lines_to_remove, summary
     except Exception as e:
         if verbose:
-            logger.warning(f"  ⚠️  Layer 2 失败: {e}")
+            logger.warning("Layer 2 failed: {}", e)
 
     return {}, {}, [], [], [], ""
 
@@ -838,7 +838,7 @@ async def process_content(
     if fetch_result.content_type == "markdown":
         # ═══ Markdown Path: skip DOM analysis + conversion ═══
         if verbose:
-            logger.debug(f"  📄 Markdown 路径 (跳过 DOM 分析和转换)")
+            logger.debug("markdown path (skip DOM analysis)")
         markdown = _cleanup_markdown(fetch_result.content)
         selector = "(markdown path — no selector)"
 
@@ -848,7 +848,7 @@ async def process_content(
 
         # Tool: DOM analysis
         if verbose:
-            logger.debug(f"  🔧 Tool: DOM 分析...")
+            logger.debug("tool: DOM analysis")
         dom_info = tool_analyze_dom(html, url, verbose)
         cover_url = dom_info.get("cover_url", "")
 
@@ -864,7 +864,7 @@ async def process_content(
 
         # Tool: HTML → Markdown
         if verbose:
-            logger.debug(f"  🔧 Tool: HTML → Markdown (selector: {selector})...")
+            logger.debug("tool: HTML->Markdown (selector: {})", selector)
         markdown = tool_convert_html(html, url, selector, verbose)
 
     # ═══ Layer 1: Structural Scan ═══

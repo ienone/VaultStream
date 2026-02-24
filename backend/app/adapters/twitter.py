@@ -26,18 +26,7 @@ class TwitterAdapter(PlatformAdapter):
     """
     Twitter/X 平台适配器
     
-    内部使用 FxTwitter API 实现，无需登录或 API key。
-    
-    优势:
-    - ✅ 无需登录或 cookies
-    - ✅ 免费使用，无需 API key
-    - ✅ 返回完整的推文数据（文本、图片、视频等）
-    - ✅ 不会被 Cloudflare 拦截
-    
-    限制:
-    - ⚠️ 依赖第三方服务 (fxtwitter.com)
-    - ⚠️ 可能有速率限制
-    - ⚠️ 无法获取需要登录才能看的内容
+    使用 FxTwitter 实现，无需登录或 API key。
     """
     
     PLATFORM_NAME = "twitter"
@@ -323,7 +312,7 @@ class TwitterAdapter(PlatformAdapter):
         # 收集媒体URL
         media_urls = [m["url"] for m in media_list if m.get("url")]
         
-        # 构建统计数据（使用通用键名，与 Bilibili 适配器一致）
+        # 构建统计数据（使用通用键名）
         stats = {
             "view": tweet.get("views") or 0,
             "like": tweet.get("likes") or 0,
@@ -333,7 +322,7 @@ class TwitterAdapter(PlatformAdapter):
             "bookmarks": tweet.get("bookmarks") or 0,
             "screen_name": author.get("screen_name"),
             "replying_to": tweet.get("replying_to"),
-            # Twitter 没有 favorite（收藏）概念，保持为 0
+            # 没有 favorite（收藏数），保持为 0
             "favorite": 0,
         }
         
