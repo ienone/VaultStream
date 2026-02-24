@@ -20,7 +20,6 @@ import 'widgets/dialogs/edit_content_dialog.dart';
 import '../../theme/app_theme.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/dynamic_color_helper.dart';
-import '../settings/providers/settings_provider.dart';
 
 class ContentDetailPage extends ConsumerStatefulWidget {
   final int contentId;
@@ -221,35 +220,24 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   }
 
   Widget _buildActionButtons(ContentDetail detail, ColorScheme colorScheme) {
-    final settingsAsync = ref.watch(systemSettingsProvider);
-    final bool summaryEnabled = settingsAsync.when(
-      data: (settings) => settings.any(
-        (s) => s.key == 'enable_auto_summary' && s.value == true,
-      ),
-      loading: () => false,
-      error: (_, _) => false,
-    );
-
     return Row(
       children: [
-        if (summaryEnabled) ...[
-          IconButton.filledTonal(
-            tooltip: detail.summary == null || detail.summary!.isEmpty
-                ? '生成摘要'
-                : '更新摘要',
-            icon: _isGeneratingSummary
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.auto_awesome_rounded, size: 20),
-            onPressed: _isGeneratingSummary
-                ? null
-                : () => _generateSummary(detail.id),
-          ),
-          const SizedBox(width: 8),
-        ],
+        IconButton.filledTonal(
+          tooltip: detail.summary == null || detail.summary!.isEmpty
+              ? '生成摘要'
+              : '更新摘要',
+          icon: _isGeneratingSummary
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.auto_awesome_rounded, size: 20),
+          onPressed: _isGeneratingSummary
+              ? null
+              : () => _generateSummary(detail.id),
+        ),
+        const SizedBox(width: 8),
         IconButton.filledTonal(
           tooltip: '重新解析',
           icon: const Icon(Icons.refresh_rounded, size: 20),

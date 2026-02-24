@@ -93,7 +93,8 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
 
   void _maybeToast(String message) {
     final now = DateTime.now();
-    if (_lastToastAt != null && now.difference(_lastToastAt!) < const Duration(seconds: 2)) {
+    if (_lastToastAt != null &&
+        now.difference(_lastToastAt!) < const Duration(seconds: 2)) {
       return;
     }
     _lastToastAt = now;
@@ -118,7 +119,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
           dividerColor: Colors.transparent,
           indicatorSize: TabBarIndicatorSize.label,
           indicatorWeight: 3,
-          labelStyle: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
+          labelStyle: theme.textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
           unselectedLabelStyle: theme.textTheme.labelLarge,
           tabs: const [
             Tab(text: '内容队列'),
@@ -129,11 +132,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _buildQueueTab(),
-          _buildBotChatsTab(),
-          _buildHistoryTab(),
-        ],
+        children: [_buildQueueTab(), _buildBotChatsTab(), _buildHistoryTab()],
       ),
       floatingActionButton: _buildFab(),
     );
@@ -149,7 +148,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
             icon: const Icon(Icons.add_rounded, size: 24),
             label: const Text('添加群组'),
             isExtended: true,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
           ).animate().scale(curve: Curves.easeOutBack, duration: 400.ms);
         }
         return const SizedBox.shrink();
@@ -165,14 +166,13 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         if (isWideScreen) {
           return Row(
             children: [
-              SizedBox(
-                width: 360,
-                child: _buildRuleSidebar(),
-              ),
+              SizedBox(width: 360, child: _buildRuleSidebar()),
               VerticalDivider(
-                width: 1, 
-                thickness: 1, 
-                color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.3)
+                width: 1,
+                thickness: 1,
+                color: Theme.of(
+                  context,
+                ).colorScheme.outlineVariant.withValues(alpha: 0.3),
               ),
               Expanded(
                 child: Container(
@@ -200,7 +200,8 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
     final colorScheme = theme.colorScheme;
 
     return Container(
-      color: colorScheme.surfaceContainerLow, // Added consistent background color
+      color:
+          colorScheme.surfaceContainerLow, // Added consistent background color
       child: Column(
         children: [
           Padding(
@@ -230,7 +231,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
               hintText: '搜索规则...',
               leading: const Icon(Icons.search_rounded, size: 20),
               elevation: WidgetStateProperty.all(0),
-              backgroundColor: WidgetStateProperty.all(colorScheme.surfaceContainerHigh),
+              backgroundColor: WidgetStateProperty.all(
+                colorScheme.surfaceContainerHigh,
+              ),
             ),
           ),
           Expanded(
@@ -260,8 +263,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Text(
-                '自定义规则', 
-                style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline, fontWeight: FontWeight.bold)
+                '自定义规则',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: colorScheme.outline,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
             const Expanded(child: Divider()),
@@ -271,18 +277,23 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         if (rules.isEmpty)
           _buildEmptyRulesPlaceholder(theme)
         else
-          ...rules.asMap().entries.map((entry) => RuleListTile(
-                index: entry.key,
-                rule: entry.value,
-                isSelected: _selectedRuleId == entry.value.id,
-                onTap: () {
-                  setState(() => _selectedRuleId = entry.value.id);
-                  ref.read(queueFilterProvider.notifier).setRuleId(entry.value.id);
-                },
-                onEdit: () => _showEditRuleDialog(entry.value),
-                onDelete: () => _confirmDeleteRule(entry.value),
-                onToggleEnabled: (enabled) => _toggleRuleEnabled(entry.value, enabled),
-              )),
+          ...rules.asMap().entries.map(
+            (entry) => RuleListTile(
+              index: entry.key,
+              rule: entry.value,
+              isSelected: _selectedRuleId == entry.value.id,
+              onTap: () {
+                setState(() => _selectedRuleId = entry.value.id);
+                ref
+                    .read(queueFilterProvider.notifier)
+                    .setRuleId(entry.value.id);
+              },
+              onEdit: () => _showEditRuleDialog(entry.value),
+              onDelete: () => _confirmDeleteRule(entry.value),
+              onToggleEnabled: (enabled) =>
+                  _toggleRuleEnabled(entry.value, enabled),
+            ),
+          ),
       ],
     );
   }
@@ -290,83 +301,93 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
   Widget _buildAllContentCard(ColorScheme colorScheme, ThemeData theme) {
     final isSelected = _selectedRuleId == null;
     return Card(
-        margin: EdgeInsets.zero,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(
-            color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.3),
-            width: isSelected ? 2 : 1,
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: isSelected
+              ? colorScheme.primary
+              : colorScheme.outlineVariant.withValues(alpha: 0.3),
+          width: isSelected ? 2 : 1,
+        ),
+      ),
+      color: isSelected
+          ? colorScheme.primaryContainer.withValues(alpha: 0.3)
+          : colorScheme.surfaceContainerHigh,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          setState(() => _selectedRuleId = null);
+          ref.read(queueFilterProvider.notifier).setRuleId(null);
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color:
+                      (isSelected ? colorScheme.primary : colorScheme.outline)
+                          .withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.all_inclusive_rounded,
+                  size: 20,
+                  color: isSelected ? colorScheme.primary : colorScheme.outline,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '全部内容',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: isSelected ? colorScheme.primary : null,
+                      ),
+                    ),
+                    Text(
+                      '显示所有分发任务',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-        color: isSelected ? colorScheme.primaryContainer.withValues(alpha: 0.3) : colorScheme.surfaceContainerHigh,
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () {
-            setState(() => _selectedRuleId = null);
-            ref.read(queueFilterProvider.notifier).setRuleId(null);
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: (isSelected ? colorScheme.primary : colorScheme.outline).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    Icons.all_inclusive_rounded,
-                    size: 20,
-                    color: isSelected ? colorScheme.primary : colorScheme.outline,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '全部内容',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: isSelected ? colorScheme.primary : null,
-                        ),
-                      ),
-                      Text(
-                        '显示所有分发任务',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      ),
+    );
   }
 
   Widget _buildEmptyRulesPlaceholder(ThemeData theme) {
     return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 32),
-            child: Column(
-              children: [
-                Icon(Icons.rule_rounded, size: 48, color: theme.colorScheme.outline.withValues(alpha: 0.5)),
-                const SizedBox(height: 16),
-                const Text('暂无自定义规则'),
-                const SizedBox(height: 16),
-                FilledButton.tonalIcon(
-                  onPressed: _showCreateRuleDialog,
-                  icon: const Icon(Icons.add_rounded, size: 18),
-                  label: const Text('立即创建'),
-                ),
-              ],
-            ),
-          );
+      padding: const EdgeInsets.symmetric(vertical: 32),
+      child: Column(
+        children: [
+          Icon(
+            Icons.rule_rounded,
+            size: 48,
+            color: theme.colorScheme.outline.withValues(alpha: 0.5),
+          ),
+          const SizedBox(height: 16),
+          const Text('暂无自定义规则'),
+          const SizedBox(height: 16),
+          FilledButton.tonalIcon(
+            onPressed: _showCreateRuleDialog,
+            icon: const Icon(Icons.add_rounded, size: 18),
+            label: const Text('立即创建'),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildRuleSelector() {
@@ -377,14 +398,16 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        border: Border(bottom: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.3))),
+        border: Border(
+          bottom: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
       ),
       child: rulesAsync.when(
         loading: () => const LinearProgressIndicator(),
-        error: (e, st) => Padding(
-          padding: const EdgeInsets.all(8),
-          child: Text('加载失败: $e'),
-        ),
+        error: (e, st) =>
+            Padding(padding: const EdgeInsets.all(8), child: Text('加载失败: $e')),
         data: (rules) {
           final selectedRule = _selectedRuleId != null
               ? rules.where((r) => r.id == _selectedRuleId).firstOrNull
@@ -404,26 +427,40 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                           const DropdownMenuEntry<int?>(
                             value: null,
                             label: '全部规则',
-                            leadingIcon: Icon(Icons.all_inclusive_rounded, size: 18),
+                            leadingIcon: Icon(
+                              Icons.all_inclusive_rounded,
+                              size: 18,
+                            ),
                           ),
-                          ...rules.map((rule) => DropdownMenuEntry<int?>(
-                            value: rule.id,
-                            label: rule.name,
-                            leadingIcon: const Icon(Icons.rule_rounded, size: 18),
-                          )),
+                          ...rules.map(
+                            (rule) => DropdownMenuEntry<int?>(
+                              value: rule.id,
+                              label: rule.name,
+                              leadingIcon: const Icon(
+                                Icons.rule_rounded,
+                                size: 18,
+                              ),
+                            ),
+                          ),
                         ],
                         onSelected: (value) {
                           setState(() {
                             _selectedRuleId = value;
                             _portraitRuleConfigExpanded = false;
                           });
-                          ref.read(queueFilterProvider.notifier).setRuleId(value);
+                          ref
+                              .read(queueFilterProvider.notifier)
+                              .setRuleId(value);
                         },
-                        leadingIcon: const Icon(Icons.filter_list_rounded, size: 20),
+                        leadingIcon: const Icon(
+                          Icons.filter_list_rounded,
+                          size: 20,
+                        ),
                         expandedInsets: EdgeInsets.zero,
                         inputDecorationTheme: InputDecorationTheme(
                           filled: true,
-                          fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                          fillColor: colorScheme.surfaceContainerHighest
+                              .withValues(alpha: 0.5),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
                             borderSide: BorderSide.none,
@@ -441,7 +478,8 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                         ),
                         onPressed: () {
                           setState(() {
-                            _portraitRuleConfigExpanded = !_portraitRuleConfigExpanded;
+                            _portraitRuleConfigExpanded =
+                                !_portraitRuleConfigExpanded;
                           });
                         },
                       ),
@@ -497,7 +535,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       decoration: BoxDecoration(
         color: colorScheme.surface,
         border: Border(
-          bottom: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
+          bottom: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
         ),
       ),
       child: statsAsync.when(
@@ -538,7 +578,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
               ],
               selected: {filter.status},
               onSelectionChanged: (Set<QueueStatus> newSelection) {
-                ref.read(queueFilterProvider.notifier).setStatus(newSelection.first);
+                ref
+                    .read(queueFilterProvider.notifier)
+                    .setStatus(newSelection.first);
               },
               showSelectedIcon: false,
               style: SegmentedButton.styleFrom(
@@ -546,7 +588,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                 visualDensity: VisualDensity.comfortable,
                 selectedBackgroundColor: colorScheme.primary,
                 selectedForegroundColor: colorScheme.onPrimary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
               ),
             ),
           );
@@ -565,7 +609,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline_rounded, size: 48, color: Theme.of(context).colorScheme.error),
+            Icon(
+              Icons.error_outline_rounded,
+              size: 48,
+              color: Theme.of(context).colorScheme.error,
+            ),
             const SizedBox(height: 16),
             Text('加载失败: $e'),
             const SizedBox(height: 16),
@@ -591,7 +639,14 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
 
   Widget _buildBotChatsTab() {
     final chatsAsync = ref.watch(botChatsProvider);
+    final statusAsync = ref.watch(botStatusProvider);
     final colorScheme = Theme.of(context).colorScheme;
+
+    // 判断是否有任何Bot配置（运行中 / Napcat启用 / 有用户名说明已配置过）
+    final bool hasBotConfig = statusAsync.maybeWhen(
+      data: (s) => s.isRunning || s.isNapcatEnabled || s.botUsername != null,
+      orElse: () => true, // 未知时默认显示，避免闪烁
+    );
 
     return chatsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -599,7 +654,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline_rounded, size: 48, color: colorScheme.error),
+            Icon(
+              Icons.error_outline_rounded,
+              size: 48,
+              color: colorScheme.error,
+            ),
             const SizedBox(height: 16),
             Text('加载失败: $e'),
             const SizedBox(height: 16),
@@ -619,46 +678,117 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
           child: ListView(
             padding: const EdgeInsets.all(24),
             children: [
-              BotStatusCard(
-                isSyncing: _isSyncingChats,
-                isControllingTelegram: _isControllingTelegram,
-                onSync: _syncBotChats,
-                onRefreshStatus: _refreshBotStatus,
-                onStartTelegram: _startTelegramService,
-                onStopTelegram: _stopTelegramService,
-                onRestartTelegram: _restartTelegramService,
-              ),
-              const SizedBox(height: 32),
+              if (hasBotConfig) ...[
+                BotStatusCard(
+                  isSyncing: _isSyncingChats,
+                  isControllingTelegram: _isControllingTelegram,
+                  onSync: _syncBotChats,
+                  onRefreshStatus: _refreshBotStatus,
+                  onStartTelegram: _startTelegramService,
+                  onStopTelegram: _stopTelegramService,
+                  onRestartTelegram: _restartTelegramService,
+                ),
+                const SizedBox(height: 32),
+              ] else ...[
+                _buildNoBotConfiguredCard(colorScheme),
+                const SizedBox(height: 32),
+              ],
               Row(
                 children: [
-                  Icon(Icons.groups_rounded, size: 20, color: colorScheme.primary),
+                  Icon(
+                    Icons.groups_rounded,
+                    size: 20,
+                    color: colorScheme.primary,
+                  ),
                   const SizedBox(width: 12),
-                  Text('群组与频道', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                  Text(
+                    '群组与频道',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const Spacer(),
-                  Text('${chats.length} 个配置', style: Theme.of(context).textTheme.labelLarge?.copyWith(color: colorScheme.outline)),
+                  Text(
+                    '${chats.length} 个配置',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: colorScheme.outline,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 20),
               if (chats.isEmpty)
                 _buildEmptyChatsPlaceholder(colorScheme)
               else
-                ...chats.asMap().entries.map((entry) => Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: BotChatCard(
-                        index: entry.key,
-                        chat: entry.value,
-                        appliedRuleNames: entry.value.appliedRuleNames,
-                        onConfigureRules: () => _showConfigureChatRulesDialog(entry.value),
-                        onEdit: () => _showEditBotChatDialog(entry.value),
-                        onDelete: () => _confirmDeleteBotChat(entry.value),
-                        onToggleEnabled: (enabled) => _toggleBotChatEnabled(entry.value),
-                      ),
-                    )),
+                ...chats.asMap().entries.map(
+                  (entry) => Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: BotChatCard(
+                      index: entry.key,
+                      chat: entry.value,
+                      appliedRuleNames: entry.value.appliedRuleNames,
+                      onConfigureRules: () =>
+                          _showConfigureChatRulesDialog(entry.value),
+                      onEdit: () => _showEditBotChatDialog(entry.value),
+                      onDelete: () => _confirmDeleteBotChat(entry.value),
+                      onToggleEnabled: (enabled) =>
+                          _toggleBotChatEnabled(entry.value),
+                    ),
+                  ),
+                ),
               const SizedBox(height: 100),
             ],
           ),
         );
       },
+    );
+  }
+
+  /// 未配置Bot时显示的提示卡片
+  Widget _buildNoBotConfiguredCard(ColorScheme colorScheme) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+        ),
+      ),
+      color: colorScheme.surfaceContainerLow,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHigh,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.smart_toy_outlined,
+                size: 48,
+                color: colorScheme.outline,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              '尚未配置推送机器人',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '在「设置 → 推送与通知」中配置 Telegram 或 QQ Bot，\n即可在此管理推送群组。',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: colorScheme.outline),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -673,7 +803,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
               color: colorScheme.primary.withValues(alpha: 0.05),
               shape: BoxShape.circle,
             ),
-            child: Icon(Icons.smart_toy_rounded, size: 64, color: colorScheme.primary.withValues(alpha: 0.5)),
+            child: Icon(
+              Icons.smart_toy_rounded,
+              size: 64,
+              color: colorScheme.primary.withValues(alpha: 0.5),
+            ),
           ),
           const SizedBox(height: 24),
           Text('暂无关联的群组/频道', style: Theme.of(context).textTheme.titleMedium),
@@ -696,16 +830,18 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             content: Text('同步完成: ${result.updated} 个配置已更新'),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('同步失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('同步失败: $e')));
       }
     } finally {
       if (mounted) setState(() => _isSyncingChats = false);
@@ -731,16 +867,18 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             content: Text(successMessage),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('操作失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('操作失败: $e')));
       }
     } finally {
       if (mounted) {
@@ -779,7 +917,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline_rounded, size: 48, color: Theme.of(context).colorScheme.error),
+            Icon(
+              Icons.error_outline_rounded,
+              size: 48,
+              color: Theme.of(context).colorScheme.error,
+            ),
             const SizedBox(height: 16),
             Text('加载失败: $e'),
             const SizedBox(height: 16),
@@ -799,13 +941,12 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                 Icon(
                   Icons.history_rounded,
                   size: 64,
-                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: 0.3),
                 ),
                 const SizedBox(height: 16),
-                Text(
-                  '暂无推送记录',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text('暂无推送记录', style: Theme.of(context).textTheme.titleMedium),
               ],
             ),
           );
@@ -852,15 +993,15 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
             }
             ref.invalidate(botChatsProvider);
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('规则创建成功')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('规则创建成功')));
             }
           } catch (e) {
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('创建失败: $e')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text('创建失败: $e')));
             }
           }
         },
@@ -876,17 +1017,19 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         onCreate: (ruleData, selectedChatIds) {},
         onUpdate: (id, update) async {
           try {
-            await ref.read(distributionRulesProvider.notifier).updateRule(id, update);
+            await ref
+                .read(distributionRulesProvider.notifier)
+                .updateRule(id, update);
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('规则更新成功')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('规则更新成功')));
             }
           } catch (e) {
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('更新失败: $e')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text('更新失败: $e')));
             }
           }
         },
@@ -910,21 +1053,23 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
             onPressed: () async {
               Navigator.pop(ctx);
               try {
-                await ref.read(distributionRulesProvider.notifier).deleteRule(rule.id);
+                await ref
+                    .read(distributionRulesProvider.notifier)
+                    .deleteRule(rule.id);
                 if (_selectedRuleId == rule.id) {
                   setState(() => _selectedRuleId = null);
                   ref.read(queueFilterProvider.notifier).setRuleId(null);
                 }
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('规则已删除')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('规则已删除')));
                 }
               } catch (e) {
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('删除失败: $e')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('删除失败: $e')));
                 }
               }
             },
@@ -940,12 +1085,14 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
 
   Future<void> _toggleRuleEnabled(DistributionRule rule, bool enabled) async {
     try {
-      await ref.read(distributionRulesProvider.notifier).toggleEnabled(rule.id, enabled);
+      await ref
+          .read(distributionRulesProvider.notifier)
+          .toggleEnabled(rule.id, enabled);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('操作失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('操作失败: $e')));
       }
     }
   }
@@ -962,15 +1109,15 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       ref.invalidate(queueStatsProvider(_selectedRuleId));
       ref.read(queueFilterProvider.notifier).setStatus(QueueStatus.willPush);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已加入立即重推队列')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已加入立即重推队列')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('操作失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('操作失败: $e')));
       }
     }
   }
@@ -984,15 +1131,15 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
           try {
             await ref.read(botChatsProvider.notifier).createChat(chat);
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('群组添加成功')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('群组添加成功')));
             }
           } catch (e) {
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('添加失败: $e')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text('添加失败: $e')));
             }
           }
         },
@@ -1009,21 +1156,19 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         onCreate: (_) {},
         onUpdate: (chatId, update, newChatId) async {
           try {
-            await ref.read(botChatsProvider.notifier).updateChat(
-              chatId,
-              update,
-              newChatId: newChatId,
-            );
+            await ref
+                .read(botChatsProvider.notifier)
+                .updateChat(chatId, update, newChatId: newChatId);
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('配置更新成功')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('配置更新成功')));
             }
           } catch (e) {
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('更新失败: $e')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text('更新失败: $e')));
             }
           }
         },
@@ -1044,7 +1189,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         .toList();
 
     if (configs.isEmpty) {
-      throw Exception('未找到可用的 ${platform.toUpperCase()} Bot 配置，请先在 Bot 管理页创建配置');
+      throw Exception(
+        '未找到可用的 ${platform.toUpperCase()} Bot 配置，请先在 Bot 管理页创建配置',
+      );
     }
 
     for (final item in configs) {
@@ -1078,17 +1225,19 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
             onPressed: () async {
               Navigator.pop(ctx);
               try {
-                await ref.read(botChatsProvider.notifier).deleteChat(chat.chatId);
+                await ref
+                    .read(botChatsProvider.notifier)
+                    .deleteChat(chat.chatId);
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('群组已删除')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('群组已删除')));
                 }
               } catch (e) {
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('删除失败: $e')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('删除失败: $e')));
                 }
               }
             },
@@ -1107,9 +1256,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       await ref.read(botChatsProvider.notifier).toggleChat(chat.chatId);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('操作失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('操作失败: $e')));
       }
     }
   }
@@ -1119,15 +1268,19 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
 
     try {
       final rulesResp = await dio.get('/distribution-rules');
-      final allRules = (rulesResp.data as List<dynamic>)
-          .map((e) => DistributionRule.fromJson(e as Map<String, dynamic>))
-          .toList()
-        ..sort((a, b) => b.priority.compareTo(a.priority));
+      final allRules =
+          (rulesResp.data as List<dynamic>)
+              .map((e) => DistributionRule.fromJson(e as Map<String, dynamic>))
+              .toList()
+            ..sort((a, b) => b.priority.compareTo(a.priority));
 
       final currentResp = await dio.get('/bot/chats/${chat.chatId}/rules');
-      final currentIds = ((currentResp.data as Map<String, dynamic>)['rule_ids'] as List<dynamic>? ?? const [])
-          .map((e) => (e as num).toInt())
-          .toSet();
+      final currentIds =
+          ((currentResp.data as Map<String, dynamic>)['rule_ids']
+                      as List<dynamic>? ??
+                  const [])
+              .map((e) => (e as num).toInt())
+              .toSet();
 
       if (!mounted) return;
       final selected = Set<int>.from(currentIds);
@@ -1136,7 +1289,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         context: context,
         builder: (ctx) => StatefulBuilder(
           builder: (ctx, setStateDialog) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
             title: Text('为 ${chat.displayName} 配置规则'),
             content: SizedBox(
               width: 420,
@@ -1178,9 +1333,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                   );
                   if (mounted) {
                     ref.invalidate(botChatsProvider);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('规则绑定已更新')),
-                    );
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(const SnackBar(content: Text('规则绑定已更新')));
                   }
                   if (ctx.mounted) {
                     Navigator.of(ctx).pop();
@@ -1194,9 +1349,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('加载规则失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('加载规则失败: $e')));
       }
     }
   }
