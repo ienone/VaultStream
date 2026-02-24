@@ -25,6 +25,7 @@ build/
 .vscode/
 *.swp
 *.swo
+.agents
 
 # Android Signatures
 *.jks
