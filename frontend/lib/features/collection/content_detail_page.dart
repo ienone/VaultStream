@@ -82,7 +82,8 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     _lastScrollCheck = now;
 
     String? currentVisible;
-    final List<MapEntry<String, GlobalKey>> entries = _headerKeys.entries.toList();
+    final List<MapEntry<String, GlobalKey>> entries = _headerKeys.entries
+        .toList();
 
     for (var i = 0; i < entries.length; i++) {
       final entry = entries[i];
@@ -119,9 +120,15 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     final theme = Theme.of(context);
     Color? baseColor;
     if (detail?.coverColor != null && detail!.coverColor!.isNotEmpty) {
-      baseColor = DynamicColorHelper.getContentColor(detail.coverColor, context);
+      baseColor = DynamicColorHelper.getContentColor(
+        detail.coverColor,
+        context,
+      );
     } else if (widget.initialColor != null) {
-      baseColor = DynamicColorHelper.getContentColor(widget.initialColor, context);
+      baseColor = DynamicColorHelper.getContentColor(
+        widget.initialColor,
+        context,
+      );
     }
     final systemPrimary = theme.colorScheme.primary;
     if (baseColor == null || baseColor == systemPrimary) {
@@ -129,7 +136,10 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       return AppTheme.fromColorScheme(theme.colorScheme, brightness);
     }
     _contentColor = baseColor;
-    final customColorScheme = ColorScheme.fromSeed(seedColor: baseColor, brightness: brightness);
+    final customColorScheme = ColorScheme.fromSeed(
+      seedColor: baseColor,
+      brightness: brightness,
+    );
     return AppTheme.fromColorScheme(customColorScheme, brightness);
   }
 
@@ -192,7 +202,12 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                 body: Material(
                   color: Colors.transparent,
                   child: SelectionArea(
-                    child: _buildResponsiveLayout(context, detail, apiBaseUrl, apiToken),
+                    child: _buildResponsiveLayout(
+                      context,
+                      detail,
+                      apiBaseUrl,
+                      apiToken,
+                    ),
                   ),
                 ),
               ),
@@ -208,7 +223,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   Widget _buildActionButtons(ContentDetail detail, ColorScheme colorScheme) {
     final settingsAsync = ref.watch(systemSettingsProvider);
     final bool summaryEnabled = settingsAsync.when(
-      data: (settings) => settings.any((s) => s.key == 'enable_auto_summary' && s.value == true),
+      data: (settings) => settings.any(
+        (s) => s.key == 'enable_auto_summary' && s.value == true,
+      ),
       loading: () => false,
       error: (_, _) => false,
     );
@@ -217,7 +234,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       children: [
         if (summaryEnabled) ...[
           IconButton.filledTonal(
-            tooltip: detail.summary == null || detail.summary!.isEmpty ? '生成摘要' : '更新摘要',
+            tooltip: detail.summary == null || detail.summary!.isEmpty
+                ? '生成摘要'
+                : '更新摘要',
             icon: _isGeneratingSummary
                 ? const SizedBox(
                     width: 18,
@@ -225,7 +244,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.auto_awesome_rounded, size: 20),
-            onPressed: _isGeneratingSummary ? null : () => _generateSummary(detail.id),
+            onPressed: _isGeneratingSummary
+                ? null
+                : () => _generateSummary(detail.id),
           ),
           const SizedBox(width: 8),
         ],
@@ -251,7 +272,10 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         IconButton.filledTonal(
           tooltip: '阅读原文',
           icon: const Icon(Icons.open_in_new_rounded, size: 20),
-          onPressed: () => launchUrl(Uri.parse(detail.url), mode: LaunchMode.externalApplication),
+          onPressed: () => launchUrl(
+            Uri.parse(detail.url),
+            mode: LaunchMode.externalApplication,
+          ),
         ),
       ],
     );
@@ -281,11 +305,16 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline_rounded, size: 48, color: Colors.red),
+            const Icon(
+              Icons.error_outline_rounded,
+              size: 48,
+              color: Colors.red,
+            ),
             const SizedBox(height: 16),
             Text('加载失败: $err'),
             ElevatedButton(
-              onPressed: () => ref.invalidate(contentDetailProvider(widget.contentId)),
+              onPressed: () =>
+                  ref.invalidate(contentDetailProvider(widget.contentId)),
               child: const Text('重试'),
             ),
           ],
@@ -294,112 +323,232 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     );
   }
 
-  Widget _buildResponsiveLayout(BuildContext context, ContentDetail detail, String apiBaseUrl, String? apiToken) {
+  Widget _buildResponsiveLayout(
+    BuildContext context,
+    ContentDetail detail,
+    String apiBaseUrl,
+    String? apiToken,
+  ) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool isLandscape = constraints.maxWidth > 800;
-        
+
         // 竖屏统一使用 PortraitLayout
         if (!isLandscape) {
-          return PortraitLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, headerKeys: _headerKeys, contentColor: _contentColor);
+          return PortraitLayout(
+            detail: detail,
+            apiBaseUrl: apiBaseUrl,
+            apiToken: apiToken,
+            headerKeys: _headerKeys,
+            contentColor: _contentColor,
+          );
         }
-        
+
         // 特殊类型：用户主页
         if (detail.contentType == 'user_profile') {
-          return UserProfileLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, onImageTap: (imgs, idx) => _showFullScreenImage(context, imgs, idx, apiBaseUrl, apiToken, detail.id));
+          return UserProfileLayout(
+            detail: detail,
+            apiBaseUrl: apiBaseUrl,
+            apiToken: apiToken,
+            onImageTap: (imgs, idx) => _showFullScreenImage(
+              context,
+              imgs,
+              idx,
+              apiBaseUrl,
+              apiToken,
+              detail.id,
+            ),
+          );
         }
-        
+
         // 基于 layoutType 分发（内容驱动）
         final layoutType = detail.layoutType;
-        
+
         switch (layoutType) {
           case 'article':
             // 长文布局 - 适用于文章、回答等
             final markdown = ContentParser.getMarkdownContent(detail);
-            return ArticleLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, contentScrollController: _contentScrollController, headerKeys: _headerKeys, headers: ContentParser.extractHeaders(markdown), activeHeader: _activeHeader, contentColor: _contentColor);
-          
+            return ArticleLandscapeLayout(
+              detail: detail,
+              apiBaseUrl: apiBaseUrl,
+              apiToken: apiToken,
+              contentScrollController: _contentScrollController,
+              headerKeys: _headerKeys,
+              headers: ContentParser.extractHeaders(markdown),
+              activeHeader: _activeHeader,
+              contentColor: _contentColor,
+            );
+
           case 'gallery':
             // 画廊布局 - 适用于微博、推文、小红书等
-            return GalleryLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, images: ContentParser.extractAllImages(detail, apiBaseUrl), imagePageController: _imagePageController, currentImageIndex: _currentImageIndex, onImageTap: (idx) => _showFullScreenImage(context, ContentParser.extractAllImages(detail, apiBaseUrl), idx, apiBaseUrl, apiToken, detail.id), onPageChanged: (idx) {
-              if (!mounted) return;
-              setState(() => _currentImageIndex = idx);
-              if (_imagePageController.hasClients && _imagePageController.page?.round() != idx) {
-                _imagePageController.jumpToPage(idx);
-              }
-            }, headerKeys: _headerKeys, contentColor: _contentColor);
-          
+            return GalleryLandscapeLayout(
+              detail: detail,
+              apiBaseUrl: apiBaseUrl,
+              apiToken: apiToken,
+              images: ContentParser.extractAllImages(detail, apiBaseUrl),
+              imagePageController: _imagePageController,
+              currentImageIndex: _currentImageIndex,
+              onImageTap: (idx) => _showFullScreenImage(
+                context,
+                ContentParser.extractAllImages(detail, apiBaseUrl),
+                idx,
+                apiBaseUrl,
+                apiToken,
+                detail.id,
+              ),
+              onPageChanged: (idx) {
+                if (!mounted) return;
+                setState(() => _currentImageIndex = idx);
+                if (_imagePageController.hasClients &&
+                    _imagePageController.page?.round() != idx) {
+                  _imagePageController.jumpToPage(idx);
+                }
+              },
+              headerKeys: _headerKeys,
+              contentColor: _contentColor,
+            );
+
           case 'video':
             // 视频布局 - 使用VideoLandscapeLayout（仅封面）
             if (detail.platform.isBilibili) {
-              return VideoLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, onImageTap: (imgs, idx) => _showFullScreenImage(context, imgs, idx, apiBaseUrl, apiToken, detail.id));
+              return VideoLandscapeLayout(
+                detail: detail,
+                apiBaseUrl: apiBaseUrl,
+                apiToken: apiToken,
+                onImageTap: (imgs, idx) => _showFullScreenImage(
+                  context,
+                  imgs,
+                  idx,
+                  apiBaseUrl,
+                  apiToken,
+                  detail.id,
+                ),
+              );
             }
             // 其他平台视频暂时用Gallery布局
-            return GalleryLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, images: ContentParser.extractAllImages(detail, apiBaseUrl), imagePageController: _imagePageController, currentImageIndex: _currentImageIndex, onImageTap: (idx) => _showFullScreenImage(context, ContentParser.extractAllImages(detail, apiBaseUrl), idx, apiBaseUrl, apiToken, detail.id), onPageChanged: (idx) {
-              if (!mounted) return;
-              setState(() => _currentImageIndex = idx);
-              if (_imagePageController.hasClients && _imagePageController.page?.round() != idx) {
-                _imagePageController.jumpToPage(idx);
-              }
-            }, headerKeys: _headerKeys, contentColor: _contentColor);
-          
+            return GalleryLandscapeLayout(
+              detail: detail,
+              apiBaseUrl: apiBaseUrl,
+              apiToken: apiToken,
+              images: ContentParser.extractAllImages(detail, apiBaseUrl),
+              imagePageController: _imagePageController,
+              currentImageIndex: _currentImageIndex,
+              onImageTap: (idx) => _showFullScreenImage(
+                context,
+                ContentParser.extractAllImages(detail, apiBaseUrl),
+                idx,
+                apiBaseUrl,
+                apiToken,
+                detail.id,
+              ),
+              onPageChanged: (idx) {
+                if (!mounted) return;
+                setState(() => _currentImageIndex = idx);
+                if (_imagePageController.hasClients &&
+                    _imagePageController.page?.round() != idx) {
+                  _imagePageController.jumpToPage(idx);
+                }
+              },
+              headerKeys: _headerKeys,
+              contentColor: _contentColor,
+            );
+
           default:
             // 默认使用Article布局
             final markdown = ContentParser.getMarkdownContent(detail);
-            return ArticleLandscapeLayout(detail: detail, apiBaseUrl: apiBaseUrl, apiToken: apiToken, contentScrollController: _contentScrollController, headerKeys: _headerKeys, headers: ContentParser.extractHeaders(markdown), activeHeader: _activeHeader, contentColor: _contentColor);
+            return ArticleLandscapeLayout(
+              detail: detail,
+              apiBaseUrl: apiBaseUrl,
+              apiToken: apiToken,
+              contentScrollController: _contentScrollController,
+              headerKeys: _headerKeys,
+              headers: ContentParser.extractHeaders(markdown),
+              activeHeader: _activeHeader,
+              contentColor: _contentColor,
+            );
         }
       },
     );
   }
 
-  void _showFullScreenImage(BuildContext context, List<String> images, int initialIndex, String apiBaseUrl, String? apiToken, int contentId) {
+  void _showFullScreenImage(
+    BuildContext context,
+    List<String> images,
+    int initialIndex,
+    String apiBaseUrl,
+    String? apiToken,
+    int contentId,
+  ) {
     // Sync background immediately
     setState(() => _currentImageIndex = initialIndex);
     if (_imagePageController.hasClients) {
       _imagePageController.jumpToPage(initialIndex);
     }
 
-    Navigator.of(context).push(PageRouteBuilder(
-      opaque: false,
-      barrierColor: Colors.transparent,
-      pageBuilder: (context, animation, secondaryAnimation) => FullScreenGallery(
-        images: images, initialIndex: initialIndex, apiBaseUrl: apiBaseUrl, apiToken: apiToken, contentId: contentId, contentColor: _contentColor,
-        onPageChanged: (index) {
-          if (!mounted) return;
-          setState(() => _currentImageIndex = index);
-          if (_imagePageController.hasClients) {
-            _imagePageController.animateToPage(
-              index,
-              duration: const Duration(milliseconds: 100),
-              curve: Curves.easeInOut,
-            );
-          }
-        },
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.transparent,
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            FullScreenGallery(
+              images: images,
+              initialIndex: initialIndex,
+              apiBaseUrl: apiBaseUrl,
+              apiToken: apiToken,
+              contentId: contentId,
+              contentColor: _contentColor,
+              onPageChanged: (index) {
+                if (!mounted) return;
+                setState(() => _currentImageIndex = index);
+                if (_imagePageController.hasClients) {
+                  _imagePageController.animateToPage(
+                    index,
+                    duration: const Duration(milliseconds: 100),
+                    curve: Curves.easeInOut,
+                  );
+                }
+              },
+            ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            FadeTransition(opacity: animation, child: child),
       ),
-      transitionsBuilder: (context, animation, secondaryAnimation, child) => FadeTransition(opacity: animation, child: child),
-    ));
+    );
   }
 
   Future<void> _reParseContent(int contentId) async {
     try {
       await ref.read(apiClientProvider).post('/contents/$contentId/re-parse');
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已触发重新解析')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已触发重新解析')));
       ref.invalidate(contentDetailProvider(contentId));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('请求失败: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('请求失败: $e')));
     }
   }
 
   Future<void> _generateSummary(int contentId) async {
     setState(() => _isGeneratingSummary = true);
     try {
-      await ref.read(apiClientProvider).post('/contents/$contentId/generate-summary', queryParameters: {'force': true});
+      await ref
+          .read(apiClientProvider)
+          .post(
+            '/contents/$contentId/generate-summary',
+            queryParameters: {'force': true},
+          );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('摘要已更新')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('摘要已更新')));
       }
       ref.invalidate(contentDetailProvider(contentId));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('摘要生成失败: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('摘要生成失败: $e')));
       }
     } finally {
       if (mounted) {
@@ -409,29 +558,49 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   }
 
   void _showEditDialog(ContentDetail detail) async {
-    final result = await showDialog<bool>(context: context, builder: (context) => EditContentDialog(content: detail));
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => EditContentDialog(content: detail),
+    );
     if (result == true) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('内容已更新')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('内容已更新')));
       ref.invalidate(contentDetailProvider(detail.id));
     }
   }
 
   void _confirmDelete(ContentDetail detail, ColorScheme colorScheme) async {
-    final confirm = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
-      title: const Text('确认删除'), content: const Text('确定要删除这条内容吗？此操作不可撤销。'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-        FilledButton(onPressed: () => Navigator.pop(context, true), style: FilledButton.styleFrom(backgroundColor: colorScheme.error), child: const Text('删除')),
-      ],
-    ));
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认删除'),
+        content: const Text('确定要删除这条内容吗？此操作不可撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: colorScheme.error),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
     if (confirm == true) {
       try {
         await ref.read(apiClientProvider).delete('/contents/${detail.id}');
         ref.invalidate(collectionProvider);
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已删除内容')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已删除内容')));
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('删除失败: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('删除失败: $e')));
       }
     }
   }
