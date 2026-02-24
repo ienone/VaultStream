@@ -18,12 +18,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  final List<String> _tabTitles = [
-    '连接与账号',
-    'AI 发现',
-    '推送与通知',
-    '外观与系统',
-  ];
+  final List<String> _tabTitles = ['连接与账号', 'AI 发现', '推送与通知', '外观与系统'];
 
   final List<Widget> _tabs = const [
     ConnectionTab(),
@@ -56,19 +51,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
           dividerColor: Colors.transparent,
           indicatorSize: TabBarIndicatorSize.label,
           indicatorWeight: 3,
-          labelStyle: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
+          labelStyle: theme.textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
           unselectedLabelStyle: theme.textTheme.labelLarge,
-          isScrollable: true,
-          tabAlignment: TabAlignment.start,
           tabs: List.generate(_tabTitles.length, (index) {
             return Tab(text: _tabTitles[index]);
           }),
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: _tabs,
-      ),
+      body: TabBarView(controller: _tabController, children: _tabs),
     );
   }
 }

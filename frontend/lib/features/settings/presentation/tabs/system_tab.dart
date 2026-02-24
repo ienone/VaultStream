@@ -60,20 +60,45 @@ class SystemTab extends ConsumerWidget {
   ) {
     return settingsAsync.when(
       data: (settings) {
-        final enableProcessing = settings.firstWhere(
-          (s) => s.key == 'enable_archive_media_processing',
-          orElse: () => const SystemSetting(key: '', value: true),
-        ).value as bool? ?? true;
-        
-        final webpQuality = settings.firstWhere(
-          (s) => s.key == 'archive_image_webp_quality',
-          orElse: () => const SystemSetting(key: '', value: 80),
-        ).value as int? ?? 80;
-        
-        final maxCount = settings.firstWhere(
-          (s) => s.key == 'archive_image_max_count',
-          orElse: () => const SystemSetting(key: '', value: 0), // 0 or null means unlimited
-        ).value as int? ?? 0;
+        bool parseBool(dynamic val, {bool defaultVal = true}) {
+          if (val == null) return defaultVal;
+          if (val is bool) return val;
+          if (val is String) return val.toLowerCase() == 'true';
+          return defaultVal;
+        }
+
+        final enableProcessing = parseBool(
+          settings
+              .firstWhere(
+                (s) => s.key == 'enable_archive_media_processing',
+                orElse: () => const SystemSetting(key: '', value: true),
+              )
+              .value,
+          defaultVal: true,
+        );
+
+        final webpQuality =
+            settings
+                    .firstWhere(
+                      (s) => s.key == 'archive_image_webp_quality',
+                      orElse: () => const SystemSetting(key: '', value: 80),
+                    )
+                    .value
+                as int? ??
+            80;
+
+        final maxCount =
+            settings
+                    .firstWhere(
+                      (s) => s.key == 'archive_image_max_count',
+                      orElse: () => const SystemSetting(
+                        key: '',
+                        value: 0,
+                      ), // 0 or null means unlimited
+                    )
+                    .value
+                as int? ??
+            0;
 
         return SettingGroup(
           children: [
@@ -84,28 +109,42 @@ class SystemTab extends ConsumerWidget {
               trailing: Switch(
                 value: enableProcessing,
                 // M3 Style: Thumb icon
-                thumbIcon: WidgetStateProperty.resolveWith<Icon?>(
-                  (Set<WidgetState> states) {
-                    if (states.contains(WidgetState.selected)) {
-                      return const Icon(Icons.check);
-                    }
-                    return null; // 默认无图标
-                  },
-                ),
+                thumbIcon: WidgetStateProperty.resolveWith<Icon?>((
+                  Set<WidgetState> states,
+                ) {
+                  if (states.contains(WidgetState.selected)) {
+                    return const Icon(Icons.check);
+                  }
+                  return null; // 默认无图标
+                }),
                 onChanged: (val) => ref
                     .read(systemSettingsProvider.notifier)
-                    .updateSetting('enable_archive_media_processing', val, category: 'storage'),
+                    .updateSetting(
+                      'enable_archive_media_processing',
+                      val,
+                      category: 'storage',
+                    ),
               ),
               onTap: () => ref
                   .read(systemSettingsProvider.notifier)
-                  .updateSetting('enable_archive_media_processing', !enableProcessing, category: 'storage'),
+                  .updateSetting(
+                    'enable_archive_media_processing',
+                    !enableProcessing,
+                    category: 'storage',
+                  ),
             ),
             if (enableProcessing)
               ExpandableSettingTile(
                 title: '压缩质量与限制',
-                subtitle: 'WebP 质量: $webpQuality% | 数量限制: ${maxCount == 0 ? "无限制" : maxCount}',
+                subtitle:
+                    'WebP 质量: $webpQuality% | 数量限制: ${maxCount == 0 ? "无限制" : maxCount}',
                 icon: Icons.tune_rounded,
-                expandedContent: _buildStorageAdvanced(context, ref, webpQuality, maxCount),
+                expandedContent: _buildStorageAdvanced(
+                  context,
+                  ref,
+                  webpQuality,
+                  maxCount,
+                ),
               ),
           ],
         );
@@ -115,7 +154,12 @@ class SystemTab extends ConsumerWidget {
     );
   }
 
-  Widget _buildStorageAdvanced(BuildContext context, WidgetRef ref, int quality, int maxCount) {
+  Widget _buildStorageAdvanced(
+    BuildContext context,
+    WidgetRef ref,
+    int quality,
+    int maxCount,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
@@ -147,7 +191,11 @@ class SystemTab extends ConsumerWidget {
         ),
         Row(
           children: [
-            Icon(Icons.image_not_supported_rounded, size: 20, color: colorScheme.outline),
+            Icon(
+              Icons.image_not_supported_rounded,
+              size: 20,
+              color: colorScheme.outline,
+            ),
             Expanded(
               child: Slider(
                 value: quality.toDouble(),
@@ -156,12 +204,21 @@ class SystemTab extends ConsumerWidget {
                 divisions: 9, // 10, 20... 100
                 label: '$quality%',
                 onChanged: (val) {
-                   ref.read(systemSettingsProvider.notifier)
-                      .updateSetting('archive_image_webp_quality', val.toInt(), category: 'storage');
+                  ref
+                      .read(systemSettingsProvider.notifier)
+                      .updateSetting(
+                        'archive_image_webp_quality',
+                        val.toInt(),
+                        category: 'storage',
+                      );
                 },
               ),
             ),
-            Icon(Icons.high_quality_rounded, size: 20, color: colorScheme.primary),
+            Icon(
+              Icons.high_quality_rounded,
+              size: 20,
+              color: colorScheme.primary,
+            ),
           ],
         ),
         const SizedBox(height: 24),
@@ -174,12 +231,19 @@ class SystemTab extends ConsumerWidget {
             prefixIcon: const Icon(Icons.collections_rounded),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             filled: true,
-            fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            fillColor: colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.3,
+            ),
           ),
           onSubmitted: (val) {
             final num = int.tryParse(val) ?? 0;
-            ref.read(systemSettingsProvider.notifier)
-               .updateSetting('archive_image_max_count', num, category: 'storage');
+            ref
+                .read(systemSettingsProvider.notifier)
+                .updateSetting(
+                  'archive_image_max_count',
+                  num,
+                  category: 'storage',
+                );
           },
         ),
       ],

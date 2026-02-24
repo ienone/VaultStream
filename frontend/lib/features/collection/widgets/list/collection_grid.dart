@@ -39,67 +39,103 @@ class CollectionGrid extends StatelessWidget {
         controller: scrollController,
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          SliverPadding(
-            padding: EdgeInsets.fromLTRB(16, topPadding, 16, 20),
-            sliver: SliverMasonryGrid.count(
-              crossAxisCount: ResponsiveLayout.getColumnCount(context),
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              itemBuilder: (context, index) {
-                final item = items[index];
-                final isSelected = selectedIds.contains(item.id);
-                return GestureDetector(
-                  onLongPress: onLongPress != null
-                      ? () => onLongPress!(item.id)
-                      : null,
-                  child: Stack(
-                    children: [
-                      ContentCard(
-                        content: item,
-                        index: index,
-                        onTap: isSelectionMode
-                            ? () => onToggleSelection?.call(item.id)
-                            : () {
-                                final colorParam = item.coverColor != null
-                                    ? '?color=${Uri.encodeComponent(item.coverColor!)}'
-                                    : '';
-                                context.push('/collection/${item.id}$colorParam');
-                              },
+          if (items.isEmpty && !isLoadingMore)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.inbox_outlined,
+                      size: 64,
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      '这里空空如也',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: Theme.of(context).colorScheme.outline,
                       ),
-                      if (isSelectionMode)
-                        Positioned(
-                          top: 8,
-                          right: 8,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? Theme.of(context).colorScheme.primary
-                                  : Theme.of(context).colorScheme.surface.withValues(alpha: 0.8),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Theme.of(context).colorScheme.primary,
-                                width: 2,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '点击下方按钮添加新内容或修改筛选条件',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(16, topPadding, 16, 20),
+              sliver: SliverMasonryGrid.count(
+                crossAxisCount: ResponsiveLayout.getColumnCount(context),
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  final isSelected = selectedIds.contains(item.id);
+                  return GestureDetector(
+                    onLongPress: onLongPress != null
+                        ? () => onLongPress!(item.id)
+                        : null,
+                    child: Stack(
+                      children: [
+                        ContentCard(
+                          content: item,
+                          index: index,
+                          onTap: isSelectionMode
+                              ? () => onToggleSelection?.call(item.id)
+                              : () {
+                                  final colorParam = item.coverColor != null
+                                      ? '?color=${Uri.encodeComponent(item.coverColor!)}'
+                                      : '';
+                                  context.push(
+                                    '/collection/${item.id}$colorParam',
+                                  );
+                                },
+                        ),
+                        if (isSelectionMode)
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Theme.of(context).colorScheme.surface
+                                          .withValues(alpha: 0.8),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  width: 2,
+                                ),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(4),
+                                child: isSelected
+                                    ? Icon(
+                                        Icons.check,
+                                        size: 16,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onPrimary,
+                                      )
+                                    : const SizedBox(width: 16, height: 16),
                               ),
                             ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(4),
-                              child: isSelected
-                                  ? Icon(
-                                      Icons.check,
-                                      size: 16,
-                                      color: Theme.of(context).colorScheme.onPrimary,
-                                    )
-                                  : const SizedBox(width: 16, height: 16),
-                            ),
                           ),
-                        ),
-                    ],
-                  ),
-                );
-              },
-              childCount: items.length,
+                      ],
+                    ),
+                  );
+                },
+                childCount: items.length,
+              ),
             ),
-          ),
           if (hasMore || isLoadingMore)
             SliverToBoxAdapter(
               child: Padding(

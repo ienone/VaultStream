@@ -367,8 +367,15 @@ class ConnectionTab extends ConsumerWidget {
   Future<void> _testConnection(BuildContext context, WidgetRef ref, String baseUrl, String apiToken) async {
     showToast(context, '正在测试连接...');
     try {
-      final success = await ref.read(localSettingsProvider.notifier).testConnection(baseUrl, apiToken);
-      if (context.mounted) showToast(context, success ? '✅ 连接成功' : '❌ 连接失败');
+      final result = await ref.read(localSettingsProvider.notifier).validateConnection(baseUrl, apiToken);
+      if (context.mounted) {
+        if (result['success'] == true) {
+          final authOk = result['auth_ok'] == true;
+          showToast(context, authOk ? '✅ 连接并认证成功' : '⚠️ 连接成功，但 API 密钥无效');
+        } else {
+          showToast(context, '❌ ${result['error']}');
+        }
+      }
     } catch (e) {
       if (context.mounted) showToast(context, '❌ 错误: $e');
     }
