@@ -45,6 +45,11 @@ flutter+fastapi+sqlite
 | `vaultstream-vX.X.X.zip` | 完整部署包（前端网页 + 后端） |
 | `app-release.apk` | Android 客户端 |
 
+> **发布新版本**：在 main 分支推送 tag 即可触发 CI 自动构建：
+> ```bash
+> git tag v1.0.0 && git push origin v1.0.0
+> ```
+
 ### 快速部署（推荐）
 
 ```bash
@@ -96,7 +101,7 @@ cd VaultStream/frontend
 flutter pub get && dart run build_runner build --delete-conflicting-outputs
 flutter build web --release
 
-# 将前端产物复制到后端（FastAPI 自动托管）
+# 将前端产物复制到 backend/static/（Nginx 直接从此目录托管）
 cp -r build/web ../backend/static
 
 cd ../backend && cp .env.example .env

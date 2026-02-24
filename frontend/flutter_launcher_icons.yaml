@@ -1,0 +1,23 @@
+# flutter_launcher_icons 配置
+# 使用方法：dart run flutter_launcher_icons
+
+flutter_launcher_icons:
+  image_path: "web/icons/icon_1024.png"
+
+  # ── Android ─────────────────────────────────────────────────
+  android: true
+  min_sdk_android: 21
+
+  # Adaptive Icon（API 26+）
+  adaptive_icon_background: "#1E3A5F"
+  adaptive_icon_foreground: "web/icons/icon_foreground_1024.png"
+
+  # Themed / Monochrome Icon（API 33+，Material You 动态取色）
+  adaptive_icon_monochrome: "web/icons/icon_monochrome_1024.png"
+
+  # ── Web ──────────────────────────────────────────────────────
+  web:
+    generate: true
+    image_path: "web/icons/icon_1024.png"
+    background_color: "#1E3A5F"
+    theme_color: "#1E3A5F"

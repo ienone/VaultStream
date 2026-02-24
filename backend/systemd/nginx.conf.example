@@ -1,9 +1,9 @@
 # VaultStream Nginx 配置参考
 # 使用场景：下载 Release zip 解压后，Nginx 直接托管前端静态文件，FastAPI 仅处理 API
 #
-# 部署路径假设：
+# 部署路径（根据实际解压位置修改，下方 /opt/vaultstream 仅为示例）：
 #   后端根目录：  /opt/vaultstream/backend/
-#   前端静态文件：/opt/vaultstream/backend/static/     ← 随 zip 一同解压
+#   前端静态文件：/opt/vaultstream/backend/static/     ← zip 解压后已存在
 #   媒体文件：    /opt/vaultstream/backend/data/media/  ← 运行时生成
 #
 # 使用方式：
