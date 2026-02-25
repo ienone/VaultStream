@@ -1,19 +1,23 @@
 version: '3.8'
 
 services:
-  vaultstream:
-    build: 
-      context: .
-      dockerfile: Dockerfile
-    image: vaultstream:latest
-    container_name: vaultstream
+  web:
+    image: ghcr.io/ienone/vaultstream-web:latest
+    container_name: vaultstream-web
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "80:80"
+    depends_on:
+      - backend
+
+  backend:
+    image: ghcr.io/ienone/vaultstream-api:latest
+    container_name: vaultstream-api
+    restart: unless-stopped
     volumes:
-      - ./data:/app/data  # 挂载数据目录 (SQLite + Media)
-      - ./logs:/app/logs  # 挂载日志目录
-      - ./.env:/app/.env  # 挂载配置文件
+      - ./data:/app/data  # SQLite 数据库和关联的 Media
+      - ./logs:/app/logs
+      - ./.env:/app/.env
     environment:
       - TZ=Asia/Shanghai
     healthcheck:
@@ -21,7 +25,3 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-# 注意：
-# 1. 首次运行前请确保目录下存在 .env 文件
-# 2. 如果没有 .env，请复制 .env.example 并重命名

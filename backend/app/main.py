@@ -130,8 +130,8 @@ async def lifespan(app: FastAPI):
 # 创建应用
 app = FastAPI(
     title="VaultStream API",
-    description="超级收藏夹 - MVP版本",
-    version="0.1.0",
+    description="跨平台收藏&分享软件",
+    version="0.0.1",
     lifespan=lifespan
 )
 
@@ -209,11 +209,6 @@ async def health_root():
 media_dir = Path(settings.storage_local_root)
 if media_dir.exists():
     app.mount("/media", StaticFiles(directory=str(media_dir)), name="media")
-
-# 挂载静态文件（必须放在最后，避免覆盖 /health 等路由）
-static_dir = Path(__file__).parent.parent / "static"
-if static_dir.exists():
-    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
 
 
 if __name__ == "__main__":

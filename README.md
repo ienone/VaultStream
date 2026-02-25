@@ -38,60 +38,91 @@ flutter+fastapi+sqlite
 
 ## 部署
 
-每个 [Release](https://github.com/ienone/VaultStream/releases) 提供开箱即用的部署包，前端网页已内嵌。
+每个 [Release](https://github.com/ienone/VaultStream/releases) 提供即用的部署包，前端网页已内嵌。
 
 | 文件 | 说明 |
 |------|------|
-| `vaultstream-vX.X.X.zip` | 完整部署包（前端网页 + 后端） |
+| `docker-compose.yml` | 容器编排文件 |
 | `app-release.apk` | Android 客户端 |
 
-> **发布新版本**：在 main 分支推送 tag 即可触发 CI 自动构建：
-> ```bash
-> git tag v1.0.0 && git push origin v1.0.0
-> ```
+### 参考部署流程
 
-### 快速部署（推荐）
+如果希望通过公网域名（如 `https://vaultstream.your-domain.com`）对外提供服务，参考以下 **1-2-3** 顺序操作。
+> 注：如果是局域网或内网穿透纯 IP 用户，请直接跳到 **第 3 步** 并在 `.env` 里填写您的 IP 即可。
 
-```bash
-# 1. 下载并解压
-unzip vaultstream-vX.X.X.zip && cd backend
+#### 1. 域名解析 (DNS)
+前往域名提供商（如阿里云、腾讯云、Cloudflare）控制台
+- 添加一条 **A 记录**。
+- **主机记录**（前缀）填写 `vaultstream`（或者任意你喜欢的名字）。
+- **记录值** 填写您这台服务器的公网 IP 地址。
+- 保存并等待解析生效（通常几分钟）。
 
-# 2. 配置（仅需修改两项）
-cp .env.example .env
-```
+#### 2. 铺设前置 Nginx 反向代理与 HTTPS 大门
 
-编辑 `.env`，填写你的域名：
 
-```ini
-BASE_URL=https://your-domain.com            # 用于生成图片链接，不设置则图片无法加载
-CORS_ALLOWED_ORIGINS=https://your-domain.com
-```
-
-```bash
-# 3. 启动
-docker compose up -d
-
-# 4. 获取 API 密钥（首次启动自动生成，复制后填入前端连接页）
-docker logs vaultstream
-```
-
-LLM Key、Bot Token、平台 Cookie 等均可在前端引导界面中配置，无需写入 `.env`。
-
-### Nginx 反向代理
-
-参考配置见 [`backend/systemd/nginx.conf.example`](backend/systemd/nginx.conf.example)：
+**① 配置宿主机的 Nginx（例如 `/etc/nginx/sites-available/vaultstream`）：**
 
 ```nginx
-# 前端（Nginx 直接托管 backend/static/，不经过 FastAPI）
-root /opt/vaultstream/backend/static;
-location / { try_files $uri $uri/ /index.html; }
+# 将所有 HTTPS 请求反向代理到本地 Docker 容器暴露的 80 端口
+server {
+    listen 443 ssl http2;
+    server_name vaultstream.your-domain.com;
 
-# 媒体文件（直接读取，带静态缓存）
-location /media/ { alias /opt/vaultstream/backend/data/media/; expires 30d; }
+    # SSL 证书配置（下一步我们会用 certbot 自动生成这俩路径）
+    ssl_certificate     /etc/letsencrypt/live/vaultstream.your-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/vaultstream.your-domain.com/privkey.pem;
 
-# 后端 API（SSE 必须关闭 buffering）
-location /api/ { proxy_pass http://127.0.0.1:8000; proxy_buffering off; }
+    location / {
+        proxy_pass         http://127.0.0.1:80;  # 流量统统转发给后面的 vaultstream-web 容器
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}
+
+# HTTP 自动跳转 HTTPS
+server {
+    listen 80;
+    server_name vaultstream.your-domain.com;
+    return 301 https://$host$request_uri;
+}
 ```
+
+**② 一键申请并部署 SSL 证书**
+可以使用 `certbot` 签发（它会自动识别到你上面的配置文件，并填好真实的证书路径）：
+```bash
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d vaultstream.your-domain.com
+```
+
+#### 3. 部署 Docker 服务
+既然外面的安全路线铺好了，现在下载项目容器启动！
+
+```bash
+# 1. 创建工作目录并下载编排文件
+mkdir -p /opt/vaultstream && cd /opt/vaultstream
+curl -O https://raw.githubusercontent.com/ienone/VaultStream/main/backend/docker-compose.yml
+curl -o .env https://raw.githubusercontent.com/ienone/VaultStream/main/backend/.env.example
+```
+
+编辑 `.env` 配置文件，填入域名：
+
+```ini
+BASE_URL=https://vaultstream.your-domain.com            # 用于生成图片链接
+CORS_ALLOWED_ORIGINS=https://vaultstream.your-domain.com # 允许跨域请求的前端源，一般同上
+```
+
+启动服务：
+
+```bash
+docker compose up -d
+
+# 获取初始化 API 密钥（用于前端首次打开时对接后端）
+docker logs vaultstream-api
+```
+
+> 大模型 LLM Key、Bot Token 等其余配置，均可在前端图形网页中配置，不再需要写入 `.env` 文件。
 
 ### 从源码构建
 
@@ -101,9 +132,6 @@ cd VaultStream/frontend
 flutter pub get && dart run build_runner build --delete-conflicting-outputs
 flutter build web --release
 
-# 将前端产物复制到 backend/static/（Nginx 直接从此目录托管）
-cp -r build/web ../backend/static
-
 cd ../backend && cp .env.example .env
 docker compose up -d
 ```
@@ -112,7 +140,7 @@ docker compose up -d
 
 ## 使用方式
 
-1. 访问前端页面，通过界面添加内容链接、管理标签、浏览存档
+1. 访问前端页面，通过界面添加内容链接、管理标签、浏览存档；分享链接等内容时通过系统分享功能，接入应用
 2. 在前端「审批与分发」页面配置推送规则和目标群组，内容解析成功后自动推送
 3. （可选）配置 Telegram Bot 或 QQ Bot，直接向 Bot 发送链接即可入库
 
@@ -137,17 +165,19 @@ QQ Bot 需要先在服务器上独立部署 [NapCatQQ](https://github.com/NapNek
 **部署 Napcat（与 VaultStream 同服务器）：**
 
 ```bash
-# 参考 Napcat 官方文档
-# 启动后默认监听 3000 端口（HTTP 模式）
-# 扫码登录 QQ 账号后即可使用
+# 1. 按照 Napcat 官方文档完成部署和扫码登录
+# 2. 进入 Napcat 的 Web UI / 配置界面
+# 3. 在【网络配置】中，点击【新建】 -> 选择【HTTP服务器】
+# 4. 监听主机可填 0.0.0.0，端口任意（如 3000），可选择设置一个 Token
 ```
 
 **在 VaultStream 中配置：**
 
 1. 打开 **设置 → 推送与通知**
 2. 选择平台为 **QQ (Napcat)**
-3. 填入 Napcat 服务地址（例如 `http://127.0.0.1:3000`）
-4. 保存后即可在「审批与分发 → Bot 群组」中同步 QQ 群列表
+3. 填入 Napcat 的服务地址（如果是同一台服务器且端口为 3000，填 `http://127.0.0.1:3000` 或 `http://宿主机IP:3000`。由于 Docker 隔离，可能需要填写 `http://host.docker.internal:3000` 或直接填分配的局域网 IP）
+4. （可选）填写刚才在 Napcat 设置的 Token
+5. 保存后即可在「审批与分发 → Bot 群组」中同步 QQ 群列表
 
 ---
 
