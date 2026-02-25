@@ -62,47 +62,37 @@ flutter+fastapi+sqlite
 - **记录值** 填写您这台服务器的公网 IP 地址。
 - 保存并等待解析生效（通常几分钟）。
 
-#### 2. 铺设前置 Nginx 反向代理与 HTTPS 大门
+#### 2. 前置 Nginx 反向代理与 HTTPS
 
 
-**① 配置宿主机的 Nginx（例如 `/etc/nginx/sites-available/vaultstream`）：**
+**① 编写初始 Nginx 配置文件供后续申请证书使用**
+
+在宿主机创建 Nginx 配置文件（例如 `/etc/nginx/conf.d/vaultstream.conf` 或 `/etc/nginx/sites-available/vaultstream`）：
 
 ```nginx
-# 将所有 HTTPS 请求反向代理到本地 Docker 容器暴露的 80 端口
 server {
-    listen 443 ssl http2;
-    server_name vaultstream.your-domain.com;
-
-    # SSL 证书配置（下一步我们会用 certbot 自动生成这俩路径）
-    ssl_certificate     /etc/letsencrypt/live/vaultstream.your-domain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/vaultstream.your-domain.com/privkey.pem;
+    listen 80;
+    server_name vaultstream.your-domain.com; # 请替换为你的真实域名
 
     location / {
-        proxy_pass         http://127.0.0.1:80;  # 流量统统转发给后面的 vaultstream-web 容器
+        # 转发流量到本地 Docker 的 18282 端口
+        proxy_pass         http://127.0.0.1:18282;  
         proxy_set_header   Host $host;
         proxy_set_header   X-Real-IP $remote_addr;
         proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto $scheme;
     }
 }
-
-# HTTP 自动跳转 HTTPS
-server {
-    listen 80;
-    server_name vaultstream.your-domain.com;
-    return 301 https://$host$request_uri;
-}
 ```
 
-**② 一键申请并部署 SSL 证书**
-可以使用 `certbot` 签发（它会自动识别到你上面的配置文件，并填好真实的证书路径）：
+**② 申请并部署 SSL 证书**
+可以使用 `certbot` 签发（它会自动识别到配置文件，并填好真实的证书路径）：
 ```bash
 sudo apt install certbot python3-certbot-nginx
 sudo certbot --nginx -d vaultstream.your-domain.com
 ```
 
 #### 3. 部署 Docker 服务
-既然外面的安全路线铺好了，现在下载项目容器启动！
 
 ```bash
 # 1. 创建工作目录并下载编排文件

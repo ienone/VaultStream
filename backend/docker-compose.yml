@@ -6,7 +6,7 @@ services:
     container_name: vaultstream-web
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "18282:80"
     depends_on:
       - backend
 
