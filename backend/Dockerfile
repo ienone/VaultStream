@@ -34,9 +34,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 # 复制项目代码
 COPY app /app/app
-COPY scripts /app/scripts
 COPY systemd /app/systemd
-COPY migrations /app/migrations
 
 # 创建数据目录
 RUN mkdir -p /app/data/media /app/logs

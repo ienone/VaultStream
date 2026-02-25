@@ -22,10 +22,10 @@ GoRouter goRouter(Ref ref) {
   final listenable = ValueNotifier<int>(0);
 
   // 当配置或系统状态发生改变时，通知路由重新验证
-  ref.listen(localSettingsProvider, (_, __) {
+  ref.listen(localSettingsProvider, (previous, next) {
     listenable.value++;
   });
-  ref.listen(systemStatusProvider, (_, __) {
+  ref.listen(systemStatusProvider, (previous, next) {
     listenable.value++;
   });
 

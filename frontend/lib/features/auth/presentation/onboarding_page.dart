@@ -203,10 +203,11 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         _error = '保存失败: $e';
       });
     } finally {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _isLoading = false;
         });
+      }
     }
   }
 

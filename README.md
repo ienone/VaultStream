@@ -1,10 +1,11 @@
 # VaultStream
 
-![Python](https://img.shields.io/badge/Python-3.11%2B-blue)
-![Flutter](https://img.shields.io/badge/Flutter-3.10%2B-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
-
-私有内容存档与分享系统。从多个平台采集内容，本地化存储，按规则自动推送到 Telegram / QQ 等渠道。
+![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python&logoColor=white)
+![Flutter](https://img.shields.io/badge/Flutter-%5E3.41.1-02569B?logo=flutter&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
