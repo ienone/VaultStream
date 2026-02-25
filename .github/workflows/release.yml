@@ -45,12 +45,12 @@ jobs:
         working-directory: frontend
         env:
           GRADLE_OPTS: "-Dorg.gradle.daemon=false"
-        run: flutter build apk --release
+        run: flutter build apk --release --split-per-abi
 
       - name: Upload APK to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: frontend/build/app/outputs/flutter-apk/app-release.apk
+          files: frontend/build/app/outputs/flutter-apk/app-*-release.apk
 
   docker-backend:
     name: Build & Push Backend Image

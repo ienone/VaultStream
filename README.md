@@ -39,12 +39,16 @@ flutter+fastapi+sqlite
 
 ## 部署
 
-每个 [Release](https://github.com/ienone/VaultStream/releases) 提供即用的部署包，前端网页已内嵌。
+### 前端
+
+- 每个 [Release](https://github.com/ienone/VaultStream/releases) 提供安卓端apk
+- 前端网页版则在后续步骤中从package中拉取部署。参见 [docker-compose.yml](https://raw.githubusercontent.com/ienone/VaultStream/main/backend/docker-compose.yml)
 
 | 文件 | 说明 |
 |------|------|
-| `docker-compose.yml` | 容器编排文件 |
-| `app-release.apk` | Android 客户端 |
+| `app-arm64-v8a-release.apk` | Android 客户端 (64位现代手机，**推荐**) |
+| `app-armeabi-v7a-release.apk` | Android 客户端 (32位老旧手机) |
+| `app-x86_64-release.apk` | Android 客户端 (安卓模拟器) |
 
 ### 参考部署流程
 
