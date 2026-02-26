@@ -199,8 +199,11 @@ class ContentParser:
         enable_auto_summary = await get_setting_value("enable_auto_summary", settings.enable_auto_summary)
         from app.services.content_summary_service import generate_summary_for_content
         try:
-            await generate_summary_for_content(session, content.id, allow_llm=enable_auto_summary)
-            logger.info(f"摘要处理完成: content_id={content.id}, auto_ai={enable_auto_summary}")
+            if enable_auto_summary:
+                await generate_summary_for_content(session, content.id)
+                logger.info(f"摘要处理完成: content_id={content.id}, auto_ai={enable_auto_summary}")
+            else:
+                logger.debug(f"未开启自动摘要生成, 跳过: content_id={content.id}")
         except Exception as e:
             logger.warning(f"摘要生成/处理失败: {e}")
 

@@ -106,7 +106,7 @@ async def parse_video(
             item=item,
             archive_type="bilibili_video",
             title=item.get('title', ''),
-            description=item.get('desc', ''),
+            body=item.get('desc', ''),
             images=images,
             author_avatar_url=author_avatar_url
         )

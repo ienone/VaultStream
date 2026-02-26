@@ -1,9 +1,8 @@
 """
 内容摘要生成服务
 
-支持两种模式：
+支持模式：
 1. LLM 生成：调用大模型生成智能摘要
-2. 截取回退：无 LLM 配置时，从正文截取前 100 字符
 """
 import re
 from typing import Optional
@@ -35,16 +34,7 @@ def strip_markdown(text: str) -> str:
     return text.strip()
 
 
-def fallback_summary(body: Optional[str], max_len: int = 100) -> Optional[str]:
-    """从正文截取前 max_len 字符作为回退摘要"""
-    if not body:
-        return None
-    plain = strip_markdown(body)
-    if not plain:
-        return None
-    if len(plain) <= max_len:
-        return plain
-    return plain[:max_len] + "…"
+
 
 
     
@@ -138,7 +128,6 @@ async def generate_summary_for_content(
     content_id: int,
     *,
     force: bool = False,
-    allow_llm: bool = True,
 ) -> Content:
     """为指定内容生成摘要并持久化"""
     content = await session.get(Content, content_id)
@@ -155,29 +144,28 @@ async def generate_summary_for_content(
         await session.commit()
         return content
 
-    if not allow_llm:
-        # 强制回退模式
-        content.summary = fallback_summary(content.body)
-        await session.commit()
-        return content
-
     # 获取图片列表
     images = []
-    # 优先从 archive_metadata 获取原始图片 URL，因为 media_urls 可能已被转换为 local://
+    # 优先从 archive_metadata 获取原始图片 URL
     if content.archive_metadata and isinstance(content.archive_metadata, dict):
         archive = content.archive_metadata.get("archive", {})
         if isinstance(archive, dict):
-            # 兼容不同版本的 archive 结构
             imgs = archive.get("images", [])
             for img in imgs:
                 if isinstance(img, dict) and img.get("url"):
-                    # 排除头像
                     if img.get("type") != "avatar" and not img.get("is_avatar"):
                         images.append(img["url"])
     
-    # 如果从 archive 没拿到，退而求其次使用 media_urls (过滤掉 local://)
     if not images and content.media_urls:
         images = [u for u in content.media_urls if u and not u.startswith("local://")]
+
+    # 如果只有短文本，且没有图片，则完全跳过生成
+    plain_text = strip_markdown(content.body) if content.body else ""
+    if len(plain_text) < 150 and not images:
+        logger.debug(f"内容太短且无图片，跳过生成摘要: content_id={content_id}")
+        content.summary = None
+        await session.commit()
+        return content
 
     try:
         content.summary = await generate_summary_llm(
@@ -187,8 +175,8 @@ async def generate_summary_for_content(
         )
         logger.info(f"LLM 摘要生成成功: content_id={content_id}, len={len(content.summary)}")
     except Exception as e:
-        logger.warning(f"LLM 摘要生成失败，使用截取回退: {e}")
-        content.summary = fallback_summary(content.body)
+        logger.warning(f"LLM 摘要生成失败，或者模型未配置: {e}")
+        content.summary = None
 
     await session.commit()
     

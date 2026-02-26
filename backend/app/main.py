@@ -36,11 +36,14 @@ setup_logging(level=settings.log_level, fmt=settings.log_format, debug=settings.
 
 async def _bootstrap_system_settings():
     """初始化系统设置，如生成 API Token"""
-    from app.services.settings_service import get_setting_value, set_setting_value
+    from app.services.settings_service import get_setting_value, set_setting_value, load_all_settings_to_memory
     from pydantic import SecretStr
     import secrets
 
-    # 1. 检查 API Token
+    # 1. 预先加载所有 DB 配置到内存（例如 Cookies 等环境级变量）
+    await load_all_settings_to_memory()
+
+    # 2. 检查 API Token
     token = await get_setting_value("api_token")
     env_token = settings.api_token.get_secret_value()
 

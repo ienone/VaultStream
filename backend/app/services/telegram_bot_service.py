@@ -66,10 +66,20 @@ def start_telegram_bot(*, reason: str = "manual") -> dict[str, Any]:
 
     args = [sys.executable, "-m", "app.bot.main"]
     creationflags = 0
+
+    # 将当前内存中的 API Token 通过环境变量传给子进程，
+    # 因为 token 可能是主进程启动时动态生成的，.env 文件中没有。
+    from app.core.config import settings as _settings
+    child_env = os.environ.copy()
+    current_token = _settings.api_token.get_secret_value() if _settings.api_token else ""
+    if current_token:
+        child_env["API_TOKEN"] = current_token
+
     popen_kwargs: dict[str, Any] = {
         "cwd": str(_BACKEND_ROOT),
         "stdout": log_file,
         "stderr": log_file,
+        "env": child_env,
     }
 
     if os.name == "nt":

@@ -114,6 +114,31 @@ async def set_setting_value(key: str, value: Any, category: str = "general", des
         return setting
 
 
+async def load_all_settings_to_memory():
+    """
+    Load all settings from database into memory cache and settings singleton object on backend startup.
+    This ensures API keys, cookies, and other configurations stored in the DB persist across restarts.
+    """
+    from app.core.config import settings
+    from pydantic import SecretStr
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(SystemSetting))
+        for setting in result.scalars().all():
+            key = setting.key
+            value = setting.value
+            
+            # 1. Update basic cache
+            _SETTINGS_CACHE[key] = value
+
+            # 2. Synchronize to global settings object
+            if hasattr(settings, key):
+                field_type = settings.__annotations__.get(key)
+                if field_type == SecretStr or "SecretStr" in str(field_type):
+                    setattr(settings, key, SecretStr(str(value)) if value else None)
+                else:
+                    setattr(settings, key, value)
+
 async def delete_setting_value(key: str) -> bool:
     """
     Delete a system setting.

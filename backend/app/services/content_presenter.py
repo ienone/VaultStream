@@ -73,10 +73,6 @@ def transform_content_detail(content, base_url: str):
             lambda m: f"{base_url}/api/v1/media/{m.group(1)}", content.body
         )
 
-    # 摘要回退：如无 LLM 摘要则截取正文
-    if not content.summary and content.body:
-        from app.services.content_summary_service import fallback_summary
-        content.summary = fallback_summary(content.body)
 
     # 清理 U+FFFD 替换字符，避免客户端 UTF-8 解码报错
     if content.body:

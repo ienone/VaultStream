@@ -7,6 +7,7 @@ import os
 import ipaddress
 import mimetypes
 import socket
+import urllib.parse
 from urllib.parse import urlparse
 
 import httpx
@@ -32,11 +33,20 @@ def _is_safe_url(url: str) -> bool:
         # 解析域名到 IP 并检查是否为私有/保留地址
         for info in socket.getaddrinfo(hostname, None):
             addr = ipaddress.ip_address(info[4][0])
-            if addr.is_private or addr.is_reserved or addr.is_loopback or addr.is_link_local:
+            
+            # 调试模式下放行所有 IP，避免 Fake-IP (TUN 模式) 或 Loopback 被误判拦截
+            if settings.debug:
+                continue
+
+            # 放行 Fake-IP 常见网段 (Clash / V2Ray 等代理环境)
+            if addr.version == 4 and addr in ipaddress.ip_network('198.18.0.0/15'):
+                continue
+
+            if addr.is_private or addr.is_reserved or addr.is_link_local:
                 return False
+        return True
     except (ValueError, socket.gaierror):
         return False
-    return True
 
 @router.get("/media/{key:path}")
 async def proxy_media(
@@ -101,6 +111,9 @@ async def proxy_image(
         _sha256_bytes,
     )
     
+    # 还原 URL 编码以确保 hash 一致性 (前端通过 query 参数传过来往往会被 encode)
+    url = urllib.parse.unquote(url)
+
     # SSRF 防护：禁止访问内网地址
     if not _is_safe_url(url):
         raise HTTPException(status_code=400, detail="目标 URL 不允许访问（内网地址或无效协议）")
