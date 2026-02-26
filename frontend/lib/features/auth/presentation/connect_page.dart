@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/local_settings_provider.dart';
+import '../../../core/utils/toast.dart';
 
 class ConnectPage extends ConsumerStatefulWidget {
   const ConnectPage({super.key});
@@ -39,18 +40,18 @@ class _ConnectPageState extends ConsumerState<ConnectPage> {
     final url = _urlController.text.trim();
     final token = _tokenController.text.trim();
 
-    final result = await ref.read(localSettingsProvider.notifier).validateConnection(url, token);
+    final result = await ref
+        .read(localSettingsProvider.notifier)
+        .validateConnection(url, token);
 
     if (result['success'] == true) {
       await ref.read(localSettingsProvider.notifier).setBaseUrl(url);
       await ref.read(localSettingsProvider.notifier).setApiToken(token);
-      
+
       if (mounted) {
         if (result['auth_ok'] == true) {
           // 如果连接且鉴权成功
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('连接成功')),
-          );
+          Toast.show(context, '连接成功');
           // 路由会自动刷新跳转
         } else {
           setState(() {
@@ -70,7 +71,7 @@ class _ConnectPageState extends ConsumerState<ConnectPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Scaffold(
       body: Center(
         child: Container(
@@ -80,17 +81,25 @@ class _ConnectPageState extends ConsumerState<ConnectPage> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Icon(Icons.lan_outlined, size: 64, color: theme.colorScheme.primary),
+              Icon(
+                Icons.lan_outlined,
+                size: 64,
+                color: theme.colorScheme.primary,
+              ),
               const SizedBox(height: 24),
               Text(
                 '连接到 VaultStream',
-                style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(
                 '请输入您的服务器地址和初始 API 密钥',
-                style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
@@ -127,23 +136,34 @@ class _ConnectPageState extends ConsumerState<ConnectPage> {
                   ),
                   child: Text(
                     _error!,
-                    style: TextStyle(color: theme.colorScheme.onErrorContainer, fontSize: 13),
+                    style: TextStyle(
+                      color: theme.colorScheme.onErrorContainer,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
               ],
               const SizedBox(height: 24),
               FilledButton.icon(
                 onPressed: _isLoading ? null : _handleConnect,
-                icon: _isLoading 
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.login),
+                icon: _isLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.login),
                 label: const Text('连接服务器'),
-                style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
               ),
               const SizedBox(height: 16),
               Text(
                 '密钥通常显示在您启动后端服务的控制台日志中。',
-                style: theme.textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontStyle: FontStyle.italic,
+                ),
                 textAlign: TextAlign.center,
               ),
             ],

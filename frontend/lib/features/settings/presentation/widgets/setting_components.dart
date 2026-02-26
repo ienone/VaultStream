@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../../../../core/utils/toast.dart';
 
 class SectionHeader extends StatelessWidget {
   final String title;
@@ -10,7 +11,7 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 8, 8, 16),
       child: Row(
@@ -40,7 +41,7 @@ class SettingGroup extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     // M3 Spec: 使用 Card 实现分组，利用 surfaceContainer 及其自带的 elevation 效果
     return Card(
       elevation: 0, // M3 倾向于使用色块区分而非阴影，或使用极低阴影。若需阴影可设为 1-2
@@ -114,7 +115,9 @@ class SettingTile extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: (iconColor ?? colorScheme.primary).withValues(alpha: 0.1),
+                  color: (iconColor ?? colorScheme.primary).withValues(
+                    alpha: 0.1,
+                  ),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
@@ -244,13 +247,7 @@ class _ExpandableSettingTileState extends State<ExpandableSettingTile> {
 }
 
 void showToast(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(message),
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    ),
-  );
+  Toast.show(context, message);
 }
 
 class LoadingGroup extends StatelessWidget {

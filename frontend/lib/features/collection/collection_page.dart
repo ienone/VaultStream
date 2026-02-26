@@ -12,6 +12,8 @@ import 'widgets/dialogs/batch_action_sheet.dart';
 import 'widgets/list/collection_grid.dart';
 import 'widgets/list/collection_error_view.dart';
 import 'widgets/list/collection_skeleton.dart';
+import '../../core/network/sse_service.dart';
+import '../../core/utils/toast.dart';
 
 class CollectionPage extends ConsumerStatefulWidget {
   const CollectionPage({super.key});
@@ -30,7 +32,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
-    
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initFiltersFromUrl();
     });
@@ -90,6 +92,15 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Listen to SSE events for real-time updates
+    ref.listen<AsyncValue<SseEvent>>(sseEventStreamProvider, (previous, next) {
+      next.whenData((event) {
+        if (event.type == 'content_updated') {
+          ref.invalidate(collectionProvider);
+        }
+      });
+    });
+
     final filterState = ref.watch(collectionFilterProvider);
     final collectionAsync = ref.watch(collectionProvider);
     final batchSelection = ref.watch(batchSelectionProvider);
@@ -112,7 +123,8 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
             onRefresh: () => ref.refresh(collectionProvider.future),
             isSelectionMode: batchSelection.isSelectionMode,
             selectedIds: batchSelection.selectedIds,
-            onToggleSelection: (id) => ref.read(batchSelectionProvider.notifier).toggleSelection(id),
+            onToggleSelection: (id) =>
+                ref.read(batchSelectionProvider.notifier).toggleSelection(id),
             onLongPress: (id) {
               ref.read(batchSelectionProvider.notifier).enterSelectionMode();
               ref.read(batchSelectionProvider.notifier).toggleSelection(id);
@@ -130,7 +142,9 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
               onPressed: () => _showBatchActions(context),
               icon: const Icon(Icons.checklist_rounded),
               label: Text('操作 (${batchSelection.count})'),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
             )
           : _AddContentFab(isExtended: _isFabExtended),
     );
@@ -145,11 +159,14 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
       backgroundColor: theme.colorScheme.surfaceContainerHigh,
       leading: IconButton(
         icon: const Icon(Icons.close_rounded),
-        onPressed: () => ref.read(batchSelectionProvider.notifier).exitSelectionMode(),
+        onPressed: () =>
+            ref.read(batchSelectionProvider.notifier).exitSelectionMode(),
       ),
       title: Text(
         '已选择 ${selection.count} 项',
-        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+        style: theme.textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.bold,
+        ),
       ),
       actions: [
         IconButton(
@@ -157,9 +174,9 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
           tooltip: '全选',
           onPressed: () {
             final items = ref.read(collectionProvider).value?.items ?? [];
-            ref.read(batchSelectionProvider.notifier).selectAll(
-              items.map((e) => e.id).toList(),
-            );
+            ref
+                .read(batchSelectionProvider.notifier)
+                .selectAll(items.map((e) => e.id).toList());
           },
         ),
         const SizedBox(width: 8),
@@ -292,15 +309,9 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
       },
       transitionBuilder: (context, anim1, anim2, child) {
         return ScaleTransition(
-          scale: CurvedAnimation(
-            parent: anim1,
-            curve: Curves.fastOutSlowIn,
-          ),
+          scale: CurvedAnimation(parent: anim1, curve: Curves.fastOutSlowIn),
           alignment: const Alignment(0.85, -0.85),
-          child: FadeTransition(
-            opacity: anim1,
-            child: child,
-          ),
+          child: FadeTransition(opacity: anim1, child: child),
         );
       },
     );
@@ -330,40 +341,46 @@ class _AddContentFab extends StatelessWidget {
       valueListenable: isExtended,
       builder: (context, extended, _) {
         return FloatingActionButton.extended(
-          onPressed: () async {
-            final result = await AddContentDialog.show(context);
-            if (result == true && context.mounted) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('内容已添加到队列')));
-            }
-          },
-          label: AnimatedSize(
-            duration: 300.ms,
-            curve: Curves.easeOutCubic,
-            child: extended 
-              ? Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: Text(
-                    '添加内容',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                )
-              : const SizedBox.shrink(),
-          ),
-          icon: const Icon(Icons.add_rounded, size: 28),
-          isExtended: extended,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          backgroundColor: theme.colorScheme.primaryContainer,
-          foregroundColor: theme.colorScheme.onPrimaryContainer,
-        ).animate(target: extended ? 1 : 0).shimmer(
-          delay: 2.seconds,
-          duration: 1500.ms,
-          color: Colors.white24,
-        );
+              onPressed: () async {
+                final result = await AddContentDialog.show(context);
+                if (result == true && context.mounted) {
+                  Toast.show(
+                    context,
+                    '内容已添加到队列',
+                    icon: Icons.check_circle_outline_rounded,
+                  );
+                }
+              },
+              label: AnimatedSize(
+                duration: 300.ms,
+                curve: Curves.easeOutCubic,
+                child: extended
+                    ? Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Text(
+                          '添加内容',
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              icon: const Icon(Icons.add_rounded, size: 28),
+              isExtended: extended,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              backgroundColor: theme.colorScheme.primaryContainer,
+              foregroundColor: theme.colorScheme.onPrimaryContainer,
+            )
+            .animate(target: extended ? 1 : 0)
+            .shimmer(
+              delay: 2.seconds,
+              duration: 1500.ms,
+              color: Colors.white24,
+            );
       },
     );
   }

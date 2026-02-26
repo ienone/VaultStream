@@ -6,6 +6,7 @@ import '../core/layout/responsive_layout.dart';
 import '../features/collection/providers/collection_filter_provider.dart';
 import '../features/share_receiver/share_receiver_service.dart';
 import '../features/share_receiver/share_submit_sheet.dart';
+import '../core/utils/toast.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   final StatefulNavigationShell navigationShell;
@@ -29,7 +30,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     if (widget.navigationShell.currentIndex == 1 || index == 1) {
       ref.read(collectionFilterProvider.notifier).clearFilters();
     }
-    
+
     widget.navigationShell.goBranch(
       index,
       initialLocation: index == widget.navigationShell.currentIndex,
@@ -45,12 +46,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         context,
         content,
         onSubmitted: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('已保存到收藏库'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
+          Toast.show(context, '已保存到收藏库');
         },
       );
     } finally {
@@ -241,10 +237,7 @@ class _AnimatedBranchContainer extends StatelessWidget {
           ),
         );
       },
-      child: KeyedSubtree(
-        key: ValueKey<int>(currentIndex),
-        child: child,
-      ),
+      child: KeyedSubtree(key: ValueKey<int>(currentIndex), child: child),
     );
   }
 }

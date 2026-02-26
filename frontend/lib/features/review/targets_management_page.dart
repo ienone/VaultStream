@@ -6,7 +6,9 @@ import '../../core/constants/platform_constants.dart';
 import '../../core/widgets/frosted_app_bar.dart';
 import 'models/target_usage_info.dart';
 import 'models/target_list_response.dart';
+import 'models/target_list_response.dart';
 import 'providers/targets_provider.dart';
+import '../../core/utils/toast.dart';
 
 class TargetsManagementPage extends ConsumerStatefulWidget {
   const TargetsManagementPage({super.key});
@@ -16,19 +18,18 @@ class TargetsManagementPage extends ConsumerStatefulWidget {
       _TargetsManagementPageState();
 }
 
-class _TargetsManagementPageState
-    extends ConsumerState<TargetsManagementPage> {
+class _TargetsManagementPageState extends ConsumerState<TargetsManagementPage> {
   String? _filterPlatform;
   bool? _filterEnabled;
-  final Set<String> _testingTargets = {};  // Changed to Set to support multiple concurrent tests
+  final Set<String> _testingTargets =
+      {}; // Changed to Set to support multiple concurrent tests
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final targetsAsync = ref.watch(targetsProvider(
-      platform: _filterPlatform,
-      enabled: _filterEnabled,
-    ));
+    final targetsAsync = ref.watch(
+      targetsProvider(platform: _filterPlatform, enabled: _filterEnabled),
+    );
 
     return Scaffold(
       appBar: FrostedAppBar(
@@ -55,8 +56,11 @@ class _TargetsManagementPageState
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.error_outline,
-                  size: 64, color: theme.colorScheme.error),
+              Icon(
+                Icons.error_outline,
+                size: 64,
+                color: theme.colorScheme.error,
+              ),
               const SizedBox(height: 16),
               Text('加载失败: $error'),
               const SizedBox(height: 16),
@@ -78,26 +82,29 @@ class _TargetsManagementPageState
 
     if (targets.isEmpty) {
       final hasFilters = _filterPlatform != null || _filterEnabled != null;
-      
+
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.track_changes_rounded,
-                size: 64, color: theme.colorScheme.outline),
+            Icon(
+              Icons.track_changes_rounded,
+              size: 64,
+              color: theme.colorScheme.outline,
+            ),
             const SizedBox(height: 16),
             Text(
               hasFilters ? '没有符合条件的目标' : '暂无目标',
-              style: theme.textTheme.titleLarge
-                  ?.copyWith(color: theme.colorScheme.outline),
+              style: theme.textTheme.titleLarge?.copyWith(
+                color: theme.colorScheme.outline,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
-              hasFilters 
-                  ? '尝试调整筛选条件或清除筛选'
-                  : '在分发规则中添加目标后，它们将显示在这里',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.colorScheme.outline),
+              hasFilters ? '尝试调整筛选条件或清除筛选' : '在分发规则中添加目标后，它们将显示在这里',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.outline,
+              ),
             ),
             if (hasFilters) ...[
               const SizedBox(height: 16),
@@ -137,13 +144,13 @@ class _TargetsManagementPageState
     final platformIcon = platform == 'telegram'
         ? Icons.telegram
         : platform == 'qq'
-            ? Icons.forum_rounded
-            : Icons.share_rounded;
+        ? Icons.forum_rounded
+        : Icons.share_rounded;
     final platformName = platform == 'telegram'
         ? 'Telegram'
         : platform == 'qq'
-            ? 'QQ'
-            : platform.toUpperCase();
+        ? 'QQ'
+        : platform.toUpperCase();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -156,8 +163,9 @@ class _TargetsManagementPageState
               const SizedBox(width: 8),
               Text(
                 platformName,
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.bold),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(width: 8),
               Container(
@@ -192,7 +200,7 @@ class _TargetsManagementPageState
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final targetKey = '${target.targetPlatform}:${target.targetId}';
-    final isTesting = _testingTargets.contains(targetKey);  // Check if in Set
+    final isTesting = _testingTargets.contains(targetKey); // Check if in Set
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -234,14 +242,16 @@ class _TargetsManagementPageState
                       children: [
                         Text(
                           target.targetId,
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.bold),
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         if (target.summary.isNotEmpty)
                           Text(
                             target.summary,
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: colorScheme.outline),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.outline,
+                            ),
                           ),
                       ],
                     ),
@@ -249,7 +259,9 @@ class _TargetsManagementPageState
                   if (!target.enabled)
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: colorScheme.outline.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
@@ -281,8 +293,10 @@ class _TargetsManagementPageState
                   if (target.lastPushedAt != null)
                     _buildInfoChip(
                       icon: Icons.access_time_rounded,
-                      label: timeago.format(target.lastPushedAt!,
-                          locale: 'zh_CN'),
+                      label: timeago.format(
+                        target.lastPushedAt!,
+                        locale: 'zh_CN',
+                      ),
                       theme: theme,
                     ),
                   if (target.renderConfig != null)
@@ -319,7 +333,9 @@ class _TargetsManagementPageState
                       label: Text(isTesting ? '测试中...' : '测试连接'),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                       ),
                     ),
                   ),
@@ -330,7 +346,9 @@ class _TargetsManagementPageState
                     label: const Text('详情'),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                     ),
                   ),
                 ],
@@ -362,8 +380,10 @@ class _TargetsManagementPageState
           const SizedBox(width: 4),
           Text(
             label,
-            style: theme.textTheme.labelSmall
-                ?.copyWith(color: chipColor, fontWeight: FontWeight.w500),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: chipColor,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
@@ -372,18 +392,20 @@ class _TargetsManagementPageState
 
   Future<void> _testTargetConnection(TargetUsageInfo target) async {
     final targetKey = '${target.targetPlatform}:${target.targetId}';
-    
+
     // Prevent duplicate requests
     if (_testingTargets.contains(targetKey)) {
       return;
     }
-    
+
     setState(() {
       _testingTargets.add(targetKey);
     });
 
     try {
-      final result = await ref.read(targetsProvider().notifier).testConnection(
+      final result = await ref
+          .read(targetsProvider().notifier)
+          .testConnection(
             platform: target.targetPlatform,
             targetId: target.targetId,
           );
@@ -393,37 +415,15 @@ class _TargetsManagementPageState
       final status = result['status'] as String;
       final message = result['message'] as String;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Icon(
-                status == 'ok' ? Icons.check_circle : Icons.error,
-                color: Colors.white,
-              ),
-              const SizedBox(width: 12),
-              Expanded(child: Text(message)),
-            ],
-          ),
-          backgroundColor: status == 'ok' ? Colors.green : Colors.red,
-          behavior: SnackBarBehavior.floating,
-        ),
+      Toast.show(
+        context,
+        message,
+        icon: status == 'ok' ? Icons.check_circle : Icons.error,
+        isError: status != 'ok',
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.error, color: Colors.white),
-              const SizedBox(width: 12),
-              Expanded(child: Text('测试失败: $e')),
-            ],
-          ),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      Toast.show(context, '测试失败: $e', isError: true);
     } finally {
       if (mounted) {
         setState(() {
@@ -459,10 +459,13 @@ class _TargetsManagementPageState
                 items: const [
                   DropdownMenuItem(value: null, child: Text('全部')),
                   DropdownMenuItem(
-                      value: PlatformConstants.telegram,
-                      child: Text('Telegram')),
+                    value: PlatformConstants.telegram,
+                    child: Text('Telegram'),
+                  ),
                   DropdownMenuItem(
-                      value: PlatformConstants.qq, child: Text('QQ')),
+                    value: PlatformConstants.qq,
+                    child: Text('QQ'),
+                  ),
                 ],
                 onChanged: (value) {
                   setState(() => _filterPlatform = value);
@@ -558,14 +561,16 @@ class _TargetDetailsSheet extends ConsumerWidget {
                       children: [
                         Text(
                           target.targetId,
-                          style: theme.textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.bold),
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         if (target.summary.isNotEmpty)
                           Text(
                             target.summary,
-                            style: theme.textTheme.bodyMedium
-                                ?.copyWith(color: colorScheme.outline),
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: colorScheme.outline,
+                            ),
                           ),
                       ],
                     ),
@@ -577,52 +582,36 @@ class _TargetDetailsSheet extends ConsumerWidget {
                 child: ListView(
                   controller: scrollController,
                   children: [
-                    _buildDetailSection(
-                      '基本信息',
-                      [
-                        _DetailItem('平台', target.targetPlatform.toUpperCase()),
-                        _DetailItem('目标 ID', target.targetId),
-                        _DetailItem('状态', target.enabled ? '已启用' : '已禁用'),
-                        if (target.summary.isNotEmpty)
-                          _DetailItem('显示名称', target.summary),
-                      ],
-                      theme,
-                    ),
+                    _buildDetailSection('基本信息', [
+                      _DetailItem('平台', target.targetPlatform.toUpperCase()),
+                      _DetailItem('目标 ID', target.targetId),
+                      _DetailItem('状态', target.enabled ? '已启用' : '已禁用'),
+                      if (target.summary.isNotEmpty)
+                        _DetailItem('显示名称', target.summary),
+                    ], theme),
                     const SizedBox(height: 16),
-                    _buildDetailSection(
-                      '使用统计',
-                      [
-                        _DetailItem('使用规则数', '${target.ruleCount}'),
-                        _DetailItem('总推送次数', '${target.totalPushed}'),
-                        if (target.lastPushedAt != null)
-                          _DetailItem(
-                            '最后推送',
-                            timeago.format(target.lastPushedAt!,
-                                locale: 'zh_CN'),
-                          ),
-                      ],
-                      theme,
-                    ),
+                    _buildDetailSection('使用统计', [
+                      _DetailItem('使用规则数', '${target.ruleCount}'),
+                      _DetailItem('总推送次数', '${target.totalPushed}'),
+                      if (target.lastPushedAt != null)
+                        _DetailItem(
+                          '最后推送',
+                          timeago.format(target.lastPushedAt!, locale: 'zh_CN'),
+                        ),
+                    ], theme),
                     const SizedBox(height: 16),
                     _buildDetailSection(
                       '关联规则',
                       target.ruleNames.asMap().entries.map((entry) {
-                        return _DetailItem(
-                          '规则 ${entry.key + 1}',
-                          entry.value,
-                        );
+                        return _DetailItem('规则 ${entry.key + 1}', entry.value);
                       }).toList(),
                       theme,
                     ),
                     if (target.renderConfig != null) ...[
                       const SizedBox(height: 16),
-                      _buildDetailSection(
-                        '渲染配置',
-                        [
-                          _DetailItem('已自定义', '覆盖默认配置'),
-                        ],
-                        theme,
-                      ),
+                      _buildDetailSection('渲染配置', [
+                        _DetailItem('已自定义', '覆盖默认配置'),
+                      ], theme),
                     ],
                   ],
                 ),
@@ -664,32 +653,33 @@ class _TargetDetailsSheet extends ConsumerWidget {
       children: [
         Text(
           title,
-          style: theme.textTheme.titleSmall
-              ?.copyWith(fontWeight: FontWeight.bold),
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
         ),
         const SizedBox(height: 8),
-        ...items.map((item) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 100,
-                    child: Text(
-                      item.label,
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: theme.colorScheme.outline),
+        ...items.map(
+          (item) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 100,
+                  child: Text(
+                    item.label,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.outline,
                     ),
                   ),
-                  Expanded(
-                    child: Text(
-                      item.value,
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ),
-                ],
-              ),
-            )),
+                ),
+                Expanded(
+                  child: Text(item.value, style: theme.textTheme.bodyMedium),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -697,7 +687,9 @@ class _TargetDetailsSheet extends ConsumerWidget {
   Future<void> _batchDisable(BuildContext context, WidgetRef ref) async {
     final newState = !target.enabled;
     try {
-      await ref.read(targetsProvider().notifier).batchUpdate(
+      await ref
+          .read(targetsProvider().notifier)
+          .batchUpdate(
             ruleIds: target.ruleIds,
             targetPlatform: target.targetPlatform,
             targetId: target.targetId,
@@ -705,21 +697,13 @@ class _TargetDetailsSheet extends ConsumerWidget {
           );
       if (!context.mounted) return;
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已在 ${target.ruleCount} 个规则中${newState ? "启用" : "禁用"}目标'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      Toast.show(
+        context,
+        '已在 ${target.ruleCount} 个规则中${newState ? "启用" : "禁用"}目标',
       );
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('操作失败: $e'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      Toast.show(context, '操作失败: $e', isError: true);
     }
   }
 }

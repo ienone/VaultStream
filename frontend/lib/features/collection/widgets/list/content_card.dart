@@ -124,14 +124,12 @@ class _ContentCardInternalState extends State<_ContentCardInternal> {
     final content = widget.content;
     final displayColor = widget.displayColor;
 
-        return MouseRegion(
-
+    return MouseRegion(
           onEnter: (_) => setState(() => _isHovered = true),
 
           onExit: (_) => setState(() => _isHovered = false),
 
           child: AnimatedScale(
-
             scale: _isHovered ? 1.03 : 1.0,
 
             duration: 300.ms,
@@ -139,81 +137,60 @@ class _ContentCardInternalState extends State<_ContentCardInternal> {
             curve: Curves.easeOutBack,
 
             child: AspectRatio(
-
               aspectRatio: widget.cardAspectRatio,
 
               child: Stack(
-
                 children: [
-
                   // Background Hero
-
                   Positioned.fill(
-
                     child: Hero(
-
                       tag: 'card-bg-${content.id}',
 
                       child: AnimatedContainer(
-
                         duration: 300.ms,
 
                         decoration: BoxDecoration(
-
                           borderRadius: BorderRadius.circular(28),
 
                           color: _isHovered && displayColor != null
-
-                              ? Color.alphaBlend(displayColor.withValues(alpha: 0.1), colorScheme.surfaceContainerHigh)
-
+                              ? Color.alphaBlend(
+                                  displayColor.withValues(alpha: 0.1),
+                                  colorScheme.surfaceContainerHigh,
+                                )
                               : colorScheme.surfaceContainerLow,
 
                           boxShadow: _isHovered
-
                               ? [
-
                                   BoxShadow(
-
-                                    color: (displayColor ?? colorScheme.primary).withValues(alpha: 0.15),
+                                    color: (displayColor ?? colorScheme.primary)
+                                        .withValues(alpha: 0.15),
 
                                     blurRadius: 24,
 
                                     spreadRadius: 2,
 
                                     offset: const Offset(0, 8),
-
                                   ),
-
                                 ]
-
                               : null,
 
                           border: Border.all(
-
                             color: _isHovered && displayColor != null
-
                                 ? displayColor.withValues(alpha: 0.5)
-
-                                : colorScheme.outlineVariant.withValues(alpha: 0.3),
+                                : colorScheme.outlineVariant.withValues(
+                                    alpha: 0.3,
+                                  ),
 
                             width: _isHovered ? 1.5 : 1,
-
                           ),
-
                         ),
-
                       ),
-
                     ),
-
                   ),
 
                   // Content Overlay
-
                   Positioned.fill(
-
                     child: Material(
-
                       color: Colors.transparent,
 
                       borderRadius: BorderRadius.circular(28),
@@ -221,19 +198,14 @@ class _ContentCardInternalState extends State<_ContentCardInternal> {
                       clipBehavior: Clip.antiAlias,
 
                       child: InkWell(
-
                         onTap: widget.onTap,
 
                         child: Column(
-
                           crossAxisAlignment: CrossAxisAlignment.stretch,
 
                           children: [
-
                             if (widget.hasImage)
-
                               _CardCover(
-
                                 content: content,
 
                                 imageUrl: widget.imageUrl,
@@ -241,23 +213,19 @@ class _ContentCardInternalState extends State<_ContentCardInternal> {
                                 imageHeaders: widget.imageHeaders,
 
                                 imageAspectRatio: widget.imageAspectRatio,
-
                               ),
 
                             Expanded(
-
                               child: Padding(
-
-                                padding: EdgeInsets.all(widget.isTinyCard ? 12 : 16),
+                                padding: EdgeInsets.all(
+                                  widget.isTinyCard ? 12 : 16,
+                                ),
 
                                 child: Column(
-
                                   crossAxisAlignment: CrossAxisAlignment.start,
 
                                   children: [
-
                                     _CardAuthor(
-
                                       content: content,
 
                                       apiBaseUrl: widget.apiBaseUrl,
@@ -269,29 +237,23 @@ class _ContentCardInternalState extends State<_ContentCardInternal> {
                                       displayColor: displayColor,
 
                                       isTinyCard: widget.isTinyCard,
-
                                     ),
 
                                     const SizedBox(height: 10),
 
                                     Expanded(
-
                                       child: _CardContentSnippet(
-
                                         content: content,
 
                                         isGallery: widget.isGallery,
 
                                         isTinyCard: widget.isTinyCard,
-
                                       ),
-
                                     ),
 
                                     const SizedBox(height: 8),
 
                                     _CardFooter(
-
                                       content: content,
 
                                       isTinyCard: widget.isTinyCard,
@@ -299,46 +261,31 @@ class _ContentCardInternalState extends State<_ContentCardInternal> {
                                       isHovered: _isHovered,
 
                                       displayColor: displayColor,
-
                                     ),
-
                                   ],
-
                                 ),
-
                               ),
-
                             ),
-
                           ],
-
                         ),
-
                       ),
-
                     ),
-
                   ),
-
                 ],
-
               ),
-
             ),
-
           ),
-
         )
-
         .animate()
-
         .fadeIn(delay: (widget.index % 10 * 100).ms, duration: 500.ms)
-
-        .slideY(begin: 0.2, end: 0, curve: Curves.easeOutCubic, delay: (widget.index % 10 * 100).ms);
-
-      }
-
-    }
+        .slideY(
+          begin: 0.2,
+          end: 0,
+          curve: Curves.easeOutCubic,
+          delay: (widget.index % 10 * 100).ms,
+        );
+  }
+}
 
 class _CardCover extends StatelessWidget {
   final ShareCard content;
@@ -364,21 +311,28 @@ class _CardCover extends StatelessWidget {
           Hero(
             tag: 'content-image-${content.id}',
             child: CachedNetworkImage(
-              imageUrl: content.thumbnailUrl ?? imageUrl,  // 优先使用缩略图
+              imageUrl: content.thumbnailUrl ?? imageUrl, // 优先使用缩略图
               httpHeaders: imageHeaders,
               fit: BoxFit.cover,
               maxHeightDiskCache: 800,
-              memCacheWidth: 400,  // 限制内存缓存大小
-              memCacheHeight: 300,
               placeholder: (context, url) => Container(
                 color: colorScheme.surfaceContainerHighest,
                 child: const Center(
-                  child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 ),
               ),
               errorWidget: (context, url, error) => Container(
                 color: colorScheme.errorContainer,
-                child: Center(child: Icon(Icons.broken_image_rounded, color: colorScheme.error)),
+                child: Center(
+                  child: Icon(
+                    Icons.broken_image_rounded,
+                    color: colorScheme.error,
+                  ),
+                ),
               ),
             ),
           ),
@@ -388,7 +342,11 @@ class _CardCover extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.black.withValues(alpha: 0.1), Colors.transparent, Colors.black.withValues(alpha: 0.05)],
+                  colors: [
+                    Colors.black.withValues(alpha: 0.1),
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.05),
+                  ],
                 ),
               ),
             ),
@@ -427,17 +385,28 @@ class _CardAuthor extends StatelessWidget {
         if (content.authorAvatarUrl != null && !isTinyCard) ...[
           Container(
             padding: const EdgeInsets.all(1),
-            decoration: BoxDecoration(color: (displayColor ?? colorScheme.primary).withValues(alpha: 0.2), shape: BoxShape.circle),
+            decoration: BoxDecoration(
+              color: (displayColor ?? colorScheme.primary).withValues(
+                alpha: 0.2,
+              ),
+              shape: BoxShape.circle,
+            ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: CachedNetworkImage(
                 imageUrl: mapUrl(content.authorAvatarUrl!, apiBaseUrl),
-                httpHeaders: buildImageHeaders(imageUrl: mapUrl(content.authorAvatarUrl!, apiBaseUrl), baseUrl: apiBaseUrl, apiToken: apiToken),
+                httpHeaders: buildImageHeaders(
+                  imageUrl: mapUrl(content.authorAvatarUrl!, apiBaseUrl),
+                  baseUrl: apiBaseUrl,
+                  apiToken: apiToken,
+                ),
                 width: 18,
                 height: 18,
                 fit: BoxFit.cover,
-                placeholder: (context, url) => Container(color: colorScheme.surfaceContainerHighest),
-                errorWidget: (context, url, error) => const Icon(Icons.person_rounded, size: 12),
+                placeholder: (context, url) =>
+                    Container(color: colorScheme.surfaceContainerHighest),
+                errorWidget: (context, url, error) =>
+                    const Icon(Icons.person_rounded, size: 12),
               ),
             ),
           ),
@@ -448,7 +417,9 @@ class _CardAuthor extends StatelessWidget {
             content.authorName ?? '未知作者',
             style: theme.textTheme.labelMedium?.copyWith(
               fontWeight: FontWeight.bold,
-              color: isHovered && displayColor != null ? displayColor : colorScheme.onSurfaceVariant,
+              color: isHovered && displayColor != null
+                  ? displayColor
+                  : colorScheme.onSurfaceVariant,
               fontSize: isTinyCard ? 10 : 12,
             ),
             maxLines: 1,
@@ -485,7 +456,9 @@ class _CardContentSnippet extends StatelessWidget {
       return Text(
         text,
         style: theme.textTheme.bodyMedium?.copyWith(
-          fontSize: isTinyCard ? 11 : 13, // Slightly smaller to prevent overflow
+          fontSize: isTinyCard
+              ? 11
+              : 13, // Slightly smaller to prevent overflow
           height: 1.3,
           fontWeight: FontWeight.w500,
           color: colorScheme.onSurface,
@@ -500,7 +473,9 @@ class _CardContentSnippet extends StatelessWidget {
       return Text(
         text,
         style: theme.textTheme.titleMedium?.copyWith(
-          fontSize: isTinyCard ? 12 : 14, // Slightly smaller to prevent overflow
+          fontSize: isTinyCard
+              ? 12
+              : 14, // Slightly smaller to prevent overflow
           fontWeight: FontWeight.w800,
           height: 1.25,
           color: colorScheme.onSurface,
@@ -539,24 +514,41 @@ class _CardFooter extends StatelessWidget {
             child: Wrap(
               spacing: 4,
               runSpacing: 4,
-              children: content.tags.take(isTinyCard ? 1 : 2).map((tag) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: (displayColor ?? colorScheme.primary).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  '#$tag',
-                  style: theme.textTheme.labelSmall?.copyWith(color: displayColor ?? colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 9),
-                ),
-              )).toList(),
+              children: content.tags
+                  .take(isTinyCard ? 1 : 2)
+                  .map(
+                    (tag) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: (displayColor ?? colorScheme.primary).withValues(
+                          alpha: 0.1,
+                        ),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '#$tag',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: displayColor ?? colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 9,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
             ),
           ),
         const SizedBox(width: 4),
         if (!isTinyCard && content.publishedAt != null)
           Text(
             DateFormat('MM-dd').format(content.publishedAt!.toLocal()),
-            style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline.withValues(alpha: 0.6), fontWeight: FontWeight.w500),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: colorScheme.outline.withValues(alpha: 0.6),
+              fontWeight: FontWeight.w500,
+            ),
           ),
       ],
     );

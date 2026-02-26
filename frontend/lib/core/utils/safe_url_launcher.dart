@@ -4,10 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 class SafeUrlLauncher {
   static const Set<String> _allowedSchemes = {'http', 'https'};
 
-  static Future<void> openExternal(
-    BuildContext context,
-    String? url,
-  ) async {
+  static Future<void> openExternal(BuildContext context, String? url) async {
     if (url == null || url.trim().isEmpty) {
       _show(context, '链接为空，无法打开');
       return;
@@ -21,19 +18,13 @@ class SafeUrlLauncher {
     }
 
     try {
-      if (!await canLaunchUrl(uri)) {
-        if (!context.mounted) return;
-        _show(context, '当前设备无法打开该链接');
-        return;
-      }
-
       final launched = await launchUrl(
         uri,
         mode: LaunchMode.externalApplication,
       );
       if (!launched) {
         if (!context.mounted) return;
-        _show(context, '打开链接失败');
+        _show(context, '打开链接失败，可能设备未安装该应用');
       }
     } catch (_) {
       if (!context.mounted) return;
@@ -44,10 +35,7 @@ class SafeUrlLauncher {
   static void _show(BuildContext context, String message) {
     final messenger = ScaffoldMessenger.maybeOf(context);
     messenger?.showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
 }

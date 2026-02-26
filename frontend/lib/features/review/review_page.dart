@@ -24,6 +24,7 @@ import 'widgets/bot_status_card.dart';
 import 'widgets/rule_config_panel.dart';
 import 'widgets/queue_content_list.dart';
 import 'widgets/rule_list_tile.dart';
+import '../../core/utils/toast.dart';
 
 class ReviewPage extends ConsumerStatefulWidget {
   const ReviewPage({super.key});
@@ -98,13 +99,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       return;
     }
     _lastToastAt = now;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-        content: Text(message),
-      ),
-    );
+    Toast.show(context, message);
   }
 
   @override

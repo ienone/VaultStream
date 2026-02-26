@@ -5,6 +5,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/providers/system_status_provider.dart';
 import '../../settings/presentation/widgets/setting_components.dart'
     as settings_ui;
+import '../../review/providers/bot_chats_provider.dart';
 
 class OnboardingPage extends ConsumerStatefulWidget {
   const OnboardingPage({super.key});
@@ -197,6 +198,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
       if (mounted) {
         settings_ui.showToast(context, '配置完成！');
         ref.read(systemStatusProvider.notifier).refresh();
+        ref.invalidate(botChatsProvider);
       }
     } catch (e) {
       setState(() {

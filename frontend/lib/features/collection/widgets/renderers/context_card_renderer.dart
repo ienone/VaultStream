@@ -16,8 +16,9 @@ class ContextCardRenderer extends StatelessWidget {
     final title = contextData['title'] as String?;
     final url = contextData['url'] as String?;
     final statsRaw = contextData['stats'];
-    final Map<String, dynamic>? stats =
-        statsRaw is Map ? Map<String, dynamic>.from(statsRaw) : null;
+    final Map<String, dynamic>? stats = statsRaw is Map
+        ? Map<String, dynamic>.from(statsRaw)
+        : null;
 
     if (type == 'question') {
       return Card(
@@ -40,13 +41,13 @@ class ContextCardRenderer extends StatelessWidget {
                     Icon(
                       Icons.help_outline,
                       size: 16,
-                      color: Theme.of(context).primaryColor,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(width: 8),
                     Text(
                       '关联问题',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).primaryColor,
+                        color: Theme.of(context).colorScheme.primary,
                         fontWeight: FontWeight.bold,
                       ),
                     ),

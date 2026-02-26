@@ -4,6 +4,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:markdown/markdown.dart' as md;
+import '../../../../../core/utils/toast.dart';
 
 class HeaderBuilder extends MarkdownElementBuilder {
   final Map<String, GlobalKey> keys;
@@ -186,12 +187,10 @@ class CodeElementBuilder extends MarkdownElementBuilder {
                         Clipboard.setData(
                           ClipboardData(text: element.textContent),
                         );
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('已复制代码'),
-                            duration: Duration(seconds: 1),
-                            behavior: SnackBarBehavior.floating,
-                          ),
+                        Toast.show(
+                          context,
+                          '已复制代码',
+                          icon: Icons.check_circle_outline_rounded,
                         );
                       },
                       borderRadius: BorderRadius.circular(8),
