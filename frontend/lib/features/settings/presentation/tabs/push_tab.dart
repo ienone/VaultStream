@@ -62,31 +62,61 @@ class _PushTabState extends ConsumerState<PushTab> {
     setState(() => _isSaving = true);
     try {
       final dio = ref.read(apiClientProvider);
-      // 保存Bot Token / Napcat URL
+
+      // 查询是否已有同平台配置，有则 PATCH，无则 POST
+      final existingResp = await dio.get('/bot-config');
+      final existingConfigs = (existingResp.data as List?) ?? [];
+      final existing = existingConfigs.cast<Map<String, dynamic>>().where(
+        (c) => c['platform'] == _botPlatform,
+      );
+      final existingConfig = existing.isNotEmpty ? existing.first : null;
+
       if (_botPlatform == 'telegram' &&
           _tgTokenController.text.trim().isNotEmpty) {
-        await dio.post(
-          '/bot-config',
-          data: {
-            'platform': 'telegram',
-            'name': 'Main Telegram Bot',
-            'bot_token': _tgTokenController.text.trim(),
-            'enabled': true,
-            'is_primary': true,
-          },
-        );
+        if (existingConfig != null) {
+          await dio.patch(
+            '/bot-config/${existingConfig['id']}',
+            data: {
+              'bot_token': _tgTokenController.text.trim(),
+              'enabled': true,
+              'is_primary': true,
+            },
+          );
+        } else {
+          await dio.post(
+            '/bot-config',
+            data: {
+              'platform': 'telegram',
+              'name': 'Main Telegram Bot',
+              'bot_token': _tgTokenController.text.trim(),
+              'enabled': true,
+              'is_primary': true,
+            },
+          );
+        }
       } else if (_botPlatform == 'qq' &&
           _qqUrlController.text.trim().isNotEmpty) {
-        await dio.post(
-          '/bot-config',
-          data: {
-            'platform': 'qq',
-            'name': 'Main QQ Bot',
-            'napcat_http_url': _qqUrlController.text.trim(),
-            'enabled': true,
-            'is_primary': true,
-          },
-        );
+        if (existingConfig != null) {
+          await dio.patch(
+            '/bot-config/${existingConfig['id']}',
+            data: {
+              'napcat_http_url': _qqUrlController.text.trim(),
+              'enabled': true,
+              'is_primary': true,
+            },
+          );
+        } else {
+          await dio.post(
+            '/bot-config',
+            data: {
+              'platform': 'qq',
+              'name': 'Main QQ Bot',
+              'napcat_http_url': _qqUrlController.text.trim(),
+              'enabled': true,
+              'is_primary': true,
+            },
+          );
+        }
       }
       // 保存权限配置
       final notifier = ref.read(systemSettingsProvider.notifier);
@@ -114,13 +144,28 @@ class _PushTabState extends ConsumerState<PushTab> {
         );
       }
       if (mounted) {
-        showToast(context, '机器人配置已保存 ✓');
-        ref.invalidate(botStatusProvider);
+        showToast(context, '机器人配置已保存，正在启动 Bot…');
+        // 等待 Bot 进程启动并发送心跳后再刷新状态
+        await _pollBotStatus();
       }
     } catch (e) {
       if (mounted) showToast(context, '保存失败: $e');
     } finally {
       if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  /// 轮询 bot 状态，最多等待 ~8 秒，等 bot 心跳上线后再刷新 UI
+  Future<void> _pollBotStatus() async {
+    for (int i = 0; i < 4; i++) {
+      await Future.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
+      ref.invalidate(botStatusProvider);
+      // 等待 provider 完成获取
+      try {
+        final status = await ref.read(botStatusProvider.future);
+        if (status.isRunning || status.isNapcatEnabled) return;
+      } catch (_) {}
     }
   }
 

@@ -4,6 +4,7 @@ import '../../../../core/providers/theme_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../models/system_setting.dart';
 import '../widgets/setting_components.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class SystemTab extends ConsumerWidget {
   const SystemTab({super.key});
@@ -344,7 +345,7 @@ class SystemTab extends ConsumerWidget {
             shape: BoxShape.circle,
           ),
           child: Icon(
-            Icons.vape_free_rounded,
+            Icons.inventory_2_rounded,
             size: 48,
             color: theme.colorScheme.primary,
           ),
@@ -356,11 +357,21 @@ class SystemTab extends ConsumerWidget {
             fontWeight: FontWeight.bold,
           ),
         ),
-        Text(
-          'Version 0.1.0 (Alpha)',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.outline,
-          ),
+        FutureBuilder<PackageInfo>(
+          future: PackageInfo.fromPlatform(),
+          builder: (context, snapshot) {
+            if (snapshot.hasData) {
+              final version = snapshot.data!.version;
+              final buildNumber = snapshot.data!.buildNumber;
+              return Text(
+                'Version $version ($buildNumber)',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.outline,
+                ),
+              );
+            }
+            return const SizedBox.shrink();
+          },
         ),
       ],
     );

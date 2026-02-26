@@ -60,6 +60,7 @@ dependencies:
   receive_sharing_intent: ^1.8.1
   extended_image: ^8.2.0
   timeago: ^3.7.0
+  package_info_plus: ^9.0.0
 
 dev_dependencies:
   flutter_test:

@@ -79,7 +79,7 @@ class BotChats extends _$BotChats {
 
 @riverpod
 Future<BotStatus> botStatus(Ref ref) async {
-  ref.keepAlive();
+  // 不使用 keepAlive，页面切换时自动重新获取最新状态
   final dio = ref.watch(apiClientProvider);
   final response = await dio.get('/bot/status');
   return BotStatus.fromJson(response.data);
