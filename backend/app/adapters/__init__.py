@@ -1,50 +1,58 @@
-"""
-适配器工厂
-"""
-from typing import Optional
-from app.adapters.base import PlatformAdapter
-from app.adapters.bilibili import BilibiliAdapter
-from app.adapters.twitter import TwitterAdapter
-from app.adapters.xiaohongshu import XiaohongshuAdapter
-from app.adapters.weibo import WeiboAdapter
-from app.adapters.zhihu import ZhihuAdapter
-from app.adapters.universal_adapter import UniversalAdapter
+from typing import Optional, Dict, Type, Any
 from app.models import Platform
-
+from .base import PlatformAdapter, ParsedContent
+from .bilibili import BilibiliAdapter
+from .weibo import WeiboAdapter
+from .twitter import TwitterAdapter
+from .xiaohongshu import XiaohongshuAdapter
+from .zhihu import ZhihuAdapter
+from .universal_adapter import UniversalAdapter
 
 class AdapterFactory:
-    """适配器工厂"""
-    
+    _adapters: Dict[Platform, Type[PlatformAdapter]] = {
+        Platform.BILIBILI: BilibiliAdapter,
+        Platform.WEIBO: WeiboAdapter,
+        Platform.TWITTER: TwitterAdapter,
+        Platform.XIAOHONGSHU: XiaohongshuAdapter,
+        Platform.ZHIHU: ZhihuAdapter,
+    }
+
     @staticmethod
-    def create(platform: Platform, **kwargs) -> PlatformAdapter:
-        """创建适配器实例"""
-        if platform == Platform.BILIBILI:
-            return BilibiliAdapter(**kwargs)
-        elif platform == Platform.TWITTER:
-            return TwitterAdapter(**kwargs)
-        elif platform == Platform.XIAOHONGSHU:
-            return XiaohongshuAdapter(**kwargs)
-        elif platform == Platform.WEIBO:
-            return WeiboAdapter(**kwargs)
-        elif platform == Platform.ZHIHU:
-            return ZhihuAdapter(**kwargs)
-        elif platform == Platform.UNIVERSAL:
-            return UniversalAdapter(**kwargs)
-        # 未来可以在这里添加其他平台
-        raise ValueError(f"不支持的平台: {platform}")
-    
-    @staticmethod
-    def detect_platform(url: str) -> Optional[Platform]:
-        """从URL检测平台"""
-        if 'bilibili.com' in url or 'b23.tv' in url:
+    def detect_platform(url: str) -> Platform:
+        url = url.lower()
+        if "bilibili.com" in url or "b23.tv" in url:
             return Platform.BILIBILI
-        elif 'twitter.com' in url or 'x.com' in url or 't.co' in url:
-            return Platform.TWITTER
-        elif 'xiaohongshu.com' in url or 'xhslink.com' in url:
-            return Platform.XIAOHONGSHU
-        elif 'weibo.com' in url or 'weibo.cn' in url or 'mapp.api.weibo.cn' in url:
+        if "weibo.com" in url or "weibo.cn" in url:
             return Platform.WEIBO
-        elif 'zhihu.com' in url:
+        if "twitter.com" in url or "x.com" in url:
+            return Platform.TWITTER
+        if "xiaohongshu.com" in url or "xhslink.com" in url:
+            return Platform.XIAOHONGSHU
+        if "zhihu.com" in url:
             return Platform.ZHIHU
-        # 默认返回通用平台适配器
-        return Platform.UNIVERSAL
+        return Platform.OTHER
+
+    @classmethod
+    def create(cls, platform: Platform, cookies: Optional[Dict[str, str]] = None, **kwargs: Any) -> PlatformAdapter:
+        adapter_cls = cls._adapters.get(platform)
+        if adapter_cls:
+            # 兼容不同适配器的构造函数
+            try:
+                return adapter_cls(cookies=cookies, **kwargs)
+            except TypeError:
+                return adapter_cls(cookies=cookies)
+        
+        # 回退到通用适配器
+        return UniversalAdapter(cookies=cookies, **kwargs)
+
+__all__ = [
+    "PlatformAdapter",
+    "ParsedContent",
+    "BilibiliAdapter",
+    "WeiboAdapter",
+    "TwitterAdapter",
+    "XiaohongshuAdapter",
+    "ZhihuAdapter",
+    "UniversalAdapter",
+    "AdapterFactory",
+]
