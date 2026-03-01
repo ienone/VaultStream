@@ -14,7 +14,7 @@ from typing import Dict, Any, List, Optional
 import httpx
 
 from app.core.logging import logger
-from app.core.storage import get_storage_backend
+from app.adapters.storage import get_storage_backend
 from app.services.bot_config_runtime import get_primary_qq_runtime_from_db
 from app.utils.text_formatters import format_content_with_render_config, strip_markdown
 from app.media.extractor import extract_media_urls

@@ -14,7 +14,7 @@ from telegram.error import TelegramError
 
 from app.core.logging import logger
 from app.core.config import settings
-from app.core.storage import get_storage_backend
+from app.adapters.storage import get_storage_backend
 from app.services.bot_config_runtime import get_primary_telegram_token_from_db
 from app.utils.text_formatters import format_content_for_tg, format_content_with_render_config
 from app.media.extractor import extract_media_urls
