@@ -10,7 +10,7 @@ from datetime import datetime
 
 from app.core.logging import logger
 from app.models import Content, ContentStatus, DistributionRule, ReviewStatus
-from app.distribution.decision import check_match_conditions, check_auto_approve_conditions, DECISION_FILTERED
+from .decision import check_match_conditions, check_auto_approve_conditions, DECISION_FILTERED
 
 
 class DistributionEngine:
@@ -18,15 +18,13 @@ class DistributionEngine:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+        from app.repositories import ContentRepository, DistributionRepository
+        self.content_repo = ContentRepository(db)
+        self.dist_repo = DistributionRepository(db)
 
     async def match_rules(self, content: Content) -> List[DistributionRule]:
         """为给定内容匹配规则。"""
-        result = await self.db.execute(
-            select(DistributionRule)
-            .where(DistributionRule.enabled == True)
-            .order_by(DistributionRule.priority.desc(), DistributionRule.id)
-        )
-        all_rules = result.scalars().all()
+        all_rules = await self.dist_repo.list_rules(enabled=True)
 
         logger.debug(f"Matching rules for content {content.id}, total {len(all_rules)} enabled")
 
@@ -67,7 +65,7 @@ class DistributionEngine:
                 
                 # 自动审批后触发队列入队
                 try:
-                    from app.distribution.queue_service import enqueue_content_background
+                    from .scheduler import enqueue_content_background
                     await enqueue_content_background(content.id)
                 except Exception as e:
                     logger.warning(f"Failed to enqueue after auto-approve: {e}")
@@ -86,15 +84,8 @@ class DistributionEngine:
 
     async def refresh_queue_by_rules(self):
         """根据更新的规则刷新队列。"""
-        result = await self.db.execute(
-            select(Content).where(Content.status == ContentStatus.PARSE_SUCCESS)
-        )
-        contents = result.scalars().all()
-
-        rule_result = await self.db.execute(
-            select(DistributionRule).where(DistributionRule.enabled == True)
-        )
-        enabled_rules = rule_result.scalars().all()
+        contents = await self.content_repo.list_parsed_contents()
+        enabled_rules = await self.dist_repo.list_rules(enabled=True)
 
         changes = 0
         for content in contents:

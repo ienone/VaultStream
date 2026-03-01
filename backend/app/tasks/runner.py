@@ -7,7 +7,7 @@ import asyncio
 from app.core.logging import logger, ensure_task_id
 from app.core.queue import task_queue
 
-from .parser import ContentParser
+from .parsing import ContentParser
 
 
 class TaskWorker:

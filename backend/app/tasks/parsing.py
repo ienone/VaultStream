@@ -13,12 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import logger, log_context
 from app.core.database import AsyncSessionLocal
-from app.models import Content, ContentStatus, Platform, utcnow
+from app.core.time_utils import utcnow
+from app.models import Content, ContentStatus, Platform
 from app.adapters import AdapterFactory
 from app.adapters.errors import AdapterError, RetryableAdapterError
 from app.core.config import settings
 from app.utils.url_utils import normalize_bilibili_url
-from app.core.storage import get_storage_backend
+from app.adapters.storage import get_storage_backend
 from app.media.processor import store_archive_images_as_webp, store_archive_videos
 from app.media.color import extract_cover_color
 from app.core.queue import task_queue
@@ -341,7 +342,7 @@ class ContentParser:
     async def _check_auto_approval(self, session, content):
         """M4: 解析完成后尝试自动审批"""
         try:
-            from app.distribution import DistributionEngine
+            from app.services.distribution import DistributionEngine
             engine = DistributionEngine(session)
             auto_approved = await engine.auto_approve_if_eligible(content)
             

@@ -24,7 +24,7 @@ from app.models import (
     ReviewStatus,
 )
 from app.push.factory import get_push_service
-from app.worker.distributor import ContentDistributor
+from app.tasks.distributor import ContentDistributor
 from app.core.events import event_bus
 
 # ── 常量 ──────────────────────────────────────────────

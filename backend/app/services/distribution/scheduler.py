@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import AsyncSessionLocal
 from app.core.logging import logger
 from app.core.time_utils import utcnow
-from app.distribution.engine import DistributionEngine
-from app.distribution.decision import evaluate_target_decision, DECISION_FILTERED, DECISION_PENDING_REVIEW
+from app.services.distribution.engine import DistributionEngine
+from app.services.distribution.decision import evaluate_target_decision, DECISION_FILTERED, DECISION_PENDING_REVIEW
 from app.core.events import event_bus
 from app.models import (
     Content,

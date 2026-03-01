@@ -52,3 +52,8 @@ def start_cookie_keepalive_tasks():
         logger.info("Successfully launched cookie keepalive tasks.")
     except Exception as e:
         logger.error(f"Failed to start cookie keepalive tasks: {e}")
+
+class CookieKeepAliveTask:
+    """包装类，用于统一启动接口"""
+    def start(self):
+        start_cookie_keepalive_tasks()
