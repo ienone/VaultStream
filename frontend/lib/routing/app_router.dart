@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:flutter/foundation.dart';
 
 import '../features/collection/collection_page.dart';
 import '../features/collection/content_detail_page.dart';
@@ -55,7 +56,12 @@ GoRouter goRouter(Ref ref) {
             if (!isOnboarding) return '/onboarding';
             return null;
           } else {
-            if (isOnboarding || isConnecting) return '/dashboard';
+            if (isConnecting) return '/dashboard';
+
+            // Release mode behavior: block onboarding if already setup
+            // Debug mode behavior: allow jumping to onboarding for testing
+            if (isOnboarding && !kDebugMode) return '/dashboard';
+
             return null;
           }
         },

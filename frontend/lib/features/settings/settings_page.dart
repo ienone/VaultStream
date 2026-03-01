@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/widgets/frosted_app_bar.dart';
+import 'package:flutter/foundation.dart';
+import 'package:go_router/go_router.dart';
 
 import 'presentation/tabs/connection_tab.dart';
 import 'presentation/tabs/automation_tab.dart';
@@ -46,6 +48,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
     return Scaffold(
       appBar: FrostedAppBar(
         title: const Text('设置'),
+        actions: kDebugMode
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.rocket_launch),
+                  tooltip: 'Debug: 进入引导页 (Onboarding)',
+                  onPressed: () => context.push('/onboarding'),
+                ),
+              ]
+            : null,
         bottom: TabBar(
           controller: _tabController,
           dividerColor: Colors.transparent,

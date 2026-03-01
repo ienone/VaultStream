@@ -1,7 +1,7 @@
 class EnvConfig {
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://localhost:8000/api/v1',
+    defaultValue: 'http://localhost:8008/api/v1',
   );
 
   static const String apiToken = String.fromEnvironment(
