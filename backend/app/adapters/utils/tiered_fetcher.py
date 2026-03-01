@@ -176,7 +176,7 @@ async def _try_crawl4ai(url: str, cookies: Optional[dict] = None) -> Optional[Fe
     将爬取任务打包为协程，通过 browser_manager.submit_coro() 在专门的
     后台 Playwright 事件循环中安全执行并获取结果。
     """
-    from app.core.browser_manager import browser_manager
+    from app.adapters.browser import browser_manager
 
     delay = get_delay_for_url_sync(url)
 

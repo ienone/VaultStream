@@ -17,32 +17,9 @@ async def get_primary_bot_config(
     *,
     enabled_only: bool = True,
 ) -> Optional[BotConfig]:
-    query = (
-        select(BotConfig)
-        .where(BotConfig.platform == platform)
-        .where(BotConfig.is_primary == True)
-        .order_by(BotConfig.id.asc())
-        .limit(1)
-    )
-    if enabled_only:
-        query = query.where(BotConfig.enabled == True)
-
-    result = await db.execute(query)
-    cfg = result.scalar_one_or_none()
-    if cfg:
-        return cfg
-
-    fallback_query = (
-        select(BotConfig)
-        .where(BotConfig.platform == platform)
-        .order_by(BotConfig.id.asc())
-        .limit(1)
-    )
-    if enabled_only:
-        fallback_query = fallback_query.where(BotConfig.enabled == True)
-
-    fallback_result = await db.execute(fallback_query)
-    return fallback_result.scalar_one_or_none()
+    from app.repositories import BotRepository
+    repo = BotRepository(db)
+    return await repo.get_primary_config(platform, enabled_only=enabled_only)
 
 
 async def get_primary_telegram_runtime(
@@ -53,14 +30,11 @@ async def get_primary_telegram_runtime(
     if not cfg:
         return None, None
 
-    chat_result = await db.execute(
-        select(BotChat.chat_id)
-        .where(BotChat.bot_config_id == cfg.id)
-        .where(BotChat.enabled == True)
-        .order_by(BotChat.id.asc())
-        .limit(1)
-    )
-    default_chat_id = chat_result.scalar_one_or_none()
+    from app.repositories import BotRepository
+    repo = BotRepository(db)
+    chats = await repo.list_chats_for_config(cfg.id, enabled=True)
+    
+    default_chat_id = chats[0].chat_id if chats else None
     return cfg, default_chat_id
 
 

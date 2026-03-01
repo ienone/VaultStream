@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.services.content_service import ContentService
 from app.repositories.content_repository import ContentRepository
-from app.core.storage import get_storage_backend, LocalStorageBackend
+from app.adapters.storage import get_storage_backend, LocalStorageBackend
 
 def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
     if not authorization:

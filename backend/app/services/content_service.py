@@ -255,7 +255,7 @@ class ContentService:
 
         local_keys = self._collect_local_media_keys(content)
         if local_keys:
-            from app.core.storage import get_storage_backend
+            from app.adapters.storage import get_storage_backend
             storage = get_storage_backend()
             for key in local_keys:
                 try:
@@ -328,7 +328,7 @@ class ContentService:
     async def _enqueue_distribution(self, content_id: int) -> None:
         """审批通过后触发分发入队"""
         try:
-            from app.distribution.queue_service import enqueue_content_background
+            from app.services.distribution import enqueue_content_background
             await enqueue_content_background(content_id)
         except Exception as e:
             logger.error(f"审批通过后分发入队失败: content_id={content_id}, err={e}")

@@ -95,3 +95,10 @@ class ContentRepository:
     async def get_by_id(self, content_id: int) -> Optional[Content]:
         result = await self.db.execute(select(Content).where(Content.id == content_id))
         return result.scalar_one_or_none()
+
+    async def list_parsed_contents(self) -> List[Content]:
+        """获取所有解析成功的内容（用于规则刷新）"""
+        result = await self.db.execute(
+            select(Content).where(Content.status == ContentStatus.PARSE_SUCCESS)
+        )
+        return list(result.scalars().all())

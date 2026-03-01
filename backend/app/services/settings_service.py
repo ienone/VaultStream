@@ -30,8 +30,9 @@ async def get_setting_value(key: str, default: Any = None) -> Any:
         val = _SETTINGS_CACHE[key]
     else:
         async with AsyncSessionLocal() as db:
-            result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
-            setting = result.scalar_one_or_none()
+            from app.repositories import SystemRepository
+            repo = SystemRepository(db)
+            setting = await repo.get_setting(key)
             
             if setting:
                 _SETTINGS_CACHE[key] = setting.value
@@ -53,23 +54,14 @@ async def set_setting_value(key: str, value: Any, category: str = "general", des
     Set a system setting value and update cache.
     """
     async with AsyncSessionLocal() as db:
-        result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
-        setting = result.scalar_one_or_none()
-        
-        if setting:
-            setting.value = value
-            if description:
-                setting.description = description
-            if category:
-                setting.category = category
-        else:
-            setting = SystemSetting(
-                key=key,
-                value=value,
-                category=category,
-                description=description
-            )
-            db.add(setting)
+        from app.repositories import SystemRepository
+        repo = SystemRepository(db)
+        setting = await repo.upsert_setting(
+            key=key, 
+            value=value, 
+            category=category, 
+            description=description
+        )
         
         await db.commit()
         await db.refresh(setting)
@@ -100,8 +92,11 @@ async def load_all_settings_to_memory():
     from pydantic import SecretStr
 
     async with AsyncSessionLocal() as db:
-        result = await db.execute(select(SystemSetting))
-        for setting in result.scalars().all():
+        from app.repositories import SystemRepository
+        repo = SystemRepository(db)
+        settings_list = await repo.list_settings()
+        
+        for setting in settings_list:
             key = setting.key
             value = setting.value
             
@@ -121,11 +116,12 @@ async def delete_setting_value(key: str) -> bool:
     Delete a system setting.
     """
     async with AsyncSessionLocal() as db:
-        result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
-        setting = result.scalar_one_or_none()
+        from app.repositories import SystemRepository
+        repo = SystemRepository(db)
+        setting = await repo.get_setting(key)
         
         if setting:
-            await db.delete(setting)
+            await repo.delete_setting(setting)
             await db.commit()
             
             # Remove from cache
@@ -163,11 +159,9 @@ async def list_settings_values(category: str = None) -> list[SystemSetting]:
     不再从 .env 注入虚拟配置——所有设置均通过 UI 保存到 DB 管理。
     """
     async with AsyncSessionLocal() as db:
-        query = select(SystemSetting)
-        if category:
-            query = query.where(SystemSetting.category == category)
-        result = await db.execute(query)
-        return list(result.scalars().all())
+        from app.repositories import SystemRepository
+        repo = SystemRepository(db)
+        return await repo.list_settings(category=category)
 
 
 def invalidate_setting_cache(key: str):
