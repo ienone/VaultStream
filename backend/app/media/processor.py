@@ -19,7 +19,7 @@ import httpx
 
 from app.core.logging import logger
 from app.core.config import settings
-from app.core.storage import LocalStorageBackend
+from app.adapters.storage import LocalStorageBackend
 
 
 def _request_headers_for_url(url: str) -> dict[str, str]:

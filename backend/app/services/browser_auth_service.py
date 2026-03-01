@@ -14,7 +14,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from app.services.settings_service import set_setting_value, get_setting_value, delete_setting_value
-from app.core.browser_manager import browser_manager
+from app.adapters.browser import browser_manager
 
 
 class AuthSessionStatus(BaseModel):
