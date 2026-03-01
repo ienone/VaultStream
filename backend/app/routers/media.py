@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from app.core.logging import logger
 from app.core.config import settings
-from app.core.storage import get_storage_backend, LocalStorageBackend
+from app.adapters.storage import get_storage_backend, LocalStorageBackend
 
 router = APIRouter()
 

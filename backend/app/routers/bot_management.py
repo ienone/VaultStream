@@ -13,7 +13,7 @@ from app.core.dependencies import require_api_token
 from app.core.logging import logger
 from app.core.config import settings
 from app.core.time_utils import utcnow
-from app.distribution.queue_service import mark_historical_parse_success_as_pushed_for_rule
+from app.services.distribution.scheduler import mark_historical_parse_success_as_pushed_for_rule
 from app.models import (
     BotChat,
     BotChatType,

@@ -19,7 +19,7 @@ from app.schemas import (
 )
 from app.core.logging import logger
 from app.core.config import settings
-from app.worker import worker
+from app.tasks import worker
 from app.core.dependencies import require_api_token, get_content_service, get_content_repo
 from app.services.content_service import ContentService
 from app.repositories.content_repository import ContentRepository

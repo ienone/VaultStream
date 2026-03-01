@@ -14,8 +14,11 @@ from app.core.events import event_bus
 from app.core.logging import logger
 from app.core.time_utils import utcnow
 from app.models import Content, ContentQueueItem, QueueItemStatus, DistributionRule, PushedRecord
-from app.distribution.queue_worker import get_queue_worker
-from app.distribution.queue_service import compute_auto_scheduled_at
+from app.tasks import DistributionQueueWorker
+from app.services.distribution.scheduler import compute_auto_scheduled_at
+
+def get_queue_worker():
+    return DistributionQueueWorker()
 from app.schemas import (
     BatchQueueRetryRequest,
     ContentQueueItemListResponse,
@@ -315,7 +318,7 @@ async def enqueue_content_endpoint(
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Content not found")
 
-    from app.distribution.queue_service import enqueue_content
+    from app.services.distribution import enqueue_content
 
     enqueued_count = await enqueue_content(content_id, session=db, force=request.force)
     logger.info(f"手动入队: content_id={content_id}, enqueued={enqueued_count}")

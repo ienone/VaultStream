@@ -22,16 +22,15 @@ from app.core.config import settings, validate_settings
 from app.core.database import init_db
 from app.core.queue import task_queue
 from app.core.events import event_bus
-from app.worker import worker
-from app.distribution import get_queue_worker
+from app.tasks import worker, DistributionQueueWorker
+from app.services.distribution import enqueue_content
 
 # Import new routers
 from app.routers import (
     contents, distribution, system, media, bot_management, 
-    events, distribution_queue, bot_config
+    events, distribution_queue, bot_config, browser_auth
 )
-from app.api.v1 import browser_auth
-from app.core.browser_manager import browser_manager
+from app.adapters.browser import browser_manager
 
 setup_logging(level=settings.log_level, fmt=settings.log_format, debug=settings.debug)
 
@@ -95,7 +94,7 @@ async def lifespan(app: FastAPI):
     await event_bus.start()
     
     # 启动后台worker
-    from app.worker.task_processor import TaskWorker
+    from app.tasks import TaskWorker
     parse_workers = []
     for i in range(settings.parse_worker_count):
         w = TaskWorker()
@@ -103,13 +102,15 @@ async def lifespan(app: FastAPI):
     logger.info("后台任务工作器已启动 (worker_count={})", settings.parse_worker_count)
     
     # 启动分发队列 Worker
-    queue_worker = get_queue_worker(worker_count=settings.queue_worker_count)
+    from app.tasks import DistributionQueueWorker
+    queue_worker = DistributionQueueWorker(worker_count=settings.queue_worker_count)
     queue_worker.start()
     logger.info("分发队列 Worker 已启动 (worker_count={})", settings.queue_worker_count)
     
     # 启动 Cookie 保活任务
-    from app.worker.cookie_keepalive import start_cookie_keepalive_tasks
-    start_cookie_keepalive_tasks()
+    from app.tasks import CookieKeepAliveTask
+    maintenance_worker = CookieKeepAliveTask()
+    maintenance_worker.start()
     logger.info("Cookie 保活任务队列已启动")
     
     yield

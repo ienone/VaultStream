@@ -18,7 +18,7 @@ from app.schemas import (
 )
 from app.core.logging import logger
 from app.core.dependencies import require_api_token
-from app.core.storage import get_storage_backend, LocalStorageBackend
+from app.adapters.storage import get_storage_backend, LocalStorageBackend
 from app.core.queue import task_queue
 
 router = APIRouter()

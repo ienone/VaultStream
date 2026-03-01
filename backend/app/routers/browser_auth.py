@@ -57,6 +57,7 @@ async def check_platform_status(platform: str):
     is_valid = await browser_auth_service.check_platform_status(platform)
     return CheckResponse(is_valid=is_valid, platform=platform)
 
+@router.post("/{platform}/logout")
 @router.delete("/{platform}")
 async def logout_platform(platform: str):
     """

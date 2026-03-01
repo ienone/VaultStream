@@ -5,33 +5,24 @@
 """
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, desc, and_, update
-from sqlalchemy.orm import selectinload
+from fastapi import APIRouter, Depends, Query, HTTPException
+from sqlalchemy import select, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models import DistributionRule, Content, PushedRecord, ReviewStatus, ContentStatus, DistributionTarget, BotChat
+from app.models import DistributionRule, Content, PushedRecord, ReviewStatus, ContentStatus, BotChat, DistributionTarget
 from app.constants import Platform, DEFAULT_RENDER_CONFIG_PRESETS
 from app.schemas import (
     DistributionRuleCreate, DistributionRuleUpdate, DistributionRuleResponse,
-    RulePreviewResponse, RulePreviewItem, RulePreviewStats,
+    RulePreviewResponse, RulePreviewStats,
     TargetUsageInfo, TargetListResponse, TargetTestRequest, TargetTestResponse,
     BatchTargetUpdateRequest, BatchTargetUpdateResponse,
-    RenderConfigPreset, RenderConfigPresetCreate, RenderConfigPresetUpdate,
+    RenderConfigPreset,
     DistributionTargetCreate, DistributionTargetUpdate, DistributionTargetResponse,
 )
 from app.core.logging import logger
 from app.core.dependencies import require_api_token
-from app.distribution.decision import (
-    DECISION_FILTERED,
-    DECISION_PENDING_REVIEW,
-    DECISION_WILL_PUSH,
-    DistributionDecision,
-    evaluate_target_decision,
-)
-from app.distribution.queue_service import mark_historical_parse_success_as_pushed_for_rule
-from app.media.extractor import pick_preview_thumbnail
+
 
 router = APIRouter()
 
@@ -60,41 +51,7 @@ def _chat_types_for_platform(platform: str) -> set[str]:
     raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
 
 
-def _resolve_preview_decision(
-    *,
-    content: Content,
-    rule: DistributionRule,
-    chats: List[BotChat],
-) -> DistributionDecision:
-    if not chats:
-        return DistributionDecision(
-            bucket=DECISION_FILTERED,
-            reason_code="no_enabled_targets",
-            reason="规则没有可用目标",
-        )
 
-    pending_decision: Optional[DistributionDecision] = None
-    first_filtered: Optional[DistributionDecision] = None
-
-    for chat in chats:
-        decision = evaluate_target_decision(
-            content=content,
-            rule=rule,
-            bot_chat=chat,
-            require_approval=True,
-        )
-        if decision.bucket == DECISION_WILL_PUSH:
-            return decision
-        if decision.bucket == DECISION_PENDING_REVIEW and pending_decision is None:
-            pending_decision = decision
-        if decision.bucket == DECISION_FILTERED and first_filtered is None:
-            first_filtered = decision
-
-    return pending_decision or first_filtered or DistributionDecision(
-        bucket=DECISION_FILTERED,
-        reason_code="no_eligible_target",
-        reason="无可用目标",
-    )
 
 
 @router.post("/distribution-rules", response_model=DistributionRuleResponse)
@@ -104,21 +61,13 @@ async def create_distribution_rule(
     _: None = Depends(require_api_token),
 ):
     """创建分发规则"""
-    result = await db.execute(
-        select(DistributionRule).where(DistributionRule.name == rule.name)
-    )
-    if result.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Rule name already exists")
+    from app.services.distribution_rule_service import DistributionRuleService
+    service = DistributionRuleService(db)
     
-    payload = rule.model_dump()
-    db_rule = DistributionRule(**payload)
-    db.add(db_rule)
-
-    await db.commit()
-    await db.refresh(db_rule)
+    db_rule = await service.create_rule(rule)
     
     # 规则变动后，自动刷新队列状态和排期
-    from app.distribution.engine import DistributionEngine
+    from app.services.distribution import DistributionEngine
     engine = DistributionEngine(db)
     await engine.refresh_queue_by_rules()
     
@@ -132,11 +81,8 @@ async def list_distribution_rules(
     _: None = Depends(require_api_token),
 ):
     """获取所有分发规则"""
-    query = select(DistributionRule).order_by(desc(DistributionRule.priority), DistributionRule.id)
-    if enabled is not None:
-        query = query.where(DistributionRule.enabled == enabled)
-    result = await db.execute(query)
-    return result.scalars().all()
+    from app.services.distribution_rule_service import DistributionRuleService
+    return await DistributionRuleService(db).list_rules(enabled)
 
 @router.get("/distribution-rules/{rule_id}", response_model=DistributionRuleResponse)
 async def get_distribution_rule(
@@ -145,11 +91,8 @@ async def get_distribution_rule(
     _: None = Depends(require_api_token),
 ):
     """获取单个分发规则"""
-    result = await db.execute(select(DistributionRule).where(DistributionRule.id == rule_id))
-    rule = result.scalar_one_or_none()
-    if not rule:
-        raise HTTPException(status_code=404, detail="Distribution rule not found")
-    return rule
+    from app.services.distribution_rule_service import DistributionRuleService
+    return await DistributionRuleService(db).get_rule(rule_id)
 
 @router.patch("/distribution-rules/{rule_id}", response_model=DistributionRuleResponse)
 async def update_distribution_rule(
@@ -159,21 +102,12 @@ async def update_distribution_rule(
     _: None = Depends(require_api_token),
 ):
     """更新分发规则"""
-    result = await db.execute(select(DistributionRule).where(DistributionRule.id == rule_id))
-    db_rule = result.scalar_one_or_none()
-    if not db_rule:
-        raise HTTPException(status_code=404, detail="Distribution rule not found")
-    
-    update_data = rule_update.model_dump(exclude_unset=True)
-    
-    for key, value in update_data.items():
-        setattr(db_rule, key, value)
-    
-    await db.commit()
-    await db.refresh(db_rule)
+    from app.services.distribution_rule_service import DistributionRuleService
+    service = DistributionRuleService(db)
+    db_rule = await service.update_rule(rule_id, rule_update)
     
     # 规则变动后，自动刷新队列状态和排期
-    from app.distribution.engine import DistributionEngine
+    from app.services.distribution import DistributionEngine
     engine = DistributionEngine(db)
     await engine.refresh_queue_by_rules()
     
@@ -187,20 +121,15 @@ async def delete_distribution_rule(
     _: None = Depends(require_api_token),
 ):
     """删除分发规则"""
-    result = await db.execute(select(DistributionRule).where(DistributionRule.id == rule_id))
-    db_rule = result.scalar_one_or_none()
-    if not db_rule:
-        raise HTTPException(status_code=404, detail="Distribution rule not found")
-    
-    await db.delete(db_rule)
-    await db.commit()
+    from app.services.distribution_rule_service import DistributionRuleService
+    await DistributionRuleService(db).delete_rule(rule_id)
     
     # 规则变动后，自动刷新队列状态和排期
-    from app.distribution.engine import DistributionEngine
+    from app.services.distribution import DistributionEngine
     engine = DistributionEngine(db)
     await engine.refresh_queue_by_rules()
     
-    logger.info(f"分发规则已删除并刷新队列: {db_rule.name} (ID: {rule_id})")
+    logger.info(f"分发规则已删除并刷新队列: ID={rule_id}")
     return {"status": "deleted", "id": rule_id}
 
 
@@ -213,78 +142,8 @@ async def preview_distribution_rule(
     _: None = Depends(require_api_token),
 ):
     """预览规则下的内容分发情况（统一状态：will_push/filtered/pending_review）。"""
-    # 加载关联的目标和 BotChat 以支持预览逻辑
-    result = await db.execute(
-        select(DistributionRule)
-        .options(
-            selectinload(DistributionRule.distribution_targets)
-            .selectinload(DistributionTarget.bot_chat)
-        )
-        .where(DistributionRule.id == rule_id)
-    )
-    rule = result.scalar_one_or_none()
-    if not rule:
-        raise HTTPException(status_code=404, detail="Distribution rule not found")
-    
-    content_query = select(Content).where(
-        Content.status == ContentStatus.PARSE_SUCCESS
-    ).order_by(desc(Content.created_at)).limit(limit * 2)
-    
-    content_result = await db.execute(content_query)
-    all_contents = content_result.scalars().all()
-    
-    preview_items: List[RulePreviewItem] = []
-    will_push_count = 0
-    filtered_count = 0
-    pending_review_count = 0
-    
-    chats = [
-        target.bot_chat
-        for target in rule.distribution_targets
-        if target.enabled and target.bot_chat and target.bot_chat.enabled
-    ]
-    
-    for content in all_contents:
-        if len(preview_items) >= limit:
-            break
-        
-        decision = _resolve_preview_decision(content=content, rule=rule, chats=chats)
-        status = decision.bucket
-
-        if status == DECISION_WILL_PUSH:
-            will_push_count += 1
-        elif status == DECISION_FILTERED:
-            filtered_count += 1
-        elif status == DECISION_PENDING_REVIEW:
-            pending_review_count += 1
-        
-        thumbnail = pick_preview_thumbnail(
-            content.archive_metadata or {},
-            cover_url=content.cover_url,
-        )
-        
-        preview_items.append(RulePreviewItem(
-            content_id=content.id,
-            title=content.title,
-            platform=content.platform.value,
-            tags=content.tags or [],
-            is_nsfw=content.is_nsfw,
-            status=status,
-            reason_code=decision.reason_code,
-            reason=decision.reason,
-            scheduled_time=content.created_at,
-            thumbnail_url=thumbnail
-        ))
-    
-    return RulePreviewResponse(
-        rule_id=rule.id,
-        rule_name=rule.name,
-        total_matched=len(preview_items),
-        will_push_count=will_push_count,
-        filtered_count=filtered_count,
-        pending_review_count=pending_review_count,
-        items=preview_items
-    )
+    from app.services.distribution_rule_service import DistributionRuleService
+    return await DistributionRuleService(db).preview_rule(rule_id, hours_ahead=hours_ahead, limit=limit)
 
 
 @router.get("/distribution-rules/preview/stats", response_model=List[RulePreviewStats])
@@ -293,57 +152,8 @@ async def get_all_rules_preview_stats(
     _: None = Depends(require_api_token),
 ):
     """获取所有规则的预览统计（统一状态口径）。"""
-    result = await db.execute(
-        select(DistributionRule)
-        .where(DistributionRule.enabled == True)
-        .order_by(desc(DistributionRule.priority))
-    )
-    rules = result.scalars().all()
-    
-    stats_list: List[RulePreviewStats] = []
-    
-    for rule in rules:
-        content_query = select(Content).where(
-            Content.status == ContentStatus.PARSE_SUCCESS
-        ).limit(100)
-        
-        content_result = await db.execute(content_query)
-        contents = content_result.scalars().all()
-        
-        will_push = 0
-        filtered = 0
-        pending_review = 0
-
-        chats_result = await db.execute(
-            select(DistributionTarget)
-            .options(selectinload(DistributionTarget.bot_chat))
-            .where(DistributionTarget.rule_id == rule.id)
-            .where(DistributionTarget.enabled == True)
-        )
-        chats = [
-            t.bot_chat
-            for t in chats_result.scalars().all()
-            if t.bot_chat and t.bot_chat.enabled
-        ]
-        
-        for content in contents:
-            decision = _resolve_preview_decision(content=content, rule=rule, chats=chats)
-            if decision.bucket == DECISION_FILTERED:
-                filtered += 1
-            elif decision.bucket == DECISION_PENDING_REVIEW:
-                pending_review += 1
-            else:
-                will_push += 1
-        
-        stats_list.append(RulePreviewStats(
-            rule_id=rule.id,
-            rule_name=rule.name,
-            will_push=will_push,
-            filtered=filtered,
-            pending_review=pending_review,
-        ))
-    
-    return stats_list
+    from app.services.distribution_rule_service import DistributionRuleService
+    return await DistributionRuleService(db).get_all_rules_preview_stats()
 
 
 @router.post("/distribution/trigger-run")
@@ -362,7 +172,7 @@ async def trigger_distribution_run(
         )
         contents = result.scalars().all()
         
-        from app.distribution.queue_service import enqueue_content
+        from app.services.distribution import enqueue_content
         total = 0
         for content in contents:
             count = await enqueue_content(content.id, session=session)
@@ -378,18 +188,8 @@ async def list_rule_targets(
     _: None = Depends(require_api_token),
 ):
     """获取规则的所有分发目标"""
-    rule_result = await db.execute(
-        select(DistributionRule).where(DistributionRule.id == rule_id)
-    )
-    if not rule_result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Rule not found")
-
-    result = await db.execute(
-        select(DistributionTarget)
-        .where(DistributionTarget.rule_id == rule_id)
-        .order_by(DistributionTarget.created_at.asc())
-    )
-    targets = result.scalars().all()
+    from app.services.distribution_rule_service import DistributionRuleService
+    targets = await DistributionRuleService(db).list_rule_targets(rule_id)
     return [DistributionTargetResponse.model_validate(t) for t in targets]
 
 
@@ -401,54 +201,11 @@ async def create_rule_target(
     _: None = Depends(require_api_token),
 ):
     """为规则添加分发目标"""
-    rule_result = await db.execute(
-        select(DistributionRule).where(DistributionRule.id == rule_id)
-    )
-    rule = rule_result.scalar_one_or_none()
-    if not rule:
-        raise HTTPException(status_code=404, detail="Rule not found")
-
-    chat_result = await db.execute(
-        select(BotChat).where(BotChat.id == target.bot_chat_id)
-    )
-    chat = chat_result.scalar_one_or_none()
-    if not chat:
-        raise HTTPException(status_code=404, detail="BotChat not found")
-
-    existing = await db.execute(
-        select(DistributionTarget).where(
-            DistributionTarget.rule_id == rule_id,
-            DistributionTarget.bot_chat_id == target.bot_chat_id
-        )
-    )
-    if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Target already exists for rule '{rule.name}' and chat '{chat.chat_id}'"
-        )
-
-    db_target = DistributionTarget(
-        rule_id=rule_id,
-        bot_chat_id=target.bot_chat_id,
-        enabled=target.enabled,
-        merge_forward=target.merge_forward,
-        use_author_name=target.use_author_name,
-        summary=target.summary,
-        render_config_override=target.render_config_override,
-    )
-    db.add(db_target)
-
-    inserted = await mark_historical_parse_success_as_pushed_for_rule(
-        session=db,
-        rule_id=rule_id,
-        bot_chat_id=target.bot_chat_id,
-    )
-
-    await db.commit()
-    await db.refresh(db_target)
-
+    from app.services.distribution_rule_service import DistributionRuleService
+    db_target, inserted = await DistributionRuleService(db).create_rule_target(rule_id, target)
+    
     logger.info(
-        f"Created distribution target: rule={rule.name}, chat={chat.chat_id}, "
+        f"Created distribution target: rule_id={rule_id}, chat={target.bot_chat_id}, "
         f"enabled={db_target.enabled}, backfilled_success={inserted}"
     )
 
@@ -464,25 +221,10 @@ async def update_rule_target(
     _: None = Depends(require_api_token),
 ):
     """更新分发目标配置"""
-    result = await db.execute(
-        select(DistributionTarget).where(
-            DistributionTarget.id == target_id,
-            DistributionTarget.rule_id == rule_id
-        )
-    )
-    db_target = result.scalar_one_or_none()
-    if not db_target:
-        raise HTTPException(status_code=404, detail="Target not found")
-
-    update_data = update.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(db_target, key, value)
-
-    await db.commit()
-    await db.refresh(db_target)
-
+    from app.services.distribution_rule_service import DistributionRuleService
+    db_target = await DistributionRuleService(db).update_rule_target(rule_id, target_id, update)
+    
     logger.info(f"Updated distribution target: id={target_id}")
-
     return DistributionTargetResponse.model_validate(db_target)
 
 
@@ -494,19 +236,9 @@ async def delete_rule_target(
     _: None = Depends(require_api_token),
 ):
     """删除分发目标"""
-    result = await db.execute(
-        select(DistributionTarget).where(
-            DistributionTarget.id == target_id,
-            DistributionTarget.rule_id == rule_id
-        )
-    )
-    db_target = result.scalar_one_or_none()
-    if not db_target:
-        raise HTTPException(status_code=404, detail="Target not found")
-
-    await db.delete(db_target)
-    await db.commit()
-
+    from app.services.distribution_rule_service import DistributionRuleService
+    await DistributionRuleService(db).delete_rule_target(rule_id, target_id)
+    
     logger.info(f"Deleted distribution target: id={target_id}")
 
 

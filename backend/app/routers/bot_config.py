@@ -1,8 +1,5 @@
-"""
-Bot 配置管理 API（Phase 2）
-包含：BotConfig CRUD、主 Bot 切换、二维码获取、按配置同步群组
-"""
-from typing import List, Dict, Any
+from __future__ import annotations
+from typing import List, Dict, Any, Optional
 import os
 
 import httpx

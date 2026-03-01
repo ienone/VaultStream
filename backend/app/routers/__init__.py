@@ -9,6 +9,7 @@ from . import (
 	events,
 	media,
 	system,
+	browser_auth,
 )
 
 __all__ = [
@@ -20,5 +21,6 @@ __all__ = [
 	"events",
 	"media",
 	"system",
+	"browser_auth",
 ]
 
