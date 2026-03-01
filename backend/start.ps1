@@ -7,9 +7,6 @@ Write-Host "============================" -ForegroundColor Cyan
 Set-Location $PSScriptRoot
 
 # 1. Detect Python Environment
-# Priority:
-# 1. Local Conda (.venv/python.exe)
-# 2. Root Conda (../.venv/python.exe)
 
 $paths = @(
     "$PSScriptRoot\.venv\python.exe",
