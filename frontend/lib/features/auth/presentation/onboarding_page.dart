@@ -6,6 +6,7 @@ import '../../../core/providers/system_status_provider.dart';
 import '../../settings/presentation/widgets/setting_components.dart'
     as settings_ui;
 import '../../review/providers/bot_chats_provider.dart';
+import 'widgets/interactive_login_dialog.dart';
 
 class OnboardingPage extends ConsumerStatefulWidget {
   const OnboardingPage({super.key});
@@ -43,6 +44,9 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   final _weiboController = TextEditingController();
   final _xhsController = TextEditingController();
   final _zhihuController = TextEditingController();
+  bool _weiboIsConnected = false;
+  bool _xhsIsConnected = false;
+  bool _zhihuIsConnected = false;
 
   // 步骤5: 功能
   bool _enableAutoSummary = true;
@@ -213,9 +217,32 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     }
   }
 
+  Future<void> _showLoginDialog(String platform, String platformLabel) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => InteractiveLoginDialog(
+        platform: platform,
+        platformLabel: platformLabel,
+      ),
+    );
+
+    if (result == true) {
+      setState(() {
+        if (platform == 'weibo') _weiboIsConnected = true;
+        if (platform == 'xiaohongshu') _xhsIsConnected = true;
+        if (platform == 'zhihu') _zhihuIsConnected = true;
+      });
+      if (!mounted) return;
+      settings_ui.showToast(context, '$platformLabel 连接成功！');
+    }
+  }
+
   /// 构建平台Cookie步骤的通用内容
   Widget _buildCookieStep({
     required String platform,
+    required String platformId,
+    required bool isConnected,
     required String url,
     required IconData icon,
     required TextEditingController controller,
@@ -223,26 +250,72 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('配置 $platform Cookie 后，可收藏需要登录才能访问的内容。此步骤可跳过，稍后在设置中填写。'),
-        const SizedBox(height: 16),
-        OutlinedButton.icon(
-          onPressed: () =>
-              launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
-          icon: Icon(icon, size: 18),
-          label: Text('打开 $platform 网站'),
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        if (isConnected) ...[
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.green.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.green),
+                const SizedBox(width: 12),
+                Text(
+                  '$platform 已成功连接',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: controller,
-          maxLines: 3,
-          decoration: InputDecoration(
-            labelText: '$platform Cookie',
-            hintText: '从浏览器开发者工具 → Application → Cookies 中复制完整 Cookie 字符串',
-            border: const OutlineInputBorder(),
+        ] else ...[
+          Text('连接 $platform 后，系统可以自动保持登录状态并获取受保护的内容。'),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: () => _showLoginDialog(platformId, platform),
+            icon: const Icon(Icons.qr_code_scanner, size: 18),
+            label: Text('扫码连接 (推荐)'),
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
           ),
+        ],
+        const SizedBox(height: 24),
+        ExpansionTile(
+          title: const Text('高级与手动配置'),
+          collapsedIconColor: Colors.grey,
+          collapsedTextColor: Colors.grey,
+          childrenPadding: const EdgeInsets.all(16),
+          children: [
+            OutlinedButton.icon(
+              onPressed: () => launchUrl(
+                Uri.parse(url),
+                mode: LaunchMode.externalApplication,
+              ),
+              icon: Icon(icon, size: 18),
+              label: Text('在浏览器中打开 $platform'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: '$platform Cookie',
+                hintText: '如果扫码失败，可在此手动粘贴 Cookie 字符串',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -424,6 +497,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         state: _currentStep > 2 ? StepState.complete : StepState.indexed,
         content: _buildCookieStep(
           platform: '微博',
+          platformId: 'weibo',
+          isConnected: _weiboIsConnected,
           url: 'https://weibo.com',
           icon: Icons.share_rounded,
           controller: _weiboController,
@@ -438,6 +513,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         state: _currentStep > 3 ? StepState.complete : StepState.indexed,
         content: _buildCookieStep(
           platform: '小红书',
+          platformId: 'xiaohongshu',
+          isConnected: _xhsIsConnected,
           url: 'https://www.xiaohongshu.com',
           icon: Icons.explore_rounded,
           controller: _xhsController,
@@ -452,6 +529,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         state: _currentStep > 4 ? StepState.complete : StepState.indexed,
         content: _buildCookieStep(
           platform: '知乎',
+          platformId: 'zhihu',
+          isConnected: _zhihuIsConnected,
           url: 'https://www.zhihu.com',
           icon: Icons.question_answer_rounded,
           controller: _zhihuController,

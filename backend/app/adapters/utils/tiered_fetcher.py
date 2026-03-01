@@ -12,6 +12,7 @@ import re
 import asyncio
 from dataclasses import dataclass, field
 from typing import Optional
+import anyio
 from urllib.parse import urlparse
 from loguru import logger
 
@@ -19,7 +20,6 @@ import httpx
 from bs4 import BeautifulSoup
 
 from app.core.crawler_config import get_delay_for_url_sync
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 
 
 @dataclass
@@ -171,53 +171,61 @@ async def _try_direct_http(url: str, cookies: Optional[dict] = None, timeout: fl
 
 async def _try_crawl4ai(url: str, cookies: Optional[dict] = None) -> Optional[FetchResult]:
     """
-    使用 crawl4ai 无头浏览器获取页面 (最重量级)。
-    """
-    delay = get_delay_for_url_sync(url)
-    
-    # Convert dict cookies to list of dicts for BrowserConfig if needed, 
-    # but BrowserConfig might accept dict directly or via other means.
-    # Checking crawl4ai docs/code would be ideal, but assuming dict or list of dicts.
-    # BrowserConfig(cookies=[...]) usually expects list of dicts with name/value/domain.
-    # For now, let's assume simple dict might need conversion or let's just pass it if supported.
-    # Actually crawl4ai's BrowserConfig often takes cookies as a list of dicts.
-    # Let's simple pass it for now, assuming standard usage.
-    
-    browser_cookies = []
-    if cookies:
-        for k, v in cookies.items():
-            browser_cookies.append({"name": k, "value": v, "url": url})
+    使用共享 WebKit 浏览器实例抓取页面（Tier 3 最重量级）。
 
-    browser_config = BrowserConfig(
-        browser_type="webkit",  
-        headless=True,
-        light_mode=True,  # 禁用非必要后台功能，降低资源消耗
-        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
-        cookies=browser_cookies,
-    )
-    run_config = CrawlerRunConfig(
-        cache_mode=CacheMode.ENABLED,
-        wait_until="domcontentloaded",
-        delay_before_return_html=delay + 3.0,
-    )
+    将爬取任务打包为协程，通过 browser_manager.submit_coro() 在专门的
+    后台 Playwright 事件循环中安全执行并获取结果。
+    """
+    from app.core.browser_manager import browser_manager
+
+    delay = get_delay_for_url_sync(url)
+
+    # 将 dict 格式 Cookie 转为 Playwright 格式
+    pw_cookies = []
+    if cookies:
+        parsed = urlparse(url)
+        domain = parsed.hostname or ""
+        for k, v in cookies.items():
+            pw_cookies.append({"name": k, "value": v, "domain": domain, "path": "/"})
+
+    async def _fetch_coro() -> Optional[str]:
+        browser = browser_manager.get_browser()
+        context = await browser.new_context(
+            viewport=browser_manager.fetch_viewport,
+            user_agent=browser_manager.ua
+        )
+        if pw_cookies:
+            await context.add_cookies(pw_cookies)
+            
+        try:
+            page = await context.new_page()
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+
+            # 额外等待以确保 JS 渲染完成
+            if delay > 0:
+                await asyncio.sleep(delay + 1.5)
+            else:
+                await asyncio.sleep(1.5)
+
+            html = await page.content()
+            return html if html and len(html) >= 500 else None
+        finally:
+            await context.close()
 
     try:
-        async with AsyncWebCrawler(config=browser_config) as crawler:
-            result = await crawler.arun(url=url, config=run_config)
-            if result.success and result.html:
-                return FetchResult(
-                    url=url,
-                    content=result.html,
-                    content_type="html",
-                    source="crawl4ai",
-                    html=result.html,
-                    meta=result.metadata or {}
-                )
+        html = await browser_manager.submit_coro(_fetch_coro())
+        if not html:
+            return None
+        return FetchResult(
+            url=url,
+            content=html,
+            content_type="html",
+            source="crawl4ai",  # 保持 source 标签兼容
+            html=html,
+        )
     except Exception as e:
-        logger.warning(f"Tier 3 crawl4ai failed: {e}")
-        pass
-
-    return None
+        logger.warning(f"Tier 3 (shared browser) failed for {url}: {e}")
+        return None
 
 
 # ============================================================

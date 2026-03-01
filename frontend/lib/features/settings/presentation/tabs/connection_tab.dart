@@ -5,6 +5,8 @@ import '../../../../core/providers/local_settings_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../models/system_setting.dart';
 import '../widgets/setting_components.dart';
+import '../../../auth/presentation/widgets/interactive_login_dialog.dart';
+import '../../../../core/network/api_client.dart';
 
 class ConnectionTab extends ConsumerWidget {
   const ConnectionTab({super.key});
@@ -25,19 +27,32 @@ class ConnectionTab extends ConsumerWidget {
               title: '后端 API 地址',
               subtitle: localSettings.baseUrl,
               icon: Icons.cloud_done_rounded,
-              expandedContent: _buildBaseUrlEditor(context, ref, localSettings.baseUrl),
+              expandedContent: _buildBaseUrlEditor(
+                context,
+                ref,
+                localSettings.baseUrl,
+              ),
             ),
             ExpandableSettingTile(
               title: 'API 访问密钥',
               subtitle: _maskToken(localSettings.apiToken),
               icon: Icons.key_rounded,
-              expandedContent: _buildApiTokenEditor(context, ref, localSettings.apiToken),
+              expandedContent: _buildApiTokenEditor(
+                context,
+                ref,
+                localSettings.apiToken,
+              ),
             ),
             SettingTile(
               title: '测试服务器连接',
               subtitle: '验证后端服务可用性',
               icon: Icons.cell_tower_rounded,
-              onTap: () => _testConnection(context, ref, localSettings.baseUrl, localSettings.apiToken),
+              onTap: () => _testConnection(
+                context,
+                ref,
+                localSettings.baseUrl,
+                localSettings.apiToken,
+              ),
             ),
           ],
         ),
@@ -80,7 +95,11 @@ class ConnectionTab extends ConsumerWidget {
     );
   }
 
-  Widget _buildBaseUrlEditor(BuildContext context, WidgetRef ref, String currentValue) {
+  Widget _buildBaseUrlEditor(
+    BuildContext context,
+    WidgetRef ref,
+    String currentValue,
+  ) {
     final controller = TextEditingController(text: currentValue);
     return Column(
       children: [
@@ -90,7 +109,9 @@ class ConnectionTab extends ConsumerWidget {
             hintText: 'http://example.com/api/v1',
             prefixIcon: const Icon(Icons.link_rounded),
             filled: true,
-            fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            fillColor: Theme.of(
+              context,
+            ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: BorderSide.none,
@@ -102,7 +123,9 @@ class ConnectionTab extends ConsumerWidget {
           alignment: Alignment.centerRight,
           child: FilledButton.tonal(
             onPressed: () async {
-              await ref.read(localSettingsProvider.notifier).setBaseUrl(controller.text);
+              await ref
+                  .read(localSettingsProvider.notifier)
+                  .setBaseUrl(controller.text);
               if (context.mounted) {
                 showToast(context, 'API 地址已保存');
               }
@@ -114,7 +137,11 @@ class ConnectionTab extends ConsumerWidget {
     );
   }
 
-  Widget _buildApiTokenEditor(BuildContext context, WidgetRef ref, String currentValue) {
+  Widget _buildApiTokenEditor(
+    BuildContext context,
+    WidgetRef ref,
+    String currentValue,
+  ) {
     final controller = TextEditingController(text: currentValue);
     return Column(
       children: [
@@ -125,7 +152,9 @@ class ConnectionTab extends ConsumerWidget {
             labelText: 'API Token',
             prefixIcon: const Icon(Icons.password_rounded),
             filled: true,
-            fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            fillColor: Theme.of(
+              context,
+            ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: BorderSide.none,
@@ -137,7 +166,9 @@ class ConnectionTab extends ConsumerWidget {
           alignment: Alignment.centerRight,
           child: FilledButton.tonal(
             onPressed: () async {
-              await ref.read(localSettingsProvider.notifier).setApiToken(controller.text);
+              await ref
+                  .read(localSettingsProvider.notifier)
+                  .setApiToken(controller.text);
               if (context.mounted) {
                 showToast(context, '密钥已更新');
               }
@@ -159,7 +190,15 @@ class ConnectionTab extends ConsumerWidget {
     final settingsAsync = ref.watch(systemSettingsProvider);
     return settingsAsync.maybeWhen(
       data: (settings) {
-        final proxy = settings.firstWhere((s) => s.key == 'http_proxy', orElse: () => const SystemSetting(key: '', value: '')).value as String? ?? '';
+        final proxy =
+            settings
+                    .firstWhere(
+                      (s) => s.key == 'http_proxy',
+                      orElse: () => const SystemSetting(key: '', value: ''),
+                    )
+                    .value
+                as String? ??
+            '';
         return proxy.isNotEmpty ? proxy : '未配置';
       },
       orElse: () => '加载中...',
@@ -170,7 +209,15 @@ class ConnectionTab extends ConsumerWidget {
     final settingsAsync = ref.watch(systemSettingsProvider);
     return settingsAsync.when(
       data: (settings) {
-        final proxy = settings.firstWhere((s) => s.key == 'http_proxy', orElse: () => const SystemSetting(key: '', value: '')).value as String? ?? '';
+        final proxy =
+            settings
+                    .firstWhere(
+                      (s) => s.key == 'http_proxy',
+                      orElse: () => const SystemSetting(key: '', value: ''),
+                    )
+                    .value
+                as String? ??
+            '';
         final controller = TextEditingController(text: proxy);
 
         return Column(
@@ -180,15 +227,23 @@ class ConnectionTab extends ConsumerWidget {
               decoration: InputDecoration(
                 labelText: 'HTTP/HTTPS Proxy',
                 hintText: 'e.g. http://127.0.0.1:7890',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
             const SizedBox(height: 12),
-             Align(
+            Align(
               alignment: Alignment.centerRight,
               child: FilledButton.tonal(
                 onPressed: () async {
-                  await ref.read(systemSettingsProvider.notifier).updateSetting('http_proxy', controller.text, category: 'network');
+                  await ref
+                      .read(systemSettingsProvider.notifier)
+                      .updateSetting(
+                        'http_proxy',
+                        controller.text,
+                        category: 'network',
+                      );
                   if (context.mounted) showToast(context, '代理已保存');
                 },
                 child: const Text('保存配置'),
@@ -206,9 +261,33 @@ class ConnectionTab extends ConsumerWidget {
     final settingsAsync = ref.watch(systemSettingsProvider);
     return settingsAsync.when(
       data: (settings) {
-        final sessdata = settings.firstWhere((s) => s.key == 'bilibili_cookie', orElse: () => const SystemSetting(key: '', value: '')).value as String? ?? '';
-        final jct = settings.firstWhere((s) => s.key == 'bilibili_bili_jct', orElse: () => const SystemSetting(key: '', value: '')).value as String? ?? '';
-        final buvid = settings.firstWhere((s) => s.key == 'bilibili_buvid3', orElse: () => const SystemSetting(key: '', value: '')).value as String? ?? '';
+        final sessdata =
+            settings
+                    .firstWhere(
+                      (s) => s.key == 'bilibili_cookie',
+                      orElse: () => const SystemSetting(key: '', value: ''),
+                    )
+                    .value
+                as String? ??
+            '';
+        final jct =
+            settings
+                    .firstWhere(
+                      (s) => s.key == 'bilibili_bili_jct',
+                      orElse: () => const SystemSetting(key: '', value: ''),
+                    )
+                    .value
+                as String? ??
+            '';
+        final buvid =
+            settings
+                    .firstWhere(
+                      (s) => s.key == 'bilibili_buvid3',
+                      orElse: () => const SystemSetting(key: '', value: ''),
+                    )
+                    .value
+                as String? ??
+            '';
 
         final sessController = TextEditingController(text: sessdata);
         final jctController = TextEditingController(text: jct);
@@ -221,7 +300,9 @@ class ConnectionTab extends ConsumerWidget {
               decoration: InputDecoration(
                 labelText: 'SESSDATA (Cookie)',
                 helperText: '一般情况下无需配置，仅用于高画质/会员内容',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -229,7 +310,9 @@ class ConnectionTab extends ConsumerWidget {
               controller: jctController,
               decoration: InputDecoration(
                 labelText: 'bili_jct (CSRF)',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -237,18 +320,32 @@ class ConnectionTab extends ConsumerWidget {
               controller: buvidController,
               decoration: InputDecoration(
                 labelText: 'buvid3',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
             const SizedBox(height: 12),
-             Align(
+            Align(
               alignment: Alignment.centerRight,
               child: FilledButton.tonal(
                 onPressed: () async {
                   final notifier = ref.read(systemSettingsProvider.notifier);
-                  await notifier.updateSetting('bilibili_cookie', sessController.text, category: 'platform');
-                  await notifier.updateSetting('bilibili_bili_jct', jctController.text, category: 'platform');
-                  await notifier.updateSetting('bilibili_buvid3', buvidController.text, category: 'platform');
+                  await notifier.updateSetting(
+                    'bilibili_cookie',
+                    sessController.text,
+                    category: 'platform',
+                  );
+                  await notifier.updateSetting(
+                    'bilibili_bili_jct',
+                    jctController.text,
+                    category: 'platform',
+                  );
+                  await notifier.updateSetting(
+                    'bilibili_buvid3',
+                    buvidController.text,
+                    category: 'platform',
+                  );
                   if (context.mounted) showToast(context, 'B站高级配置已保存');
                 },
                 child: const Text('保存配置'),
@@ -284,90 +381,133 @@ class ConnectionTab extends ConsumerWidget {
     );
   }
 
+  /// 检测平台 Cookie 有效性
+  Future<void> _checkPlatformStatus(
+    BuildContext context,
+    WidgetRef ref,
+    String platformId,
+  ) async {
+    try {
+      showToast(context, '正在检测状态，请稍候...');
+      final dio = ref.read(apiClientProvider);
+      final res = await dio.post('/browser-auth/$platformId/check');
+      final isValid = res.data['is_valid'] == true;
+      if (context.mounted) {
+        showToast(context, isValid ? 'Cookie 有效，正常在线' : 'Cookie 已失效，请重新连接');
+      }
+    } catch (e) {
+      if (context.mounted) showToast(context, '状态检测失败: $e');
+    }
+  }
+
+  /// 解绑平台（删除 Cookie）
+  Future<void> _logoutPlatform(
+    BuildContext context,
+    WidgetRef ref,
+    String platformId,
+  ) async {
+    try {
+      final dio = ref.read(apiClientProvider);
+      await dio.delete('/browser-auth/$platformId');
+      ref.invalidate(systemSettingsProvider);
+      if (context.mounted) showToast(context, '已退出登录并清除 Cookie');
+    } catch (e) {
+      if (context.mounted) showToast(context, '退出失败: $e');
+    }
+  }
+
+  /// 弹出扫码登录对话框
+  Future<void> _showLoginDialog(
+    BuildContext context,
+    WidgetRef ref,
+    String platformId,
+    String platformLabel,
+  ) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => InteractiveLoginDialog(
+        platform: platformId,
+        platformLabel: platformLabel,
+      ),
+    );
+
+    if (result == true) {
+      ref.invalidate(systemSettingsProvider);
+      if (context.mounted) showToast(context, '$platformLabel 连接成功！');
+    }
+  }
+
   Widget _buildPlatformSettings(
     BuildContext context,
     WidgetRef ref,
     List<SystemSetting> settings,
   ) {
     final platforms = [
-      {'key': 'weibo_cookie', 'name': '微博 凭证', 'icon': Icons.share_rounded},
-      {'key': 'xiaohongshu_cookie', 'name': '小红书 凭证', 'icon': Icons.explore_rounded},
-      {'key': 'zhihu_cookie', 'name': '知乎 凭证', 'icon': Icons.question_answer_rounded},
+      {'id': 'weibo', 'name': '微博', 'icon': Icons.share_rounded},
+      {'id': 'xiaohongshu', 'name': '小红书', 'icon': Icons.explore_rounded},
+      {'id': 'zhihu', 'name': '知乎', 'icon': Icons.question_answer_rounded},
     ];
 
     return SettingGroup(
       children: platforms.map((p) {
-        final setting = settings.where((s) => s.key == p['key']).firstOrNull;
-        final isConfigured = setting != null && setting.value.toString().isNotEmpty;
+        final platformId = p['id'] as String;
+        final platformLabel = p['name'] as String;
+        final icon = p['icon'] as IconData;
+        final setting = settings
+            .where((s) => s.key == '${platformId}_cookie')
+            .firstOrNull;
+        final isConfigured =
+            setting != null && setting.value.toString().isNotEmpty;
 
-        return ExpandableSettingTile(
-          title: p['name'] as String,
-          subtitle: isConfigured ? '已完成登录授权' : '尚未配置访问凭证',
-          icon: p['icon'] as IconData,
-          expandedContent: _buildInlineCookieEditor(context, ref, p['key'] as String, setting?.value?.toString() ?? ''),
-          trailing: Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: isConfigured ? Colors.green : Colors.orange,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: (isConfigured ? Colors.green : Colors.orange).withValues(alpha: 0.4),
-                  blurRadius: 4,
+        return SettingTile(
+          title: platformLabel,
+          subtitle: isConfigured ? 'Cookie 已配置 ✅' : '未连接',
+          icon: icon,
+          onTap: null,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isConfigured)
+                TextButton(
+                  onPressed: () =>
+                      _checkPlatformStatus(context, ref, platformId),
+                  child: const Text('检测状态'),
                 ),
-              ],
-            ),
+              const SizedBox(width: 4),
+              TextButton(
+                onPressed: () =>
+                    _showLoginDialog(context, ref, platformId, platformLabel),
+                child: Text(isConfigured ? '重新连接' : '扫码连接'),
+              ),
+              if (isConfigured)
+                IconButton(
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.red,
+                    size: 20,
+                  ),
+                  tooltip: '解绑并注销',
+                  onPressed: () => _logoutPlatform(context, ref, platformId),
+                ),
+            ],
           ),
         );
       }).toList(),
     );
   }
 
-  Widget _buildInlineCookieEditor(BuildContext context, WidgetRef ref, String key, String currentValue) {
-    final controller = TextEditingController(text: currentValue);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '粘贴对应平台的 Cookie 字符串。',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: controller,
-          maxLines: 3,
-          decoration: InputDecoration(
-            hintText: 'Paste here...',
-            fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-            filled: true,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide.none,
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Align(
-          alignment: Alignment.centerRight,
-          child: FilledButton.tonal(
-            onPressed: () async {
-              await ref.read(systemSettingsProvider.notifier).updateSetting(key, controller.text, category: 'platform');
-              if (context.mounted) {
-                showToast(context, '凭证已保存');
-              }
-            },
-            child: const Text('保存配置'),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _testConnection(BuildContext context, WidgetRef ref, String baseUrl, String apiToken) async {
+  Future<void> _testConnection(
+    BuildContext context,
+    WidgetRef ref,
+    String baseUrl,
+    String apiToken,
+  ) async {
     showToast(context, '正在测试连接...');
     try {
-      final result = await ref.read(localSettingsProvider.notifier).validateConnection(baseUrl, apiToken);
+      final result = await ref
+          .read(localSettingsProvider.notifier)
+          .validateConnection(baseUrl, apiToken);
       if (context.mounted) {
         if (result['success'] == true) {
           final authOk = result['auth_ok'] == true;

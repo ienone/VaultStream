@@ -30,6 +30,8 @@ from app.routers import (
     contents, distribution, system, media, bot_management, 
     events, distribution_queue, bot_config
 )
+from app.api.v1 import browser_auth
+from app.core.browser_manager import browser_manager
 
 setup_logging(level=settings.log_level, fmt=settings.log_format, debug=settings.debug)
 
@@ -82,6 +84,9 @@ async def lifespan(app: FastAPI):
 
     # 自举 API Token
     await _bootstrap_system_settings()
+
+    # 预热共享 WebKit 浏览器（认证服务 + Tier 3 解析器公用）
+    await browser_manager.startup()
     
     # 连接任务队列
     await task_queue.connect()
@@ -102,10 +107,19 @@ async def lifespan(app: FastAPI):
     queue_worker.start()
     logger.info("分发队列 Worker 已启动 (worker_count={})", settings.queue_worker_count)
     
+    # 启动 Cookie 保活任务
+    from app.worker.cookie_keepalive import start_cookie_keepalive_tasks
+    start_cookie_keepalive_tasks()
+    logger.info("Cookie 保活任务队列已启动")
+    
     yield
     
     # 关闭时
     logger.info("关闭 VaultStream 应用程序...")
+
+    # 停止共享浏览器
+    await browser_manager.shutdown()
+
     
     # 停止分发队列 Worker
     await queue_worker.stop()
@@ -189,6 +203,17 @@ app.include_router(bot_management.router, prefix="/api/v1", tags=["bot"])
 app.include_router(bot_config.router, prefix="/api/v1", tags=["bot-config"])
 app.include_router(events.router, prefix="/api/v1", tags=["events"])
 app.include_router(distribution_queue.router, prefix="/api/v1", tags=["distribution-queue"])
+app.include_router(browser_auth.router, prefix="/api/v1/browser-auth", tags=["browser-auth"])
+
+
+@app.get("/api/v1/init-status", tags=["System"])
+async def init_status(request: Request):
+    """
+    检查系统初始化状态，主要用于前端判断是否跳转引导页或展示主界面
+    """
+    
+    # Placeholder for actual initialization status logic
+    pass
 
 
 @app.get("/api")
