@@ -69,11 +69,20 @@ def start_telegram_bot(*, reason: str = "manual") -> dict[str, Any]:
 
     # 将当前内存中的 API Token 通过环境变量传给子进程，
     # 因为 token 可能是主进程启动时动态生成的，.env 文件中没有。
+    import asyncio
+    from app.services.settings_service import get_setting_value
     from app.core.config import settings as _settings
+    
     child_env = os.environ.copy()
-    current_token = _settings.api_token.get_secret_value() if _settings.api_token else ""
+    
+    # Run async function to get token from DB
+    current_token = asyncio.run(get_setting_value("api_token"))
+    
+    if not current_token:
+        current_token = _settings.api_token.get_secret_value() if _settings.api_token else ""
+        
     if current_token:
-        child_env["API_TOKEN"] = current_token
+        child_env["API_TOKEN"] = str(current_token)
 
     popen_kwargs: dict[str, Any] = {
         "cwd": str(_BACKEND_ROOT),

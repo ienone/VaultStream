@@ -150,6 +150,11 @@ if ($autoStartBot) {
 # 5. Start Application
 Write-Host "`nStarting FastAPI..." -ForegroundColor Green
 
+# 强制 UTF-8 输出，防止 loguru emoji 在 GBK 终端崩溃
+$env:PYTHONUTF8 = "1"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding  = [System.Text.Encoding]::UTF8
+
 # Read runtime config from settings
 $apiHost = & $PYTHON -c "from app.core.config import settings; print(settings.api_host)"
 $apiPort = & $PYTHON -c "from app.core.config import settings; print(settings.api_port)"
