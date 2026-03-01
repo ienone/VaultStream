@@ -11,8 +11,8 @@
 - [6. 服务层 (services/)](#6-服务层-services)
 - [7. 仓库层 (repositories/)](#7-仓库层-repositories)
 - [8. 适配器系统 (adapters/)](#8-适配器系统-adapters)
-- [9. 异步任务系统 (worker/)](#9-异步任务系统-worker)
-- [10. 分发系统 (distribution/)](#10-分发系统-distribution)
+- [9. 异步任务系统 (tasks/)](#9-异步任务系统-tasks)
+- [10. 分发系统 (services/distribution/)](#10-分发系统-servicesdistribution)
 - [11. 推送引擎 (push/)](#11-推送引擎-push)
 - [12. 媒体处理 (media/)](#12-媒体处理-media)
 - [13. Telegram Bot (bot/)](#13-telegram-bot-bot)
@@ -27,16 +27,49 @@
 
 VaultStream 后端采用 **FastAPI + SQLAlchemy (async) + SQLite** 的轻量级技术栈，整体遵循**分层架构**设计：
 
+
+```mermaid
+graph TD
+    %% 入口层
+    Frontend[Frontend / Client] -- HTTP/REST --> API[API Layer: app/routers]
+
+    %% 业务核心层
+    API --> Service[Service Layer: app/services]
+    
+    %% 异步任务层
+    Service -- Trigger --> Task[Task Layer: app/tasks]
+    API -- Trigger --> Task
+    
+    %% 数据抽象层
+    Service --> Repo[Repository Layer: app/repositories]
+    Task --> Repo
+    
+    %% 基础设施适配层
+    Service --> Adapter[Adapter Layer: app/adapters]
+    Task --> Adapter
+    
+    %% 存储层
+    Repo --> DB[(SQLite / DB)]
+    Adapter --> FS[Local Storage / Cloud]
+    Adapter --> Browser[Playwright / Browser]
+    
+    %% 核心运行环境
+    Core[Core Layer: app/core] -. Provides .-> Service
+    Core -. Provides .-> DB
 ```
+
+
+
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         FastAPI Application                         │
 │   main.py (入口 · 中间件 · 生命周期管理)                              │
 ├──────────┬──────────┬──────────┬──────────┬──────────┬──────────────┤
-│ Routers  │ Services │ Repos    │ Adapters │ Worker   │ Distribution │
-│ (API 层) │ (业务)   │ (数据)    │ (解析)   │ (异步)    │ (分发/推送)  │
+│ Routers  │ Services │ Repos    │ Adapters │ Tasks    │ Distribution │
+│ (API 层) │ (业务)   │ (数据)    │ (基础设施)  │ (异步)    │ (分发系统)   │
 ├──────────┴──────────┴──────────┴──────────┴──────────┴──────────────┤
-│                          Core (基础设施)                             │
-│  config · database · queue · events · storage · logging             │
+│                          Core (基础设施内核)                          │
+│  config · database · queue · events · logging · dependencies        │
 ├─────────────────────────────────────────────────────────────────────┤
 │                 SQLite (WAL) + 本地文件存储                          │
 └─────────────────────────────────────────────────────────────────────┘
@@ -61,89 +94,56 @@ VaultStream 后端采用 **FastAPI + SQLAlchemy (async) + SQLite** 的轻量级�
 ```
 backend/app/
 ├── main.py              # FastAPI 入口 + 生命周期 + 中间件
-├── models.py            # SQLAlchemy ORM 模型
-├── schemas.py           # Pydantic 请求/响应 Schema
+├── models/              # SQLAlchemy ORM 模型 (分拆包)
+├── schemas/             # Pydantic 请求/响应 Schema (分拆包)
 ├── constants.py         # 全局常量定义
 │
-├── core/                # 基础设施层
+├── core/                # 基础设施内核
 │   ├── config.py        # 配置管理 (Settings)
 │   ├── database.py      # 数据库初始化 + 会话管理
 │   ├── db_adapter.py    # 数据库适配器 (SQLite)
-│   ├── queue.py         # 任务队列入口
-│   ├── queue_adapter.py # 队列适配器 (SQLite)
-│   ├── events.py        # EventBus (内存广播 + SQLite outbox)
-│   ├── storage.py       # 存储后端 (本地文件系统)
+│   ├── queue.py         # 任务队列基础
+│   ├── events.py        # EventBus
 │   ├── logging.py       # Loguru 结构化日志
 │   ├── dependencies.py  # FastAPI 依赖注入
-│   ├── time_utils.py    # 时区工具
 │   └── ...
 │
-├── routers/             # API 路由层 (控制器)
-│   ├── contents.py      # 内容 CRUD + 分享 + 审批
-│   ├── distribution.py  # 分发规则管理
-│   ├── distribution_targets.py  # 分发目标管理
-│   ├── distribution_queue.py    # 分发队列操作
-│   ├── system.py        # 系统设置 + 仪表盘统计
-│   ├── media.py         # 媒体代理 API
-│   ├── bot_config.py    # Bot 配置管理
-│   ├── bot_management.py# Bot 运行时管理
-│   ├── crawler.py       # 爬虫采集接口
-│   └── events.py        # SSE 实时事件订阅
+├── routers/             # API 路由层 (归一化)
+│   ├── contents.py      # 内容 CRUD
+│   ├── distribution.py  # 分发规则
+│   ├── system.py        # 系统/统计
+│   ├── browser_auth.py  # [NEW] 浏览器扫码登录 (归一化)
+│   └── ...
 │
-├── services/            # 业务逻辑层
-│   ├── content_service.py       # 内容创建核心逻辑
-│   ├── settings_service.py      # 系统设置服务
-│   ├── bot_config_runtime.py    # Bot 运行时配置
-│   ├── telegram_bot_service.py  # Telegram Bot 服务
-│   └── discovery/               # 内容发现服务
+├── services/            # 业务逻辑层 (大脑)
+│   ├── content_service.py       # 内容创建逻辑
+│   ├── settings_service.py      # 系统设置 (已接入 Repo)
+│   ├── distribution/            # [REFACTOR] 分发引擎系统
+│   │   ├── engine.py            # 规则匹配核心
+│   │   └── scheduler.py         # 排期计算
+│   └── bot_config_runtime.py    # Bot 运行时管理
 │
-├── repositories/        # 数据访问层 (DAL)
-│   └── content_repository.py    # 内容查询 (FTS5 + 分页)
+├── repositories/        # [NEW] 数据访问层 (DAL/仓储)
+│   ├── content_repository.py    # 内容与 FTS5 查询
+│   ├── distribution_repository.py# 规则与目标查询
+│   ├── bot_repository.py        # 机器人配置/聊天查询
+│   └── system_repository.py     # 设置/推送记录查询
 │
-├── adapters/            # 平台解析适配器
-│   ├── base.py          # PlatformAdapter 基类 + ParsedContent
-│   ├── __init__.py      # AdapterFactory 工厂
-│   ├── bilibili.py      # B站适配器
-│   ├── twitter_fx.py    # Twitter/X 适配器
-│   ├── xiaohongshu.py   # 小红书适配器
-│   ├── zhihu.py         # 知乎适配器
-│   ├── weibo.py         # 微博适配器
-│   ├── universal_adapter.py  # 通用适配器 (兜底)
-│   └── errors.py        # 适配器异常体系
+├── tasks/               # [REFACTOR] 异步任务处理中心
+│   ├── runner.py        # 任务执行引擎 (TaskWorker)
+│   ├── parsing.py       # 内容解析处理器
+│   └── distribution_worker.py # 分发推送处理器
 │
-├── worker/              # 异步任务处理
-│   ├── __init__.py      # TaskWorker 全局单例
-│   ├── task_processor.py# 任务主循环 + 分发
-│   ├── parser.py        # 内容解析器
-│   └── distributor.py   # 推送 payload 构建器
+├── adapters/            # [REFACTOR] 外部依赖适配器
+│   ├── browser/         # 浏览器自动化适配 (Playwright)
+│   ├── storage/         # 文件存储适配 (Local/S3)
+│   ├── bilibili_parser/ # B站专用解析
+│   └── universal_adapter.py # 通用适配层
 │
-├── distribution/        # 分发系统
-│   ├── engine.py        # 分发引擎 (规则匹配 + NSFW 路由)
-│   ├── queue_service.py # 队列入队服务
-│   └── queue_worker.py  # 队列消费 Worker (多并发)
-│
-├── push/                # 推送引擎
-│   ├── base.py          # BasePushService 接口
-│   ├── factory.py       # 推送服务工厂
-│   ├── telegram.py      # Telegram 推送实现
-│   └── napcat.py        # QQ (Napcat/OneBot11) 推送实现
-│
-├── media/               # 媒体处理
-│   ├── processor.py     # 图片 WebP 转码 + 缩略图 + 视频存储
-│   ├── color.py         # 主色调提取
-│   └── extractor.py     # 媒体 URL 提取
-│
-├── bot/                 # Telegram Bot 独立进程
-│   ├── main.py          # Bot 启动入口
-│   ├── commands.py      # 命令处理器
-│   ├── callbacks.py     # 回调处理器
-│   ├── messages.py      # 消息处理
-│   └── permissions.py   # 权限管理
-│
-└── utils/               # 工具函数
-    ├── url_utils.py     # URL 规范化/净化
-    ├── text_formatters.py# 文本格式化 (Telegram/QQ)
-    └── formatters.py    # 通用格式化
+├── push/                # 推送具体实现 (由 Task 调用)
+│   ├── telegram.py      # Telegram 实现
+│   └── napcat.py        # QQ 实现
+└── ...
 ```
 
 ---
@@ -443,13 +443,13 @@ Client → POST /api/v1/contents/{id}/review { action: "approve" }
 
 `media.py` 提供两种代理模式：
 
-1. **本地媒体代理** `GET /media/{key}`：
-   - 直接返回本地文件，1年缓存头
-   - 支持 Range 请求 (视频)
+1.  **本地媒体代理** `GET /media/{key}`：
+    -   直接返回本地文件，1年缓存头
+    -   支持 Range 请求 (视频)
 
-2. **远程图片代理** `GET /proxy/image?url=`：
-   - 首次：下载 → WebP 转码 → 本地缓存
-   - 后续：直接返回缓存 (X-Cache-Status: HIT)
+2.  **远程图片代理** `GET /proxy/image?url=`：
+    -   首次：下载 → WebP 转码 → 本地缓存
+    -   后续：直接返回缓存 (X-Cache-Status: HIT)
 
 ---
 
@@ -482,26 +482,23 @@ Bot 运行时配置管理：
 
 ## 7. 仓库层 (repositories/)
 
-### ContentRepository
+Repository 层封装了所有与数据库相关的物理查询，Service 层通过调用 Repository 实现数据解耦。
 
-`content_repository.py` 提供统一的内容查询接口：
+### 7.1 ContentRepository
+- **职责**：处理内容的搜索（含 FTS5）、过滤及分页。
+- **关键接口**：`list_contents`, `list_parsed_contents`, `search_by_fts5`。
 
-```python
-async def list_contents(
-    page, size,
-    platforms, statuses, review_status,
-    tags, q, is_nsfw, author,
-    start_date, end_date
-) -> Tuple[List[Content], int]
-```
+### 7.2 DistributionRepository
+- **职责**：处理分发规则及目标的复杂关联查询。
+- **关键接口**：`list_active_rules_with_targets`（使用 `selectinload` 优化 N+1）、`get_rule_with_targets`。
 
-**查询能力**：
-- **平台/状态/审批状态/NSFW 过滤**：标准 WHERE 条件
-- **标签过滤**：SQLite JSON 字符串级精准匹配 (`%"tag"%`)，兼容 Unicode 转义
-- **全文搜索**：FTS5 索引 + ILIKE 回退 (关键词匹配 title/description/author)
-- **排序**：默认按 `created_at DESC`
-- **分页**：OFFSET/LIMIT
+### 7.3 BotRepository
+- **职责**：处理 Bot 配置及其关联聊天。
+- **关键接口**：`get_primary_config`（支持回退逻辑）、`list_chats_for_config`。
 
+### 7.4 SystemRepository
+- **职责**：处理系统设置、推送记录及统计。
+- **关键接口**：`get_setting`, `upsert_setting`, `list_pushed_records`。
 ---
 
 ## 8. 适配器系统 (adapters/)
@@ -578,142 +575,35 @@ RetryableAdapterError (retryable=True)
 
 ---
 
-## 9. 异步任务系统 (worker/)
+## 9. 异步任务系统 (app/tasks/) <a name="9-异步任务系统-tasks"></a>
 
-### 9.1 架构
+任务层统筹所有的后台异步操作，通过 `runner.py` 进行任务调度。
 
-```
-TaskWorker (全局单例)
-  ├── start()  → 主循环: task_queue.dequeue() → process_task()
-  ├── stop()
-  └── process_task(task_data)
-       └── ContentParser.process_parse_task()
-```
+### 9.1 执行引擎 (runner.py)
+- **机制**：从 `task_queue` 中拉取任务并分发给对应的 Handler。
+- **并发控制**：独立配置解析 Worker 和分发 Worker 的并发数。
 
-### 9.2 ContentParser (解析器)
+### 9.2 内容解析 (parsing.py)
+- **职责**：调用适配器进行内容抓取、媒体转码、FTS5 索引更新。
+- **自动触发**：解析成功后可根据规则自动触发审批及分发。
 
-`parser.py` 是解析任务的核心处理器：
-
-**处理流程**：
-
-```
-1. 从 DB 加载 Content
-2. 幂等检查 (已解析 → 跳过)
-3. 设置 status = PROCESSING
-4. 执行解析 (含重试)
-   ├── 规范化 URL (B站等特殊处理)
-   ├── AdapterFactory.create(platform, cookies=...)
-   └── adapter.parse(url) → ParsedContent
-5. 更新内容数据
-   ├── 基础字段映射
-   ├── 私有归档媒体处理 (WebP 转码 + 视频下载)
-   ├── 封面主色调提取
-   ├── 统计数据映射 (通用 + 平台特有)
-   └── status = PARSE_SUCCESS
-6. 自动审批检查
-   └── DistributionEngine.auto_approve_if_eligible()
-7. 广播 content_updated 事件
-```
-
-**重试机制**：
-- 指数退避: `delay = base * 2^attempt`
-- 可重试错误 (`retryable=True`): 网络超时、限流等
-- 不可重试错误: 认证失败、URL 无效等 → 进入死信队列
-
-### 9.3 ContentDistributor
-
-`distributor.py` 负责构建推送 payload：
-
-```python
-async def _build_content_payload(content, rule, target_render_config) → dict:
-    # 组装: id, title, platform, cover_url, archive_metadata,
-    #       tags, description, author, stats, urls...
-    # 合并 render_config: target override > rule default
-```
+### 9.3 分发推送 (distribution_worker.py)
+- **职责**：执行具体的推送动作，包含重试逻辑、PushedRecord 记录。
+- **解耦**：不关心具体的推送协议，通过 `push/` 工厂进行协议转发。
 
 ---
 
-## 10. 分发系统 (distribution/)
+## 10. 分发系统 (app/services/distribution/) <a name="10-分发系统-servicesdistribution"></a>
 
-### 10.1 DistributionEngine (规则引擎)
+分发系统负责“内容”与“目标”的逻辑撮合。
 
-`engine.py` 处理内容 → 规则匹配 → 任务创建：
+### 10.1 分发引擎 (engine.py)
+- **匹配逻辑**：基于标签（Tags）、平台（Platform）、NSFW 标记进行多维匹配。
+- **NSFW 路由**：支持 `block`（拦截）, `allow`（直发）, `separate_channel`（路由到 NSFW 备用频道）。
 
-**规则匹配条件** (`match_conditions`)：
-
-| 条件 | 类型 | 说明 |
-|------|------|------|
-| `platform` | string | 源平台过滤 |
-| `tags` | list | 标签匹配 (any/all 模式) |
-| `tags_exclude` | list | 排除标签 |
-| `is_nsfw` | bool | NSFW 过滤 |
-
-**NSFW 策略** (`nsfw_policy`)：
-
-| 策略 | 行为 |
-|------|------|
-| `block` | 硬拦截，不推送 |
-| `allow` | 正常推送 |
-| `separate_channel` | 路由到 BotChat.nsfw_chat_id 备用频道 |
-
-**自动审批** (`auto_approve_conditions`)：匹配条件后自动设置 `review_status = AUTO_APPROVED`。
-
-**关键优化**：
-- 跨规则去重：同一 Content 对同一 BotChat 只产生一条任务
-- 批量查询：一次性获取所有规则目标 + BotChat，规避 N+1
-- 可用性前置校验：BotChat.enabled + is_accessible
-
-### 10.2 QueueService (队列入队)
-
-`queue_service.py` 是事件驱动的入队逻辑：
-
-```
-enqueue_content(content_id, force?)
-  ├→ 资格检查 (status == PARSE_SUCCESS, review_status ∈ {APPROVED, AUTO_APPROVED, PENDING})
-  ├→ 匹配规则 (DistributionEngine.match_rules)
-  ├→ 批量获取目标 (DistributionTarget JOIN BotChat)
-  ├→ 批量查询已有队列项 (避免重复)
-  └→ 创建/更新 ContentQueueItem
-       ├→ 计算排期 (compute_auto_scheduled_at: 限流 + 间隔)
-       ├→ status = SCHEDULED (已审批) 或 PENDING (待审批)
-       └→ priority = rule.priority + content.queue_priority
-```
-
-**限流算法** (`compute_auto_scheduled_at`)：
-- 基于 `rule.rate_limit` (最大推送数) 和 `rule.time_window` (时间窗口)
-- 计算最小间隔 = time_window / rate_limit
-- 参考最近的队列排期和实际推送记录，选择最晚的时间点
-
-### 10.3 DistributionQueueWorker (消费 Worker)
-
-`queue_worker.py` 实现多 Worker 并发消费：
-
-```
-DistributionQueueWorker (默认 3 个并发)
-  ├── start() → 创建 N 个 asyncio.Task
-  ├── _worker_loop()
-  │     ├→ _claim_items() — 乐观锁领取
-  │     │   WHERE status=SCHEDULED AND scheduled_at<=now
-  │     │     AND needs_approval=False
-  │     │     AND (locked_at IS NULL OR locked_at < 过期)
-  │     │   ORDER BY priority DESC, scheduled_at ASC
-  │     │   LIMIT 10
-  │     └→ _process_item() — 处理单项
-  │           ├→ 加载 Content + Rule + BotChat
-  │           ├→ 目标可用性兜底检查
-  │           ├→ 资格检查 (review_status, content.status)
-  │           ├→ 去重检查 (PushedRecord)
-  │           ├→ 构建推送 payload
-  │           ├→ get_push_service(platform).push(payload, target_id)
-  │           ├→ 成功: 写入 PushedRecord, 更新 BotChat 统计
-  │           └→ 失败: 指数退避重试 (min(60*2^n, 3600)s)
-  └── stop()
-```
-
-**乐观锁机制**：
-- Worker 领取时原子更新 `status=PROCESSING, locked_at=now, locked_by=worker_name`
-- 锁超时 10 分钟，过期后可被其他 Worker 重新领取
-
+### 10.2 调度器 (scheduler.py)
+- **限流控制**：基于 `DistributionRule` 的频率限制（Rate Limit）自动计算 `scheduled_at` 任务执行时间，避免触发平台反爬。
+- **公平排期**：确保不同规则之间的推送任务不会出现严重的排队饥饿。
 ---
 
 ## 11. 推送引擎 (push/)
@@ -869,7 +759,7 @@ es.addEventListener('content_updated', (e) => {
    └→ SSE: content_created
 
 3. Worker 消费解析任务
-   TaskWorker → ContentParser.process_parse_task()
+   TaskRunner (runner.py) → ContentParser (parsing.py)
      ├→ AdapterFactory.create(platform).parse(url)
      ├→ 私有归档媒体处理 (WebP + 视频)
      ├→ 更新 Content (status=PARSE_SUCCESS)
@@ -885,8 +775,8 @@ es.addEventListener('content_updated', (e) => {
      │   └→ status = SCHEDULED
      └→ SSE: queue_updated
 
-5. 分发队列 Worker 推送
-   DistributionQueueWorker._process_item()
+5. 分发推送 (并由分发 Worker 推送)
+   DistributionQueueWorker (distribution_worker.py)
      ├→ 目标/资格/去重检查
      ├→ get_push_service(platform).push(payload, target_id)
      ├→ 成功 → PushedRecord + BotChat 统计更新
