@@ -23,52 +23,29 @@ def _secret_value(val) -> str | None:
 
 async def get_setting_value(key: str, default: Any = None) -> Any:
     """
-    Get a system setting value, with caching.
-    Falls back to .env configuration if not present in the DB.
+    从数据库中读取配置项（含内存缓存）。
+    所有配置均存储于 DB，不再从 .env 回退。
     """
     if key in _SETTINGS_CACHE:
-        return _SETTINGS_CACHE[key]
-    
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
-        setting = result.scalar_one_or_none()
-        
-        if setting:
-            _SETTINGS_CACHE[key] = setting.value
-            return setting.value
+        val = _SETTINGS_CACHE[key]
+    else:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
+            setting = result.scalar_one_or_none()
             
-    # Check fallback map from .env
-    from app.core.config import settings
-    fallback_map = {
-        "text_llm_api_base": settings.text_llm_base_url,
-        "text_llm_api_key": _secret_value(settings.text_llm_api_key),
-        "text_llm_model": settings.text_llm_model,
-        "vision_llm_api_base": settings.vision_llm_base_url,
-        "vision_llm_api_key": _secret_value(settings.vision_llm_api_key),
-        "vision_llm_model": settings.vision_llm_model,
-        "enable_auto_summary": settings.enable_auto_summary,
-        "enable_archive_media_processing": settings.enable_archive_media_processing,
-        "archive_image_webp_quality": settings.archive_image_webp_quality,
-        "archive_image_max_count": settings.archive_image_max_count,
-        "telegram_admin_ids": settings.telegram_admin_ids,
-        "telegram_whitelist_ids": settings.telegram_whitelist_ids,
-        "telegram_blacklist_ids": settings.telegram_blacklist_ids,
-        "http_proxy": settings.http_proxy,
-        "https_proxy": settings.https_proxy,
-        "bilibili_bili_jct": _secret_value(settings.bilibili_bili_jct),
-        "bilibili_buvid3": _secret_value(settings.bilibili_buvid3),
-    }
-    
-    if key in fallback_map:
-        val = fallback_map[key]
-        if val is not None:
-            return val
-        
-    # Return default if provided, otherwise check for known defaults
-    if default is not None:
-        return default
-        
-    return None
+            if setting:
+                _SETTINGS_CACHE[key] = setting.value
+                val = setting.value
+            else:
+                val = default
+
+    # Handle string boolean values like "true" or "false"
+    if isinstance(val, str):
+        if val.lower() == "true":
+            return True
+        elif val.lower() == "false":
+            return False
+    return val
 
 
 async def set_setting_value(key: str, value: Any, category: str = "general", description: str = None) -> SystemSetting:
@@ -182,75 +159,15 @@ def _resolve_env_display(env_val, is_secret: bool = False):
 
 async def list_settings_values(category: str = None) -> list[SystemSetting]:
     """
-    List all settings, optionally filtered by category.
-    Merges in environmental variable configs for platforms so they show as configured.
+    返回数据库中存储的所有配置项（可按 category 过滤）。
+    不再从 .env 注入虚拟配置——所有设置均通过 UI 保存到 DB 管理。
     """
-    from app.core.config import settings as env_settings
-    
     async with AsyncSessionLocal() as db:
         query = select(SystemSetting)
         if category:
             query = query.where(SystemSetting.category == category)
         result = await db.execute(query)
-        db_settings = list(result.scalars().all())
-        
-    db_keys = {s.key for s in db_settings}
-    
-    # 环境变量映射：(env_value, category)
-    env_mappings: dict[str, tuple[Any, str]] = {
-        # --- 平台凭证 ---
-        "bilibili_cookie": (env_settings.bilibili_sessdata, "platform"),
-        "weibo_cookie": (env_settings.weibo_cookie, "platform"),
-        "xiaohongshu_cookie": (env_settings.xiaohongshu_cookie, "platform"),
-        "zhihu_cookie": (env_settings.zhihu_cookie, "platform"),
-        "bilibili_bili_jct": (env_settings.bilibili_bili_jct, "platform"),
-        "bilibili_buvid3": (env_settings.bilibili_buvid3, "platform"),
-        # --- LLM ---
-        "text_llm_api_base": (env_settings.text_llm_base_url, "llm"),
-        "text_llm_api_key": (env_settings.text_llm_api_key, "llm"),
-        "text_llm_model": (env_settings.text_llm_model, "llm"),
-        "vision_llm_api_base": (env_settings.vision_llm_base_url, "llm"),
-        "vision_llm_api_key": (env_settings.vision_llm_api_key, "llm"),
-        "vision_llm_model": (env_settings.vision_llm_model, "llm"),
-        # --- 网络 ---
-        "http_proxy": (env_settings.http_proxy, "network"),
-        "https_proxy": (env_settings.https_proxy, "network"),
-        # --- Bot 权限 ---
-        "telegram_admin_ids": (env_settings.telegram_admin_ids, "bot"),
-        "telegram_whitelist_ids": (env_settings.telegram_whitelist_ids, "bot"),
-        "telegram_blacklist_ids": (env_settings.telegram_blacklist_ids, "bot"),
-        # --- 存储与媒体 ---
-        "enable_archive_media_processing": (env_settings.enable_archive_media_processing, "storage"),
-        "archive_image_webp_quality": (env_settings.archive_image_webp_quality, "storage"),
-        "archive_image_max_count": (env_settings.archive_image_max_count, "storage"),
-        # --- 摘要生成 ---
-        "enable_auto_summary": (env_settings.enable_auto_summary, "llm"),
-    }
-
-    virtual_settings: list[SystemSetting] = []
-    now = datetime.now()
-
-    for key, (env_val, cat) in env_mappings.items():
-        if category and category != cat:
-            continue
-        if key in db_keys:
-            continue
-
-        display_val = _resolve_env_display(env_val)
-        if display_val is None:
-            continue
-
-        virtual_settings.append(
-            SystemSetting(
-                key=key,
-                value=display_val,
-                category=cat,
-                description="环境变量配置",
-                updated_at=now,
-            )
-        )
-
-    return db_settings + virtual_settings
+        return list(result.scalars().all())
 
 
 def invalidate_setting_cache(key: str):

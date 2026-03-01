@@ -55,7 +55,7 @@ class Settings(BaseSettings):
 
     # 日志配置
     log_level: str = "INFO"
-    log_format: Literal["json", "text"] = "json"
+    log_format: Literal["json", "text"] = "text"
 
     # B站配置
     bilibili_sessdata: Optional[SecretStr] = None
