@@ -149,7 +149,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="VaultStream API",
     description="跨平台收藏&分享软件",
-    version="0.0.1",
+    version="0.0.2",
     lifespan=lifespan
 )
 
@@ -222,7 +222,7 @@ async def api_root():
     """API根路径"""
     return {
         "name": "VaultStream",
-        "version": "0.1.0",
+        "version": "0.0.2",
         "description": "超级收藏夹 - MVP版本"
     }
 
