@@ -242,7 +242,7 @@ async def delete_rule_target(
     logger.info(f"Deleted distribution target: id={target_id}")
 
 
-# ========== Target Management APIs ==========
+# ========== 分发目标管理 API ==========
 
 @router.get("/targets", response_model=TargetListResponse)
 async def list_all_targets(
@@ -296,9 +296,8 @@ async def list_all_targets(
                 "merge_forward": dt.merge_forward,
                 "use_author_name": dt.use_author_name,
                 "summary": dt.summary,
-                "render_config": dt.render_config,
-                "total_pushed": 0,
-                "last_pushed_at": None,
+                "render_config": dt.render_config_override,
+                "total_pushed": 0,                "last_pushed_at": None,
             }
         
         target_map[key]["rule_count"] += 1
@@ -515,6 +514,9 @@ async def batch_update_targets(
             message=f"Updated target in {len(updated_rule_ids)} rules"
         )
     
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Batch update failed: {e}")
@@ -524,9 +526,9 @@ async def batch_update_targets(
         )
 
 
-# ========== Render Config Preset APIs ==========
+# ========== 渲染配置预设 API ==========
 
-# Convert raw presets to Pydantic models for response consistency
+# 将原始预设转换为 Pydantic 模型以保持响应的一致性
 BUILTIN_PRESETS: List[RenderConfigPreset] = [
     RenderConfigPreset(**p) for p in DEFAULT_RENDER_CONFIG_PRESETS
 ]
@@ -536,7 +538,7 @@ BUILTIN_PRESETS: List[RenderConfigPreset] = [
 async def list_render_config_presets(
     _: None = Depends(require_api_token),
 ):
-    """List all render config presets (built-in + custom)"""
+    """列出所有渲染配置预设（内置 + 自定义）"""
     return BUILTIN_PRESETS
 
 
@@ -545,7 +547,7 @@ async def get_render_config_preset(
     preset_id: str,
     _: None = Depends(require_api_token),
 ):
-    """Get a specific render config preset"""
+    """获取特定的渲染配置预设"""
     for preset in BUILTIN_PRESETS:
         if preset.id == preset_id:
             return preset

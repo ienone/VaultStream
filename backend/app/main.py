@@ -4,7 +4,7 @@ FastAPI 主应用
 import sys
 import asyncio
 
-# Fix for Windows: Playwright requires ProactorEventLoop
+# 针对 Windows 的修复：Playwright 需要 ProactorEventLoop
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
@@ -25,7 +25,7 @@ from app.core.events import event_bus
 from app.tasks import worker, DistributionQueueWorker
 from app.services.distribution import enqueue_content
 
-# Import new routers
+# 导入新路由
 from app.routers import (
     contents, distribution, system, media, bot_management, 
     events, distribution_queue, bot_config, browser_auth
@@ -213,7 +213,7 @@ async def init_status(request: Request):
     检查系统初始化状态，主要用于前端判断是否跳转引导页或展示主界面
     """
     
-    # Placeholder for actual initialization status logic
+    # 实际初始化状态逻辑的占位符
     pass
 
 

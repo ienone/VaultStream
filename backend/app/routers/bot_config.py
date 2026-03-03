@@ -6,6 +6,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.core.database import get_db
 from app.core.dependencies import require_api_token
@@ -38,8 +39,8 @@ async def _sync_telegram_bot_process(db: AsyncSession, *, reason: str) -> dict[s
 
     cfg = await get_primary_bot_config(db, BotConfigPlatform.TELEGRAM, enabled_only=True)
     if cfg and cfg.bot_token and cfg.bot_token.strip():
-        return restart_telegram_bot(reason=reason)
-    return stop_telegram_bot(reason=f"{reason}:no_enabled_telegram")
+        return await run_in_threadpool(restart_telegram_bot, reason=reason)
+    return await run_in_threadpool(stop_telegram_bot, reason=f"{reason}:no_enabled_telegram")
 
 
 def _mask_token(token: str | None) -> str | None:
@@ -247,14 +248,14 @@ async def activate_bot_config(
 async def start_telegram_service(
     _: None = Depends(require_api_token),
 ):
-    return start_telegram_bot(reason="api_manual_start")
+    return await run_in_threadpool(start_telegram_bot, reason="api_manual_start")
 
 
 @router.post("/service/telegram/stop")
 async def stop_telegram_service(
     _: None = Depends(require_api_token),
 ):
-    return stop_telegram_bot(reason="api_manual_stop")
+    return await run_in_threadpool(stop_telegram_bot, reason="api_manual_stop")
 
 
 @router.post("/service/telegram/restart")

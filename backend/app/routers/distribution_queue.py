@@ -58,6 +58,7 @@ def _to_queue_item_response(item: ContentQueueItem, content: Optional[Content] =
         scheduled_at=_as_utc(item.scheduled_at),
         needs_approval=bool(item.needs_approval),
         approved_at=_as_utc(item.approved_at),
+        approved_by=item.approved_by,
         attempt_count=item.attempt_count or 0,
         max_attempts=item.max_attempts or 3,
         next_attempt_at=_as_utc(item.next_attempt_at),
@@ -339,8 +340,14 @@ async def retry_queue_item(
     _: None = Depends(require_api_token),
 ):
     """重试单个队列项。"""
-    result = await db.execute(select(ContentQueueItem).where(ContentQueueItem.id == item_id))
-    item = result.scalar_one_or_none()
+    result = await db.execute(
+        select(ContentQueueItem, Content)
+        .join(Content, Content.id == ContentQueueItem.content_id, isouter=True)
+        .where(ContentQueueItem.id == item_id)
+    )
+    row = result.first()
+    item = row[0] if row else None
+    content = row[1] if row else None
     if not item:
         raise HTTPException(status_code=404, detail="Queue item not found")
 
@@ -364,8 +371,7 @@ async def retry_queue_item(
         "status": item.status.value,
         "timestamp": utcnow().isoformat(),
     })
-    return ContentQueueItemResponse.model_validate(item)
-
+    return _to_queue_item_response(item, content)
 
 @router.post("/items/{item_id}/cancel")
 async def cancel_queue_item(

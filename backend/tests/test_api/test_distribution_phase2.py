@@ -201,3 +201,52 @@ class TestDistributionPhase2API:
 
         delete_resp = await client.delete(f"/api/v1/bot-config/{cfg['id']}")
         assert delete_resp.status_code == 204
+
+    @pytest.mark.asyncio
+    async def test_rule_previews_and_patch(self, client: AsyncClient):
+        suffix = datetime.utcnow().strftime("%H%M%S%f")
+        
+        # 1. Create a rule
+        rule_resp = await client.post(
+            "/api/v1/distribution-rules",
+            json={
+                "name": f"preview-rule-{suffix}",
+                "match_conditions": {"tags": ["preview"], "tags_match_mode": "any"},
+                "enabled": True,
+                "priority": 1,
+                "nsfw_policy": "allow",
+                "approval_required": False,
+            },
+        )
+        rule_id = rule_resp.json()["id"]
+
+        # 2. Patch the rule
+        patch_resp = await client.patch(
+            f"/api/v1/distribution-rules/{rule_id}",
+            json={"description": "updated description", "priority": 5}
+        )
+        assert patch_resp.status_code == 200
+        assert patch_resp.json()["priority"] == 5
+
+        # 3. Preview stats
+        stats_resp = await client.get("/api/v1/distribution-rules/preview/stats")
+        assert stats_resp.status_code == 200
+        data = stats_resp.json()
+        assert isinstance(data, list)
+        assert len(data) >= 1
+        assert "rule_name" in data[0]
+
+        # 4. Preview specific rule
+        preview_resp = await client.get(f"/api/v1/distribution-rules/{rule_id}/preview")
+        assert preview_resp.status_code == 200
+        assert "items" in preview_resp.json()
+
+    @pytest.mark.asyncio
+    async def test_list_targets(self, client: AsyncClient):
+        response = await client.get("/api/v1/targets")
+        assert response.status_code == 200
+        data = response.json()
+        assert "targets" in data
+        assert isinstance(data["targets"], list)
+
+
