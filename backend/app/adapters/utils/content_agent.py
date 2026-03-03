@@ -203,8 +203,14 @@ def _build_dom_summary(soup, limit: int = 200) -> str:
 def _build_image_summary(soup, base_url: str, limit: int = 20) -> str:
     images = []
     for img in soup.find_all("img", limit=limit):
-        src = img.get("src") or img.get("data-src") or img.get("data-original") or ""
-        if not src or src.startswith("data:"):
+        src = ""
+        for attr in ['data-original', 'data-src', 'file', 'data-real-src', 'src']:
+            val = img.get(attr)
+            if val and not str(val).startswith('data:'):
+                src = val
+                break
+        
+        if not src:
             continue
         full_url = urljoin(base_url, src)
         alt = img.get("alt", "")[:30]
@@ -234,6 +240,16 @@ def tool_convert_html(html: str, url: str, selector: str = "body", verbose: bool
         target = soup.select_one(selector) if selector != "body" else None
         if not target:
             target = soup.body
+            
+        # Fix lazy loading images
+        if target:
+            for img in target.find_all('img'):
+                for attr in ['data-original', 'data-src', 'file', 'data-real-src']:
+                    real_src = img.get(attr)
+                    if real_src and not real_src.startswith('data:'):
+                        img['src'] = real_src
+                        break
+                        
         clean_html = preprocess_code_blocks(str(target))
         md_gen = DefaultMarkdownGenerator(
             options={
