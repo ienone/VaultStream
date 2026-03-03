@@ -1,5 +1,5 @@
 """
-Configuration management.
+配置管理。
 """
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import SecretStr
@@ -7,7 +7,7 @@ from typing import Optional, Literal
 
 
 class Settings(BaseSettings):
-    """Application settings."""
+    """应用程序设置。"""
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,

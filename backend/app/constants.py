@@ -21,7 +21,7 @@ class ContentType(str, Enum):
 # 平台常量列表
 SUPPORTED_PLATFORMS = [Platform.TELEGRAM.value, Platform.QQ.value]
 
-# Render Config Presets (Raw data to avoid circular imports with schemas)
+# 渲染配置预设（原始数据，以避免与 schemas 产生循环导入）
 DEFAULT_RENDER_CONFIG_PRESETS = [
     {
         "id": "minimal",

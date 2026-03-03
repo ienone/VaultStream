@@ -4,7 +4,7 @@ from typing import Optional, Literal
 from loguru import logger
 from pydantic import Field, ConfigDict
 
-# LangChain Imports
+# LangChain 导入
 from langchain_openai import ChatOpenAI
 from app.services.settings_service import get_setting_value
 

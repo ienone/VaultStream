@@ -42,7 +42,7 @@ def _parse_list_param(values: Optional[List[str]]) -> Optional[List[str]]:
             result.append(v)
     return result if result else None
 
-# --- Sharing ---
+# --- 分享 ---
 
 @router.post("/shares", response_model=ShareResponse)
 async def create_share(
@@ -75,7 +75,7 @@ async def create_share(
         logger.exception("Failed to create share")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-# --- Content CRUD ---
+# --- 内容 增删改查 ---
 
 @router.get("/contents", response_model=ContentListResponse)
 async def list_contents(
@@ -277,7 +277,7 @@ async def delete_pushed_record(
     logger.info(f"推送记录已删除: ID {record_id}")
     return {"success": True, "id": record_id}
 
-# --- Cards & Previews ---
+# --- 卡片与预览 ---
 
 @router.get("/cards", response_model=ShareCardListResponse)
 async def list_share_cards(

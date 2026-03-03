@@ -38,9 +38,9 @@ class EventBus:
         from app.core.config import settings
         if settings.enable_event_outbox_polling:
             cls._poll_task = asyncio.create_task(cls._poll_remote_events(), name="event-bus-poller")
-            logger.info(f"EventBus started ({cls._instance_id}) with outbox polling")
+            logger.info(f"事件总线已启动 ({cls._instance_id})，启用 outbox 轮询")
         else:
-            logger.info(f"EventBus started ({cls._instance_id}) without outbox polling (single-instance mode)")
+            logger.info(f"事件总线已启动 ({cls._instance_id})，未启用 outbox 轮询（单实例模式）")
 
     @classmethod
     async def stop(cls) -> None:
@@ -54,7 +54,7 @@ class EventBus:
                 pass
             finally:
                 cls._poll_task = None
-        logger.info(f"EventBus stopped ({cls._instance_id})")
+        logger.info(f"事件总线已停止 ({cls._instance_id})")
 
     @classmethod
     async def subscribe(cls) -> AsyncGenerator[Any, None]:
@@ -73,7 +73,7 @@ class EventBus:
             cls._subscribers.append(queue)
             subscriber_count = len(cls._subscribers)
         
-        logger.debug(f"New SSE subscriber. Total: {subscriber_count}")
+        logger.debug(f"新 SSE 订阅者。当前总数: {subscriber_count}")
         
         try:
             while True:
@@ -85,14 +85,14 @@ class EventBus:
                     # 发送心跳包
                     yield {"event": "ping", "data": {"timestamp": asyncio.get_event_loop().time()}}
                 except Exception as e:
-                    logger.error(f"Error in SSE subscriber loop: {e}")
+                    logger.error(f"SSE 订阅者循环出错: {e}")
                     break
         finally:
             async with cls._lock:
                 if queue in cls._subscribers:
                     cls._subscribers.remove(queue)
                 subscriber_count = len(cls._subscribers)
-            logger.debug(f"SSE subscriber disconnected. Total: {subscriber_count}")
+            logger.debug(f"SSE 订阅者已断开。当前总数: {subscriber_count}")
 
     @classmethod
     async def publish(cls, event: str, data: dict):
@@ -116,7 +116,7 @@ class EventBus:
             subscribers = list(cls._subscribers)
         
         if not subscribers:
-            logger.debug(f"No subscribers for event '{message.get('event')}', skipping")
+            logger.debug(f"事件 '{message.get('event')}' 无订阅者，跳过")
             return
         
         t0 = time.monotonic()
@@ -127,10 +127,10 @@ class EventBus:
             try:
                 queue.put_nowait(message)
             except asyncio.QueueFull:
-                logger.warning(f"Subscriber queue full, dropping event '{message.get('event')}'")
+                logger.warning(f"订阅者队列已满，丢弃事件 '{message.get('event')}'")
                 failed_queues.append(queue)
             except Exception as e:
-                logger.error(f"Failed to publish event '{message.get('event')}': {e}")
+                logger.error(f"发布事件 '{message.get('event')}' 失败: {e}")
                 failed_queues.append(queue)
         
         # 清理失败的订阅者
@@ -139,18 +139,17 @@ class EventBus:
                 for queue in failed_queues:
                     if queue in cls._subscribers:
                         cls._subscribers.remove(queue)
-            logger.info(f"Removed {len(failed_queues)} failed/slow subscribers")
+            logger.info(f"已移除 {len(failed_queues)} 个失败或响应过慢的订阅者")
 
         elapsed_ms = (time.monotonic() - t0) * 1000
         if elapsed_ms > cls._BROADCAST_SLOW_THRESHOLD_MS:
             logger.warning(
-                f"Slow broadcast: event='{message.get('event')}', "
-                f"subscribers={len(subscribers)}, elapsed={elapsed_ms:.1f}ms"
+                f"广播过慢: event='{message.get('event')}', "
+                f"订阅者数量={len(subscribers)}, 耗时={elapsed_ms:.1f}ms"
             )
         else:
             logger.debug(
-                f"Published event '{message.get('event')}' to "
-                f"{len(subscribers) - len(failed_queues)} subscribers ({elapsed_ms:.1f}ms)"
+                f"已向 {len(subscribers) - len(failed_queues)} 个订阅者发布事件 '{message.get('event')}' ({elapsed_ms:.1f}ms)"
             )
 
     @classmethod
