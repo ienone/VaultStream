@@ -4,7 +4,7 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from app.models.bot import BotChatType, BotConfigPlatform
 from app.schemas.common import QueueStats, DistributionStatusStats
@@ -61,8 +61,7 @@ class BotChatResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BotConfigCreate(BaseModel):
@@ -109,8 +108,7 @@ class BotConfigResponse(BaseModel):
     # 可以选择性地包含关联的 chats
     chats: List[BotChatResponse] = Field(default_factory=list)
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BotRuntimeResponse(BaseModel):

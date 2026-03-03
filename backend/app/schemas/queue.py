@@ -4,7 +4,7 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from app.models.system import QueueItemStatus
 from app.schemas.distribution import DistributionRuleResponse
@@ -45,8 +45,7 @@ class ContentQueueItemResponse(BaseModel):
     rule: Optional[DistributionRuleResponse] = None
     bot_chat: Optional[BotChatResponse] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ContentQueueItemListResponse(BaseModel):

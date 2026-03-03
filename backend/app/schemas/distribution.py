@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
 
 
 class DistributionTargetCreate(BaseModel):
@@ -39,8 +39,7 @@ class DistributionTargetResponse(BaseModel):
     
     bot_chat: Optional[BotChatResponse] = None
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DistributionRuleCreate(BaseModel):
@@ -92,8 +91,7 @@ class DistributionRuleResponse(BaseModel):
     
     distribution_targets: List[DistributionTargetResponse] = Field(default_factory=list)
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RulePreviewStats(BaseModel):
@@ -142,8 +140,7 @@ class BatchTargetUpdateRequest(BaseModel):
     render_config_override: Optional[Dict[str, Any]] = None
     
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TargetUsageInfo(BaseModel):

@@ -3,7 +3,7 @@
 """
 from datetime import datetime
 from typing import Optional, List, Dict, Any, TypeVar, Generic
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from app.models import Platform, ContentStatus, ReviewStatus, LayoutType
 
 class APIResponse(BaseModel):
@@ -64,8 +64,7 @@ class SystemSettingResponse(SystemSettingBase):
     key: str
     updated_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StorageStatsResponse(BaseModel):

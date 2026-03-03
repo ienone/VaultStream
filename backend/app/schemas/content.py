@@ -3,7 +3,7 @@
 """
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
 import json
 
 from app.models import Platform, ContentStatus, ReviewStatus, LayoutType
@@ -45,8 +45,7 @@ class ShareResponse(BaseModel):
     status: ContentStatus
     created_at: datetime
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ContentDetail(BaseModel):
@@ -81,6 +80,7 @@ class ContentDetail(BaseModel):
     summary: Optional[str] = None
     author_name: Optional[str] = None
     author_id: Optional[str] = None
+    author_avatar_url: Optional[str] = None
     author_url: Optional[str] = None
     cover_url: Optional[str] = None
     source_tags: List[str] = Field(default_factory=list)
@@ -104,8 +104,7 @@ class ContentDetail(BaseModel):
     updated_at: datetime
     published_at: Optional[datetime]
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ContentListItem(BaseModel):
@@ -124,8 +123,7 @@ class ContentListItem(BaseModel):
     created_at: datetime
     published_at: Optional[datetime] = None
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ContentListResponse(BaseModel):
@@ -198,8 +196,7 @@ class ShareCard(BaseModel):
     view_count: int = 0
     like_count: int = 0
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ShareCardListResponse(BaseModel):
@@ -230,5 +227,4 @@ class ContentPushPayload(BaseModel):
     rich_payload: Optional[Dict[str, Any]] = None
     media_items: List[Dict[str, Any]] = Field(default_factory=list)
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
