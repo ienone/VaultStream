@@ -19,7 +19,7 @@ class TargetTestRequest(BaseModel):
     bot_token: Optional[str] = None
     napcat_http_url: Optional[str] = None
     napcat_access_token: Optional[str] = None
-    chat_id: str
+    chat_id: Optional[str] = None
 
 
 class BotChatCreate(BaseModel):
@@ -34,6 +34,10 @@ class BotChatCreate(BaseModel):
 
 
 class BotChatUpdate(BaseModel):
+    chat_id: Optional[str] = None
+    title: Optional[str] = None
+    username: Optional[str] = None
+    description: Optional[str] = None
     enabled: Optional[bool] = None
     nsfw_chat_id: Optional[str] = None
 
@@ -120,13 +124,14 @@ class BotRuntimeResponse(BaseModel):
     bot_first_name: Optional[str]
     started_at: Optional[datetime]
     last_heartbeat_at: Optional[datetime]
+    is_running: bool = False
+    uptime_seconds: Optional[int] = None
     version: Optional[str]
     last_error: Optional[str]
     last_error_at: Optional[datetime]
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TelegramChatSyncResponse(BaseModel):

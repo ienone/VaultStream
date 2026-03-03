@@ -85,5 +85,4 @@ class PushedRecordResponse(BaseModel):
     error_message: Optional[str] = None
     pushed_at: datetime
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

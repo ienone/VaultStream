@@ -92,61 +92,61 @@ class UniversalAdapter(PlatformAdapter):
 
     async def _do_parse(self, url: str) -> ParsedContent:
         """核心解析流程 - Agentic V3"""
-        logger.info(f"UniversalAdapter: Starting parse for {url}")
+        logger.info(f"UniversalAdapter: 开始解析 {url}")
 
-        # 1. Tiered Fetching (Cloudflare MD -> Direct HTTP -> Crawl4AI)
+        # 1. 分层获取 (Cloudflare MD -> 直接 HTTP -> Crawl4AI)
         try:
-            # Skip tiers if needed based on config (optional)
+            # 根据需要跳过某些层（可选）
             fetch_result = await tiered_fetch(url, cookies=self.cookies, verbose=True)
         except Exception as e:
-            logger.error(f"UniversalAdapter: Fetch failed: {e}")
-            raise RetryableAdapterError(f"Fetch failed: {e}")
+            logger.error(f"UniversalAdapter: 获取失败: {e}")
+            raise RetryableAdapterError(f"获取失败: {e}")
 
-        # 2. Content Agent Processing (Structure Scan -> Metadata Extraction -> Cleanup)
+        # 2. 内容 Agent 处理 (结构扫描 -> 元数据提取 -> 清洗)
         try:
             process_result = await process_content(url, fetch_result, self.llm_config, verbose=True)
         except Exception as e:
-            logger.error(f"UniversalAdapter: Agent processing failed: {e}")
-            # Fallback: simple mapping if agent fails but we have content
+            logger.error(f"UniversalAdapter: Agent 处理失败: {e}")
+            # 降级方案：如果 Agent 失败但有内容，进行简单映射
             process_result = None
-            raise RetryableAdapterError(f"Agent processing failed: {e}")
+            raise RetryableAdapterError(f"Agent 处理失败: {e}")
 
-        # 3. Map Results to ParsedContent
+        # 3. 将结果映射到 ParsedContent
         
-        # Meta mapping
+        # 元数据映射
         common = process_result.common_fields
         extension = process_result.extension_fields
         
-        # Determine layout
-        video_url = extension.get("video_url") # If extracted by agent
-        # Extract images from markdown for layout inference
+        # 确定布局
+        video_url = extension.get("video_url") # 如果 Agent 提取到了
+        # 从 markdown 中提取图片用于布局推断
         images = re.findall(r'!\[[^\]]*\]\(([^)\s]+)\)', process_result.cleaned_markdown)
         
         layout_type = infer_layout_type({"video_url": video_url}, process_result.cleaned_markdown, images)
         
-        # Construct Archive Payload
+        # 构建存档负载
         all_images = []
         seen_urls = set()
         
-        # Cover
+        # 封面
         cover_url = common.get("cover_url")
         if cover_url and cover_url not in seen_urls:
             all_images.append({"url": cover_url, "type": "cover"})
             seen_urls.add(cover_url)
             
-        # Avatar
+        # 头像
         author_avatar_url = common.get("author_avatar_url")
         if author_avatar_url and author_avatar_url not in seen_urls:
             all_images.append({"url": author_avatar_url, "type": "avatar", "is_avatar": True})
             seen_urls.add(author_avatar_url)
         
-        # Content Images
+        # 正文图片
         for img_url in images:
             if img_url and img_url not in seen_urls:
                 all_images.append({"url": img_url})
                 seen_urls.add(img_url)
 
-        # Archive Metadata
+        # 归档元数据
         archive_meta = {
             "version": 3,
             "fetch_source": process_result.fetch_source,
@@ -158,11 +158,11 @@ class UniversalAdapter(PlatformAdapter):
             "archive": {
                 "markdown": process_result.cleaned_markdown,
                 "images": all_images,
-                "videos": [], # Agent currently doesn't robustly extract videos, can be added later
+                "videos": [], # Agent 目前无法稳健地提取视频，后续可添加
             }
         }
 
-        # Stats
+        # 统计数据
         stats = {
             "view_count": common.get("view_count", 0),
             "like_count": common.get("like_count", 0),
@@ -171,7 +171,7 @@ class UniversalAdapter(PlatformAdapter):
             "collect_count": common.get("collect_count", 0),
         }
 
-        # Parse published_at string to datetime if possible
+        # 如果可能，将 published_at 字符串解析为 datetime
         published_at = common.get("published_at")
         if published_at and isinstance(published_at, str):
             try:
@@ -186,7 +186,7 @@ class UniversalAdapter(PlatformAdapter):
             content_id=hashlib.md5(url.encode()).hexdigest(),
             clean_url=url,
             layout_type=layout_type,
-            title=common.get("title") or "Untitled",
+            title=common.get("title") or "无标题",
             body=process_result.cleaned_markdown,
             author_name=common.get("author_name"),
             author_avatar_url=common.get("author_avatar_url"),

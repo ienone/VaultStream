@@ -132,12 +132,12 @@ class DistributionPreviewResponse(BaseModel):
     
     
 class BatchTargetUpdateRequest(BaseModel):
-    target_ids: List[int]
+    rule_ids: List[int]
+    target_platform: str
+    target_id: str
     enabled: Optional[bool] = None
     merge_forward: Optional[bool] = None
-    use_author_name: Optional[bool] = None
-    summary: Optional[str] = None
-    render_config_override: Optional[Dict[str, Any]] = None
+    render_config: Optional[Dict[str, Any]] = None
     
 
     model_config = ConfigDict(from_attributes=True)
