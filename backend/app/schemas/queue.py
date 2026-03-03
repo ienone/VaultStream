@@ -92,3 +92,5 @@ class QueueStatsResponse(BaseModel):
 # 为了向后兼容路由中的名称
 QueueListResponse = ContentQueueItemListResponse
 
+ContentQueueItemListResponse.model_rebuild()
+

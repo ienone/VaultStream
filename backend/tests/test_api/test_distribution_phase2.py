@@ -113,11 +113,11 @@ class TestDistributionPhase2API:
         assigned = assign_resp.json()
         assert set(assigned["rule_ids"]) == set(rule_ids)
 
-        chat_detail_resp = await client.get(f"/api/v1/bot/chats/{chat_id}")
+        chat_detail_resp = await client.get(f"/api/v1/bot/chats/{chat_id}/rules")
         assert chat_detail_resp.status_code == 200
         chat_detail = chat_detail_resp.json()
-        assert set(chat_detail["applied_rule_ids"]) == set(rule_ids)
-        assert chat_detail["applied_rule_count"] == len(rule_ids)
+        assert set(chat_detail["rule_ids"]) == set(rule_ids)
+        assert len(chat_detail["rules"]) == len(rule_ids)
 
     @pytest.mark.asyncio
     async def test_delete_rule_with_targets(self, client: AsyncClient):

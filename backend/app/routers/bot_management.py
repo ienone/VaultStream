@@ -64,9 +64,7 @@ async def list_bot_chats(
     result = await db.execute(query)
     chats = result.scalars().all()
 
-    rule_map = await _load_chat_rule_map(db, [c.id for c in chats])
-    
-    return [_chat_to_response(chat, rule_map.get(chat.id)) for chat in chats]
+    return [_chat_to_response(chat) for chat in chats]
 
 
 @router.post("/bot/chats", response_model=BotChatResponse)
@@ -119,8 +117,7 @@ async def get_bot_chat(
     chat = result.scalar_one_or_none()
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
-    rule_map = await _load_chat_rule_map(db, [chat.id])
-    return _chat_to_response(chat, rule_map.get(chat.id))
+    return _chat_to_response(chat)
 
 
 @router.get("/bot/chats/{chat_id}/rules", response_model=BotChatRulesResponse)
@@ -644,29 +641,9 @@ async def get_storage_stats(
 
 # ========== 辅助函数 ==========
 
-async def _load_chat_rule_map(db: AsyncSession, chat_ids: List[int]) -> dict[int, dict]:
-    if not chat_ids:
-        return {}
 
-    result = await db.execute(
-        select(DistributionTarget.bot_chat_id, DistributionRule.id, DistributionRule.name)
-        .join(DistributionRule, DistributionRule.id == DistributionTarget.rule_id)
-        .where(DistributionTarget.bot_chat_id.in_(chat_ids))
-        .order_by(DistributionRule.priority.desc(), DistributionRule.id.asc())
-    )
-
-    rule_map: dict[int, dict] = {}
-    for bot_chat_id, rule_id, rule_name in result.all():
-        bucket = rule_map.setdefault(bot_chat_id, {"ids": [], "names": []})
-        bucket["ids"].append(rule_id)
-        bucket["names"].append(rule_name)
-    return rule_map
-
-
-def _chat_to_response(chat: BotChat, rule_info: Optional[dict] = None) -> BotChatResponse:
+def _chat_to_response(chat: BotChat) -> BotChatResponse:
     """将 BotChat 模型转换为响应对象"""
-    rule_ids = list((rule_info or {}).get("ids", []))
-    rule_names = list((rule_info or {}).get("names", []))
 
     return BotChatResponse(
         id=chat.id,
@@ -686,9 +663,6 @@ def _chat_to_response(chat: BotChat, rule_info: Optional[dict] = None) -> BotCha
         is_accessible=chat.is_accessible if chat.is_accessible is not None else True,
         last_sync_at=chat.last_sync_at,
         sync_error=chat.sync_error,
-        applied_rule_ids=rule_ids,
-        applied_rule_names=rule_names,
-        applied_rule_count=len(rule_ids),
         created_at=chat.created_at,
         updated_at=chat.updated_at,
     )

@@ -27,7 +27,7 @@ from app.services.distribution.decision import (
 )
 from app.media.extractor import pick_preview_thumbnail
 from app.services.distribution.scheduler import mark_historical_parse_success_as_pushed_for_rule
-from app.core.exceptions import NotFoundException, BadRequestException
+from fastapi import HTTPException
 from app.repositories import DistributionRepository, BotRepository, ContentRepository
 
 
@@ -45,7 +45,7 @@ class DistributionRuleService:
     async def create_rule(self, rule_in: DistributionRuleCreate) -> DistributionRule:
         rule_exists = await self.repo.get_rule_by_name(rule_in.name)
         if rule_exists:
-            raise BadRequestException("Rule name already exists")
+            raise HTTPException(status_code=400, detail="Rule name already exists")
         
         db_rule = await self.repo.create_rule(**rule_in.model_dump())
         await self.db.commit()
@@ -58,7 +58,7 @@ class DistributionRuleService:
     async def get_rule(self, rule_id: int) -> DistributionRule:
         rule = await self.repo.get_rule_by_id(rule_id)
         if not rule:
-            raise NotFoundException("Distribution rule not found")
+            raise HTTPException(status_code=404, detail="Distribution rule not found")
         return rule
 
     async def update_rule(self, rule_id: int, rule_update: DistributionRuleUpdate) -> DistributionRule:
@@ -90,11 +90,11 @@ class DistributionRuleService:
         
         chat = await self.bot_repo.get_chat_by_id(target_in.bot_chat_id)
         if not chat:
-            raise NotFoundException("BotChat not found")
+            raise HTTPException(status_code=404, detail="BotChat not found")
 
         existing = await self.repo.get_target_by_chat(rule_id, target_in.bot_chat_id)
         if existing:
-            raise BadRequestException(f"Target already exists for rule '{rule.name}' and chat '{chat.chat_id}'")
+            raise HTTPException(status_code=400, detail=f"Target already exists for rule '{rule.name}' and chat '{chat.chat_id}'")
 
         db_target = await self.repo.create_target(
             rule_id=rule_id,
@@ -109,12 +109,13 @@ class DistributionRuleService:
 
         await self.db.commit()
         await self.db.refresh(db_target)
+        db_target.bot_chat = chat  # Fix pydantic validation for DistributionTargetResponse
         return db_target, inserted_records
 
     async def update_rule_target(self, rule_id: int, target_id: int, update_in: DistributionTargetUpdate) -> DistributionTarget:
         db_target = await self.repo.get_target_by_id(target_id, rule_id=rule_id)
         if not db_target:
-            raise NotFoundException("Target not found")
+            raise HTTPException(status_code=404, detail="Target not found")
 
         update_data = update_in.model_dump(exclude_unset=True)
         for key, value in update_data.items():
@@ -127,7 +128,7 @@ class DistributionRuleService:
     async def delete_rule_target(self, rule_id: int, target_id: int) -> None:
         db_target = await self.repo.get_target_by_id(target_id, rule_id=rule_id)
         if not db_target:
-            raise NotFoundException("Target not found")
+            raise HTTPException(status_code=404, detail="Target not found")
 
         await self.repo.delete_target(db_target)
         await self.db.commit()
@@ -139,7 +140,7 @@ class DistributionRuleService:
     async def preview_rule(self, rule_id: int, hours_ahead: int = 24, limit: int = 50) -> RulePreviewResponse:
         rule = await self.repo.get_rule_by_id(rule_id)
         if not rule:
-            raise NotFoundException("Distribution rule not found")
+            raise HTTPException(status_code=404, detail="Distribution rule not found")
         
         # 为了预览，我们需要加载 targets
         result = await self.db.execute(

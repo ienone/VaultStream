@@ -11,18 +11,35 @@ class DistributionRepository:
 
     async def get_rule_by_id(self, rule_id: int) -> Optional[DistributionRule]:
         result = await self.db.execute(
-            select(DistributionRule).where(DistributionRule.id == rule_id)
+            select(DistributionRule)
+            .options(
+                selectinload(DistributionRule.distribution_targets)
+                .selectinload(DistributionTarget.bot_chat)
+            )
+            .where(DistributionRule.id == rule_id)
         )
         return result.scalar_one_or_none()
 
     async def get_rule_by_name(self, name: str) -> Optional[DistributionRule]:
         result = await self.db.execute(
-            select(DistributionRule).where(DistributionRule.name == name)
+            select(DistributionRule)
+            .options(
+                selectinload(DistributionRule.distribution_targets)
+                .selectinload(DistributionTarget.bot_chat)
+            )
+            .where(DistributionRule.name == name)
         )
         return result.scalar_one_or_none()
 
     async def list_rules(self, enabled: Optional[bool] = None) -> List[DistributionRule]:
-        query = select(DistributionRule).order_by(desc(DistributionRule.priority), DistributionRule.id)
+        query = (
+            select(DistributionRule)
+            .options(
+                selectinload(DistributionRule.distribution_targets)
+                .selectinload(DistributionTarget.bot_chat)
+            )
+            .order_by(desc(DistributionRule.priority), DistributionRule.id)
+        )
         if enabled is not None:
             query = query.where(DistributionRule.enabled == enabled)
         result = await self.db.execute(query)
@@ -69,13 +86,18 @@ class DistributionRepository:
     async def list_rule_targets(self, rule_id: int) -> List[DistributionTarget]:
         result = await self.db.execute(
             select(DistributionTarget)
+            .options(selectinload(DistributionTarget.bot_chat))
             .where(DistributionTarget.rule_id == rule_id)
             .order_by(DistributionTarget.created_at.asc())
         )
         return list(result.scalars().all())
 
     async def get_target_by_id(self, target_id: int, rule_id: Optional[int] = None) -> Optional[DistributionTarget]:
-        stmt = select(DistributionTarget).where(DistributionTarget.id == target_id)
+        stmt = (
+            select(DistributionTarget)
+            .options(selectinload(DistributionTarget.bot_chat))
+            .where(DistributionTarget.id == target_id)
+        )
         if rule_id is not None:
             stmt = stmt.where(DistributionTarget.rule_id == rule_id)
         result = await self.db.execute(stmt)

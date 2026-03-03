@@ -23,11 +23,14 @@ class TargetTestRequest(BaseModel):
 
 
 class BotChatCreate(BaseModel):
+    bot_config_id: int
     chat_id: str
     chat_type: BotChatType
     title: Optional[str] = None
     username: Optional[str] = None
     description: Optional[str] = None
+    enabled: bool = True
+    nsfw_chat_id: Optional[str] = None
 
 
 class BotChatUpdate(BaseModel):

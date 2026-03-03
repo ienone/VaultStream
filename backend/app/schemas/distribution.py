@@ -232,3 +232,7 @@ class RulePreviewResponse(BaseModel):
     filtered_count: int
     pending_review_count: int
     items: List[RulePreviewItem]
+
+from app.schemas.bot import BotChatResponse
+DistributionTargetResponse.model_rebuild()
+DistributionRuleResponse.model_rebuild()
