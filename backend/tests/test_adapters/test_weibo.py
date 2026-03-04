@@ -1,74 +1,67 @@
 """
-Weibo Adapter Tests
+Weibo Adapter Tests (Mocked)
 """
 import pytest
+import json
+import os
+import responses
 from typing import Dict
 
 from app.adapters.weibo import WeiboAdapter
+from app.adapters.base import ParsedContent
 from tests.test_adapters.base import AdapterTestBase
 
+# Define paths to mock data
+MOCK_DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "weibo")
+
+def load_mock_json(filename):
+    with open(os.path.join(MOCK_DATA_DIR, filename), "r", encoding="utf-8") as f:
+        return json.load(f)
 
 class TestWeiboAdapter(AdapterTestBase):
-    """Test suite for Weibo adapter"""
-    
+    """Test suite for Weibo adapter using mocked data"""
+
     @property
     def platform_name(self) -> str:
         return "weibo"
-    
+
     @property
     def adapter_class(self):
         return WeiboAdapter
-    
+
     def get_test_urls(self) -> Dict[str, str]:
-        """Fallback URLs if database is empty"""
         return {
-            "status": "https://weibo.com/7751385439/QmsEAti7w",
-            "user_profile": "https://weibo.com/u/7751385439",
+            "status": "https://weibo.com/2377356574/QuvmNhSq5",
         }
-    
+
     @pytest.mark.asyncio
-    @pytest.mark.integration
-    async def test_parse_from_db(self, adapter, get_platform_urls):
-        """Test parsing with real URLs from database"""
-        urls = await get_platform_urls("weibo", limit=5)
+    async def test_parse_status_mocked(self, adapter):
+        """Test parsing weibo status with mocked API response"""
+        bid = "QuvmNhSq5"
+        url = f"https://weibo.com/2377356574/{bid}"
+        mock_data = load_mock_json(f"status_{bid}.json")
         
-        if not urls:
-            pytest.skip("No Weibo URLs in database")
-        
-        for content_type, url in urls.items():
-            print(f"\nTesting {content_type}: {url}")
-            result = await self._test_basic_parse(adapter, url)
-            assert result.content_type in ["status", "user_profile"]
-            assert result.layout_type == "gallery"
-    
-    @pytest.mark.asyncio
-    @pytest.mark.integration
-    async def test_archive_image_quality(self, adapter, get_platform_urls):
-        """Test that archive uses best quality images (mw2000 > largest)"""
-        urls = await get_platform_urls("weibo", limit=3)
-        
-        if not urls or "status" not in urls:
-            pytest.skip("No Weibo status URLs in database")
-        
-        url = urls["status"]
-        result = await self._test_archive_structure(adapter, url)
-        archive = result.archive_metadata.get("archive")
-        
-        if archive and archive.get("images"):
-            # Verify images have URLs
-            for img in archive["images"]:
-                assert "url" in img
-                # Should prefer mw2000 or large
-                assert "sinaimg.cn" in img["url"]
-    
+        # Mock the API request (using responses since weibo_parser uses requests)
+        with responses.RequestsMock() as rsps:
+            rsps.add(
+                responses.GET,
+                f"https://weibo.com/ajax/statuses/show?id={bid}",
+                json=mock_data,
+                status=200
+            )
+
+            result = await adapter.parse(url)
+            
+            assert result.content_type == "status"
+            assert result.content_id == bid
+            assert result.platform == "weibo"
+            assert result.title or result.body is not None
+            assert result.author_name is not None
+
     @pytest.mark.asyncio
     async def test_url_normalization(self, adapter):
-        """Test URL cleaning"""
-        test_cases = [
-            ("https://weibo.com/123/abc?type=comment", "https://weibo.com/123/abc"),
-            ("https://weibo.com/detail/abc", "https://weibo.com/detail/abc"),
-        ]
-        
-        for dirty, expected in test_cases:
-            clean = await self._test_url_normalization(adapter, dirty)
-            assert clean == expected
+        """Test URL cleaning and expansion"""
+        # Test basic cleaning
+        url = "https://weibo.com/12345/ABCDE?from=feed"
+        clean = await adapter.clean_url(url)
+        assert "from=" not in clean

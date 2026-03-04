@@ -1,6 +1,6 @@
 import pytest
 
-from app.distribution.decision import (
+from app.services.distribution.decision import (
     DECISION_FILTERED,
     DECISION_PENDING_REVIEW,
     DECISION_WILL_PUSH,

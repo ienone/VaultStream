@@ -22,6 +22,7 @@ class ContentRepository:
         author: Optional[str] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
+        include_archive_metadata: bool = False,
     ) -> Tuple[List[Content], int]:
         """统一的内容查询逻辑，支持 FTS5 搜索"""
         conditions = []
@@ -83,12 +84,16 @@ class ContentRepository:
         # 分页查询（列表场景跳过加载 archive_metadata / last_error_detail 大字段）
         stmt = (
             select(Content)
-            .options(defer(Content.archive_metadata), defer(Content.last_error_detail))
             .where(and_(*conditions))
             .order_by(desc(Content.created_at))
             .offset((page - 1) * size)
             .limit(size)
         )
+        if not include_archive_metadata:
+            stmt = stmt.options(defer(Content.archive_metadata), defer(Content.last_error_detail))
+        else:
+            stmt = stmt.options(defer(Content.last_error_detail))
+        
         result = await self.db.execute(stmt)
         return result.scalars().all(), total
 

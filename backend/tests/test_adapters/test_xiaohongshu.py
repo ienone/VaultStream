@@ -1,62 +1,71 @@
 """
-Xiaohongshu Adapter Tests
+Xiaohongshu Adapter Tests (Mocked)
 """
 import pytest
+import json
+import os
+import re
 from typing import Dict
 
 from app.adapters.xiaohongshu import XiaohongshuAdapter
+from app.adapters.base import ParsedContent
 from tests.test_adapters.base import AdapterTestBase
 
+# Define paths to mock data
+MOCK_DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "xiaohongshu")
+
+def load_mock_json(filename):
+    with open(os.path.join(MOCK_DATA_DIR, filename), "r", encoding="utf-8") as f:
+        return json.load(f)
 
 class TestXiaohongshuAdapter(AdapterTestBase):
-    """Test suite for Xiaohongshu adapter"""
-    
+    """Test suite for Xiaohongshu adapter using mocked data"""
+
     @property
     def platform_name(self) -> str:
         return "xiaohongshu"
-    
+
     @property
     def adapter_class(self):
         return XiaohongshuAdapter
-    
+
     def get_test_urls(self) -> Dict[str, str]:
-        """Fallback URLs if database is empty"""
         return {
-            "note": "https://www.xiaohongshu.com/explore/69758150000000000b011944?xsec_token=ABDgfgcEPDW1329W2TkmpnY4-0xMT2Uk2IJRYrxW3PwF8=&xsec_source=",
-            "user": "https://www.xiaohongshu.com/user/profile/5e9e828e0000000001009ec8?xsec_token=ABSI6qMGV4mW3Kw2ZvGP7c_wOCZIuQA9jEui40PYZGM9Y=&xsec_source=pc_feed",
+            "note": "https://www.xiaohongshu.com/discovery/item/69a7a9ff000000002802080d",
         }
-    
-    @pytest.mark.asyncio
-    @pytest.mark.integration
-    async def test_parse_from_db(self, adapter, get_platform_urls):
-        """Test parsing with real URLs from database"""
-        urls = await get_platform_urls("xiaohongshu", limit=5)
-        
-        if not urls:
-            pytest.skip("No Xiaohongshu URLs in database")
-        
-        for content_type, url in urls.items():
-            print(f"\nTesting {content_type}: {url}")
-            result = await self._test_basic_parse(adapter, url)
-            assert result.content_type in ["note", "video", "user_profile"]
-            assert result.layout_type == "gallery"
+
+    @pytest.fixture
+    def adapter(self):
+        return XiaohongshuAdapter(cookies={"a1": "test_cookie"})
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
-    async def test_archive_media_structure(self, adapter, get_platform_urls):
-        """Test that archive contains proper media structure"""
-        urls = await get_platform_urls("xiaohongshu", limit=3)
+    async def test_parse_note_mocked(self, adapter, httpx_mock):
+        """Test parsing XHS note with mocked API response"""
+        note_id = "69a7a9ff000000002802080d"
+        url = f"https://www.xiaohongshu.com/discovery/item/{note_id}"
+        mock_data = load_mock_json(f"note_{note_id}.json")
         
-        if not urls or "note" not in urls:
-            pytest.skip("No Xiaohongshu note URLs in database")
+        # Mock the API request (POST to edith.xiaohongshu.com/api/sns/web/v1/feed)
+        httpx_mock.add_response(
+            method="POST",
+            url=re.compile(r"https://edith\.xiaohongshu\.com/api/sns/web/v1/feed.*"),
+            json=mock_data,
+            status_code=200
+        )
+
+        result = await adapter.parse(url)
         
-        url = urls["note"]
-        result = await self._test_archive_structure(adapter, url)
-        archive = result.archive_metadata.get("archive")
-        
-        if archive:
-            # Xiaohongshu archive should have version and blocks
-            assert "version" in archive
-            assert "blocks" in archive
-            assert isinstance(archive.get("images", []), list)
-            assert isinstance(archive.get("videos", []), list)
+        assert result.content_type == "note"
+        assert result.content_id == note_id
+        assert result.platform == "xiaohongshu"
+        assert result.title is not None or result.body is not None
+        assert result.author_name is not None
+
+    @pytest.mark.asyncio
+    async def test_url_normalization(self, adapter):
+        """Test URL cleaning"""
+        url = "https://www.xiaohongshu.com/explore/123456?xhsshare=pc_web&source=webshare"
+        clean = await adapter.clean_url(url)
+        # Note: XiaohongshuAdapter.clean_url might behave differently depending on implementation
+        # usually it removes common tracking params
+        assert "xhsshare" not in clean

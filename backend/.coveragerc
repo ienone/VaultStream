@@ -1,0 +1,18 @@
+[run]
+branch = True
+source = app
+# 排除导致 Numpy 冲突的重型库及暂未测试的发现层逻辑
+omit =
+    app/adapters/universal_adapter.py
+    app/adapters/utils/content_agent.py
+    app/adapters/utils/tiered_fetcher.py
+    */site-packages/*
+
+[report]
+show_missing = True
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if __name__ == .__main__.:
+    raise NotImplementedError
+    if TYPE_CHECKING:

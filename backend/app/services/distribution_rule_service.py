@@ -155,7 +155,8 @@ class DistributionRuleService:
 
         contents, _ = await self.content_repo.list_contents(
             size=limit * 2,
-            statuses=[ContentStatus.PARSE_SUCCESS.value]
+            statuses=[ContentStatus.PARSE_SUCCESS.value],
+            include_archive_metadata=True
         )
         
         preview_items: List[RulePreviewItem] = []
