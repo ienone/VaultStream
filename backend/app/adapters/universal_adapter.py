@@ -197,3 +197,19 @@ class UniversalAdapter(PlatformAdapter):
             published_at=published_at,
             archive_metadata=archive_meta
         )
+
+    def map_stats_to_content(self, content, parsed: ParsedContent) -> None:
+        """通用适配器统计字段映射"""
+        stats = parsed.stats or {}
+
+        content.view_count = self._to_int(stats.get("view_count", stats.get("view", 0)))
+        content.like_count = self._to_int(stats.get("like_count", stats.get("like", 0)))
+        content.collect_count = self._to_int(stats.get("collect_count", stats.get("favorite", 0)))
+        content.share_count = self._to_int(stats.get("share_count", stats.get("share", 0)))
+        content.comment_count = self._to_int(stats.get("comment_count", stats.get("reply", 0)))
+
+        common_keys = {
+            "view", "like", "favorite", "share", "reply",
+            "view_count", "like_count", "collect_count", "share_count", "comment_count",
+        }
+        content.extra_stats = {k: v for k, v in stats.items() if k not in common_keys}

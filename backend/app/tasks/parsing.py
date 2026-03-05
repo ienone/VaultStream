@@ -18,7 +18,6 @@ from app.models import Content, ContentStatus, Platform
 from app.adapters import AdapterFactory
 from app.adapters.errors import AdapterError, RetryableAdapterError
 from app.core.config import settings
-from app.utils.url_utils import normalize_bilibili_url
 from app.adapters.storage import get_storage_backend
 from app.media.processor import store_archive_images_as_webp, store_archive_videos
 from app.media.color import extract_cover_color
@@ -68,10 +67,10 @@ class ContentParser:
                     await session.commit()
 
                     # 执行解析（带重试）
-                    parsed = await self._execute_parse_with_retry(content, attempt, max_attempts)
+                    parsed, adapter = await self._execute_parse_with_retry(content, attempt, max_attempts)
 
                     # 更新数据库
-                    await self._update_content(session, content, parsed)
+                    await self._update_content(session, content, parsed, adapter)
                     
                     # 自动审批检查
                     await self._check_auto_approval(session, content)
@@ -83,7 +82,7 @@ class ContentParser:
                     # 标记任务完成
                     await task_queue.mark_complete(content_id)
 
-    async def _execute_parse_with_retry(self, content: Content, current_attempt: int, max_attempts: int):
+    async def _execute_parse_with_retry(self, content: Content, current_attempt: int, max_attempts: int) -> tuple[Any, Any]:
         """执行解析逻辑，包含重试机制"""
         parsed = None
         last_err: Exception | None = None
@@ -93,10 +92,6 @@ class ContentParser:
         
         for i in range(remaining_attempts):
             try:
-                # B 站 ID 规范化
-                if content.platform == Platform.BILIBILI:
-                    content.url = normalize_bilibili_url(content.url)
-
                 adapter = AdapterFactory.create(
                     content.platform,
                     cookies=self._get_platform_cookies(content.platform)
@@ -105,7 +100,7 @@ class ContentParser:
                 logger.info(f"开始解析内容 (try={current_attempt + i + 1}/{max_attempts})")
                 parsed = await adapter.parse(content.url)
                 last_err = None
-                return parsed
+                return parsed, adapter
             except AdapterError as e:
                 last_err = e
                 if not e.retryable:
@@ -119,13 +114,12 @@ class ContentParser:
                 last_err = e
                 raise
 
-        if parsed is None:
-            raise RetryableAdapterError(
-                f"解析重试失败，已达到最大次数: {max_attempts}",
-                details={"last_error": str(last_err) if last_err else None},
-            )
+        raise RetryableAdapterError(
+            f"解析重试失败，已达到最大次数: {max_attempts}",
+            details={"last_error": str(last_err) if last_err else None},
+        )
 
-    async def _update_content(self, session: AsyncSession, content: Content, parsed: Any):
+    async def _update_content(self, session: AsyncSession, content: Content, parsed: Any, adapter: Any):
         """更新内容数据到数据库"""
         content.clean_url = parsed.clean_url
         content.content_type = parsed.content_type
@@ -184,7 +178,7 @@ class ContentParser:
         # 统一 ID 和互动数据
         content.platform_id = parsed.content_id
         if hasattr(parsed, 'stats') and parsed.stats:
-            self._map_stats_to_content(content, parsed.stats)
+            adapter.map_stats_to_content(content, parsed)
 
         # 更新状态
         content.status = ContentStatus.PARSE_SUCCESS
@@ -217,87 +211,6 @@ class ContentParser:
             "platform": content.platform.value if content.platform else None,
             "cover_url": content.cover_url
         })
-
-    def _map_stats_to_content(self, content: Content, stats: Dict[str, Any]):
-        """将解析的统计数据映射到 Content 模型"""
-        content.view_count = stats.get('view', 0)
-        content.like_count = stats.get('like', 0)
-        content.collect_count = stats.get('favorite', 0)
-        content.share_count = stats.get('share', 0)
-        content.comment_count = stats.get('reply', 0)
-        
-        # 平台特有数据
-        if content.platform == Platform.BILIBILI:
-            content.extra_stats = {
-                "coin": stats.get('coin', 0),
-                "danmaku": stats.get('danmaku', 0),
-                "live_status": stats.get('live_status', 0)
-            }
-        elif content.platform == Platform.TWITTER:
-            content.extra_stats = {
-                "bookmarks": stats.get('bookmarks', 0),
-                "screen_name": stats.get('screen_name'),
-                "replying_to": stats.get('replying_to'),
-            }
-        elif content.platform == Platform.WEIBO:
-            self._map_weibo_stats(content, stats)
-        elif content.platform == Platform.ZHIHU:
-            self._map_zhihu_stats(content, stats)
-        else:
-            # 其他平台
-            extra_keys = set(stats.keys()) - {'view', 'like', 'favorite', 'share', 'reply'}
-            content.extra_stats = {k: stats[k] for k in extra_keys if k in stats}
-
-    def _map_weibo_stats(self, content: Content, stats: Dict[str, Any]):
-        """映射微博特有数据"""
-        if content.content_type == "user_profile":
-            content.view_count = stats.get('followers', stats.get('view', 0))
-            content.share_count = stats.get('friends', stats.get('share', 0))
-            content.comment_count = stats.get('statuses', stats.get('reply', 0))
-            content.extra_stats = {
-                "followers": content.view_count,
-                "friends": content.share_count,
-                "statuses": content.comment_count,
-            }
-        else:
-            content.extra_stats = {
-                "repost": stats.get('share', 0),
-                "attitudes": stats.get('like', 0),
-                "comments": stats.get('reply', 0),
-            }
-
-    def _map_zhihu_stats(self, content: Content, stats: Dict[str, Any]):
-        """映射知乎特有数据"""
-        if content.content_type == "user_profile":
-            content.view_count = stats.get('follower_count', 0)
-            content.share_count = stats.get('following_count', 0)
-            content.like_count = stats.get('voteup_count', 0)
-            content.collect_count = stats.get('favorited_count', 0)
-            
-            content.extra_stats = {
-                "follower_count": stats.get('follower_count', 0),
-                "following_count": stats.get('following_count', 0),
-                "voteup_count": stats.get('voteup_count', 0),
-                "thanked_count": stats.get('thanked_count', 0),
-                "favorited_count": stats.get('favorited_count', 0),
-                # ... 其他字段保留
-            }
-        else:
-            content.extra_stats = {
-                "voteup_count": stats.get('voteup_count', 0),
-                "thanks_count": stats.get('thanks_count', 0),
-                "follower_count": stats.get('follower_count', 0),
-                # ...
-            }
-            if content.content_type == "question":
-                content.collect_count = stats.get('follower_count', content.collect_count)
-                content.view_count = stats.get('visit_count', content.view_count)
-                content.comment_count = stats.get('answer_count', content.comment_count)
-            elif content.content_type == "pin":
-                content.collect_count = stats.get('favorite', 0)
-                content.share_count = stats.get('share', 0)
-            elif content.content_type == "article":
-                content.collect_count = stats.get('favorited_count', 0)
 
     async def _handle_parse_error(self, session, content, task_data, error, attempt, max_attempts):
         """处理解析错误"""
@@ -632,8 +545,8 @@ class ContentParser:
                     await session.commit()
 
                     # 复用内部执行逻辑
-                    parsed = await self._execute_parse_with_retry(content, 0, 1)
-                    await self._update_content(session, content, parsed)
+                    parsed, adapter = await self._execute_parse_with_retry(content, 0, 1)
+                    await self._update_content(session, content, parsed, adapter)
                     
                     logger.info(f"重试解析成功: {content_id} (attempt={attempt})")
                     return True

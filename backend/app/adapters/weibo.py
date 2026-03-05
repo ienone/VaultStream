@@ -199,3 +199,27 @@ class WeiboAdapter(PlatformAdapter):
         clean_url = await self.clean_url(url)
         
         return await parse_weibo(bid, clean_url, headers, request_cookies or {}, proxies)
+
+    def map_stats_to_content(self, content, parsed: ParsedContent) -> None:
+        """微博统计字段映射"""
+        stats = parsed.stats or {}
+
+        if parsed.content_type == "user_profile":
+            content.view_count = self._to_int(stats.get("followers", stats.get("view", 0)))
+            content.share_count = self._to_int(stats.get("friends", stats.get("share", 0)))
+            content.comment_count = self._to_int(stats.get("statuses", stats.get("reply", 0)))
+            content.like_count = self._to_int(stats.get("like", 0))
+            content.collect_count = self._to_int(stats.get("favorite", 0))
+            content.extra_stats = {
+                "followers": content.view_count,
+                "friends": content.share_count,
+                "statuses": content.comment_count,
+            }
+            return
+
+        self.map_common_stats(content, stats)
+        content.extra_stats = {
+            "repost": self._to_int(stats.get("share", stats.get("repost", 0))),
+            "attitudes": self._to_int(stats.get("like", 0)),
+            "comments": self._to_int(stats.get("reply", 0)),
+        }

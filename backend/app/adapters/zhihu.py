@@ -689,3 +689,39 @@ class ZhihuAdapter(PlatformAdapter):
 
             except httpx.RequestError as e:
                 raise RetryableAdapterError(f"网络请求错误: {e}")
+
+    def map_stats_to_content(self, content, parsed: ParsedContent) -> None:
+        """知乎统计字段映射"""
+        stats = parsed.stats or {}
+
+        if parsed.content_type == "user_profile":
+            content.view_count = self._to_int(stats.get("follower_count", 0))
+            content.share_count = self._to_int(stats.get("following_count", 0))
+            content.like_count = self._to_int(stats.get("voteup_count", 0))
+            content.collect_count = self._to_int(stats.get("favorited_count", 0))
+            content.comment_count = self._to_int(stats.get("reply", 0))
+            content.extra_stats = {
+                "follower_count": self._to_int(stats.get("follower_count", 0)),
+                "following_count": self._to_int(stats.get("following_count", 0)),
+                "voteup_count": self._to_int(stats.get("voteup_count", 0)),
+                "thanked_count": self._to_int(stats.get("thanked_count", 0)),
+                "favorited_count": self._to_int(stats.get("favorited_count", 0)),
+            }
+            return
+
+        self.map_common_stats(content, stats)
+        content.extra_stats = {
+            "voteup_count": self._to_int(stats.get("voteup_count", 0)),
+            "thanks_count": self._to_int(stats.get("thanks_count", 0)),
+            "follower_count": self._to_int(stats.get("follower_count", 0)),
+        }
+
+        if parsed.content_type == "question":
+            content.collect_count = self._to_int(stats.get("follower_count", content.collect_count))
+            content.view_count = self._to_int(stats.get("visit_count", content.view_count))
+            content.comment_count = self._to_int(stats.get("answer_count", content.comment_count))
+        elif parsed.content_type == "pin":
+            content.collect_count = self._to_int(stats.get("favorite", 0))
+            content.share_count = self._to_int(stats.get("share", 0))
+        elif parsed.content_type == "article":
+            content.collect_count = self._to_int(stats.get("favorited_count", 0))

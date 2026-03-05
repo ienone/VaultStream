@@ -84,6 +84,34 @@ class PlatformAdapter(ABC):
         """解析内容"""
         pass
 
+    @abstractmethod
+    def map_stats_to_content(self, content: Any, parsed: ParsedContent) -> None:
+        """将 ParsedContent.stats 映射到 Content 统计字段"""
+        pass
+
+    @staticmethod
+    def _to_int(value: Any, default: int = 0) -> int:
+        """安全整数转换"""
+        try:
+            if value is None:
+                return default
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def map_common_stats(content: Any, stats: Optional[Dict[str, Any]]) -> None:
+        """映射通用统计字段并填充 extra_stats"""
+        stats = stats or {}
+        content.view_count = PlatformAdapter._to_int(stats.get("view", 0))
+        content.like_count = PlatformAdapter._to_int(stats.get("like", 0))
+        content.collect_count = PlatformAdapter._to_int(stats.get("favorite", 0))
+        content.share_count = PlatformAdapter._to_int(stats.get("share", 0))
+        content.comment_count = PlatformAdapter._to_int(stats.get("reply", 0))
+
+        common_keys = {"view", "like", "favorite", "share", "reply"}
+        content.extra_stats = {k: v for k, v in stats.items() if k not in common_keys}
+
     @staticmethod
     def build_standard_archive(
         item: Dict[str, Any], 

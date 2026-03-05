@@ -9,6 +9,7 @@
 | 2026-03-03 | 36% | 77 Passed, 10 Skipped, 1 Error | 🔴 基础薄弱 | 核心逻辑“裸奔”，Adapter依赖网络 |
 | 2026-03-04 | 40% | 34 Passed, 0 Skipped | 🟡 核心受控 | 完成全平台 Mock，补齐核心 Task 测试 |
 | 2026-03-05 | **53%** | **148 Passed, 4 Skipped** | 🟢 深度稳健 | **核心模块覆盖率实现 200%-400% 增长** |
+| 2026-03-05 | **57%** | **419 Passed, 5 Skipped** | 🟢 持续推进 | Phase 1+2 核心服务层 6 模块覆盖率大幅提升 |
 
 ---
 
@@ -55,13 +56,44 @@
 
 ---
 
-## 🚀 后续实施计划
+## 🚀 后续实施计划（2026-03-05 制定）
 
-1.  **优先级 P1**: **集成测试 (Integration Tests)**。
-    *   在真实 SQLite 文件（非内存）环境下，运行多进程并发压力测试，最终验证吞吐极限。
-2.  **优先级 P1**: **持久层搜索增强**。
-    *   针对 FTS5 全文检索的复杂分词、评分排序进行深度验证。
-3.  **优先级 P2**: **多模态媒体处理**。
-    *   Mock `ffmpeg` 完整链路，验证不同容器格式转换的容错性。
-4.  **优先级 P2**: **系统管理后台 API**。
-    *   补齐 Bot 配置、系统设置动态生效的路由端点测试。
+当前总覆盖率 **53%**，目标分阶段提升至 **72%+**。
+
+### 🔴 Phase 1: 核心业务逻辑（目标 53% → 60%）
+
+| # | 模块 | 当前 | 目标 | 测试文件 | 关键测试点 | 状态 |
+|---|---|---|---|---|---|---|
+| 1.1 | `services/distribution/scheduler.py` | 15% → **86%** | 75%+ | `test_distribution_scheduler.py` | `compute_auto_scheduled_at` 限流排期、`enqueue_content` 资格检查/规则匹配/去重/force 重置、`mark_historical_*` 回填 | ✅ |
+| 1.2 | `services/distribution/engine.py` | 33% → **90%** | 80%+ | `test_distribution_engine.py` | `match_rules` 规则过滤、`auto_approve_if_eligible` 自动审批+触发入队、`refresh_queue_by_rules` 状态翻转 | ✅ |
+| 1.3 | `services/content_service.py` | 49% → **86%** | 70%+ | `test_content_service_deep.py` | 补充未覆盖的 CRUD 分支、批量操作、异常路径 | ✅ |
+| 1.4 | `tasks/distribution_worker.py` | 46% | 65%+ | `test_distribution_task.py` | Worker 生命周期、批量轮询、重试退避、并发锁 | ⏳ |
+
+### 🟠 Phase 2: 服务与数据层快速收割（目标 60% → 67%）
+
+| # | 模块 | 当前 | 目标 | 测试文件 | 关键测试点 | 状态 |
+|---|---|---|---|---|---|---|
+| 2.1 | `services/settings_service.py` | 38% → **96%** | 80%+ | `test_settings_service.py` | 缓存命中/穿透、布尔值解析、`set`/`delete`/`load_all` 全流程、Settings 对象同步 | ✅ |
+| 2.2 | `services/content_presenter.py` | 43% → **91%** | 85%+ | `test_content_presenter.py` | `local://` URL 转换、rich_payload/context_data 嵌套转换、U+FFFD 清理、layout_type 优先级 | ✅ |
+| 2.3 | `services/dashboard_service.py` | 44% → **94%** | 85%+ | `test_dashboard_service.py` | `classify_distribution_status` 全分支、`build_parse_stats`/`build_distribution_stats` 聚合、规则拆分 | ✅ |
+| 2.4 | `repositories/system_repository.py` | 38% | 75%+ | `test_repositories_deep.py` | `get_setting`/`upsert_setting`/`delete_setting`/`list_settings` | ⏳ |
+| 2.5 | `repositories/bot_repository.py` | 36% | 75%+ | `test_repositories_deep.py` | Bot CRUD、Chat 列表查询 | ⏳ |
+| 2.6 | `services/distribution_rule_service.py` | 40% | 70%+ | `test_distribution_rule_service.py` | 规则 CRUD、目标绑定/解绑、级联操作 | ⏳ |
+
+### 🔵 Phase 3: API 路由层（目标 67% → 72%）
+
+| # | 模块 | 当前 | 目标 | 测试文件 | 关键测试点 | 状态 |
+|---|---|---|---|---|---|---|
+| 3.1 | `routers/distribution_queue.py` | 31% | 60%+ | `test_api/test_distribution_queue_extra.py` | 队列项 CRUD、批量审批、手动推送、状态过滤 | ⏳ |
+| 3.2 | `routers/bot_management.py` | 33% | 60%+ | `test_api/test_bot_management.py` | Bot 增删改、Chat 绑定、连接测试 | ⏳ |
+| 3.3 | `routers/bot_config.py` | 42% | 65%+ | `test_api/test_bot_config.py` | 配置 CRUD、运行时加载 | ⏳ |
+| 3.4 | `routers/events.py` | 24% | 60%+ | `test_api/test_events.py` | SSE 连接、事件订阅 | ⏳ |
+
+### ⚪ Phase 4: 延后项（视情况推进）
+
+| 模块 | 当前 | 备注 |
+|---|---|---|
+| `bot/main.py` | 11% | Telegram Bot 启动流程，需完整 Mock Bot API |
+| `browser_auth_service.py` | 11% | Playwright 浏览器自动化，测试成本高 |
+| `tasks/maintenance.py` | 22% | 无限循环保活任务，需控制时间模拟 |
+| `core/crawler_config.py` | 19% | 爬虫配置加载，依赖外部文件 |

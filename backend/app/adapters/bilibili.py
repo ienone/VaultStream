@@ -13,6 +13,7 @@ import httpx
 from typing import Optional, Dict
 from urllib.parse import urlparse, parse_qs, urlencode
 from app.core.logging import logger
+from app.utils.url_utils import normalize_bilibili_url
 
 from app.adapters.base import PlatformAdapter, ParsedContent
 from app.models import BilibiliContentType
@@ -162,6 +163,8 @@ class BilibiliAdapter(PlatformAdapter):
         Raises:
             NonRetryableAdapterError: 不支持的URL类型
         """
+        url = normalize_bilibili_url(url)
+
         # 先净化再识别：确保通用b23.tv短链也能解析
         clean_url = await self.clean_url(url)
 
@@ -189,3 +192,7 @@ class BilibiliAdapter(PlatformAdapter):
         # 其他类型暂未实现
         from app.adapters.errors import NonRetryableAdapterError
         raise NonRetryableAdapterError(f"尚未实现 {content_type} 的解析")
+
+    def map_stats_to_content(self, content, parsed: ParsedContent) -> None:
+        """B站统计字段映射"""
+        self.map_common_stats(content, parsed.stats)

@@ -207,3 +207,7 @@ class XiaohongshuAdapter(PlatformAdapter):
             
         else:
             raise NonRetryableAdapterError(f"不支持的小红书链接类型: {url}")
+
+    def map_stats_to_content(self, content, parsed: ParsedContent) -> None:
+        """小红书统计字段映射"""
+        self.map_common_stats(content, parsed.stats)

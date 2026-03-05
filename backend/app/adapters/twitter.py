@@ -346,3 +346,7 @@ class TwitterAdapter(PlatformAdapter):
             stats=stats,
             archive_metadata=archive_metadata
         )
+
+    def map_stats_to_content(self, content, parsed: ParsedContent) -> None:
+        """Twitter 统计字段映射"""
+        self.map_common_stats(content, parsed.stats)
