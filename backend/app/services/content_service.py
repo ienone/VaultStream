@@ -105,6 +105,10 @@ class ContentService:
             content.tags = list(existing_tags.union(incoming_tags))
             if source_name:
                 content.source = source_name
+            
+            # 显式标记为 dirty 确保更新被提交
+            self.db.add(content)
+            
             # 重新记录来源流水
             self.db.add(
                 ContentSource(

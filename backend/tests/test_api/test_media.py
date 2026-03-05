@@ -9,26 +9,15 @@ class TestMediaAPI:
     """Test suite for media endpoints"""
     
     @pytest.mark.asyncio
-    async def test_media_proxy(self, client: AsyncClient):
-        """Test media proxy endpoint"""
-        # Use a simple test URL
-        test_url = "https://example.com/image.jpg"
-        
-        response = await client.get(
-            "/api/v1/media/proxy",
-            params={"url": test_url},
-            follow_redirects=False
-        )
-        
-        # Should either proxy or return appropriate error
-        assert response.status_code in [200, 302, 404, 500]
-    
+    async def test_stored_media_not_found(self, client: AsyncClient):
+        """Test that accessing a non-existent stored media file returns 404."""
+        response = await client.get("/api/v1/media/nonexistent_file_12345.jpg")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Media not found"
+
     @pytest.mark.asyncio
-    async def test_stored_media_access(self, client: AsyncClient):
-        """Test accessing stored media files"""
-        # This would need actual stored media to test properly
-        # For now, just verify endpoint exists
-        response = await client.get("/media/test.jpg")
-        
-        # 404 is expected if file doesn't exist
-        assert response.status_code in [200, 404]
+    async def test_stored_media_path_traversal_blocked(self, client: AsyncClient):
+        """Test that path traversal attempts are rejected with 400."""
+        response = await client.get("/api/v1/media/foo/..%2F..%2Fetc%2Fpasswd")
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid media key"

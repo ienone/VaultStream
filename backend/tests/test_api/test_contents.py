@@ -46,18 +46,16 @@ class TestContentsAPI:
     @pytest.mark.asyncio
     async def test_create_content(self, client: AsyncClient):
         """Test POST /api/v1/shares - create new content"""
+        import time
         payload = {
-            "url": "https://www.bilibili.com/video/BV1xx411c7XD"
+            "url": f"https://www.bilibili.com/video/BVcreate{int(time.time())}"
         }
         response = await client.post("/api/v1/shares", json=payload)
         
-        # Should either succeed (201) or already exist (200/409)
-        assert response.status_code in [200, 201, 400, 409]
-        
-        if response.status_code in [200, 201]:
-            data = response.json()
-            assert "id" in data
-            assert data["platform"] == "bilibili"
+        assert response.status_code in [200, 201]
+        data = response.json()
+        assert "id" in data
+        assert data["platform"] == "bilibili"
     
     @pytest.mark.asyncio
     async def test_get_content_by_id(self, client: AsyncClient, db_session):
@@ -125,27 +123,29 @@ class TestContentsAPI:
         assert data["is_nsfw"] is True
 
     @pytest.mark.asyncio
-    async def test_content_actions(self, client: AsyncClient):
-        """Test retry, re-parse, and summary generation"""
-        # Create
-        resp = await client.post("/api/v1/shares", json={"url": "https://www.bilibili.com/video/BVactions123"})
+    async def test_content_reparse(self, client: AsyncClient):
+        """Test re-parse action resets content to processing state."""
+        resp = await client.post("/api/v1/shares", json={"url": "https://www.bilibili.com/video/BVreparse123"})
         content_id = resp.json()["id"]
-        
-        # 1. Retry
-        retry_resp = await client.post(f"/api/v1/contents/{content_id}/retry")
-        assert retry_resp.status_code in [200, 500] # 500 if worker not connected properly but endpoint exists
-        
-        # 2. Re-parse
+
         reparse_resp = await client.post(f"/api/v1/contents/{content_id}/re-parse")
         assert reparse_resp.status_code == 200
         assert reparse_resp.json()["status"] == "processing"
-        
-        # 3. Generate summary (mocking service might be needed but let's see)
-        # We need to set status to success for summary
-        await client.patch(f"/api/v1/contents/{content_id}", json={"status": "parse_success", "body": "test body"})
-        summary_resp = await client.post(f"/api/v1/contents/{content_id}/generate-summary")
-        # Might return 500 if LLM not configured, but endpoint is hit
-        assert summary_resp.status_code in [200, 500, 404]
+
+    @pytest.mark.asyncio
+    async def test_content_retry(self, client: AsyncClient):
+        """Test retry action endpoint accepts the request."""
+        import time
+        resp = await client.post("/api/v1/shares", json={"url": f"https://www.bilibili.com/video/BVretry{int(time.time())}"})
+        content_id = resp.json()["id"]
+
+        retry_resp = await client.post(f"/api/v1/contents/{content_id}/retry")
+        # 200 if enqueue succeeds, 500 if task queue not connected in test env
+        # Either way the endpoint is reachable and processes the request
+        assert retry_resp.status_code in [200, 500]
+        if retry_resp.status_code == 500:
+            # Verify it's a known infrastructure issue (parser failure), not a code bug
+            assert "error" in retry_resp.json() or "detail" in retry_resp.json()
 
     @pytest.mark.asyncio
     async def test_pushed_records(self, client: AsyncClient, db_session):

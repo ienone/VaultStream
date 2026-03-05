@@ -33,10 +33,14 @@ class TestSystemAPI:
     
     @pytest.mark.asyncio
     async def test_system_stats(self, client: AsyncClient):
-        """Test /api/v1/dashboard/stats endpoint"""
+        """Test /api/v1/dashboard/stats endpoint returns expected fields."""
         response = await client.get("/api/v1/dashboard/stats")
         assert response.status_code == 200
         
         data = response.json()
-        # Should have basic stats structure
-        assert isinstance(data, dict)
+        assert "platform_counts" in data
+        assert isinstance(data["platform_counts"], dict)
+        assert "daily_growth" in data
+        assert isinstance(data["daily_growth"], list)
+        assert "storage_usage_bytes" in data
+        assert isinstance(data["storage_usage_bytes"], int)

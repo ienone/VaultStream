@@ -62,35 +62,38 @@ class TestBilibiliAdapter(AdapterTestBase):
     @pytest.mark.asyncio
     async def test_parse_article_mocked(self, adapter, httpx_mock):
         """Test parsing article with mocked API response"""
-        url = "https://www.bilibili.com/read/cv12345678"
-        mock_data = load_mock_json("article_dummy.json")
+        cv_id = "44798841"
+        url = f"https://www.bilibili.com/read/cv{cv_id}"
+        mock_data = load_mock_json(f"article_{cv_id}.json")
         
         httpx_mock.add_response(
-            url=re.compile(r"https://api\.bilibili\.com/x/article/view\?id=12345678"),
+            url=re.compile(f"https://api\\.bilibili\\.com/x/article/view\\?id={cv_id}"),
             json=mock_data
         )
 
         result = await adapter.parse(url)
         
         assert result.content_type == "article"
-        assert result.content_id == "cv12345678"
-        assert result.title == "Dummy Article"
+        assert result.content_id == f"cv{cv_id}"
+        assert "分词" in result.title or "Transformers" in result.title
         
     @pytest.mark.asyncio
     async def test_parse_dynamic_mocked(self, adapter, httpx_mock):
         """Test parsing dynamic with mocked API response"""
-        url = "https://www.bilibili.com/opus/1150580721704763430"
-        mock_data = load_mock_json("dynamic_dummy.json")
+        dynamic_id = "1176204921796558864"
+        url = f"https://www.bilibili.com/opus/{dynamic_id}"
+        mock_data = load_mock_json(f"dynamic_{dynamic_id}.json")
         
+        # Match either detail or opus/detail
         httpx_mock.add_response(
-            url=re.compile(r"https://api\.bilibili\.com/x/polymer/web-dynamic/v1/opus/detail\?.*id=1150580721704763430.*"),
+            url=re.compile(rf"https://api\.bilibili\.com/x/polymer/web-dynamic/v1/(opus/)?detail\?.*id={dynamic_id}.*"),
             json=mock_data
         )
 
         result = await adapter.parse(url)
         
         assert result.content_type == "dynamic"
-        assert result.content_id == "1150580721704763430"
+        assert result.content_id == dynamic_id
 
     @pytest.mark.asyncio
     async def test_parse_bangumi_mocked(self, adapter, httpx_mock):

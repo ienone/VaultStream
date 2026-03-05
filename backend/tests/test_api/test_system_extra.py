@@ -20,12 +20,18 @@ class TestSystemExtraAPI:
         assert response.json()["status"] == "healthy"
 
     @pytest.mark.asyncio
-    async def test_proxy_image(self, client: AsyncClient):
-        # This might return 400 if URL is invalid or 404 if not found
-        # But we check if the endpoint is reachable
+    async def test_proxy_image_success(self, client: AsyncClient):
+        """Test proxy image returns 200 with valid external URL."""
         response = await client.get("/api/v1/proxy/image?url=https://www.baidu.com/img/flexible/logo/pc/result.png")
-        # It will likely return 200 if it can fetch the image
-        assert response.status_code in [200, 400, 404, 500]
+        assert response.status_code == 200
+        assert response.headers.get("content-type") == "image/webp"
+
+    @pytest.mark.asyncio
+    async def test_proxy_image_rejects_non_http_scheme(self, client: AsyncClient):
+        """Test proxy image blocks non-http/https schemes (SSRF)."""
+        response = await client.get("/api/v1/proxy/image?url=file:///etc/passwd")
+        assert response.status_code == 400
+        assert "不允许访问" in response.json()["detail"]
 
     @pytest.mark.asyncio
     async def test_get_media_not_found(self, client: AsyncClient):

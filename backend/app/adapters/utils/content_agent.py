@@ -50,6 +50,7 @@ _CONTENT_SELECTOR_CANDIDATES = [
     "article.tl_article_content",   # Telegraph
     ".Post-RichTextContainer",      # Zhihu
     ".rich_media_content",          # WeChat
+    ".post_content",                # ITHome
     # Common patterns
     ".post-content",
     ".article-content",
@@ -485,10 +486,10 @@ async def layer1_scan(
     Layer 1: Structural boundary detection.
     Identifies header/footer regions and metadata block locations.
     """
-    from openai import OpenAI
+    from openai import AsyncOpenAI
 
     model = llm_config["provider"].split("/")[-1]
-    client = OpenAI(api_key=llm_config["api_token"], base_url=llm_config["base_url"])
+    client = AsyncOpenAI(api_key=llm_config["api_token"], base_url=llm_config["base_url"])
 
     lines = markdown.split("\n")
     total = len(lines)
@@ -503,7 +504,7 @@ async def layer1_scan(
     ]
 
     try:
-        resp = client.chat.completions.create(model=model, messages=messages)
+        resp = await client.chat.completions.create(model=model, messages=messages, timeout=30.0)
         msg = resp.choices[0].message
 
         content = msg.content or ""
@@ -681,10 +682,10 @@ async def layer2_extract(
 
     Returns: (common_fields, extension_fields, tags, heading_fixes, lines_to_remove, summary)
     """
-    from openai import OpenAI
+    from openai import AsyncOpenAI
 
     model = llm_config["provider"].split("/")[-1]
-    client = OpenAI(api_key=llm_config["api_token"], base_url=llm_config["base_url"])
+    client = AsyncOpenAI(api_key=llm_config["api_token"], base_url=llm_config["base_url"])
 
     body_start = scan_result.get("body_start_line", 1)
     body_end = scan_result.get("body_end_line", len(lines))
@@ -725,7 +726,7 @@ async def layer2_extract(
     ]
 
     try:
-        resp = client.chat.completions.create(model=model, messages=messages)
+        resp = await client.chat.completions.create(model=model, messages=messages, timeout=60.0)
         msg = resp.choices[0].message
 
         content = msg.content or ""
