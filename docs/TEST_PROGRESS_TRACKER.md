@@ -10,6 +10,7 @@
 | 2026-03-04 | 40% | 34 Passed, 0 Skipped | 🟡 核心受控 | 完成全平台 Mock，补齐核心 Task 测试 |
 | 2026-03-05 | **53%** | **148 Passed, 4 Skipped** | 🟢 深度稳健 | **核心模块覆盖率实现 200%-400% 增长** |
 | 2026-03-05 | **57%** | **419 Passed, 5 Skipped** | 🟢 持续推进 | Phase 1+2 核心服务层 6 模块覆盖率大幅提升 |
+| 2026-03-06 | **61%** | **503 Passed, 5 Skipped** | 🟢 全面覆盖 | Phase 1 全部完成 + Phase 2 大部分完成，12 模块突破 80% |
 
 ---
 
@@ -67,7 +68,8 @@
 | 1.1 | `services/distribution/scheduler.py` | 15% → **86%** | 75%+ | `test_distribution_scheduler.py` | `compute_auto_scheduled_at` 限流排期、`enqueue_content` 资格检查/规则匹配/去重/force 重置、`mark_historical_*` 回填 | ✅ |
 | 1.2 | `services/distribution/engine.py` | 33% → **90%** | 80%+ | `test_distribution_engine.py` | `match_rules` 规则过滤、`auto_approve_if_eligible` 自动审批+触发入队、`refresh_queue_by_rules` 状态翻转 | ✅ |
 | 1.3 | `services/content_service.py` | 49% → **86%** | 70%+ | `test_content_service_deep.py` | 补充未覆盖的 CRUD 分支、批量操作、异常路径 | ✅ |
-| 1.4 | `tasks/distribution_worker.py` | 46% | 65%+ | `test_distribution_task.py` | Worker 生命周期、批量轮询、重试退避、并发锁 | ⏳ |
+| 1.4 | `tasks/distribution_worker.py` | 46% → **88%** | 65%+ | `test_distribution_task.py` | Worker 生命周期、批量轮询、重试退避、并发锁 | ✅ |
+| 1.5 | `tasks/parsing.py` | 26% → **81%** | 70%+ | `test_tasks/test_parsing_task.py` | 重试机制、错误处理、死信队列、归档媒体、Cookie、自动审批 | ✅ |
 
 ### 🟠 Phase 2: 服务与数据层快速收割（目标 60% → 67%）
 
@@ -76,9 +78,9 @@
 | 2.1 | `services/settings_service.py` | 38% → **96%** | 80%+ | `test_settings_service.py` | 缓存命中/穿透、布尔值解析、`set`/`delete`/`load_all` 全流程、Settings 对象同步 | ✅ |
 | 2.2 | `services/content_presenter.py` | 43% → **91%** | 85%+ | `test_content_presenter.py` | `local://` URL 转换、rich_payload/context_data 嵌套转换、U+FFFD 清理、layout_type 优先级 | ✅ |
 | 2.3 | `services/dashboard_service.py` | 44% → **94%** | 85%+ | `test_dashboard_service.py` | `classify_distribution_status` 全分支、`build_parse_stats`/`build_distribution_stats` 聚合、规则拆分 | ✅ |
-| 2.4 | `repositories/system_repository.py` | 38% | 75%+ | `test_repositories_deep.py` | `get_setting`/`upsert_setting`/`delete_setting`/`list_settings` | ⏳ |
-| 2.5 | `repositories/bot_repository.py` | 36% | 75%+ | `test_repositories_deep.py` | Bot CRUD、Chat 列表查询 | ⏳ |
-| 2.6 | `services/distribution_rule_service.py` | 40% | 70%+ | `test_distribution_rule_service.py` | 规则 CRUD、目标绑定/解绑、级联操作 | ⏳ |
+| 2.4 | `repositories/system_repository.py` | 38% → **95%** | 75%+ | `test_repositories_extra.py` | `get_setting`/`upsert_setting`/`delete_setting`/`list_settings`/`queue_stats` | ✅ |
+| 2.5 | `repositories/bot_repository.py` | 36% → **100%** | 75%+ | `test_repositories_extra.py` | Bot CRUD、Chat 列表查询、Runtime 管理、Primary Config | ✅ |
+| 2.6 | `services/distribution_rule_service.py` | 40% → **63%** | 70%+ | `test_distribution_rule_service.py` | 规则 CRUD、目标绑定/解绑、级联操作 | ✅ |
 
 ### 🔵 Phase 3: API 路由层（目标 67% → 72%）
 
