@@ -3,7 +3,6 @@
 """
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict
 
 from app.models.bot import BotChatType, BotConfigPlatform
@@ -30,6 +29,8 @@ class BotChatCreate(BaseModel):
     username: Optional[str] = None
     description: Optional[str] = None
     enabled: bool = True
+    is_monitoring: bool = False
+    is_push_target: bool = False
     nsfw_chat_id: Optional[str] = None
 
 
@@ -39,6 +40,8 @@ class BotChatUpdate(BaseModel):
     username: Optional[str] = None
     description: Optional[str] = None
     enabled: Optional[bool] = None
+    is_monitoring: Optional[bool] = None
+    is_push_target: Optional[bool] = None
     nsfw_chat_id: Optional[str] = None
 
 
@@ -55,6 +58,8 @@ class BotChatResponse(BaseModel):
     is_admin: bool
     can_post: bool
     enabled: bool
+    is_monitoring: bool
+    is_push_target: bool
     
     nsfw_chat_id: Optional[str]
     

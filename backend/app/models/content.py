@@ -7,7 +7,7 @@ from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Foreign
 from sqlalchemy.orm import relationship
 
 from app.core.time_utils import utcnow
-from app.models.base import Base, Platform, ContentStatus, LayoutType, ReviewStatus
+from app.models.base import Base, Platform, ContentStatus, LayoutType, ReviewStatus, DiscoveryState, DiscoverySourceKind
 
 
 class BilibiliContentType(str, Enum):
@@ -73,7 +73,17 @@ class Content(Base):
     source = Column(String(100))
     source_type = Column(String(50), default="user_submit", index=True)
     ai_score = Column(Float, nullable=True)
+    ai_reason = Column(Text)
+    ai_tags = Column(JSON, default=list)
     discovered_at = Column(DateTime)
+    
+    discovery_state = Column(
+        SQLEnum(DiscoveryState, native_enum=False, values_callable=lambda x: [e.value for e in x]),
+        nullable=True,
+        index=True,
+    )
+    expire_at = Column(DateTime)
+    promoted_at = Column(DateTime)
     
     platform_id = Column(String(100), index=True)
     
@@ -127,3 +137,26 @@ class ContentSource(Base):
     created_at = Column(DateTime, default=utcnow, index=True)
 
     content = relationship("Content", back_populates="sources")
+
+
+class DiscoverySource(Base):
+    """发现来源配置（统一管理 RSS/HN/Reddit/GitHub/Telegram 频道）"""
+    __tablename__ = "discovery_sources"
+
+    id = Column(Integer, primary_key=True, index=True)
+    kind = Column(
+        SQLEnum(DiscoverySourceKind, native_enum=False, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        index=True,
+    )
+    name = Column(String(200), nullable=False)
+    enabled = Column(Boolean, default=True, index=True)
+    config = Column(JSON, default=dict)
+
+    last_sync_at = Column(DateTime)
+    last_cursor = Column(String(500))
+    last_error = Column(Text)
+    sync_interval_minutes = Column(Integer, default=60)
+
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)

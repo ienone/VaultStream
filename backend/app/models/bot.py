@@ -80,6 +80,8 @@ class BotChat(Base):
     can_post = Column(Boolean, default=False)
     
     enabled = Column(Boolean, default=True, index=True)
+    is_monitoring = Column(Boolean, default=False)
+    is_push_target = Column(Boolean, default=False)
     
     nsfw_chat_id = Column(String(50))
     

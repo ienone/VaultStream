@@ -30,6 +30,9 @@ Pillow
 markdownify
 beautifulsoup4
 
+# RSS 订阅解析
+feedparser
+
 # 爬虫与发现层 (Native Crawler & Discovery)
 crawl4ai
 playwright

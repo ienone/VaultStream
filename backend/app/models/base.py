@@ -50,3 +50,23 @@ class TaskStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class DiscoveryState(str, Enum):
+    """发现缓冲区生命周期状态"""
+    INGESTED = "ingested"    # 刚采集，等待 AI 评分
+    SCORED = "scored"        # 已评分，低于阈值的自动标记 ignored
+    VISIBLE = "visible"      # 通过阈值，可在探索界面展示
+    PROMOTED = "promoted"    # 用户已收藏至主库
+    IGNORED = "ignored"      # 用户手动忽略或低分自动忽略
+    MERGED = "merged"        # 被合并入另一条内容，不再独立展示
+    EXPIRED = "expired"      # 超过保留期限，等待清理任务删除
+
+
+class DiscoverySourceKind(str, Enum):
+    """发现来源类型"""
+    RSS = "rss"
+    HACKERNEWS = "hackernews"
+    REDDIT = "reddit"
+    GITHUB = "github"
+    TELEGRAM_CHANNEL = "telegram_channel"

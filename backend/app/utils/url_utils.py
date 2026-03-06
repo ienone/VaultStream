@@ -70,6 +70,37 @@ def canonicalize_url(url: str) -> str:
     return urlunparse(normalized)
 
 
+def normalize_url_for_dedup(url: str) -> str:
+    """
+    用于跨源去重的 URL 规范化。
+
+    在 canonicalize_url 基础上额外执行：
+    - 去除 www. 前缀
+    - 去除尾部斜杠
+    - scheme 统一为 https
+
+    Args:
+        url: 待规范化的 URL
+
+    Returns:
+        去重用的规范化 URL
+    """
+    val = canonicalize_url(url)
+    if not val:
+        return val
+
+    parsed = urlparse(val)
+
+    host = parsed.netloc
+    if host.startswith("www."):
+        host = host[4:]
+
+    path = parsed.path.rstrip("/")
+
+    normalized = parsed._replace(scheme="https", netloc=host, path=path)
+    return urlunparse(normalized)
+
+
 def normalize_bilibili_url(url_or_id: str) -> str:
     """
     规范化 B 站 URL，支持 BV/av/cv 号

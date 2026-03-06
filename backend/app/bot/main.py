@@ -12,6 +12,8 @@ from telegram.ext import (
     CommandHandler,
     CallbackQueryHandler,
     ChatMemberHandler,
+    MessageHandler,
+    filters,
 )
 from app.core.logging import logger
 from app.core.config import settings
@@ -25,6 +27,7 @@ from .commands import (
     get_command, get_tag_command, get_twitter_command, get_bilibili_command, list_tags_command
 )
 from .callbacks import button_callback
+from .monitoring import handle_monitored_message
 
 BOT_VERSION = "0.2.0"
 
@@ -288,6 +291,12 @@ class VaultStreamBot:
         application.add_handler(CommandHandler("status", status_command))
         
         application.add_handler(CallbackQueryHandler(button_callback))
+        
+        # 注册群组消息监控处理器（被动监听 URL）
+        application.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            handle_monitored_message,
+        ))
         
         # 注册群组成员变更处理器（用于自动发现群组）
         application.add_handler(ChatMemberHandler(

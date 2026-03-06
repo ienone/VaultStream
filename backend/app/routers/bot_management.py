@@ -94,6 +94,8 @@ async def create_bot_chat(
         username=chat.username,
         description=chat.description,
         enabled=chat.enabled,
+        is_monitoring=chat.is_monitoring,
+        is_push_target=chat.is_push_target,
         nsfw_chat_id=chat.nsfw_chat_id,
     )
     db.add(db_chat)
@@ -657,6 +659,8 @@ def _chat_to_response(chat: BotChat) -> BotChatResponse:
         is_admin=chat.is_admin or False,
         can_post=chat.can_post or False,
         enabled=chat.enabled or False,
+        is_monitoring=chat.is_monitoring or False,
+        is_push_target=chat.is_push_target or False,
         nsfw_chat_id=chat.nsfw_chat_id,
         total_pushed=chat.total_pushed or 0,
         last_pushed_at=chat.last_pushed_at,

@@ -27,7 +27,7 @@ from app.services.distribution import enqueue_content
 
 # 导入新路由
 from app.routers import (
-    contents, distribution, system, media, bot_management, 
+    contents, discovery, distribution, system, media, bot_management, 
     events, distribution_queue, bot_config, browser_auth
 )
 from app.adapters.browser import browser_manager
@@ -113,15 +113,27 @@ async def lifespan(app: FastAPI):
     maintenance_worker.start()
     logger.info("Cookie 保活任务队列已启动")
     
+    # 启动发现流同步和清理任务
+    from app.tasks import DiscoverySyncTask, DiscoveryCleanupTask
+    discovery_sync_task = DiscoverySyncTask()
+    discovery_sync_task.start()
+    discovery_cleanup_task = DiscoveryCleanupTask()
+    discovery_cleanup_task.start()
+    logger.info("发现流同步和清理任务已启动")
+    
     yield
     
     # 关闭时
     logger.info("关闭 VaultStream 应用程序...")
 
+    # 停止发现流任务
+    await discovery_sync_task.stop()
+    await discovery_cleanup_task.stop()
+    logger.info("发现流同步和清理任务已停止")
+
     # 停止共享浏览器
     await browser_manager.shutdown()
 
-    
     # 停止分发队列 Worker
     await queue_worker.stop()
     logger.info("分发队列 Worker 已停止")
@@ -197,6 +209,7 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(contents.router, prefix="/api/v1", tags=["contents"])
+app.include_router(discovery.router, prefix="/api/v1", tags=["discovery"])
 app.include_router(distribution.router, prefix="/api/v1", tags=["distribution"])
 app.include_router(system.router, prefix="/api/v1", tags=["system"])
 app.include_router(media.router, prefix="/api/v1", tags=["media"])
