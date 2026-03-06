@@ -39,6 +39,8 @@ class TestBotManagementExtraAPI:
         assert upsert_resp.status_code in [200, 201]  # Might be 201 created or 200 updated
         chat = upsert_resp.json()
         assert chat["chat_id"] == "-100crudtest"
+        assert chat["is_monitoring"] is False
+        assert chat["is_push_target"] is False
         target_chat_id = chat["chat_id"]
 
         # 2. GET single chat
@@ -49,10 +51,16 @@ class TestBotManagementExtraAPI:
         # 3. PATCH single chat
         patch_resp = await client.patch(
             f"/api/v1/bot/chats/{target_chat_id}",
-            json={"title": "Updated Title"}
+            json={
+                "title": "Updated Title",
+                "is_monitoring": True,
+                "is_push_target": True,
+            }
         )
         assert patch_resp.status_code == 200
         assert patch_resp.json()["title"] == "Updated Title"
+        assert patch_resp.json()["is_monitoring"] is True
+        assert patch_resp.json()["is_push_target"] is True
 
         # 4. TOGGLE single chat
         toggle_resp = await client.post(
