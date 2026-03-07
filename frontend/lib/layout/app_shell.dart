@@ -27,13 +27,14 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   void _onDestinationSelected(int index) {
-    if (widget.navigationShell.currentIndex == 1 || index == 1) {
+    final currentIndex = widget.navigationShell.currentIndex;
+    if (currentIndex == 1 || index == 1) {
       ref.read(collectionFilterProvider.notifier).clearFilters();
     }
 
     widget.navigationShell.goBranch(
       index,
-      initialLocation: index == widget.navigationShell.currentIndex,
+      initialLocation: index == currentIndex,
     );
   }
 
@@ -114,6 +115,11 @@ class _MobileShell extends StatelessWidget {
             label: 'Library',
           ),
           NavigationDestination(
+            icon: Icon(Icons.explore_outlined),
+            selectedIcon: Icon(Icons.explore_rounded),
+            label: 'Discover',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.rate_review_outlined),
             selectedIcon: Icon(Icons.rate_review_rounded),
             label: 'Review',
@@ -177,6 +183,11 @@ class _DesktopShell extends StatelessWidget {
                 icon: Icon(Icons.perm_media_outlined),
                 selectedIcon: Icon(Icons.perm_media_rounded),
                 label: Text('Library'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.explore_outlined),
+                selectedIcon: Icon(Icons.explore_rounded),
+                label: Text('Discover'),
               ),
               NavigationRailDestination(
                 icon: Icon(Icons.rate_review_outlined),
