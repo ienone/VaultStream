@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 
 class UnifiedStatItem extends StatelessWidget {
   final IconData icon;
+  final String? emoji;
   final String label;
   final String value;
 
   const UnifiedStatItem({
     super.key,
     required this.icon,
+    this.emoji,
     required this.label,
     required this.value,
   });
@@ -26,7 +28,9 @@ class UnifiedStatItem extends StatelessWidget {
             color: colorScheme.primaryContainer.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(icon, size: 18, color: colorScheme.onPrimaryContainer),
+          child: emoji != null && emoji!.isNotEmpty
+              ? Text(emoji!, style: const TextStyle(fontSize: 16))
+              : Icon(icon, size: 18, color: colorScheme.onPrimaryContainer),
         ),
         const SizedBox(width: 10),
         Flexible(

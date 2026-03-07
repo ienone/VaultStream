@@ -318,6 +318,32 @@ class UnifiedStats extends StatelessWidget {
           );
         }
       }
+
+      // Telegram specific
+      if (stats['telegram_views'] != null) {
+        items.add(
+          UnifiedStatItem(
+            icon: Icons.visibility_outlined,
+            label: '浏览',
+            value: stats['telegram_views'].toString(),
+          ),
+        );
+      }
+
+      if (stats['reactions'] != null && stats['reactions'] is List) {
+        for (var r in stats['reactions']) {
+          if (r is Map && r['emoji'] != null) {
+            items.add(
+              UnifiedStatItem(
+                emoji: r['emoji'],
+                icon: Icons.emoji_emotions_outlined, // Fallback
+                label: '反应',
+                value: r['count'].toString(),
+              ),
+            );
+          }
+        }
+      }
     }
 
     if (items.isEmpty) return const SizedBox.shrink();

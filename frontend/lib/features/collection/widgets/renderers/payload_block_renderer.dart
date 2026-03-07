@@ -16,28 +16,128 @@ class PayloadBlockRenderer extends ConsumerWidget {
     final payload = content.richPayload;
     if (payload == null) return const SizedBox.shrink();
 
-    final blocksRaw = payload['blocks'];
-    if (blocksRaw is! List || blocksRaw.isEmpty) return const SizedBox.shrink();
-    final List<dynamic> blocks = List<dynamic>.from(blocksRaw);
-
     final dio = ref.read(apiClientProvider);
     final apiBaseUrl = dio.options.baseUrl;
     final apiToken = dio.options.headers['X-API-Token']?.toString();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: blocks.map<Widget>((block) {
-        if (block is! Map) return const SizedBox.shrink();
+    final List<Widget> children = [];
+
+    // 1. 渲染 Quoted Content (Telegram/Twitter)
+    final quotedRaw = payload['quoted_content'];
+    if (quotedRaw is Map) {
+      final quoteMap = Map<String, dynamic>.from(quotedRaw);
+      children.add(_buildQuotedContent(context, quoteMap, apiBaseUrl, apiToken));
+    }
+
+    // 2. 渲染动态 Blocks (Zhihu Top Answers 等)
+    final blocksRaw = payload['blocks'];
+    if (blocksRaw is List && blocksRaw.isNotEmpty) {
+      for (var block in blocksRaw) {
+        if (block is! Map) continue;
         final blockMap = Map<String, dynamic>.from(block);
         final type = blockMap['type'] as String?;
         final dataRaw = blockMap['data'];
         final data = dataRaw is Map ? Map<String, dynamic>.from(dataRaw) : null;
 
         if (type == 'sub_item' && data != null) {
-          return _buildSubItem(context, data, apiBaseUrl, apiToken);
+          children.add(_buildSubItem(context, data, apiBaseUrl, apiToken));
         }
-        return const SizedBox.shrink();
-      }).toList(),
+      }
+    }
+
+    if (children.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
+  }
+
+  Widget _buildQuotedContent(BuildContext context, Map<String, dynamic> quote, String apiBaseUrl, String? apiToken) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final quoteUrl = quote['url']?.toString();
+    final author = quote['author']?.toString();
+    final text = quote['text']?.toString() ?? '';
+    final thumbnail = quote['thumbnail']?.toString();
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border(
+          left: BorderSide(
+            color: colorScheme.primary,
+            width: 4,
+          ),
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            if (quoteUrl != null && quoteUrl.isNotEmpty) {
+              SafeUrlLauncher.openExternal(context, quoteUrl);
+            }
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        (author != null && author.isNotEmpty) ? author : '引用内容',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        text,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        maxLines: 4,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                if (thumbnail != null && thumbnail.isNotEmpty) ...[
+                  const SizedBox(width: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: CachedNetworkImage(
+                      imageUrl: thumbnail,
+                      width: 60,
+                      height: 60,
+                      fit: BoxFit.cover,
+                      httpHeaders: buildImageHeaders(
+                        imageUrl: thumbnail,
+                        baseUrl: apiBaseUrl,
+                        apiToken: apiToken,
+                      ),
+                      placeholder: (context, url) => Container(
+                        width: 60,
+                        height: 60,
+                        color: colorScheme.surfaceContainerHighest,
+                      ),
+                      errorWidget: (context, url, error) => const SizedBox.shrink(),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 

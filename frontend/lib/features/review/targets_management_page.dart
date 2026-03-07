@@ -6,7 +6,6 @@ import '../../core/constants/platform_constants.dart';
 import '../../core/widgets/frosted_app_bar.dart';
 import 'models/target_usage_info.dart';
 import 'models/target_list_response.dart';
-import 'models/target_list_response.dart';
 import 'providers/targets_provider.dart';
 import '../../core/utils/toast.dart';
 
