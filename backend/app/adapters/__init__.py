@@ -6,6 +6,7 @@ from .weibo import WeiboAdapter
 from .twitter import TwitterAdapter
 from .xiaohongshu import XiaohongshuAdapter
 from .zhihu import ZhihuAdapter
+from .telegram import TelegramAdapter
 from .universal_adapter import UniversalAdapter
 
 class AdapterFactory:
@@ -15,6 +16,7 @@ class AdapterFactory:
         Platform.TWITTER: TwitterAdapter,
         Platform.XIAOHONGSHU: XiaohongshuAdapter,
         Platform.ZHIHU: ZhihuAdapter,
+        Platform.TELEGRAM: TelegramAdapter,
     }
 
     @staticmethod
@@ -30,7 +32,9 @@ class AdapterFactory:
             return Platform.XIAOHONGSHU
         if "zhihu.com" in url:
             return Platform.ZHIHU
-        return Platform.OTHER
+        if "t.me" in url or "telegram.org" in url:
+            return Platform.TELEGRAM
+        return Platform.UNIVERSAL
 
     @classmethod
     def create(cls, platform: Platform, cookies: Optional[Dict[str, str]] = None, **kwargs: Any) -> PlatformAdapter:
@@ -53,6 +57,7 @@ __all__ = [
     "TwitterAdapter",
     "XiaohongshuAdapter",
     "ZhihuAdapter",
+    "TelegramAdapter",
     "UniversalAdapter",
     "AdapterFactory",
 ]

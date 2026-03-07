@@ -14,6 +14,10 @@ class DiscoveryItemResponse(BaseModel):
     id: int
     title: Optional[str] = None
     url: str
+    body: Optional[str] = None
+    author_name: Optional[str] = None
+    author_avatar_url: Optional[str] = None
+    author_url: Optional[str] = None
     summary: Optional[str] = None
     ai_score: Optional[float] = None
     ai_reason: Optional[str] = None
@@ -22,6 +26,9 @@ class DiscoveryItemResponse(BaseModel):
     discovery_state: Optional[DiscoveryState] = None
     discovered_at: Optional[datetime] = None
     created_at: datetime
+    media_urls: List[str] = Field(default_factory=list)
+    rich_payload: Optional[dict] = None
+    extra_stats: dict = Field(default_factory=dict)
 
     model_config = ConfigDict(from_attributes=True)
 

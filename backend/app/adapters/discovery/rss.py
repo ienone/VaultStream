@@ -9,6 +9,7 @@ import re
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Optional
+from bs4 import BeautifulSoup
 
 import feedparser
 import httpx
@@ -18,11 +19,7 @@ from app.adapters.discovery.base import BaseDiscoveryScraper, DiscoveryItem
 
 
 class RSSDiscoveryScraper(BaseDiscoveryScraper):
-    """RSS/Atom 订阅源抓取器。
-
-    config 示例:
-        {"url": "https://simonwillison.net/atom/everything/", "category": "tech"}
-    """
+    """RSS/Atom 订阅源抓取器。"""
 
     async def fetch(self, last_cursor: Optional[str] = None) -> tuple[list[DiscoveryItem], Optional[str]]:
         feed_url = self._expand_env_vars(self.config.get("url", ""))
@@ -47,7 +44,29 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
                     break
 
                 published_at = self._parse_date(entry)
-                content = self._extract_content(entry)
+                raw_content = self._extract_content(entry)
+                
+                # 强化版清洗逻辑：原地提取并替换为 Markdown (0-Token 策略)
+                content_soup = BeautifulSoup(raw_content, 'html.parser')
+                media_urls = []
+                for img in content_soup.find_all('img'):
+                    src = img.get('src', '')
+                    alt = img.get('alt', '图片')
+                    if src:
+                        media_urls.append(src)
+                        img.replace_with(f"\n![{alt}]({src})\n")
+                
+                for h in content_soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
+                    level = int(h.name[1])
+                    h.replace_with(f"\n{'#' * level} {h.get_text()}\n")
+                for b in content_soup.find_all(['b', 'strong']):
+                    b.replace_with(f"**{b.get_text()}**")
+                for a in content_soup.find_all('a'):
+                    a.replace_with(f"[{a.get_text()}]({a.get('href', '')})")
+                
+                clean_body = content_soup.get_text(separator="\n\n").strip()
+                clean_body = re.sub(r'\n{3,}', '\n\n', clean_body)
+
                 tags = [tag.term for tag in entry.get("tags", [])]
                 category = self.config.get("category")
                 if category:
@@ -56,10 +75,13 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
                 item = DiscoveryItem(
                     url=entry.get("link", feed_url),
                     title=entry.get("title", "Untitled"),
-                    content=content,
-                    author=entry.get("author"),
+                    content=clean_body,
+                    author=entry.get("author", feed.feed.get("title")),
                     published_at=published_at,
                     source_tags=tags,
+                    media_urls=media_urls,
+                    rich_payload={},
+                    extra_stats={},
                     raw_metadata={
                         "feed_url": feed_url,
                         "entry_id": entry_id,
@@ -72,8 +94,6 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
                 if first_id:
                     new_cursor = first_id
 
-        except httpx.HTTPError as e:
-            logger.warning("RSS fetch HTTP error for %s: %s", feed_url, e)
         except Exception as e:
             logger.warning("RSS parse error for %s: %s", feed_url, e)
 
@@ -106,10 +126,10 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
 
     @staticmethod
     def _extract_content(entry: dict) -> str:
+        if "content" in entry and entry.content:
+            return entry.content[0].get("value", "")
         if "summary" in entry:
             return entry.summary
         if "description" in entry:
             return entry.description
-        if "content" in entry and entry.content:
-            return entry.content[0].get("value", "")
         return ""

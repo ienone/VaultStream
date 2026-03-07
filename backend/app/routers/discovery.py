@@ -30,6 +30,21 @@ _ALLOWED_SORT_FIELDS = {
 _VALID_DISCOVERY_SOURCE_KINDS = [k.value for k in DiscoverySourceKind]
 
 
+def _parse_list_param(values: Optional[List[str]]) -> Optional[List[str]]:
+    """支持逗号分隔和重复 query key 的 List 参数。"""
+    if not values:
+        return None
+    result: list[str] = []
+    for value in values:
+        if not value:
+            continue
+        if "," in value:
+            result.extend([v.strip() for v in value.split(",") if v.strip()])
+        else:
+            result.append(value.strip())
+    return result or None
+
+
 # ── Items ──────────────────────────────────────────────────────────────
 
 @router.get("/discovery/items", response_model=dict)
@@ -59,9 +74,10 @@ async def list_discovery_items(
         query = query.where(Content.ai_score <= score_max)
     if q:
         query = query.where(Content.title.ilike(f"%{q}%"))
-    if tags:
+    normalized_tags = _parse_list_param(tags)
+    if normalized_tags:
         tag_conditions = []
-        for tag in tags:
+        for tag in normalized_tags:
             normalized_tag = (tag or "").strip()
             if not normalized_tag:
                 continue

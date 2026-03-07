@@ -43,6 +43,8 @@ class Platform(str, Enum):
     ZHIHU = "zhihu"
     KU_AN="ku_an"
     UNIVERSAL = "universal"
+    TELEGRAM = "telegram"
+    RSS = "rss"
 
 class TaskStatus(str, Enum):
     """任务状态"""

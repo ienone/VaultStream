@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from app.adapters.discovery.base import BaseDiscoveryScraper
 from app.adapters.discovery.rss import RSSDiscoveryScraper
+from app.adapters.discovery.telegram import TelegramDiscoveryScraper
 from app.core.db_adapter import AsyncSessionLocal
 from app.core.time_utils import utcnow
 from app.models import (
@@ -104,6 +105,8 @@ class DiscoverySyncTask:
                     title=item.title,
                     body=item.content if item.content else None,
                     author_name=item.author,
+                    author_avatar_url=item.author_avatar_url,
+                    author_url=item.author_url,
                     source_type=source.kind.value,
                     discovery_state=DiscoveryState.INGESTED,
                     discovered_at=utcnow(),
@@ -111,6 +114,9 @@ class DiscoverySyncTask:
                     expire_at=utcnow() + timedelta(days=retention_days),
                     source_tags=item.source_tags,
                     status=ContentStatus.UNPROCESSED,
+                    media_urls=item.media_urls,
+                    rich_payload=item.rich_payload,
+                    extra_stats=item.extra_stats,
                 )
                 db.add(content)
                 ingested_count += 1
@@ -140,5 +146,7 @@ class DiscoverySyncTask:
         """Factory: return the correct scraper for the source kind"""
         if source.kind == DiscoverySourceKind.RSS:
             return RSSDiscoveryScraper(source.config or {})
+        elif source.kind == DiscoverySourceKind.TELEGRAM_CHANNEL:
+            return TelegramDiscoveryScraper(source.config or {})
         logger.warning(f"No scraper for source kind: {source.kind}")
         return None

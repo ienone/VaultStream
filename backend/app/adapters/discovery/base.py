@@ -6,7 +6,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any, List
 
 
 @dataclass
@@ -17,8 +17,13 @@ class DiscoveryItem:
     title: str
     content: str = ""
     author: Optional[str] = None
+    author_avatar_url: Optional[str] = None
+    author_url: Optional[str] = None
     published_at: Optional[datetime] = None
     source_tags: list[str] = field(default_factory=list)
+    media_urls: list[str] = field(default_factory=list)
+    rich_payload: Optional[Dict[str, Any]] = None
+    extra_stats: Dict[str, Any] = field(default_factory=dict)
     raw_metadata: dict = field(default_factory=dict)
 
 
