@@ -25,6 +25,7 @@ abstract class DiscoveryItem with _$DiscoveryItem {
     @JsonKey(name: 'media_urls') @Default([]) List<String> mediaUrls,
     @JsonKey(name: 'rich_payload') Map<String, dynamic>? richPayload,
     @JsonKey(name: 'extra_stats') @Default({}) Map<String, dynamic> extraStats,
+    @JsonKey(name: 'context_data') Map<String, dynamic>? contextData,
   }) = _DiscoveryItem;
 
   factory DiscoveryItem.fromJson(Map<String, dynamic> json) =>
@@ -48,6 +49,7 @@ extension DiscoveryItemX on DiscoveryItem {
       mediaUrls: mediaUrls,
       richPayload: richPayload,
       extraStats: extraStats,
+      contextData: contextData,
       createdAt: createdAt,
       updatedAt: createdAt,
       layoutType: 'article',

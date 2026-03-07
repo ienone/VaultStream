@@ -5,6 +5,7 @@ import '../../providers/settings_provider.dart';
 import '../../models/system_setting.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../review/providers/bot_chats_provider.dart';
+import '../../../review/models/bot_chat.dart';
 
 class PushTab extends ConsumerStatefulWidget {
   const PushTab({super.key});
@@ -409,8 +410,150 @@ class _PushTabState extends ConsumerState<PushTab> {
             ),
           ),
         ),
+        const SizedBox(height: 32),
+        const SectionHeader(title: '群组与频道管理', icon: Icons.groups_rounded),
+        const SizedBox(height: 16),
+        _buildGroupManagement(context, ref),
         const SizedBox(height: 40),
       ],
+    );
+  }
+
+  Widget _buildGroupManagement(BuildContext context, WidgetRef ref) {
+    final chatsAsync = ref.watch(botChatsProvider);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return chatsAsync.when(
+      data: (chats) {
+        if (chats.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Column(
+                children: [
+                  Icon(Icons.speaker_notes_off_rounded, size: 48, color: colorScheme.outline.withValues(alpha: 0.5)),
+                  const SizedBox(height: 16),
+                  const Text('尚未关联任何群组或频道'),
+                  const SizedBox(height: 8),
+                  Text('请确保机器人已加入群组并执行了 /start', style: theme.textTheme.bodySmall),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return SettingGroup(
+          children: chats.map((chat) => _buildChatTile(context, ref, chat)).toList(),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Text('加载失败: $e'),
+    );
+  }
+
+  Widget _buildChatTile(BuildContext context, WidgetRef ref, BotChat chat) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.2))),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  chat.isTelegram ? Icons.telegram_rounded : Icons.alternate_email_rounded,
+                  size: 20,
+                  color: colorScheme.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(chat.displayName, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                    Text(chat.chatTypeLabel, style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.outline)),
+                  ],
+                ),
+              ),
+              Switch(
+                value: chat.enabled,
+                onChanged: (val) => ref.read(botChatsProvider.notifier).updateChatStatus(chat.chatId, enabled: val),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _buildCompactToggle(
+                context,
+                '巡逻监听',
+                chat.isMonitoring,
+                (val) => ref.read(botChatsProvider.notifier).updateChatStatus(chat.chatId, isMonitoring: val),
+                Icons.radar_rounded,
+              ),
+              const SizedBox(width: 12),
+              _buildCompactToggle(
+                context,
+                '分发推送',
+                chat.isPushTarget,
+                (val) => ref.read(botChatsProvider.notifier).updateChatStatus(chat.chatId, isPushTarget: val),
+                Icons.auto_awesome_motion_rounded,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactToggle(BuildContext context, String label, bool value, Function(bool) onChanged, IconData icon) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: InkWell(
+        onTap: () => onChanged(!value),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: value ? colorScheme.primaryContainer.withValues(alpha: 0.2) : colorScheme.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: value ? colorScheme.primary.withValues(alpha: 0.3) : Colors.transparent),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 16, color: value ? colorScheme.primary : colorScheme.outline),
+              const SizedBox(width: 8),
+              Text(label, style: TextStyle(fontSize: 12, fontWeight: value ? FontWeight.bold : FontWeight.normal, color: value ? colorScheme.primary : colorScheme.onSurface)),
+              const Spacer(),
+              SizedBox(
+                height: 20,
+                width: 32,
+                child: FittedBox(
+                  fit: BoxFit.contain,
+                  child: Switch(
+                    value: value,
+                    onChanged: onChanged,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gap/gap.dart';
 import '../../providers/settings_provider.dart';
 import '../../models/system_setting.dart';
 import '../widgets/setting_components.dart';
+import '../../../discovery/providers/discovery_settings_provider.dart';
+import '../../../discovery/providers/discovery_sources_provider.dart';
+import '../../../discovery/models/discovery_models.dart';
 
 class AutomationTab extends ConsumerWidget {
   const AutomationTab({super.key});
@@ -10,18 +14,186 @@ class AutomationTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settingsAsync = ref.watch(systemSettingsProvider);
+    final discoverySettingsAsync = ref.watch(discoverySettingsStateProvider);
+    final discoverySourcesAsync = ref.watch(discoverySourcesProvider);
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       children: [
-        const SectionHeader(title: 'AI 发现', icon: Icons.auto_awesome_rounded),
-        _buildAiSettings(context, ref, settingsAsync),
+        const SectionHeader(title: 'AI 巡逻 (Patrol)', icon: Icons.auto_awesome_rounded),
+        _buildPatrolSettings(context, ref, discoverySettingsAsync),
+        const SizedBox(height: 32),
+        const SectionHeader(title: '发现来源 (Sources)', icon: Icons.sensors_rounded),
+        _buildDiscoverySources(context, ref, discoverySourcesAsync),
+        const SizedBox(height: 32),
+        const SectionHeader(title: '内容生成', icon: Icons.summarize_rounded),
+        _buildContentGenSettings(context, ref, settingsAsync),
+        const SizedBox(height: 32),
+        const SectionHeader(
+          title: '大模型引擎 (LLM)',
+          icon: Icons.psychology_rounded,
+        ),
+        _buildLlmSettings(context, ref, settingsAsync),
         const SizedBox(height: 40),
       ],
     );
   }
 
-  Widget _buildAiSettings(
+  Widget _buildPatrolSettings(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<DiscoverySettings> settingsAsync,
+  ) {
+    return settingsAsync.when(
+      data: (settings) => SettingGroup(
+        children: [
+          ExpandableSettingTile(
+            title: '我的兴趣画像',
+            subtitle: settings.interestProfile.isEmpty ? '描述你感兴趣的内容' : settings.interestProfile,
+            icon: Icons.face_retouching_natural_rounded,
+            expandedContent: _buildInterestProfileEditor(context, ref, settings.interestProfile),
+          ),
+          SettingTile(
+            title: 'AI 评分阈值',
+            subtitle: '当前阈值: ${settings.scoreThreshold.toStringAsFixed(1)}',
+            icon: Icons.shutter_speed_rounded,
+            trailing: SizedBox(
+              width: 120,
+              child: Slider(
+                value: settings.scoreThreshold,
+                min: 0,
+                max: 10,
+                divisions: 20,
+                onChanged: (val) => ref.read(discoverySettingsStateProvider.notifier).updateSettings(scoreThreshold: val),
+              ),
+            ),
+          ),
+          SettingTile(
+            title: '发现保留天数',
+            subtitle: '${settings.retentionDays} 天后自动清理',
+            icon: Icons.auto_delete_rounded,
+            trailing: DropdownButton<int>(
+              value: settings.retentionDays,
+              underline: const SizedBox.shrink(),
+              items: [1, 3, 7, 15, 30].map((d) => DropdownMenuItem(
+                value: d,
+                child: Text('$d 天'),
+              )).toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  ref.read(discoverySettingsStateProvider.notifier).updateSettings(retentionDays: val);
+                }
+              },
+            ),
+          ),
+        ],
+      ),
+      loading: () => const LoadingGroup(),
+      error: (error, _) => const Text('加载失败'),
+    );
+  }
+
+  Widget _buildInterestProfileEditor(BuildContext context, WidgetRef ref, String currentProfile) {
+    final controller = TextEditingController(text: currentProfile);
+    return Column(
+      children: [
+        TextField(
+          controller: controller,
+          maxLines: 4,
+          decoration: InputDecoration(
+            hintText: '描述你感兴趣的领域、技术栈、博主或关键词...',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+        const Gap(12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.tonal(
+            onPressed: () async {
+              await ref.read(discoverySettingsStateProvider.notifier).updateSettings(interestProfile: controller.text);
+              if (context.mounted) showToast(context, '兴趣画像已更新');
+            },
+            child: const Text('更新画像'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDiscoverySources(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<List<DiscoverySource>> sourcesAsync,
+  ) {
+    return sourcesAsync.when(
+      data: (sources) {
+        if (sources.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: OutlinedButton.icon(
+                onPressed: () => _showAddSourceDialog(context, ref),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('添加第一个发现来源'),
+              ),
+            ),
+          );
+        }
+        return Column(
+          children: [
+            SettingGroup(
+              children: sources.map((s) => _buildSourceTile(context, ref, s)).toList(),
+            ),
+            const Gap(12),
+            OutlinedButton.icon(
+              onPressed: () => _showAddSourceDialog(context, ref),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('添加来源'),
+            ),
+          ],
+        );
+      },
+      loading: () => const LoadingGroup(),
+      error: (error, _) => const Text('加载失败'),
+    );
+  }
+
+  Widget _buildSourceTile(BuildContext context, WidgetRef ref, DiscoverySource source) {
+    return SettingTile(
+      title: source.name,
+      subtitle: '${source.kind.toUpperCase()} • 每 ${source.syncIntervalMinutes} 分钟同步',
+      icon: _sourceIcon(source.kind),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Switch(
+            value: source.enabled,
+            onChanged: (val) => ref.read(discoverySourcesProvider.notifier).updateSource(source.id, enabled: val),
+          ),
+          IconButton(
+            icon: const Icon(Icons.sync_rounded),
+            onPressed: () async {
+              await ref.read(discoverySourcesProvider.notifier).triggerSync(source.id);
+              if (context.mounted) showToast(context, '已手动触发同步');
+            },
+          ),
+        ],
+      ),
+      onTap: () => _showEditSourceDialog(context, ref, source),
+    );
+  }
+
+  IconData _sourceIcon(String kind) {
+    switch (kind.toLowerCase()) {
+      case 'rss': return Icons.rss_feed_rounded;
+      case 'hackernews': return Icons.whatshot_rounded;
+      case 'reddit': return Icons.forum_rounded;
+      case 'telegram_channel': return Icons.telegram_rounded;
+      default: return Icons.sensors_rounded;
+    }
+  }
+
+  Widget _buildContentGenSettings(
     BuildContext context,
     WidgetRef ref,
     AsyncValue<List<SystemSetting>> settingsAsync,
@@ -35,15 +207,6 @@ class AutomationTab extends ConsumerWidget {
           return false;
         }
 
-        final enableAi = parseBool(
-          settings
-              .firstWhere(
-                (s) => s.key == 'enable_ai_discovery',
-                orElse: () => const SystemSetting(key: '', value: false),
-              )
-              .value,
-        );
-
         final enableAutoSummary = parseBool(
           settings
               .firstWhere(
@@ -53,90 +216,29 @@ class AutomationTab extends ConsumerWidget {
               .value,
         );
 
-        final topics = settings
-            .firstWhere(
-              (s) => s.key == 'discovery_topics',
-              orElse: () => const SystemSetting(key: '', value: []),
-            )
-            .value;
-
-        List<String> topicList = [];
-        if (topics is List) {
-          topicList = topics.map((e) => e.toString()).toList();
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        return SettingGroup(
           children: [
-            SettingGroup(
-              children: [
-                Opacity(
-                  opacity: 0.5,
-                  child: SettingTile(
-                    title: '启用 AI 自动发现 (开发中)',
-                    subtitle: '根据订阅主题自动抓取相关内容',
-                    icon: Icons.auto_awesome_rounded,
-                    trailing: Switch(value: enableAi, onChanged: null),
-                    onTap: null,
+            SettingTile(
+              title: '启用 AI 自动生成摘要',
+              subtitle: '解析完成后自动调用大模型生成摘要',
+              icon: Icons.summarize_rounded,
+              trailing: Switch(
+                value: enableAutoSummary,
+                onChanged: (val) => ref
+                    .read(systemSettingsProvider.notifier)
+                    .updateSetting(
+                      'enable_auto_summary',
+                      val,
+                      category: 'llm',
+                    ),
+              ),
+              onTap: () => ref
+                  .read(systemSettingsProvider.notifier)
+                  .updateSetting(
+                    'enable_auto_summary',
+                    !enableAutoSummary,
+                    category: 'llm',
                   ),
-                ),
-                SettingTile(
-                  title: '启用 AI 自动生成摘要',
-                  subtitle: '解析完成后自动调用大模型生成摘要',
-                  icon: Icons.summarize_rounded,
-                  trailing: Switch(
-                    value: enableAutoSummary,
-                    onChanged: (val) => ref
-                        .read(systemSettingsProvider.notifier)
-                        .updateSetting(
-                          'enable_auto_summary',
-                          val,
-                          category: 'llm',
-                        ),
-                  ),
-                  onTap: () => ref
-                      .read(systemSettingsProvider.notifier)
-                      .updateSetting(
-                        'enable_auto_summary',
-                        !enableAutoSummary,
-                        category: 'llm',
-                      ),
-                ),
-                Opacity(
-                  opacity: 0.5,
-                  child: SettingTile(
-                    title: '订阅主题管理 (开发中)',
-                    subtitle: '${topicList.length} 个关注主题',
-                    icon: Icons.topic_rounded,
-                    onTap: null,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            const SectionHeader(
-              title: '大模型引擎 (LLM)',
-              icon: Icons.psychology_rounded,
-            ),
-            SettingGroup(
-              children: [
-                ExpandableSettingTile(
-                  title: '文本大模型 (Text LLM)',
-                  subtitle: _getLlmSubtitle(settings, 'text'),
-                  icon: Icons.text_fields_rounded,
-                  expandedContent: _buildLlmConfigEditor(context, ref, 'text'),
-                ),
-                ExpandableSettingTile(
-                  title: '视觉大模型 (Vision LLM)',
-                  subtitle: _getLlmSubtitle(settings, 'vision'),
-                  icon: Icons.image_search_rounded,
-                  expandedContent: _buildLlmConfigEditor(
-                    context,
-                    ref,
-                    'vision',
-                  ),
-                ),
-              ],
             ),
           ],
         );
@@ -145,6 +247,69 @@ class AutomationTab extends ConsumerWidget {
       error: (error, stackTrace) => const SizedBox.shrink(),
     );
   }
+
+  Widget _buildLlmSettings(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<List<SystemSetting>> settingsAsync,
+  ) {
+    return settingsAsync.when(
+      data: (settings) => SettingGroup(
+        children: [
+          ExpandableSettingTile(
+            title: '文本大模型 (Text LLM)',
+            subtitle: _getLlmSubtitle(settings, 'text'),
+            icon: Icons.text_fields_rounded,
+            expandedContent: _buildLlmConfigEditor(context, ref, 'text'),
+          ),
+          ExpandableSettingTile(
+            title: '视觉大模型 (Vision LLM)',
+            subtitle: _getLlmSubtitle(settings, 'vision'),
+            icon: Icons.image_search_rounded,
+            expandedContent: _buildLlmConfigEditor(
+              context,
+              ref,
+              'vision',
+            ),
+          ),
+        ],
+      ),
+      loading: () => const LoadingGroup(),
+      error: (error, _) => const Text('加载失败'),
+    );
+  }
+
+  void _showAddSourceDialog(BuildContext context, WidgetRef ref) {
+    // Basic dialog implementation for adding source
+    showDialog(
+      context: context,
+      builder: (ctx) => _SourceEditDialog(onSave: (source) {
+        ref.read(discoverySourcesProvider.notifier).createSource(source);
+      }),
+    );
+  }
+
+  void _showEditSourceDialog(BuildContext context, WidgetRef ref, DiscoverySource source) {
+    showDialog(
+      context: context,
+      builder: (ctx) => _SourceEditDialog(
+        initialSource: source,
+        onSave: (updated) {
+          ref.read(discoverySourcesProvider.notifier).updateSource(
+            source.id,
+            name: updated.name,
+            enabled: updated.enabled,
+            config: updated.config,
+            syncIntervalMinutes: updated.syncIntervalMinutes,
+          );
+        },
+        onDelete: () {
+          ref.read(discoverySourcesProvider.notifier).deleteSource(source.id);
+        },
+      ),
+    );
+  }
+
 
   String _maskKey(String key) {
     if (key.isEmpty) return '未配置';
@@ -297,6 +462,119 @@ class AutomationTab extends ConsumerWidget {
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (_, _) => const Text('加载失败'),
+    );
+  }
+}
+
+class _SourceEditDialog extends StatefulWidget {
+  final DiscoverySource? initialSource;
+  final Function(DiscoverySource) onSave;
+  final VoidCallback? onDelete;
+
+  const _SourceEditDialog({
+    this.initialSource,
+    required this.onSave,
+    this.onDelete,
+  });
+
+  @override
+  State<_SourceEditDialog> createState() => _SourceEditDialogState();
+}
+
+class _SourceEditDialogState extends State<_SourceEditDialog> {
+  late TextEditingController _nameController;
+  late TextEditingController _urlController;
+  late String _kind;
+  late int _interval;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.initialSource?.name ?? '');
+    _urlController = TextEditingController(text: widget.initialSource?.config['url'] ?? '');
+    _kind = widget.initialSource?.kind ?? 'rss';
+    _interval = widget.initialSource?.syncIntervalMinutes ?? 60;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _urlController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.initialSource == null ? '添加来源' : '编辑来源'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<String>(
+              initialValue: _kind,
+              decoration: const InputDecoration(labelText: '来源类型'),
+              items: ['rss', 'hackernews', 'reddit', 'telegram_channel'].map((k) => DropdownMenuItem(
+                value: k,
+                child: Text(k.toUpperCase()),
+              )).toList(),
+              onChanged: (val) => setState(() => _kind = val!),
+            ),
+            const Gap(12),
+            TextField(
+              controller: _nameController,
+              decoration: const InputDecoration(labelText: '名称', hintText: '如: 我的博客'),
+            ),
+            const Gap(12),
+            if (_kind == 'rss')
+              TextField(
+                controller: _urlController,
+                decoration: const InputDecoration(labelText: 'RSS URL', hintText: 'https://.../rss.xml'),
+              ),
+            const Gap(12),
+            DropdownButtonFormField<int>(
+              initialValue: _interval,
+              decoration: const InputDecoration(labelText: '同步频率'),
+              items: [15, 30, 60, 120, 360, 1440].map((i) => DropdownMenuItem(
+                value: i,
+                child: Text(i >= 60 ? '${i ~/ 60} 小时' : '$i 分钟'),
+              )).toList(),
+              onChanged: (val) => setState(() => _interval = val!),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        if (widget.onDelete != null)
+          TextButton(
+            onPressed: () {
+              widget.onDelete!();
+              Navigator.pop(context);
+            },
+            style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+            child: const Text('删除'),
+          ),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final source = DiscoverySource(
+              id: widget.initialSource?.id ?? 0,
+              kind: _kind,
+              name: _nameController.text,
+              enabled: widget.initialSource?.enabled ?? true,
+              config: _kind == 'rss' ? {'url': _urlController.text} : {},
+              syncIntervalMinutes: _interval,
+              createdAt: widget.initialSource?.createdAt ?? DateTime.now(),
+            );
+            widget.onSave(source);
+            Navigator.pop(context);
+          },
+          child: const Text('保存'),
+        ),
+      ],
     );
   }
 }

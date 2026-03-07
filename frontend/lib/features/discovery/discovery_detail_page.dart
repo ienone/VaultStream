@@ -440,6 +440,11 @@ class _DetailBody extends ConsumerWidget {
           ),
           const Gap(16),
         ],
+        // Multi-source traceability
+        if (item.contextData?['source_links'] != null) ...[
+          _SourceLinksSection(sourceLinks: item.contextData!['source_links'] as List),
+          const Gap(16),
+        ],
         // View original button
         SizedBox(
           width: double.infinity,
@@ -465,6 +470,73 @@ class _DetailBody extends ConsumerWidget {
         return Icons.telegram_rounded;
       default:
         return Icons.link_rounded;
+    }
+  }
+}
+
+class _SourceLinksSection extends StatelessWidget {
+  final List sourceLinks;
+  const _SourceLinksSection({required this.sourceLinks});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Theme(
+      data: theme.copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        title: Text('来源 (${sourceLinks.length})',
+          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+        leading: const Icon(Icons.hub_rounded),
+        tilePadding: EdgeInsets.zero,
+        children: sourceLinks.map((link) => _buildSourceItem(context, link)).toList(),
+      ),
+    );
+  }
+
+  Widget _buildSourceItem(BuildContext context, dynamic link) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final String kind = link['source_kind'] ?? 'unknown';
+    final String name = link['source_name'] ?? 'Unknown';
+    final String title = link['title'] ?? 'No title';
+    final String url = link['url'] ?? '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        onTap: () => SafeUrlLauncher.openExternal(context, url),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(_sourceIcon(kind), size: 16, color: colorScheme.primary),
+                const Gap(8),
+                Text(name, style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.bold)),
+                const Spacer(),
+                const Icon(Icons.open_in_new_rounded, size: 14),
+              ],
+            ),
+            const Gap(4),
+            Text(title, style: theme.textTheme.bodySmall, maxLines: 2, overflow: TextOverflow.ellipsis),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _sourceIcon(String sourceType) {
+    switch (sourceType.toLowerCase()) {
+      case 'rss': return Icons.rss_feed_rounded;
+      case 'hackernews' || 'hn': return Icons.whatshot_rounded;
+      case 'reddit': return Icons.forum_rounded;
+      case 'telegram_channel' || 'telegram': return Icons.telegram_rounded;
+      default: return Icons.link_rounded;
     }
   }
 }

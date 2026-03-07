@@ -19,6 +19,8 @@ abstract class BotChat with _$BotChat {
     @JsonKey(name: 'is_admin') @Default(false) bool isAdmin,
     @JsonKey(name: 'can_post') @Default(false) bool canPost,
     @Default(true) bool enabled,
+    @JsonKey(name: 'is_monitoring') @Default(false) bool isMonitoring,
+    @JsonKey(name: 'is_push_target') @Default(true) bool isPushTarget,
     @JsonKey(name: 'nsfw_chat_id') String? nsfwChatId,
     @JsonKey(name: 'total_pushed') @Default(0) int totalPushed,
     @JsonKey(name: 'last_pushed_at') DateTime? lastPushedAt,
@@ -72,6 +74,8 @@ abstract class BotChatCreate with _$BotChatCreate {
     String? username,
     String? description,
     @Default(true) bool enabled,
+    @JsonKey(name: 'is_monitoring') @Default(false) bool isMonitoring,
+    @JsonKey(name: 'is_push_target') @Default(true) bool isPushTarget,
     @JsonKey(name: 'nsfw_chat_id') String? nsfwChatId,
   }) = _BotChatCreate;
 
@@ -84,6 +88,8 @@ abstract class BotChatUpdate with _$BotChatUpdate {
   const factory BotChatUpdate({
     String? title,
     bool? enabled,
+    @JsonKey(name: 'is_monitoring') bool? isMonitoring,
+    @JsonKey(name: 'is_push_target') bool? isPushTarget,
     @JsonKey(name: 'nsfw_chat_id') String? nsfwChatId,
   }) = _BotChatUpdate;
 

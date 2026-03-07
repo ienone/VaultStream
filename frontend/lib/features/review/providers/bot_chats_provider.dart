@@ -54,6 +54,19 @@ class BotChats extends _$BotChats {
     return updatedChat;
   }
 
+  Future<void> updateChatStatus(String chatId, {bool? isMonitoring, bool? isPushTarget, bool? enabled}) async {
+    final dio = ref.read(apiClientProvider);
+    await dio.patch(
+      '/bot/chats/$chatId',
+      data: {
+        if (isMonitoring != null) 'is_monitoring': isMonitoring,
+        if (isPushTarget != null) 'is_push_target': isPushTarget,
+        if (enabled != null) 'enabled': enabled,
+      },
+    );
+    ref.invalidateSelf();
+  }
+
   Future<void> toggleChat(String chatId) async {
     final dio = ref.watch(apiClientProvider);
     await dio.post('/bot/chats/$chatId/toggle');

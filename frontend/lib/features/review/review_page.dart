@@ -18,9 +18,6 @@ import 'providers/bot_chats_provider.dart';
 import 'providers/queue_provider.dart';
 import 'widgets/pushed_record_tile.dart';
 import 'widgets/distribution_rule_dialog.dart';
-import 'widgets/bot_chat_card.dart';
-import 'widgets/bot_chat_dialog.dart';
-import 'widgets/bot_status_card.dart';
 import 'widgets/rule_config_panel.dart';
 import 'widgets/queue_content_list.dart';
 import 'widgets/rule_list_tile.dart';
@@ -36,8 +33,6 @@ class ReviewPage extends ConsumerStatefulWidget {
 class _ReviewPageState extends ConsumerState<ReviewPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
-  bool _isSyncingChats = false;
-  bool _isControllingTelegram = false;
   int? _selectedRuleId;
   bool _portraitRuleConfigExpanded = false;
   StreamSubscription<SseEvent>? _sseSub;
@@ -46,7 +41,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _bindRealtimeEvents();
   }
 
@@ -78,15 +73,6 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         case 'distribution_push_failed':
           ref.invalidate(queueStatsProvider(_selectedRuleId));
           _maybeToast('有推送失败，请在推送历史查看详情');
-          break;
-        case 'bot_sync_progress':
-          ref.invalidate(botChatsProvider);
-          ref.invalidate(botStatusProvider);
-          break;
-        case 'bot_sync_completed':
-          ref.invalidate(botChatsProvider);
-          ref.invalidate(botStatusProvider);
-          _maybeToast('群组同步完成');
           break;
       }
     });
@@ -120,36 +106,14 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
           unselectedLabelStyle: theme.textTheme.labelLarge,
           tabs: const [
             Tab(text: '内容队列'),
-            Tab(text: 'Bot 群组'),
             Tab(text: '推送历史'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [_buildQueueTab(), _buildBotChatsTab(), _buildHistoryTab()],
+        children: [_buildQueueTab(), _buildHistoryTab()],
       ),
-      floatingActionButton: _buildFab(),
-    );
-  }
-
-  Widget? _buildFab() {
-    return AnimatedBuilder(
-      animation: _tabController,
-      builder: (context, _) {
-        if (_tabController.index == 1) {
-          return FloatingActionButton.extended(
-            onPressed: _showAddBotChatDialog,
-            icon: const Icon(Icons.add_rounded, size: 24),
-            label: const Text('添加群组'),
-            isExtended: true,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
-            ),
-          ).animate().scale(curve: Curves.easeOutBack, duration: 400.ms);
-        }
-        return const SizedBox.shrink();
-      },
     );
   }
 
@@ -196,7 +160,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
 
     return Container(
       color:
-          colorScheme.surfaceContainerLow, // Added consistent background color
+          colorScheme.surfaceContainerLow,
       child: Column(
         children: [
           Padding(
@@ -632,277 +596,6 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
     );
   }
 
-  Widget _buildBotChatsTab() {
-    final chatsAsync = ref.watch(botChatsProvider);
-    final statusAsync = ref.watch(botStatusProvider);
-    final colorScheme = Theme.of(context).colorScheme;
-
-    // 判断是否有任何Bot配置（运行中 / Napcat启用 / 有用户名说明已配置过）
-    final bool hasBotConfig = statusAsync.maybeWhen(
-      data: (s) => s.isRunning || s.isNapcatEnabled || s.botUsername != null,
-      orElse: () => true, // 未知时默认显示，避免闪烁
-    );
-
-    return chatsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, st) => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.error_outline_rounded,
-              size: 48,
-              color: colorScheme.error,
-            ),
-            const SizedBox(height: 16),
-            Text('加载失败: $e'),
-            const SizedBox(height: 16),
-            FilledButton.tonal(
-              onPressed: () => ref.invalidate(botChatsProvider),
-              child: const Text('重试'),
-            ),
-          ],
-        ),
-      ),
-      data: (chats) {
-        return RefreshIndicator(
-          onRefresh: () async {
-            ref.invalidate(botChatsProvider);
-            ref.invalidate(botStatusProvider);
-          },
-          child: ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              if (hasBotConfig) ...[
-                BotStatusCard(
-                  isSyncing: _isSyncingChats,
-                  isControllingTelegram: _isControllingTelegram,
-                  onSync: _syncBotChats,
-                  onRefreshStatus: _refreshBotStatus,
-                  onStartTelegram: _startTelegramService,
-                  onStopTelegram: _stopTelegramService,
-                  onRestartTelegram: _restartTelegramService,
-                ),
-                const SizedBox(height: 32),
-              ] else ...[
-                _buildNoBotConfiguredCard(colorScheme),
-                const SizedBox(height: 32),
-              ],
-              Row(
-                children: [
-                  Icon(
-                    Icons.groups_rounded,
-                    size: 20,
-                    color: colorScheme.primary,
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    '群组与频道',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '${chats.length} 个配置',
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: colorScheme.outline,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              if (chats.isEmpty)
-                _buildEmptyChatsPlaceholder(colorScheme)
-              else
-                ...chats.asMap().entries.map(
-                  (entry) => Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: BotChatCard(
-                      index: entry.key,
-                      chat: entry.value,
-                      appliedRuleNames: entry.value.appliedRuleNames,
-                      onConfigureRules: () =>
-                          _showConfigureChatRulesDialog(entry.value),
-                      onEdit: () => _showEditBotChatDialog(entry.value),
-                      onDelete: () => _confirmDeleteBotChat(entry.value),
-                      onToggleEnabled: (enabled) =>
-                          _toggleBotChatEnabled(entry.value),
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 100),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  /// 未配置Bot时显示的提示卡片
-  Widget _buildNoBotConfiguredCard(ColorScheme colorScheme) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
-        side: BorderSide(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-        ),
-      ),
-      color: colorScheme.surfaceContainerLow,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHigh,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.smart_toy_outlined,
-                size: 48,
-                color: colorScheme.outline,
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              '尚未配置推送机器人',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '在「设置 → 推送与通知」中配置 Telegram 或 QQ Bot，\n即可在此管理推送群组。',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: colorScheme.outline),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyChatsPlaceholder(ColorScheme colorScheme) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 64),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: colorScheme.primary.withValues(alpha: 0.05),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.smart_toy_rounded,
-              size: 64,
-              color: colorScheme.primary.withValues(alpha: 0.5),
-            ),
-          ),
-          const SizedBox(height: 24),
-          Text('暂无关联的群组/频道', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 12),
-          const Text('点击右下角按钮添加第一个推送目标'),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _syncBotChats() async {
-    if (_isSyncingChats) return;
-    setState(() => _isSyncingChats = true);
-
-    try {
-      final result = await ref.read(botChatsProvider.notifier).syncChats();
-      if (mounted) {
-        ref.invalidate(botChatsProvider);
-        ref.invalidate(botStatusProvider);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            content: Text('同步完成: ${result.updated} 个配置已更新'),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('同步失败: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _isSyncingChats = false);
-    }
-  }
-
-  void _refreshBotStatus() {
-    ref.invalidate(botStatusProvider);
-  }
-
-  Future<void> _operateTelegramService({
-    required String action,
-    required String successMessage,
-  }) async {
-    if (_isControllingTelegram) return;
-    setState(() => _isControllingTelegram = true);
-
-    try {
-      final dio = ref.read(apiClientProvider);
-      await dio.post('/bot-config/service/telegram/$action');
-      if (mounted) {
-        ref.invalidate(botStatusProvider);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            content: Text(successMessage),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('操作失败: $e')));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isControllingTelegram = false);
-      }
-    }
-  }
-
-  Future<void> _startTelegramService() async {
-    await _operateTelegramService(
-      action: 'start',
-      successMessage: 'Telegram Bot 已启动',
-    );
-  }
-
-  Future<void> _stopTelegramService() async {
-    await _operateTelegramService(
-      action: 'stop',
-      successMessage: 'Telegram Bot 已停止',
-    );
-  }
-
-  Future<void> _restartTelegramService() async {
-    await _operateTelegramService(
-      action: 'restart',
-      successMessage: 'Telegram Bot 已重启',
-    );
-  }
-
   Widget _buildHistoryTab() {
     final recordsAsync = ref.watch(pushedRecordsProvider);
 
@@ -1113,240 +806,6 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('操作失败: $e')));
-      }
-    }
-  }
-
-  void _showAddBotChatDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => BotChatDialog(
-        resolveBotConfigId: _resolveBotConfigId,
-        onCreate: (chat) async {
-          try {
-            await ref.read(botChatsProvider.notifier).createChat(chat);
-            if (mounted) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('群组添加成功')));
-            }
-          } catch (e) {
-            if (mounted) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text('添加失败: $e')));
-            }
-          }
-        },
-      ),
-    );
-  }
-
-  void _showEditBotChatDialog(BotChat chat) {
-    showDialog(
-      context: context,
-      builder: (ctx) => BotChatDialog(
-        chat: chat,
-        resolveBotConfigId: _resolveBotConfigId,
-        onCreate: (_) {},
-        onUpdate: (chatId, update, newChatId) async {
-          try {
-            await ref
-                .read(botChatsProvider.notifier)
-                .updateChat(chatId, update, newChatId: newChatId);
-            if (mounted) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('配置更新成功')));
-            }
-          } catch (e) {
-            if (mounted) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text('更新失败: $e')));
-            }
-          }
-        },
-      ),
-    );
-  }
-
-  Future<int> _resolveBotConfigId(String chatType) async {
-    final platform = (chatType == 'qq_group' || chatType == 'qq_private')
-        ? 'qq'
-        : 'telegram';
-
-    final dio = ref.read(apiClientProvider);
-    final response = await dio.get('/bot-config');
-    final configs = (response.data as List<dynamic>)
-        .whereType<Map<String, dynamic>>()
-        .where((item) => item['platform'] == platform)
-        .toList();
-
-    if (configs.isEmpty) {
-      throw Exception(
-        '未找到可用的 ${platform.toUpperCase()} Bot 配置，请先在 Bot 管理页创建配置',
-      );
-    }
-
-    for (final item in configs) {
-      if (item['is_primary'] == true && item['enabled'] == true) {
-        return (item['id'] as num).toInt();
-      }
-    }
-
-    for (final item in configs) {
-      if (item['enabled'] == true) {
-        return (item['id'] as num).toInt();
-      }
-    }
-
-    return (configs.first['id'] as num).toInt();
-  }
-
-  void _confirmDeleteBotChat(BotChat chat) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('确认删除'),
-        content: Text('确定要删除群组 "${chat.displayName}" 吗？'),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              try {
-                await ref
-                    .read(botChatsProvider.notifier)
-                    .deleteChat(chat.chatId);
-                if (mounted) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('群组已删除')));
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('删除失败: $e')));
-                }
-              }
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _toggleBotChatEnabled(BotChat chat) async {
-    try {
-      await ref.read(botChatsProvider.notifier).toggleChat(chat.chatId);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('操作失败: $e')));
-      }
-    }
-  }
-
-  Future<void> _showConfigureChatRulesDialog(BotChat chat) async {
-    final dio = ref.read(apiClientProvider);
-
-    try {
-      final rulesResp = await dio.get('/distribution-rules');
-      final allRules =
-          (rulesResp.data as List<dynamic>)
-              .map((e) => DistributionRule.fromJson(e as Map<String, dynamic>))
-              .toList()
-            ..sort((a, b) => b.priority.compareTo(a.priority));
-
-      final currentResp = await dio.get('/bot/chats/${chat.chatId}/rules');
-      final currentIds =
-          ((currentResp.data as Map<String, dynamic>)['rule_ids']
-                      as List<dynamic>? ??
-                  const [])
-              .map((e) => (e as num).toInt())
-              .toSet();
-
-      if (!mounted) return;
-      final selected = Set<int>.from(currentIds);
-
-      await showDialog(
-        context: context,
-        builder: (ctx) => StatefulBuilder(
-          builder: (ctx, setStateDialog) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
-            ),
-            title: Text('为 ${chat.displayName} 配置规则'),
-            content: SizedBox(
-              width: 420,
-              child: allRules.isEmpty
-                  ? const Text('暂无规则，请先创建分发规则。')
-                  : SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: allRules.map((rule) {
-                          final checked = selected.contains(rule.id);
-                          return CheckboxListTile(
-                            value: checked,
-                            title: Text(rule.name),
-                            subtitle: Text('优先级 ${rule.priority}'),
-                            onChanged: (v) {
-                              setStateDialog(() {
-                                if (v == true) {
-                                  selected.add(rule.id);
-                                } else {
-                                  selected.remove(rule.id);
-                                }
-                              });
-                            },
-                          );
-                        }).toList(),
-                      ),
-                    ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () async {
-                  await dio.put(
-                    '/bot/chats/${chat.chatId}/rules',
-                    data: {'rule_ids': selected.toList()..sort()},
-                  );
-                  if (mounted) {
-                    ref.invalidate(botChatsProvider);
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(const SnackBar(content: Text('规则绑定已更新')));
-                  }
-                  if (ctx.mounted) {
-                    Navigator.of(ctx).pop();
-                  }
-                },
-                child: const Text('保存'),
-              ),
-            ],
-          ),
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('加载规则失败: $e')));
       }
     }
   }
