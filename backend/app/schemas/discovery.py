@@ -29,6 +29,7 @@ class DiscoveryItemResponse(BaseModel):
     media_urls: List[str] = Field(default_factory=list)
     rich_payload: Optional[dict] = None
     extra_stats: dict = Field(default_factory=dict)
+    context_data: Optional[dict] = None
 
     model_config = ConfigDict(from_attributes=True)
 

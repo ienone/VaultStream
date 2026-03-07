@@ -8,6 +8,7 @@ from datetime import timedelta
 
 from loguru import logger
 from sqlalchemy import select
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.adapters.discovery.base import BaseDiscoveryScraper
 from app.adapters.discovery.rss import RSSDiscoveryScraper
@@ -84,12 +85,41 @@ class DiscoverySyncTask:
             for item in items:
                 canonical = normalize_url_for_dedup(item.url)
 
-                existing = await db.execute(
-                    select(Content.id)
-                    .where(Content.canonical_url == canonical)
-                    .limit(1)
-                )
-                if existing.scalars().first() is not None:
+                new_source_link = {
+                    "source_kind": source.kind.value,
+                    "source_name": source.name,
+                    "url": item.url,
+                    "title": item.title,
+                    "stats": item.extra_stats or {},
+                }
+
+                # 检查 URL 是否已存在（主库或发现流）
+                stmt = select(Content).where(Content.canonical_url == canonical).limit(1)
+                result = await db.execute(stmt)
+                existing_content = result.scalars().first()
+
+                if existing_content is not None:
+                    context_data = existing_content.context_data or {}
+                    if not isinstance(context_data, dict):
+                        context_data = {}
+
+                    source_links = context_data.get("source_links")
+                    if not isinstance(source_links, list):
+                        source_links = []
+
+                    is_duplicate_link = any(
+                        isinstance(link, dict)
+                        and link.get("source_kind") == new_source_link["source_kind"]
+                        and link.get("url") == new_source_link["url"]
+                        for link in source_links
+                    )
+
+                    if not is_duplicate_link:
+                        source_links.append(new_source_link)
+                        context_data["source_links"] = source_links
+                        existing_content.context_data = context_data
+                        flag_modified(existing_content, "context_data")
+
                     continue
 
                 retention_days_raw = await get_setting_value("discovery_retention_days", 7)
@@ -117,6 +147,7 @@ class DiscoverySyncTask:
                     media_urls=item.media_urls,
                     rich_payload=item.rich_payload,
                     extra_stats=item.extra_stats,
+                    context_data={"source_links": [new_source_link]},
                 )
                 db.add(content)
                 ingested_count += 1

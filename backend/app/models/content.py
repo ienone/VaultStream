@@ -95,6 +95,10 @@ class Content(Base):
     
     extra_stats = Column(JSON, default=dict)
     
+    # 树状结构支持 (用于事件级聚合)
+    parent_id = Column(Integer, ForeignKey("contents.id"), nullable=True, index=True)
+    is_synthesis = Column(Boolean, default=False, index=True)
+
     title = Column(Text)
     body = Column(Text)
     summary = Column(Text)
