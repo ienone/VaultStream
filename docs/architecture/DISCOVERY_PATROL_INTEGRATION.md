@@ -12,14 +12,14 @@
 | **Phase 1** | RSS/Atom 订阅 | `feedparser` 提取 + 现有适配器深层解析 |
 | **Phase 1** | Telegram Bot 群组监听 | Bot `on_message` 钩子提取链接 |
 | **Phase 1** | AI 评分 (Patrol Agent) | 0-10 打分、摘要、标签 |
-| **Phase 1** | 跨源 URL 去重 | 规范化 URL 指纹 |
+| **Phase 1** | 跨源 URL 去重 | 规范化 URL 指纹，发现重复则跳过 |
 | **Phase 1** | 发现缓冲区 UI + 管理 API | 列表/收藏/忽略/批量操作 |
 | **Phase 2** | HackerNews 聚合 | Top stories + 评论抓取 |
 | **Phase 2** | Reddit 聚合 | Subreddit/User 帖子 + 评论 |
 | **Phase 2** | GitHub 事件/Release | 用户事件 + 仓库 Release |
 | **Phase 2** | Telegram 公开频道爬取 | Web preview 方式抓取（无需 Bot 加入） |
 | **Phase 2** | AI 富化 (Enrichment) | 概念提取 → Web 搜索 → 背景知识生成 |
-| **Phase 2** | 主题级去重 | 标题 Token Jaccard 相似度合并 |
+| **Phase 2** | 主题级去重与复杂合并 | 标题 Token Jaccard 相似度合并与正文综合生成 |
 | **Phase 3** | 每日摘要 (Daily Summary) | 定时生成 Markdown 摘要报告 |
 | **Phase 3** | 摘要推送 | 邮件订阅 / Bot 推送日报 |
 
@@ -118,156 +118,13 @@ ingested → scored → [enriched] → visible → promoted | ignored → expire
 | `is_monitoring` | Boolean | **[新增]** 是否监听该群组消息并投喂给发现流。 |
 | `is_push_target` | Boolean | **[新增]** 是否作为推送目标（与现有 `enabled` 语义互补，`enabled=true` 表示记录活跃可用）。 |
 
-### 2.5 `content_discoveries` 溯源表
+### 2.5 事件级聚合与溯源 (Event-Level Aggregation)
 
-> 解决"同一资讯被多个来源以不同方式转述"的溯源与合并问题。
+> **核心目标**：解决“同一事件被不同来源以不同维度报道”的信息过载问题。系统将根据内容相似度，将指向同一事件的多个来源动态聚合。
 
-| 字段名 | 类型 | 说明 |
-| :--- | :--- | :--- |
-| `id` | Integer (PK) | |
-| `content_id` | Integer (FK → contents.id) | 合并后的主内容记录 |
-| `source_id` | Integer (FK → discovery_sources.id) | 发现来源（可 null，表示 Bot 监听来源） |
-| `bot_chat_id` | Integer (FK → bot_chats.id) | Bot 监听来源（可 null，与 source_id 二选一） |
-| `original_url` | Text | 该来源中的原始 URL（合并前） |
-| `original_title` | Text | 该来源中的原始标题 |
-| `original_content` | Text | 该来源的原始正文/摘要片段（截断保存） |
-| `match_method` | Enum | 去重匹配方式：`url_exact` / `url_normalized` / `title_similarity` |
-| `match_score` | Float | 匹配置信度（URL 精确匹配为 1.0，标题相似度为 Jaccard 值） |
-| `discovered_at` | DateTime | 该来源发现该内容的时间 |
-| `raw_metadata` | JSON | 来源特定的原始元数据快照（如 HN score、Reddit upvotes、TG views） |
-
-#### 溯源工作流
-
-```
-新条目入库
-  ↓
-URL 规范化 → 查询已有 content (canonical_url)
-  ↓
-  ├── [未匹配] → 创建新 content + 首条 discovery 记录
-  ├── [URL 匹配] → 追加 discovery 记录到已有 content，合并元数据
-  └── [URL 未匹配但标题相似度 ≥ 阈值] → Phase 2 主题级合并
-        → 追加 discovery 记录，标记 match_method=title_similarity
-```
-
-#### 合并策略（选择最优版本）
-
-当同一内容被多个来源发现时，主 `content` 记录的字段按以下优先级更新：
-
-| 字段 | 策略 |
-| :--- | :--- |
-| `title` | 保留最长/信息量最大的标题 |
-| `body` | 调用大模型综合生成正文 |
-| `url` / `canonical_url` | 保留原始出处 URL（非转述/分享链接） |
-| `ai_score` | 取最高分 |
-| `ai_tags` | 合并去重 |
-| `extra_stats` | 聚合各来源的互动数据（HN score、Reddit upvotes 等） |
-
-#### 前端溯源呈现（聚合卡片组 + 标签页分组交互）
-
-采用类似浏览器标签页分组的设计逻辑：
-
-**列表态（折叠）**：
-```
-┌─────────────────────────────────────────────────┐
-│ ⭐ 8.2  New database engine achieves 10x...     │
-│ 🔗×3    HN · Reddit · RSS    2h ago             │
-│         AI: 高性能嵌入式数据库，采用 copy-on-write │
-└─────────────────────────────────────────────────┘
-```
-- 折叠状态下显示**综合后的内容**（合并标题、最高分、聚合来源图标）
-- `🔗×3` 多源徽章表示有 3 个来源发现了此内容
-- 点击进入详情页，展示的是综合后的内容
-
-**详情页底部 — 来源组（可展开）**：
-```
-┌─────────────────────────────────────────────────┐
-│  📡 来源 (3)                            ▶ 展开  │
-└─────────────────────────────────────────────────┘
-                    ↓ 点击展开
-┌─────────────────────────────────────────────────┐
-│  📡 来源 (3)                            ▼ 收起  │
-│ ┌─────────────────────────────────────────────┐ │
-│ │ ① 🟠 HN · ⬆ 342 · 💬 89 · 6h ago          │ │
-│ │   "Show HN: We built a new database..."     │ │
-│ │   news.ycombinator.com/item?id=...     🔗   │ │
-│ └─────────────────────────────────────────────┘ │
-│ ┌─────────────────────────────────────────────┐ │
-│ │ ② 🔵 Reddit r/programming · ⬆ 215 · 4h ago │ │
-│ │   "New database engine claims 10x..."       │ │
-│ │   reddit.com/r/programming/...         🔗   │ │
-│ └─────────────────────────────────────────────┘ │
-│ ┌─────────────────────────────────────────────┐ │
-│ │ ③ 🟢 RSS (Simon Willison) · 2h ago         │ │
-│ │   "Interesting new approach to..."          │ │
-│ │   simonwillison.net/2026/...           🔗   │ │
-│ └─────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────┘
-```
-
-**分组管理交互（长按/拖拽）**：
-- **拆出**：长按某个来源子卡片 → 拖拽出聚合组 → 该来源变为独立的发现项（断开 `content_discoveries` 关联，创建新 `content` 记录）
-- **并入**：在发现列表中，长按一个独立卡片拖拽到另一个卡片上 → 合并为一组（创建 `content_discoveries` 关联，执行合并策略）
-- **手动触发合并**：选中多个卡片 → 操作栏出现"合并"按钮 → 系统自动选择最优主记录并合并
-- 操作均通过 API 实现，前端乐观更新
-
-**"跳转原文"按钮的多来源适配**：
-
-单来源时：
-```
-[ 🔗 查看原文 ]  ← 直接打开
-```
-
-多来源时：
-```
-[ 🔗 查看原文 ▾ ]  ← 点击展开选择菜单
-  ┌──────────────────────────┐
-  │ 🟠 HackerNews 讨论页      │
-  │ 🔵 Reddit 讨论帖          │
-  │ 🟢 原始文章 (Blog)        │
-  └──────────────────────────┘
-```
-
-#### 存档时的存储逻辑
-
-`contents` 表扩展多来源链接存储（复用已有 JSON 字段）：
-
-```python
-# content.context_data["source_links"] — 多来源链接列表
-{
-    "source_links": [
-        {
-            "source_kind": "hackernews",
-            "source_name": "Hacker News",
-            "url": "https://news.ycombinator.com/item?id=...",
-            "title": "Show HN: We built a new database...",
-            "stats": {"score": 342, "comments": 89}
-        },
-        {
-            "source_kind": "reddit",
-            "source_name": "r/programming",
-            "url": "https://reddit.com/r/programming/...",
-            "title": "New database engine claims 10x...",
-            "stats": {"score": 215, "comments": 47}
-        },
-        {
-            "source_kind": "rss",
-            "source_name": "Simon Willison's Blog",
-            "url": "https://simonwillison.net/2026/...",
-            "title": "Interesting new approach to...",
-            "stats": {}
-        }
-    ]
-}
-```
-
-用户将发现项 promote 至主库时：
-1. 主 `content` 记录保留（`discovery_state → promoted`），存储综合后的最终版本
-2. `context_data["source_links"]` 写入所有来源的链接/标题/互动数据，供前端"查看原文"菜单使用
-3. `content_discoveries` 记录保留作为溯源历史，不删除
-4. 各来源的 `raw_metadata` 持久化，可用于后续分析（如"哪些来源发现质量最高"）
-5. 如果 promote 后又有新来源发现同一内容，仍会追加 discovery 记录（但不影响主库内容状态）
-
-> 这种设计对已有 schema 的侵入性最小——`context_data` 是现有的 JSON 字段，前端 `ContentDetail` 已支持读取 `contextData`，只需新增一个 `source_links` 渲染组件。
+- **逻辑概述**：系统默认以独立卡片展示。仅当 AI 命中聚类或用户手动操作时，才演变为聚合形态。
+- **存储方案**：基于 `parent_id` 的递归树状结构，配合增量综述算法节约 Token。
+- **详细设计与 UI 规范**：请参阅专项文档 [DISCOVERY_EVENT_AGGREGATION.md](./DISCOVERY_EVENT_AGGREGATION.md)。
 
 ---
 
@@ -446,10 +303,10 @@ class EnrichmentService:
 
 这样 Patrol Agent 的轻量评分与 Content Agent 的精细清洗在 promote 环节自然衔接——发现阶段只做快速评分不浪费预算，存档阶段按需深层处理保证主库质量。
 
-### 3.4 去重策略
+### 3.4 去重与事件聚类策略 (Dedup & Clustering)
 
-1.  **URL 去重**（Phase 1）：规范化 URL（去除 www/trailing slash/fragment）→ 查询 `contents.canonical_url`
-2.  **主题级去重**（Phase 2）：内容相似度 ≥ 0.33 → 合并&聚合
+1.  **URL 去重**（Phase 1）：通过 `canonical_url` 精确去重，重复者追加记录至 `source_links`。
+2.  **事件聚类**（Phase 2）：基于相似度计算触发综述生成。具体实现见 [DISCOVERY_EVENT_AGGREGATION.md](./DISCOVERY_EVENT_AGGREGATION.md)。
 
 ### 3.5 自动化任务 (Background Tasks)
 
@@ -655,13 +512,13 @@ class EnrichmentService:
 ## 5. 前端设计方案 (Frontend UI/UX)
 
 ### 5.1 探索界面 (Discovery Page)
-*   **横屏布局 (Landscape)**：
-    *   **左侧列表 (Master)**：超窄卡片流。显示评分（彩色圆点）、标题、来源图标、时间。
-    *   **右侧详情 (Detail)**：复用主库渲染器。底部悬浮操作条：✅ 收藏 / ❌ 忽略。
-*   **竖屏布局 (Portrait)**：
-    *   单列列表卡片，点击后滑入详情页。
-*   **批量操作**：长按多选 → 批量收藏/忽略。
-*   **筛选栏**：来源类型、分数范围、AI 标签快速过滤。
+*   **交互形态**：支持“独立”与“聚合”双态呈现。聚合态采用树状折叠样式与拖拽交互。
+*   **详细设计规范**：关于聚合组的展开逻辑、拖拽合并/拆分交互，请参阅专项文档 [DISCOVERY_EVENT_AGGREGATION.md](./DISCOVERY_EVENT_AGGREGATION.md) §2。
+*   **通用交互**：
+    *   **横屏布局**：左侧 Master 列表（超窄卡片），右侧 Detail 详情。
+    *   **竖屏布局**：单列卡片流，点击进入详情。
+    *   **批量操作**：长按多选 → 批量收藏/忽略。
+    *   **筛选栏**：来源类型、分数范围、AI 标签快速过滤。
 
 ### 5.2 统一设置中心 (Settings Expansion)
 将原有的 Bot 配置从审阅界面移动至设置页，形成"集成中心"：

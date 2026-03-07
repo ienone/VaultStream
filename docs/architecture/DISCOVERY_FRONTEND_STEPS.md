@@ -124,9 +124,9 @@ Phase 2:
 
 | # | 子任务 | 涉及文件（新增/修改） | 说明 | 状态 |
 |---|---|---|---|---|
-| F.1 | AI 巡逻配置表单 | `frontend/lib/features/settings/presentation/tabs/automation_tab.dart` | 接入 `interest_profile`、`score_threshold`、`retention_days` | ⏳ |
-| F.2 | 来源管理面板 | `frontend/lib/features/settings/presentation/tabs/automation_tab.dart`, `frontend/lib/features/settings/presentation/widgets/discovery_source_dialog.dart` | CRUD + 手动同步（按 kind 分组） | ⏳ |
-| F.3 | Bot 迁移与修改合并包 | `frontend/lib/features/settings/presentation/tabs/push_tab.dart`, `frontend/lib/features/review/review_page.dart`, `frontend/lib/features/review/models/bot_chat.dart`, `frontend/lib/features/review/providers/bot_chats_provider.dart` | 将 Bot 配置能力从 Review 迁移至 Settings，并一次性完成模型/Provider 扩展与 Review 逻辑清理 | ⏳ |
+| F.1 | AI 巡逻配置表单 | `frontend/lib/features/settings/presentation/tabs/automation_tab.dart` | 接入 `interest_profile`、`score_threshold`、`retention_days` | ✅ |
+| F.2 | 来源管理面板 | `frontend/lib/features/settings/presentation/tabs/automation_tab.dart`, `frontend/lib/features/settings/presentation/widgets/discovery_source_dialog.dart` | CRUD + 手动同步（按 kind 分组） | ✅ |
+| F.3 | Bot 迁移与修改合并包 | `frontend/lib/features/settings/presentation/tabs/push_tab.dart`, `frontend/lib/features/review/review_page.dart` | 将 Bot 配置能力从 Review 迁移至 Settings，支持双开关 | ✅ |
 
 **完成标准**
 - Discovery 相关配置全部集中在 Settings，可独立完成"画像/阈值/来源/监听开关"维护。
@@ -197,21 +197,19 @@ Phase 2:
 
 ---
 
-## Step I（Phase 2）: 聚合组高级交互 + Enrichment 展示
+## Step I（Phase 2）: 条件式聚合交互 (Conditional Aggregation)
 
-> 依赖后端提供 `merge/split/items/{id}/sources` 及 Enrichment Agent 接口后实施。
+> **目标**：实现重合内容的动态分组形态与拖拽交互。详细 UI 规范见 [DISCOVERY_EVENT_AGGREGATION.md](./DISCOVERY_EVENT_AGGREGATION.md)。
 
 | # | 子任务 | 涉及文件（新增/修改） | 说明 | 状态 |
 |---|---|---|---|---|
-| I.1 | 来源组展开面板 | `frontend/lib/features/discovery/widgets/discovery_sources_panel.dart` | 详情底部来源组展开/收起 | ⏳ |
-| I.2 | 手动合并操作 | `frontend/lib/features/discovery/widgets/discovery_merge_sheet.dart` | 多选后合并，前端乐观更新 | ⏳ |
-| I.3 | 拆出来源操作 | `frontend/lib/features/discovery/widgets/discovery_split_dialog.dart` | 从来源组拆出独立内容 | ⏳ |
-| I.4 | 拖拽并入/拆出 | `frontend/lib/features/discovery/widgets/discovery_group_drag_layer.dart` | 实现设计中的拖拽管理交互 | ⏳ |
-| I.5 | Enrichment 富化信息展示 | `frontend/lib/features/discovery/widgets/discovery_enrichment_section.dart` | 渲染 `context_data["enrichment"]` 中的概念标签、双语背景分析、社区讨论、参考来源链接（参见设计文档§3.3 Enrichment Agent 输出结构） | ⏳ |
+| I.1 | 动态树状模型 | `frontend/lib/features/discovery/models/discovery_models.dart` | `DiscoveryItem` 支持可选 `children` 与 `isGroup` 判定 | ⏳ |
+| I.2 | 折叠分组组件 | `frontend/lib/features/discovery/widgets/discovery_group_card.dart` | 开发支持展开/收起的特殊渲染器 | ⏳ |
+| I.3 | 拖拽管理交互 | `frontend/lib/features/discovery/discovery_page.dart` | 实现合并与拆分的 Drag & Drop 逻辑 | ⏳ |
+| I.4 | 综述详情视图 | `frontend/lib/features/discovery/discovery_detail_page.dart` | 适配聚合组的综述与多方对比展示 | ⏳ |
 
 **完成标准**
-- 支持设计文档中的"聚合卡片组 + 来源管理"高级能力。
-- 高分内容的 AI 富化背景知识可在详情页中完整呈现。
+- 用户能通过拖拽自由管理事件分组，形态切换平滑。
 
 ---
 

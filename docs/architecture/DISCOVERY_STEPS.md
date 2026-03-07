@@ -85,6 +85,29 @@
 
 ---
 
+## Phase 2 (Event-Level Aggregation) — 3 Steps
+
+> 实现主题级的跨源聚类与动态分组形态。详细设计见 [DISCOVERY_EVENT_AGGREGATION.md](./DISCOVERY_EVENT_AGGREGATION.md)。
+
+### Step 8: 数据库支持父子层级关系
+| # | 子任务 | 涉及文件 | 说明 | 状态 |
+|---|--------|----------|------|------|
+| 8.1 | `Content` 模型扩展 | `app/models/content.py` | 新增 `parent_id` (FK) 和 `is_synthesis` (Bool) | ⏳ |
+| 8.2 | 存储逻辑实现 | `app/tasks/discovery_sync.py` | 虚拟父节点存储综述，子项标记为 `merged` | ⏳ |
+
+### Step 9: 增量综述算法与 Token 优化
+| # | 子任务 | 涉及文件 | 说明 | 状态 |
+|---|--------|----------|------|------|
+| 9.1 | 增量综述生成 | `app/services/patrol_service.py` | 实现 `(Old_Synthesis + New_Summary)` 的 Token 节约模式 | ⏳ |
+| 9.2 | 异步状态同步 | `app/routers/discovery.py` | SSE 推送综述更新结果 | ⏳ |
+
+### Step 10: 聚合组管理 API (Merge/Split)
+| # | 子任务 | 涉及文件 | 说明 | 状态 |
+|---|--------|----------|------|------|
+| 10.1 | 管理接口 | `app/routers/discovery.py` | 实现拖拽触发的 `POST /merge` 与 `POST /split` | ⏳ |
+
+---
+
 ## 🧪 测试总览
 
 | 优先级 | 测试文件 | 覆盖 Step |
