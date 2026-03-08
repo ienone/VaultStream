@@ -9,6 +9,14 @@
 from .url_utils import canonicalize_url, normalize_bilibili_url
 from .datetime_utils import normalize_datetime_for_db
 from .text_formatters import format_content_for_tg, format_number
+from .sensitive_display import (
+    ENV_CONFIGURED_PLACEHOLDER,
+    DB_CONFIGURED_PLACEHOLDER,
+    extract_secret_value,
+    is_sensitive_setting_key,
+    as_configured_placeholder,
+    mask_token_partial,
+)
 
 __all__ = [
     'canonicalize_url',
@@ -16,4 +24,10 @@ __all__ = [
     'normalize_datetime_for_db',
     'format_content_for_tg',
     'format_number',
+    'ENV_CONFIGURED_PLACEHOLDER',
+    'DB_CONFIGURED_PLACEHOLDER',
+    'extract_secret_value',
+    'is_sensitive_setting_key',
+    'as_configured_placeholder',
+    'mask_token_partial',
 ]

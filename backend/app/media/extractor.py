@@ -4,6 +4,7 @@
 从内容元数据中提取图片、视频等媒体URL
 """
 from typing import List, Dict, Any, Literal
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 
 MediaType = Literal["photo", "video"]
@@ -21,6 +22,71 @@ def _is_avatar_like(item: Dict[str, Any]) -> bool:
     if "/avatar" in url or "avatar_" in url or "profile_image" in url:
         return True
     return False
+
+
+def _normalize_media_identity(url: Any) -> str:
+    """Normalize a media URL for stable avatar comparisons."""
+    if not isinstance(url, str):
+        return ""
+
+    candidate = unquote(url.strip())
+    if not candidate:
+        return ""
+
+    if candidate.startswith("local://"):
+        return candidate.rstrip("/")
+
+    try:
+        parts = urlsplit(candidate)
+    except ValueError:
+        return candidate.rstrip("/")
+
+    if parts.scheme or parts.netloc:
+        path = parts.path.rstrip("/") or "/"
+        return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), path, "", ""))
+
+    return candidate.rstrip("/")
+
+
+def is_avatar_media_url(url: Any, author_avatar_url: str | None = None) -> bool:
+    """Return True when the URL is the author avatar or an avatar-like fallback."""
+    identity = _normalize_media_identity(url)
+    if not identity:
+        return False
+
+    avatar_identity = _normalize_media_identity(author_avatar_url)
+    if avatar_identity:
+        return identity == avatar_identity
+
+    return _is_avatar_like({"url": url})
+
+
+def sanitize_media_urls(
+    media_urls: Any,
+    *,
+    author_avatar_url: str | None = None,
+) -> List[str]:
+    """Drop empty/duplicate media URLs and filter out author avatars."""
+    if not isinstance(media_urls, list):
+        return []
+
+    sanitized: List[str] = []
+    seen: set[str] = set()
+    for item in media_urls:
+        if not isinstance(item, str):
+            continue
+
+        url = item.strip()
+        if not url or url in seen:
+            continue
+
+        if is_avatar_media_url(url, author_avatar_url=author_avatar_url):
+            continue
+
+        seen.add(url)
+        sanitized.append(url)
+
+    return sanitized
 
 
 def extract_media_urls(

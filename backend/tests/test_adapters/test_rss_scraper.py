@@ -45,6 +45,38 @@ SAMPLE_ATOM_FEED = """<?xml version="1.0" encoding="UTF-8"?>
     </entry>
 </feed>"""
 
+SAMPLE_RSS_FEED_WITH_MEDIA_COVER = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+<channel>
+    <title>Media Feed</title>
+    <item>
+        <title>Covered Article</title>
+        <link>https://example.com/covered-article</link>
+        <guid>covered-001</guid>
+        <media:thumbnail url="https://cdn.example.com/thumb.jpg" width="640" height="360" />
+        <media:content url="https://cdn.example.com/media-content.jpg" medium="image" />
+        <enclosure url="https://cdn.example.com/enclosure.jpg" type="image/jpeg" />
+        <description><![CDATA[<p>Body text</p><img src="https://cdn.example.com/body.jpg" alt="body" />]]></description>
+    </item>
+</channel>
+</rss>"""
+
+SAMPLE_RSS_FEED_WITH_LAZY_BODY_IMAGE = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+    <title>Lazy Feed</title>
+    <item>
+        <title>Lazy Article</title>
+        <link>https://example.com/lazy-article</link>
+        <guid>lazy-001</guid>
+        <description><![CDATA[
+            <p>Intro</p>
+            <img src="//img.example.com/placeholder.png" data-original="https://cdn.example.com/real-image.jpg" alt="hero" />
+        ]]></description>
+    </item>
+</channel>
+</rss>"""
+
 
 class TestRSSDiscoveryScraper:
 
@@ -83,6 +115,37 @@ class TestRSSDiscoveryScraper:
         assert items[0].content == "Atom summary text"
         assert "ai" in items[0].source_tags
         assert "ml" in items[0].source_tags
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_fetch_prefers_rss_cover_sources_before_body_images(self):
+        """media:thumbnail 等显式 RSS 封面字段优先于正文首图。"""
+        respx.get("https://example.com/media.xml").mock(
+            return_value=httpx.Response(200, text=SAMPLE_RSS_FEED_WITH_MEDIA_COVER)
+        )
+
+        scraper = RSSDiscoveryScraper({"url": "https://example.com/media.xml"})
+        items, _ = await scraper.fetch()
+
+        assert len(items) == 1
+        assert items[0].cover_url == "https://cdn.example.com/thumb.jpg"
+        assert items[0].media_urls == ["https://cdn.example.com/body.jpg"]
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_fetch_falls_back_to_first_real_body_image(self):
+        """无显式 RSS 封面时，回退到正文首张真实图片而不是懒加载占位图。"""
+        respx.get("https://example.com/lazy.xml").mock(
+            return_value=httpx.Response(200, text=SAMPLE_RSS_FEED_WITH_LAZY_BODY_IMAGE)
+        )
+
+        scraper = RSSDiscoveryScraper({"url": "https://example.com/lazy.xml"})
+        items, _ = await scraper.fetch()
+
+        assert len(items) == 1
+        assert items[0].cover_url == "https://cdn.example.com/real-image.jpg"
+        assert items[0].media_urls == ["https://cdn.example.com/real-image.jpg"]
+        assert "https://cdn.example.com/real-image.jpg" in items[0].content
 
     @respx.mock
     @pytest.mark.asyncio

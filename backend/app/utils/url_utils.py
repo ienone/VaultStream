@@ -3,6 +3,7 @@ URL处理工具模块
 
 提供URL规范化、平台特定URL处理等功能
 """
+import re
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 
 
@@ -14,6 +15,20 @@ _TRACKING_QUERY_KEYS = {
     "from_source",
     "vd_source",
 }
+
+_URL_PATTERN = re.compile(
+    r"https?://[^\s<>\"')\]]+",
+    re.IGNORECASE,
+)
+_BILIBILI_ID_PATTERN = re.compile(
+    r"(?P<id>BV[0-9A-Za-z]{10}|av\d+|cv\d+)",
+    re.IGNORECASE,
+)
+_SCHEMELESS_URL_PATTERN = re.compile(
+    r"^(?:www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:[/?#][^\s<>\"')\]]*)?$",
+    re.IGNORECASE,
+)
+_TRAILING_URL_PUNCTUATION = ",.;:!?)]}，。；：！？）】》」』、"
 
 
 def canonicalize_url(url: str) -> str:
@@ -138,3 +153,63 @@ def normalize_bilibili_url(url_or_id: str) -> str:
         return f"https://www.bilibili.com/read/{val}"
     
     return val
+
+
+def _strip_trailing_url_punctuation(url: str) -> str:
+    """移除提取 URL 时常见的尾随标点。"""
+    cleaned = url or ""
+    while cleaned and cleaned[-1] in _TRAILING_URL_PUNCTUATION:
+        cleaned = cleaned[:-1]
+    return cleaned
+
+
+def extract_urls_from_text(text: str) -> list[str]:
+    """从混合文本中提取所有 HTTP/HTTPS URL。"""
+    if not text:
+        return []
+
+    results: list[str] = []
+    for match in _URL_PATTERN.findall(text):
+        cleaned = _strip_trailing_url_punctuation(match)
+        if cleaned:
+            results.append(cleaned)
+    return results
+
+
+def extract_primary_url_candidate(text: str) -> str:
+    """从分享文案中提取首个 URL 或已知平台 ID。"""
+    val = (text or "").strip()
+    if not val:
+        return val
+
+    urls = extract_urls_from_text(val)
+    if urls:
+        return urls[0]
+
+    bilibili_id_match = _BILIBILI_ID_PATTERN.search(val)
+    if bilibili_id_match:
+        return bilibili_id_match.group("id")
+
+    return val
+
+
+def is_url_like_input(text: str) -> bool:
+    """判断输入是否像 URL 或已知平台分享 ID。"""
+    val = (text or "").strip()
+    if not val:
+        return False
+    if _URL_PATTERN.fullmatch(val):
+        return True
+    if _SCHEMELESS_URL_PATTERN.fullmatch(val):
+        return True
+    if _BILIBILI_ID_PATTERN.fullmatch(val):
+        return True
+    return False
+
+
+def normalize_share_url_input(text: str) -> str:
+    """将分享输入规整为可检测/可持久化的真实 URL。"""
+    candidate = extract_primary_url_candidate(text)
+    if not is_url_like_input(candidate):
+        return (text or "").strip()
+    return canonicalize_url(normalize_bilibili_url(candidate))
