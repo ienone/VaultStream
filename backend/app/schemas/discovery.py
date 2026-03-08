@@ -25,13 +25,24 @@ class DiscoveryItemResponse(BaseModel):
     source_type: Optional[str] = None
     discovery_state: Optional[DiscoveryState] = None
     discovered_at: Optional[datetime] = None
+    published_at: Optional[datetime] = None
     created_at: datetime
+    # 详情复用字段
+    cover_url: Optional[str] = None
+    cover_color: Optional[str] = None
+    platform_id: Optional[str] = None
+    content_type: Optional[str] = None
+    layout_type: Optional[str] = Field(None, alias="layout_type")
+    source_tags: List[str] = Field(default_factory=list)
+    collect_count: int = 0
+    share_count: int = 0
+    comment_count: int = 0
     media_urls: List[str] = Field(default_factory=list)
     rich_payload: Optional[dict] = None
     extra_stats: dict = Field(default_factory=dict)
     context_data: Optional[dict] = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class DiscoveryItemUpdate(BaseModel):

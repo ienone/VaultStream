@@ -3,7 +3,6 @@
 
 被动监听 is_monitoring=True 的群组消息，提取 URL 并写入发现缓冲区。
 """
-import re
 from datetime import timedelta
 
 from sqlalchemy import select
@@ -13,21 +12,14 @@ from app.core.logging import logger
 from app.core.db_adapter import AsyncSessionLocal
 from app.core.time_utils import utcnow
 from app.models import Content, BotChat, DiscoveryState, Platform, ContentStatus
-from app.utils.url_utils import normalize_url_for_dedup
-
-URL_PATTERN = re.compile(
-    r"https?://[^\s<>\"')\]]+",
-    re.IGNORECASE,
-)
+from app.utils.url_utils import extract_urls_from_text, normalize_url_for_dedup
 
 _DEFAULT_RETENTION_DAYS = 7
 
 
 def extract_urls(text: str) -> list[str]:
     """从文本中提取所有 HTTP/HTTPS URL。"""
-    if not text:
-        return []
-    return URL_PATTERN.findall(text)
+    return extract_urls_from_text(text)
 
 
 async def handle_monitored_message(update: Update, context) -> None:

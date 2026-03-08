@@ -6,7 +6,11 @@ from sqlalchemy import select, and_, or_, func
 from sqlalchemy.exc import IntegrityError
 from app.models import Content, ContentStatus, ContentSource, PushedRecord, Platform, ReviewStatus
 from app.adapters import AdapterFactory
-from app.utils.url_utils import normalize_bilibili_url, canonicalize_url
+from app.utils.url_utils import (
+    extract_primary_url_candidate,
+    is_url_like_input,
+    normalize_share_url_input,
+)
 from app.utils.tags import normalize_tags
 from app.core.queue import task_queue
 from app.core.logging import logger
@@ -29,10 +33,13 @@ class ContentService:
     ) -> Content:
         """核心分享创建业务逻辑"""
         normalized_tags = normalize_tags(tags, tags_text)
+        raw_url = (url or "").strip()
+        extracted_input = extract_primary_url_candidate(raw_url)
+        if not is_url_like_input(extracted_input):
+            raise ValueError("No valid URL found in input")
 
         # 1. 规范化
-        url_for_detect = normalize_bilibili_url(url)
-        url_for_detect = canonicalize_url(url_for_detect)
+        url_for_detect = normalize_share_url_input(raw_url)
 
         # 2. 平台检测
         platform = AdapterFactory.detect_platform(url_for_detect)
@@ -53,7 +60,7 @@ class ContentService:
         if content is None:
             content = Content(
                 platform=platform,
-                url=url,
+                url=url_for_detect,
                 canonical_url=canonical_url,
                 clean_url=canonical_url,
                 tags=normalized_tags,
@@ -70,6 +77,10 @@ class ContentService:
             existing_tags = set(content.tags or [])
             incoming_tags = set(normalized_tags)
             content.tags = list(existing_tags.union(incoming_tags))
+            if content.url != url_for_detect:
+                content.url = url_for_detect
+            if content.clean_url != canonical_url:
+                content.clean_url = canonical_url
             if source_name:
                 content.source = source_name
             # 如果提供了 override，更新它
@@ -103,6 +114,10 @@ class ContentService:
             existing_tags = set(content.tags or [])
             incoming_tags = set(normalized_tags)
             content.tags = list(existing_tags.union(incoming_tags))
+            if content.url != url_for_detect:
+                content.url = url_for_detect
+            if content.clean_url != canonical_url:
+                content.clean_url = canonical_url
             if source_name:
                 content.source = source_name
             

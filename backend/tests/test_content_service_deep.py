@@ -86,6 +86,53 @@ async def test_create_share_incremental_tags(db_session):
     assert set(content.tags) == {"ai", "tech"}
 
 
+@pytest.mark.asyncio
+async def test_create_share_extracts_url_from_mixed_text(db_session):
+    service = ContentService(db_session)
+    raw_input = (
+        "一篇值得看的知乎问题 https://www.zhihu.com/question/123?utm_source=share，"
+        "复制这条消息后打开"
+    )
+    expected_url = "https://www.zhihu.com/question/123"
+
+    with patch("app.services.content_service.task_queue", AsyncMock()):
+        with patch("app.services.content_service.event_bus", AsyncMock()):
+            with patch("app.adapters.AdapterFactory.detect_platform", return_value=Platform.ZHIHU):
+                mock_adapter = MagicMock()
+                mock_adapter.clean_url = AsyncMock(return_value=expected_url)
+                with patch("app.adapters.AdapterFactory.create", return_value=mock_adapter):
+                    content = await service.create_share(raw_input, tags=["zhihu"])
+
+    assert content.url == expected_url
+    assert content.clean_url == expected_url
+    assert content.canonical_url == expected_url
+
+
+@pytest.mark.asyncio
+async def test_create_share_rejects_text_without_extractable_url(db_session):
+    service = ContentService(db_session)
+    with pytest.raises(ValueError, match="No valid URL found in input"):
+        await service.create_share("这是一段没有链接的分享文案")
+
+
+@pytest.mark.asyncio
+async def test_create_share_extracts_bilibili_id_from_mixed_text(db_session):
+    service = ContentService(db_session)
+    raw_input = "这个视频一定要看 BV1xx411c7Xg，真的很离谱"
+    expected_url = "https://www.bilibili.com/video/BV1xx411c7Xg"
+
+    with patch("app.services.content_service.task_queue", AsyncMock()):
+        with patch("app.services.content_service.event_bus", AsyncMock()):
+            with patch("app.adapters.AdapterFactory.detect_platform", return_value=Platform.BILIBILI):
+                mock_adapter = MagicMock()
+                mock_adapter.clean_url = AsyncMock(return_value=expected_url)
+                with patch("app.adapters.AdapterFactory.create", return_value=mock_adapter):
+                    content = await service.create_share(raw_input)
+
+    assert content.url == expected_url
+    assert content.clean_url == expected_url
+
+
 # ─── New tests for improved coverage ───────────────────────────────────────────
 
 

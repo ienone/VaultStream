@@ -33,8 +33,22 @@ def test_compute_effective_layout_type_fallback_to_system():
 
 
 def test_compute_effective_layout_type_none():
-    content = SimpleNamespace(layout_type_override=None, layout_type=None)
-    assert compute_effective_layout_type(content) is None
+    # 两者均未设置时，按 platform/content_type 推断，默认回退 'article'
+    content = SimpleNamespace(layout_type_override=None, layout_type=None,
+                               platform=None, content_type=None)
+    assert compute_effective_layout_type(content) == 'article'
+
+
+def test_compute_effective_layout_type_infer_gallery_by_platform():
+    content = SimpleNamespace(layout_type_override=None, layout_type=None,
+                               platform='twitter', content_type=None)
+    assert compute_effective_layout_type(content) == 'gallery'
+
+
+def test_compute_effective_layout_type_infer_gallery_by_content_type():
+    content = SimpleNamespace(layout_type_override=None, layout_type=None,
+                               platform='bilibili', content_type='video')
+    assert compute_effective_layout_type(content) == 'gallery'
 
 
 # ── compute_display_title ──────────────────────────────────────────
@@ -94,6 +108,10 @@ def _make_detail(**overrides):
         context_data=None,
         body=None,
         title=None,
+        layout_type=None,
+        layout_type_override=None,
+        content_type=None,
+        platform=None,
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)

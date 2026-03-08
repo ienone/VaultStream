@@ -3,10 +3,13 @@ FastAPI 主应用
 """
 import sys
 import asyncio
+import signal
 
 # 针对 Windows 的修复：Playwright 需要 ProactorEventLoop
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    # ProactorEventLoop 会吞掉 SIGINT，恢复为默认行为以支持 Ctrl+C 终止
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
 
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -130,6 +133,10 @@ async def lifespan(app: FastAPI):
     await discovery_sync_task.stop()
     await discovery_cleanup_task.stop()
     logger.info("发现流同步和清理任务已停止")
+
+    # 停止 Cookie 保活任务
+    await maintenance_worker.stop()
+    logger.info("Cookie 保活任务已停止")
 
     # 停止共享浏览器
     await browser_manager.shutdown()

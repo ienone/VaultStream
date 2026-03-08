@@ -55,5 +55,27 @@ def start_cookie_keepalive_tasks():
 
 class CookieKeepAliveTask:
     """包装类，用于统一启动接口"""
+
+    def __init__(self):
+        self._tasks: list[asyncio.Task] = []
+
     def start(self):
-        start_cookie_keepalive_tasks()
+        try:
+            self._tasks = [
+                asyncio.create_task(zhihu_keepalive_loop()),
+                asyncio.create_task(xiaohongshu_keepalive_loop()),
+            ]
+            logger.info("Successfully launched cookie keepalive tasks.")
+        except Exception as e:
+            logger.error(f"Failed to start cookie keepalive tasks: {e}")
+
+    async def stop(self):
+        for task in self._tasks:
+            if not task.done():
+                task.cancel()
+        for task in self._tasks:
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        self._tasks.clear()

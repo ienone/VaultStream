@@ -377,7 +377,7 @@ async def get_discovery_stats(
     )
     state_rows = (await db.execute(state_q)).all()
     by_state = {
-        (row[0].value if isinstance(row[0], DiscoveryState) else str(row[0])): row[1]
+        row[0].value: row[1]
         for row in state_rows
         if row[0] is not None
     }

@@ -9,6 +9,7 @@ from email.utils import parsedate_to_datetime
 
 from app.adapters.base import PlatformAdapter, ParsedContent, LAYOUT_ARTICLE
 from app.models.base import Platform
+from app.utils.datetime_utils import normalize_datetime_for_db
 
 
 class RssAdapter(PlatformAdapter):
@@ -63,7 +64,9 @@ class RssAdapter(PlatformAdapter):
                 pub_date = item.find('pubDate')
                 if pub_date:
                     try:
-                        published_at = parsedate_to_datetime(pub_date.text)
+                        published_at = normalize_datetime_for_db(
+                            parsedate_to_datetime(pub_date.text)
+                        )
                     except Exception:
                         pass
                 

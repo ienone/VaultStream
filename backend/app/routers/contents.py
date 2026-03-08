@@ -27,6 +27,7 @@ from app.services.content_presenter import (
     compute_effective_layout_type, compute_display_title, compute_author_avatar_url,
     transform_media_url, transform_content_detail,
 )
+from app.media.extractor import sanitize_media_urls
 
 router = APIRouter()
 
@@ -133,6 +134,15 @@ async def get_content_detail(
     content = result.scalar_one_or_none()
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
+
+    sanitized_media_urls = sanitize_media_urls(
+        content.media_urls,
+        author_avatar_url=content.author_avatar_url,
+    )
+    if sanitized_media_urls != (content.media_urls or []):
+        content.media_urls = sanitized_media_urls
+        await db.commit()
+        await db.refresh(content)
         
     base_url = settings.base_url or "http://localhost:8000"
     return transform_content_detail(ContentDetail.model_validate(content), base_url)
@@ -145,20 +155,12 @@ async def update_content(
     _: None = Depends(require_api_token),
 ):
     """修改内容"""
+    # exclude_unset=True：只更新请求体里显式出现的字段，
+    # 这样 layout_type_override=null 可以正确清除 override，
+    # 而完全不传的字段不会被覆盖为 None。
     updates = {
-        k: v for k, v in {
-            "tags": request.tags,
-            "title": request.title,
-            "body": request.body,
-            "author_name": request.author_name,
-            "cover_url": request.cover_url,
-            "is_nsfw": request.is_nsfw,
-            "status": request.status,
-            "review_status": request.review_status,
-            "review_note": request.review_note,
-            "reviewed_by": request.reviewed_by,
-            "layout_type_override": request.layout_type_override,
-        }.items() if v is not None
+        k: v for k, v in request.model_dump(exclude_unset=True).items()
+        if v is not None or k == "layout_type_override"
     }
     try:
         content = await service.update_content(content_id, updates)

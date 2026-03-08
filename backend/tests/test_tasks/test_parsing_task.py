@@ -291,6 +291,32 @@ async def test_execute_parse_max_retries_exhausted(db_session, monkeypatch):
     assert mock_adapter.parse.call_count == 2
 
 
+@pytest.mark.asyncio
+async def test_execute_parse_normalizes_mixed_text_url_before_parse(db_session, monkeypatch):
+    """Mixed share text is normalized to a real URL before parsing."""
+    content = await _make_content(
+        db_session,
+        url="看这里 https://www.zhihu.com/question/123?utm_source=share，复制后打开",
+        platform=Platform.ZHIHU,
+    )
+
+    parsed = _make_parsed(
+        platform="zhihu",
+        content_type="answer",
+        clean_url="https://www.zhihu.com/question/123",
+    )
+    mock_adapter = AsyncMock()
+    mock_adapter.parse.return_value = parsed
+    mocks = _patch_common(monkeypatch, mock_adapter=mock_adapter)
+
+    with mocks["factory"]:
+        parser = ContentParser()
+        await parser._execute_parse_with_retry(content, 0, 3)
+
+    mock_adapter.parse.assert_awaited_once_with("https://www.zhihu.com/question/123")
+    assert content.url == "https://www.zhihu.com/question/123"
+
+
 # ===================================================================
 # _update_content
 # ===================================================================
@@ -334,6 +360,33 @@ async def test_update_content_archive_markdown_fallback(db_session, monkeypatch)
             parser = ContentParser()
             await parser._update_content(session, content_in_session, parsed, mock_adapter)
         assert content_in_session.body == "# Archive MD"
+
+
+@pytest.mark.asyncio
+async def test_update_content_sanitizes_avatar_from_media_urls(db_session, monkeypatch):
+    """Avatar URLs are removed from persisted media_urls during parse writes."""
+    from tests.conftest import TestingSessionLocal
+
+    content = await _make_content(db_session)
+    parsed = _make_parsed(
+        author_avatar_url="https://cdn.example.com/avatar.jpg?size=large",
+        media_urls=[
+            "https://cdn.example.com/avatar.jpg?size=small",
+            "https://cdn.example.com/content.jpg",
+        ],
+    )
+    mock_adapter = AsyncMock()
+    mock_adapter.map_stats_to_content = MagicMock()
+    mocks = _patch_common(monkeypatch, mock_adapter=mock_adapter)
+
+    async with TestingSessionLocal() as session:
+        result = await session.execute(select(Content).where(Content.id == content.id))
+        content_in_session = result.scalar_one()
+        with mocks["factory"]:
+            parser = ContentParser()
+            await parser._update_content(session, content_in_session, parsed, mock_adapter)
+
+        assert content_in_session.media_urls == ["https://cdn.example.com/content.jpg"]
 
 
 @pytest.mark.asyncio

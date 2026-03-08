@@ -75,7 +75,36 @@ class TestContentsAPI:
         
         data = response.json()
         assert data["id"] == content.id
-        assert data["platform"] == (content.platform.value if hasattr(content.platform, 'value') else content.platform)
+        assert data["platform"] == content.platform.value
+
+    @pytest.mark.asyncio
+    async def test_get_content_by_id_auto_heals_avatar_in_media_urls(self, client: AsyncClient, db_session):
+        """Detail endpoint should filter and persistently heal avatar URLs from media_urls."""
+        from app.models import Content, Platform, ContentStatus
+
+        content = Content(
+            platform=Platform.XIAOHONGSHU,
+            url="https://www.xiaohongshu.com/discovery/item/test-avatar-heal",
+            canonical_url="https://www.xiaohongshu.com/discovery/item/test-avatar-heal",
+            status=ContentStatus.PARSE_SUCCESS,
+            author_avatar_url="https://cdn.example.com/avatar.jpg?size=large",
+            media_urls=[
+                "https://cdn.example.com/avatar.jpg?size=small",
+                "https://cdn.example.com/content.jpg",
+            ],
+        )
+        db_session.add(content)
+        await db_session.commit()
+        await db_session.refresh(content)
+
+        response = await client.get(f"/api/v1/contents/{content.id}")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["media_urls"] == ["https://cdn.example.com/content.jpg"]
+
+        await db_session.refresh(content)
+        assert content.media_urls == ["https://cdn.example.com/content.jpg"]
     
     @pytest.mark.asyncio
     async def test_delete_content(self, client: AsyncClient):

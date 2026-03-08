@@ -1,5 +1,5 @@
 import pytest
-from app.media.extractor import extract_media_urls, _is_avatar_like
+from app.media.extractor import extract_media_urls, sanitize_media_urls, _is_avatar_like
 
 def test_is_avatar_like():
     """Test avatar detection logic."""
@@ -69,3 +69,26 @@ def test_extract_media_urls_complex_nesting():
     assert extract_media_urls(None) == []
     assert extract_media_urls({}) == []
     assert extract_media_urls({"archive": "not_a_dict"}) == []
+
+
+def test_sanitize_media_urls_filters_author_avatar_exact_match():
+    results = sanitize_media_urls(
+        [
+            "https://cdn.com/content.jpg",
+            "https://cdn.com/avatar.jpg?size=small",
+        ],
+        author_avatar_url="https://cdn.com/avatar.jpg?size=large",
+    )
+
+    assert results == ["https://cdn.com/content.jpg"]
+
+
+def test_sanitize_media_urls_falls_back_to_avatar_heuristics():
+    results = sanitize_media_urls(
+        [
+            "https://cdn.com/avatar_123.jpg",
+            "https://cdn.com/content.jpg",
+        ],
+    )
+
+    assert results == ["https://cdn.com/content.jpg"]

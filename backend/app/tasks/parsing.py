@@ -19,9 +19,12 @@ from app.adapters import AdapterFactory
 from app.adapters.errors import AdapterError, RetryableAdapterError
 from app.core.config import settings
 from app.adapters.storage import get_storage_backend
+from app.media.extractor import sanitize_media_urls
 from app.media.processor import store_archive_images_as_webp, store_archive_videos
 from app.media.color import extract_cover_color
 from app.core.queue import task_queue
+from app.utils.datetime_utils import normalize_datetime_for_db
+from app.utils.url_utils import normalize_share_url_input
 
 
 class ContentParser:
@@ -97,6 +100,11 @@ class ContentParser:
                     cookies=self._get_platform_cookies(content.platform)
                 )
 
+                normalized_parse_url = normalize_share_url_input(content.url)
+                if normalized_parse_url and normalized_parse_url != content.url:
+                    logger.info(f"检测到混合分享文案，已修正解析 URL: content_id={content.id}")
+                    content.url = normalized_parse_url
+
                 logger.info(f"开始解析内容 (try={current_attempt + i + 1}/{max_attempts})")
                 parsed = await adapter.parse(content.url)
                 last_err = None
@@ -130,7 +138,7 @@ class ContentParser:
         content.author_avatar_url = parsed.author_avatar_url
         content.author_url = parsed.author_url
         content.source_tags = parsed.source_tags or []
-        content.published_at = parsed.published_at
+        content.published_at = normalize_datetime_for_db(parsed.published_at)
         
         # 保存结构化扩展字段
         content.context_data = getattr(parsed, 'context_data', None)
@@ -163,7 +171,10 @@ class ContentParser:
             content.body = content.body[:_MAX_BODY_LEN]
             logger.warning(f"正文超长截断: content_id={content.id}, original_len={len(parsed.body)}")
         content.cover_url = parsed.cover_url
-        content.media_urls = parsed.media_urls
+        content.media_urls = sanitize_media_urls(
+            parsed.media_urls,
+            author_avatar_url=parsed.author_avatar_url,
+        )
         content.author_avatar_url = parsed.author_avatar_url
         content.archive_metadata = self._truncate_archive_metadata(
             getattr(parsed, 'archive_metadata', None),
@@ -512,7 +523,10 @@ class ContentParser:
                 if parsed_like.cover_url:
                     content.cover_url = parsed_like.cover_url
                 if parsed_like.media_urls:
-                    content.media_urls = parsed_like.media_urls
+                    content.media_urls = sanitize_media_urls(
+                        parsed_like.media_urls,
+                        author_avatar_url=parsed_like.author_avatar_url or content.author_avatar_url,
+                    )
                     
                 await session.commit()
                 logger.info("补处理归档媒体完成")
