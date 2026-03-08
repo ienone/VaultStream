@@ -20,8 +20,23 @@ from app.core.logging import logger
 from app.core.dependencies import require_api_token
 from app.adapters.storage import get_storage_backend, LocalStorageBackend
 from app.core.queue import task_queue
+from app.utils.sensitive_display import as_configured_placeholder, is_sensitive_setting_key
 
 router = APIRouter()
+
+
+def _serialize_setting_for_response(setting: SystemSetting) -> dict:
+    """Serialize setting rows with sensitive-value masking for API responses."""
+    value = setting.value
+    if is_sensitive_setting_key(setting.key):
+        value = as_configured_placeholder(setting.value, source="db") or ""
+    return {
+        "key": setting.key,
+        "value": value,
+        "category": setting.category,
+        "description": setting.description,
+        "updated_at": setting.updated_at,
+    }
 
 @router.get("/health")
 async def health_check():
@@ -164,7 +179,7 @@ async def get_setting(
     setting = result.scalar_one_or_none()
     if not setting:
         raise HTTPException(status_code=404, detail="Setting not found")
-    return setting
+    return _serialize_setting_for_response(setting)
 
 @router.put("/settings/{key}", response_model=SystemSettingResponse)
 async def update_setting(
@@ -175,7 +190,8 @@ async def update_setting(
 ):
     """创建或更新设置"""
     from app.services.settings_service import set_setting_value
-    return await set_setting_value(key, update.value, category, update.description)
+    setting = await set_setting_value(key, update.value, category, update.description)
+    return _serialize_setting_for_response(setting)
 
 @router.delete("/settings/{key}")
 async def delete_setting(

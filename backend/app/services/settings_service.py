@@ -1,24 +1,13 @@
-import os
-from datetime import datetime
 from typing import Any
 
 from pydantic import SecretStr
-from sqlalchemy import select
 
 from app.models import SystemSetting
 from app.core.db_adapter import AsyncSessionLocal
+from app.utils.sensitive_display import as_configured_placeholder, is_sensitive_setting_key
 
 # Simple in-memory cache
 _SETTINGS_CACHE = {}
-
-
-def _secret_value(val) -> str | None:
-    """从 SecretStr 或普通字符串中安全提取值"""
-    if val is None:
-        return None
-    if isinstance(val, SecretStr):
-        return val.get_secret_value() or None
-    return val or None
 
 
 async def get_setting_value(key: str, default: Any = None) -> Any:
@@ -132,28 +121,7 @@ async def delete_setting_value(key: str) -> bool:
         return False
 
 
-def _resolve_env_display(env_val, is_secret: bool = False):
-    """将环境变量值转换为前端可展示的虚拟设置值。
-
-    - SecretStr 或标记为 is_secret 的值 → 掩码字符串
-    - 空值 → None (表示跳过)
-    - 其余 → 原值
-    """
-    if env_val is None:
-        return None
-
-    if isinstance(env_val, SecretStr):
-        raw = env_val.get_secret_value()
-        return "*** [Configured via .env] ***" if raw else None
-
-    if is_secret:
-        return "*** [Configured via .env] ***" if env_val else None
-
-    # 非机密：空字符串也返回（前端需要显示编辑框）
-    return env_val
-
-
-async def list_settings_values(category: str = None) -> list[SystemSetting]:
+async def list_settings_values(category: str = None) -> list[dict[str, Any]]:
     """
     返回数据库中存储的所有配置项（可按 category 过滤）。
     不再从 .env 注入虚拟配置——所有设置均通过 UI 保存到 DB 管理。
@@ -161,7 +129,24 @@ async def list_settings_values(category: str = None) -> list[SystemSetting]:
     async with AsyncSessionLocal() as db:
         from app.repositories import SystemRepository
         repo = SystemRepository(db)
-        return await repo.list_settings(category=category)
+        settings_list = await repo.list_settings(category=category)
+
+        # 对敏感字段做统一脱敏回显，避免在设置列表里暴露明文。
+        response_items: list[dict[str, Any]] = []
+        for setting in settings_list:
+            value = setting.value
+            if is_sensitive_setting_key(setting.key):
+                value = as_configured_placeholder(setting.value, source="db") or ""
+
+            response_items.append({
+                "key": setting.key,
+                "value": value,
+                "category": setting.category,
+                "description": setting.description,
+                "updated_at": setting.updated_at,
+            })
+
+        return response_items
 
 
 def invalidate_setting_cache(key: str):

@@ -16,6 +16,7 @@ from app.core.events import event_bus
 from app.models import BotConfig, BotConfigPlatform, BotChat, BotChatType
 from app.services.telegram_sync import refresh_telegram_chats
 from app.services.bot_config_runtime import get_primary_bot_config
+from app.utils.sensitive_display import mask_token_partial
 from app.services.telegram_bot_service import (
     restart_telegram_bot,
     start_telegram_bot,
@@ -41,14 +42,6 @@ async def _sync_telegram_bot_process(db: AsyncSession, *, reason: str) -> dict[s
     if cfg and cfg.bot_token and cfg.bot_token.strip():
         return await run_in_threadpool(restart_telegram_bot, reason=reason)
     return await run_in_threadpool(stop_telegram_bot, reason=f"{reason}:no_enabled_telegram")
-
-
-def _mask_token(token: str | None) -> str | None:
-    if not token:
-        return None
-    if len(token) <= 10:
-        return "*" * len(token)
-    return f"{token[:6]}***{token[-4:]}"
 
 
 async def _validate_bot_config_payload(payload: BotConfigCreate | BotConfigUpdate, platform: str):
@@ -78,10 +71,10 @@ async def _to_bot_config_response(db: AsyncSession, cfg: BotConfig) -> BotConfig
         id=cfg.id,
         platform=cfg.platform.value if cfg.platform else "telegram",
         name=cfg.name,
-        bot_token_masked=_mask_token(cfg.bot_token),
+        bot_token_masked=mask_token_partial(cfg.bot_token),
         napcat_http_url=cfg.napcat_http_url,
         napcat_ws_url=cfg.napcat_ws_url,
-        napcat_access_token_masked=_mask_token(cfg.napcat_access_token),
+        napcat_access_token_masked=mask_token_partial(cfg.napcat_access_token),
         enabled=bool(cfg.enabled),
         is_primary=bool(cfg.is_primary),
         bot_id=cfg.bot_id,
