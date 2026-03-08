@@ -219,8 +219,7 @@ class RulePreviewItem(BaseModel):
     scheduled_time: Optional[datetime] = None
     thumbnail_url: Optional[str] = None
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RulePreviewResponse(BaseModel):

@@ -3,13 +3,16 @@
 """
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional, List
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum, UniqueConstraint, JSON, Index, Float
-from sqlalchemy.orm import declarative_base
+from typing import Optional, List, Any
+from sqlalchemy import String, Text, JSON, Integer, Float, DateTime, Boolean, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.core.time_utils import utcnow
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 class LayoutType(str, Enum):
     """内容布局类型 - 用于前端展示形态的判定"""

@@ -3,8 +3,10 @@
 """
 from datetime import datetime
 from enum import Enum
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum, JSON, Index
-from sqlalchemy.orm import relationship
+from typing import Optional, Any
+from sqlalchemy import String, Text, JSON, Integer, DateTime, Boolean, ForeignKey, Index
+from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 
 from app.core.time_utils import utcnow
 from app.models.base import Base
@@ -30,28 +32,27 @@ class BotConfig(Base):
     """Bot 配置（支持多 Bot 管理）"""
     __tablename__ = "bot_configs"
 
-    id = Column(Integer, primary_key=True, index=True)
-    platform = Column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    platform: Mapped[BotConfigPlatform] = mapped_column(
         SQLEnum(BotConfigPlatform, native_enum=False, values_callable=lambda x: [e.value for e in x]),
-        nullable=False,
         index=True,
     )
-    name = Column(String(100), nullable=False)
+    name: Mapped[str] = mapped_column(String(100))
 
-    bot_token = Column(String(300))
+    bot_token: Mapped[Optional[str]] = mapped_column(String(300), default=None)
 
-    napcat_http_url = Column(String(300))
-    napcat_ws_url = Column(String(300))
-    napcat_access_token = Column(String(300))
+    napcat_http_url: Mapped[Optional[str]] = mapped_column(String(300), default=None)
+    napcat_ws_url: Mapped[Optional[str]] = mapped_column(String(300), default=None)
+    napcat_access_token: Mapped[Optional[str]] = mapped_column(String(300), default=None)
 
-    enabled = Column(Boolean, default=True, index=True)
-    is_primary = Column(Boolean, default=False, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
-    bot_id = Column(String(50))
-    bot_username = Column(String(100))
+    bot_id: Mapped[Optional[str]] = mapped_column(String(50), default=None)
+    bot_username: Mapped[Optional[str]] = mapped_column(String(100), default=None)
 
-    created_at = Column(DateTime, default=utcnow)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
     chats = relationship("BotChat", back_populates="bot_config")
 
@@ -60,39 +61,39 @@ class BotChat(Base):
     """Bot 关联的聊天/群组/频道"""
     __tablename__ = "bot_chats"
     
-    id = Column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
 
     __table_args__ = (
         Index("ix_bot_chats_bot_config_chat", "bot_config_id", "chat_id", unique=True),
     )
 
-    bot_config_id = Column(Integer, ForeignKey("bot_configs.id", ondelete="CASCADE"), nullable=False, index=True)
+    bot_config_id: Mapped[int] = mapped_column(Integer, ForeignKey("bot_configs.id", ondelete="CASCADE"), index=True)
     
-    chat_id = Column(String(50), nullable=False, index=True)
-    chat_type = Column(SQLEnum(BotChatType, native_enum=False, values_callable=lambda x: [e.value for e in x]), nullable=False)
-    title = Column(String(200))
-    username = Column(String(100))
-    description = Column(Text)
+    chat_id: Mapped[str] = mapped_column(String(50), index=True)
+    chat_type: Mapped[BotChatType] = mapped_column(SQLEnum(BotChatType, native_enum=False, values_callable=lambda x: [e.value for e in x]))
+    title: Mapped[Optional[str]] = mapped_column(String(200), default=None)
+    username: Mapped[Optional[str]] = mapped_column(String(100), default=None)
+    description: Mapped[Optional[str]] = mapped_column(Text, default=None)
     
-    member_count = Column(Integer)
+    member_count: Mapped[Optional[int]] = mapped_column(Integer, default=None)
     
-    is_admin = Column(Boolean, default=False)
-    can_post = Column(Boolean, default=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_post: Mapped[bool] = mapped_column(Boolean, default=False)
     
-    enabled = Column(Boolean, default=True, index=True)
-    is_monitoring = Column(Boolean, default=False)
-    is_push_target = Column(Boolean, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    is_monitoring: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_push_target: Mapped[bool] = mapped_column(Boolean, default=False)
     
-    nsfw_chat_id = Column(String(50))
+    nsfw_chat_id: Mapped[Optional[str]] = mapped_column(String(50), default=None)
     
-    total_pushed = Column(Integer, default=0)
-    last_pushed_at = Column(DateTime)
+    total_pushed: Mapped[int] = mapped_column(Integer, default=0)
+    last_pushed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
     
-    raw_data = Column(JSON)
+    raw_data: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
     
-    is_accessible = Column(Boolean, default=True)
-    last_sync_at = Column(DateTime)
-    sync_error = Column(String(500))
+    is_accessible: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    sync_error: Mapped[Optional[str]] = mapped_column(String(500), default=None)
     
     @property
     def platform_type(self) -> str:
@@ -103,8 +104,8 @@ class BotChat(Base):
             return "telegram"
         return "telegram"
     
-    created_at = Column(DateTime, default=utcnow)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
     bot_config = relationship("BotConfig", back_populates="chats")
 
@@ -113,17 +114,17 @@ class BotRuntime(Base):
     """Bot 运行时状态（单例表，只有一条记录）"""
     __tablename__ = "bot_runtime"
     
-    id = Column(Integer, primary_key=True, default=1)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
     
-    bot_id = Column(String(50))
-    bot_username = Column(String(100))
-    bot_first_name = Column(String(200))
+    bot_id: Mapped[Optional[str]] = mapped_column(String(50), default=None)
+    bot_username: Mapped[Optional[str]] = mapped_column(String(100), default=None)
+    bot_first_name: Mapped[Optional[str]] = mapped_column(String(200), default=None)
     
-    started_at = Column(DateTime)
-    last_heartbeat_at = Column(DateTime)
-    version = Column(String(50))
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    last_heartbeat_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    version: Mapped[Optional[str]] = mapped_column(String(50), default=None)
     
-    last_error = Column(Text)
-    last_error_at = Column(DateTime)
+    last_error: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    last_error_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
     
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

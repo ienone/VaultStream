@@ -101,24 +101,22 @@ class BotConfigResponse(BaseModel):
     id: int
     platform: BotConfigPlatform
     name: str
-    
-    # 敏感信息通常不应返回给前端，但如果是管理后台可能需要
-    # 这里通过响应模型控制，前端若需修改，可以通过专门的接口
-    bot_token: Optional[str] = None
+
+    # 仅返回脱敏后的凭证文本，避免明文泄露。
+    bot_token_masked: Optional[str] = None
     napcat_http_url: Optional[str] = None
     napcat_ws_url: Optional[str] = None
+    napcat_access_token_masked: Optional[str] = None
     
     enabled: bool
     is_primary: bool
     
     bot_id: Optional[str]
     bot_username: Optional[str]
+    chat_count: int = 0
     
     created_at: datetime
     updated_at: datetime
-    
-    # 可以选择性地包含关联的 chats
-    chats: List[BotChatResponse] = Field(default_factory=list)
     
     model_config = ConfigDict(from_attributes=True)
 

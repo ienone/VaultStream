@@ -3,8 +3,10 @@
 """
 from datetime import datetime
 from enum import Enum
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum, UniqueConstraint, JSON, Index, Float
-from sqlalchemy.orm import relationship
+from typing import Optional, Any
+from sqlalchemy import String, Text, JSON, Integer, Float, DateTime, Boolean, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 
 from app.core.time_utils import utcnow
 from app.models.base import Base, Platform, ContentStatus, LayoutType, ReviewStatus, DiscoveryState, DiscoverySourceKind
@@ -40,87 +42,87 @@ class Content(Base):
         Index("ix_contents_layout_type_created_at", "layout_type", "created_at"),
     )
     
-    id = Column(Integer, primary_key=True, index=True)
-    platform = Column(SQLEnum(Platform, native_enum=False, values_callable=lambda x: [e.value for e in x]), nullable=False, index=True)
-    url = Column(Text, nullable=False)
-    canonical_url = Column(Text, index=True)
-    clean_url = Column(Text)
-    status = Column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    platform: Mapped[Platform] = mapped_column(SQLEnum(Platform, native_enum=False, values_callable=lambda x: [e.value for e in x]), index=True)
+    url: Mapped[str] = mapped_column(Text)
+    canonical_url: Mapped[Optional[str]] = mapped_column(Text, index=True, default=None)
+    clean_url: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    status: Mapped[Optional[ContentStatus]] = mapped_column(
         SQLEnum(ContentStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]),
         default=ContentStatus.UNPROCESSED,
         index=True,
     )
     
-    layout_type = Column(SQLEnum(LayoutType, values_callable=lambda x: [e.value for e in x]), nullable=True, index=True)
-    layout_type_override = Column(SQLEnum(LayoutType, values_callable=lambda x: [e.value for e in x]), nullable=True)
-    content_type = Column(String(50), index=True)
+    layout_type: Mapped[Optional[LayoutType]] = mapped_column(SQLEnum(LayoutType, values_callable=lambda x: [e.value for e in x]), default=None, index=True)
+    layout_type_override: Mapped[Optional[LayoutType]] = mapped_column(SQLEnum(LayoutType, values_callable=lambda x: [e.value for e in x]), default=None)
+    content_type: Mapped[Optional[str]] = mapped_column(String(50), index=True, default=None)
 
-    failure_count = Column(Integer, default=0)
-    last_error = Column(Text)
-    last_error_type = Column(String(200))
-    last_error_detail = Column(JSON)
-    last_error_at = Column(DateTime)
+    failure_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    last_error_type: Mapped[Optional[str]] = mapped_column(String(200), default=None)
+    last_error_detail: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
+    last_error_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
     
-    review_status = Column(SQLEnum(ReviewStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=ReviewStatus.PENDING, index=True)
-    reviewed_at = Column(DateTime)
-    reviewed_by = Column(String(100))
-    review_note = Column(Text)
+    review_status: Mapped[Optional[ReviewStatus]] = mapped_column(SQLEnum(ReviewStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=ReviewStatus.PENDING, index=True)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    reviewed_by: Mapped[Optional[str]] = mapped_column(String(100), default=None)
+    review_note: Mapped[Optional[str]] = mapped_column(Text, default=None)
     
-    queue_priority = Column(Integer, default=0, index=True)
+    queue_priority: Mapped[int] = mapped_column(Integer, default=0, index=True)
     
-    tags = Column(JSON, default=list)
-    is_nsfw = Column(Boolean, default=False)
-    source = Column(String(100))
-    source_type = Column(String(50), default="user_submit", index=True)
-    ai_score = Column(Float, nullable=True)
-    ai_reason = Column(Text)
-    ai_tags = Column(JSON, default=list)
-    discovered_at = Column(DateTime)
+    tags: Mapped[Optional[Any]] = mapped_column(JSON, default=list)
+    is_nsfw: Mapped[bool] = mapped_column(Boolean, default=False)
+    source: Mapped[Optional[str]] = mapped_column(String(100), default=None)
+    source_type: Mapped[Optional[str]] = mapped_column(String(50), default="user_submit", index=True)
+    ai_score: Mapped[Optional[float]] = mapped_column(Float, default=None)
+    ai_reason: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    ai_tags: Mapped[Optional[Any]] = mapped_column(JSON, default=list)
+    discovered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
     
-    discovery_state = Column(
+    discovery_state: Mapped[Optional[DiscoveryState]] = mapped_column(
         SQLEnum(DiscoveryState, native_enum=False, values_callable=lambda x: [e.value for e in x]),
-        nullable=True,
+        default=None,
         index=True,
     )
-    expire_at = Column(DateTime)
-    promoted_at = Column(DateTime)
+    expire_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    promoted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
     
-    platform_id = Column(String(100), index=True)
+    platform_id: Mapped[Optional[str]] = mapped_column(String(100), index=True, default=None)
     
-    view_count = Column(Integer, default=0)
-    like_count = Column(Integer, default=0)
-    collect_count = Column(Integer, default=0)
-    share_count = Column(Integer, default=0)
-    comment_count = Column(Integer, default=0)
+    view_count: Mapped[int] = mapped_column(Integer, default=0)
+    like_count: Mapped[int] = mapped_column(Integer, default=0)
+    collect_count: Mapped[int] = mapped_column(Integer, default=0)
+    share_count: Mapped[int] = mapped_column(Integer, default=0)
+    comment_count: Mapped[int] = mapped_column(Integer, default=0)
     
-    extra_stats = Column(JSON, default=dict)
+    extra_stats: Mapped[Optional[Any]] = mapped_column(JSON, default=dict)
     
     # 树状结构支持 (用于事件级聚合)
-    parent_id = Column(Integer, ForeignKey("contents.id"), nullable=True, index=True)
-    is_synthesis = Column(Boolean, default=False, index=True)
+    parent_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("contents.id"), default=None, index=True)
+    is_synthesis: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
-    title = Column(Text)
-    body = Column(Text)
-    summary = Column(Text)
-    author_name = Column(String(200))
-    author_id = Column(String(100))
-    author_avatar_url = Column("author_avatar_url", Text)
-    author_url = Column(Text)
-    cover_url = Column(Text)
-    source_tags = Column(JSON, default=list)
+    title: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    body: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    summary: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    author_name: Mapped[Optional[str]] = mapped_column(String(200), default=None)
+    author_id: Mapped[Optional[str]] = mapped_column(String(100), default=None)
+    author_avatar_url: Mapped[Optional[str]] = mapped_column("author_avatar_url", Text, default=None)
+    author_url: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    cover_url: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    source_tags: Mapped[Optional[Any]] = mapped_column(JSON, default=list)
 
-    cover_color = Column(String(20))
-    media_urls = Column(JSON, default=list)
+    cover_color: Mapped[Optional[str]] = mapped_column(String(20), default=None)
+    media_urls: Mapped[Optional[Any]] = mapped_column(JSON, default=list)
     
-    context_data = Column(JSON, nullable=True)
-    rich_payload = Column(JSON, nullable=True)
-    archive_metadata = Column(JSON)
+    context_data: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
+    rich_payload: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
+    archive_metadata: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
     
-    deleted_at = Column(DateTime, nullable=True)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
     
-    created_at = Column(DateTime, default=utcnow, index=True)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
-    published_at = Column(DateTime)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, index=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
     
     pushed_records = relationship("PushedRecord", back_populates="content")
     sources = relationship("ContentSource", back_populates="content")
@@ -130,15 +132,15 @@ class ContentSource(Base):
     """每次分享触发记录"""
     __tablename__ = "content_sources"
 
-    id = Column(Integer, primary_key=True, index=True)
-    content_id = Column(Integer, ForeignKey("contents.id"), nullable=False, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    content_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), index=True)
 
-    source = Column(String(100))
-    tags_snapshot = Column(JSON, default=list)
-    note = Column(Text)
-    client_context = Column(JSON)
+    source: Mapped[Optional[str]] = mapped_column(String(100), default=None)
+    tags_snapshot: Mapped[Optional[Any]] = mapped_column(JSON, default=list)
+    note: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    client_context: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
 
-    created_at = Column(DateTime, default=utcnow, index=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, index=True)
 
     content = relationship("Content", back_populates="sources")
 
@@ -147,20 +149,19 @@ class DiscoverySource(Base):
     """发现来源配置（统一管理 RSS/HN/Reddit/GitHub/Telegram 频道）"""
     __tablename__ = "discovery_sources"
 
-    id = Column(Integer, primary_key=True, index=True)
-    kind = Column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    kind: Mapped[DiscoverySourceKind] = mapped_column(
         SQLEnum(DiscoverySourceKind, native_enum=False, values_callable=lambda x: [e.value for e in x]),
-        nullable=False,
         index=True,
     )
-    name = Column(String(200), nullable=False)
-    enabled = Column(Boolean, default=True, index=True)
-    config = Column(JSON, default=dict)
+    name: Mapped[str] = mapped_column(String(200))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    config: Mapped[Optional[Any]] = mapped_column(JSON, default=dict)
 
-    last_sync_at = Column(DateTime)
-    last_cursor = Column(String(500))
-    last_error = Column(Text)
-    sync_interval_minutes = Column(Integer, default=60)
+    last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    last_cursor: Mapped[Optional[str]] = mapped_column(String(500), default=None)
+    last_error: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    sync_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
 
-    created_at = Column(DateTime, default=utcnow)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

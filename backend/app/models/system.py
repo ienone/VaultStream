@@ -3,8 +3,10 @@
 """
 from datetime import datetime
 from enum import Enum
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum, UniqueConstraint, JSON, Index
-from sqlalchemy.orm import relationship
+from typing import Optional, Any
+from sqlalchemy import String, Text, JSON, Integer, DateTime, Boolean, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 
 from app.core.time_utils import utcnow
 from app.models.base import Base, TaskStatus
@@ -14,29 +16,29 @@ class Task(Base):
     """任务表（用于SQLite队列模式）"""
     __tablename__ = "tasks"
     
-    id = Column(Integer, primary_key=True, index=True)
-    task_type = Column(String(100), nullable=False)  # "parse_content"
-    payload = Column(JSON, nullable=False)  # {"content_id": 123}
-    status = Column(SQLEnum(TaskStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=TaskStatus.PENDING, index=True)
-    priority = Column(Integer, default=0, index=True)
-    retry_count = Column(Integer, default=0)
-    max_retries = Column(Integer, default=3)
-    last_error = Column(Text)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    task_type: Mapped[str] = mapped_column(String(100))  # "parse_content"
+    payload: Mapped[Any] = mapped_column(JSON)  # {"content_id": 123}
+    status: Mapped[Optional[TaskStatus]] = mapped_column(SQLEnum(TaskStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=TaskStatus.PENDING, index=True)
+    priority: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    max_retries: Mapped[int] = mapped_column(Integer, default=3)
+    last_error: Mapped[Optional[str]] = mapped_column(Text, default=None)
     
-    created_at = Column(DateTime, default=utcnow, index=True)
-    started_at = Column(DateTime)
-    completed_at = Column(DateTime)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, index=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
 
 
 class SystemSetting(Base):
     """系统动态设置表"""
     __tablename__ = "system_settings"
     
-    key = Column(String(100), primary_key=True, index=True)
-    value = Column(JSON, nullable=False)
-    category = Column(String(50), index=True) # platform, storage, general, etc.
-    description = Column(Text)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    key: Mapped[str] = mapped_column(String(100), primary_key=True, index=True)
+    value: Mapped[Any] = mapped_column(JSON)
+    category: Mapped[Optional[str]] = mapped_column(String(50), index=True, default=None) # platform, storage, general, etc.
+    description: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
 class PushedRecord(Base):
@@ -48,19 +50,19 @@ class PushedRecord(Base):
         Index("ix_pushed_records_target_id", "target_id"),
     )
     
-    id = Column(Integer, primary_key=True, index=True)
-    content_id = Column(Integer, ForeignKey("contents.id"), nullable=False, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    content_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), index=True)
     
     # M4 扩展字段
-    target_platform = Column(String(100), nullable=False)  # "telegram", "qq" 等
-    target_id = Column(String(200), nullable=False)  # 频道/群组 ID
-    message_id = Column(String(200))  # 推送后的消息ID
+    target_platform: Mapped[str] = mapped_column(String(100))  # "telegram", "qq" 等
+    target_id: Mapped[str] = mapped_column(String(200))  # 频道/群组 ID
+    message_id: Mapped[Optional[str]] = mapped_column(String(200), default=None)  # 推送后的消息ID
     
     # 推送状态
-    push_status = Column(String(50), default="success")  # success/failed/pending
-    error_message = Column(Text)  # 失败原因
+    push_status: Mapped[Optional[str]] = mapped_column(String(50), default="success")  # success/failed/pending
+    error_message: Mapped[Optional[str]] = mapped_column(Text, default=None)  # 失败原因
     
-    pushed_at = Column(DateTime, default=utcnow, index=True)
+    pushed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, index=True)
     
     # 关系
     content = relationship("Content", back_populates="pushed_records")
@@ -90,51 +92,51 @@ class ContentQueueItem(Base):
         Index("ix_queue_next_attempt", "status", "next_attempt_at"),
     )
     
-    id = Column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     
     # 三元组关联
-    content_id = Column(Integer, ForeignKey("contents.id", ondelete="CASCADE"), nullable=False, index=True)
-    rule_id = Column(Integer, ForeignKey("distribution_rules.id", ondelete="CASCADE"), nullable=False, index=True)
-    bot_chat_id = Column(Integer, ForeignKey("bot_chats.id", ondelete="CASCADE"), nullable=False, index=True)
+    content_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id", ondelete="CASCADE"), index=True)
+    rule_id: Mapped[int] = mapped_column(Integer, ForeignKey("distribution_rules.id", ondelete="CASCADE"), index=True)
+    bot_chat_id: Mapped[int] = mapped_column(Integer, ForeignKey("bot_chats.id", ondelete="CASCADE"), index=True)
     
     # 缓存的目标信息
-    target_platform = Column(String(20), nullable=False)
-    target_id = Column(String(200), nullable=False)
+    target_platform: Mapped[str] = mapped_column(String(20))
+    target_id: Mapped[str] = mapped_column(String(200))
     
     # 状态
-    status = Column(SQLEnum(QueueItemStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=QueueItemStatus.PENDING, nullable=False, index=True)
-    priority = Column(Integer, default=0, index=True)
-    scheduled_at = Column(DateTime, index=True)
+    status: Mapped[QueueItemStatus] = mapped_column(SQLEnum(QueueItemStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=QueueItemStatus.PENDING, index=True)
+    priority: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True, default=None)
     
     # 预处理缓存
-    rendered_payload = Column(JSON)
-    nsfw_routing_result = Column(JSON)
-    passed_rate_limit = Column(Boolean, default=True)
-    rate_limit_reason = Column(String(200))
+    rendered_payload: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
+    nsfw_routing_result: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
+    passed_rate_limit: Mapped[bool] = mapped_column(Boolean, default=True)
+    rate_limit_reason: Mapped[Optional[str]] = mapped_column(String(200), default=None)
     
     # 审批
-    needs_approval = Column(Boolean, default=False)
-    approved_at = Column(DateTime)
-    approved_by = Column(String(100))
+    needs_approval: Mapped[bool] = mapped_column(Boolean, default=False)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100), default=None)
     
     # 重试与锁
-    attempt_count = Column(Integer, default=0)
-    max_attempts = Column(Integer, default=3)
-    next_attempt_at = Column(DateTime)
-    locked_at = Column(DateTime)
-    locked_by = Column(String(100))
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    next_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    locked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    locked_by: Mapped[Optional[str]] = mapped_column(String(100), default=None)
     
     # 推送结果
-    message_id = Column(String(200))
-    last_error = Column(Text)
-    last_error_type = Column(String(200))
-    last_error_at = Column(DateTime)
+    message_id: Mapped[Optional[str]] = mapped_column(String(200), default=None)
+    last_error: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    last_error_type: Mapped[Optional[str]] = mapped_column(String(200), default=None)
+    last_error_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
     
     # 时间戳
-    started_at = Column(DateTime)
-    completed_at = Column(DateTime)
-    created_at = Column(DateTime, default=utcnow)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
     
     # 关系
     content = relationship("Content")

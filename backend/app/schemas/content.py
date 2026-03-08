@@ -96,6 +96,7 @@ class ContentDetail(BaseModel):
 
     layout_type: Optional[LayoutType] = None
     layout_type_override: Optional[LayoutType] = None
+    effective_layout_type: Optional[str] = None  # 计算字段：frontend 读取此字段
 
     context_data: Optional[Dict[str, Any]] = None
     rich_payload: Optional[Dict[str, Any]] = None

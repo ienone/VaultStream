@@ -2,7 +2,7 @@ from typing import List, Optional, Tuple
 from sqlalchemy import select, and_, or_, func, desc, text
 from sqlalchemy.orm import defer
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import Content, ContentStatus, Platform, ReviewStatus
+from app.models import Content, ContentStatus, Platform, ReviewStatus, DiscoveryState
 from datetime import datetime
 
 class ContentRepository:
@@ -40,7 +40,15 @@ class ContentRepository:
             conditions.append(Content.created_at >= start_date)
         if end_date:
             conditions.append(Content.created_at <= end_date)
-        
+
+        # 默认隔离 discovery 缓冲区：只有 discovery_state 为 NULL（正式收藏）或 PROMOTED 的内容进入主库视图
+        conditions.append(
+            or_(
+                Content.discovery_state.is_(None),
+                Content.discovery_state == DiscoveryState.PROMOTED,
+            )
+        )
+
         if tags:
             # 使用 SQLite json_each() 将 JSON 数组展开为行，再用 IN 匹配
             # 条件数恒定为 1，不随标签数量膨胀
