@@ -37,7 +37,7 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
     );
     _coverUrlController = TextEditingController(text: widget.content.coverUrl);
     _isNsfw = widget.content.isNsfw;
-    _selectedLayout = widget.content.layoutType;
+    _selectedLayout = widget.content.layoutTypeOverride;
   }
 
   @override

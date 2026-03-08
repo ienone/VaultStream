@@ -43,7 +43,7 @@ class DiscoveryItems extends _$DiscoveryItems {
     final dio = ref.watch(apiClientProvider);
 
     final response = await dio.get(
-      '/api/v1/discovery/items',
+      '/discovery/items',
       queryParameters: {
         'page': page,
         'size': size,
@@ -100,6 +100,6 @@ class DiscoveryItems extends _$DiscoveryItems {
 @riverpod
 Future<DiscoveryItem> discoveryItemDetail(Ref ref, int id) async {
   final dio = ref.watch(apiClientProvider);
-  final response = await dio.get('/api/v1/discovery/items/$id');
+  final response = await dio.get('/discovery/items/$id');
   return DiscoveryItem.fromJson(response.data);
 }

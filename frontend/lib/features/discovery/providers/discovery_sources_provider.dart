@@ -9,7 +9,7 @@ class DiscoverySources extends _$DiscoverySources {
   @override
   FutureOr<List<DiscoverySource>> build() async {
     final dio = ref.watch(apiClientProvider);
-    final response = await dio.get('/api/v1/discovery/sources');
+    final response = await dio.get('/discovery/sources');
     final list = (response.data as List)
         .map((e) => DiscoverySource.fromJson(e))
         .toList();
@@ -18,7 +18,7 @@ class DiscoverySources extends _$DiscoverySources {
 
   Future<void> createSource(DiscoverySource source) async {
     final dio = ref.read(apiClientProvider);
-    await dio.post('/api/v1/discovery/sources', data: {
+    await dio.post('/discovery/sources', data: {
       'kind': source.kind,
       'name': source.name,
       'enabled': source.enabled,
@@ -35,7 +35,7 @@ class DiscoverySources extends _$DiscoverySources {
     int? syncIntervalMinutes,
   }) async {
     final dio = ref.read(apiClientProvider);
-    await dio.put('/api/v1/discovery/sources/$id', data: {
+    await dio.put('/discovery/sources/$id', data: {
       if (name != null) 'name': name,
       if (enabled != null) 'enabled': enabled,
       if (config != null) 'config': config,
@@ -46,12 +46,12 @@ class DiscoverySources extends _$DiscoverySources {
 
   Future<void> deleteSource(int id) async {
     final dio = ref.read(apiClientProvider);
-    await dio.delete('/api/v1/discovery/sources/$id');
+    await dio.delete('/discovery/sources/$id');
     ref.invalidateSelf();
   }
 
   Future<void> triggerSync(int id) async {
     final dio = ref.read(apiClientProvider);
-    await dio.post('/api/v1/discovery/sources/$id/sync');
+    await dio.post('/discovery/sources/$id/sync');
   }
 }

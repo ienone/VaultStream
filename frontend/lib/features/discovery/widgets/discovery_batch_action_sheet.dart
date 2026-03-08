@@ -66,12 +66,14 @@ class DiscoveryBatchActionSheet extends ConsumerWidget {
   }
 
   Future<void> _batchPromote(BuildContext sheetContext, WidgetRef ref) async {
+    final ids = Set<int>.from(ref.read(discoverySelectionProvider).selectedIds);
+    final selectionNotifier = ref.read(discoverySelectionProvider.notifier);
+    final actionsNotifier = ref.read(discoveryActionsProvider.notifier);
     Navigator.pop(sheetContext);
-    final ids = ref.read(discoverySelectionProvider).selectedIds;
 
     try {
-      await ref.read(discoveryActionsProvider.notifier).bulkAction(ids, 'promote');
-      ref.read(discoverySelectionProvider.notifier).clearSelection();
+      await actionsNotifier.bulkAction(ids, 'promote');
+      selectionNotifier.clearSelection();
       if (parentContext.mounted) {
         Toast.show(parentContext, '已批量收藏', icon: Icons.check_circle_outline_rounded);
       }
@@ -83,12 +85,14 @@ class DiscoveryBatchActionSheet extends ConsumerWidget {
   }
 
   Future<void> _batchIgnore(BuildContext sheetContext, WidgetRef ref) async {
+    final ids = Set<int>.from(ref.read(discoverySelectionProvider).selectedIds);
+    final selectionNotifier = ref.read(discoverySelectionProvider.notifier);
+    final actionsNotifier = ref.read(discoveryActionsProvider.notifier);
     Navigator.pop(sheetContext);
-    final ids = ref.read(discoverySelectionProvider).selectedIds;
 
     try {
-      await ref.read(discoveryActionsProvider.notifier).bulkAction(ids, 'ignore');
-      ref.read(discoverySelectionProvider.notifier).clearSelection();
+      await actionsNotifier.bulkAction(ids, 'ignore');
+      selectionNotifier.clearSelection();
       if (parentContext.mounted) {
         Toast.show(parentContext, '已批量忽略', icon: Icons.check_circle_outline_rounded);
       }

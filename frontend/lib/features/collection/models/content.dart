@@ -49,6 +49,7 @@ abstract class ContentDetail with _$ContentDetail {
     @JsonKey(name: 'platform_id') String? platformId,
     @JsonKey(name: 'content_type') String? contentType,
     @JsonKey(name: 'effective_layout_type') String? layoutType,
+    @JsonKey(name: 'layout_type_override') String? layoutTypeOverride,
     required String url,
     @JsonKey(name: 'clean_url') String? cleanUrl,
     required String status,

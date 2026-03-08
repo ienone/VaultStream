@@ -77,6 +77,19 @@ class ContentParser {
     return detail.body ?? '';
   }
 
+  /// Returns the effective layout type, inferring 'gallery' for media-only
+  /// items (no markdown body) that lack an explicit layout_type — mirrors the
+  /// backend's infer_layout_type() logic.
+  static String getEffectiveLayoutType(ContentDetail detail) {
+    final lt = detail.layoutType ?? 'article';
+    if (lt == 'gallery' || lt == 'video') return lt;
+    // Infer gallery when there are media attachments but no text body
+    if (detail.mediaUrls.isNotEmpty && getMarkdownContent(detail).isEmpty) {
+      return 'gallery';
+    }
+    return lt;
+  }
+
   static List<HeaderLine> extractHeaders(String markdown) {
     // 移除代码块，防止代码块内的 ### 被识别为标题
     final cleanedMarkdown = markdown.replaceAll(RegExp(r'```[\s\S]*?```'), '');

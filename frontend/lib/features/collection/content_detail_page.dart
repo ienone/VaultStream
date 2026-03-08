@@ -349,8 +349,8 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           );
         }
 
-        // 基于 layoutType 分发（内容驱动）
-        final layoutType = detail.layoutType;
+        // 基于 layoutType 分发（内容驱动）；对无文字只有图片的条目自动推断为 gallery
+        final layoutType = ContentParser.getEffectiveLayoutType(detail);
 
         switch (layoutType) {
           case 'article':

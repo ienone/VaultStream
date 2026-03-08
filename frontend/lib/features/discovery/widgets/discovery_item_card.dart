@@ -1,6 +1,6 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:timeago/timeago.dart' as timeago;
-import 'package:gap/gap.dart';
 import '../models/discovery_models.dart';
 
 class DiscoveryItemCard extends StatelessWidget {
@@ -8,7 +8,6 @@ class DiscoveryItemCard extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final bool isSelected;
-  final bool isCompact;
 
   const DiscoveryItemCard({
     super.key,
@@ -16,7 +15,6 @@ class DiscoveryItemCard extends StatelessWidget {
     this.onTap,
     this.onLongPress,
     this.isSelected = false,
-    this.isCompact = false,
   });
 
   Color _scoreColor(double score) {
@@ -25,131 +23,148 @@ class DiscoveryItemCard extends StatelessWidget {
     return Colors.grey;
   }
 
+  IconData _sourceIcon(String sourceType) {
+    return switch (sourceType.toLowerCase()) {
+      'rss' => Icons.rss_feed_rounded,
+      'hackernews' || 'hn' => Icons.whatshot_rounded,
+      'reddit' => Icons.forum_rounded,
+      _ => Icons.link_rounded,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final score = item.aiScore;
+    final hasCover = item.coverUrl != null && item.coverUrl!.isNotEmpty;
 
-    return Card(
-      elevation: isSelected ? 2 : 0.5,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: isSelected
-            ? BorderSide(color: colorScheme.primary, width: 2)
-            : BorderSide.none,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: isSelected
+            ? colorScheme.primary.withValues(alpha: 0.05)
+            : colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isSelected
+              ? colorScheme.primary
+              : colorScheme.outlineVariant.withValues(alpha: 0.4),
+          width: isSelected ? 1.5 : 1,
+        ),
       ),
-      color: isSelected
-          ? colorScheme.primaryContainer.withValues(alpha: 0.3)
-          : colorScheme.surfaceContainerLow,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: EdgeInsets.all(isCompact ? 10 : 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Row 1: Score badge + Title
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (score != null) ...[
-                    Container(
-                      width: isCompact ? 32 : 36,
-                      height: isCompact ? 32 : 36,
-                      decoration: BoxDecoration(
-                        color: _scoreColor(score).withValues(alpha: 0.15),
-                        shape: BoxShape.circle,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 封面缩略图
+                if (hasCover) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: CachedNetworkImage(
+                      imageUrl: item.coverUrl!,
+                      width: 56,
+                      height: 56,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Container(
+                        width: 56,
+                        height: 56,
+                        color: colorScheme.surfaceContainerHighest,
                       ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        score.toStringAsFixed(1),
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: _scoreColor(score),
-                          fontWeight: FontWeight.bold,
-                          fontSize: isCompact ? 10 : 11,
+                      errorWidget: (context, url, error) => Container(
+                        width: 56,
+                        height: 56,
+                        color: colorScheme.surfaceContainerHighest,
+                        child: Icon(
+                          Icons.hide_image_outlined,
+                          size: 20,
+                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
                         ),
                       ),
                     ),
-                    const Gap(8),
-                  ],
-                  Expanded(
-                    child: Text(
-                      item.title ?? item.url,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: (isCompact
-                              ? theme.textTheme.bodyMedium
-                              : theme.textTheme.titleSmall)
-                          ?.copyWith(fontWeight: FontWeight.w600),
-                    ),
                   ),
+                  const SizedBox(width: 12),
                 ],
-              ),
-              const Gap(6),
-              // Row 2: Source type + relative time
-              Row(
-                children: [
-                  if (item.sourceType != null) ...[
-                    Icon(
-                      _sourceIcon(item.sourceType!),
-                      size: 14,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                    const Gap(4),
-                    Text(
-                      item.sourceType!,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
+                // 文字区
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.title ?? item.url,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          height: 1.3,
+                        ),
                       ),
-                    ),
-                    const Gap(8),
-                  ],
-                  Text(
-                    timeago.format(
-                      item.discoveredAt ?? item.createdAt,
-                      locale: 'zh_CN',
-                    ),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-              // Summary
-              if (!isCompact &&
-                  item.summary != null &&
-                  item.summary!.isNotEmpty) ...[
-                const Gap(6),
-                Text(
-                  item.summary!,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          if (item.sourceType != null) ...[
+                            Icon(
+                              _sourceIcon(item.sourceType!),
+                              size: 12,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              item.sourceType!,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                          Text(
+                            timeago.format(
+                              item.discoveredAt ?? item.createdAt,
+                              locale: 'zh_CN',
+                            ),
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
+                // AI 评分徽章
+                if (score != null) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: _scoreColor(score).withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      score.toStringAsFixed(1),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: _scoreColor(score),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
     );
-  }
-
-  IconData _sourceIcon(String sourceType) {
-    switch (sourceType.toLowerCase()) {
-      case 'rss':
-        return Icons.rss_feed_rounded;
-      case 'hackernews' || 'hn':
-        return Icons.whatshot_rounded;
-      case 'reddit':
-        return Icons.forum_rounded;
-      default:
-        return Icons.link_rounded;
-    }
   }
 }

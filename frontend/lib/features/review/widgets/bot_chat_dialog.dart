@@ -4,9 +4,9 @@ import '../models/bot_chat.dart';
 
 class BotChatDialog extends ConsumerStatefulWidget {
   final BotChat? chat;
-  final Function(BotChatCreate) onCreate;
+  final Future<void> Function(BotChatCreate) onCreate;
   final Future<int> Function(String chatType) resolveBotConfigId;
-  final Function(String, BotChatUpdate, String?)? onUpdate;
+  final Future<void> Function(String, BotChatUpdate, String?)? onUpdate;
 
   const BotChatDialog({
     super.key,
@@ -41,8 +41,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
       text: chat == null ? '' : _displayChatId(chat.chatId, _chatType),
     );
     _titleController = TextEditingController(text: chat?.title ?? '');
-    _nsfwChatIdController =
-        TextEditingController(text: chat?.nsfwChatId ?? '');
+    _nsfwChatIdController = TextEditingController(text: chat?.nsfwChatId ?? '');
     _enabled = chat?.enabled ?? true;
   }
 
@@ -76,12 +75,17 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                     color: colorScheme.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Icon(Icons.smart_toy_rounded, color: colorScheme.primary),
+                  child: Icon(
+                    Icons.smart_toy_rounded,
+                    color: colorScheme.primary,
+                  ),
                 ),
                 const SizedBox(width: 16),
                 Text(
                   isEditing ? '编辑群组配置' : '添加 Bot 群组',
-                  style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
@@ -101,9 +105,15 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                           entries: const [
                             DropdownMenuEntry(value: 'channel', label: 'TG 频道'),
                             DropdownMenuEntry(value: 'group', label: 'TG 群组'),
-                            DropdownMenuEntry(value: 'supergroup', label: 'TG 超级群组'),
+                            DropdownMenuEntry(
+                              value: 'supergroup',
+                              label: 'TG 超级群组',
+                            ),
                             DropdownMenuEntry(value: 'qq_group', label: 'QQ 群'),
-                            DropdownMenuEntry(value: 'qq_private', label: 'QQ 私聊'),
+                            DropdownMenuEntry(
+                              value: 'qq_private',
+                              label: 'QQ 私聊',
+                            ),
                           ],
                           onChanged: (v) => setState(() => _chatType = v!),
                         ),
@@ -115,9 +125,13 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                             ? (_chatType == 'qq_group' ? 'QQ 群号 *' : 'QQ 号 *')
                             : 'Chat ID *',
                         hint: _isQQType
-                            ? (_chatType == 'qq_group' ? '例如: 123456789' : '对方的 QQ 号')
+                            ? (_chatType == 'qq_group'
+                                  ? '例如: 123456789'
+                                  : '对方的 QQ 号')
                             : '-1001234567890 或 @channel_name',
-                        icon: _isQQType ? Icons.forum_rounded : Icons.alternate_email_rounded,
+                        icon: _isQQType
+                            ? Icons.forum_rounded
+                            : Icons.alternate_email_rounded,
                         keyboardType: _isQQType ? TextInputType.number : null,
                         validator: (v) {
                           if (v == null || v.isEmpty) {
@@ -125,7 +139,9 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                           }
                           final raw = v.trim();
                           if (_isQQType) {
-                            final candidate = raw.startsWith('group:') || raw.startsWith('private:')
+                            final candidate =
+                                raw.startsWith('group:') ||
+                                    raw.startsWith('private:')
                                 ? raw.split(':').last
                                 : raw;
                             if (int.tryParse(candidate) == null) {
@@ -172,8 +188,13 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
                   style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   child: const Text('取消'),
                 ),
@@ -181,8 +202,13 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                 FilledButton(
                   onPressed: () => _submit(),
                   style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   child: Text(isEditing ? '保存修改' : '确认添加'),
                 ),
@@ -227,7 +253,10 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(color: colorScheme.primary, width: 2),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
       ),
     );
   }
@@ -273,15 +302,23 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
         borderRadius: BorderRadius.circular(16),
       ),
       child: SwitchListTile(
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        title: Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+        ),
         subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
         secondary: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: (value ? colorScheme.primary : colorScheme.outline).withValues(alpha: 0.1),
+            color: (value ? colorScheme.primary : colorScheme.outline)
+                .withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icon, size: 20, color: value ? colorScheme.primary : colorScheme.outline),
+          child: Icon(
+            icon,
+            size: 20,
+            color: value ? colorScheme.primary : colorScheme.outline,
+          ),
         ),
         value: value,
         onChanged: onChanged,
@@ -299,39 +336,44 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final normalizedChatId = _normalizeChatId(_chatIdController.text.trim());
+    try {
+      final normalizedChatId = _normalizeChatId(_chatIdController.text.trim());
 
-    if (isEditing) {
-      widget.onUpdate?.call(
-        widget.chat!.chatId,
-        BotChatUpdate(
-          title:
-              _titleController.text.isEmpty ? null : _titleController.text,
-          enabled: _enabled,
-          nsfwChatId: _nsfwChatIdController.text.isEmpty
-              ? null
-              : _nsfwChatIdController.text,
-        ),
-        normalizedChatId,
-      );
-    } else {
-      final botConfigId = await widget.resolveBotConfigId(_chatType);
-      widget.onCreate(
-        BotChatCreate(
-          botConfigId: botConfigId,
-          chatId: normalizedChatId,
-          chatType: _chatType,
-          title:
-              _titleController.text.isEmpty ? null : _titleController.text,
-          enabled: _enabled,
-          nsfwChatId: _nsfwChatIdController.text.isEmpty
-              ? null
-              : _nsfwChatIdController.text,
-        ),
-      );
+      if (isEditing) {
+        await widget.onUpdate?.call(
+          widget.chat!.chatId,
+          BotChatUpdate(
+            title: _titleController.text.isEmpty ? null : _titleController.text,
+            enabled: _enabled,
+            nsfwChatId: _nsfwChatIdController.text.isEmpty
+                ? null
+                : _nsfwChatIdController.text,
+          ),
+          normalizedChatId,
+        );
+      } else {
+        final botConfigId = await widget.resolveBotConfigId(_chatType);
+        await widget.onCreate(
+          BotChatCreate(
+            botConfigId: botConfigId,
+            chatId: normalizedChatId,
+            chatType: _chatType,
+            title: _titleController.text.isEmpty ? null : _titleController.text,
+            enabled: _enabled,
+            nsfwChatId: _nsfwChatIdController.text.isEmpty
+                ? null
+                : _nsfwChatIdController.text,
+          ),
+        );
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('保存群组配置失败: $e')));
     }
-    if (!mounted) return;
-    Navigator.of(context).pop();
   }
 
   String _normalizeChatId(String raw) {

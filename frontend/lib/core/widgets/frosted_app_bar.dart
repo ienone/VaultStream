@@ -35,6 +35,7 @@ class FrostedAppBar extends StatelessWidget implements PreferredSizeWidget {
       actions: actions,
       backgroundColor: theme.colorScheme.surface.withValues(alpha: backgroundAlpha),
       elevation: 0,
+      scrolledUnderElevation: 0,
       surfaceTintColor: Colors.transparent,
       bottom: bottom,
       flexibleSpace: ClipRect(

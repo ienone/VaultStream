@@ -9,7 +9,7 @@ class DiscoverySettingsState extends _$DiscoverySettingsState {
   @override
   FutureOr<DiscoverySettings> build() async {
     final dio = ref.watch(apiClientProvider);
-    final response = await dio.get('/api/v1/discovery/settings');
+    final response = await dio.get('/discovery/settings');
     return DiscoverySettings.fromJson(response.data);
   }
 
@@ -20,7 +20,7 @@ class DiscoverySettingsState extends _$DiscoverySettingsState {
   }) async {
     final dio = ref.read(apiClientProvider);
     final response = await dio.patch(
-      '/api/v1/discovery/settings',
+      '/discovery/settings',
       data: {
         if (interestProfile != null) 'interest_profile': interestProfile,
         if (scoreThreshold != null) 'score_threshold': scoreThreshold,

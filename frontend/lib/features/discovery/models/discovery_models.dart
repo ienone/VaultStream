@@ -21,7 +21,18 @@ abstract class DiscoveryItem with _$DiscoveryItem {
     @JsonKey(name: 'source_type') String? sourceType,
     @JsonKey(name: 'discovery_state') String? discoveryState,
     @JsonKey(name: 'discovered_at') DateTime? discoveredAt,
+    @JsonKey(name: 'published_at') DateTime? publishedAt,
     @JsonKey(name: 'created_at') required DateTime createdAt,
+    // 详情复用字段
+    @JsonKey(name: 'cover_url') String? coverUrl,
+    @JsonKey(name: 'cover_color') String? coverColor,
+    @JsonKey(name: 'platform_id') String? platformId,
+    @JsonKey(name: 'content_type') String? contentType,
+    @JsonKey(name: 'layout_type') String? layoutType,
+    @JsonKey(name: 'source_tags') @Default([]) List<String> sourceTags,
+    @JsonKey(name: 'collect_count') @Default(0) int collectCount,
+    @JsonKey(name: 'share_count') @Default(0) int shareCount,
+    @JsonKey(name: 'comment_count') @Default(0) int commentCount,
     @JsonKey(name: 'media_urls') @Default([]) List<String> mediaUrls,
     @JsonKey(name: 'rich_payload') Map<String, dynamic>? richPayload,
     @JsonKey(name: 'extra_stats') @Default({}) Map<String, dynamic> extraStats,
@@ -37,24 +48,57 @@ extension DiscoveryItemX on DiscoveryItem {
     return ContentDetail(
       id: id,
       platform: sourceType ?? 'universal',
+      platformId: platformId,
+      contentType: contentType,
+      layoutType: layoutType ?? 'article',
       url: url,
       status: 'parse_success',
       tags: [],
       isNsfw: false,
       title: title,
+      summary: summary,
       body: body ?? summary,
       authorName: authorName,
       authorAvatarUrl: authorAvatarUrl,
       authorUrl: authorUrl,
+      coverUrl: coverUrl,
+      coverColor: coverColor,
+      publishedAt: publishedAt,
       mediaUrls: mediaUrls,
-      richPayload: richPayload,
-      extraStats: extraStats,
-      contextData: contextData,
+      sourceTags: sourceTags,
+      collectCount: collectCount,
+      shareCount: shareCount,
+      commentCount: commentCount,
+      richPayload: richPayload == null ? null : _cloneMap(richPayload!),
+      extraStats: _cloneMap(extraStats),
+      contextData: contextData == null ? null : _cloneMap(contextData!),
       createdAt: createdAt,
       updatedAt: createdAt,
-      layoutType: 'article',
     );
   }
+}
+
+Map<String, dynamic> _cloneMap(Map<String, dynamic> source) {
+  return source.map((key, value) => MapEntry(key, _cloneValue(value)));
+}
+
+List<dynamic> _cloneList(List<dynamic> source) {
+  return source.map(_cloneValue).toList(growable: false);
+}
+
+dynamic _cloneValue(dynamic value) {
+  if (value is Map<String, dynamic>) {
+    return _cloneMap(value);
+  }
+  if (value is Map) {
+    return value.map(
+      (key, nestedValue) => MapEntry(key.toString(), _cloneValue(nestedValue)),
+    );
+  }
+  if (value is List) {
+    return _cloneList(value);
+  }
+  return value;
 }
 
 @freezed
