@@ -91,6 +91,56 @@ async def test_sync_creates_content_from_rss(db_session):
 
 
 @pytest.mark.asyncio
+async def test_sync_prefers_explicit_cover_url_over_first_media_url(db_session):
+    """显式 cover_url 应优先于正文首图兜底。"""
+    source = DiscoverySource(
+        kind=DiscoverySourceKind.RSS,
+        name="Cover Priority Test",
+        enabled=True,
+        config={"url": "https://example.com/feed.xml"},
+    )
+    db_session.add(source)
+    await db_session.flush()
+
+    fake_items = [
+        DiscoveryItem(
+            url="https://example.com/post-cover",
+            title="Post Cover",
+            cover_url="https://img.example.com/thumb.jpg",
+            media_urls=["https://img.example.com/body.jpg"],
+        )
+    ]
+
+    task = DiscoverySyncTask()
+
+    with patch(
+        "app.tasks.discovery_sync.RSSDiscoveryScraper.fetch",
+        new_callable=AsyncMock,
+        return_value=(fake_items, None),
+    ), patch(
+        "app.tasks.discovery_sync.PatrolService.score_pending",
+        new_callable=AsyncMock,
+        return_value=0,
+    ), patch(
+        "app.tasks.discovery_sync.get_setting_value",
+        new_callable=AsyncMock,
+        return_value=7,
+    ):
+        await task._sync_single_source(db_session, source)
+
+    from sqlalchemy import select
+
+    result = await db_session.execute(
+        select(Content).where(
+            Content.canonical_url == normalize_url_for_dedup("https://example.com/post-cover")
+        )
+    )
+    content = result.scalar_one()
+    assert content.cover_url == "https://img.example.com/thumb.jpg"
+    assert content.media_urls == ["https://img.example.com/body.jpg"]
+
+
+@pytest.mark.asyncio
 async def test_sync_updates_cursor(db_session):
     """After sync, source.last_cursor should be updated."""
     source = DiscoverySource(
@@ -168,6 +218,63 @@ async def test_sync_dedup_skips_existing(db_session):
         select(func.count()).select_from(Content).where(Content.canonical_url == canonical)
     )
     assert count_result.scalar() == 1
+
+
+@pytest.mark.asyncio
+async def test_sync_dedup_backfills_missing_cover_from_explicit_rss_cover(db_session):
+    """已有条目仅有首图兜底封面时，应被显式 RSS 封面覆盖修正。"""
+    url = "https://example.com/rss-backfill"
+    canonical = normalize_url_for_dedup(url)
+
+    existing = Content(
+        platform=Platform.UNIVERSAL,
+        url=url,
+        canonical_url=canonical,
+        title="Existing",
+        status=ContentStatus.UNPROCESSED,
+        cover_url="https://img.example.com/placeholder.png",
+        media_urls=["https://img.example.com/placeholder.png"],
+    )
+    db_session.add(existing)
+    await db_session.flush()
+
+    source = DiscoverySource(
+        kind=DiscoverySourceKind.RSS,
+        name="Dedup Cover Backfill Test",
+        enabled=True,
+        config={"url": "https://example.com/feed.xml"},
+    )
+    db_session.add(source)
+    await db_session.flush()
+
+    fake_items = [
+        DiscoveryItem(
+            url=url,
+            title="Existing",
+            cover_url="https://img.example.com/explicit-cover.jpg",
+            media_urls=["https://img.example.com/body.jpg"],
+        )
+    ]
+
+    task = DiscoverySyncTask()
+
+    with patch(
+        "app.tasks.discovery_sync.RSSDiscoveryScraper.fetch",
+        new_callable=AsyncMock,
+        return_value=(fake_items, None),
+    ), patch(
+        "app.tasks.discovery_sync.get_setting_value",
+        new_callable=AsyncMock,
+        return_value=7,
+    ):
+        await task._sync_single_source(db_session, source)
+
+    db_session.expire_all()
+    from sqlalchemy import select
+
+    result = await db_session.execute(select(Content).where(Content.id == existing.id))
+    updated = result.scalar_one()
+    assert updated.cover_url == "https://img.example.com/explicit-cover.jpg"
 
 
 @pytest.mark.asyncio

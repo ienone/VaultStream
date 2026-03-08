@@ -17,19 +17,23 @@ class DiscoveryCleanupTask:
     """发现流过期内容清理任务"""
 
     def __init__(self):
-        self.running = False
+        self._task: asyncio.Task | None = None
 
     def start(self):
-        self.running = True
-        asyncio.create_task(self._cleanup_loop())
+        self._task = asyncio.create_task(self._cleanup_loop())
 
     async def stop(self):
-        self.running = False
+        if self._task and not self._task.done():
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
 
     async def _cleanup_loop(self):
         """Run cleanup every 6 hours"""
         logger.info("Discovery cleanup task started")
-        while self.running:
+        while True:
             try:
                 await self._cleanup_expired()
             except Exception as e:

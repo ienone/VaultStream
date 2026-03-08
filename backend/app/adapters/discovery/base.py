@@ -21,6 +21,7 @@ class DiscoveryItem:
     author_url: Optional[str] = None
     published_at: Optional[datetime] = None
     source_tags: list[str] = field(default_factory=list)
+    cover_url: Optional[str] = None
     media_urls: list[str] = field(default_factory=list)
     rich_payload: Optional[Dict[str, Any]] = None
     extra_stats: Dict[str, Any] = field(default_factory=dict)

@@ -8,7 +8,8 @@ import os
 import re
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from typing import Optional
+from typing import Any, Optional
+from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 
 import feedparser
@@ -20,6 +21,25 @@ from app.adapters.discovery.base import BaseDiscoveryScraper, DiscoveryItem
 
 class RSSDiscoveryScraper(BaseDiscoveryScraper):
     """RSS/Atom 订阅源抓取器。"""
+
+    _IMAGE_EXTENSIONS = (
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".gif",
+        ".bmp",
+        ".avif",
+        ".svg",
+    )
+    _IMG_URL_ATTRS = (
+        "data-original",
+        "data-src",
+        "data-lazy-src",
+        "data-original-src",
+        "data-actualsrc",
+        "src",
+    )
 
     async def fetch(self, last_cursor: Optional[str] = None) -> tuple[list[DiscoveryItem], Optional[str]]:
         feed_url = self._expand_env_vars(self.config.get("url", ""))
@@ -39,22 +59,29 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
 
             for entry in feed.entries:
                 entry_id = entry.get("id") or entry.get("link") or ""
+                entry_url = entry.get("link") or feed_url
 
                 if last_cursor and entry_id == last_cursor:
                     break
 
                 published_at = self._parse_date(entry)
                 raw_content = self._extract_content(entry)
+                explicit_cover_url = self._extract_cover_url(entry, entry_url)
                 
                 # 强化版清洗逻辑：原地提取并替换为 Markdown (0-Token 策略)
                 content_soup = BeautifulSoup(raw_content, 'html.parser')
                 media_urls = []
                 for img in content_soup.find_all('img'):
-                    src = img.get('src', '')
+                    src = self._extract_image_url(img, entry_url)
                     alt = img.get('alt', '图片')
                     if src:
                         media_urls.append(src)
                         img.replace_with(f"\n![{alt}]({src})\n")
+                    else:
+                        img.decompose()
+
+                media_urls = list(dict.fromkeys(media_urls))
+                cover_url = explicit_cover_url or (media_urls[0] if media_urls else None)
                 
                 for h in content_soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
                     level = int(h.name[1])
@@ -79,6 +106,7 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
                     author=entry.get("author", feed.feed.get("title")),
                     published_at=published_at,
                     source_tags=tags,
+                    cover_url=cover_url,
                     media_urls=media_urls,
                     rich_payload={},
                     extra_stats={},
@@ -133,3 +161,125 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
         if "description" in entry:
             return entry.description
         return ""
+
+    @classmethod
+    def _normalize_candidate_url(cls, url: Any, base_url: str) -> Optional[str]:
+        if not isinstance(url, str):
+            return None
+        candidate = url.strip()
+        if not candidate or candidate.startswith(("data:", "javascript:")):
+            return None
+        return urljoin(base_url, candidate)
+
+    @staticmethod
+    def _candidate_from_srcset(srcset: Any) -> Optional[str]:
+        if not isinstance(srcset, str):
+            return None
+        candidates = [
+            segment.strip().split(" ")[0]
+            for segment in srcset.split(",")
+            if segment.strip()
+        ]
+        return candidates[-1] if candidates else None
+
+    @classmethod
+    def _extract_image_url(cls, img, base_url: str) -> Optional[str]:
+        for attr in cls._IMG_URL_ATTRS:
+            candidate = cls._normalize_candidate_url(img.get(attr), base_url)
+            if candidate:
+                return candidate
+
+        for attr in ("data-srcset", "srcset"):
+            srcset_candidate = cls._candidate_from_srcset(img.get(attr))
+            candidate = cls._normalize_candidate_url(srcset_candidate, base_url)
+            if candidate:
+                return candidate
+
+        return None
+
+    @classmethod
+    def _looks_like_image_url(cls, url: Any) -> bool:
+        if not isinstance(url, str):
+            return False
+        path = urlparse(url.strip()).path.lower()
+        return any(path.endswith(ext) for ext in cls._IMAGE_EXTENSIONS)
+
+    @classmethod
+    def _is_image_candidate(
+        cls,
+        url: Any,
+        *,
+        media_type: Any = None,
+        medium: Any = None,
+        force: bool = False,
+    ) -> bool:
+        if force:
+            return True
+
+        normalized_medium = str(medium or "").lower()
+        normalized_type = str(media_type or "").lower()
+        if normalized_medium == "image":
+            return True
+        if normalized_type.startswith("image/"):
+            return True
+        return cls._looks_like_image_url(url)
+
+    @classmethod
+    def _extract_cover_url(cls, entry: dict, base_url: str) -> Optional[str]:
+        candidates: list[str] = []
+        seen: set[str] = set()
+
+        def add_candidate(
+            url: Any,
+            *,
+            media_type: Any = None,
+            medium: Any = None,
+            force: bool = False,
+        ) -> None:
+            if not cls._is_image_candidate(
+                url,
+                media_type=media_type,
+                medium=medium,
+                force=force,
+            ):
+                return
+            normalized = cls._normalize_candidate_url(url, base_url)
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                candidates.append(normalized)
+
+        media_thumbnails = entry.get("media_thumbnail") or []
+        if isinstance(media_thumbnails, dict):
+            media_thumbnails = [media_thumbnails]
+        for thumbnail in media_thumbnails:
+            if isinstance(thumbnail, dict):
+                add_candidate(thumbnail.get("url") or thumbnail.get("href"), force=True)
+
+        media_contents = entry.get("media_content") or []
+        if isinstance(media_contents, dict):
+            media_contents = [media_contents]
+        for media in media_contents:
+            if isinstance(media, dict):
+                add_candidate(
+                    media.get("url") or media.get("href"),
+                    media_type=media.get("type"),
+                    medium=media.get("medium"),
+                )
+
+        for link in entry.get("links", []) or []:
+            if not isinstance(link, dict):
+                continue
+            if str(link.get("rel") or "").lower() != "enclosure":
+                continue
+            add_candidate(
+                link.get("href") or link.get("url"),
+                media_type=link.get("type"),
+            )
+
+        image = entry.get("image")
+        if isinstance(image, dict):
+            add_candidate(image.get("href") or image.get("url"), force=True)
+        elif isinstance(image, str):
+            add_candidate(image, force=True)
+
+        return candidates[0] if candidates else None

@@ -26,25 +26,30 @@ from app.models import (
 from app.services.patrol_service import PatrolService
 from app.services.settings_service import get_setting_value
 from app.utils.url_utils import normalize_url_for_dedup
+from app.utils.datetime_utils import normalize_datetime_for_db
 
 
 class DiscoverySyncTask:
     """发现源定时同步任务"""
 
     def __init__(self):
-        self.running = False
+        self._task: asyncio.Task | None = None
 
     def start(self):
-        self.running = True
-        asyncio.create_task(self._sync_loop())
+        self._task = asyncio.create_task(self._sync_loop())
 
     async def stop(self):
-        self.running = False
+        if self._task and not self._task.done():
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
 
     async def _sync_loop(self):
         """Main loop: check sources due for sync every 60 seconds"""
         logger.info("Discovery sync task started")
-        while self.running:
+        while True:
             try:
                 await self._sync_due_sources()
             except Exception as e:
@@ -84,6 +89,7 @@ class DiscoverySyncTask:
             ingested_count = 0
             for item in items:
                 canonical = normalize_url_for_dedup(item.url)
+                cover_candidate = item.cover_url or (item.media_urls[0] if item.media_urls else None)
 
                 new_source_link = {
                     "source_kind": source.kind.value,
@@ -120,6 +126,27 @@ class DiscoverySyncTask:
                         existing_content.context_data = context_data
                         flag_modified(existing_content, "context_data")
 
+                    existing_media_urls = (
+                        existing_content.media_urls
+                        if isinstance(existing_content.media_urls, list)
+                        else []
+                    )
+                    existing_cover_is_fallback = bool(
+                        existing_content.cover_url
+                        and existing_media_urls
+                        and existing_content.cover_url == existing_media_urls[0]
+                    )
+
+                    if item.cover_url and (
+                        not existing_content.cover_url or existing_cover_is_fallback
+                    ):
+                        existing_content.cover_url = item.cover_url
+                    elif cover_candidate and not existing_content.cover_url:
+                        existing_content.cover_url = cover_candidate
+
+                    if item.media_urls and not existing_content.media_urls:
+                        existing_content.media_urls = item.media_urls
+
                     continue
 
                 retention_days_raw = await get_setting_value("discovery_retention_days", 7)
@@ -140,10 +167,11 @@ class DiscoverySyncTask:
                     source_type=source.kind.value,
                     discovery_state=DiscoveryState.INGESTED,
                     discovered_at=utcnow(),
-                    published_at=item.published_at,
+                    published_at=normalize_datetime_for_db(item.published_at),
                     expire_at=utcnow() + timedelta(days=retention_days),
                     source_tags=item.source_tags,
                     status=ContentStatus.UNPROCESSED,
+                    cover_url=cover_candidate,
                     media_urls=item.media_urls,
                     rich_payload=item.rich_payload,
                     extra_stats=item.extra_stats,
