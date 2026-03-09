@@ -51,16 +51,20 @@ class ContentParser {
   static List<String> extractAllMedia(ContentDetail detail, String apiBaseUrl) {
     final list = <String>{};
 
-    // 获取作者头像 URL，用于排除
+    // 获取作者头像 URL 和封面图，用于排除
     final authorAvatar = detail.authorAvatarUrl;
+    final coverUrl = detail.coverUrl;
 
     if (detail.mediaUrls.isNotEmpty) {
       for (var item in detail.mediaUrls) {
         final String url = item.toString();
         if (url.isEmpty) continue;
 
-        // 如果该媒体是作者头像，则跳过（防止在正文大图/网格中显示）
+        // 如果该媒体是作者头像，则跳过
         if (authorAvatar != null && url.contains(authorAvatar)) continue;
+
+        // 如果该媒体明细是封面图，则跳过（避免在 Grid/Gallery 中重复显示）
+        if (coverUrl != null && url.contains(coverUrl)) continue;
 
         list.add(media_utils.mapUrl(url, apiBaseUrl));
       }

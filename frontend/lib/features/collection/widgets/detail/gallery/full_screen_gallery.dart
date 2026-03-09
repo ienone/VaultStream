@@ -42,6 +42,15 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
     super.initState();
     _currentIndex = widget.initialIndex;
     _controller = PageController(initialPage: widget.initialIndex);
+    // opaque:false 路由下 PageController.initialPage 并不总是可靠，
+    // 使用 post-frame 回调确保跳转到正确位置。
+    if (widget.initialIndex > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _controller.hasClients) {
+          _controller.jumpToPage(widget.initialIndex);
+        }
+      });
+    }
   }
 
   @override
@@ -80,6 +89,7 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
     if (index == widget.initialIndex && widget.customHeroTag != null) {
       return widget.customHeroTag!;
     }
+    // 注意：这里的通用 Tag 必须与 RichContent.dart 或 MediaGalleryItem.dart 中的生成逻辑严格对齐
     return index == 0
         ? 'content-image-${widget.contentId}'
         : 'image-$index-${widget.contentId}';

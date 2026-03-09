@@ -39,14 +39,14 @@ class AuthorHeader extends ConsumerWidget {
         ? DateFormat('yyyy-MM-dd HH:mm').format(detail.publishedAt!.toLocal())
         : DateFormat('yyyy-MM-dd HH:mm').format(detail.createdAt.toLocal());
 
-    final bool isEdited =
-        detail.updatedAt
-            .difference(detail.publishedAt ?? detail.createdAt)
-            .inMinutes
-            .abs() >
-        60;
+    final bool isEdited = detail.updatedAt != null &&
+        detail.updatedAt!
+                .difference(detail.publishedAt ?? detail.createdAt)
+                .inMinutes
+                .abs() >
+            60;
     final String editedStr = isEdited
-        ? DateFormat('yyyy-MM-dd HH:mm').format(detail.updatedAt.toLocal())
+        ? DateFormat('yyyy-MM-dd HH:mm').format(detail.updatedAt!.toLocal())
         : '';
 
     return GestureDetector(

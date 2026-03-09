@@ -40,7 +40,10 @@ class RichContent extends StatelessWidget {
 
     if (markdown.isNotEmpty) {
       final style = _getMarkdownStyle(theme);
-      
+      // 从 Markdown 文本中提取所有图片 URL（与 imageBuilder 收到的 URI 来源一致，
+      // 避免与 detail.mediaUrls 的 URL 编码不匹配导致序号查找失败）
+      final inlineImageUrls = _extractInlineImageUrls(markdown, apiBaseUrl);
+
       children.add(
         RepaintBoundary(
           child: MarkdownBody(
@@ -64,6 +67,7 @@ class RichContent extends StatelessWidget {
               alt,
               apiBaseUrl,
               apiToken,
+              galleryImages: inlineImageUrls,
               useHero: useHero,
               usedHeroTags: usedHeroTags,
             ),
@@ -281,6 +285,18 @@ class RichContent extends StatelessWidget {
     return style;
   }
 
+  /// 从 Markdown 文本中按顺序提取所有 inline 图片 URL（已经过 mapUrl 处理）。
+  /// 这样提取出的 URL 与 imageBuilder 回调收到的 uri.toString() 来源相同，
+  /// 保证后续 indexOf 可以精确匹配，不会出现编码不一致的问题。
+  List<String> _extractInlineImageUrls(String markdown, String apiBaseUrl) {
+    if (markdown.isEmpty) return const [];
+    final regex = RegExp(r'!\[.*?\]\(([^)]+)\)');
+    return regex
+        .allMatches(markdown)
+        .map((m) => mapUrl(m.group(1)!.trim(), apiBaseUrl))
+        .toList();
+  }
+
   Widget _buildMarkdownImage(
     BuildContext context,
     ContentDetail detail,
@@ -288,33 +304,42 @@ class RichContent extends StatelessWidget {
     String? alt,
     String apiBaseUrl,
     String? apiToken, {
+    List<String>? galleryImages,
     bool useHero = true,
     Set<String>? usedHeroTags,
   }) {
     String url = mapUrl(uri.toString(), apiBaseUrl);
 
-    // 在全局媒体列表中查找此图片的索引
-    final mediaUrls = ContentParser.extractAllMedia(detail, apiBaseUrl);
-    int index = mediaUrls.indexOf(url);
-    if (index == -1) {
-      final cleanSearch = url.split('?').first;
-      index = mediaUrls.indexWhere((m) => m.split('?').first == cleanSearch);
-    }
+    // 优先使用从 Markdown 文本预提取的图片列表（URL 来源一致，精确匹配）
+    List<String> effectiveMediaUrls;
+    int effectiveIndex;
 
-    // 如果仍未找到，将此图片添加到列表末尾以确保完整的图片列表
-    List<String> effectiveMediaUrls = mediaUrls;
-    int effectiveIndex = index;
-    if (index == -1) {
-      effectiveMediaUrls = [...mediaUrls, url];
-      effectiveIndex = effectiveMediaUrls.length - 1;
+    if (galleryImages != null && galleryImages.isNotEmpty) {
+      effectiveMediaUrls = galleryImages;
+      effectiveIndex = galleryImages.indexOf(url);
+      if (effectiveIndex == -1) effectiveIndex = 0; // 保底：至少显示第一张
+    } else {
+      // 兜底：从 media_urls 查找（可能因 URL 编码差异匹配失败）
+      final mediaUrls = ContentParser.extractAllMedia(detail, apiBaseUrl);
+      effectiveIndex = mediaUrls.indexOf(url);
+      if (effectiveIndex == -1) {
+        final cleanSearch = url.split('?').first;
+        effectiveIndex =
+            mediaUrls.indexWhere((m) => m.split('?').first == cleanSearch);
+      }
+      if (effectiveIndex == -1) {
+        // 完全找不到：单张图片 gallery
+        effectiveMediaUrls = [url];
+        effectiveIndex = 0;
+      } else {
+        effectiveMediaUrls = mediaUrls;
+      }
     }
 
     // 使用 md- 前缀以避免与底部 GridView 产生 Hero 标签冲突
-    final String baseTag = effectiveIndex != -1
-        ? (effectiveIndex == 0
-              ? 'md-content-image-${detail.id}'
-              : 'md-image-$effectiveIndex-${detail.id}')
-        : 'markdown-image-$url-${detail.id}';
+    final String baseTag = effectiveIndex == 0
+        ? 'md-content-image-${detail.id}'
+        : 'md-image-$effectiveIndex-${detail.id}';
 
     String finalHeroTag = baseTag;
     int suffix = 1;
