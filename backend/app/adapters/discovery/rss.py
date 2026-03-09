@@ -68,6 +68,8 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
                 raw_content = self._extract_content(entry)
                 explicit_cover_url = self._extract_cover_url(entry, entry_url)
                 
+                # BBCode → HTML 预处理（兼容论坛 RSS 源）
+                raw_content = self._convert_bbcode_to_html(raw_content)
                 # 强化版清洗逻辑：原地提取并替换为 Markdown (0-Token 策略)
                 content_soup = BeautifulSoup(raw_content, 'html.parser')
                 media_urls = []
@@ -88,10 +90,32 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
                     h.replace_with(f"\n{'#' * level} {h.get_text()}\n")
                 for b in content_soup.find_all(['b', 'strong']):
                     b.replace_with(f"**{b.get_text()}**")
+                for i in content_soup.find_all(['i', 'em']):
+                    i.replace_with(f"*{i.get_text()}*")
+                for s in content_soup.find_all(['s', 'del', 'strike']):
+                    s.replace_with(f"~~{s.get_text()}~~")
+                for bq in content_soup.find_all('blockquote'):
+                    lines = bq.get_text().strip().splitlines()
+                    bq.replace_with("\n" + "\n".join(f"> {l}" for l in lines) + "\n")
+                for code in content_soup.find_all('pre'):
+                    code.replace_with(f"\n```\n{code.get_text()}\n```\n")
                 for a in content_soup.find_all('a'):
                     a.replace_with(f"[{a.get_text()}]({a.get('href', '')})")
-                
-                clean_body = content_soup.get_text(separator="\n\n").strip()
+
+                # 块级元素显式处理：折叠内部内联节点，防止 get_text(separator) 在
+                # 内联 NavigableString 兄弟节点之间注入多余换行（加粗/斜体换行 bug）
+                for br in content_soup.find_all('br'):
+                    br.replace_with("\n")
+                for li in content_soup.find_all('li'):
+                    if li.parent is not None:
+                        li.replace_with("- " + li.get_text(separator="").strip() + "\n")
+                for tag in content_soup.find_all(['p', 'div']):
+                    if tag.parent is not None:
+                        inner = tag.get_text(separator="").strip()
+                        tag.replace_with(inner + "\n\n" if inner else "")
+
+                # separator="" — 块级换行已在上方显式插入，不需要 separator 补充
+                clean_body = content_soup.get_text(separator="").strip()
                 clean_body = re.sub(r'\n{3,}', '\n\n', clean_body)
 
                 tags = [tag.term for tag in entry.get("tags", [])]
@@ -126,6 +150,23 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
             logger.warning("RSS parse error for %s: %s", feed_url, e)
 
         return items, new_cursor
+
+    @staticmethod
+    def _convert_bbcode_to_html(text: str) -> str:
+        """将常见 BBCode 标签转换为 HTML 等价标签。"""
+        _flags = re.IGNORECASE | re.DOTALL
+        text = re.sub(r'\[b\](.*?)\[/b\]', r'<strong>\1</strong>', text, flags=_flags)
+        text = re.sub(r'\[i\](.*?)\[/i\]', r'<em>\1</em>', text, flags=_flags)
+        text = re.sub(r'\[u\](.*?)\[/u\]', r'<u>\1</u>', text, flags=_flags)
+        text = re.sub(r'\[s\](.*?)\[/s\]', r'<s>\1</s>', text, flags=_flags)
+        text = re.sub(r'\[url=(.*?)\](.*?)\[/url\]', r'<a href="\1">\2</a>', text, flags=_flags)
+        text = re.sub(r'\[url\](.*?)\[/url\]', r'<a href="\1">\1</a>', text, flags=_flags)
+        text = re.sub(r'\[img\](.*?)\[/img\]', r'<img src="\1"/>', text, flags=_flags)
+        text = re.sub(r'\[code\](.*?)\[/code\]', r'<pre><code>\1</code></pre>', text, flags=_flags)
+        text = re.sub(r'\[quote\](.*?)\[/quote\]', r'<blockquote>\1</blockquote>', text, flags=_flags)
+        text = re.sub(r'\[size=[^\]]*\](.*?)\[/size\]', r'\1', text, flags=_flags)
+        text = re.sub(r'\[color=[^\]]*\](.*?)\[/color\]', r'\1', text, flags=_flags)
+        return text
 
     @staticmethod
     def _expand_env_vars(url: str) -> str:

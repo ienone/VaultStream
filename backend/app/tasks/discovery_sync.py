@@ -15,12 +15,16 @@ from app.adapters.discovery.rss import RSSDiscoveryScraper
 from app.adapters.discovery.telegram import TelegramDiscoveryScraper
 from app.core.db_adapter import AsyncSessionLocal
 from app.core.time_utils import utcnow
+from app.adapters.storage import get_storage_backend
+from app.core.config import settings
+from app.media.processor import store_archive_images_as_webp
 from app.models import (
     Content,
     ContentStatus,
     DiscoverySource,
     DiscoverySourceKind,
     DiscoveryState,
+    LayoutType,
     Platform,
 )
 from app.services.patrol_service import PatrolService
@@ -87,6 +91,7 @@ class DiscoverySyncTask:
             items, new_cursor = await scraper.fetch(last_cursor=source.last_cursor)
 
             ingested_count = 0
+            new_content_ids = []
             for item in items:
                 canonical = normalize_url_for_dedup(item.url)
                 cover_candidate = item.cover_url or (item.media_urls[0] if item.media_urls else None)
@@ -170,7 +175,8 @@ class DiscoverySyncTask:
                     published_at=normalize_datetime_for_db(item.published_at),
                     expire_at=utcnow() + timedelta(days=retention_days),
                     source_tags=item.source_tags,
-                    status=ContentStatus.UNPROCESSED,
+                    status=ContentStatus.PARSE_SUCCESS,
+                    layout_type=LayoutType.ARTICLE,
                     cover_url=cover_candidate,
                     media_urls=item.media_urls,
                     rich_payload=item.rich_payload,
@@ -178,6 +184,8 @@ class DiscoverySyncTask:
                     context_data={"source_links": [new_source_link]},
                 )
                 db.add(content)
+                await db.flush()
+                new_content_ids.append(content.id)
                 ingested_count += 1
 
             source.last_sync_at = utcnow()
@@ -192,6 +200,11 @@ class DiscoverySyncTask:
                     f"Discovery sync [{source.name}]: ingested {ingested_count} items"
                 )
 
+                try:
+                    await self._archive_discovery_media(db, new_content_ids)
+                except Exception as e:
+                    logger.warning(f"Discovery media archiving [{source.name}] error: {e}")
+
                 patrol = PatrolService()
                 await patrol.score_pending(db)
 
@@ -200,6 +213,85 @@ class DiscoverySyncTask:
             source.last_sync_at = utcnow()
             await db.commit()
             logger.warning(f"Discovery sync [{source.name}] failed: {e}")
+
+    async def _archive_discovery_media(self, db, content_ids: list[int]):
+        """Download and convert images to WebP for newly ingested discovery items."""
+        enable_processing = await get_setting_value(
+            "enable_archive_media_processing",
+            settings.enable_archive_media_processing,
+        )
+        if not enable_processing:
+            return
+
+        if not content_ids:
+            return
+
+        storage = get_storage_backend()
+        ensure_bucket = getattr(storage, "ensure_bucket", None)
+        if callable(ensure_bucket):
+            await ensure_bucket()
+
+        namespace = "vaultstream"
+        quality = int(
+            await get_setting_value(
+                "archive_image_webp_quality",
+                settings.archive_image_webp_quality,
+            ) or 80
+        )
+        max_count = await get_setting_value(
+            "archive_image_max_count",
+            settings.archive_image_max_count,
+        )
+        if max_count is not None:
+            max_count = int(max_count)
+
+        stmt = select(Content).where(Content.id.in_(content_ids))
+        result = await db.execute(stmt)
+        contents = result.scalars().all()
+
+        for content in contents:
+            if not content.media_urls:
+                continue
+            try:
+                archive = {
+                    "images": [{"url": url, "type": "image"} for url in content.media_urls],
+                }
+                await store_archive_images_as_webp(
+                    archive=archive,
+                    storage=storage,
+                    namespace=namespace,
+                    quality=quality,
+                    max_images=max_count,
+                )
+
+                stored_images = archive.get("stored_images", [])
+                if not stored_images:
+                    continue
+
+                local_urls = []
+                url_mapping = {}
+                for img in stored_images:
+                    if img.get("key"):
+                        local_url = f"local://{img['key']}"
+                        local_urls.append(local_url)
+                        orig_url = img.get("orig_url") or img.get("url")
+                        if orig_url:
+                            url_mapping[orig_url] = local_url
+
+                if local_urls:
+                    content.media_urls = list(dict.fromkeys(local_urls))
+                    flag_modified(content, "media_urls")
+
+                if content.cover_url and content.cover_url in url_mapping:
+                    content.cover_url = url_mapping[content.cover_url]
+                elif not content.cover_url and local_urls:
+                    content.cover_url = local_urls[0]
+
+            except Exception as e:
+                logger.warning(f"Discovery media archive failed for content {content.id}: {e}")
+                continue
+
+        await db.commit()
 
     def _get_scraper(self, source: DiscoverySource) -> BaseDiscoveryScraper | None:
         """Factory: return the correct scraper for the source kind"""

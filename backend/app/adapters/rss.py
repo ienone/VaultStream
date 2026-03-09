@@ -12,6 +12,23 @@ from app.models.base import Platform
 from app.utils.datetime_utils import normalize_datetime_for_db
 
 
+def _convert_bbcode_to_html(text: str) -> str:
+    """将常见 BBCode 标签转换为 HTML 等价标签。"""
+    _flags = re.IGNORECASE | re.DOTALL
+    text = re.sub(r'\[b\](.*?)\[/b\]', r'<strong>\1</strong>', text, flags=_flags)
+    text = re.sub(r'\[i\](.*?)\[/i\]', r'<em>\1</em>', text, flags=_flags)
+    text = re.sub(r'\[u\](.*?)\[/u\]', r'<u>\1</u>', text, flags=_flags)
+    text = re.sub(r'\[s\](.*?)\[/s\]', r'<s>\1</s>', text, flags=_flags)
+    text = re.sub(r'\[url=(.*?)\](.*?)\[/url\]', r'<a href="\1">\2</a>', text, flags=_flags)
+    text = re.sub(r'\[url\](.*?)\[/url\]', r'<a href="\1">\1</a>', text, flags=_flags)
+    text = re.sub(r'\[img\](.*?)\[/img\]', r'<img src="\1"/>', text, flags=_flags)
+    text = re.sub(r'\[code\](.*?)\[/code\]', r'<pre><code>\1</code></pre>', text, flags=_flags)
+    text = re.sub(r'\[quote\](.*?)\[/quote\]', r'<blockquote>\1</blockquote>', text, flags=_flags)
+    text = re.sub(r'\[size=[^\]]*\](.*?)\[/size\]', r'\1', text, flags=_flags)
+    text = re.sub(r'\[color=[^\]]*\](.*?)\[/color\]', r'\1', text, flags=_flags)
+    return text
+
+
 class RssAdapter(PlatformAdapter):
     """RSS 适配器，支持 RSS Feed 批量解析"""
     
@@ -70,6 +87,7 @@ class RssAdapter(PlatformAdapter):
                     except Exception:
                         pass
                 
+                html_text = _convert_bbcode_to_html(html_text)
                 content_soup = BeautifulSoup(html_text, 'html.parser')
                 
                 # 1. 还原媒体到正文位置
@@ -88,6 +106,15 @@ class RssAdapter(PlatformAdapter):
                     h.replace_with(f"\n{'#' * level} {h.get_text()}\n")
                 for b in content_soup.find_all(['b', 'strong']):
                     b.replace_with(f"**{b.get_text()}**")
+                for i in content_soup.find_all(['i', 'em']):
+                    i.replace_with(f"*{i.get_text()}*")
+                for s in content_soup.find_all(['s', 'del', 'strike']):
+                    s.replace_with(f"~~{s.get_text()}~~")
+                for bq in content_soup.find_all('blockquote'):
+                    lines = bq.get_text().strip().splitlines()
+                    bq.replace_with("\n" + "\n".join(f"> {l}" for l in lines) + "\n")
+                for code in content_soup.find_all('pre'):
+                    code.replace_with(f"\n```\n{code.get_text()}\n```\n")
                 for a in content_soup.find_all('a'):
                     a.replace_with(f"[{a.get_text()}]({a.get('href', '')})")
                 
