@@ -484,15 +484,33 @@ class _SourceEditDialog extends StatefulWidget {
 class _SourceEditDialogState extends State<_SourceEditDialog> {
   late TextEditingController _nameController;
   late TextEditingController _urlController;
+  late TextEditingController _categoryController;
   late String _kind;
   late int _interval;
+
+  // 各来源类型的 URL 输入提示
+  static const Map<String, _KindMeta> _kindMeta = {
+    'rss': _KindMeta(
+      label: 'RSS',
+      urlLabel: 'RSS 订阅地址',
+      urlHint: 'https://example.com/rss.xml',
+    ),
+    'telegram_channel': _KindMeta(
+      label: 'Telegram 频道',
+      urlLabel: 'Telegram 频道链接',
+      urlHint: 'https://t.me/channelname',
+    ),
+  };
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.initialSource?.name ?? '');
     _urlController = TextEditingController(text: widget.initialSource?.config['url'] ?? '');
+    _categoryController = TextEditingController(text: widget.initialSource?.config['category'] ?? '');
     _kind = widget.initialSource?.kind ?? 'rss';
+    // 若已有来源的 kind 不在支持列表中，回退到 rss
+    if (!_kindMeta.containsKey(_kind)) _kind = 'rss';
     _interval = widget.initialSource?.syncIntervalMinutes ?? 60;
   }
 
@@ -500,11 +518,13 @@ class _SourceEditDialogState extends State<_SourceEditDialog> {
   void dispose() {
     _nameController.dispose();
     _urlController.dispose();
+    _categoryController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final meta = _kindMeta[_kind]!;
     return AlertDialog(
       title: Text(widget.initialSource == null ? '添加来源' : '编辑来源'),
       content: SingleChildScrollView(
@@ -512,28 +532,39 @@ class _SourceEditDialogState extends State<_SourceEditDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<String>(
-              initialValue: _kind,
+              value: _kind,
               decoration: const InputDecoration(labelText: '来源类型'),
-              items: ['rss', 'hackernews', 'reddit', 'telegram_channel'].map((k) => DropdownMenuItem(
-                value: k,
-                child: Text(k.toUpperCase()),
+              items: _kindMeta.entries.map((e) => DropdownMenuItem(
+                value: e.key,
+                child: Text(e.value.label),
               )).toList(),
               onChanged: (val) => setState(() => _kind = val!),
             ),
             const Gap(12),
             TextField(
               controller: _nameController,
-              decoration: const InputDecoration(labelText: '名称', hintText: '如: 我的博客'),
+              decoration: const InputDecoration(labelText: '名称', hintText: '如: IT之家'),
             ),
             const Gap(12),
-            if (_kind == 'rss')
-              TextField(
-                controller: _urlController,
-                decoration: const InputDecoration(labelText: 'RSS URL', hintText: 'https://.../rss.xml'),
+            TextField(
+              controller: _urlController,
+              keyboardType: TextInputType.url,
+              decoration: InputDecoration(
+                labelText: meta.urlLabel,
+                hintText: meta.urlHint,
               ),
+            ),
+            const Gap(12),
+            TextField(
+              controller: _categoryController,
+              decoration: const InputDecoration(
+                labelText: '分类标签（可选）',
+                hintText: '如: 科技、新闻',
+              ),
+            ),
             const Gap(12),
             DropdownButtonFormField<int>(
-              initialValue: _interval,
+              value: _interval,
               decoration: const InputDecoration(labelText: '同步频率'),
               items: [15, 30, 60, 120, 360, 1440].map((i) => DropdownMenuItem(
                 value: i,
@@ -560,12 +591,17 @@ class _SourceEditDialogState extends State<_SourceEditDialog> {
         ),
         FilledButton(
           onPressed: () {
+            final url = _urlController.text.trim();
+            final category = _categoryController.text.trim();
+            final config = <String, dynamic>{'url': url};
+            if (category.isNotEmpty) config['category'] = category;
+
             final source = DiscoverySource(
               id: widget.initialSource?.id ?? 0,
               kind: _kind,
-              name: _nameController.text,
+              name: _nameController.text.trim(),
               enabled: widget.initialSource?.enabled ?? true,
-              config: _kind == 'rss' ? {'url': _urlController.text} : {},
+              config: config,
               syncIntervalMinutes: _interval,
               createdAt: widget.initialSource?.createdAt ?? DateTime.now(),
             );
@@ -577,4 +613,16 @@ class _SourceEditDialogState extends State<_SourceEditDialog> {
       ],
     );
   }
+}
+
+/// 来源类型的元数据，用于驱动表单字段
+class _KindMeta {
+  final String label;
+  final String urlLabel;
+  final String urlHint;
+  const _KindMeta({
+    required this.label,
+    required this.urlLabel,
+    required this.urlHint,
+  });
 }
