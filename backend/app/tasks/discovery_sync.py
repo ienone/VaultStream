@@ -81,6 +81,18 @@ class DiscoverySyncTask:
 
                 await self._sync_single_source(db, source)
 
+    async def sync_source_by_id(self, source_id: int):
+        """Manually trigger sync for a specific source, managing its own DB session."""
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(DiscoverySource).where(DiscoverySource.id == source_id)
+            )
+            source = result.scalar_one_or_none()
+            if source is None:
+                logger.warning(f"Discovery manual sync: source {source_id} not found")
+                return
+            await self._sync_single_source(db, source)
+
     async def _sync_single_source(self, db, source: DiscoverySource):
         """Sync a single discovery source"""
         scraper = self._get_scraper(source)
@@ -173,6 +185,7 @@ class DiscoverySyncTask:
                     discovery_state=DiscoveryState.INGESTED,
                     discovered_at=utcnow(),
                     published_at=normalize_datetime_for_db(item.published_at),
+                    updated_at=None,
                     expire_at=utcnow() + timedelta(days=retention_days),
                     source_tags=item.source_tags,
                     status=ContentStatus.PARSE_SUCCESS,
@@ -286,6 +299,11 @@ class DiscoverySyncTask:
                     content.cover_url = url_mapping[content.cover_url]
                 elif not content.cover_url and local_urls:
                     content.cover_url = local_urls[0]
+
+                # M4/M5: 提取并保留主色调 (cover_color)
+                dominant_color = archive.get("dominant_color")
+                if dominant_color:
+                    content.cover_color = dominant_color
 
             except Exception as e:
                 logger.warning(f"Discovery media archive failed for content {content.id}: {e}")

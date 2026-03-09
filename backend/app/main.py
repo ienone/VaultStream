@@ -123,6 +123,9 @@ async def lifespan(app: FastAPI):
     discovery_cleanup_task = DiscoveryCleanupTask()
     discovery_cleanup_task.start()
     logger.info("发现流同步和清理任务已启动")
+
+    # 将 task 实例挂载到 app.state，供路由层访问
+    app.state.discovery_sync_task = discovery_sync_task
     
     yield
     

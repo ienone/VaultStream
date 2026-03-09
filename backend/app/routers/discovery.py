@@ -2,7 +2,7 @@
 Discovery API — 发现缓冲区管理
 """
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select, func, desc, asc, cast, String, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,7 +55,9 @@ async def list_discovery_items(
     sort: str = Query("created_at"),
     order: str = Query("desc"),
     state: Optional[DiscoveryState] = Query(None),
+    show_all: bool = Query(False),
     source_kind: Optional[str] = Query(None),
+    source_name: Optional[str] = Query(None),
     score_min: Optional[float] = Query(None),
     score_max: Optional[float] = Query(None),
     tags: Optional[List[str]] = Query(None, alias="tag"),
@@ -67,8 +69,29 @@ async def list_discovery_items(
 
     if state:
         query = query.where(Content.discovery_state == state)
+    elif not show_all:
+        # 默认只显示未处理或评分过的可见内容，忽略和已收藏的（默认）移出视图
+        query = query.where(Content.discovery_state.in_([
+            DiscoveryState.INGESTED,
+            DiscoveryState.SCORED,
+            DiscoveryState.VISIBLE
+        ]))
+
     if source_kind:
         query = query.where(Content.source_type == source_kind)
+    if source_name:
+        escaped = (
+            source_name
+            .replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+            .replace('"', '\\"')
+        )
+        query = query.where(
+            cast(Content.context_data, String).ilike(
+                f'%"source_name": "{escaped}"%', escape="\\"
+            )
+        )
     if score_min is not None:
         query = query.where(Content.ai_score >= score_min)
     if score_max is not None:
@@ -300,6 +323,7 @@ async def delete_source(
 @router.post("/discovery/sources/{source_id}/sync", status_code=202)
 async def trigger_sync(
     source_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
@@ -312,6 +336,12 @@ async def trigger_sync(
     source = result.scalar_one_or_none()
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
+
+    sync_task = getattr(request.app.state, "discovery_sync_task", None)
+    if sync_task is not None:
+        import asyncio
+        asyncio.create_task(sync_task.sync_source_by_id(source_id))
+
     return {"status": "accepted", "source_id": source_id}
 
 
