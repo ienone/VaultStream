@@ -111,7 +111,6 @@ class _FullDetailScaffold extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      extendBodyBehindAppBar: true,
       appBar: FrostedAppBar(
         blurSigma: 12,
         title: Text(
@@ -177,12 +176,7 @@ class _FullDetailScaffold extends ConsumerWidget {
         ],
       ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.only(
-          top: MediaQuery.of(context).padding.top + kToolbarHeight + 16,
-          left: 16,
-          right: 16,
-          bottom: 32,
-        ),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         child: _DetailBody(item: item),
       ),
     ).animate().fadeIn(duration: 300.ms);
@@ -338,7 +332,7 @@ class _DesktopDetailBodyState extends ConsumerState<_DesktopDetailBody> {
               Expanded(
                 flex: 13,
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(28, 24, 16, 28),
+                  padding: const EdgeInsets.fromLTRB(28, kToolbarHeight + 24, 16, 28),
                   child: RichContent(
                     detail: contentDetail,
                     apiBaseUrl: apiBaseUrl,
@@ -351,7 +345,7 @@ class _DesktopDetailBodyState extends ConsumerState<_DesktopDetailBody> {
               Expanded(
                 flex: 7,
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 24, 28, 28),
+                  padding: const EdgeInsets.fromLTRB(16, kToolbarHeight + 24, 28, 28),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
