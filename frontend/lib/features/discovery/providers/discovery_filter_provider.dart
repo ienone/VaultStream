@@ -6,7 +6,8 @@ part 'discovery_filter_provider.g.dart';
 @immutable
 class DiscoveryFilterState {
   final String? state;
-  final String? sourceKind;
+  final bool showAll;
+  final String? sourceName;
   final double? scoreMin;
   final double? scoreMax;
   final List<String> tags;
@@ -16,7 +17,8 @@ class DiscoveryFilterState {
 
   const DiscoveryFilterState({
     this.state,
-    this.sourceKind,
+    this.showAll = false,
+    this.sourceName,
     this.scoreMin,
     this.scoreMax,
     this.tags = const [],
@@ -27,7 +29,8 @@ class DiscoveryFilterState {
 
   DiscoveryFilterState copyWith({
     String? state,
-    String? sourceKind,
+    bool? showAll,
+    String? sourceName,
     double? scoreMin,
     double? scoreMax,
     List<String>? tags,
@@ -35,14 +38,15 @@ class DiscoveryFilterState {
     String? sortBy,
     String? sortOrder,
     bool clearState = false,
-    bool clearSourceKind = false,
+    bool clearSourceName = false,
     bool clearScoreMin = false,
     bool clearScoreMax = false,
     bool clearTags = false,
   }) {
     return DiscoveryFilterState(
       state: clearState ? null : (state ?? this.state),
-      sourceKind: clearSourceKind ? null : (sourceKind ?? this.sourceKind),
+      showAll: showAll ?? this.showAll,
+      sourceName: clearSourceName ? null : (sourceName ?? this.sourceName),
       scoreMin: clearScoreMin ? null : (scoreMin ?? this.scoreMin),
       scoreMax: clearScoreMax ? null : (scoreMax ?? this.scoreMax),
       tags: clearTags ? const [] : (tags ?? this.tags),
@@ -54,7 +58,8 @@ class DiscoveryFilterState {
 
   bool get hasActiveFilters =>
       state != null ||
-      sourceKind != null ||
+      showAll ||
+      sourceName != null ||
       scoreMin != null ||
       scoreMax != null ||
       tags.isNotEmpty;
@@ -75,10 +80,10 @@ class DiscoveryFilter extends _$DiscoveryFilter {
     );
   }
 
-  void setSourceKind(String? kind) {
+  void setSourceName(String? name) {
     state = state.copyWith(
-      sourceKind: kind,
-      clearSourceKind: kind == null,
+      sourceName: name,
+      clearSourceName: name == null,
     );
   }
 
@@ -93,19 +98,25 @@ class DiscoveryFilter extends _$DiscoveryFilter {
 
   void setFilters({
     String? discoveryState,
-    String? sourceKind,
+    bool showAll = false,
+    String? sourceName,
     double? scoreMin,
     double? scoreMax,
     List<String>? tags,
+    String? sortBy,
+    String? sortOrder,
   }) {
     state = state.copyWith(
       state: discoveryState,
-      sourceKind: sourceKind,
+      showAll: showAll,
+      sourceName: sourceName,
       scoreMin: scoreMin,
       scoreMax: scoreMax,
       tags: tags,
+      sortBy: sortBy ?? state.sortBy,
+      sortOrder: sortOrder ?? state.sortOrder,
       clearState: discoveryState == null,
-      clearSourceKind: sourceKind == null,
+      clearSourceName: sourceName == null,
       clearScoreMin: scoreMin == null,
       clearScoreMax: scoreMax == null,
       clearTags: tags == null || tags.isEmpty,

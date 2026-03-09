@@ -12,6 +12,7 @@ import 'providers/discovery_actions_provider.dart';
 import 'providers/discovery_items_provider.dart';
 import 'providers/discovery_filter_provider.dart';
 import 'providers/discovery_selection_provider.dart';
+import 'providers/discovery_sources_provider.dart';
 import 'widgets/discovery_item_card.dart';
 import 'widgets/discovery_batch_action_sheet.dart';
 import 'discovery_detail_page.dart';
@@ -353,7 +354,7 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
                                           : null,
                                     ),
                                     tooltip: '筛选',
-                                    onPressed: () {},
+                                    onPressed: () => _showFilterSheet(context),
                                   );
                                 }),
                               ],
@@ -453,7 +454,7 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
                       ? theme.colorScheme.primary
                       : null,
                 ),
-                onPressed: () {},
+                onPressed: () => _showFilterSheet(context),
               ),
             ]
           : null,
@@ -546,10 +547,295 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
     }
   }
 
+  void _showFilterSheet(BuildContext context) {
+    final sources = ref.read(discoverySourcesProvider).value ?? [];
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => _DiscoveryFilterSheet(
+        current: ref.read(discoveryFilterProvider),
+        sources: sources,
+        onApply: (updated) {
+          ref.read(discoveryFilterProvider.notifier).setFilters(
+            discoveryState: updated.state,
+            showAll: updated.showAll,
+            sourceName: updated.sourceName,
+            scoreMin: updated.scoreMin,
+            scoreMax: updated.scoreMax,
+            sortBy: updated.sortBy,
+            sortOrder: updated.sortOrder,
+          );
+        },
+        onReset: () => ref.read(discoveryFilterProvider.notifier).clearFilters(),
+      ),
+    );
+  }
+
   void _showBatchActions(BuildContext context) {
     showModalBottomSheet(
       context: context,
       builder: (ctx) => DiscoveryBatchActionSheet(parentContext: context),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 筛选面板
+// ---------------------------------------------------------------------------
+
+class _DiscoveryFilterSheet extends StatefulWidget {
+  final DiscoveryFilterState current;
+  final List<DiscoverySource> sources;
+  final ValueChanged<DiscoveryFilterState> onApply;
+  final VoidCallback onReset;
+
+  const _DiscoveryFilterSheet({
+    required this.current,
+    required this.sources,
+    required this.onApply,
+    required this.onReset,
+  });
+
+  @override
+  State<_DiscoveryFilterSheet> createState() => _DiscoveryFilterSheetState();
+}
+
+class _DiscoveryFilterSheetState extends State<_DiscoveryFilterSheet> {
+  late String? _state;
+  late bool _showAll;
+  late String? _sourceName;
+  late double? _scoreMin;
+  late String _sortBy;
+  late String _sortOrder;
+
+  /// 将 state/showAll 映射为一个易于理解的视图模式
+  String get _viewMode {
+    if (_state == 'ignored') return 'ignored';
+    return 'active';
+  }
+
+  void _setViewMode(String mode) {
+    setState(() {
+      switch (mode) {
+        case 'ignored':
+          _showAll = false;
+          _state = 'ignored';
+        default: // 'active'
+          _showAll = false;
+          _state = null;
+      }
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _state = widget.current.state;
+    _showAll = widget.current.showAll;
+    _sourceName = widget.current.sourceName;
+    _scoreMin = widget.current.scoreMin;
+    _sortBy = widget.current.sortBy;
+    _sortOrder = widget.current.sortOrder;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (context, scrollController) => Column(
+        children: [
+          // 拖动手柄
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: cs.onSurfaceVariant.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Row(
+              children: [
+                Text('筛选与排序', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                const Spacer(),
+                TextButton(
+                  onPressed: () {
+                    widget.onReset();
+                    Navigator.pop(context);
+                  },
+                  child: const Text('重置'),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              children: [
+                // --- 显示范围 ---
+                _SectionTitle(label: '显示范围'),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _FilterChip(label: '全部',   icon: Icons.inbox_rounded,          selected: _viewMode == 'active',  onTap: () => _setViewMode('active')),
+                    _FilterChip(label: '已忽略', icon: Icons.visibility_off_rounded,  selected: _viewMode == 'ignored', onTap: () => _setViewMode('ignored')),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                // --- 来源 ---
+                _SectionTitle(label: '来源'),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _FilterChip(label: '全部', icon: Icons.all_inclusive_rounded, selected: _sourceName == null, onTap: () => setState(() => _sourceName = null)),
+                    for (final src in widget.sources)
+                      _FilterChip(
+                        label: src.name,
+                        icon: src.kind == 'telegram_channel' ? Icons.send_rounded : Icons.rss_feed_rounded,
+                        selected: _sourceName == src.name,
+                        onTap: () => setState(() => _sourceName = _sourceName == src.name ? null : src.name),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                // --- AI 评分下限 ---
+                _SectionTitle(label: 'AI 评分下限 (${_scoreMin?.toStringAsFixed(1) ?? '不限'})'),
+                Slider(
+                  value: _scoreMin ?? 0,
+                  min: 0,
+                  max: 10,
+                  divisions: 20,
+                  label: _scoreMin?.toStringAsFixed(1) ?? '0',
+                  onChanged: (v) => setState(() => _scoreMin = v > 0 ? v : null),
+                ),
+                const SizedBox(height: 20),
+
+                // --- 排序 ---
+                _SectionTitle(label: '排序字段'),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _FilterChip(label: '发现时间', icon: Icons.access_time_rounded,    selected: _sortBy == 'created_at',   onTap: () => setState(() => _sortBy = 'created_at')),
+                    _FilterChip(label: '发布时间', icon: Icons.calendar_today_rounded, selected: _sortBy == 'published_at', onTap: () => setState(() => _sortBy = 'published_at')),
+                    _FilterChip(label: 'AI 评分',  icon: Icons.auto_awesome_rounded,   selected: _sortBy == 'ai_score',     onTap: () => setState(() => _sortBy = 'ai_score')),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    _FilterChip(label: '降序', icon: Icons.arrow_downward_rounded, selected: _sortOrder == 'desc', onTap: () => setState(() => _sortOrder = 'desc')),
+                    _FilterChip(label: '升序', icon: Icons.arrow_upward_rounded,   selected: _sortOrder == 'asc',  onTap: () => setState(() => _sortOrder = 'asc')),
+                  ],
+                ),
+                const SizedBox(height: 28),
+
+                // --- 应用按钮 ---
+                FilledButton.icon(
+                  icon: const Icon(Icons.check_rounded),
+                  label: const Text('应用'),
+                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                  onPressed: () {
+                    widget.onApply(DiscoveryFilterState(
+                      state: _state,
+                      showAll: _showAll,
+                      sourceName: _sourceName,
+                      scoreMin: _scoreMin,
+                      sortBy: _sortBy,
+                      sortOrder: _sortOrder,
+                    ));
+                    Navigator.pop(context);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  final String label;
+  const _SectionTitle({required this.label});
+  @override
+  Widget build(BuildContext context) => Text(
+        label,
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      );
+}
+
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? cs.primaryContainer : cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? cs.primary : cs.outlineVariant,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: selected ? cs.primary : cs.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                color: selected ? cs.primary : cs.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
