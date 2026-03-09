@@ -97,12 +97,23 @@ class SseService extends _$SseService {
   
   @override
   Stream<SseEvent> build() {
+    // 监听配置变化：token 或 baseUrl 更新时，立即用新凭据重连。
+    // 这解决了以下问题：库内部的 _retryConnection 会将首次连接的 headers
+    // 捕获在闭包里无限复用，导致 token 更新后仍用旧 token 发请求。
+    ref.listen(localSettingsProvider, (previous, next) {
+      if (previous?.apiToken != next.apiToken ||
+          previous?.baseUrl != next.baseUrl) {
+        _reconnectAttempts = 0;
+        _connect();
+      }
+    });
+
     _connect();
-    
+
     ref.onDispose(() {
       _cleanup();
     });
-    
+
     return _eventBus.eventStream;
   }
   
@@ -118,12 +129,19 @@ class SseService extends _$SseService {
     // 取消之前的连接和重连定时器
     _subscription?.cancel();
     _reconnectTimer?.cancel();
-    
+
     final settings = ref.read(localSettingsProvider);
+
+    // token 为空时不建立连接，等待 localSettingsProvider 更新后触发重连
+    if (settings.apiToken.isEmpty) {
+      _eventBus.updateState(SseConnectionState.disconnected);
+      return;
+    }
+
     final url = '${settings.baseUrl}/events/subscribe';
-    
+
     _eventBus.updateState(SseConnectionState.connecting);
-    
+
     final headers = <String, String>{
       'X-API-Token': settings.apiToken,
     };
@@ -131,7 +149,7 @@ class SseService extends _$SseService {
     if (_lastEventId != null) {
       headers['Last-Event-ID'] = _lastEventId!;
     }
-    
+
     try {
       _subscription = SSEClient.subscribeToSSE(
         method: SSERequestType.GET,
