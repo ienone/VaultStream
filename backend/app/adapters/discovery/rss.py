@@ -51,11 +51,20 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
         new_cursor = last_cursor
 
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            # 使用更真实的 User-Agent 避免 403 (e.g. RSSHub/V2EX 等源常屏蔽默认 httpx/python UA)
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "application/rss+xml, application/atom+xml, text/xml, application/xml, */*",
+            }
+            async with httpx.AsyncClient(timeout=30, headers=headers) as client:
                 response = await client.get(feed_url, follow_redirects=True)
                 response.raise_for_status()
 
-            feed = feedparser.parse(response.text)
+            # 优先使用 content (bytes) 传给 feedparser，让其根据 XML 声明检测编码 (对 GBK/Big5 等源更准确)
+            feed = feedparser.parse(response.content)
+
+            if feed.bozo and not feed.entries:
+                logger.warning("RSS formatting error (Bozo) for %s: %s", feed_url, feed.bozo_exception)
 
             for entry in feed.entries:
                 entry_id = entry.get("id") or entry.get("link") or ""
@@ -85,38 +94,83 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
                 media_urls = list(dict.fromkeys(media_urls))
                 cover_url = explicit_cover_url or (media_urls[0] if media_urls else None)
                 
+                # 开始转换 HTML 为 Markdown (0-Token 策略)
+                # 1. 处理块级元素换行 (从内向外 unwrap，避免父子节点重复处理)
+                for tag in reversed(content_soup.find_all(['p', 'div', 'br', 'li'])):
+                    if tag.name == 'br':
+                        tag.replace_with("\n")
+                    elif tag.name == 'li':
+                        tag.insert_before("- ")
+                        tag.insert_after("\n")
+                        tag.unwrap()
+                    else:
+                        # p, div — 确保上下有换行，然后移除标签
+                        tag.insert_before("\n")
+                        tag.insert_after("\n")
+                        tag.unwrap()
+
+                # 2. 处理标题 (h1-h6)
                 for h in content_soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
                     level = int(h.name[1])
-                    h.replace_with(f"\n{'#' * level} {h.get_text()}\n")
+                    inner_text = h.get_text().strip()
+                    if inner_text:
+                        h.replace_with(f"\n{'#' * level} {inner_text}\n")
+                    else:
+                        h.decompose()
+
+                # 3. 处理内联格式 (加粗、斜体、删除线)
+                # 特别注意：清理两端空行，防止 Markdown 语法失效或异常换行
                 for b in content_soup.find_all(['b', 'strong']):
-                    b.replace_with(f"**{b.get_text()}**")
+                    text = b.get_text()
+                    stripped = text.strip()
+                    if stripped:
+                        # 保持原有的外部换行趋势，但将 ** 紧贴文本
+                        prefix = "\n" if text.startswith("\n") else ""
+                        suffix = "\n" if text.endswith("\n") else ""
+                        b.replace_with(f"{prefix}**{stripped}**{suffix}")
+                    else:
+                        b.decompose()
+
                 for i in content_soup.find_all(['i', 'em']):
-                    i.replace_with(f"*{i.get_text()}*")
+                    text = i.get_text()
+                    stripped = text.strip()
+                    if stripped:
+                        prefix = "\n" if text.startswith("\n") else ""
+                        suffix = "\n" if text.endswith("\n") else ""
+                        i.replace_with(f"{prefix}*{stripped}*{suffix}")
+                    else:
+                        i.decompose()
+
                 for s in content_soup.find_all(['s', 'del', 'strike']):
-                    s.replace_with(f"~~{s.get_text()}~~")
+                    text = s.get_text()
+                    stripped = text.strip()
+                    if stripped:
+                        s.replace_with(f"~~{stripped}~~")
+                    else:
+                        s.decompose()
+
+                # 4. 处理引用和代码块
                 for bq in content_soup.find_all('blockquote'):
                     lines = bq.get_text().strip().splitlines()
-                    bq.replace_with("\n" + "\n".join(f"> {l}" for l in lines) + "\n")
+                    bq.replace_with("\n" + "\n".join(f"> {l.strip()}" for l in lines) + "\n")
+                
                 for code in content_soup.find_all('pre'):
                     code.replace_with(f"\n```\n{code.get_text()}\n```\n")
+                
                 for a in content_soup.find_all('a'):
-                    a.replace_with(f"[{a.get_text()}]({a.get('href', '')})")
+                    link_text = a.get_text().strip()
+                    if link_text:
+                        a.replace_with(f"[{link_text}]({a.get('href', '')})")
+                    else:
+                        a.decompose()
 
-                # 块级元素显式处理：折叠内部内联节点，防止 get_text(separator) 在
-                # 内联 NavigableString 兄弟节点之间注入多余换行（加粗/斜体换行 bug）
-                for br in content_soup.find_all('br'):
-                    br.replace_with("\n")
-                for li in content_soup.find_all('li'):
-                    if li.parent is not None:
-                        li.replace_with("- " + li.get_text(separator="").strip() + "\n")
-                for tag in content_soup.find_all(['p', 'div']):
-                    if tag.parent is not None:
-                        inner = tag.get_text(separator="").strip()
-                        tag.replace_with(inner + "\n\n" if inner else "")
-
-                # separator="" — 块级换行已在上方显式插入，不需要 separator 补充
+                # 5. 最终清洗
                 clean_body = content_soup.get_text(separator="").strip()
+                # 合并过多的连续换行
                 clean_body = re.sub(r'\n{3,}', '\n\n', clean_body)
+                # 修复 Markdown 加粗/斜体被意外拆分的常见问题
+                clean_body = re.sub(r'\*\*\s+\n', '**\n', clean_body)
+                clean_body = re.sub(r'\n\s+\*\*', '\n**', clean_body)
 
                 tags = [tag.term for tag in entry.get("tags", [])]
                 category = self.config.get("category")
