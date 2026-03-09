@@ -13,7 +13,7 @@ from app.core.database import get_db
 from app.models import Content, ContentStatus, PushedRecord, Platform, ReviewStatus, ContentSource
 from app.schemas import (
     ShareRequest, ShareResponse, ContentDetail,
-    ShareCardListResponse, ContentListResponse,
+    ShareCardListResponse, ContentListItemResponse, ContentListItem,
     ContentUpdate, ReviewAction, BatchReviewRequest,
     PushedRecordResponse
 )
@@ -28,6 +28,7 @@ from app.services.content_presenter import (
     transform_media_url, transform_content_detail,
 )
 from app.media.extractor import sanitize_media_urls
+from app.adapters.utils import ensure_title
 
 router = APIRouter()
 
@@ -78,7 +79,7 @@ async def create_share(
 
 # --- 内容 增删改查 ---
 
-@router.get("/contents", response_model=ContentListResponse)
+@router.get("/contents", response_model=ContentListItemResponse)
 async def list_contents(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -109,9 +110,8 @@ async def list_contents(
         is_nsfw=is_nsfw
     )
     
-    base_url = settings.base_url or "http://localhost:8000"
     items_pydantic = [
-        transform_content_detail(ContentDetail.model_validate(c), base_url)
+        ContentListItem.model_validate(c)
         for c in items
     ]
     
@@ -297,7 +297,7 @@ async def list_share_cards(
     _: None = Depends(require_api_token),
 ):
     """轻量级分享卡片列表"""
-    contents, total = await repo.list_contents(
+    contents, total = await repo.list_cards(
         page=page, 
         size=size, 
         platforms=_parse_list_param(platforms), 
@@ -325,7 +325,7 @@ async def list_share_cards(
             "clean_url": c.clean_url,
             "content_type": c.content_type,
             "effective_layout_type": compute_effective_layout_type(c),
-            "title": compute_display_title(c),
+            "title": ensure_title(c.title, None),
             "author_name": c.author_name,
             "author_id": c.author_id,
             "author_avatar_url": transform_media_url(compute_author_avatar_url(c), base_url),

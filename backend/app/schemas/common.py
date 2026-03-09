@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any, TypeVar, Generic
 from pydantic import BaseModel, Field, ConfigDict
 from app.models import Platform, ContentStatus, ReviewStatus, LayoutType
+from app.schemas.base import UtcDatetime
 
 class APIResponse(BaseModel):
     """标准的 API 响应包裹体（如需扩展）"""
@@ -62,7 +63,7 @@ class SystemSettingUpdate(BaseModel):
 class SystemSettingResponse(SystemSettingBase):
     """系统设置响应"""
     key: str
-    updated_at: datetime
+    updated_at: UtcDatetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -83,6 +84,6 @@ class PushedRecordResponse(BaseModel):
     message_id: Optional[str] = None
     push_status: str
     error_message: Optional[str] = None
-    pushed_at: datetime
+    pushed_at: UtcDatetime
     
     model_config = ConfigDict(from_attributes=True)

@@ -7,9 +7,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict
 
 from app.models.system import QueueItemStatus
-from app.schemas.distribution import DistributionRuleResponse
-from app.schemas.bot import BotChatResponse
-from app.schemas.content import ContentListItem
+from app.schemas.base import UtcDatetime, OptionalUtcDatetime
 
 
 class ContentQueueItemResponse(BaseModel):
@@ -21,29 +19,25 @@ class ContentQueueItemResponse(BaseModel):
     target_id: str
     status: QueueItemStatus
     priority: int
-    scheduled_at: Optional[datetime]
+    scheduled_at: OptionalUtcDatetime
     
     needs_approval: bool
-    approved_at: Optional[datetime]
+    approved_at: OptionalUtcDatetime
     approved_by: Optional[str]
     
     attempt_count: int
     max_attempts: int
-    next_attempt_at: Optional[datetime]
+    next_attempt_at: OptionalUtcDatetime
     
     message_id: Optional[str]
     last_error: Optional[str]
     last_error_type: Optional[str]
-    last_error_at: Optional[datetime]
+    last_error_at: OptionalUtcDatetime
     
-    started_at: Optional[datetime]
-    completed_at: Optional[datetime]
-    created_at: datetime
-    updated_at: datetime
-
-    content: Optional[ContentListItem] = None
-    rule: Optional[DistributionRuleResponse] = None
-    bot_chat: Optional[BotChatResponse] = None
+    started_at: OptionalUtcDatetime
+    completed_at: OptionalUtcDatetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -92,5 +86,4 @@ class QueueStatsResponse(BaseModel):
 # 为了向后兼容路由中的名称
 QueueListResponse = ContentQueueItemListResponse
 
-ContentQueueItemListResponse.model_rebuild()
 

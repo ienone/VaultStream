@@ -11,7 +11,8 @@ from app.core.dependencies import require_api_token
 from app.core.time_utils import utcnow
 from app.models import Content, DiscoverySource, DiscoveryState, DiscoverySourceKind
 from app.schemas.discovery import (
-    DiscoveryItemResponse, DiscoveryItemUpdate, DiscoveryBulkAction,
+    DiscoveryItemListItem, DiscoveryItemResponse,
+    DiscoveryItemUpdate, DiscoveryBulkAction,
     DiscoverySourceCreate, DiscoverySourceUpdate, DiscoverySourceResponse,
     DiscoverySettingsResponse, DiscoverySettingsUpdate,
     DiscoveryStatsResponse,
@@ -113,7 +114,7 @@ async def list_discovery_items(
     items = result.scalars().all()
 
     return {
-        "items": [DiscoveryItemResponse.model_validate(i) for i in items],
+        "items": [DiscoveryItemListItem.model_validate(i) for i in items],
         "total": total,
         "page": page,
         "size": size,

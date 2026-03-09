@@ -8,6 +8,7 @@ import json
 
 from app.models import Platform, ContentStatus, ReviewStatus, LayoutType
 from app.constants import SUPPORTED_PLATFORMS
+from app.schemas.base import UtcDatetime, OptionalUtcDatetime
 
 NOTE_MAX_LENGTH = 2000 # 备注内容的最大长度
 CLIENT_CONTEXT_MAX_BYTES = 4096 # JSON序列化后最大4KB
@@ -43,7 +44,7 @@ class ShareResponse(BaseModel):
     platform: Platform
     url: str
     status: ContentStatus
-    created_at: datetime
+    created_at: UtcDatetime
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -90,7 +91,7 @@ class ContentDetail(BaseModel):
     extra_stats: Dict[str, Any] = Field(default_factory=dict)
     
     review_status: ReviewStatus = ReviewStatus.PENDING
-    reviewed_at: Optional[datetime] = None
+    reviewed_at: OptionalUtcDatetime = None
     reviewed_by: Optional[str] = None
     review_note: Optional[str] = None
 
@@ -101,9 +102,9 @@ class ContentDetail(BaseModel):
     context_data: Optional[Dict[str, Any]] = None
     rich_payload: Optional[Dict[str, Any]] = None
     
-    created_at: datetime
-    updated_at: datetime
-    published_at: Optional[datetime]
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
+    published_at: OptionalUtcDatetime
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -121,8 +122,8 @@ class ContentListItem(BaseModel):
     tags: List[str] = Field(default_factory=list)
     is_nsfw: bool = False
     layout_type: Optional[str] = None
-    created_at: datetime
-    published_at: Optional[datetime] = None
+    created_at: UtcDatetime
+    published_at: OptionalUtcDatetime = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -192,8 +193,8 @@ class ShareCard(BaseModel):
     tags: List[str] = Field(default_factory=list)
     is_nsfw: bool = False
     review_status: Optional[ReviewStatus] = None
-    published_at: Optional[datetime] = None
-    created_at: Optional[datetime] = None
+    published_at: OptionalUtcDatetime = None
+    created_at: OptionalUtcDatetime = None
     view_count: int = 0
     like_count: int = 0
 

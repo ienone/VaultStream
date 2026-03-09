@@ -6,6 +6,7 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 
 from app.models.bot import BotChatType, BotConfigPlatform
+from app.schemas.base import UtcDatetime, OptionalUtcDatetime
 from app.schemas.common import QueueStats, DistributionStatusStats
 
 
@@ -64,14 +65,14 @@ class BotChatResponse(BaseModel):
     nsfw_chat_id: Optional[str]
     
     total_pushed: int
-    last_pushed_at: Optional[datetime]
+    last_pushed_at: OptionalUtcDatetime
     
     is_accessible: bool
-    last_sync_at: Optional[datetime]
+    last_sync_at: OptionalUtcDatetime
     sync_error: Optional[str]
     
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -115,8 +116,8 @@ class BotConfigResponse(BaseModel):
     bot_username: Optional[str]
     chat_count: int = 0
     
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -125,14 +126,14 @@ class BotRuntimeResponse(BaseModel):
     bot_id: Optional[str]
     bot_username: Optional[str]
     bot_first_name: Optional[str]
-    started_at: Optional[datetime]
-    last_heartbeat_at: Optional[datetime]
+    started_at: OptionalUtcDatetime
+    last_heartbeat_at: OptionalUtcDatetime
     is_running: bool = False
     uptime_seconds: Optional[int] = None
     version: Optional[str]
     last_error: Optional[str]
-    last_error_at: Optional[datetime]
-    updated_at: Optional[datetime] = None
+    last_error_at: OptionalUtcDatetime
+    updated_at: OptionalUtcDatetime = None
     
     model_config = ConfigDict(from_attributes=True)
 

@@ -6,11 +6,33 @@ from typing import Optional, List, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models import DiscoverySourceKind, DiscoveryState
+from app.schemas.base import UtcDatetime, OptionalUtcDatetime
 
 
 # --- Discovery Item ---
 
+class DiscoveryItemListItem(BaseModel):
+    """列表精简版 — 只包含卡片渲染所需字段"""
+    id: int
+    title: Optional[str] = None
+    url: str
+    author_name: Optional[str] = None
+    summary: Optional[str] = None
+    ai_score: Optional[float] = None
+    ai_tags: Optional[list] = None
+    source_type: Optional[str] = None
+    discovery_state: Optional[DiscoveryState] = None
+    discovered_at: OptionalUtcDatetime = None
+    published_at: OptionalUtcDatetime = None
+    created_at: UtcDatetime
+    cover_url: Optional[str] = None
+    cover_color: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class DiscoveryItemResponse(BaseModel):
+    """详情完整版 — 包含正文、媒体、富负载等"""
     id: int
     title: Optional[str] = None
     url: str
@@ -24,10 +46,9 @@ class DiscoveryItemResponse(BaseModel):
     ai_tags: Optional[list] = None
     source_type: Optional[str] = None
     discovery_state: Optional[DiscoveryState] = None
-    discovered_at: Optional[datetime] = None
-    published_at: Optional[datetime] = None
-    created_at: datetime
-    # 详情复用字段
+    discovered_at: OptionalUtcDatetime = None
+    published_at: OptionalUtcDatetime = None
+    created_at: UtcDatetime
     cover_url: Optional[str] = None
     cover_color: Optional[str] = None
     platform_id: Optional[str] = None
@@ -77,10 +98,10 @@ class DiscoverySourceResponse(BaseModel):
     name: str
     enabled: bool
     config: dict = Field(default_factory=dict)
-    last_sync_at: Optional[datetime] = None
+    last_sync_at: OptionalUtcDatetime = None
     last_error: Optional[str] = None
     sync_interval_minutes: int
-    created_at: datetime
+    created_at: UtcDatetime
 
     model_config = ConfigDict(from_attributes=True)
 

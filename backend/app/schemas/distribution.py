@@ -6,6 +6,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
+from app.schemas.base import UtcDatetime, OptionalUtcDatetime
 
 
 class DistributionTargetCreate(BaseModel):
@@ -34,8 +35,8 @@ class DistributionTargetResponse(BaseModel):
     use_author_name: bool
     summary: Optional[str]
     render_config_override: Optional[Dict[str, Any]]
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
     
     bot_chat: Optional[BotChatResponse] = None
     
@@ -86,8 +87,8 @@ class DistributionRuleResponse(BaseModel):
     time_window: Optional[int]
     template_id: Optional[str]
     render_config: Optional[Dict[str, Any]]
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
     
     distribution_targets: List[DistributionTargetResponse] = Field(default_factory=list)
     
@@ -156,7 +157,7 @@ class TargetUsageInfo(BaseModel):
     summary: Optional[str] = None
     render_config: Optional[Dict[str, Any]] = None
     total_pushed: int = 0
-    last_pushed_at: Optional[datetime] = None
+    last_pushed_at: OptionalUtcDatetime = None
 
 
 class TargetListResponse(BaseModel):
@@ -216,7 +217,7 @@ class RulePreviewItem(BaseModel):
     status: str
     reason_code: Optional[str] = None
     reason: Optional[str] = None
-    scheduled_time: Optional[datetime] = None
+    scheduled_time: OptionalUtcDatetime = None
     thumbnail_url: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)
