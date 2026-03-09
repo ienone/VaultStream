@@ -105,6 +105,102 @@ class ContentRepository:
         result = await self.db.execute(stmt)
         return result.scalars().all(), total
 
+    async def list_cards(
+        self,
+        page: int = 1,
+        size: int = 20,
+        platforms: Optional[List[str]] = None,
+        statuses: Optional[List[str]] = None,
+        review_status: Optional[ReviewStatus] = None,
+        tags: Optional[List[str]] = None,
+        q: Optional[str] = None,
+        is_nsfw: Optional[bool] = None,
+        author: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> Tuple[List[Content], int]:
+        """轻量级卡片查询 — 延迟加载大字段，仅返回展示所需列"""
+        conditions = []
+        if platforms:
+            conditions.append(Content.platform.in_(platforms))
+        if statuses:
+            conditions.append(Content.status.in_(statuses))
+        if review_status:
+            conditions.append(Content.review_status == review_status)
+        if is_nsfw is not None:
+            conditions.append(Content.is_nsfw == is_nsfw)
+        if author:
+            conditions.append(Content.author_name.ilike(f"%{author}%"))
+        if start_date:
+            conditions.append(Content.created_at >= start_date)
+        if end_date:
+            conditions.append(Content.created_at <= end_date)
+
+        conditions.append(
+            or_(
+                Content.discovery_state.is_(None),
+                Content.discovery_state == DiscoveryState.PROMOTED,
+            )
+        )
+
+        if tags:
+            placeholders = ", ".join(f":tag_{i}" for i in range(len(tags)))
+            tag_subquery = text(
+                f"SELECT DISTINCT c.id FROM contents c, json_each(c.tags) AS je "
+                f"WHERE je.value IN ({placeholders})"
+            )
+            params = {f"tag_{i}": t for i, t in enumerate(tags)}
+            tag_ids_result = await self.db.execute(tag_subquery, params)
+            tag_ids = [row[0] for row in tag_ids_result.all()]
+            if tag_ids:
+                conditions.append(Content.id.in_(tag_ids))
+            else:
+                conditions.append(text("0 = 1"))
+
+        if q:
+            safe_q = q.replace("'", "''")
+            fts_stmt = text("SELECT content_id FROM contents_fts WHERE contents_fts MATCH :q")
+            try:
+                fts_result = await self.db.execute(fts_stmt, {"q": safe_q})
+                fts_ids = [row[0] for row in fts_result.all()]
+            except Exception:
+                fts_ids = []
+
+            like_cond = or_(
+                Content.title.ilike(f"%{q}%"),
+                Content.body.ilike(f"%{q}%"),
+                Content.author_name.ilike(f"%{q}%")
+            )
+            if fts_ids:
+                conditions.append(or_(Content.id.in_(fts_ids), like_cond))
+            else:
+                conditions.append(like_cond)
+
+        count_stmt = select(func.count()).select_from(Content).where(and_(*conditions))
+        total = (await self.db.execute(count_stmt)).scalar() or 0
+
+        stmt = (
+            select(Content)
+            .options(
+                defer(Content.body),
+                defer(Content.rich_payload),
+                defer(Content.archive_metadata),
+                defer(Content.context_data),
+                defer(Content.extra_stats),
+                defer(Content.summary),
+                defer(Content.last_error),
+                defer(Content.last_error_detail),
+                defer(Content.media_urls),
+            )
+            .where(and_(*conditions))
+            .order_by(desc(Content.created_at))
+            .offset((page - 1) * size)
+            .limit(size)
+        )
+
+        result = await self.db.execute(stmt)
+        return result.scalars().all(), total
+
     async def get_by_id(self, content_id: int) -> Optional[Content]:
         result = await self.db.execute(select(Content).where(Content.id == content_id))
         return result.scalar_one_or_none()

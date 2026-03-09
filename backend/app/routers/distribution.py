@@ -6,7 +6,7 @@
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from fastapi import APIRouter, Depends, Query, HTTPException
-from sqlalchemy import select, and_, update
+from sqlalchemy import select, and_, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -306,32 +306,27 @@ async def list_all_targets(
     
     # Get push statistics for all targets
     if target_map:
-        from collections import defaultdict
         all_target_ids = [key[1] for key in target_map.keys()]
         
-        # 统计该 target 的所有推送记录，不再按 content_id 过滤（移除硬编码 ID 依赖）
-        push_result = await db.execute(
-            select(PushedRecord).where(
-                PushedRecord.target_id.in_(all_target_ids)
+        # Aggregate push statistics in SQL instead of loading all records
+        push_stats_result = await db.execute(
+            select(
+                PushedRecord.target_id,
+                func.count(PushedRecord.id).label("total"),
+                func.max(PushedRecord.pushed_at).label("last_pushed_at"),
             )
+            .where(PushedRecord.target_id.in_(all_target_ids))
+            .group_by(PushedRecord.target_id)
         )
-        all_pushes = push_result.scalars().all()
-        
-        # Group pushes by target_id
-        pushes_by_target = defaultdict(list)
-        for push in all_pushes:
-            pushes_by_target[push.target_id].append(push)
+        push_stats = {row.target_id: row for row in push_stats_result.all()}
         
         # Update statistics for each target
         for key, target_info in target_map.items():
             _, target_id = key
-            pushes = pushes_by_target.get(target_id, [])
-            target_info["total_pushed"] = len(pushes)
-            
-            # Get last push timestamp
-            if pushes:
-                last_push = max(pushes, key=lambda p: p.pushed_at)
-                target_info["last_pushed_at"] = last_push.pushed_at
+            stats = push_stats.get(target_id)
+            if stats:
+                target_info["total_pushed"] = stats.total
+                target_info["last_pushed_at"] = stats.last_pushed_at
     
     targets_list = [TargetUsageInfo(**info) for info in target_map.values()]
     

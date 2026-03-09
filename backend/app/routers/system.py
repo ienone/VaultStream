@@ -6,6 +6,7 @@
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 import os
+import time
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +24,31 @@ from app.core.queue import task_queue
 from app.utils.sensitive_display import as_configured_placeholder, is_sensitive_setting_key
 
 router = APIRouter()
+
+_storage_usage_cache: dict = {"value": 0, "expires_at": 0.0}
+_STORAGE_CACHE_TTL = 300  # 5 minutes
+
+
+def _get_cached_storage_usage() -> int:
+    now = time.monotonic()
+    if now < _storage_usage_cache["expires_at"]:
+        return _storage_usage_cache["value"]
+
+    storage = get_storage_backend()
+    usage = 0
+    if isinstance(storage, LocalStorageBackend):
+        root = storage.root_dir
+        if os.path.exists(root):
+            for dirpath, _, filenames in os.walk(root):
+                for f in filenames:
+                    try:
+                        usage += os.path.getsize(os.path.join(dirpath, f))
+                    except OSError:
+                        pass
+
+    _storage_usage_cache["value"] = usage
+    _storage_usage_cache["expires_at"] = now + _STORAGE_CACHE_TTL
+    return usage
 
 
 def _serialize_setting_for_response(setting: SystemSetting) -> dict:
@@ -101,14 +127,7 @@ async def get_dashboard_stats(
         day_count = (await db.execute(count_q)).scalar() or 0
         daily_growth.append({"date": day.isoformat(), "count": day_count})
 
-    storage = get_storage_backend()
-    usage = 0
-    if isinstance(storage, LocalStorageBackend):
-        root = storage.root_dir
-        if os.path.exists(root):
-            for dirpath, _, filenames in os.walk(root):
-                for f in filenames:
-                    usage += os.path.getsize(os.path.join(dirpath, f))
+    usage = _get_cached_storage_usage()
     
     return {
         "platform_counts": platform_counts,
