@@ -1,9 +1,13 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import '../../../core/network/api_client.dart';
+import '../../../core/network/image_headers.dart';
+import '../../../core/utils/media_utils.dart';
 import '../models/discovery_models.dart';
 
-class DiscoveryItemCard extends StatelessWidget {
+class DiscoveryItemCard extends ConsumerWidget {
   final DiscoveryItem item;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
@@ -33,11 +37,23 @@ class DiscoveryItemCard extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final score = item.aiScore;
     final hasCover = item.coverUrl != null && item.coverUrl!.isNotEmpty;
+
+    final dio = ref.watch(apiClientProvider);
+    final apiBaseUrl = dio.options.baseUrl;
+    final apiToken = dio.options.headers['X-API-Token']?.toString();
+    final coverImageUrl = hasCover ? mapUrl(item.coverUrl!, apiBaseUrl) : '';
+    final coverHeaders = hasCover
+        ? buildImageHeaders(
+            imageUrl: coverImageUrl,
+            baseUrl: apiBaseUrl,
+            apiToken: apiToken,
+          )
+        : null;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
@@ -70,7 +86,8 @@ class DiscoveryItemCard extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: CachedNetworkImage(
-                      imageUrl: item.coverUrl!,
+                      imageUrl: coverImageUrl,
+                      httpHeaders: coverHeaders,
                       width: 56,
                       height: 56,
                       fit: BoxFit.cover,

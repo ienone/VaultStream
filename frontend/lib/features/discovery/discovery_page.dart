@@ -205,7 +205,7 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
               children: [
                 // Left panel: list (top padding clears the frosted header)
                 SizedBox(
-                  width: 280,
+                  width: 360,
                   child: RefreshIndicator(
                     onRefresh: () =>
                         ref.refresh(discoveryItemsProvider.future),
@@ -312,7 +312,7 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
                       children: [
                         // Left: search / refresh / filter
                         SizedBox(
-                          width: 280,
+                          width: 360,
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
                             child: Row(
