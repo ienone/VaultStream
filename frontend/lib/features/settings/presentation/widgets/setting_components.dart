@@ -2,36 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../core/utils/toast.dart';
 
-class SectionHeader extends StatelessWidget {
-  final String title;
-  final IconData? icon;
+// SectionHeader 已迁移至 core/widgets，此处重新导出保持向后兼容。
+export '../../../../core/widgets/section_header.dart' show SectionHeader;
 
-  const SectionHeader({super.key, required this.title, this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 8, 8, 16),
-      child: Row(
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 20, color: colorScheme.primary),
-            const SizedBox(width: 12),
-          ],
-          Text(
-            title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: colorScheme.onSurface,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class SettingGroup extends StatelessWidget {
   final List<Widget> children;
