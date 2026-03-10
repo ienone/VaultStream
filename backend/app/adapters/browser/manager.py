@@ -81,12 +81,11 @@ class PlaywrightBrowserManager:
     async def _init_browser(self):
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.webkit.launch(
-            headless=True,
-            args=["--no-sandbox"],
+            headless=True
         )
 
     async def shutdown(self):
-        if not self._started:
+        if not self._started or self._pw_loop is None or self._pw_thread is None:
             return
             
         # 优雅关闭 browser
