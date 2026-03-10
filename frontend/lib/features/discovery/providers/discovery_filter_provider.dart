@@ -126,4 +126,15 @@ class DiscoveryFilter extends _$DiscoveryFilter {
   void clearFilters() {
     state = const DiscoveryFilterState();
   }
+
+  /// 原子化地将状态重置为指定初始筛选条件（避免 clearFilters+setFilters 两步触发双重重建）
+  void resetToFilters({
+    String? discoveryState,
+    bool showAll = false,
+  }) {
+    state = DiscoveryFilterState(
+      state: discoveryState,
+      showAll: showAll,
+    );
+  }
 }

@@ -298,6 +298,16 @@ class _DesktopDetailBodyState extends ConsumerState<_DesktopDetailBody> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        final isLandscape = constraints.maxWidth > 800;
+
+        // 竖屏：统一使用单列布局
+        if (!isLandscape) {
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, kToolbarHeight + 16, 16, 32),
+            child: _DetailBody(item: widget.item),
+          );
+        }
+
         // Gallery / video: 小红书 style — left image carousel, right info
         final effectiveLayout = ContentParser.getEffectiveLayoutType(contentDetail);
         if (effectiveLayout == 'gallery' || effectiveLayout == 'video') {
