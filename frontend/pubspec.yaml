@@ -61,6 +61,7 @@ dependencies:
   extended_image: ^8.2.0
   timeago: ^3.7.0
   package_info_plus: ^9.0.0
+  animations: ^2.1.1
 
 dev_dependencies:
   flutter_test:

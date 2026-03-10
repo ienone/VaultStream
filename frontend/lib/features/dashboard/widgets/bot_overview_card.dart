@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../../../../core/widgets/stat_row.dart';
 import '../../review/providers/bot_chats_provider.dart';
 
 class BotOverviewCard extends ConsumerWidget {
@@ -51,11 +52,11 @@ class BotOverviewCard extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 20),
-              _buildStatRow(context, Icons.groups_rounded, '活跃群组', '${status.connectedChats}'),
+              StatRow(icon: Icons.groups_rounded, label: '活跃群组', value: '${status.connectedChats}'),
               const SizedBox(height: 12),
-              _buildStatRow(context, Icons.send_rounded, '今日推送', '${status.totalPushedToday}'),
+              StatRow(icon: Icons.send_rounded, label: '今日推送', value: '${status.totalPushedToday}'),
               const SizedBox(height: 12),
-              _buildStatRow(context, Icons.timer_outlined, '在线时间', status.uptimeFormatted),
+              StatRow(icon: Icons.timer_outlined, label: '在线时间', value: status.uptimeFormatted),
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
@@ -74,16 +75,5 @@ class BotOverviewCard extends ConsumerWidget {
     ).animate().fadeIn().slideY(begin: 0.1, end: 0);
   }
 
-  Widget _buildStatRow(BuildContext context, IconData icon, String label, String value) {
-    final theme = Theme.of(context);
-    return Row(
-      children: [
-        Icon(icon, size: 18, color: theme.colorScheme.outline),
-        const SizedBox(width: 12),
-        Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-        const Spacer(),
-        Text(value, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
-      ],
-    );
-  }
 }
+

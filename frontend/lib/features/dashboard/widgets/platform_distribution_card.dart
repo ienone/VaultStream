@@ -1,98 +1,89 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import '../models/stats.dart';
+import 'donut_chart.dart';
 
+/// 平台分布饼图卡片。
+///
+/// 将 [DashboardStats.platformCounts] 映射为 [DonutEntry] 列表，
+/// 交由 [DonutOverviewCard] 渲染。点击图例行触发 [onPlatformTap]。
 class PlatformDistributionCard extends StatelessWidget {
   final DashboardStats stats;
-  final Function(String) onPlatformTap;
+  final void Function(String) onPlatformTap;
 
   const PlatformDistributionCard({
-    super.key, 
+    super.key,
     required this.stats,
     required this.onPlatformTap,
   });
+
+  static final List<Color Function(ColorScheme)> _colorPickers = [
+    (cs) => cs.primary,
+    (cs) => cs.secondary,
+    (cs) => cs.tertiary,
+    (cs) => cs.error,
+    (cs) => cs.primaryFixed,
+    (cs) => cs.secondaryFixed,
+    (cs) => cs.tertiaryFixed,
+  ];
 
   @override
   Widget build(BuildContext context) {
     final total = stats.platformCounts.values.fold(0, (a, b) => a + b);
     if (total == 0) return const Center(child: Text('暂无数据'));
 
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(32),
-        side: BorderSide(
-          color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.3),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: stats.platformCounts.entries.indexed.map((indexedEntry) {
-            final index = indexedEntry.$1;
-            final entry = indexedEntry.$2;
-            final percent = total > 0 ? entry.value / total : 0.0;
-            
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 20),
-              child: InkWell(
-                onTap: () => onPlatformTap(entry.key),
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              _getPlatformIcon(entry.key),
-                              const SizedBox(width: 12),
-                              Text(
-                                entry.key.toUpperCase(),
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
-                          Text(
-                            '${entry.value} (${(percent * 100).toStringAsFixed(1)}%)',
-                            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: LinearProgressIndicator(
-                          value: percent,
-                          minHeight: 12,
-                          backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                        ),
-                      ).animate().fadeIn(delay: (index * 150).ms).scaleX(begin: 0, end: 1, alignment: Alignment.centerLeft),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-      ),
+    final cs = Theme.of(context).colorScheme;
+    final sorted = stats.platformCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    Color colorAt(int i) => _colorPickers[i % _colorPickers.length](cs);
+
+    return DonutOverviewCard(
+      centerSubLabel: '总内容',
+      totalOverride: total,
+      entries: sorted.asMap().entries.map((e) {
+        final i = e.key;
+        final platform = e.value.key;
+        final count = e.value.value;
+        final color = colorAt(i);
+        return DonutEntry(
+          label: platform.toUpperCase(),
+          value: count,
+          color: color,
+          leading: _PlatformIcon(platform: platform, color: color),
+          onTap: () => onPlatformTap(platform),
+        );
+      }).toList(),
     );
   }
+}
 
-  Widget _getPlatformIcon(String platform) {
-    IconData iconData;
+class _PlatformIcon extends StatelessWidget {
+  final String platform;
+  final Color color;
+
+  const _PlatformIcon({required this.platform, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    IconData icon;
     switch (platform.toLowerCase()) {
-      case 'bilibili': iconData = Icons.video_library; break;
-      case 'zhihu': iconData = Icons.article; break;
-      case 'weibo': iconData = Icons.share; break;
-      case 'twitter': iconData = Icons.alternate_email; break;
-      case 'xiaohongshu': iconData = Icons.explore; break;
-      default: iconData = Icons.device_hub;
+      case 'bilibili':
+        icon = Icons.video_library_rounded;
+      case 'zhihu':
+        icon = Icons.article_rounded;
+      case 'weibo':
+        icon = Icons.share_rounded;
+      case 'twitter':
+        icon = Icons.alternate_email_rounded;
+      case 'xiaohongshu':
+        icon = Icons.explore_rounded;
+      case 'telegram':
+        icon = Icons.send_rounded;
+      case 'rss':
+        icon = Icons.rss_feed_rounded;
+      default:
+        icon = Icons.device_hub_rounded;
     }
-    return Icon(iconData, size: 18);
+    return Icon(icon, size: 16, color: color);
   }
 }

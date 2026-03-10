@@ -4,16 +4,30 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/widgets/frosted_app_bar.dart';
+import '../../core/widgets/section_header.dart';
+import '../../core/widgets/async_placeholders.dart';
 import 'providers/dashboard_provider.dart';
 import 'models/stats.dart';
 import '../collection/providers/collection_filter_provider.dart';
+import '../discovery/providers/discovery_stats_provider.dart';
+import '../discovery/providers/discovery_filter_provider.dart';
 import 'widgets/stat_card.dart';
 import 'widgets/queue_status_card.dart';
 import 'widgets/platform_distribution_card.dart';
 import 'widgets/growth_chart_card.dart';
+import 'widgets/discovery_overview_card.dart';
 
 class DashboardPage extends ConsumerWidget {
   const DashboardPage({super.key});
+
+  void _navigateToDiscovery(BuildContext context, WidgetRef ref, {String? state, bool showAll = false}) {
+    // 原子化设置筛选条件，避免 clearFilters+setFilters 两步触发双重请求导致空列表被覆盖
+    ref.read(discoveryFilterProvider.notifier).resetToFilters(
+      discoveryState: state,
+      showAll: showAll,
+    );
+    context.go('/discovery');
+  }
 
   void _navigateToCollection(BuildContext context, WidgetRef ref, {List<String>? statuses, List<String>? platforms, DateTimeRange? dateRange}) {
     // Clear existing filters first
@@ -34,8 +48,14 @@ class DashboardPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final statsAsync = ref.watch(dashboardStatsProvider);
     final queueAsync = ref.watch(queueStatsProvider);
+    final discoveryStatsAsync = ref.watch(discoveryStatsProvider);
 
     final hasError = statsAsync.hasError || queueAsync.hasError;
+    final theme = Theme.of(context);
+    final sectionStyle = theme.textTheme.titleLarge?.copyWith(
+      fontWeight: FontWeight.bold,
+      letterSpacing: -0.5,
+    );
 
     return Scaffold(
       appBar: FrostedAppBar(
@@ -47,6 +67,7 @@ class DashboardPage extends ConsumerWidget {
               ref.invalidate(dashboardStatsProvider);
               ref.invalidate(queueStatsProvider);
               ref.invalidate(systemHealthProvider);
+              ref.invalidate(discoveryStatsProvider);
             },
           ),
           const SizedBox(width: 8),
@@ -59,6 +80,7 @@ class DashboardPage extends ConsumerWidget {
                 ref.invalidate(dashboardStatsProvider);
                 ref.invalidate(queueStatsProvider);
                 ref.invalidate(systemHealthProvider);
+                ref.invalidate(discoveryStatsProvider);
               },
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -66,64 +88,95 @@ class DashboardPage extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildSectionHeader(context, '系统概览', Icons.analytics_rounded),
+                    SectionHeader(
+                      title: '系统概览',
+                      icon: Icons.analytics_rounded,
+                      padding: EdgeInsets.zero,
+                      textStyle: sectionStyle,
+                    ),
                     const SizedBox(height: 24),
                     _buildStatsGrid(context, ref, statsAsync, queueAsync),
                     const SizedBox(height: 40),
-                    
-                    _buildSectionHeader(context, '队列状态', Icons.queue_rounded),
+
+                    SectionHeader(
+                      title: '队列状态',
+                      icon: Icons.queue_rounded,
+                      padding: EdgeInsets.zero,
+                      textStyle: sectionStyle,
+                    ),
                     const SizedBox(height: 16),
                     queueAsync.when(
-                      data: (q) => QueueStatusCard(queue: q),
-                      loading: () => const _LoadingPlaceholder(height: 240),
-                      error: (e, _) => _ErrorCard(message: '加载队列失败: $e'),
+                      data: (q) => QueueStatusCard(
+                        queue: q,
+                        onStatusTap: (status) =>
+                            _navigateToCollection(context, ref, statuses: [status]),
+                      ),
+                      loading: () => const LoadingPlaceholder(height: 240),
+                      error: (e, _) => ErrorCard(message: '加载队列失败: $e'),
                     ),
                     const SizedBox(height: 40),
 
-                    _buildSectionHeader(context, '最近 7 天增长', Icons.trending_up_rounded),
+                    SectionHeader(
+                      title: '最近 7 天增长',
+                      icon: Icons.trending_up_rounded,
+                      padding: EdgeInsets.zero,
+                      textStyle: sectionStyle,
+                    ),
                     const SizedBox(height: 16),
                     statsAsync.when(
                       data: (s) => GrowthChartCard(
                         stats: s,
                         onDateTap: (range) => _navigateToCollection(context, ref, dateRange: range),
                       ),
-                      loading: () => const _LoadingPlaceholder(height: 220),
-                      error: (e, _) => _ErrorCard(message: '加载图表失败: $e'),
+                      loading: () => const LoadingPlaceholder(height: 220),
+                      error: (e, _) => ErrorCard(message: '加载图表失败: $e'),
                     ),
                     const SizedBox(height: 40),
 
-                    _buildSectionHeader(context, '平台分布', Icons.pie_chart_rounded),
+                    SectionHeader(
+                      title: '平台分布',
+                      icon: Icons.pie_chart_rounded,
+                      padding: EdgeInsets.zero,
+                      textStyle: sectionStyle,
+                    ),
                     const SizedBox(height: 16),
                     statsAsync.when(
                       data: (s) => PlatformDistributionCard(
                         stats: s,
                         onPlatformTap: (p) => _navigateToCollection(context, ref, platforms: [p]),
                       ),
-                      loading: () => const _LoadingPlaceholder(height: 300),
-                      error: (e, _) => _ErrorCard(message: '加载分布失败: $e'),
+                      loading: () => const LoadingPlaceholder(height: 300),
+                      error: (e, _) => ErrorCard(message: '加载分布失败: $e'),
+                    ),
+                    const SizedBox(height: 40),
+
+                    SectionHeader(
+                      title: '探索概览',
+                      icon: Icons.explore_rounded,
+                      padding: EdgeInsets.zero,
+                      textStyle: sectionStyle,
+                      action: TextButton.icon(
+                        onPressed: () => _navigateToDiscovery(context, ref),
+                        icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+                        label: const Text('前往探索'),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    discoveryStatsAsync.when(
+                      data: (s) => DiscoveryOverviewCard(
+                        stats: s,
+                        onStateTap: (state, showAll) =>
+                            _navigateToDiscovery(context, ref,
+                                state: state, showAll: showAll),
+                      ),
+                      loading: () => const LoadingPlaceholder(height: 260),
+                      error: (e, _) => ErrorCard(message: '加载探索数据失败: $e'),
                     ),
                     const SizedBox(height: 48),
                   ],
                 ),
               ).animate().fadeIn(duration: 600.ms),
             ),
-    );
-  }
-
-  Widget _buildSectionHeader(BuildContext context, String title, IconData icon) {
-    final theme = Theme.of(context);
-    return Row(
-      children: [
-        Icon(icon, size: 20, color: theme.colorScheme.primary),
-        const SizedBox(width: 12),
-        Text(
-          title,
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-            letterSpacing: -0.5,
-          ),
-        ),
-      ],
     );
   }
 
@@ -141,7 +194,7 @@ class DashboardPage extends ConsumerWidget {
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 20,
       crossAxisSpacing: 20,
-      childAspectRatio: isWide ? 1.6 : 1.3,
+      childAspectRatio: isWide ? 1.35 : 1.25,
       children: [
         StatCard(
           label: '总内容',
@@ -263,36 +316,3 @@ class DashboardPage extends ConsumerWidget {
   }
 }
 
-class _LoadingPlaceholder extends StatelessWidget {
-  final double height;
-  const _LoadingPlaceholder({required this.height});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: height,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(32),
-      ),
-      child: const Center(child: CircularProgressIndicator()),
-    ).animate(onPlay: (c) => c.repeat()).shimmer(duration: 2.seconds);
-  }
-}
-
-class _ErrorCard extends StatelessWidget {
-  final String message;
-  const _ErrorCard({required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.1),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(message, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-      ),
-    );
-  }
-}
