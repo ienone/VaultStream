@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:animations/animations.dart';
 import '../../core/widgets/frosted_app_bar.dart';
 import 'providers/collection_provider.dart';
 import 'providers/search_history_provider.dart';
@@ -221,21 +222,55 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
           icon: const Icon(Icons.refresh_rounded),
           onPressed: () => ref.invalidate(collectionProvider),
         ),
-        Hero(
-          tag: 'filter_icon',
-          child: IconButton(
+        OpenContainer<Map<String, dynamic>>(
+          transitionType: ContainerTransitionType.fade,
+          openColor: theme.colorScheme.surface,
+          closedColor: Colors.transparent,
+          closedElevation: 0,
+          onClosed: (result) {
+            if (result != null) {
+              ref.read(collectionFilterProvider.notifier).setFilters(
+                    platforms: (result['platforms'] as List<dynamic>?)?.cast<String>(),
+                    statuses: (result['statuses'] as List<dynamic>?)?.cast<String>(),
+                    author: result['author'],
+                    dateRange: result['dateRange'],
+                    tags: (result['tags'] as List<dynamic>?)?.cast<String>(),
+                  );
+            }
+          },
+          openBuilder: (context, _) => FilterDialog(
+            initialPlatforms: filterState.platforms,
+            initialStatuses: filterState.statuses,
+            initialAuthor: filterState.author,
+            initialDateRange: filterState.dateRange,
+            initialTags: filterState.tags,
+            availableTags: _getAvailableTags(),
+          ),
+          closedBuilder: (context, openContainer) => IconButton(
             icon: Icon(
               Icons.filter_list_rounded,
               color: filterState.hasActiveFilters
                   ? theme.colorScheme.primary
                   : null,
             ),
-            onPressed: () => _showFilterDialog(context, filterState),
+            onPressed: openContainer,
           ),
         ),
       ],
     );
   }
+
+  List<String> _getAvailableTags() {
+    final collectionAsync = ref.read(collectionProvider);
+    final availableTags = <String>{};
+    if (collectionAsync.hasValue && collectionAsync.value != null) {
+      for (final item in collectionAsync.value!.items) {
+        availableTags.addAll(item.tags);
+      }
+    }
+    return availableTags.toList();
+  }
+
 
   Widget _buildSearchAnchor(BuildContext context, ThemeData theme) {
     final historyAsync = ref.watch(searchHistoryProvider);
@@ -277,57 +312,6 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     );
   }
 
-  Future<void> _showFilterDialog(
-    BuildContext context,
-    CollectionFilterState filterState,
-  ) async {
-    final collectionAsync = ref.read(collectionProvider);
-    final availableTags = <String>{};
-    if (collectionAsync.hasValue && collectionAsync.value != null) {
-      for (final item in collectionAsync.value!.items) {
-        availableTags.addAll(item.tags);
-      }
-    }
-
-    final result = await showGeneralDialog<Map<String, dynamic>>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Filter',
-      transitionDuration: const Duration(milliseconds: 200),
-      pageBuilder: (context, anim1, anim2) {
-        return Hero(
-          tag: 'filter_icon',
-          child: FilterDialog(
-            initialPlatforms: filterState.platforms,
-            initialStatuses: filterState.statuses,
-            initialAuthor: filterState.author,
-            initialDateRange: filterState.dateRange,
-            initialTags: filterState.tags,
-            availableTags: availableTags.toList()..sort(),
-          ),
-        );
-      },
-      transitionBuilder: (context, anim1, anim2, child) {
-        return ScaleTransition(
-          scale: CurvedAnimation(parent: anim1, curve: Curves.fastOutSlowIn),
-          alignment: const Alignment(0.85, -0.85),
-          child: FadeTransition(opacity: anim1, child: child),
-        );
-      },
-    );
-
-    if (result != null) {
-      ref
-          .read(collectionFilterProvider.notifier)
-          .setFilters(
-            platforms: (result['platforms'] as List<dynamic>?)?.cast<String>(),
-            statuses: (result['statuses'] as List<dynamic>?)?.cast<String>(),
-            author: result['author'],
-            dateRange: result['dateRange'],
-            tags: (result['tags'] as List<dynamic>?)?.cast<String>(),
-          );
-    }
-  }
 }
 
 class _AddContentFab extends StatelessWidget {

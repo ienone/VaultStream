@@ -212,11 +212,11 @@ class _PushTabState extends ConsumerState<PushTab> {
       }
 
       if (mounted) {
-        showToast(context, 'Telegram Bot ${actionLabel}指令已发送');
+        showToast(context, 'Telegram Bot $actionLabel指令已发送');
       }
     } catch (e) {
       if (mounted) {
-        showToast(context, '${actionLabel}失败: $e');
+        showToast(context, '$actionLabel失败: $e');
       }
     } finally {
       if (mounted) {

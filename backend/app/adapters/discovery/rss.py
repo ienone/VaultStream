@@ -67,8 +67,8 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
                 logger.warning("RSS formatting error (Bozo) for %s: %s", feed_url, feed.bozo_exception)
 
             for entry in feed.entries:
-                entry_id = entry.get("id") or entry.get("link") or ""
-                entry_url = entry.get("link") or feed_url
+                entry_id: str = str(entry.get("id") or entry.get("link") or "")
+                entry_url: str = str(entry.get("link") or feed_url)
 
                 if last_cursor and entry_id == last_cursor:
                     break
@@ -172,16 +172,19 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
                 clean_body = re.sub(r'\*\*\s+\n', '**\n', clean_body)
                 clean_body = re.sub(r'\n\s+\*\*', '\n**', clean_body)
 
-                tags = [tag.term for tag in entry.get("tags", [])]
+                tags: list[str] = [str(t.get("term", "")) for t in (entry.get("tags") or []) if t.get("term")]
                 category = self.config.get("category")
                 if category:
                     tags.append(category)
 
+                _feed_info: Any = feed.feed
+                _feed_title: Optional[str] = str(_feed_info.get("title")) if hasattr(_feed_info, "get") and _feed_info.get("title") else None
+
                 item = DiscoveryItem(
-                    url=entry.get("link", feed_url),
-                    title=entry.get("title", "Untitled"),
+                    url=str(entry.get("link") or feed_url),
+                    title=str(entry.get("title") or "Untitled"),
                     content=clean_body,
-                    author=entry.get("author", feed.feed.get("title")),
+                    author=str(entry.get("author")) if entry.get("author") else _feed_title,
                     published_at=published_at,
                     source_tags=tags,
                     cover_url=cover_url,
@@ -196,7 +199,7 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
                 items.append(item)
 
             if feed.entries:
-                first_id = feed.entries[0].get("id") or feed.entries[0].get("link") or ""
+                first_id: str = str(feed.entries[0].get("id") or feed.entries[0].get("link") or "")
                 if first_id:
                     new_cursor = first_id
 
@@ -249,12 +252,14 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
 
     @staticmethod
     def _extract_content(entry: dict) -> str:
-        if "content" in entry and entry.content:
-            return entry.content[0].get("value", "")
+        if "content" in entry:
+            content = entry.get("content")
+            if isinstance(content, list) and content:
+                return str(content[0].get("value", ""))
         if "summary" in entry:
-            return entry.summary
+            return str(entry.get("summary", ""))
         if "description" in entry:
-            return entry.description
+            return str(entry.get("description", ""))
         return ""
 
     @classmethod

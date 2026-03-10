@@ -45,15 +45,16 @@ class _ConnectPageState extends ConsumerState<ConnectPage> {
         .validateConnection(url, token);
 
     if (result['success'] == true) {
-      await ref.read(localSettingsProvider.notifier).setBaseUrl(url);
-      await ref.read(localSettingsProvider.notifier).setApiToken(token);
-
-      if (mounted) {
-        if (result['auth_ok'] == true) {
-          // 如果连接且鉴权成功
+      if (result['auth_ok'] == true) {
+        // 仅在鉴权成功后才持久化凭据，路由守卫依赖此状态跳转
+        await ref.read(localSettingsProvider.notifier).setBaseUrl(url);
+        await ref.read(localSettingsProvider.notifier).setApiToken(token);
+        if (mounted) {
           Toast.show(context, '连接成功');
-          // 路由会自动刷新跳转
-        } else {
+          // localSettingsProvider 状态更新后路由会自动跳转
+        }
+      } else {
+        if (mounted) {
           setState(() {
             _error = '服务器连接成功，但 API 密钥错误。请检查控制台打印的密钥。';
             _isLoading = false;

@@ -532,7 +532,7 @@ class _SourceEditDialogState extends State<_SourceEditDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<String>(
-              value: _kind,
+              initialValue: _kind,
               decoration: const InputDecoration(labelText: '来源类型'),
               items: _kindMeta.entries.map((e) => DropdownMenuItem(
                 value: e.key,
@@ -564,7 +564,7 @@ class _SourceEditDialogState extends State<_SourceEditDialog> {
             ),
             const Gap(12),
             DropdownButtonFormField<int>(
-              value: _interval,
+              initialValue: _interval,
               decoration: const InputDecoration(labelText: '同步频率'),
               items: [15, 30, 60, 120, 360, 1440].map((i) => DropdownMenuItem(
                 value: i,
