@@ -4,10 +4,18 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Content, ContentStatus, ContentQueueItem, QueueItemStatus
+from app.models import Content, ContentStatus, ContentQueueItem, QueueItemStatus, DiscoveryState
+
+
+def _is_library_content():
+    """已加入库的内容：普通订阅内容（discovery_state IS NULL）+ 已收录的 discovery 内容"""
+    return or_(
+        Content.discovery_state.is_(None),
+        Content.discovery_state == DiscoveryState.PROMOTED,
+    )
 
 
 def classify_distribution_status(
@@ -32,10 +40,12 @@ def empty_distribution_bucket() -> dict[str, int]:
 
 
 async def build_parse_stats(db: AsyncSession) -> dict:
-    """构建解析阶段统计"""
+    """构建解析阶段统计（订阅库内容 + 已收录的 discovery 内容）"""
     stats = {"unprocessed": 0, "processing": 0, "parse_success": 0, "parse_failed": 0, "total": 0}
     result = await db.execute(
-        select(Content.status, func.count(Content.id)).group_by(Content.status)
+        select(Content.status, func.count(Content.id))
+        .where(_is_library_content())
+        .group_by(Content.status)
     )
     for status, count in result.all():
         count_int = int(count or 0)
@@ -76,7 +86,10 @@ async def build_distribution_stats(
     query = (
         select(*cols)
         .join(Content, Content.id == ContentQueueItem.content_id)
-        .where(Content.status == ContentStatus.PARSE_SUCCESS)
+        .where(
+            Content.status == ContentStatus.PARSE_SUCCESS,
+            _is_library_content(),
+        )
         .group_by(*group_cols)
     )
     rows = (await db.execute(query)).all()

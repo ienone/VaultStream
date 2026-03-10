@@ -8,11 +8,11 @@ from datetime import datetime, timedelta
 import os
 import time
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db, db_ping
-from app.models import SystemSetting, Content
+from app.models import SystemSetting, Content, DiscoveryState
 from app.schemas import (
     SystemSettingResponse, SystemSettingUpdate, DashboardStats, 
     QueueStats, TagStats, QueueOverviewStats, DistributionStatusStats
@@ -111,7 +111,16 @@ async def get_dashboard_stats(
     _: None = Depends(require_api_token),
 ):
     """仪表盘全局统计"""
-    platform_query = select(Content.platform, func.count()).group_by(Content.platform)
+    _library_content = or_(
+        Content.discovery_state.is_(None),
+        Content.discovery_state == DiscoveryState.PROMOTED,
+    )
+
+    platform_query = (
+        select(Content.platform, func.count())
+        .where(_library_content)
+        .group_by(Content.platform)
+    )
     platform_results = (await db.execute(platform_query)).all()
     platform_counts = {str(p[0].value): p[1] for p in platform_results}
     
@@ -122,7 +131,11 @@ async def get_dashboard_stats(
         day_start = datetime.combine(day, datetime.min.time())
         day_end = datetime.combine(day, datetime.max.time())
         count_q = select(func.count()).select_from(Content).where(
-            and_(Content.created_at >= day_start, Content.created_at <= day_end)
+            and_(
+                Content.created_at >= day_start,
+                Content.created_at <= day_end,
+                _library_content,
+            )
         )
         day_count = (await db.execute(count_q)).scalar() or 0
         daily_growth.append({"date": day.isoformat(), "count": day_count})
