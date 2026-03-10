@@ -86,7 +86,12 @@ class Content(Base):
     )
     expire_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
     promoted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
-    
+
+    # 冗余外键：记录第一个写入该内容的发现源，避免通过 content_discovery_links 做二次 JOIN
+    discovery_source_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("discovery_sources.id"), default=None, index=True
+    )
+
     platform_id: Mapped[Optional[str]] = mapped_column(String(100), index=True, default=None)
     
     view_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -126,6 +131,8 @@ class Content(Base):
     
     pushed_records = relationship("PushedRecord", back_populates="content")
     sources = relationship("ContentSource", back_populates="content")
+    discovery_links = relationship("ContentDiscoveryLink", back_populates="content")
+    discovery_source = relationship("DiscoverySource", foreign_keys="[Content.discovery_source_id]")
 
 
 class ContentSource(Base):
@@ -165,3 +172,21 @@ class DiscoverySource(Base):
 
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class ContentDiscoveryLink(Base):
+    """内容与发现源的关联（多对多）"""
+    __tablename__ = "content_discovery_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    content_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), index=True)
+    discovery_source_id: Mapped[int] = mapped_column(Integer, ForeignKey("discovery_sources.id"), index=True)
+    url: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("content_id", "discovery_source_id", name="uq_content_discovery_link"),
+    )
+
+    content = relationship("Content", back_populates="discovery_links")
+    discovery_source = relationship("DiscoverySource")
