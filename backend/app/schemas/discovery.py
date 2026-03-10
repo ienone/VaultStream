@@ -27,6 +27,7 @@ class DiscoveryItemListItem(BaseModel):
     created_at: UtcDatetime
     cover_url: Optional[str] = None
     cover_color: Optional[str] = None
+    discovery_source_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -62,6 +63,7 @@ class DiscoveryItemResponse(BaseModel):
     rich_payload: Optional[dict] = None
     extra_stats: dict = Field(default_factory=dict)
     context_data: Optional[dict] = None
+    discovery_source_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 

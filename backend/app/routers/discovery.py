@@ -3,7 +3,7 @@ Discovery API — 发现缓冲区管理
 """
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select, func, desc, asc, cast, String, or_
+from sqlalchemy import select, func, desc, asc, cast, String, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -77,21 +77,15 @@ async def list_discovery_items(
             DiscoveryState.VISIBLE
         ]))
 
-    if source_kind:
-        query = query.where(Content.source_type == source_kind)
-    if source_name:
-        escaped = (
-            source_name
-            .replace("\\", "\\\\")
-            .replace("%", "\\%")
-            .replace("_", "\\_")
-            .replace('"', '\\"')
+    if source_kind or source_name:
+        query = query.join(
+            DiscoverySource,
+            Content.discovery_source_id == DiscoverySource.id,
         )
-        query = query.where(
-            cast(Content.context_data, String).ilike(
-                f'%"source_name": "{escaped}"%', escape="\\"
-            )
-        )
+        if source_kind:
+            query = query.where(DiscoverySource.kind == source_kind)
+        if source_name:
+            query = query.where(DiscoverySource.name == source_name)
     if score_min is not None:
         query = query.where(Content.ai_score >= score_min)
     if score_max is not None:

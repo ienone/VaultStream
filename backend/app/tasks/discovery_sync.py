@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.media.processor import store_archive_images_as_webp
 from app.models import (
     Content,
+    ContentDiscoveryLink,
     ContentStatus,
     DiscoverySource,
     DiscoverySourceKind,
@@ -108,40 +109,30 @@ class DiscoverySyncTask:
                 canonical = normalize_url_for_dedup(item.url)
                 cover_candidate = item.cover_url or (item.media_urls[0] if item.media_urls else None)
 
-                new_source_link = {
-                    "source_kind": source.kind.value,
-                    "source_name": source.name,
-                    "url": item.url,
-                    "title": item.title,
-                    "stats": item.extra_stats or {},
-                }
-
                 # 检查 URL 是否已存在（主库或发现流）
                 stmt = select(Content).where(Content.canonical_url == canonical).limit(1)
                 result = await db.execute(stmt)
                 existing_content = result.scalars().first()
 
                 if existing_content is not None:
-                    context_data = existing_content.context_data or {}
-                    if not isinstance(context_data, dict):
-                        context_data = {}
+                    # 检查关联是否已存在
+                    link_exists = (await db.execute(
+                        select(ContentDiscoveryLink.id).where(
+                            ContentDiscoveryLink.content_id == existing_content.id,
+                            ContentDiscoveryLink.discovery_source_id == source.id,
+                        ).limit(1)
+                    )).scalar() is not None
 
-                    source_links = context_data.get("source_links")
-                    if not isinstance(source_links, list):
-                        source_links = []
+                    if not link_exists:
+                        db.add(ContentDiscoveryLink(
+                            content_id=existing_content.id,
+                            discovery_source_id=source.id,
+                            url=item.url,
+                        ))
 
-                    is_duplicate_link = any(
-                        isinstance(link, dict)
-                        and link.get("source_kind") == new_source_link["source_kind"]
-                        and link.get("url") == new_source_link["url"]
-                        for link in source_links
-                    )
-
-                    if not is_duplicate_link:
-                        source_links.append(new_source_link)
-                        context_data["source_links"] = source_links
-                        existing_content.context_data = context_data
-                        flag_modified(existing_content, "context_data")
+                    # 回填冗余外键（首次被发现源匹配时设置）
+                    if existing_content.discovery_source_id is None:
+                        existing_content.discovery_source_id = source.id
 
                     existing_media_urls = (
                         existing_content.media_urls
@@ -194,10 +185,16 @@ class DiscoverySyncTask:
                     media_urls=item.media_urls,
                     rich_payload=item.rich_payload,
                     extra_stats=item.extra_stats,
-                    context_data={"source_links": [new_source_link]},
+                    context_data=None,
+                    discovery_source_id=source.id,
                 )
                 db.add(content)
                 await db.flush()
+                db.add(ContentDiscoveryLink(
+                    content_id=content.id,
+                    discovery_source_id=source.id,
+                    url=item.url,
+                ))
                 new_content_ids.append(content.id)
                 ingested_count += 1
 
