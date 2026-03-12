@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:frontend/core/network/api_client.dart';
 
 class InteractiveLoginDialog extends ConsumerStatefulWidget {
@@ -27,6 +28,7 @@ class _InteractiveLoginDialogState
   // 使用 ValueNotifier 避免 setState 重建整个 Widget 导致闪烁
   final ValueNotifier<String?> _qrcodeNotifier = ValueNotifier(null);
   String _message = '正在初始化登录环境...';
+  String? _captchaUrl;
   Timer? _pollingTimer;
 
   @override
@@ -55,6 +57,7 @@ class _InteractiveLoginDialogState
         _sessionId = response.data['session_id'];
         _status = response.data['status'];
         _message = response.data['message'] ?? '会话已创建，等待加载二维码...';
+        _captchaUrl = response.data['captcha_url'];
       });
 
       _startPolling();
@@ -89,6 +92,7 @@ class _InteractiveLoginDialogState
         );
         final currentStatus = statusRes.data['status'] as String;
         final currentMsg = statusRes.data['message'] as String?;
+        final currentCaptchaUrl = statusRes.data['captcha_url'] as String?;
 
         // 终态：停止轮询
         if (currentStatus == 'success' ||
@@ -100,6 +104,7 @@ class _InteractiveLoginDialogState
             setState(() {
               _status = currentStatus;
               if (currentMsg != null) _message = currentMsg;
+              _captchaUrl = currentCaptchaUrl;
             });
 
             if (currentStatus == 'success') {
@@ -114,7 +119,9 @@ class _InteractiveLoginDialogState
         }
 
         // 等待扫码中：尝试获取二维码（只在尚未获取时才获取，不清空已有的）
-        if (currentStatus == 'waiting_scan' && _qrcodeNotifier.value == null) {
+        if ((currentStatus == 'waiting_scan' ||
+                currentStatus == 'needs_captcha') &&
+            _qrcodeNotifier.value == null) {
           try {
             final qrRes = await dio.get(
               '/browser-auth/session/$_sessionId/qrcode',
@@ -128,19 +135,30 @@ class _InteractiveLoginDialogState
           }
         }
 
-        // 只在状态或消息变化时才 setState
+        // 只在状态、消息或验证码链接变化时才 setState
         if (mounted &&
             (_status != currentStatus ||
-                _message != (currentMsg ?? _message))) {
+                _message != (currentMsg ?? _message) ||
+                _captchaUrl != currentCaptchaUrl)) {
           setState(() {
             _status = currentStatus;
             if (currentMsg != null) _message = currentMsg;
+            _captchaUrl = currentCaptchaUrl;
           });
         }
       } catch (e) {
         // 网络抖动时跳过，不立即失败
       }
     });
+  }
+
+  Future<void> _launchCaptchaUrl() async {
+    if (_captchaUrl != null) {
+      final url = Uri.parse(_captchaUrl!);
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+    }
   }
 
   @override
@@ -156,7 +174,7 @@ class _InteractiveLoginDialogState
             children: [
               if (_status == 'initializing')
                 const CircularProgressIndicator()
-              else if (_status == 'waiting_scan') ...[
+              else if (_status == 'waiting_scan' || _status == 'needs_captcha') ...[
                 // 使用 ValueListenableBuilder 单独监听二维码变化，不引发整棵树重建
                 ValueListenableBuilder<String?>(
                   valueListenable: _qrcodeNotifier,
@@ -180,10 +198,35 @@ class _InteractiveLoginDialogState
                   },
                 ),
                 const SizedBox(height: 24),
-                const Text(
-                  '请使用手机 APP 扫描二维码\n扫码后在手机端稍等片刻以完成授权',
-                  textAlign: TextAlign.center,
-                ),
+                if (_status == 'needs_captcha') ...[
+                  const Icon(Icons.security, color: Colors.orange, size: 48),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '触发人机验证',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton.icon(
+                    onPressed: _launchCaptchaUrl,
+                    icon: const Icon(Icons.open_in_new),
+                    label: const Text('去验证'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '验证完成后请回到此处继续',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
+                ] else ...[
+                  const Text(
+                    '请使用手机 APP 扫描二维码\n扫码后在手机端稍等片刻以完成授权',
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ] else if (_status == 'success') ...[
                 const Icon(Icons.check_circle, color: Colors.green, size: 64),
                 const SizedBox(height: 16),

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/network/sse_service.dart';
+import '../../core/utils/toast.dart';
 
 class BotManagementPage extends ConsumerStatefulWidget {
   const BotManagementPage({super.key});
@@ -74,9 +75,7 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('加载失败: $e')));
+        Toast.show(context, '加载失败: $e', isError: true);
       }
     }
   }
@@ -181,12 +180,9 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
     final response = await dio.post('/bot-config/${cfg['id']}/sync-chats');
     final data = (response.data as Map).cast<String, dynamic>();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '同步完成: updated=${data['updated']} created=${data['created']} failed=${data['failed']}',
-        ),
-      ),
+    Toast.show(
+      context,
+      '同步完成: 更新=${data['updated']} 新增=${data['created']} 失败=${data['failed']}',
     );
     await _loadConfigs();
   }
@@ -332,11 +328,7 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
                   final enabledNow = enabled.value;
                   final tokenUpdated = tokenController.text.trim().isNotEmpty;
                   if (isTelegram && (enabledNow || tokenUpdated)) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Telegram 配置已保存。若状态仍未运行，请确认“设为主 Bot”后重启后端或手动启动 app.bot.main。'),
-                      ),
-                    );
+                    Toast.show(context, 'Telegram 配置已保存。若状态仍未运行，请确认“设为主 Bot”后重启后端或手动启动 app.bot.main');
                   }
                 } on DioException catch (e) {
                   final detail = e.response?.data is Map
@@ -345,9 +337,7 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
                             '请求失败')
                       : (e.message ?? '请求失败');
                   if (!mounted) return;
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('保存失败: $detail')));
+                  Toast.show(context, '保存失败: $detail', isError: true);
                 }
               },
               child: const Text('保存'),
@@ -527,11 +517,7 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
                   await _loadConfigs();
                   if (!mounted) return;
                   if (platform == 'telegram' && cfg['is_primary'] != true) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('已创建 Telegram Bot。请在该条目的菜单中执行“设为主 Bot”，然后重启后端以启动 Bot。'),
-                      ),
-                    );
+                    Toast.show(context, '已创建 Telegram Bot。请在该条目的菜单中执行“设为主 Bot”，然后重启后端以启动 Bot。');
                   }
                 } on DioException catch (e) {
                   final detail = e.response?.data is Map
@@ -540,9 +526,7 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
                             '请求失败')
                       : (e.message ?? '请求失败');
                   if (!mounted) return;
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('创建失败: $detail')));
+                  Toast.show(context, '创建失败: $detail', isError: true);
                 }
               },
               child: Text(step < 2 ? '下一步' : '完成'),

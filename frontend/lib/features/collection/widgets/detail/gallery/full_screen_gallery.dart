@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:extended_image/extended_image.dart';
 import '../../../../../core/network/image_headers.dart';
+import '../../../../../core/utils/toast.dart';
 
 class FullScreenGallery extends StatefulWidget {
   final List<String> images;
@@ -296,12 +297,7 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                             size: 18,
                           ),
                           onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('下载功能正在开发中...'),
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
+                            Toast.show(context, '下载功能正在开发中...');
                           },
                         ),
                       ],

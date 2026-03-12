@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../../../core/utils/toast.dart';
 import '../../../../../core/constants/platform_constants.dart';
 import '../../../models/content.dart';
 
@@ -43,12 +44,7 @@ class BvidCard extends StatelessWidget {
             child: InkWell(
               onTap: () {
                 Clipboard.setData(ClipboardData(text: detail.platformId!));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('已复制 BV 号'),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
+                Toast.show(context, '已复制 BV 号');
               },
               borderRadius: BorderRadius.circular(8),
               child: Padding(

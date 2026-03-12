@@ -400,6 +400,23 @@ class ConnectionTab extends ConsumerWidget {
     }
   }
 
+  /// 刷新知乎的动态环境指纹
+  Future<void> _refreshZhihuZse(BuildContext context, WidgetRef ref) async {
+    try {
+      showToast(context, '正在后台启动无头浏览器刷新指纹，预计需要 5-10 秒...');
+      final dio = ref.read(apiClientProvider);
+      final res = await dio.post('/browser-auth/zhihu/refresh-zse');
+      if (context.mounted) {
+        showToast(
+          context,
+          res.data['status'] == 'success' ? '✅ 知乎指纹刷新合成成功！' : '⚠️ 操作完成，但状态未知',
+        );
+      }
+    } catch (e) {
+      if (context.mounted) showToast(context, '❌ 知乎指纹刷新失败: $e');
+    }
+  }
+
   /// 解绑平台（删除 Cookie）
   Future<void> _logoutPlatform(
     BuildContext context,
@@ -468,6 +485,11 @@ class ConnectionTab extends ConsumerWidget {
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (isConfigured && platformId == 'zhihu')
+                TextButton(
+                  onPressed: () => _refreshZhihuZse(context, ref),
+                  child: const Text('刷新指纹'),
+                ),
               if (isConfigured)
                 TextButton(
                   onPressed: () =>

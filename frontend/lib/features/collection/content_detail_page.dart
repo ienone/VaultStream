@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/constants/platform_constants.dart';
 import '../../core/network/sse_service.dart';
+import '../../core/utils/toast.dart';
 import 'models/content.dart';
 import 'providers/collection_provider.dart';
 import 'utils/content_parser.dart';
@@ -506,14 +507,10 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   Future<void> _reParseContent(int contentId) async {
     try {
       await ref.read(apiClientProvider).post('/contents/$contentId/re-parse');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('已触发重新解析')));
+      Toast.show(context, '已触发重新解析');
       ref.invalidate(contentDetailProvider(contentId));
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('请求失败: $e')));
+      Toast.show(context, '请求失败: $e', isError: true);
     }
   }
 
@@ -527,16 +524,12 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             queryParameters: {'force': true},
           );
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('摘要已更新')));
+        Toast.show(context, '摘要已更新');
       }
       ref.invalidate(contentDetailProvider(contentId));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('摘要生成失败: $e')));
+        Toast.show(context, '摘要生成失败: $e', isError: true);
       }
     } finally {
       if (mounted) {
@@ -551,9 +544,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       builder: (context) => EditContentDialog(content: detail),
     );
     if (result == true) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('内容已更新')));
+      Toast.show(context, '内容已更新');
       ref.invalidate(contentDetailProvider(detail.id));
     }
   }
@@ -582,13 +573,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         await ref.read(apiClientProvider).delete('/contents/${detail.id}');
         ref.invalidate(collectionProvider);
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('已删除内容')));
+        Toast.show(context, '已删除内容');
       } catch (e) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('删除失败: $e')));
+        Toast.show(context, '删除失败: $e', isError: true);
       }
     }
   }

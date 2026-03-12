@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
+import '../../../core/utils/toast.dart';
 import '../models/queue_item.dart';
 import '../providers/queue_provider.dart';
 
@@ -48,13 +49,14 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
       final oldIds = _localItems.map((e) => e.contentId).toSet();
       final newIds = widget.items.map((e) => e.contentId).toSet();
 
-      if (oldIds.difference(newIds).isNotEmpty || newIds.difference(oldIds).isNotEmpty) {
+      if (oldIds.difference(newIds).isNotEmpty ||
+          newIds.difference(oldIds).isNotEmpty) {
         // 条目增删时完全替换
         setState(() {
           _localItems = List.from(widget.items);
         });
       } else {
-        // 仅顺序/字段变化时，更新字段但保持本地顺序
+        // 仅顺序字段变化时，更新字段但保持本地顺序
         final newItemMap = {for (var i in widget.items) i.contentId: i};
         setState(() {
           _localItems = _localItems.map((item) {
@@ -107,7 +109,9 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
           const SizedBox(height: 8),
           Text(
             '队列目前是空的，休息一下吧',
-            style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.outline),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colorScheme.outline,
+            ),
           ),
           const SizedBox(height: 24),
           FilledButton.tonalIcon(
@@ -134,7 +138,12 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
             height: constraints.maxHeight,
             width: constraints.maxWidth,
             child: ReorderableListView.builder(
-              padding: EdgeInsets.fromLTRB(16, 16, 16, _isSelectionMode ? 120 : 24),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                _isSelectionMode ? 120 : 24,
+              ),
               itemCount: _localItems.length,
               onReorder: _onReorder,
               buildDefaultDragHandles: false,
@@ -142,7 +151,9 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                 return AnimatedBuilder(
                   animation: animation,
                   builder: (context, _) {
-                    final animValue = Curves.easeInOut.transform(animation.value);
+                    final animValue = Curves.easeInOut.transform(
+                      animation.value,
+                    );
                     final elevation = lerpDouble(0, 12, animValue)!;
                     return Material(
                       elevation: elevation,
@@ -178,12 +189,12 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                   onMoveToFiltered: () => _moveItem(item, QueueStatus.filtered),
                   onUpdateSchedule: (newTime) => _updateSchedule(item, newTime),
                   onPushNow: () async {
-                    final messenger = ScaffoldMessenger.of(context);
-                    await ref.read(contentQueueProvider.notifier).pushNow(item.contentId);
-                    if (mounted) {
-                      messenger.showSnackBar(
-                        const SnackBar(content: Text('已加入立即推送')),
-                      );
+                    if (!context.mounted) return;
+                    await ref
+                        .read(contentQueueProvider.notifier)
+                        .pushNow(item.contentId);
+                    if (context.mounted) {
+                      Toast.show(context, '已加入立即推送');
                     }
                   },
                 );
@@ -234,7 +245,8 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
 
     try {
       // 2. 后端请求
-      await ref.read(contentQueueProvider.notifier)
+      await ref
+          .read(contentQueueProvider.notifier)
           .reorderToIndex(movedItem.contentId, newIndex);
 
       // 延迟解除锁定并软刷新
@@ -254,9 +266,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('排序失败: $e')),
-        );
+        Toast.show(context, '排序失败: $e');
       }
     }
   }
@@ -311,7 +321,10 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: colorScheme.onPrimaryContainer.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
@@ -332,7 +345,9 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                 style: FilledButton.styleFrom(
                   backgroundColor: colorScheme.onPrimaryContainer,
                   foregroundColor: colorScheme.primaryContainer,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -341,7 +356,9 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                 icon: const Icon(Icons.schedule_send_rounded, size: 18),
                 label: const Text('批量排期'),
                 style: FilledButton.styleFrom(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -364,8 +381,12 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
     final idsSet = ids.toSet();
 
     // 乐观更新：将选中项移到列表最前面并更新时间
-    final selectedItems = _localItems.where((i) => idsSet.contains(i.contentId)).toList();
-    final otherItems = _localItems.where((i) => !idsSet.contains(i.contentId)).toList();
+    final selectedItems = _localItems
+        .where((i) => idsSet.contains(i.contentId))
+        .toList();
+    final otherItems = _localItems
+        .where((i) => !idsSet.contains(i.contentId))
+        .toList();
 
     setState(() {
       _isSelectionMode = false;
@@ -375,13 +396,17 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
       final now = DateTime.now();
       const interval = Duration(seconds: 10);
       for (int i = 0; i < selectedItems.length; i++) {
-        selectedItems[i] = selectedItems[i].copyWith(scheduledTime: now.add(interval * i));
+        selectedItems[i] = selectedItems[i].copyWith(
+          scheduledTime: now.add(interval * i),
+        );
       }
       // 其他项时间顺延
       final baseTime = now.add(interval * selectedItems.length);
       const normalInterval = Duration(minutes: 10);
       for (int i = 0; i < otherItems.length; i++) {
-        otherItems[i] = otherItems[i].copyWith(scheduledTime: baseTime.add(normalInterval * i));
+        otherItems[i] = otherItems[i].copyWith(
+          scheduledTime: baseTime.add(normalInterval * i),
+        );
       }
 
       _localItems = [...selectedItems, ...otherItems];
@@ -390,15 +415,11 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
     try {
       await ref.read(contentQueueProvider.notifier).batchPushNow(ids);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('批量推送任务已创建')),
-        );
+        Toast.show(context, '批量推送任务已创建');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('操作失败: $e')),
-        );
+        Toast.show(context, '操作失败: $e');
       }
     }
   }
@@ -414,7 +435,13 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
 
     if (picked == null) return;
 
-    var startTime = DateTime(now.year, now.month, now.day, picked.hour, picked.minute);
+    var startTime = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      picked.hour,
+      picked.minute,
+    );
     if (startTime.isBefore(now)) {
       startTime = now.add(const Duration(seconds: 10));
     }
@@ -425,29 +452,27 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
     });
 
     try {
-      await ref.read(contentQueueProvider.notifier).batchReschedule(ids, startTime);
+      await ref
+          .read(contentQueueProvider.notifier)
+          .batchReschedule(ids, startTime);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('批量排期完成')),
-        );
+        Toast.show(context, '批量排期完成');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('操作失败: $e')),
-        );
+        Toast.show(context, '操作失败: $e');
       }
     }
   }
 
   Future<void> _updateSchedule(QueueItem item, DateTime newTime) async {
     try {
-      await ref.read(contentQueueProvider.notifier).updateSchedule(item.contentId, newTime);
+      await ref
+          .read(contentQueueProvider.notifier)
+          .updateSchedule(item.contentId, newTime);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('更新失败: $e')),
-        );
+        Toast.show(context, '更新失败: $e');
       }
     }
   }
@@ -458,16 +483,17 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
     });
 
     try {
-      await ref.read(contentQueueProvider.notifier).moveToStatus(item.contentId, newStatus);
+      await ref
+          .read(contentQueueProvider.notifier)
+          .moveToStatus(item.contentId, newStatus);
       if (mounted) {
         final dest = newStatus == QueueStatus.filtered ? '已过滤' : '待推送';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('已移动到"$dest"列表'),
-            action: SnackBarAction(
-              label: '撤销',
-              onPressed: () => _moveItem(item, widget.currentStatus),
-            ),
+        Toast.show(
+          context,
+          '已移动到"$dest"列表',
+          action: SnackBarAction(
+            label: '撤销',
+            onPressed: () => _moveItem(item, widget.currentStatus),
           ),
         );
       }
@@ -476,9 +502,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
         _localItems.add(item);
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('操作失败: $e')),
-        );
+        Toast.show(context, '操作失败: $e');
       }
     }
   }
@@ -550,16 +574,14 @@ class _QueueItemCard extends StatelessWidget {
             child: IntrinsicHeight(
               child: Row(
                 children: [
-                  if (isWillPush)
-                    _buildTimeSection(context),
+                  if (isWillPush) _buildTimeSection(context),
 
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Row(
                         children: [
-                          if (item.coverUrl != null)
-                            _buildCover(colorScheme),
+                          if (item.coverUrl != null) _buildCover(colorScheme),
                           const SizedBox(width: 16),
                           Expanded(
                             child: Column(
@@ -577,20 +599,28 @@ class _QueueItemCard extends StatelessWidget {
                                 const SizedBox(height: 8),
                                 Row(
                                   children: [
-                                    _PlatformBadge(platform: item.displayPlatform),
+                                    _PlatformBadge(
+                                      platform: item.displayPlatform,
+                                    ),
                                     if (item.isNsfw)
                                       Padding(
                                         padding: const EdgeInsets.only(left: 8),
-                                        child: _Badge(label: 'NSFW', color: Colors.red),
+                                        child: _Badge(
+                                          label: 'NSFW',
+                                          color: Colors.red,
+                                        ),
                                       ),
                                     const Spacer(),
-                                    if (!isWillPush && item.scheduledTime != null)
+                                    if (!isWillPush &&
+                                        item.scheduledTime != null)
                                       Text(
-                                        DateFormat('MM-dd HH:mm')
-                                            .format(item.scheduledTime!.toLocal()),
-                                        style: theme.textTheme.labelSmall?.copyWith(
-                                          color: colorScheme.outline,
-                                        ),
+                                        DateFormat(
+                                          'MM-dd HH:mm',
+                                        ).format(item.scheduledTime!.toLocal()),
+                                        style: theme.textTheme.labelSmall
+                                            ?.copyWith(
+                                              color: colorScheme.outline,
+                                            ),
                                       ),
                                   ],
                                 ),
@@ -619,7 +649,9 @@ class _QueueItemCard extends StatelessWidget {
                       child: Checkbox(
                         value: isSelected,
                         onChanged: (_) => onToggleSelect?.call(),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
                       ),
                     )
                   else
@@ -658,7 +690,9 @@ class _QueueItemCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final localTime = item.scheduledTime?.toLocal();
-    final timeStr = localTime != null ? DateFormat('HH:mm').format(localTime) : '--:--';
+    final timeStr = localTime != null
+        ? DateFormat('HH:mm').format(localTime)
+        : '--:--';
 
     return Theme(
       data: theme.copyWith(
@@ -675,7 +709,9 @@ class _QueueItemCard extends StatelessWidget {
           DateTime? newTime;
           if (value is int) {
             final baseTime = localTime ?? now;
-            newTime = baseTime.isBefore(now) ? now.add(Duration(minutes: value)) : baseTime.add(Duration(minutes: value));
+            newTime = baseTime.isBefore(now)
+                ? now.add(Duration(minutes: value))
+                : baseTime.add(Duration(minutes: value));
           } else if (value == 'now') {
             onPushNow?.call();
             return;
@@ -684,7 +720,9 @@ class _QueueItemCard extends StatelessWidget {
             return;
           }
           if (newTime != null) {
-            if (newTime.isBefore(now)) newTime = now.add(const Duration(seconds: 10));
+            if (newTime.isBefore(now)) {
+              newTime = now.add(const Duration(seconds: 10));
+            }
             onUpdateSchedule?.call(newTime);
           }
         },
@@ -710,16 +748,16 @@ class _QueueItemCard extends StatelessWidget {
               children: [
                 Icon(Icons.edit_calendar_rounded, size: 20),
                 SizedBox(width: 12),
-                Text('自定义...'),
+                Text('自定义..'),
               ],
             ),
           ),
         ],
         child: Material(
           color: colorScheme.primary.withValues(alpha: 0.08),
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(23),
-            bottomLeft: Radius.circular(23),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(23),
+            bottomLeft: const Radius.circular(23),
           ),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
@@ -773,8 +811,18 @@ class _QueueItemCard extends StatelessWidget {
     );
 
     if (picked != null) {
-      final finalTime = DateTime(now.year, now.month, now.day, picked.hour, picked.minute);
-      onUpdateSchedule?.call(finalTime.isBefore(now) ? now.add(const Duration(seconds: 10)) : finalTime);
+      final finalTime = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        picked.hour,
+        picked.minute,
+      );
+      onUpdateSchedule?.call(
+        finalTime.isBefore(now)
+            ? now.add(const Duration(seconds: 10))
+            : finalTime,
+      );
     }
   }
 
@@ -787,7 +835,7 @@ class _QueueItemCard extends StatelessWidget {
             color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 4,
             offset: const Offset(0, 2),
-          )
+          ),
         ],
       ),
       child: ClipRRect(
@@ -797,9 +845,8 @@ class _QueueItemCard extends StatelessWidget {
           width: 52,
           height: 52,
           fit: BoxFit.cover,
-          placeholder: (context, url) => Container(
-            color: colorScheme.surfaceContainerHighest,
-          ),
+          placeholder: (context, url) =>
+              Container(color: colorScheme.surfaceContainerHighest),
         ),
       ),
     );
@@ -813,7 +860,11 @@ class _QueueItemCard extends StatelessWidget {
         children: [
           IconButton.filledTonal(
             onPressed: onApprove,
-            icon: const Icon(Icons.check_rounded, color: Colors.green, size: 20),
+            icon: const Icon(
+              Icons.check_rounded,
+              color: Colors.green,
+              size: 20,
+            ),
             style: IconButton.styleFrom(
               backgroundColor: Colors.green.withValues(alpha: 0.1),
             ),
@@ -835,7 +886,11 @@ class _QueueItemCard extends StatelessWidget {
         padding: const EdgeInsets.only(right: 8),
         child: IconButton.filledTonal(
           onPressed: onMoveToFiltered,
-          icon: Icon(Icons.delete_sweep_rounded, color: colorScheme.error, size: 20),
+          icon: Icon(
+            Icons.delete_sweep_rounded,
+            color: colorScheme.error,
+            size: 20,
+          ),
           style: IconButton.styleFrom(
             backgroundColor: colorScheme.error.withValues(alpha: 0.1),
           ),
@@ -868,7 +923,11 @@ class _Badge extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold),
+        style: TextStyle(
+          fontSize: 10,
+          color: color,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }

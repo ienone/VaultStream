@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/utils/toast.dart';
 import '../../providers/batch_selection_provider.dart';
 
 class BatchActionSheet extends ConsumerWidget {
@@ -45,12 +46,12 @@ class BatchActionSheet extends ConsumerWidget {
               onTap: () => _showTagEditor(context, ref),
             ),
             ListTile(
-              leading: Icon(Icons.eighteen_up_rating, color: Colors.orange),
+              leading: const Icon(Icons.eighteen_up_rating, color: Colors.orange),
               title: const Text('标记为 NSFW'),
               onTap: () => _batchSetNsfw(context, ref, true),
             ),
             ListTile(
-              leading: Icon(Icons.check_circle, color: Colors.green),
+              leading: const Icon(Icons.check_circle, color: Colors.green),
               title: const Text('标记为安全'),
               onTap: () => _batchSetNsfw(context, ref, false),
             ),
@@ -106,9 +107,7 @@ class BatchActionSheet extends ConsumerWidget {
               await ref.read(batchSelectionProvider.notifier).batchUpdateTags(tags);
 
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('标签已更新')),
-                );
+                Toast.show(context, '标签已更新');
               }
             },
             child: const Text('应用'),
@@ -124,9 +123,7 @@ class BatchActionSheet extends ConsumerWidget {
     await ref.read(batchSelectionProvider.notifier).batchSetNsfw(isNsfw);
 
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(isNsfw ? '已标记为 NSFW' : '已标记为安全')),
-      );
+      Toast.show(context, isNsfw ? '已标记为 NSFW' : '已标记为安全');
     }
   }
 
@@ -136,9 +133,7 @@ class BatchActionSheet extends ConsumerWidget {
     await ref.read(batchSelectionProvider.notifier).batchReParse();
 
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已加入重新解析队列')),
-      );
+      Toast.show(context, '已加入重新解析队列');
     }
   }
 
@@ -164,9 +159,7 @@ class BatchActionSheet extends ConsumerWidget {
               ref.read(batchSelectionProvider.notifier).clearSelection();
 
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已删除')),
-                );
+                Toast.show(context, '已删除');
               }
             },
             style: FilledButton.styleFrom(

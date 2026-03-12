@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/utils/toast.dart';
 import '../models/bot_chat.dart';
 
 class BotChatDialog extends ConsumerStatefulWidget {
@@ -162,7 +163,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                       _buildTextField(
                         controller: _nsfwChatIdController,
                         label: 'NSFW 备用频道 ID',
-                        hint: '例如: -1001234567890（规则中 NSFW 策略为"分离"时使用）',
+                        hint: '例如: -1001234567890（规则中 NSFW 策略为“分离”时使用）',
                         icon: Icons.call_split_rounded,
                       ),
                       const SizedBox(height: 24),
@@ -370,9 +371,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
       Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('保存群组配置失败: $e')));
+      Toast.show(context, '保存群组配置失败: $e', isError: true);
     }
   }
 
