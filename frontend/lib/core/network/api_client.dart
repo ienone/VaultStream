@@ -15,6 +15,10 @@ Dio apiClient(Ref ref) {
       connectTimeout: const Duration(seconds: 60),
       receiveTimeout: const Duration(seconds: 60),
       headers: {'X-API-Token': settings.apiToken},
+      followRedirects: false,
+      validateStatus: (status) {
+        return status != null && status < 400;
+      },
     ),
   );
 
