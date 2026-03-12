@@ -13,7 +13,7 @@ import httpx
 from typing import Optional, Dict, Any
 from urllib.parse import urlparse, parse_qs, quote
 
-from xhshow import Xhshow
+from xhshow import CryptoConfig, SessionManager, Xhshow
 
 from app.core.logging import logger
 from app.adapters.base import PlatformAdapter, ParsedContent
@@ -34,6 +34,11 @@ class XiaohongshuAdapter(PlatformAdapter):
     - settings.xiaohongshu_cookie: 必须配置有效的Cookie才能获取数据
     """
     
+    USER_AGENT = (
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+        'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36'
+    )
+
     # URL模式
     PATTERNS = {
         'note': [
@@ -62,14 +67,32 @@ class XiaohongshuAdapter(PlatformAdapter):
             if settings.xiaohongshu_cookie else None
         )
         self.cookies = self._parse_cookies(self.cookie_str) if self.cookie_str else {}
-        self.xhs_client = Xhshow()
+        _config = CryptoConfig().with_overrides(
+            PUBLIC_USERAGENT=self.USER_AGENT,
+            SIGNATURE_DATA_TEMPLATE={
+                "x0": "4.2.6", "x1": "xhs-pc-web", "x2": "macOS", "x3": "", "x4": "",
+            },
+            SIGNATURE_XSCOMMON_TEMPLATE={
+                "s0": 5, "s1": "", "x0": "1", "x1": "4.2.6", "x2": "macOS",
+                "x3": "xhs-pc-web", "x4": "4.86.0", "x5": "", "x6": "", "x7": "",
+                "x8": "", "x9": -596800761, "x10": 0, "x11": "normal",
+            },
+        )
+        self.xhs_client = Xhshow(_config)
+        self._session = SessionManager(_config)
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'User-Agent': self.USER_AGENT,
             'Referer': 'https://www.xiaohongshu.com/',
             'Origin': 'https://www.xiaohongshu.com',
             'Accept': 'application/json, text/plain, */*',
             'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
             'Content-Type': 'application/json;charset=UTF-8',
+            'sec-ch-ua': '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"macOS"',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-site',
         }
     
     def _parse_cookies(self, cookie_str: str) -> Dict[str, str]:
@@ -158,12 +181,21 @@ class XiaohongshuAdapter(PlatformAdapter):
                 logger.warning(f"解析小红书短链接失败: {e}")
                 return url
     
+    async def _refresh_cookie_from_settings(self) -> None:
+        from app.services.settings_service import get_setting_value
+        latest = await get_setting_value("xiaohongshu_cookie")
+        if latest and latest != self.cookie_str:
+            self.cookie_str = latest
+            self.cookies = self._parse_cookies(latest)
+
     async def parse(self, url: str) -> ParsedContent:
         """
         解析小红书内容
         
         根据URL类型路由到相应的parser进行解析
         """
+        await self._refresh_cookie_from_settings()
+
         # 解析短链接
         url = await self._resolve_short_link(url)
         
@@ -185,7 +217,8 @@ class XiaohongshuAdapter(PlatformAdapter):
                 self.cookies,
                 self.headers,
                 xsec_token,
-                xsec_source
+                xsec_source,
+                session=self._session,
             )
             
         elif content_type == 'user_profile':
@@ -202,7 +235,8 @@ class XiaohongshuAdapter(PlatformAdapter):
                 self.xhs_client,
                 self.cookies,
                 self.headers,
-                xsec_token
+                xsec_token,
+                session=self._session,
             )
             
         else:

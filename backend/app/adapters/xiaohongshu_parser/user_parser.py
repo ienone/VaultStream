@@ -74,7 +74,8 @@ async def parse_user(
     xhs_client,
     cookies: Dict[str, str],
     headers: Dict[str, str],
-    xsec_token: Optional[str] = None
+    xsec_token: Optional[str] = None,
+    session=None,
 ) -> ParsedContent:
     """
     解析小红书用户主页
@@ -113,7 +114,8 @@ async def parse_user(
     sign_headers = xhs_client.sign_headers_get(
         uri=API_USER_INFO,
         cookies=cookies,
-        params=params
+        params=params,
+        session=session,
     )
     
     request_headers = {**headers, **sign_headers}
@@ -136,8 +138,12 @@ async def parse_user(
                 code = data.get('code')
                 msg = data.get('msg') or data.get('message') or '未知错误'
                 
-                if code in (-1, -100, 300012):
-                    raise AuthRequiredAdapterError(f"小红书认证失败: {msg}", details={"code": code})
+                if code == -100:
+                    raise AuthRequiredAdapterError(f"小红书session过期: {msg}", details={"code": code, "reason": "session_expired"})
+                if code == 300012:
+                    raise AuthRequiredAdapterError(f"小红书IP被封: {msg}", details={"code": code, "reason": "ip_blocked"})
+                if code == -1:
+                    raise AuthRequiredAdapterError(f"小红书认证失败: {msg}", details={"code": code, "reason": "auth_failed"})
                 if code in (-2, 9999):
                     raise RetryableAdapterError(f"小红书服务暂时不可用: {msg}", details={"code": code})
                 

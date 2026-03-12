@@ -27,7 +27,8 @@ async def parse_note(
     cookies: Dict[str, str],
     headers: Dict[str, str],
     xsec_token: Optional[str] = None,
-    xsec_source: str = "pc_feed"
+    xsec_source: str = "pc_feed",
+    session=None,
 ) -> ParsedContent:
     """
     解析小红书笔记
@@ -49,7 +50,7 @@ async def parse_note(
     logger.info(f"解析小红book笔记: note_id={note_id}, xsec_source={xsec_source}")
     
     # 获取笔记数据
-    note = await fetch_note(note_id, xhs_client, cookies, headers, xsec_token, xsec_source)
+    note = await fetch_note(note_id, xhs_client, cookies, headers, xsec_token, xsec_source, session=session)
     
     # 构建存档
     archive = build_note_archive(note)
@@ -141,14 +142,15 @@ async def fetch_note(
     cookies: Dict[str, str],
     headers: Dict[str, str],
     xsec_token: Optional[str] = None,
-    xsec_source: str = "pc_feed"
+    xsec_source: str = "pc_feed",
+    session=None,
 ) -> Dict[str, Any]:
     """
     获取笔记详情，优先使用API，失败时回退到SSR解析
     """
     # 先尝试API方式
     try:
-        result = await fetch_note_via_api(note_id, xhs_client, cookies, headers, xsec_token, xsec_source)
+        result = await fetch_note_via_api(note_id, xhs_client, cookies, headers, xsec_token, xsec_source, session=session)
         logger.info(f"小红书笔记获取成功 [方式=API]: note_id={note_id}")
         return result
     except (NonRetryableAdapterError, RetryableAdapterError) as e:
@@ -168,7 +170,8 @@ async def fetch_note_via_api(
     cookies: Dict[str, str],
     headers: Dict[str, str],
     xsec_token: Optional[str] = None,
-    xsec_source: str = "pc_feed"
+    xsec_source: str = "pc_feed",
+    session=None,
 ) -> Dict[str, Any]:
     """通过API获取笔记详情"""
     if not cookies:
@@ -191,7 +194,8 @@ async def fetch_note_via_api(
     sign_headers = xhs_client.sign_headers_post(
         uri=API_NOTE_FEED,
         cookies=cookies,
-        payload=payload
+        payload=payload,
+        session=session,
     )
     
     request_headers = {**headers, **sign_headers}
@@ -212,8 +216,12 @@ async def fetch_note_via_api(
                 code = data.get('code')
                 msg = data.get('msg') or data.get('message') or '未知错误'
                 
-                if code in (-1, -100, 300012):
-                    raise AuthRequiredAdapterError(f"小红书认证失败: {msg}", details={"code": code})
+                if code == -100:
+                    raise AuthRequiredAdapterError(f"小红书session过期: {msg}", details={"code": code, "reason": "session_expired"})
+                if code == 300012:
+                    raise AuthRequiredAdapterError(f"小红书IP被封: {msg}", details={"code": code, "reason": "ip_blocked"})
+                if code == -1:
+                    raise AuthRequiredAdapterError(f"小红书认证失败: {msg}", details={"code": code, "reason": "auth_failed"})
                 
                 raise NonRetryableAdapterError(f"小红书API错误: {msg}", details={"code": code})
             
@@ -265,14 +273,13 @@ async def fetch_note_via_ssr(
                 raise NonRetryableAdapterError(f"访问被拦截: {response.url}")
             
             # 提取__INITIAL_STATE__
-            match = re.search(r'window\.__INITIAL_STATE__\s*=\s*(.+?)</script>', html, re.DOTALL)
+            match = re.search(r'window\.__INITIAL_STATE__\s*=\s*({.*?})\s*</script>', html, re.DOTALL)
             if not match:
                 raise NonRetryableAdapterError("无法从页面提取数据")
             
-            raw = match.group(1).strip()
-            if raw.endswith(';'):
-                raw = raw[:-1]
-            raw = raw.replace('undefined', 'null')
+            raw = match.group(1)
+            raw = re.sub(r':\s*undefined', ':""', raw)
+            raw = re.sub(r',\s*undefined', ',""', raw)
             
             try:
                 data = json.loads(raw)
