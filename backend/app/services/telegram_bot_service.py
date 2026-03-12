@@ -52,7 +52,7 @@ def _is_process_alive(pid: int) -> bool:
         return False
 
 
-def start_telegram_bot(*, reason: str = "manual") -> dict[str, Any]:
+def start_telegram_bot(*, reason: str = "manual", api_token: str | None = None) -> dict[str, Any]:
     existing_pid = _read_pid()
     if existing_pid and _is_process_alive(existing_pid):
         return {
@@ -67,22 +67,23 @@ def start_telegram_bot(*, reason: str = "manual") -> dict[str, Any]:
     args = [sys.executable, "-m", "app.bot.main"]
     creationflags = 0
 
-    # 将当前内存中的 API Token 通过环境变量传给子进程，
-    # 因为 token 可能是主进程启动时动态生成的，.env 文件中没有。
-    import asyncio
-    from app.services.settings_service import get_setting_value
-    from app.core.config import settings as _settings
-    
     child_env = os.environ.copy()
-    
-    # Run async function to get token from DB
-    current_token = asyncio.run(get_setting_value("api_token"))
-    
-    if not current_token:
-        current_token = _settings.api_token.get_secret_value() if _settings.api_token else ""
-        
-    if current_token:
-        child_env["API_TOKEN"] = str(current_token)
+
+    if api_token:
+        child_env["API_TOKEN"] = api_token
+    else:
+        # Fallback: try to get from settings synchronously
+        import asyncio
+        from app.services.settings_service import get_setting_value
+        from app.core.config import settings as _settings
+        try:
+            current_token = asyncio.run(get_setting_value("api_token"))
+        except RuntimeError:
+            current_token = None
+        if not current_token:
+            current_token = _settings.api_token.get_secret_value() if _settings.api_token else ""
+        if current_token:
+            child_env["API_TOKEN"] = str(current_token)
 
     popen_kwargs: dict[str, Any] = {
         "cwd": str(_BACKEND_ROOT),
@@ -151,10 +152,10 @@ def stop_telegram_bot(*, reason: str = "manual") -> dict[str, Any]:
     }
 
 
-def restart_telegram_bot(*, reason: str = "manual") -> dict[str, Any]:
+def restart_telegram_bot(*, reason: str = "manual", api_token: str | None = None) -> dict[str, Any]:
     stopped = stop_telegram_bot(reason=reason)
     time.sleep(0.6)
-    started = start_telegram_bot(reason=reason)
+    started = start_telegram_bot(reason=reason, api_token=api_token)
     return {
         "status": "restarted",
         "reason": reason,

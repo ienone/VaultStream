@@ -3,12 +3,13 @@ from typing import List, Dict, Any, Optional
 import os
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.core.database import get_db
+from app.core.db_adapter import AsyncSessionLocal
 from app.core.dependencies import require_api_token
 from app.core.logging import logger
 from app.core.time_utils import utcnow
@@ -34,13 +35,36 @@ from app.schemas import (
 router = APIRouter(prefix="/bot-config", tags=["bot-config"])
 
 
+async def _auto_sync_chats_background(config_id: int):
+    """Auto-sync chats for newly created/updated bot config."""
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(BotConfig).where(BotConfig.id == config_id))
+            cfg = result.scalar_one_or_none()
+            if not cfg or not cfg.enabled:
+                return
+            if cfg.platform == BotConfigPlatform.QQ and cfg.napcat_http_url:
+                await _sync_qq_chats(cfg, db)
+    except Exception as e:
+        logger.warning(f"Auto-sync chats failed for config {config_id}: {e}")
+
+
 async def _sync_telegram_bot_process(db: AsyncSession, *, reason: str) -> dict[str, Any]:
     if os.getenv("PYTEST_CURRENT_TEST"):
         return {"status": "skipped", "reason": f"{reason}:pytest"}
 
     cfg = await get_primary_bot_config(db, BotConfigPlatform.TELEGRAM, enabled_only=True)
     if cfg and cfg.bot_token and cfg.bot_token.strip():
-        return await run_in_threadpool(restart_telegram_bot, reason=reason)
+        from app.services.settings_service import get_setting_value
+        from app.core.config import settings
+        api_token = await get_setting_value("api_token")
+        if not api_token and settings.api_token:
+            api_token = settings.api_token.get_secret_value()
+        return await run_in_threadpool(
+            restart_telegram_bot,
+            reason=reason,
+            api_token=str(api_token or ""),
+        )
     return await run_in_threadpool(stop_telegram_bot, reason=f"{reason}:no_enabled_telegram")
 
 
@@ -88,6 +112,7 @@ async def _to_bot_config_response(db: AsyncSession, cfg: BotConfig) -> BotConfig
 @router.post("", response_model=BotConfigResponse, status_code=201)
 async def create_bot_config(
     payload: BotConfigCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
@@ -127,6 +152,9 @@ async def create_bot_config(
         sync_result = await _sync_telegram_bot_process(db, reason=f"create_config:{db_cfg.id}")
         logger.info("Telegram bot sync after create: {}", sync_result)
 
+    if db_cfg.platform == BotConfigPlatform.QQ and db_cfg.enabled:
+        background_tasks.add_task(_auto_sync_chats_background, db_cfg.id)
+
     logger.info("Bot 配置已创建: id={} name={} platform={}", db_cfg.id, db_cfg.name, db_cfg.platform.value)
     return await _to_bot_config_response(db, db_cfg)
 
@@ -145,6 +173,7 @@ async def list_bot_configs(
 async def update_bot_config(
     config_id: int,
     payload: BotConfigUpdate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
@@ -174,6 +203,9 @@ async def update_bot_config(
     if cfg.platform == BotConfigPlatform.TELEGRAM:
         sync_result = await _sync_telegram_bot_process(db, reason=f"update_config:{cfg.id}")
         logger.info("Telegram bot sync after update: {}", sync_result)
+
+    if cfg.platform == BotConfigPlatform.QQ and cfg.enabled:
+        background_tasks.add_task(_auto_sync_chats_background, cfg.id)
 
     logger.info("Bot 配置已更新: id={} name={}", cfg.id, cfg.name)
     return await _to_bot_config_response(db, cfg)
