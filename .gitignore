@@ -60,11 +60,15 @@ frontend/.packages
 
 # local-only scripts & debug tools
 scripts/
+tests/
 backend/scripts/
 frontend/scripts/
 tools/
 backend/tools/
 backend/demo/
+zhihu-cli/
+xiaohongshu-cli/
+Horizon_temp/
 
 # AI/IDE personal config
 .gemini/
