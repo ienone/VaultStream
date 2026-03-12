@@ -39,6 +39,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   final _tgTokenController = TextEditingController();
   final _tgAdminIdController = TextEditingController();
   final _qqUrlController = TextEditingController(text: 'http://127.0.0.1:3000');
+  final _qqAdminIdController = TextEditingController();
 
   // 步骤2/3/4: 平台Cookie
   final _weiboController = TextEditingController();
@@ -64,6 +65,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     _tgTokenController.dispose();
     _tgAdminIdController.dispose();
     _qqUrlController.dispose();
+    _qqAdminIdController.dispose();
     _weiboController.dispose();
     _xhsController.dispose();
     _zhihuController.dispose();
@@ -170,6 +172,12 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
               'is_primary': true,
             },
           );
+          if (_qqAdminIdController.text.trim().isNotEmpty) {
+            await dio.put(
+              '/settings/qq_admin_ids',
+              data: {'value': _qqAdminIdController.text.trim()},
+            );
+          }
         }
       }
 
@@ -480,6 +488,15 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                   decoration: const InputDecoration(
                     labelText: 'Napcat API 地址',
                     hintText: 'http://127.0.0.1:3000',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _qqAdminIdController,
+                  decoration: const InputDecoration(
+                    labelText: '管理员 QQ 号',
+                    hintText: 'e.g. 123456789',
                     border: OutlineInputBorder(),
                   ),
                 ),

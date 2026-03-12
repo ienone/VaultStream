@@ -4,6 +4,21 @@ part 'distribution_target.freezed.dart';
 part 'distribution_target.g.dart';
 
 @freezed
+abstract class DistributionTargetBotChat with _$DistributionTargetBotChat {
+  const factory DistributionTargetBotChat({
+    required int id,
+    @JsonKey(name: 'chat_id') required String chatId,
+    @JsonKey(name: 'chat_type') String? chatType,
+    String? title,
+    String? username,
+    @Default(true) bool enabled,
+  }) = _DistributionTargetBotChat;
+
+  factory DistributionTargetBotChat.fromJson(Map<String, dynamic> json) =>
+      _$DistributionTargetBotChatFromJson(json);
+}
+
+@freezed
 abstract class DistributionTarget with _$DistributionTarget {
   const factory DistributionTarget({
     required int id,
@@ -15,6 +30,7 @@ abstract class DistributionTarget with _$DistributionTarget {
     String? summary,
     @JsonKey(name: 'render_config_override')
     Map<String, dynamic>? renderConfigOverride,
+    @JsonKey(name: 'bot_chat') DistributionTargetBotChat? botChat,
     @JsonKey(name: 'created_at') required DateTime createdAt,
     @JsonKey(name: 'updated_at') required DateTime updatedAt,
   }) = _DistributionTarget;

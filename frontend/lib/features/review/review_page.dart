@@ -456,14 +456,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                 child: (selectedRule != null && _portraitRuleConfigExpanded)
                     ? Padding(
                         padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                        child: RuleConfigPanel(
-                          rule: selectedRule,
-                          expanded: true,
-                          onEdit: () => _showEditRuleDialog(selectedRule),
-                          onDelete: () => _confirmDeleteRule(selectedRule),
-                          onToggleEnabled: (enabled) =>
-                              _toggleRuleEnabled(selectedRule, enabled),
-                        ),
+                        child: _buildRuleConfigPanelWithTargets(selectedRule),
                       )
                     : const SizedBox.shrink(),
               ),
@@ -471,6 +464,19 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
           );
         },
       ),
+    );
+  }
+
+  Widget _buildRuleConfigPanelWithTargets(DistributionRule rule) {
+    final targetsAsync = ref.watch(distributionTargetsProvider(rule.id));
+    final targets = targetsAsync.value ?? const [];
+    return RuleConfigPanel(
+      rule: rule,
+      targets: targets,
+      expanded: true,
+      onEdit: () => _showEditRuleDialog(rule),
+      onDelete: () => _confirmDeleteRule(rule),
+      onToggleEnabled: (enabled) => _toggleRuleEnabled(rule, enabled),
     );
   }
 

@@ -47,9 +47,9 @@ class _PushTabState extends ConsumerState<PushTab> {
   void _initFromSettings(List<SystemSetting> settings) {
     if (_initialized) return;
     _initialized = true;
-    _adminsCtrl.text = _getSetting(settings, 'telegram_admin_ids');
-    _whiteCtrl.text = _getSetting(settings, 'telegram_whitelist_ids');
-    _blackCtrl.text = _getSetting(settings, 'telegram_blacklist_ids');
+    _adminsCtrl.text = _getSetting(settings, '${_botPlatform}_admin_ids');
+    _whiteCtrl.text = _getSetting(settings, '${_botPlatform}_whitelist_ids');
+    _blackCtrl.text = _getSetting(settings, '${_botPlatform}_blacklist_ids');
   }
 
   String _getSetting(List<SystemSetting> settings, String key) {
@@ -61,6 +61,14 @@ class _PushTabState extends ConsumerState<PushTab> {
                 .value
             as String? ??
         '';
+  }
+
+  void _reloadPermissionFields() {
+    final settings = ref.read(systemSettingsProvider).value;
+    if (settings == null) return;
+    _adminsCtrl.text = _getSetting(settings, '${_botPlatform}_admin_ids');
+    _whiteCtrl.text = _getSetting(settings, '${_botPlatform}_whitelist_ids');
+    _blackCtrl.text = _getSetting(settings, '${_botPlatform}_blacklist_ids');
   }
 
   Future<void> _saveConfig() async {
@@ -126,28 +134,20 @@ class _PushTabState extends ConsumerState<PushTab> {
       // 保存权限配置
       final notifier = ref.read(systemSettingsProvider.notifier);
       await notifier.updateSetting(
-        'telegram_admin_ids',
+        '${_botPlatform}_admin_ids',
         _adminsCtrl.text,
         category: 'bot',
       );
       await notifier.updateSetting(
-        'telegram_whitelist_ids',
+        '${_botPlatform}_whitelist_ids',
         _whiteCtrl.text,
         category: 'bot',
       );
       await notifier.updateSetting(
-        'telegram_blacklist_ids',
+        '${_botPlatform}_blacklist_ids',
         _blackCtrl.text,
         category: 'bot',
       );
-      // 也保存Telegram管理员ID到token配置中
-      if (_tgAdminIdController.text.trim().isNotEmpty) {
-        await notifier.updateSetting(
-          'telegram_admin_ids',
-          _tgAdminIdController.text.trim(),
-          category: 'bot',
-        );
-      }
       if (mounted) {
         showToast(context, '机器人配置已保存，正在启动 Bot…');
         // 等待 Bot 进程启动并发送心跳后再刷新状态
@@ -496,8 +496,10 @@ class _PushTabState extends ConsumerState<PushTab> {
                               ),
                             ],
                             selected: {_botPlatform},
-                            onSelectionChanged: (s) =>
-                                setState(() => _botPlatform = s.first),
+                            onSelectionChanged: (s) {
+                              setState(() => _botPlatform = s.first);
+                              _reloadPermissionFields();
+                            },
                           ),
                         ],
                       ),

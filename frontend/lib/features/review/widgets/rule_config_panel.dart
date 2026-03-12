@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import '../models/distribution_rule.dart';
+import '../models/distribution_target.dart';
 
 class RuleConfigPanel extends StatelessWidget {
   const RuleConfigPanel({
     super.key,
     required this.rule,
+    this.targets = const [],
     this.expanded = false,
     this.onToggleExpand,
     this.onEdit,
@@ -14,6 +16,7 @@ class RuleConfigPanel extends StatelessWidget {
   });
 
   final DistributionRule rule;
+  final List<DistributionTarget> targets;
   final bool expanded;
   final VoidCallback? onToggleExpand;
   final VoidCallback? onEdit;
@@ -151,6 +154,35 @@ class RuleConfigPanel extends StatelessWidget {
                       title: '自动审批条件',
                       child: _buildAutoApproveConditions(
                           context, rule.autoApproveConditions!),
+                    ),
+                  ],
+                  if (targets.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _buildSection(
+                      context,
+                      icon: Icons.group_rounded,
+                      title: '推送目标 (${targets.length})',
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: targets.map((t) {
+                          final name = t.botChat?.title ??
+                              t.botChat?.username ??
+                              '群组 #${t.botChatId}';
+                          return Chip(
+                            avatar: Icon(
+                              t.enabled
+                                  ? Icons.check_circle_rounded
+                                  : Icons.cancel_rounded,
+                              size: 16,
+                              color: t.enabled ? Colors.green : colorScheme.outline,
+                            ),
+                            label: Text(name),
+                            visualDensity: VisualDensity.compact,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ],
                   const SizedBox(height: 16),
