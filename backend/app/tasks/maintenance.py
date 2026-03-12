@@ -22,6 +22,25 @@ async def zhihu_keepalive_loop():
         else:
             logger.info("Zhihu keepalive check succeeded.")
 
+async def weibo_keepalive_loop():
+    """
+    微博 Cookie 保活循环。
+    随机在 24 到 72 小时之间触发。
+    """
+    logger.info("Started Weibo keepalive worker loop.")
+    while True:
+        # 随机睡眠 24 到 72 小时
+        sleep_hours = random.uniform(24, 72)
+        logger.info(f"Next Weibo keepalive in {sleep_hours:.2f} hours")
+        await asyncio.sleep(sleep_hours * 3600)
+        
+        logger.info("Running Weibo keepalive check...")
+        is_valid = await browser_auth_service.check_platform_status("weibo")
+        if not is_valid:
+            logger.warning("Weibo keepalive check failed.")
+        else:
+            logger.info("Weibo keepalive check succeeded.")
+
 async def xiaohongshu_keepalive_loop():
     """
     小红书 Cookie 保活循环。
@@ -37,7 +56,7 @@ async def xiaohongshu_keepalive_loop():
         logger.info("Running Xiaohongshu keepalive check...")
         is_valid = await browser_auth_service.check_platform_status("xiaohongshu")
         if not is_valid:
-            logger.warning("Xiaohongshu keepalive check failed. The cookie might have expired or been blocked.")
+            logger.warning("Xiaohongshu keepalive check failed.")
         else:
             logger.info("Xiaohongshu keepalive check succeeded.")
 
@@ -49,6 +68,7 @@ def start_cookie_keepalive_tasks():
     try:
         asyncio.create_task(zhihu_keepalive_loop())
         asyncio.create_task(xiaohongshu_keepalive_loop())
+        asyncio.create_task(weibo_keepalive_loop())
         logger.info("Successfully launched cookie keepalive tasks.")
     except Exception as e:
         logger.error(f"Failed to start cookie keepalive tasks: {e}")
@@ -64,6 +84,7 @@ class CookieKeepAliveTask:
             self._tasks = [
                 asyncio.create_task(zhihu_keepalive_loop()),
                 asyncio.create_task(xiaohongshu_keepalive_loop()),
+                asyncio.create_task(weibo_keepalive_loop()),
             ]
             logger.info("Successfully launched cookie keepalive tasks.")
         except Exception as e:

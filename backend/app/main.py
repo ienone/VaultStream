@@ -33,7 +33,6 @@ from app.routers import (
     contents, discovery, distribution, system, media, bot_management, 
     events, distribution_queue, bot_config, browser_auth
 )
-from app.adapters.browser import browser_manager
 
 setup_logging(level=settings.log_level, fmt=settings.log_format, debug=settings.debug)
 
@@ -87,9 +86,6 @@ async def lifespan(app: FastAPI):
     # 自举 API Token
     await _bootstrap_system_settings()
 
-    # 预热共享 WebKit 浏览器（认证服务 + Tier 3 解析器公用）
-    await browser_manager.startup()
-    
     # 连接任务队列
     await task_queue.connect()
 
@@ -140,9 +136,6 @@ async def lifespan(app: FastAPI):
     # 停止 Cookie 保活任务
     await maintenance_worker.stop()
     logger.info("Cookie 保活任务已停止")
-
-    # 停止共享浏览器
-    await browser_manager.shutdown()
 
     # 停止分发队列 Worker
     await queue_worker.stop()

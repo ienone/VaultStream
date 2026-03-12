@@ -97,15 +97,7 @@ class XiaohongshuAdapter(PlatformAdapter):
     
     def _parse_cookies(self, cookie_str: str) -> Dict[str, str]:
         """解析Cookie字符串为字典"""
-        cookies = {}
-        if not cookie_str:
-            return cookies
-        for item in cookie_str.split(';'):
-            item = item.strip()
-            if '=' in item:
-                key, value = item.split('=', 1)
-                cookies[key.strip()] = value.strip()
-        return cookies
+        return self.parse_cookie_str(cookie_str)
     
     def _extract_note_id(self, url: str) -> Optional[str]:
         """从URL中提取笔记ID"""

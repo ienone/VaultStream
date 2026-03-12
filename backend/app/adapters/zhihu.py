@@ -22,18 +22,48 @@ from app.core.config import settings
 class ZhihuAdapter(PlatformAdapter):
     """知乎平台适配器 - API优先策略，失败时回退HTML解析"""
     
-    HEADERS = {
-        "authority": "zhuanlan.zhihu.com",
-        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-        "cache-control": "no-cache",
-        "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    
+    _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+    _CHROME = "145"
+
     API_HEADERS = {
-        "accept": "application/json",
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "accept": "application/json, text/plain, */*",
+        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+        "user-agent": _UA,
+        "referer": "https://www.zhihu.com/",
+        "sec-ch-ua": f'"Not:A-Brand";v="99", "Google Chrome";v="{_CHROME}", "Chromium";v="{_CHROME}"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        "x-api-version": "3.0",
+        "x-requested-with": "fetch",
     }
+
+    @staticmethod
+    def _make_html_headers(url: str) -> dict:
+        """根据目标 URL 动态生成 HTML 页面请求头，模拟真实浏览器指纹。"""
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        host = parsed.netloc or "www.zhihu.com"
+        origin = f"{parsed.scheme}://{host}"
+        return {
+            "authority": host,
+            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+            "cache-control": "no-cache",
+            "pragma": "no-cache",
+            "upgrade-insecure-requests": "1",
+            "user-agent": ZhihuAdapter._UA,
+            "sec-ch-ua": f'"Not:A-Brand";v="99", "Google Chrome";v="{ZhihuAdapter._CHROME}", "Chromium";v="{ZhihuAdapter._CHROME}"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
+            "sec-fetch-site": "none",
+            "sec-fetch-user": "?1",
+            "referer": origin + "/",
+        }
 
     # API Include 参数配置 (参考 fxzhihu 项目优化)
     API_INCLUDE_PARAMS = {
@@ -43,11 +73,11 @@ class ZhihuAdapter(PlatformAdapter):
         # Article: 风控严格，通常需要 Cookie
         "article": "content,voteup_count,comment_count,created,updated,excerpt,title_image",
         
-        # Question: 风控严格
-        "question": "detail,excerpt,content,visit_count,answer_count,follower_count,comment_count,voteup_count",
+        # Question: 风控严格，补充 topics/created_time/updated_time
+        "question": "detail,excerpt,content,visit_count,answer_count,follower_count,comment_count,voteup_count,topics,created_time,updated_time",
         
-        # User: 公开可用
-        "user": "allow_message,answer_count,articles_count,follower_count,following_count,voteup_count,thanked_count,favorited_count,pins_count,question_count,following_topic_count,following_question_count,following_favlists_count,following_columns_count",
+        # User: 公开可用，补充 favorite_count/description/badge
+        "user": "allow_message,answer_count,articles_count,follower_count,following_count,voteup_count,thanked_count,favorited_count,favorite_count,pins_count,question_count,following_topic_count,following_question_count,following_favlists_count,following_columns_count,description,badge",
         
         # Column: 基础信息
         "column": "title,intro,articles_count,followers",
@@ -59,7 +89,8 @@ class ZhihuAdapter(PlatformAdapter):
     # API端点模板
     API_ENDPOINTS = {
         "answer": "https://www.zhihu.com/api/v4/answers/{id}",
-        "article": "https://api.zhihu.com/articles/{id}",
+        # 使用 zhuanlan.zhihu.com/api 端点（api.zhihu.com 被风控40362）
+        "article": "https://zhuanlan.zhihu.com/api/articles/{id}",
         "question": "https://www.zhihu.com/api/v4/questions/{id}",
         "user": "https://www.zhihu.com/api/v4/members/{id}",
         "column": "https://www.zhihu.com/api/v4/columns/{id}",
@@ -70,10 +101,7 @@ class ZhihuAdapter(PlatformAdapter):
         self.cookies = cookies or {}
         if not self.cookies and settings.zhihu_cookie:
             cookie_str = settings.zhihu_cookie.get_secret_value()
-            for item in cookie_str.split(';'):
-                if '=' in item:
-                    k, v = item.strip().split('=', 1)
-                    self.cookies[k] = v
+            self.cookies = self.parse_cookie_str(cookie_str)
 
     async def detect_content_type(self, url: str) -> Optional[str]:
         if "zhuanlan.zhihu.com/p/" in url:
@@ -160,9 +188,21 @@ class ZhihuAdapter(PlatformAdapter):
         api_url = self._build_api_url(content_type, content_id)
         proxy_url = await self._get_proxy_url()
         cookies = self.cookies if use_cookies else {}
-        
+
+        # 动态添加 CSRF token header（某些 API 如 question 需要）
+        extra_headers = {}
+        if use_cookies and cookies.get("_xsrf"):
+            extra_headers["x-xsrftoken"] = cookies["_xsrf"]
+        # article 端点在 zhuanlan.zhihu.com，需要对应的 referer
+        if content_type == "article":
+            extra_headers["referer"] = f"https://zhuanlan.zhihu.com/p/{content_id}"
+        elif content_type == "question":
+            extra_headers["referer"] = f"https://www.zhihu.com/question/{content_id}"
+
+        headers = {**self.API_HEADERS, **extra_headers}
+
         async with httpx.AsyncClient(
-            headers=self.API_HEADERS,
+            headers=headers,
             cookies=cookies,
             follow_redirects=True,
             timeout=15.0,
@@ -405,7 +445,11 @@ class ZhihuAdapter(PlatformAdapter):
         media_urls = extract_images(processed_html)
         markdown_content = md(processed_html, heading_style="ATX")
         
-        created = data.get('created')
+        # 提取话题标签
+        topics = data.get('topics', [])
+        topic_names = [t.get('name', '') for t in topics if t.get('name')]
+        
+        created = data.get('created') or data.get('created_time')
         published_at = datetime.fromtimestamp(created) if created else None
         
         stats = {
@@ -427,6 +471,7 @@ class ZhihuAdapter(PlatformAdapter):
         archive_metadata = {
             "version": 2,
             "raw_api_response": data,
+            "topics": topic_names,  # 问题话题列表
             "archive": {
                 "version": 2,
                 "type": "zhihu_question",
@@ -474,6 +519,8 @@ class ZhihuAdapter(PlatformAdapter):
             "following_count": data.get('following_count', 0),
             "voteup_count": data.get('voteup_count', 0),
             "thanked_count": data.get('thanked_count', 0),
+            "favorited_count": data.get('favorited_count', 0),
+            "favorite_count": data.get('favorite_count', 0),  # 用户自己收藏的内容数
             "answer_count": data.get('answer_count', 0),
             "articles_count": data.get('articles_count', 0),
             "pins_count": data.get('pins_count', 0),
@@ -613,12 +660,13 @@ class ZhihuAdapter(PlatformAdapter):
         clean_url = await self.clean_url(url)
         content_id = self._extract_id_from_url(url, content_type)
         
-        # 优化解析策略：基于 fxzhihu 研究结果
-        # Answer/User: API 公开可用，优先使用
-        # Article/Question: API 风控严格，直接 HTML 解析
-        # Pin: 仅支持 HTML
+        # 解析策略：API优先
+        # Answer/User/Column/Collection: 公开API，优先使用
+        # Article: 带cookie时API可用，先试API再回退HTML
+        # Question: 带cookie时API成功率较高，先试API再回退HTML
+        # Pin: 仅支持HTML
         
-        api_preferred_types = {"answer", "user_profile", "column", "collection"}
+        api_preferred_types = {"answer", "user_profile", "column", "collection", "article", "question"}
         
         if content_id and content_type in api_preferred_types:
             api_parsers = {
@@ -626,6 +674,8 @@ class ZhihuAdapter(PlatformAdapter):
                 "user_profile": self._parse_user_via_api,
                 "column": self._parse_column_via_api,
                 "collection": self._parse_collection_via_api,
+                "article": self._parse_article_via_api,
+                "question": self._parse_question_via_api,
             }
             
             logger.info(f"尝试通过API解析 {content_type}: {content_id}")
@@ -634,8 +684,6 @@ class ZhihuAdapter(PlatformAdapter):
                 logger.info(f"API解析成功: {content_type}/{content_id}")
                 return result
             logger.info(f"API解析失败，回退到HTML解析: {content_type}/{content_id}")
-        elif content_type in {"article", "question"}:
-            logger.info(f"直接使用HTML解析 {content_type} (风控严格): {content_id}")
         elif content_type == "pin":
             logger.info(f"Pin 类型仅支持HTML解析: {content_id}")
         
@@ -647,14 +695,16 @@ class ZhihuAdapter(PlatformAdapter):
         proxy_url = await self._get_proxy_url()
     
         async with httpx.AsyncClient(
-            headers=self.HEADERS, 
-            cookies=self.cookies, 
-            follow_redirects=True, 
+            headers=self._make_html_headers(clean_url),
+            cookies=self.cookies,
+            follow_redirects=True,
             timeout=15.0,
             proxy=proxy_url
         ) as client:
             try:
+                logger.info(f"[zhihu debug] cookies count={len(self.cookies)}, keys={list(self.cookies.keys())[:5]}")
                 response = await client.get(clean_url)
+                logger.info(f"[zhihu debug] status={response.status_code}, url={response.url}, resp_head={response.text[:300]}")
                 if response.status_code == 404:
                     raise NonRetryableAdapterError(f"内容不存在: {url}")
                 if response.status_code in (401, 403):
@@ -706,6 +756,11 @@ class ZhihuAdapter(PlatformAdapter):
                 "voteup_count": self._to_int(stats.get("voteup_count", 0)),
                 "thanked_count": self._to_int(stats.get("thanked_count", 0)),
                 "favorited_count": self._to_int(stats.get("favorited_count", 0)),
+                "favorite_count": self._to_int(stats.get("favorite_count", 0)),  # 用户自己收藏数
+                "answer_count": self._to_int(stats.get("answer_count", 0)),
+                "articles_count": self._to_int(stats.get("articles_count", 0)),
+                "pins_count": self._to_int(stats.get("pins_count", 0)),
+                "question_count": self._to_int(stats.get("question_count", 0)),
             }
             return
 

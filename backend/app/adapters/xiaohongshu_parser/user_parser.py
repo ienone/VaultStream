@@ -159,6 +159,10 @@ async def parse_user(
     nickname = clean_text(basic_info.get("nickname"))
     desc = clean_text(basic_info.get("desc"))
     avatar = safe_url(basic_info.get("imageb") or basic_info.get("images") or basic_info.get("image"))
+    # CLI有返回这三个字段，后端之前未提取
+    red_id = basic_info.get("redId") or basic_info.get("red_id", "")
+    ip_location = basic_info.get("ipLocation") or basic_info.get("ip_location", "")
+    gender = basic_info.get("gender")
     
     # 互动数据
     interactions = user.get("interactions") or []
@@ -176,6 +180,10 @@ async def parse_user(
             elif item_type == "interaction" or "获赞" in name or "收藏" in name:
                 stats["liked"] = count
     
+    # 将ip_location加入stats（对内容发现有意义）
+    if ip_location:
+        stats["ip_location"] = ip_location
+    
     # 构建存档
     archive = {
         "version": 2,
@@ -184,7 +192,11 @@ async def parse_user(
         "plain_text": desc,
         "images": [],
         "links": [],
-        "stored_images": []
+        "stored_images": [],
+        # CLI有提取的额外字段
+        "red_id": red_id,
+        "ip_location": ip_location,
+        "gender": gender,
     }
     
     if avatar:

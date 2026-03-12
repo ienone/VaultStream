@@ -90,11 +90,15 @@ async def parse_note(
     
     # 提取互动数据
     interact = note.get("interact_info") or note.get("interactInfo") or {}
+    # 计算图片数量（与小红书CLI的normalize_note_detail对齐）
+    image_list = note.get("image_list") or note.get("images_list") or note.get("imageList") or []
     stats = {
         "like": interact.get("liked_count") or interact.get("likedCount") or 0,
         "favorite": interact.get("collected_count") or interact.get("collectedCount") or 0,
         "reply": interact.get("comment_count") or interact.get("commentCount") or 0,
         "share": interact.get("share_count") or interact.get("shareCount") or 0,
+        "image_count": len(image_list),                                        # 图片张数
+        "note_type": "video" if note.get("type") == "video" else "image",     # 笔记类型
     }
     
     # 解析发布时间

@@ -116,6 +116,9 @@ class PlaywrightBrowserManager:
 
     async def submit_coro(self, coro: Coroutine) -> Any:
         """将协程抛入后台专有 loop，并跨事件循环无缝等待其结果返回。"""
+        if not self._started:
+            await self.startup()
+            
         if not self._pw_loop:
             raise RuntimeError("Playwright 后台循环尚未启动")
         future = asyncio.run_coroutine_threadsafe(coro, self._pw_loop)

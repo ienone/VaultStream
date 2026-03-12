@@ -30,8 +30,11 @@ class TestXiaohongshuAdapter(AdapterTestBase):
         return XiaohongshuAdapter
 
     def get_test_urls(self) -> Dict[str, str]:
+        # url.md 中提供的真实链接（2026-03-12）
         return {
-            "note": "https://www.xiaohongshu.com/discovery/item/69a7a9ff000000002802080d",
+            "note": "https://www.xiaohongshu.com/discovery/item/649f88b4000000001303eb07",
+            "note2": "https://www.xiaohongshu.com/discovery/item/648840240000000013006fc5",
+            "user": "https://www.xiaohongshu.com/user/profile/605fd1d10000000001008467",
         }
 
     @pytest.fixture
@@ -41,7 +44,7 @@ class TestXiaohongshuAdapter(AdapterTestBase):
     @pytest.mark.asyncio
     async def test_parse_note_mocked(self, adapter, httpx_mock):
         """Test parsing XHS note with mocked API response"""
-        note_id = "69a7a9ff000000002802080d"
+        note_id = "649f88b4000000001303eb07"
         url = f"https://www.xiaohongshu.com/discovery/item/{note_id}"
         mock_data = load_mock_json(f"note_{note_id}.json")
         
@@ -60,12 +63,53 @@ class TestXiaohongshuAdapter(AdapterTestBase):
         assert result.platform == "xiaohongshu"
         assert result.title is not None or result.body is not None
         assert result.author_name is not None
+        # 验证 stats 中包含 image_count
+        assert result.stats is not None
+        assert "image_count" in result.stats
+
+    @pytest.mark.asyncio
+    async def test_parse_user_mocked(self, adapter, httpx_mock):
+        """Test parsing XHS user profile with mocked API response"""
+        user_id = "605fd1d10000000001008467"
+        url = f"https://www.xiaohongshu.com/user/profile/{user_id}"
+        mock_data = load_mock_json(f"user_{user_id}.json")
+        
+        httpx_mock.add_response(
+            method="GET",
+            url=re.compile(r"https://edith\.xiaohongshu\.com/api/sns/web/v1/user/otherinfo.*"),
+            json=mock_data,
+            status_code=200
+        )
+
+        result = await adapter.parse(url)
+        
+        assert result.content_type == "user_profile"
+        assert result.content_id == user_id
+        assert result.platform == "xiaohongshu"
+        assert result.author_name is not None
+        # 验证 stats 中包含 followers/following
+        assert result.stats is not None
 
     @pytest.mark.asyncio
     async def test_url_normalization(self, adapter):
         """Test URL cleaning"""
         url = "https://www.xiaohongshu.com/explore/123456?xhsshare=pc_web&source=webshare"
         clean = await adapter.clean_url(url)
-        # Note: XiaohongshuAdapter.clean_url might behave differently depending on implementation
-        # usually it removes common tracking params
+        # 追踪参数应被去除（xhsshare, source）
+        assert "xhsshare" not in clean
+        assert "source" not in clean
+
+    @pytest.mark.asyncio
+    async def test_url_preserves_xsec_token(self, adapter):
+        """Test that xsec_token is preserved in cleaned URL"""
+        url = (
+            "https://www.xiaohongshu.com/discovery/item/649f88b4000000001303eb07"
+            "?source=webshare&xhsshare=pc_web"
+            "&xsec_token=ABhWd1qG6hXifjzQR6gI6cRfQhoG9XsQ7MFNyJ_apFtfk="
+            "&xsec_source=pc_share"
+        )
+        clean = await adapter.clean_url(url)
+        # xsec_token 应保留（后续API请求需要）
+        assert "xsec_token" in clean
+        # 无用追踪参数应去除
         assert "xhsshare" not in clean

@@ -7,11 +7,22 @@
 
 import asyncio
 import base64
+import io
 import uuid
+import os
+import sys
+import random
+import time
+import json
+from pathlib import Path
+from urllib.parse import urlparse, parse_qs
 from typing import Dict, Optional
 
+import httpx
+import qrcode
 from loguru import logger
 from pydantic import BaseModel
+from xhshow import Xhshow, CryptoConfig, SessionManager
 
 from app.services.settings_service import set_setting_value, get_setting_value, delete_setting_value
 from app.adapters.browser import browser_manager
@@ -20,9 +31,10 @@ from app.adapters.browser import browser_manager
 class AuthSessionStatus(BaseModel):
     session_id: str
     platform: str
-    status: str  # initializing, waiting_scan, success, timeout, failed
+    status: str  # initializing, waiting_scan, success, timeout, failed, needs_captcha
     message: Optional[str] = None
     qrcode_b64: Optional[str] = None
+    captcha_url: Optional[str] = None
 
 
 class AuthSession:
@@ -33,6 +45,7 @@ class AuthSession:
         self.qrcode_b64: Optional[str] = None
         self.message: Optional[str] = None
         self.cookie_str: Optional[str] = None
+        self.captcha_url: Optional[str] = None
         self.task: Optional[asyncio.Task] = None
 
 
@@ -41,32 +54,17 @@ class BrowserAuthService:
         self.sessions: Dict[str, AuthSession] = {}
         self.platforms = {
             "xiaohongshu": {
-                "login_url": "https://www.xiaohongshu.com/explore",
-                "qrcode_selector": ".qrcode-img, img[class*='qrcode'], img[src*='qrcode']",
-                "success_selector": ".user.side-bar-component",
-                "check_url": "https://www.xiaohongshu.com/explore",
-                "check_selectors": [
-                    ".user.side-bar-component",
-                    "img[class*='avatar']",
-                    "[class*='user'] [class*='avatar']",
-                ],
-                "auth_cookie_names": ["a1", "web_session"],
+                "check_url": "https://edith.xiaohongshu.com/api/sns/web/v1/user/me",
+                "auth_cookie_names": ["a1", "webId", "web_session"],
                 "domain": ".xiaohongshu.com",
             },
             "zhihu": {
-                "login_url": "https://www.zhihu.com/signin?next=%2F",
-                "qrcode_selector": "canvas",
-                "success_selector": ".AppHeader-profile",
-                "check_url": "https://www.zhihu.com",
-                "check_selector": ".AppHeader-profile",
+                "check_url": "https://www.zhihu.com/api/v4/me",
                 "domain": ".zhihu.com",
             },
             "weibo": {
-                "login_url": "https://passport.weibo.com/sso/signin",
-                "qrcode_selector": ".qr-img-box img, .LoginCard_wrap_1Zngm img, img[src*='qrcode']",
-                "success_selector": ".Frame_wrap_3C2R6",
-                "check_url": "https://weibo.com",
-                "check_selector": ".Frame_wrap_3C2R6",
+                "check_url": "https://passport.weibo.com/visitor/visitor?a=init",
+                "auth_cookie_names": ["SUB"],
                 "domain": ".weibo.com",
             },
         }
@@ -82,8 +80,13 @@ class BrowserAuthService:
         session = AuthSession(platform)
         self.sessions[session.session_id] = session
 
-        # Drive auth flow async in main loop, which delegates playwright parts
-        session.task = asyncio.create_task(self._drive_auth_flow_wrapper(session))
+        # 直接在当前 loop 启动异步流程
+        flow_method = getattr(self, f"_{platform}_qr_flow", None)
+        if flow_method:
+            session.task = asyncio.create_task(flow_method(session))
+        else:
+            session.status = "failed"
+            session.message = f"尚未实现 {platform} 的 HTTP QR 流程"
 
         return await self.get_session_status(session.session_id)
 
@@ -97,6 +100,7 @@ class BrowserAuthService:
             status=session.status,
             message=session.message,
             qrcode_b64=session.qrcode_b64,
+            captcha_url=session.captcha_url,
         )
 
     async def get_session_qrcode(self, session_id: str) -> Optional[str]:
@@ -113,17 +117,11 @@ class BrowserAuthService:
         if not cookie_str:
             return False
             
-        config = self.platforms[platform]
-        domain = config["domain"]
-
-        cookies = []
-        for item in cookie_str.split(";"):
-            if "=" in item:
-                name, value = item.strip().split("=", 1)
-                if name and value:
-                    cookies.append({"name": name, "value": value, "domain": domain, "path": "/"})
-
-        return await browser_manager.submit_coro(self._check_status_pw_job(platform, cookies, config))
+        check_func = getattr(self, f"_check_{platform}_status", None)
+        if check_func:
+            return await check_func(cookie_str)
+            
+        return False
 
     async def logout_platform(self, platform: str):
         if platform not in self.platforms:
@@ -141,212 +139,403 @@ class BrowserAuthService:
         self.sessions.pop(session_id, None)
 
     # ------------------------------------------------------------------
-    # 内部 Playwright 作业协程（被 submit 到专用后台 Loop）
+    # 内部 HTTP QR 流程
     # ------------------------------------------------------------------
 
-    async def _has_any_selector(self, page, selectors: list, timeout: int = 5000) -> bool:
-        for sel in selectors:
-            try:
-                el = await page.wait_for_selector(sel, timeout=timeout)
-                if el:
-                    return True
-            except Exception:
-                pass
-        return False
+    def _make_qr_b64(self, data: str) -> str:
+        """生成 QR 码 base64。"""
+        qr = qrcode.QRCode(border=2)
+        qr.add_data(data)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffered = io.BytesIO()
+        img.save(buffered, format="PNG")
+        return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
-    async def _check_status_pw_job(self, platform: str, cookies: list, config: dict) -> bool:
-        browser = browser_manager.get_browser()
-        context = await browser.new_context(
-            viewport=browser_manager.fetch_viewport,
-            user_agent=browser_manager.ua
+    async def _persist_cookie(self, session: AuthSession):
+        await set_setting_value(
+            key=f"{session.platform}_cookie",
+            value=session.cookie_str,
+            category="platform",
+            description=f"{session.platform} 自动化登录 Cookie",
         )
-        if cookies:
-            await context.add_cookies(cookies)
-            
-        try:
-            page = await context.new_page()
-            await page.goto(config["check_url"], timeout=15000)
-            await page.wait_for_load_state("networkidle")
+        logger.info(f"[{session.platform}] Cookie 已持久化")
 
-            if "login" in page.url or "signin" in page.url:
-                return False
-
-            # 1) Prefer DOM selectors – most reliable indicator of logged-in UI
-            check_selectors = config.get("check_selectors")
-            if check_selectors and await self._has_any_selector(page, check_selectors):
-                return True
-
-            # Legacy single selector
-            legacy_sel = config.get("check_selector", "")
-            if legacy_sel:
-                try:
-                    element = await page.wait_for_selector(legacy_sel, timeout=5000)
-                    if element is not None:
-                        return True
-                except Exception:
-                    pass
-
-            # 2) Fall back to auth cookie check (e.g. page loaded but avatar element changed)
-            auth_cookie_names = config.get("auth_cookie_names", [])
-            if auth_cookie_names:
-                browser_cookies = await context.cookies()
-                cookie_names = {c["name"] for c in browser_cookies}
-                if all(name in cookie_names for name in auth_cookie_names):
-                    return True
-
-            return False
-        except Exception as e:
-            logger.warning(f"平台状态检测失败 [{platform}]: {e}")
-            return False
-        finally:
-            await context.close()
-
-    async def _auth_flow_pw_job(self, session: AuthSession, config: dict):
-        browser = browser_manager.get_browser()
-        context = await browser.new_context(
-            viewport=browser_manager.auth_viewport,
-            user_agent=browser_manager.ua
+    async def _xiaohongshu_qr_flow(self, session: AuthSession):
+        ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+        host = "https://edith.xiaohongshu.com"
+        home = "https://www.xiaohongshu.com"
+        
+        # 配置 xhshow 签名环境 (与 Adapter 保持一致)
+        config = CryptoConfig().with_overrides(
+            PUBLIC_USERAGENT=ua,
+            SIGNATURE_DATA_TEMPLATE={"x0": "4.2.6", "x1": "xhs-pc-web", "x2": "macOS", "x3": "", "x4": ""},
+            SIGNATURE_XSCOMMON_TEMPLATE={
+                "s0": 5, "s1": "", "x0": "1", "x1": "4.2.6", "x2": "macOS",
+                "x3": "xhs-pc-web", "x4": "4.86.0", "x5": "", "x6": "", "x7": "",
+                "x8": "", "x9": -596800761, "x10": 0, "x11": "normal",
+            },
         )
-        try:
-            page = await context.new_page()
-            await page.goto(config["login_url"])
-            await page.wait_for_load_state("networkidle")
-            await asyncio.sleep(2)
+        xhs = Xhshow(config)
+        sm = SessionManager(config)
 
-            logger.info(f"[{session.platform}] 已导航到 {page.url}")
+        def get_headers(cookies):
+            return {
+                "user-agent": ua,
+                "content-type": "application/json;charset=UTF-8",
+                "cookie": "; ".join(f"{k}={v}" for k, v in cookies.items()),
+                "origin": home, "referer": f"{home}/",
+                "sec-ch-ua": '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
+                "sec-ch-ua-mobile": "?0", "sec-ch-ua-platform": '"macOS"',
+                "sec-fetch-dest": "empty", "sec-fetch-mode": "cors", "sec-fetch-site": "same-site",
+                "accept": "application/json, text/plain, */*",
+            }
 
-            # --- 定位二维码 ---
-            qr_element = None
-
-            if session.platform == "weibo":
-                for img in await page.locator("img").all():
-                    src = await img.get_attribute("src") or ""
-                    if "qr" in src.lower() or "qrcode" in src.lower():
-                        box = await img.bounding_box()
-                        if box and box["width"] > 80 and abs(box["width"] - box["height"]) < 15:
-                            qr_element = img
-                            break
-                if not qr_element:
-                    for sel in [".qr-img-box img", "img[src*='qrcode']", ".LoginCard_wrap_1Zngm img"]:
-                        try:
-                            el = page.locator(sel).first
-                            if await el.is_visible():
-                                qr_element = el
-                                break
-                        except Exception:
-                            pass
-
-            elif session.platform == "zhihu":
-                try:
-                    await page.wait_for_selector("canvas", timeout=15000)
-                    for canvas in await page.locator("canvas").all():
-                        box = await canvas.bounding_box()
-                        if box and box["width"] > 80 and abs(box["width"] - box["height"]) < 20:
-                            qr_element = canvas
-                            break
-                except Exception as e:
-                    logger.warning(f"知乎 canvas 未找到: {e}")
-
+        async def api_call(client, method, uri, payload, cookies, extra_headers=None):
+            if method == "POST":
+                sign = xhs.sign_headers_post(uri, cookies, payload=payload, session=sm)
+                headers = {**get_headers(cookies), **sign}
+                if extra_headers: headers.update(extra_headers)
+                resp = await client.post(f"{host}{uri}", headers=headers, content=json.dumps(payload, separators=(",", ":")))
             else:
-                for sel in config["qrcode_selector"].split(","):
-                    sel = sel.strip()
+                sign = xhs.sign_headers_get(uri, cookies, params=payload, session=sm)
+                # 构建带查询参数的完整 URI
+                from urllib.parse import urlencode
+                full_uri = f"{uri}?{urlencode(payload)}" if payload else uri
+                headers = {**get_headers(cookies), **sign}
+                resp = await client.get(f"{host}{full_uri}", headers=headers)
+            
+            data = resp.json()
+            if data.get("success") or data.get("code") == 0:
+                return data.get("data", {}), resp
+            raise RuntimeError(f"XHS API 失败: {json.dumps(data, ensure_ascii=False)[:200]}")
+
+        try:
+            session.status = "initializing"
+            # 生成模拟设备 ID
+            a1 = "".join(random.choices("0123456789abcdef", k=24)) + str(int(time.time() * 1000)) + "".join(random.choices("0123456789abcdef", k=15))
+            webid = "".join(random.choices("0123456789abcdef", k=32))
+            cookies = {"a1": a1, "webId": webid}
+
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+                # 1. 激活虚拟设备
+                try:
+                    data, resp = await api_call(client, "POST", "/api/sns/web/v1/login/activate", {}, cookies)
+                    for n, v in resp.cookies.items(): 
+                        if v: cookies[n] = v
+                except Exception: pass
+
+                # 2. 创建二维码会话
+                data, resp = await api_call(client, "POST", "/api/sns/web/v1/login/qrcode/create", {"qr_type": 1}, cookies)
+                qr_id, code, qr_url = data["qr_id"], data["code"], data.get("url", "")
+
+                # 3. 渲染
+                session.qrcode_b64 = self._make_qr_b64(qr_url)
+                session.status = "waiting_scan"
+                session.message = "请使用小红书 App 扫码"
+
+                # 4. 轮询扫码状态
+                start = time.time()
+                while (time.time() - start) < 240:
+                    await asyncio.sleep(2)
                     try:
-                        el = await page.wait_for_selector(sel, timeout=10000)
-                        if el and await el.is_visible():
-                            qr_element = el
-                            break
-                    except Exception:
-                        pass
-
-            if qr_element is None:
-                session.status = "failed"
-                session.message = f"无法定位 {session.platform} 的二维码，请重试"
-                return
-
-            # 等待元素进入稳定/可视状态后再截图
-            try:
-                await qr_element.scroll_into_view_if_needed(timeout=5000)
-                await qr_element.wait_for(state="visible", timeout=10000)
-            except Exception as e:
-                logger.warning(f"[{session.platform}] 二维码元素等待稳定超时，继续尝试截图: {e}")
-
-            # 截图
-            qr_bytes = await qr_element.screenshot(timeout=15000)
-            session.qrcode_b64 = base64.b64encode(qr_bytes).decode("utf-8")
-            session.status = "waiting_scan"
-            session.message = "二维码已就绪，请使用手机扫码"
-            logger.info(f"[{session.platform}] 二维码截图成功")
-
-            # --- 轮询登录成功 ---
-            for _ in range(60):
-                if session.status == "failed":
-                    break
-
-                await asyncio.sleep(2)
-                cookies = await context.cookies()
-                has_auth = False
-
-                if session.platform == "weibo":
-                    has_auth = any(c["name"] == "SUB" for c in cookies)
-
-                elif session.platform == "zhihu":
-                    has_auth = "signin" not in page.url and "zhihu.com" in page.url
-                    if not has_auth:
-                        try:
-                            el = await page.query_selector(config["success_selector"])
-                            has_auth = el is not None
-                        except Exception:
-                            pass
-
-                elif session.platform == "xiaohongshu":
-                    try:
-                        el = await page.query_selector(config["success_selector"])
-                        has_auth = el is not None
-                    except Exception:
-                        pass
-
-                if has_auth:
-                    cookie_dict = {c['name']: c['value'] for c in cookies if c.get('name') and c.get('value')}
-                    required = config.get("auth_cookie_names", [])
-                    missing = [n for n in required if not cookie_dict.get(n)]
-                    if missing:
-                        logger.warning(f"[{session.platform}] 登录看似成功但缺少关键Cookie: {missing}")
-
-                    session.status = "success"
-                    session.message = "登录成功"
-                    session.cookie_str = "; ".join(f"{k}={v}" for k, v in cookie_dict.items())
-                    logger.info(f"[{session.platform}] 登录成功")
-                    break
-
-            if session.status == "waiting_scan":
-                session.status = "timeout"
-                session.message = "等待扫码超时，请重试"
+                        sdata, _ = await api_call(client, "POST", "/api/qrcode/userinfo", 
+                                                 {"qrId": qr_id, "code": code}, cookies, {"service-tag": "webcn"})
+                    except Exception: continue
+                        
+                    cs = sdata.get("codeStatus", -1)
+                    if cs == 1:
+                        session.message = "已扫码，等待确认..."
+                    elif cs == 2:
+                        # 5. 确认成功，获取最终 Session
+                        cdata, cresp = await api_call(client, "GET", "/api/sns/web/v1/login/qrcode/status",
+                                                     {"qr_id": qr_id, "code": code}, cookies)
+                        li = cdata.get("login_info", {})
+                        if isinstance(li, dict):
+                            if li.get("session"): cookies["web_session"] = str(li["session"])
+                            if li.get("secure_session"): cookies["web_session_sec"] = str(li["secure_session"])
+                        for n, v in cresp.cookies.items():
+                            if v: cookies[n] = v
+                        
+                        session.cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+                        session.status = "success"
+                        session.message = "登录成功"
+                        break
+                
+                if session.status == "waiting_scan":
+                    session.status = "timeout"
+                    session.message = "扫码超时"
 
         except Exception as e:
-            import traceback
-            logger.error(f"[{session.platform}] 认证流异常: {repr(e)}\n{traceback.format_exc()}")
+            logger.error(f"XHS QR flow error: {e}")
             session.status = "failed"
-            session.message = repr(e)
+            session.message = str(e)
         finally:
-            await context.close()
-
-    async def _drive_auth_flow_wrapper(self, session: AuthSession):
-        config = self.platforms[session.platform]
-        try:
-            # 委托给专用 Loop 运行
-            await browser_manager.submit_coro(self._auth_flow_pw_job(session, config))
-            
-            # 成功后持久化 Cookie
             if session.status == "success" and session.cookie_str:
-                await set_setting_value(
-                    key=f"{session.platform}_cookie",
-                    value=session.cookie_str,
-                    category="platform",
-                    description=f"{session.platform} 自动化登录 Cookie",
+                await self._persist_cookie(session)
+
+    async def _weibo_qr_flow(self, session: AuthSession):
+        BASE = "https://passport.weibo.com"
+        HEADERS = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+            "Referer": f"{BASE}/sso/signin",
+            "Accept": "application/json, text/plain, */*",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+                # 1. 获取 QR
+                resp = await client.get(f"{BASE}/sso/v2/qrcode/image", params={"size": 180}, headers=HEADERS)
+                qr_data = resp.json()
+                data = qr_data.get("data", {})
+                qrid = data.get("qrid", "")
+                image_url = data.get("image", "")
+
+                # 2. 提取扫码链接并渲染
+                parsed = urlparse(image_url)
+                qs = parse_qs(parsed.query)
+                scan_url = qs.get("data", [""])[0]
+                if not scan_url:
+                    scan_url = image_url
+
+                session.qrcode_b64 = self._make_qr_b64(scan_url)
+                session.status = "waiting_scan"
+                session.message = "请使用微博 App 扫码"
+
+                # 3. 轮询
+                start = time.time()
+                while (time.time() - start) < 240:
+                    await asyncio.sleep(2)
+                    try:
+                        check_resp = await client.get(f"{BASE}/sso/v2/qrcode/check",
+                            params={"qrid": qrid}, headers=HEADERS)
+                        check_data = check_resp.json()
+                    except Exception:
+                        continue
+
+                    retcode = check_data.get("retcode", -1)
+                    if retcode == 50114002:
+                        session.message = "已扫码，等待确认..."
+                    elif retcode == 20000000:
+                        # 4. 完成
+                        cdata = check_data.get("data", {})
+                        sso_url = cdata.get("alt") or cdata.get("url", "")
+                        cookies = {}
+                        
+                        if sso_url:
+                            sso_resp = await client.get(sso_url, headers=HEADERS)
+                            for resp in sso_resp.history:
+                                for name, value in resp.cookies.items():
+                                    if value: cookies[name] = value
+                            for name, value in sso_resp.cookies.items():
+                                if value: cookies[name] = value
+
+                        for cookie in client.cookies.jar:
+                            if cookie.value: cookies[cookie.name] = cookie.value
+
+                        session.cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+                        session.status = "success"
+                        session.message = "登录成功"
+                        break
+                
+                if session.status == "waiting_scan":
+                    session.status = "timeout"
+                    session.message = "扫码超时"
+
+        except Exception as e:
+            logger.error(f"Weibo QR flow error: {e}")
+            session.status = "failed"
+            session.message = str(e)
+        finally:
+            if session.status == "success" and session.cookie_str:
+                await self._persist_cookie(session)
+
+    async def _zhihu_qr_flow(self, session: AuthSession):
+        BASE = "https://www.zhihu.com"
+        HEADERS = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Referer": f"{BASE}/signin",
+            "Origin": BASE,
+            "x-requested-with": "fetch",
+        }
+
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            try:
+                # 1. 预热
+                await client.get(f"{BASE}/signin", headers=HEADERS)
+                xsrf = ""
+                for c in client.cookies.jar:
+                    if c.name == "_xsrf": xsrf = c.value
+                
+                h = {**HEADERS}
+                if xsrf: h["x-xsrftoken"] = xsrf
+                await client.post(f"{BASE}/udid", json={}, headers=h)
+                
+                # 2. 创建 QR
+                r = await client.post(f"{BASE}/api/v3/account/api/login/qrcode", json={}, headers=h)
+                qr_data = r.json()
+                token = qr_data.get("token") or qr_data.get("qrcode_token", "")
+                link = qr_data.get("link", "")
+
+                session.qrcode_b64 = self._make_qr_b64(link)
+                session.status = "waiting_scan"
+                session.message = "请使用知乎 App 扫码"
+
+                # 3. 轮询
+                poll_headers = {
+                    **h,
+                    "sec-fetch-dest": "empty", "sec-fetch-mode": "cors", "sec-fetch-site": "same-origin",
+                    "x-zse-93": "101_3_3.0",
+                }
+                start = time.time()
+                while (time.time() - start) < 180:
+                    await asyncio.sleep(0.5)
+                    xsrf = ""
+                    for c in client.cookies.jar:
+                        if c.name == "_xsrf": xsrf = c.value
+                    if xsrf: poll_headers["x-xsrftoken"] = xsrf
+
+                    resp = await client.get(f"{BASE}/api/v3/account/api/login/qrcode/{token}/scan_info", headers=poll_headers)
+                    info = resp.json()
+
+                    # 检查 code 40352 人机验证
+                    err = info.get("error", {}) if isinstance(info.get("error"), dict) else {}
+                    if err.get("code") == 40352:
+                        session.status = "needs_captcha"
+                        session.captcha_url = err.get("redirect", "")
+                        session.message = "请先完成人机验证"
+                        continue
+
+                    if session.status == "needs_captcha":
+                        session.status = "waiting_scan"
+
+                    api_status = info.get("status")
+                    if api_status == 1:
+                        session.message = "已扫码，等待确认..."
+                    
+                    is_success = False
+                    if info.get("access_token") or info.get("user_id"):
+                        is_success = True
+                    else:
+                        status_str = (info.get("login_status") or "").upper()
+                        if status_str in ("CONFIRMED", "SUCCESS"): is_success = True
+
+                    if is_success:
+                        # 补偿获取 z_c0
+                        await client.get(f"{BASE}/api/v4/me", headers=poll_headers)
+                        cookies = {c.name: c.value for c in client.cookies.jar if c.value}
+                        session.cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+                        session.status = "success"
+                        session.message = "登录成功"
+                        break
+
+                if session.status in ("waiting_scan", "needs_captcha"):
+                    session.status = "timeout"
+                    session.message = "扫码超时"
+
+            except Exception as e:
+                logger.error(f"Zhihu QR flow error: {e}")
+                session.status = "failed"
+                session.message = str(e)
+            finally:
+                if session.status == "success" and session.cookie_str:
+                    await self._persist_cookie(session)
+
+    # ------------------------------------------------------------------
+    # HTTP 状态检查
+    # ------------------------------------------------------------------
+
+    async def _check_xiaohongshu_status(self, cookie_str: str) -> bool:
+        ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+        check_uri = "/api/sns/web/v1/user/me"
+
+        # 解析 cookie 字符串为字典，供签名使用
+        cookies: dict = {}
+        for item in cookie_str.split(";"):
+            item = item.strip()
+            if "=" in item:
+                k, v = item.split("=", 1)
+                cookies[k.strip()] = v.strip()
+
+        # 构造签名头（与 Adapter 保持一致的 CryptoConfig）
+        try:
+            config = CryptoConfig().with_overrides(
+                PUBLIC_USERAGENT=ua,
+                SIGNATURE_DATA_TEMPLATE={"x0": "4.2.6", "x1": "xhs-pc-web", "x2": "macOS", "x3": "", "x4": ""},
+                SIGNATURE_XSCOMMON_TEMPLATE={
+                    "s0": 5, "s1": "", "x0": "1", "x1": "4.2.6", "x2": "macOS",
+                    "x3": "xhs-pc-web", "x4": "4.86.0", "x5": "", "x6": "", "x7": "",
+                    "x8": "", "x9": -596800761, "x10": 0, "x11": "normal",
+                },
+            )
+            xhs = Xhshow(config)
+            sm = SessionManager(config)
+            sign = xhs.sign_headers_get(check_uri, cookies, session=sm)
+        except Exception as e:
+            # 签名失败（如 cookie 中缺少 a1），直接视为无效
+            logger.warning(f"[xiaohongshu] 检测签名失败（cookie 可能缺少 a1）: {e}")
+            return False
+
+        headers = {
+            "user-agent": ua,
+            "cookie": cookie_str,
+            "accept": "application/json, text/plain, */*",
+            "origin": "https://www.xiaohongshu.com",
+            "referer": "https://www.xiaohongshu.com/",
+            "sec-ch-ua": '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"macOS"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-site",
+            **sign,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    self.platforms["xiaohongshu"]["check_url"],
+                    headers=headers,
                 )
-                logger.info(f"[{session.platform}] Cookie 已保存")
-        except asyncio.CancelledError:
-             pass
+                data = resp.json()
+                # 兼容 success=True 和 success=1 两种形式
+                if data.get("success"):
+                    return True
+                # 记录具体失败原因便于排查
+                logger.info(f"[xiaohongshu] Cookie 失效，接口响应: code={data.get('code')} msg={data.get('msg')}")
+                return False
+        except Exception as e:
+            # 网络异常与 cookie 失效分开记录
+            logger.warning(f"[xiaohongshu] 登录状态检测网络异常: {e}")
+            return False
+
+    async def _check_weibo_status(self, cookie_str: str) -> bool:
+        headers = {
+            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+            "cookie": cookie_str,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
+                resp = await client.get(self.platforms["weibo"]["check_url"], headers=headers)
+                # 200 OK 且没有重定向到登录页则认为有效
+                return resp.status_code == 200
+        except Exception:
+            return False
+
+    async def _check_zhihu_status(self, cookie_str: str) -> bool:
+        headers = {
+            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+            "cookie": cookie_str,
+            "accept": "application/json, text/plain, */*",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(self.platforms["zhihu"]["check_url"], headers=headers)
+                data = resp.json()
+                return "id" in data or "name" in data
+        except Exception:
+            return False
 
 
 browser_auth_service = BrowserAuthService()

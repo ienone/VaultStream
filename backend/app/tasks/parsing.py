@@ -97,7 +97,7 @@ class ContentParser:
             try:
                 adapter = AdapterFactory.create(
                     content.platform,
-                    cookies=self._get_platform_cookies(content.platform)
+                    cookies=await self._get_platform_cookies(content.platform)
                 )
 
                 normalized_parse_url = normalize_share_url_input(content.url)
@@ -337,8 +337,10 @@ class ContentParser:
         )
         return metadata
 
-    def _get_platform_cookies(self, platform: Platform) -> dict:
-        """获取平台cookies"""
+    async def _get_platform_cookies(self, platform: Platform) -> dict:
+        """获取平台 cookies（优先从数据库 settings 读取，回退到 .env 配置）"""
+        from app.services.settings_service import get_setting_value
+
         if platform == Platform.BILIBILI:
             cookies = {}
             if settings.bilibili_sessdata:
@@ -348,7 +350,21 @@ class ContentParser:
             if settings.bilibili_buvid3:
                 cookies['buvid3'] = settings.bilibili_buvid3.get_secret_value()
             return cookies
-        return {}
+
+        # 通过扫码登录保存的平台 cookie（存储在数据库 settings 表中）
+        # 支持：知乎、微博、小红书等
+        platform_name = platform.value  # 例如 "zhihu"、"weibo"、"xiaohongshu"
+        cookie_str = await get_setting_value(f"{platform_name}_cookie")
+        if not cookie_str:
+            # 对于知乎，还可以回退到 .env 中的 ZHIHU_COOKIE
+            if platform == Platform.ZHIHU and settings.zhihu_cookie:
+                cookie_str = settings.zhihu_cookie.get_secret_value()
+            else:
+                return {}
+
+        # 将 cookie 字符串解析为字典（复用基类工具）
+        from app.adapters.base import PlatformAdapter
+        return PlatformAdapter.parse_cookie_str(cookie_str)
 
     async def _maybe_process_private_archive_media(self, parsed) -> None:
         """处理私有归档媒体"""

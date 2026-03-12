@@ -90,6 +90,28 @@ class PlatformAdapter(ABC):
         pass
 
     @staticmethod
+    def parse_cookie_str(cookie_str: str) -> Dict[str, str]:
+        """将 cookie 字符串解析为字典。
+
+        例：``"a=1; b=2"`` → ``{"a": "1", "b": "2"}``
+        支持去除 Cookie 字符串外层的多余引号（如数据库存储时带上了引号前缀）。
+        """
+        cookies: Dict[str, str] = {}
+        if not cookie_str:
+            return cookies
+        # 去除整个 cookie 字符串的外层引号（DB 可能存储了 '"a1=xxx; ...' 形式）
+        cookie_str = cookie_str.strip().strip('"').strip("'")
+        for item in cookie_str.split(";"):
+            item = item.strip()
+            if "=" in item:
+                k, v = item.split("=", 1)
+                # 去除键名可能残留的引号
+                k = k.strip().strip('"').strip("'")
+                cookies[k] = v.strip()
+        return cookies
+
+
+    @staticmethod
     def _to_int(value: Any, default: int = 0) -> int:
         """安全整数转换"""
         try:

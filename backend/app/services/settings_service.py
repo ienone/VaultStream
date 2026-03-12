@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import SecretStr
 
@@ -38,7 +38,7 @@ async def get_setting_value(key: str, default: Any = None) -> Any:
     return val
 
 
-async def set_setting_value(key: str, value: Any, category: str = "general", description: str = None) -> SystemSetting:
+async def set_setting_value(key: str, value: Any, category: str = "general", description: Optional[str] = None) -> SystemSetting:
     """
     Set a system setting value and update cache.
     """
@@ -132,7 +132,7 @@ async def delete_setting_value(key: str) -> bool:
         return False
 
 
-async def list_settings_values(category: str = None) -> list[dict[str, Any]]:
+async def list_settings_values(category: Optional[str] = None) -> list[dict[str, Any]]:
     """
     返回数据库中存储的所有配置项（可按 category 过滤）。
     不再从 .env 注入虚拟配置——所有设置均通过 UI 保存到 DB 管理。

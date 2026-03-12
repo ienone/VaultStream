@@ -20,9 +20,10 @@ class SystemRepository:
         if category:
             query = query.where(SystemSetting.category == category)
         result = await self.db.execute(query)
+
         return list(result.scalars().all())
 
-    async def upsert_setting(self, key: str, value: Any, category: str = "general", description: str = None) -> SystemSetting:
+    async def upsert_setting(self, key: str, value: Any, category: str = "general", description: Optional[str] = None) -> SystemSetting:
         setting = await self.get_setting(key)
         if setting:
             setting.value = value

@@ -41,7 +41,7 @@ class WeiboAdapter(PlatformAdapter):
         初始化微博适配器
         
         Args:
-            cookies: 微博cookies（可选）
+            cookies: 微博cookies（可选，来自数据库注入）
         """
         self.cookies = cookies or {}
 
@@ -163,12 +163,16 @@ class WeiboAdapter(PlatformAdapter):
             "Accept": "application/json, text/plain, */*",
         }
         
-        if settings.weibo_cookie:
-            headers["Cookie"] = settings.weibo_cookie.get_secret_value().strip()
-        
+        # 优先使用数据库注入的 self.cookies（扫码登录），fallback 到 .env 静态配置
+        cookie_str = None
+        if self.cookies:
+            cookie_str = "; ".join(f"{k}={v}" for k, v in self.cookies.items())
+        elif settings.weibo_cookie:
+            cookie_str = settings.weibo_cookie.get_secret_value().strip()
+
+        if cookie_str:
+            headers["Cookie"] = cookie_str
         request_cookies = None
-        if "Cookie" not in headers and self.cookies:
-            request_cookies = self.cookies
 
         # 准备代理
         proxies = None
