@@ -45,7 +45,12 @@ class BrowserAuthService:
                 "qrcode_selector": ".qrcode-img, img[class*='qrcode'], img[src*='qrcode']",
                 "success_selector": ".user.side-bar-component",
                 "check_url": "https://www.xiaohongshu.com/explore",
-                "check_selector": ".user.side-bar-component",
+                "check_selectors": [
+                    ".user.side-bar-component",
+                    "img[class*='avatar']",
+                    "[class*='user'] [class*='avatar']",
+                ],
+                "auth_cookie_names": ["a1", "web_session"],
                 "domain": ".xiaohongshu.com",
             },
             "zhihu": {
@@ -139,6 +144,16 @@ class BrowserAuthService:
     # 内部 Playwright 作业协程（被 submit 到专用后台 Loop）
     # ------------------------------------------------------------------
 
+    async def _has_any_selector(self, page, selectors: list, timeout: int = 5000) -> bool:
+        for sel in selectors:
+            try:
+                el = await page.wait_for_selector(sel, timeout=timeout)
+                if el:
+                    return True
+            except Exception:
+                pass
+        return False
+
     async def _check_status_pw_job(self, platform: str, cookies: list, config: dict) -> bool:
         browser = browser_manager.get_browser()
         context = await browser.new_context(
@@ -151,16 +166,35 @@ class BrowserAuthService:
         try:
             page = await context.new_page()
             await page.goto(config["check_url"], timeout=15000)
-            await asyncio.sleep(2)
+            await page.wait_for_load_state("networkidle")
 
             if "login" in page.url or "signin" in page.url:
                 return False
 
-            try:
-                element = await page.wait_for_selector(config["check_selector"], timeout=5000)
-                return element is not None
-            except Exception:
-                return False
+            # 1) Prefer DOM selectors – most reliable indicator of logged-in UI
+            check_selectors = config.get("check_selectors")
+            if check_selectors and await self._has_any_selector(page, check_selectors):
+                return True
+
+            # Legacy single selector
+            legacy_sel = config.get("check_selector", "")
+            if legacy_sel:
+                try:
+                    element = await page.wait_for_selector(legacy_sel, timeout=5000)
+                    if element is not None:
+                        return True
+                except Exception:
+                    pass
+
+            # 2) Fall back to auth cookie check (e.g. page loaded but avatar element changed)
+            auth_cookie_names = config.get("auth_cookie_names", [])
+            if auth_cookie_names:
+                browser_cookies = await context.cookies()
+                cookie_names = {c["name"] for c in browser_cookies}
+                if all(name in cookie_names for name in auth_cookie_names):
+                    return True
+
+            return False
         except Exception as e:
             logger.warning(f"平台状态检测失败 [{platform}]: {e}")
             return False
@@ -229,8 +263,15 @@ class BrowserAuthService:
                 session.message = f"无法定位 {session.platform} 的二维码，请重试"
                 return
 
+            # 等待元素进入稳定/可视状态后再截图
+            try:
+                await qr_element.scroll_into_view_if_needed(timeout=5000)
+                await qr_element.wait_for(state="visible", timeout=10000)
+            except Exception as e:
+                logger.warning(f"[{session.platform}] 二维码元素等待稳定超时，继续尝试截图: {e}")
+
             # 截图
-            qr_bytes = await qr_element.screenshot()
+            qr_bytes = await qr_element.screenshot(timeout=15000)
             session.qrcode_b64 = base64.b64encode(qr_bytes).decode("utf-8")
             session.status = "waiting_scan"
             session.message = "二维码已就绪，请使用手机扫码"
@@ -265,9 +306,15 @@ class BrowserAuthService:
                         pass
 
                 if has_auth:
+                    cookie_dict = {c['name']: c['value'] for c in cookies if c.get('name') and c.get('value')}
+                    required = config.get("auth_cookie_names", [])
+                    missing = [n for n in required if not cookie_dict.get(n)]
+                    if missing:
+                        logger.warning(f"[{session.platform}] 登录看似成功但缺少关键Cookie: {missing}")
+
                     session.status = "success"
                     session.message = "登录成功"
-                    session.cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
+                    session.cookie_str = "; ".join(f"{k}={v}" for k, v in cookie_dict.items())
                     logger.info(f"[{session.platform}] 登录成功")
                     break
 
