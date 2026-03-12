@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/utils/toast.dart';
 import '../models/render_config_preset.dart';
 import '../providers/targets_provider.dart';
 
@@ -349,19 +350,7 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
     _emitChange(presetConfig);
     
     // Show feedback
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.white),
-            const SizedBox(width: 12),
-            Text('已应用预设: ${preset.name}'),
-          ],
-        ),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    Toast.show(context, '已应用预设: ${preset.name}');
   }
 }
 

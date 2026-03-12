@@ -7,6 +7,7 @@ class Toast {
     String message, {
     IconData? icon,
     bool isError = false,
+    SnackBarAction? action,
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -52,6 +53,7 @@ class Toast {
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
         elevation: 2,
         duration: const Duration(seconds: 3),
+        action: action,
       ),
     );
   }

@@ -523,22 +523,22 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                 ButtonSegment<QueueStatus>(
                   value: QueueStatus.willPush,
                   icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-                  label: Text('待推送 ($willPush)'),
+                  label: Text('待推送($willPush)'),
                 ),
                 ButtonSegment<QueueStatus>(
                   value: QueueStatus.filtered,
                   icon: const Icon(Icons.filter_list_off_rounded, size: 18),
-                  label: Text('已过滤 ($filtered)'),
+                  label: Text('已过滤($filtered)'),
                 ),
                 ButtonSegment<QueueStatus>(
                   value: QueueStatus.pendingReview,
                   icon: const Icon(Icons.rate_review_rounded, size: 18),
-                  label: Text('待审阅 ($pending)'),
+                  label: Text('待审批($pending)'),
                 ),
                 ButtonSegment<QueueStatus>(
                   value: QueueStatus.pushed,
                   icon: const Icon(Icons.check_circle_rounded, size: 18),
-                  label: Text('已推送 ($pushed)'),
+                  label: Text('已推送($pushed)'),
                 ),
               ],
               selected: {filter.status},
@@ -687,15 +687,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
             }
             ref.invalidate(botChatsProvider);
             if (mounted) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('规则创建成功')));
+              Toast.show(context, '规则创建成功');
             }
           } catch (e) {
             if (mounted) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text('创建失败: $e')));
+              Toast.show(context, '创建失败: $e', isError: true);
             }
           }
         },
@@ -715,15 +711,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                 .read(distributionRulesProvider.notifier)
                 .updateRule(id, update);
             if (mounted) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('规则更新成功')));
+              Toast.show(context, '规则更新成功');
             }
           } catch (e) {
             if (mounted) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text('更新失败: $e')));
+              Toast.show(context, '更新失败: $e', isError: true);
             }
           }
         },
@@ -736,7 +728,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('确认删除'),
-        content: Text('确定要删除规则 "${rule.name}" 吗？'),
+        content: Text('确定要删除规则"${rule.name}" 吗？'),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         actions: [
           TextButton(
@@ -755,15 +747,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                   ref.read(queueFilterProvider.notifier).setRuleId(null);
                 }
                 if (mounted) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('规则已删除')));
+                  Toast.show(context, '规则已删除');
                 }
               } catch (e) {
                 if (mounted) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('删除失败: $e')));
+                  Toast.show(context, '删除失败: $e', isError: true);
                 }
               }
             },
@@ -784,9 +772,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
           .toggleEnabled(rule.id, enabled);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('操作失败: $e')));
+        Toast.show(context, '操作失败: $e', isError: true);
       }
     }
   }
@@ -803,15 +789,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       ref.invalidate(queueStatsProvider(_selectedRuleId));
       ref.read(queueFilterProvider.notifier).setStatus(QueueStatus.willPush);
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('已加入立即重推队列')));
+        Toast.show(context, '已加入立即重推队列');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('操作失败: $e')));
+        Toast.show(context, '操作失败: $e', isError: true);
       }
     }
   }
