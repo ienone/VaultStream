@@ -7,6 +7,7 @@ from sqlalchemy import select, func, desc, asc, cast, String, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.events import event_bus
 from app.core.dependencies import require_api_token
 from app.core.time_utils import utcnow
 from app.models import Content, DiscoverySource, DiscoveryState, DiscoverySourceKind
@@ -182,6 +183,12 @@ async def update_discovery_item(
 
     await db.commit()
     await db.refresh(item)
+    await event_bus.publish("content_updated", {
+        "id": item.id,
+        "title": item.title,
+        "platform": item.platform.value if item.platform else None,
+        "discovery_state": item.discovery_state.value if item.discovery_state else None,
+    })
     return DiscoveryItemResponse.model_validate(item)
 
 
@@ -211,6 +218,13 @@ async def bulk_action(
             item.discovery_state = DiscoveryState.IGNORED
 
     await db.commit()
+    for item in items:
+        await event_bus.publish("content_updated", {
+            "id": item.id,
+            "title": item.title,
+            "platform": item.platform.value if item.platform else None,
+            "discovery_state": item.discovery_state.value if item.discovery_state else None,
+        })
     return {"updated": len(items)}
 
 
