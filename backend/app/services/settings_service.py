@@ -116,6 +116,17 @@ async def delete_setting_value(key: str) -> bool:
             # Remove from cache
             if key in _SETTINGS_CACHE:
                 del _SETTINGS_CACHE[key]
+
+            # Sync back to global settings object
+            from app.core.config import settings
+            if hasattr(settings, key):
+                from pydantic import SecretStr
+                field_type = settings.__annotations__.get(key)
+                if field_type == SecretStr or "SecretStr" in str(field_type):
+                    setattr(settings, key, None)
+                else:
+                    setattr(settings, key, "")
+
             return True
             
         return False
