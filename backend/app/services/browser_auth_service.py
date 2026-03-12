@@ -537,5 +537,82 @@ class BrowserAuthService:
         except Exception:
             return False
 
+    async def refresh_zhihu_zse_cookie(self, target_url: str = "https://www.zhihu.com/people/liu-kan-shan-78") -> bool:
+        """
+        触发无头浏览器访问知乎具体页面，提取并更新 __zse_ck。
+        与原有的配置中的 zhihu_cookie 合并后保存。
+        """
+        cookie_str = await get_setting_value("zhihu_cookie")
+        if not cookie_str:
+            logger.warning("未配置 zhihu_cookie，无法刷新 __zse_ck")
+            return False
+
+        logger.info(f"正在后台启动 WebKit 更新知乎指纹，目标 URL: {target_url}")
+        
+        # 将原 cookie str 转为 playwright 兼容的列表
+        cookies_list = []
+        for item in cookie_str.split(";"):
+            item = item.strip()
+            if "=" in item:
+                k, v = item.split("=", 1)
+                cookies_list.append({"name": k.strip(), "value": v.strip(), "domain": ".zhihu.com", "path": "/"})
+
+        try:
+            browser = await browser_manager.get_browser()
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 720}
+            )
+            # 注入旧 Cookie 保持登录态
+            await context.add_cookies(cookies_list)
+            
+            page = await context.new_page()
+            await page.goto(target_url, wait_until="networkidle", timeout=30000)
+            await asyncio.sleep(5)  # 等待反爬引擎计算下发指纹
+
+            new_cookies = await context.cookies()
+            zse_ck = None
+            for c in new_cookies:
+                if c["name"] == "__zse_ck":
+                    zse_ck = c["value"]
+            
+            if not zse_ck:
+                logger.warning("未能提取到新的 __zse_ck")
+                return False
+                
+            logger.info(f"成功提取到新的 __zse_ck: {zse_ck[:30]}...")
+
+            # 合并 Cookie
+            cookie_dict = {}
+            for item in cookie_str.split(";"):
+                item = item.strip()
+                if "=" in item:
+                    k, v = item.split("=", 1)
+                    cookie_dict[k.strip()] = v.strip()
+            
+            cookie_dict["__zse_ck"] = zse_ck
+            
+            # 从 playwright 拿回的主域 cookie（可能顺带刷新了 d_c0 等）也可顺便更新
+            for c in new_cookies:
+                if c["name"] in ["__zse_ck", "d_c0", "_zap", "_xsrf", "z_c0"]:
+                    cookie_dict[c["name"]] = c["value"]
+
+            new_cookie_str = "; ".join(f"{k}={v}" for k, v in cookie_dict.items())
+            
+            await set_setting_value(
+                key="zhihu_cookie",
+                value=new_cookie_str,
+                category="platform"
+            )
+            logger.info("已成功合并并保存新的知乎 Cookie")
+            return True
+            
+        except Exception as e:
+            logger.error(f"提取知乎指纹失败: {e}")
+            return False
+        finally:
+            if 'context' in locals():
+                await context.close()
+
 
 browser_auth_service = BrowserAuthService()

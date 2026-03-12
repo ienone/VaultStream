@@ -708,9 +708,26 @@ class ZhihuAdapter(PlatformAdapter):
                 if response.status_code == 404:
                     raise NonRetryableAdapterError(f"内容不存在: {url}")
                 if response.status_code in (401, 403):
-                    if "安全验证" in response.text:
-                        raise RetryableAdapterError("触发知乎安全验证，请稍后重试或更新 Cookie")
-                    raise AuthRequiredAdapterError("访问知乎需要登录或权限不足")
+                    err_msg = "触发知乎安全验证" if "安全验证" in response.text else "访问知乎需要登录或权限不足"
+                    
+                    if getattr(self, "_refresh_zse_called", False):
+                        raise AuthRequiredAdapterError(f"{err_msg} (已尝试更新指纹)")
+                    
+                    logger.warning(f"[Zhihu] 碰到 403/401 拦截 ({err_msg})，尝试启动服务端自动更新指纹...")
+                    try:
+                        from app.services.browser_auth_service import browser_auth_service
+                        success = await browser_auth_service.refresh_zhihu_zse_cookie(clean_url)
+                        if success:
+                            self._refresh_zse_called = True
+                            raise RetryableAdapterError(f"{err_msg}，后台已成功提取新指纹，准备重试当前页面")
+                        else:
+                            logger.warning("[Zhihu] 自动更新指纹失败，可能登录状态已过期")
+                    except Exception as e:
+                        if isinstance(e, RetryableAdapterError):
+                            raise
+                        logger.error(f"[Zhihu] 调用指纹更新器异常: {e}")
+                    
+                    raise AuthRequiredAdapterError(err_msg)
                 if response.status_code != 200:
                     raise RetryableAdapterError(f"知乎请求失败: {response.status_code}")
                 

@@ -65,3 +65,14 @@ async def logout_platform(platform: str):
     """
     await browser_auth_service.logout_platform(platform)
     return {"status": "success", "message": f"Successfully logged out of {platform}"}
+
+@router.post("/zhihu/refresh-zse")
+async def refresh_zhihu_zse():
+    """
+    手动刷新知乎 __zse_ck 风控指纹
+    """
+    success = await browser_auth_service.refresh_zhihu_zse_cookie()
+    if success:
+        return {"status": "success", "message": "刷新成功"}
+    else:
+        raise HTTPException(status_code=500, detail="刷新失败，可能 Cookie 已过期或遇到了网络问题")

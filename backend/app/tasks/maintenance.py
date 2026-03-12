@@ -5,22 +5,22 @@ from app.services.browser_auth_service import browser_auth_service
 
 async def zhihu_keepalive_loop():
     """
-    知乎 Cookie 保活循环。
-    随机在 12 到 20 小时之间触发，以模拟真实用户打开网页防风控。
+    知乎 Cookie 保活与指纹刷新循环。
+    随机在 12 到 20 小时之间触发，直接使用无头浏览器提取最新指纹。
     """
-    logger.info("Started Zhihu keepalive worker loop.")
+    logger.info("Started Zhihu keepalive and refresh worker loop.")
     while True:
         # 随机睡眠 12 到 20 小时
         sleep_hours = random.uniform(12, 20)
-        logger.info(f"Next Zhihu keepalive in {sleep_hours:.2f} hours")
+        logger.info(f"Next Zhihu keepalive (zse refresh) in {sleep_hours:.2f} hours")
         await asyncio.sleep(sleep_hours * 3600)
         
-        logger.info("Running Zhihu keepalive check...")
-        is_valid = await browser_auth_service.check_platform_status("zhihu")
-        if not is_valid:
-            logger.warning("Zhihu keepalive check failed. The cookie might have expired or been blocked.")
+        logger.info("Running Zhihu zse cookie refresh...")
+        success = await browser_auth_service.refresh_zhihu_zse_cookie()
+        if not success:
+            logger.warning("Zhihu zse refresh failed. The primary cookie might be invalid.")
         else:
-            logger.info("Zhihu keepalive check succeeded.")
+            logger.info("Zhihu zse refresh succeeded in background.")
 
 async def weibo_keepalive_loop():
     """
