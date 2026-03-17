@@ -6,6 +6,7 @@ from app.services.distribution.decision import (
     DECISION_WILL_PUSH,
     check_match_conditions,
     evaluate_target_decision,
+    should_distribute,
 )
 from app.models import BotChat, Content, DistributionRule, Platform, ReviewStatus
 
@@ -96,3 +97,28 @@ async def test_approval_required_maps_to_pending_review():
 
     assert decision.bucket == DECISION_PENDING_REVIEW
     assert decision.reason_code == "approval_required"
+
+
+@pytest.mark.asyncio
+async def test_should_distribute_is_equivalent_to_legacy_evaluate():
+    content = Content(
+        platform=Platform.WEIBO,
+        tags=["test"],
+        is_nsfw=False,
+        review_status=ReviewStatus.APPROVED,
+    )
+    rule = DistributionRule(
+        name="legacy-equivalent",
+        match_conditions={"platform": "weibo"},
+        nsfw_policy="allow",
+        approval_required=False,
+        enabled=True,
+    )
+    chat = BotChat(chat_id="-10001", enabled=True)
+
+    legacy = evaluate_target_decision(content=content, rule=rule, bot_chat=chat)
+    unified = should_distribute(content=content, rule=rule, bot_chat=chat)
+
+    assert unified.bucket == legacy.bucket
+    assert unified.reason_code == legacy.reason_code
+    assert unified.target_id == legacy.target_id

@@ -85,6 +85,27 @@ def evaluate_target_decision(
     bot_chat: Optional[BotChat],
     require_approval: bool = True,
 ) -> DistributionDecision:
+    """Compatibility wrapper for legacy call sites."""
+    return should_distribute(
+        content=content,
+        rule=rule,
+        bot_chat=bot_chat,
+        require_approval=require_approval,
+    )
+
+
+def should_distribute(
+    *,
+    content: Content,
+    rule: DistributionRule,
+    bot_chat: Optional[BotChat],
+    require_approval: bool = True,
+) -> DistributionDecision:
+    """
+    Single decision entrypoint for rule-target distribution.
+
+    Same input -> same output. This function is intentionally deterministic.
+    """
     condition_decision = check_match_conditions(content, rule.match_conditions or {})
     if condition_decision.bucket == DECISION_FILTERED:
         return condition_decision

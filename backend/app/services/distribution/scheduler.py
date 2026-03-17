@@ -12,8 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import AsyncSessionLocal
 from app.core.logging import logger
 from app.core.time_utils import utcnow
-from app.services.distribution.engine import DistributionEngine
-from app.services.distribution.decision import evaluate_target_decision, DECISION_FILTERED, DECISION_PENDING_REVIEW
+from app.services.distribution.decision import (
+    evaluate_target_decision,
+    should_distribute,
+    DECISION_FILTERED,
+    DECISION_PENDING_REVIEW,
+)
 from app.core.events import event_bus
 from app.models import (
     Content,
@@ -159,16 +163,18 @@ async def _enqueue_content_impl(
 
     is_reviewed = content.review_status in (ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED)
 
-    # 3. 匹配规则
-    engine = DistributionEngine(session)
-    matched_rules = await engine.match_rules(content)
+    # 3. 加载启用规则（目标级统一判定）
+    rules_result = await session.execute(
+        select(DistributionRule).where(DistributionRule.enabled == True)
+    )
+    enabled_rules = rules_result.scalars().all()
 
-    if not matched_rules:
-        logger.info(f"No matching rules for content: content_id={content_id}")
+    if not enabled_rules:
+        logger.info(f"No enabled rules for content: content_id={content_id}")
         return 0
 
-    # 4. 批量查询所有匹配规则的目标（避免 N+1）
-    rule_ids = [r.id for r in matched_rules]
+    # 4. 批量查询所有启用规则的目标（避免 N+1）
+    rule_ids = [r.id for r in enabled_rules]
     targets_result = await session.execute(
         select(DistributionTarget, BotChat)
         .join(BotChat, DistributionTarget.bot_chat_id == BotChat.id)
@@ -198,7 +204,7 @@ async def _enqueue_content_impl(
     }
 
     # 6. 构建规则 ID -> 规则对象映射
-    rules_map = {r.id: r for r in matched_rules}
+    rules_map = {r.id: r for r in enabled_rules}
 
     # 7. 逐目标创建/更新队列项
     count = 0
@@ -213,11 +219,11 @@ async def _enqueue_content_impl(
             if not is_reviewed and not rule.approval_required:
                 continue
             
-            decision = evaluate_target_decision(
+            decision = should_distribute(
                 content=content,
                 rule=rule,
                 bot_chat=bot_chat,
-                require_approval=not is_reviewed
+                require_approval=not is_reviewed,
             )
             
             if decision.bucket == DECISION_FILTERED:
@@ -311,7 +317,7 @@ async def _enqueue_content_impl(
         })
         logger.info(
             f"Enqueued content: content_id={content_id}, "
-            f"rules_matched={len(matched_rules)}, items_created_or_updated={count}"
+            f"rules_scanned={len(enabled_rules)}, items_created_or_updated={count}"
         )
 
     return count
@@ -387,12 +393,10 @@ async def mark_historical_parse_success_as_pushed_for_rule(
     if not contents:
         return 0
 
-    engine = DistributionEngine(session)
     now = utcnow()
     rows = []
 
     for content in contents:
-        matched = await engine._check_match(content, rule)
         for _, bot_chat in target_pairs:
             key = (int(content.id), int(bot_chat.id))
             if key in existing_keys:
