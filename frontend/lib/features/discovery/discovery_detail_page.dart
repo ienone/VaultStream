@@ -12,7 +12,7 @@ import '../collection/models/header_line.dart';
 import '../collection/utils/content_parser.dart';
 import '../collection/widgets/detail/components/content_side_info_card.dart';
 import '../collection/widgets/detail/components/rich_content.dart';
-import '../collection/widgets/detail/gallery/full_screen_gallery.dart';
+import '../collection/widgets/detail/gallery/gallery_navigation.dart';
 import '../collection/widgets/detail/layout/gallery_landscape_layout.dart';
 import 'models/discovery_models.dart';
 import 'providers/discovery_items_provider.dart';
@@ -427,20 +427,13 @@ class _DesktopDetailBodyState extends ConsumerState<_DesktopDetailBody> {
     String? apiToken,
     int contentId,
   ) async {
-    await Navigator.of(context, rootNavigator: true).push(
-      PageRouteBuilder(
-        opaque: false,
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            FullScreenGallery(
-          images: images,
-          initialIndex: initialIndex,
-          apiBaseUrl: apiBaseUrl,
-          apiToken: apiToken,
-          contentId: contentId,
-        ),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-            FadeTransition(opacity: animation, child: child),
-      ),
+    await pushFullScreenGallery(
+      context: context,
+      images: images,
+      initialIndex: initialIndex,
+      apiBaseUrl: apiBaseUrl,
+      apiToken: apiToken,
+      contentId: contentId,
     );
   }
 }

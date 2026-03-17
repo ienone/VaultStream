@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'design_tokens.dart';
 
 /// AppTheme manages the application's visual identity using Material 3 Expressive principles.
 class AppTheme {
@@ -113,7 +114,7 @@ class AppTheme {
         elevation: 0,
         color: scheme.surfaceContainerLow,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(AppRadius.xxl),
           side: isDark
               ? BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.2))
               : BorderSide.none,
@@ -126,7 +127,7 @@ class AppTheme {
         foregroundColor: scheme.onPrimaryContainer,
         elevation: 2,
         hoverElevation: 6,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
       ),
 
       // Input Decoration (Textfields)
@@ -134,15 +135,15 @@ class AppTheme {
         filled: true,
         fillColor: scheme.surfaceContainerHighest,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           borderSide: BorderSide(color: scheme.primary, width: 2),
         ),
       ),
@@ -151,7 +152,7 @@ class AppTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: scheme.surfaceContainerHigh,
         elevation: 6,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xxxl)),
         titleTextStyle: textTheme.headlineSmall,
       ),
 
@@ -159,7 +160,7 @@ class AppTheme {
       menuTheme: MenuThemeData(
         style: MenuStyle(
           shape: WidgetStateProperty.all(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
           ),
           elevation: WidgetStateProperty.all(8),
           backgroundColor: WidgetStateProperty.all(
@@ -167,12 +168,12 @@ class AppTheme {
           ),
           surfaceTintColor: WidgetStateProperty.all(scheme.surfaceTint),
           padding: WidgetStateProperty.all(
-            const EdgeInsets.symmetric(vertical: 8),
+            const EdgeInsets.symmetric(vertical: AppSpacing.xs),
           ),
         ),
       ),
       popupMenuTheme: PopupMenuThemeData(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
         elevation: 8,
         surfaceTintColor: scheme.surfaceTint,
         color: scheme.surfaceContainerHighest,
@@ -183,7 +184,7 @@ class AppTheme {
         textStyle: textTheme.bodyLarge,
         menuStyle: MenuStyle(
           shape: WidgetStateProperty.all(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
           ),
           elevation: WidgetStateProperty.all(8),
         ),
@@ -191,10 +192,10 @@ class AppTheme {
           filled: true,
           fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.3),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.md),
             borderSide: BorderSide.none,
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+          contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
         ),
       ),
 
@@ -204,7 +205,7 @@ class AppTheme {
         backgroundColor: WidgetStateProperty.all(scheme.surfaceContainerHigh),
         shape: WidgetStateProperty.all(const StadiumBorder()),
         padding: WidgetStateProperty.all(
-          const EdgeInsets.symmetric(horizontal: 16),
+          const EdgeInsets.symmetric(horizontal: AppSpacing.md),
         ),
         textStyle: WidgetStateProperty.all(textTheme.bodyLarge),
         hintStyle: WidgetStateProperty.all(
@@ -225,21 +226,21 @@ class AppTheme {
           selectedBackgroundColor: scheme.primary,
           selectedForegroundColor: scheme.onPrimary,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.md),
           ),
         ),
       ),
 
       // Expressive Chips
       chipTheme: ChipThemeData(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
         side: BorderSide.none,
         backgroundColor: scheme.surfaceContainerLow,
         selectedColor: scheme.primaryContainer,
         labelStyle: textTheme.labelMedium?.copyWith(
           fontWeight: FontWeight.bold,
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
       ),
 
       // Transitions - Using built-in physics

@@ -14,6 +14,7 @@ import '../features/auth/presentation/onboarding_page.dart';
 import '../layout/app_shell.dart';
 import '../core/providers/local_settings_provider.dart';
 import '../core/providers/system_status_provider.dart';
+import '../theme/design_tokens.dart';
 
 part 'app_router.g.dart';
 
@@ -119,15 +120,23 @@ GoRouter goRouter(Ref ref) {
                           contentId: id,
                           initialColor: color,
                         ),
-                        transitionDuration: const Duration(milliseconds: 400),
-                        reverseTransitionDuration: const Duration(
-                          milliseconds: 400,
-                        ),
+                        transitionDuration: AppMotion.routeTransition,
+                        reverseTransitionDuration: AppMotion.routeTransition,
                         transitionsBuilder:
                             (context, animation, secondaryAnimation, child) {
-                              return FadeTransition(
-                                opacity: animation,
-                                child: child,
+                              final curved = CurvedAnimation(
+                                parent: animation,
+                                curve: AppMotion.standardCurve,
+                              );
+                              return SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(0, 0.02),
+                                  end: Offset.zero,
+                                ).animate(curved),
+                                child: FadeTransition(
+                                  opacity: curved,
+                                  child: child,
+                                ),
                               );
                             },
                       );

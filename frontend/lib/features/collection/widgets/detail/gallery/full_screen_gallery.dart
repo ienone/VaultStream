@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:extended_image/extended_image.dart';
 import '../../../../../core/network/image_headers.dart';
 import '../../../../../core/utils/toast.dart';
+import '../../../../../theme/design_tokens.dart';
 
 class FullScreenGallery extends StatefulWidget {
   final List<String> images;
@@ -233,19 +234,19 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
             right: 0,
             child: Center(
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(AppRadius.lg),
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
+                      horizontal: AppSpacing.sm,
+                      vertical: AppSpacing.xs,
                     ),
                     decoration: BoxDecoration(
                       color: colorScheme.primaryContainer.withValues(
                         alpha: 0.35,
                       ),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
                       border: Border.all(
                         color: colorScheme.onPrimaryContainer.withValues(
                           alpha: 0.15,
@@ -265,7 +266,7 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                             letterSpacing: 0.5,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: AppSpacing.xs),
                         Container(
                           width: 1,
                           height: 14,
@@ -317,7 +318,7 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                 bottom: 0,
                 child: Center(
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(AppRadius.xl),
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                       child: Container(
@@ -325,7 +326,7 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                           color: colorScheme.primaryContainer.withValues(
                             alpha: 0.35,
                           ),
-                          borderRadius: BorderRadius.circular(24),
+                          borderRadius: BorderRadius.circular(AppRadius.xl),
                           border: Border.all(
                             color: colorScheme.onPrimaryContainer.withValues(
                               alpha: 0.15,
@@ -340,8 +341,8 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                           ),
                           onPressed: () {
                             _controller.previousPage(
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeInOut,
+                              duration: AppMotion.standard,
+                              curve: AppMotion.emphasizedCurve,
                             );
                           },
                         ),
@@ -357,7 +358,7 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                 bottom: 0,
                 child: Center(
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(AppRadius.xl),
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                       child: Container(
@@ -365,7 +366,7 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                           color: colorScheme.primaryContainer.withValues(
                             alpha: 0.35,
                           ),
-                          borderRadius: BorderRadius.circular(24),
+                          borderRadius: BorderRadius.circular(AppRadius.xl),
                           border: Border.all(
                             color: colorScheme.onPrimaryContainer.withValues(
                               alpha: 0.15,
@@ -380,8 +381,8 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                           ),
                           onPressed: () {
                             _controller.nextPage(
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeInOut,
+                              duration: AppMotion.standard,
+                              curve: AppMotion.emphasizedCurve,
                             );
                           },
                         ),

@@ -4,14 +4,12 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/constants/platform_constants.dart';
 import '../../core/network/sse_service.dart';
 import '../../core/utils/toast.dart';
 import 'models/content.dart';
 import 'providers/collection_provider.dart';
 import 'utils/content_parser.dart';
-import 'widgets/detail/gallery/full_screen_gallery.dart';
 import 'widgets/detail/layout/article_landscape_layout.dart';
 import 'widgets/detail/layout/gallery_landscape_layout.dart';
 import 'widgets/detail/layout/portrait_layout.dart';
@@ -19,8 +17,10 @@ import 'widgets/detail/layout/video_landscape_layout.dart';
 import 'widgets/detail/layout/user_profile_layout.dart';
 import 'widgets/dialogs/edit_content_dialog.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/design_tokens.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/dynamic_color_helper.dart';
+import 'widgets/detail/gallery/gallery_navigation.dart';
 
 class ContentDetailPage extends ConsumerStatefulWidget {
   final int contentId;
@@ -213,7 +213,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               ),
             ],
           ),
-        ).animate().fadeIn(duration: 300.ms);
+        );
       },
       loading: () => _buildLoadingState(theme),
       error: (err, stack) => _buildErrorState(err),
@@ -474,33 +474,25 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       _imagePageController.jumpToPage(initialIndex);
     }
 
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        opaque: false,
-        barrierColor: Colors.transparent,
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            FullScreenGallery(
-              images: images,
-              initialIndex: initialIndex,
-              apiBaseUrl: apiBaseUrl,
-              apiToken: apiToken,
-              contentId: contentId,
-              contentColor: _contentColor,
-              onPageChanged: (index) {
-                if (!mounted) return;
-                setState(() => _currentImageIndex = index);
-                if (_imagePageController.hasClients) {
-                  _imagePageController.animateToPage(
-                    index,
-                    duration: const Duration(milliseconds: 100),
-                    curve: Curves.easeInOut,
-                  );
-                }
-              },
-            ),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-            FadeTransition(opacity: animation, child: child),
-      ),
+    pushFullScreenGallery(
+      context: context,
+      images: images,
+      initialIndex: initialIndex,
+      apiBaseUrl: apiBaseUrl,
+      apiToken: apiToken,
+      contentId: contentId,
+      contentColor: _contentColor,
+      onPageChanged: (index) {
+        if (!mounted) return;
+        setState(() => _currentImageIndex = index);
+        if (_imagePageController.hasClients) {
+          _imagePageController.animateToPage(
+            index,
+            duration: AppMotion.gallerySync,
+            curve: AppMotion.emphasizedCurve,
+          );
+        }
+      },
     );
   }
 

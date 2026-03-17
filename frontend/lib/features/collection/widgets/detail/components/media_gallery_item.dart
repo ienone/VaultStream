@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:extended_image/extended_image.dart';
 import '../../../../../core/network/image_headers.dart';
 import '../../common/video_player_widget.dart';
-import '../gallery/full_screen_gallery.dart';
+import '../../../../../theme/design_tokens.dart';
+import '../gallery/gallery_navigation.dart';
 import '../../../../../core/utils/media_utils.dart';
 
 class MediaGalleryItem extends StatelessWidget {
@@ -42,7 +43,8 @@ class MediaGalleryItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final effectiveBorderRadius = borderRadius ?? BorderRadius.circular(28);
+    final effectiveBorderRadius =
+        borderRadius ?? BorderRadius.circular(AppRadius.xxl);
 
     if (isVideoItem || isVideo(url)) {
       return ClipRRect(
@@ -118,25 +120,16 @@ class MediaGalleryItem extends StatelessWidget {
   }
 
   void _showFullScreenImage(BuildContext context) {
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        opaque: false,
-        barrierColor: Colors.transparent,
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            FullScreenGallery(
-              images: images,
-              initialIndex: index,
-              apiBaseUrl: apiBaseUrl,
-              apiToken: apiToken,
-              contentId: contentId,
-              contentColor: contentColor,
-              customHeroTag: heroTag,
-              onPageChanged: onPageChanged,
-            ),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(opacity: animation, child: child);
-        },
-      ),
+    pushFullScreenGallery(
+      context: context,
+      images: images,
+      initialIndex: index,
+      apiBaseUrl: apiBaseUrl,
+      apiToken: apiToken,
+      contentId: contentId,
+      contentColor: contentColor,
+      customHeroTag: heroTag,
+      onPageChanged: onPageChanged,
     );
   }
 }
