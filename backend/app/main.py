@@ -223,16 +223,6 @@ app.include_router(distribution_queue.router, prefix="/api/v1", tags=["distribut
 app.include_router(browser_auth.router, prefix="/api/v1/browser-auth", tags=["browser-auth"])
 
 
-@app.get("/api/v1/init-status", tags=["System"])
-async def init_status(request: Request):
-    """
-    检查系统初始化状态，主要用于前端判断是否跳转引导页或展示主界面
-    """
-    
-    # 实际初始化状态逻辑的占位符
-    pass
-
-
 @app.get("/api")
 async def api_root():
     """API根路径"""

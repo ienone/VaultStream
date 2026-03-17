@@ -40,7 +40,6 @@ backend/logs/
 backend/exports/
 backend/.venv/
 backend/venv/
-backend/migrations/
 backend/tests/outputs/
 
 # data safety
@@ -58,11 +57,7 @@ frontend/.flutter-plugins-dependencies
 frontend/.metadata
 frontend/.packages
 
-# local-only scripts & debug tools
-scripts/
-tests/
-backend/scripts/
-frontend/scripts/
+# local-only tools / vendor snapshots
 tools/
 backend/tools/
 backend/demo/
