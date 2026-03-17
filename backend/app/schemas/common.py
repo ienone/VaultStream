@@ -68,6 +68,12 @@ class SystemSettingResponse(SystemSettingBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class FavoritesSyncTriggerRequest(BaseModel):
+    """Manual favorites sync trigger payload."""
+
+    platform: Optional[str] = None
+
+
 class StorageStatsResponse(BaseModel):
     """存储统计响应"""
     total_bytes: int

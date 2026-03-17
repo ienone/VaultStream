@@ -113,15 +113,19 @@ async def lifespan(app: FastAPI):
     logger.info("Cookie 保活任务队列已启动")
     
     # 启动发现流同步和清理任务
-    from app.tasks import DiscoverySyncTask, DiscoveryCleanupTask
+    from app.tasks import DiscoverySyncTask, DiscoveryCleanupTask, FavoritesSyncTask
     discovery_sync_task = DiscoverySyncTask()
     discovery_sync_task.start()
     discovery_cleanup_task = DiscoveryCleanupTask()
     discovery_cleanup_task.start()
     logger.info("发现流同步和清理任务已启动")
+    favorites_sync_task = FavoritesSyncTask()
+    favorites_sync_task.start()
+    logger.info("收藏同步任务已启动")
 
     # 将 task 实例挂载到 app.state，供路由层访问
     app.state.discovery_sync_task = discovery_sync_task
+    app.state.favorites_sync_task = favorites_sync_task
     
     yield
     
@@ -132,6 +136,8 @@ async def lifespan(app: FastAPI):
     await discovery_sync_task.stop()
     await discovery_cleanup_task.stop()
     logger.info("发现流同步和清理任务已停止")
+    await favorites_sync_task.stop()
+    logger.info("收藏同步任务已停止")
 
     # 停止 Cookie 保活任务
     await maintenance_worker.stop()

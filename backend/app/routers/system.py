@@ -3,11 +3,12 @@
 包含：系统设置、仪表盘统计、健康检查
 调用方式：需要 API Token (Health Check 除外)
 """
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
+import asyncio
 import os
 import time
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Body
 from sqlalchemy import select, and_, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +16,8 @@ from app.core.database import get_db, db_ping
 from app.models import SystemSetting, Content, DiscoveryState
 from app.schemas import (
     SystemSettingResponse, SystemSettingUpdate, DashboardStats, 
-    QueueStats, TagStats, QueueOverviewStats, DistributionStatusStats
+    QueueStats, TagStats, QueueOverviewStats, DistributionStatusStats,
+    FavoritesSyncTriggerRequest,
 )
 from app.core.logging import logger
 from app.core.dependencies import require_api_token
@@ -237,3 +239,99 @@ async def delete_setting(
         raise HTTPException(status_code=404, detail="Setting not found")
     
     return {"status": "deleted", "key": key}
+
+
+@router.get("/favorites-sync/status")
+async def get_favorites_sync_status(
+    request: Request,
+    _: None = Depends(require_api_token),
+):
+    """Get favorites sync runtime/settings status for frontend panel."""
+    from app.services.settings_service import get_setting_value
+    from app.tasks.favorites_sync import FavoritesSyncTask
+
+    sync_task = getattr(request.app.state, "favorites_sync_task", None)
+    if sync_task is None:
+        sync_task = FavoritesSyncTask()
+
+    interval = int(
+        await get_setting_value(
+            "favorites_sync_interval_minutes",
+            FavoritesSyncTask._DEFAULT_INTERVAL_MINUTES,
+        )
+    )
+    max_items = int(
+        await get_setting_value(
+            "favorites_sync_max_items",
+            FavoritesSyncTask._DEFAULT_MAX_ITEMS,
+        )
+    )
+    enabled_platforms = await sync_task.load_enabled_platforms()
+    last_sync_at = await get_setting_value("favorites_sync_last_sync_at")
+
+    platforms: list[dict[str, Any]] = []
+    for platform in sync_task.get_supported_platforms():
+        fetcher_cls = sync_task.get_fetcher_cls(platform)
+        if fetcher_cls is None:
+            continue
+
+        authenticated = False
+        available = True
+        error: Optional[str] = None
+        try:
+            authenticated = await fetcher_cls().check_auth()
+        except Exception as e:
+            available = False
+            error = str(e)
+            logger.warning("[favorites status] check_auth failed for {}: {}", platform, e)
+
+        rate = float(
+            await get_setting_value(
+                f"favorites_sync_rate_{platform}",
+                sync_task.default_rate_for(platform),
+            )
+        )
+        last_result = await get_setting_value(f"favorites_sync_last_result_{platform}")
+
+        platforms.append(
+            {
+                "platform": platform,
+                "enabled": platform in enabled_platforms,
+                "available": available,
+                "authenticated": authenticated,
+                "rate_per_minute": rate,
+                "last_result": last_result,
+                "error": error,
+            }
+        )
+
+    return {
+        "running": sync_task.is_running(),
+        "interval_minutes": interval,
+        "max_items": max_items,
+        "enabled_platforms": enabled_platforms,
+        "last_sync_at": last_sync_at,
+        "platforms": platforms,
+    }
+
+
+@router.post("/favorites-sync/sync", status_code=202)
+async def trigger_favorites_sync(
+    request: Request,
+    body: FavoritesSyncTriggerRequest | None = Body(default=None),
+    _: None = Depends(require_api_token),
+):
+    """Trigger one round of favorites sync (all platforms or single platform)."""
+    sync_task = getattr(request.app.state, "favorites_sync_task", None)
+    if sync_task is None:
+        raise HTTPException(status_code=503, detail="Favorites sync task is not running")
+
+    platform = ((body.platform if body else "") or "").strip().lower()
+    if platform:
+        if platform not in sync_task.get_supported_platforms():
+            raise HTTPException(status_code=400, detail=f"Unknown platform: {platform}")
+        asyncio.create_task(sync_task.sync_platform_by_name(platform))
+        return {"status": "accepted", "platform": platform}
+
+    asyncio.create_task(sync_task.sync_all_platforms_once())
+    return {"status": "accepted", "platform": "all"}

@@ -4,6 +4,7 @@ from .maintenance import CookieKeepAliveTask
 from .runner import TaskWorker
 from .discovery_sync import DiscoverySyncTask
 from .discovery_cleanup import DiscoveryCleanupTask
+from .favorites_sync import FavoritesSyncTask
 
 # 全局单例
 worker = TaskWorker()
@@ -16,4 +17,5 @@ __all__ = [
     "TaskWorker",
     "DiscoverySyncTask",
     "DiscoveryCleanupTask",
+    "FavoritesSyncTask",
 ]
