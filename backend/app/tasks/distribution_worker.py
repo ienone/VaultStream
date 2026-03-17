@@ -26,6 +26,7 @@ from app.models import (
 from app.push.factory import get_push_service
 from app.tasks.distributor import ContentDistributor
 from app.core.events import event_bus
+from app.services.distribution.scheduler import compute_auto_scheduled_at
 
 # ── 常量 ──────────────────────────────────────────────
 POLL_INTERVAL = 5        # 轮询间隔（秒）
@@ -183,19 +184,51 @@ class DistributionQueueWorker:
         if not items:
             return []
 
+        rule_ids = sorted({item.rule_id for item in items})
+        rules_result = await session.execute(
+            select(DistributionRule).where(DistributionRule.id.in_(rule_ids))
+        )
+        rules_map = {rule.id: rule for rule in rules_result.scalars().all()}
+
+        deferred = 0
+        claimable: List[ContentQueueItem] = []
         for item in items:
+            rule = rules_map.get(item.rule_id)
+            if (
+                rule is not None
+                and rule.rate_limit
+                and rule.time_window
+                and int(rule.rate_limit) > 0
+                and int(rule.time_window) > 0
+            ):
+                next_allowed = await compute_auto_scheduled_at(
+                    session=session,
+                    rule=rule,
+                    bot_chat_id=item.bot_chat_id,
+                    target_id=item.target_id,
+                )
+                if next_allowed > now:
+                    item.scheduled_at = next_allowed
+                    deferred += 1
+                    continue
+
             item.status = QueueItemStatus.PROCESSING
             item.locked_at = now
             item.locked_by = worker_name
             if item.started_at is None:
                 item.started_at = now
+            claimable.append(item)
 
         await session.commit()
 
+        if deferred:
+            logger.debug(
+                f"Worker {worker_name} deferred {deferred} item(s) by rate-limit"
+            )
         logger.debug(
-            f"Worker {worker_name} 领取 {len(items)} 项 ids={[i.id for i in items]}"
+            f"Worker {worker_name} 领取 {len(claimable)} 项 ids={[i.id for i in claimable]}"
         )
-        return items
+        return claimable
 
     # ── 处理单个队列项 ────────────────────────────────
 
