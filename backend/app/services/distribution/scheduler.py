@@ -15,6 +15,7 @@ from app.core.time_utils import utcnow
 from app.services.distribution.decision import (
     evaluate_target_decision,
     should_distribute,
+    check_match_conditions,
     DECISION_FILTERED,
     DECISION_PENDING_REVIEW,
 )
@@ -173,8 +174,18 @@ async def _enqueue_content_impl(
         logger.info(f"No enabled rules for content: content_id={content_id}")
         return 0
 
-    # 4. 批量查询所有启用规则的目标（避免 N+1）
-    rule_ids = [r.id for r in enabled_rules]
+    # 4. 先按内容条件筛选命中规则，避免扫描全部目标
+    matched_rules = [
+        rule
+        for rule in enabled_rules
+        if check_match_conditions(content, rule.match_conditions or {}).bucket != DECISION_FILTERED
+    ]
+    if not matched_rules:
+        logger.info(f"No matched rules for content: content_id={content_id}")
+        return 0
+
+    # 5. 批量查询命中规则的目标（避免 N+1）
+    rule_ids = [r.id for r in matched_rules]
     targets_result = await session.execute(
         select(DistributionTarget, BotChat)
         .join(BotChat, DistributionTarget.bot_chat_id == BotChat.id)
@@ -189,7 +200,7 @@ async def _enqueue_content_impl(
     for target, bot_chat in targets_result.all():
         rule_targets.setdefault(target.rule_id, []).append((target, bot_chat))
 
-    # 5. 批量查询已有的队列项（避免逐条查询）
+    # 6. 批量查询已有的队列项（避免逐条查询）
     existing_result = await session.execute(
         select(ContentQueueItem).where(
             and_(
@@ -203,10 +214,10 @@ async def _enqueue_content_impl(
         for item in existing_result.scalars().all()
     }
 
-    # 6. 构建规则 ID -> 规则对象映射
-    rules_map = {r.id: r for r in enabled_rules}
+    # 7. 构建规则 ID -> 规则对象映射
+    rules_map = {r.id: r for r in matched_rules}
 
-    # 7. 逐目标创建/更新队列项
+    # 8. 逐目标创建/更新队列项
     count = 0
 
     for rule_id, pairs in rule_targets.items():
@@ -317,7 +328,8 @@ async def _enqueue_content_impl(
         })
         logger.info(
             f"Enqueued content: content_id={content_id}, "
-            f"rules_scanned={len(enabled_rules)}, items_created_or_updated={count}"
+            f"rules_scanned={len(enabled_rules)}, rules_matched={len(matched_rules)}, "
+            f"items_created_or_updated={count}"
         )
 
     return count
