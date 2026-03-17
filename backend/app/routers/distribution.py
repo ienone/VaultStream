@@ -206,7 +206,8 @@ async def create_rule_target(
     
     logger.info(
         f"Created distribution target: rule_id={rule_id}, chat={target.bot_chat_id}, "
-        f"enabled={db_target.enabled}, backfilled_success={inserted}"
+        f"enabled={db_target.enabled}, watermark={db_target.backfill_watermark}, "
+        f"backfilled_success={inserted}"
     )
 
     return DistributionTargetResponse.model_validate(db_target)

@@ -26,7 +26,6 @@ from app.services.distribution.decision import (
     evaluate_target_decision,
 )
 from app.media.extractor import pick_preview_thumbnail
-from app.services.distribution.scheduler import mark_historical_parse_success_as_pushed_for_rule
 from fastapi import HTTPException
 from app.repositories import DistributionRepository, BotRepository, ContentRepository
 
@@ -101,11 +100,9 @@ class DistributionRuleService:
             **target_in.model_dump()
         )
 
-        inserted_records = await mark_historical_parse_success_as_pushed_for_rule(
-            session=self.db,
-            rule_id=rule_id,
-            bot_chat_id=target_in.bot_chat_id,
-        )
+        # ROADMAP V2: historical content is skipped by backfill_watermark,
+        # no longer writing synthetic SUCCESS/SKIPPED queue rows.
+        inserted_records = 0
 
         await self.db.commit()
         await self.db.refresh(db_target)

@@ -13,7 +13,6 @@ from app.core.dependencies import require_api_token
 from app.core.logging import logger
 from app.core.config import settings
 from app.core.time_utils import utcnow
-from app.services.distribution.scheduler import mark_historical_parse_success_as_pushed_for_rule
 from app.models import (
     BotChat,
     BotChatType,
@@ -202,13 +201,6 @@ async def assign_bot_chat_rules(
                 use_author_name=True,
             ))
             added_rule_ids.append(rule_id)
-
-    for rule_id in added_rule_ids:
-        await mark_historical_parse_success_as_pushed_for_rule(
-            session=db,
-            rule_id=rule_id,
-            bot_chat_id=chat.id,
-        )
 
     await db.commit()
 

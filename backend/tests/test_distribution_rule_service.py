@@ -27,12 +27,7 @@ def mock_event_bus():
 
 @pytest.fixture(autouse=True)
 def mock_backfill():
-    with patch(
-        "app.services.distribution_rule_service.mark_historical_parse_success_as_pushed_for_rule",
-        new_callable=AsyncMock,
-        return_value=0,
-    ) as mock:
-        yield mock
+    yield None
 
 
 @pytest.fixture(autouse=True)
@@ -177,7 +172,6 @@ async def test_create_rule_target(db_session, mock_backfill):
     assert target.id is not None
     assert target.rule_id == rule.id
     assert inserted == 0
-    mock_backfill.assert_called_once()
 
 
 @pytest.mark.asyncio
