@@ -226,6 +226,13 @@ async def _enqueue_content_impl(
             continue
 
         for target, bot_chat in pairs:
+            if (
+                target.backfill_watermark is not None
+                and content.created_at is not None
+                and content.created_at < target.backfill_watermark
+            ):
+                continue
+
             # 未审批内容只允许进入需要审批的规则队列
             if not is_reviewed and not rule.approval_required:
                 continue

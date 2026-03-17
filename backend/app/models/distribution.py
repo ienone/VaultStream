@@ -49,6 +49,13 @@ class DistributionTarget(Base):
     bot_chat_id: Mapped[int] = mapped_column(Integer, ForeignKey("bot_chats.id", ondelete="CASCADE"), index=True)
     
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+    # 绑定时刻水位线：早于该时间的内容视为历史内容，不触发新目标入队
+    backfill_watermark: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        default=utcnow,
+        index=True,
+    )
     
     merge_forward: Mapped[bool] = mapped_column(Boolean, default=False)
     use_author_name: Mapped[bool] = mapped_column(Boolean, default=True)

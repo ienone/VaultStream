@@ -31,6 +31,7 @@ class DistributionTargetResponse(BaseModel):
     rule_id: int
     bot_chat_id: int
     enabled: bool
+    backfill_watermark: UtcDatetime
     merge_forward: bool
     use_author_name: bool
     summary: Optional[str]

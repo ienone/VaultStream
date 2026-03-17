@@ -13,6 +13,7 @@ async def init_db():
 
     # 一次性数据更新：ReviewStatus 大写 → 小写
     await _migrate_review_status_lowercase()
+    await _migrate_distribution_target_backfill_watermark()
 
 
 async def _migrate_review_status_lowercase():
@@ -29,6 +30,37 @@ async def _migrate_review_status_lowercase():
                 text("UPDATE contents SET review_status = :new WHERE review_status = :old"),
                 {"old": old_val, "new": new_val},
             )
+
+
+async def _migrate_distribution_target_backfill_watermark():
+    """为旧库补齐 distribution_targets.backfill_watermark 字段（幂等）"""
+    async with engine.begin() as conn:
+        table_exists = await conn.execute(
+            text(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='table' AND name='distribution_targets'"
+            )
+        )
+        if table_exists.scalar_one_or_none() is None:
+            return
+
+        columns = await conn.execute(text("PRAGMA table_info(distribution_targets)"))
+        has_watermark = any(row[1] == "backfill_watermark" for row in columns.fetchall())
+
+        if not has_watermark:
+            await conn.execute(
+                text(
+                    "ALTER TABLE distribution_targets "
+                    "ADD COLUMN backfill_watermark DATETIME"
+                )
+            )
+
+        await conn.execute(
+            text(
+                "UPDATE distribution_targets "
+                "SET backfill_watermark = COALESCE(backfill_watermark, created_at, CURRENT_TIMESTAMP)"
+            )
+        )
 
 
 async def db_ping() -> bool:
