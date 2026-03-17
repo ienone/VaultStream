@@ -35,6 +35,8 @@
 
 flutter+fastapi+sqlite
 
+文档索引：[docs/README.md](./docs/README.md)
+
 ---
 
 ## 部署

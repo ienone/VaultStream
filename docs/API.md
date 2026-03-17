@@ -1,7 +1,7 @@
 # VaultStream API 文档
 
-> 版本: v0.3.1  
-> 更新: 2026-02-13  
+> 版本: v0.1.0  
+> 更新: 2026-03-17  
 > 本文档按当前代码实现更新（SSE + ContentQueueItem + /distribution-queue/*）
 
 ---
