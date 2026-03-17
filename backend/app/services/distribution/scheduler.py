@@ -275,16 +275,7 @@ async def _enqueue_content_impl(
                     existing.next_attempt_at = None
                     existing.target_id = target_id
                     existing.nsfw_routing_result = decision.nsfw_routing_result
-                    
-                    if existing.status == QueueItemStatus.SCHEDULED:
-                        existing.scheduled_at = await compute_auto_scheduled_at(
-                            session=session,
-                            rule=rule,
-                            bot_chat_id=bot_chat.id,
-                            target_id=existing.target_id,
-                        )
-                    else:
-                        existing.scheduled_at = utcnow()
+                    existing.scheduled_at = utcnow()
                         
                     existing.updated_at = utcnow()
                     count += 1
@@ -300,15 +291,7 @@ async def _enqueue_content_impl(
             # 新建队列项
             needs_approval = decision.bucket == DECISION_PENDING_REVIEW
             status = QueueItemStatus.PENDING if needs_approval else QueueItemStatus.SCHEDULED
-            if status == QueueItemStatus.SCHEDULED:
-                scheduled_time = await compute_auto_scheduled_at(
-                    session=session,
-                    rule=rule,
-                    bot_chat_id=bot_chat.id,
-                    target_id=target_id,
-                )
-            else:
-                scheduled_time = utcnow()
+            scheduled_time = utcnow()
 
             item = ContentQueueItem(
                 content_id=content_id,
