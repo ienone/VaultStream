@@ -185,7 +185,6 @@ async def assign_bot_chat_rules(
     existing_ids = {t.rule_id for t in existing_targets}
 
     # 删除不需要的绑定
-    added_rule_ids: list[int] = []
     for target in existing_targets:
         if target.rule_id not in desired_ids:
             await db.delete(target)
@@ -200,7 +199,6 @@ async def assign_bot_chat_rules(
                 merge_forward=False,
                 use_author_name=True,
             ))
-            added_rule_ids.append(rule_id)
 
     await db.commit()
 
