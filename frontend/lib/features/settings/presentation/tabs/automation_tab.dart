@@ -7,6 +7,7 @@ import '../widgets/setting_components.dart';
 import '../../../discovery/providers/discovery_settings_provider.dart';
 import '../../../discovery/providers/discovery_sources_provider.dart';
 import '../../../discovery/models/discovery_models.dart';
+import '../../providers/favorites_sync_provider.dart';
 
 class AutomationTab extends ConsumerWidget {
   const AutomationTab({super.key});
@@ -16,6 +17,7 @@ class AutomationTab extends ConsumerWidget {
     final settingsAsync = ref.watch(systemSettingsProvider);
     final discoverySettingsAsync = ref.watch(discoverySettingsStateProvider);
     final discoverySourcesAsync = ref.watch(discoverySourcesProvider);
+    final favoritesSyncAsync = ref.watch(favoritesSyncStatusProvider);
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -25,6 +27,9 @@ class AutomationTab extends ConsumerWidget {
         const SizedBox(height: 32),
         const SectionHeader(title: '发现来源 (Sources)', icon: Icons.sensors_rounded),
         _buildDiscoverySources(context, ref, discoverySourcesAsync),
+        const SizedBox(height: 32),
+        const SectionHeader(title: '收藏自动同步', icon: Icons.bookmark_added_rounded),
+        _buildFavoritesSyncSettings(context, ref, settingsAsync, favoritesSyncAsync),
         const SizedBox(height: 32),
         const SectionHeader(title: '内容生成', icon: Icons.summarize_rounded),
         _buildContentGenSettings(context, ref, settingsAsync),
@@ -191,6 +196,289 @@ class AutomationTab extends ConsumerWidget {
       case 'telegram_channel': return Icons.telegram_rounded;
       default: return Icons.sensors_rounded;
     }
+  }
+
+  Widget _buildFavoritesSyncSettings(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<List<SystemSetting>> settingsAsync,
+    AsyncValue<FavoritesSyncStatus> statusAsync,
+  ) {
+    return settingsAsync.when(
+      data: (settings) {
+        final currentEnabled = _parsePlatformsSetting(
+          _getSettingValue(settings, 'favorites_sync_platforms', const <String>[]),
+        );
+        const intervalOptions = <int>[60, 180, 360, 720, 1440];
+        const maxItemOptions = <int>[20, 50, 100, 200];
+        const rateOptions = <int>[1, 3, 5, 10, 20];
+        final interval = _parseInt(
+          _getSettingValue(settings, 'favorites_sync_interval_minutes', 360),
+          360,
+        );
+        final maxItems = _parseInt(
+          _getSettingValue(settings, 'favorites_sync_max_items', 50),
+          50,
+        );
+
+        return statusAsync.when(
+          data: (status) {
+            final statusMap = <String, FavoritesPlatformStatus>{
+              for (final item in status.platforms) item.platform: item,
+            };
+            final platforms = <String>['zhihu', 'xiaohongshu', 'twitter'];
+
+            return SettingGroup(
+              children: [
+                for (final platform in platforms)
+                  SettingTile(
+                    title: _platformLabel(platform),
+                    subtitle: _platformSubtitle(
+                      platform: platform,
+                      configuredRate: _parseDouble(
+                        _getSettingValue(
+                          settings,
+                          'favorites_sync_rate_$platform',
+                          5,
+                        ),
+                        statusMap[platform]?.ratePerMinute ?? 5,
+                      ),
+                      status: statusMap[platform],
+                    ),
+                    icon: _platformIcon(platform),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        DropdownButton<int>(
+                          value: (() {
+                            final configuredRate = _parseDouble(
+                              _getSettingValue(
+                                settings,
+                                'favorites_sync_rate_$platform',
+                                5,
+                              ),
+                              statusMap[platform]?.ratePerMinute ?? 5,
+                            ).round();
+                            return rateOptions.contains(configuredRate) ? configuredRate : 5;
+                          })(),
+                          underline: const SizedBox.shrink(),
+                          items: rateOptions
+                              .map(
+                                (rate) => DropdownMenuItem<int>(
+                                  value: rate,
+                                  child: Text('$rate/min'),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) async {
+                            if (value == null) return;
+                            await ref.read(systemSettingsProvider.notifier).updateSetting(
+                              'favorites_sync_rate_$platform',
+                              value,
+                              category: 'favorites_sync',
+                            );
+                            ref.invalidate(favoritesSyncStatusProvider);
+                            if (context.mounted) {
+                              showToast(context, '${_platformLabel(platform)} 速率已更新');
+                            }
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        Switch(
+                          value: currentEnabled.contains(platform),
+                          onChanged: (enabled) async {
+                            final updated = [...currentEnabled];
+                            if (enabled) {
+                              if (!updated.contains(platform)) updated.add(platform);
+                            } else {
+                              updated.remove(platform);
+                            }
+                            await ref.read(systemSettingsProvider.notifier).updateSetting(
+                              'favorites_sync_platforms',
+                              updated,
+                              category: 'favorites_sync',
+                            );
+                            ref.invalidate(favoritesSyncStatusProvider);
+                            if (context.mounted) {
+                              showToast(context, '${_platformLabel(platform)} 已${enabled ? '启用' : '禁用'}同步');
+                            }
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.sync_rounded),
+                          tooltip: '手动同步 ${_platformLabel(platform)}',
+                          onPressed: statusMap[platform]?.available == false
+                              ? null
+                              : () async {
+                                  await ref
+                                      .read(favoritesSyncActionsProvider)
+                                      .triggerSync(platform: platform);
+                                  if (context.mounted) {
+                                    showToast(context, '已触发 ${_platformLabel(platform)} 同步');
+                                  }
+                                },
+                        ),
+                      ],
+                    ),
+                    showArrow: false,
+                  ),
+                SettingTile(
+                  title: '同步间隔',
+                  subtitle: '当前每 $interval 分钟执行一次',
+                  icon: Icons.schedule_rounded,
+                  trailing: DropdownButton<int>(
+                    value: intervalOptions.contains(interval) ? interval : 360,
+                    underline: const SizedBox.shrink(),
+                    items: intervalOptions
+                        .map(
+                          (val) => DropdownMenuItem<int>(
+                            value: val,
+                            child: Text(val >= 60 ? '${val ~/ 60}h' : '$val min'),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) async {
+                      if (value == null) return;
+                      await ref.read(systemSettingsProvider.notifier).updateSetting(
+                        'favorites_sync_interval_minutes',
+                        value,
+                        category: 'favorites_sync',
+                      );
+                      ref.invalidate(favoritesSyncStatusProvider);
+                    },
+                  ),
+                  showArrow: false,
+                ),
+                SettingTile(
+                  title: '单次拉取上限',
+                  subtitle: '每个平台单轮最多拉取 $maxItems 条',
+                  icon: Icons.numbers_rounded,
+                  trailing: DropdownButton<int>(
+                    value: maxItemOptions.contains(maxItems) ? maxItems : 50,
+                    underline: const SizedBox.shrink(),
+                    items: maxItemOptions
+                        .map(
+                          (val) => DropdownMenuItem<int>(
+                            value: val,
+                            child: Text('$val'),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) async {
+                      if (value == null) return;
+                      await ref.read(systemSettingsProvider.notifier).updateSetting(
+                        'favorites_sync_max_items',
+                        value,
+                        category: 'favorites_sync',
+                      );
+                      ref.invalidate(favoritesSyncStatusProvider);
+                    },
+                  ),
+                  showArrow: false,
+                ),
+                SettingTile(
+                  title: '立即同步',
+                  subtitle: status.lastSyncAt == null
+                      ? '尚未同步'
+                      : '上次同步: ${status.lastSyncAt}',
+                  icon: status.running ? Icons.play_circle_fill_rounded : Icons.pause_circle_filled_rounded,
+                  trailing: FilledButton.tonalIcon(
+                    onPressed: () async {
+                      await ref.read(favoritesSyncActionsProvider).triggerSync();
+                      if (context.mounted) showToast(context, '已触发全平台同步');
+                    },
+                    icon: const Icon(Icons.sync_rounded),
+                    label: const Text('手动同步'),
+                  ),
+                  showArrow: false,
+                ),
+              ],
+            );
+          },
+          loading: () => const LoadingGroup(),
+          error: (error, _) => const Text('收藏同步状态加载失败'),
+        );
+      },
+      loading: () => const LoadingGroup(),
+      error: (error, _) => const Text('配置加载失败'),
+    );
+  }
+
+  String _platformLabel(String platform) {
+    switch (platform) {
+      case 'zhihu':
+        return '知乎';
+      case 'xiaohongshu':
+        return '小红书';
+      case 'twitter':
+        return 'Twitter / X';
+      default:
+        return platform;
+    }
+  }
+
+  IconData _platformIcon(String platform) {
+    switch (platform) {
+      case 'zhihu':
+        return Icons.menu_book_rounded;
+      case 'xiaohongshu':
+        return Icons.auto_stories_rounded;
+      case 'twitter':
+        return Icons.alternate_email_rounded;
+      default:
+        return Icons.bookmark_rounded;
+    }
+  }
+
+  String _platformSubtitle({
+    required String platform,
+    required double configuredRate,
+    required FavoritesPlatformStatus? status,
+  }) {
+    final authText = switch ((status?.available ?? true, status?.authenticated ?? false, platform)) {
+      (false, _, _) => '状态检查失败',
+      (_, true, _) => '已认证',
+      (_, false, 'twitter') => 'CLI 未就绪或未登录',
+      _ => '未登录',
+    };
+    return '$authText · ${configuredRate.toStringAsFixed(0)} 条/分钟';
+  }
+
+  dynamic _getSettingValue(List<SystemSetting> settings, String key, dynamic fallback) {
+    try {
+      return settings.firstWhere((s) => s.key == key).value;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  List<String> _parsePlatformsSetting(dynamic raw) {
+    if (raw == null) return <String>[];
+    if (raw is List) {
+      return raw.map((e) => e.toString()).toList();
+    }
+    if (raw is String && raw.isNotEmpty) {
+      return raw
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+    return <String>[];
+  }
+
+  int _parseInt(dynamic value, int fallback) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? fallback;
+    return fallback;
+  }
+
+  double _parseDouble(dynamic value, double fallback) {
+    if (value is double) return value;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? fallback;
+    return fallback;
   }
 
   Widget _buildContentGenSettings(
