@@ -15,6 +15,7 @@
 - 支持 Bilibili、Twitter/X、小红书、知乎、微博，以及任意网页（通用适配器 + LLM 提取）
 - 自动解析标题、正文、作者、标签、媒体文件
 - 图片自动转码 WebP，视频/GIF 支持 ffmpeg 处理
+- 平台收藏自动同步（知乎收藏夹、小红书收藏、Twitter/X 书签）
 
 **存档管理**
 - SQLite 本地存储，FTS5 全文检索 + 标签筛选
@@ -252,6 +253,16 @@ VaultStream/
 - **AI Agent 巡逻** — 基于用户偏好自动发现高价值内容，判断是否存档/推送
 - **RAG 语义检索** — 对存档内容进行向量化，支持自然语言问答
 - **Telegram 群组深度集成** — 全量存档群内链接，或由 LLM 筛选高价值内容
+
+---
+
+## 开源致谢
+
+收藏同步模块的 API 调用模式参考了以下项目（并已在对应源码文件头部保留引用说明）：
+
+- [xiaohongshu-cli](https://github.com/jackwener/xiaohongshu-cli) (Apache-2.0)
+- [twitter-cli](https://github.com/jackwener/twitter-cli) (Apache-2.0)
+- [ZhihuCollectionsPro](https://github.com/ienone/ZhihuCollectionsPro) (MIT)
 
 ---
 
