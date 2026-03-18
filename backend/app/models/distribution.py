@@ -27,7 +27,6 @@ class DistributionRule(Base):
     nsfw_policy: Mapped[Optional[str]] = mapped_column(String(50), default="block")
     
     approval_required: Mapped[bool] = mapped_column(Boolean, default=False)
-    auto_approve_conditions: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
     
     rate_limit: Mapped[Optional[int]] = mapped_column(Integer, default=None)
     time_window: Mapped[Optional[int]] = mapped_column(Integer, default=None)

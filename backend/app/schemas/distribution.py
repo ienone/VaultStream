@@ -52,7 +52,6 @@ class DistributionRuleCreate(BaseModel):
     priority: int = 0
     nsfw_policy: str = "block"
     approval_required: bool = False
-    auto_approve_conditions: Optional[Dict[str, Any]] = None
     rate_limit: Optional[int] = None
     time_window: Optional[int] = None
     template_id: Optional[str] = None
@@ -67,7 +66,6 @@ class DistributionRuleUpdate(BaseModel):
     priority: Optional[int] = None
     nsfw_policy: Optional[str] = None
     approval_required: Optional[bool] = None
-    auto_approve_conditions: Optional[Dict[str, Any]] = None
     rate_limit: Optional[int] = None
     time_window: Optional[int] = None
     template_id: Optional[str] = None
@@ -83,7 +81,6 @@ class DistributionRuleResponse(BaseModel):
     priority: int
     nsfw_policy: str
     approval_required: bool
-    auto_approve_conditions: Optional[Dict[str, Any]]
     rate_limit: Optional[int]
     time_window: Optional[int]
     template_id: Optional[str]

@@ -70,13 +70,10 @@ class PushedRecord(Base):
 
 class QueueItemStatus(str, Enum):
     """队列项状态"""
-    PENDING = "pending"          # 待处理
     SCHEDULED = "scheduled"      # 已排期
     PROCESSING = "processing"    # 推送中
     SUCCESS = "success"          # 推送成功
     FAILED = "failed"            # 推送失败
-    SKIPPED = "skipped"          # 已跳过（重复/NSFW等）
-    CANCELED = "canceled"        # 已取消
 
 
 class ContentQueueItem(Base):
@@ -104,7 +101,11 @@ class ContentQueueItem(Base):
     target_id: Mapped[str] = mapped_column(String(200))
     
     # 状态
-    status: Mapped[QueueItemStatus] = mapped_column(SQLEnum(QueueItemStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=QueueItemStatus.PENDING, index=True)
+    status: Mapped[QueueItemStatus] = mapped_column(
+        SQLEnum(QueueItemStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]),
+        default=QueueItemStatus.SCHEDULED,
+        index=True,
+    )
     priority: Mapped[int] = mapped_column(Integer, default=0, index=True)
     scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True, default=None)
     
@@ -114,9 +115,6 @@ class ContentQueueItem(Base):
     passed_rate_limit: Mapped[bool] = mapped_column(Boolean, default=True)
     rate_limit_reason: Mapped[Optional[str]] = mapped_column(String(200), default=None)
     
-    # 审批
-    needs_approval: Mapped[bool] = mapped_column(Boolean, default=False)
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
     approved_by: Mapped[Optional[str]] = mapped_column(String(100), default=None)
     
     # 重试与锁

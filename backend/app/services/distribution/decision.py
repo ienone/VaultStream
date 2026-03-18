@@ -78,22 +78,6 @@ def check_match_conditions(content: Content, conditions: Dict[str, Any]) -> Dist
     return DistributionDecision(bucket=DECISION_WILL_PUSH)
 
 
-def evaluate_target_decision(
-    *,
-    content: Content,
-    rule: DistributionRule,
-    bot_chat: Optional[BotChat],
-    require_approval: bool = True,
-) -> DistributionDecision:
-    """Compatibility wrapper for legacy call sites."""
-    return should_distribute(
-        content=content,
-        rule=rule,
-        bot_chat=bot_chat,
-        require_approval=require_approval,
-    )
-
-
 def should_distribute(
     *,
     content: Content,
@@ -154,22 +138,3 @@ def should_distribute(
         target_id=target_id,
         nsfw_routing_result=nsfw_routing_result,
     )
-
-
-def check_auto_approve_conditions(content: Content, conditions: Dict[str, Any]) -> bool:
-    conditions = conditions or {}
-
-    if "is_nsfw" in conditions and conditions["is_nsfw"] != content.is_nsfw:
-        return False
-
-    if "platform" in conditions and conditions["platform"] != content.platform.value:
-        return False
-
-    if "tags" in conditions:
-        required_tags = normalize_tags(conditions.get("tags", []), lower=True)
-        if required_tags:
-            content_tags = normalize_tags(content.tags or [], lower=True)
-            if not all(tag in content_tags for tag in required_tags):
-                return False
-
-    return True

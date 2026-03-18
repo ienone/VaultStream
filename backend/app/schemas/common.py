@@ -30,7 +30,6 @@ class DistributionStatusStats(BaseModel):
     """解析成功后进入分发阶段的状态统计"""
     will_push: int
     filtered: int
-    pending_review: int
     pushed: int
     total: int
 

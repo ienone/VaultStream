@@ -20,23 +20,20 @@ def _is_library_content():
 
 def classify_distribution_status(
     status: QueueItemStatus,
-    needs_approval: bool,
-    approved_at: Optional[datetime],
+    next_attempt_at: Optional[datetime],
 ) -> str:
     """将队列项状态分类为看板分桶"""
     if status == QueueItemStatus.SUCCESS:
         return "pushed"
-    if status in (QueueItemStatus.SKIPPED, QueueItemStatus.CANCELED):
-        return "filtered"
-    if status == QueueItemStatus.PENDING and needs_approval and approved_at is None:
-        return "pending_review"
-    if status in (QueueItemStatus.PENDING, QueueItemStatus.SCHEDULED, QueueItemStatus.PROCESSING, QueueItemStatus.FAILED):
+    if status in (QueueItemStatus.SCHEDULED, QueueItemStatus.PROCESSING):
         return "will_push"
+    if status == QueueItemStatus.FAILED:
+        return "will_push" if next_attempt_at is not None else "filtered"
     return "filtered"
 
 
 def empty_distribution_bucket() -> dict[str, int]:
-    return {"will_push": 0, "filtered": 0, "pending_review": 0, "pushed": 0, "total": 0}
+    return {"will_push": 0, "filtered": 0, "pushed": 0, "total": 0}
 
 
 async def build_parse_stats(db: AsyncSession) -> dict:
@@ -70,14 +67,12 @@ async def build_distribution_stats(
 
     cols = [
         ContentQueueItem.status,
-        ContentQueueItem.needs_approval,
-        ContentQueueItem.approved_at,
+        ContentQueueItem.next_attempt_at,
         func.count(ContentQueueItem.id),
     ]
     group_cols = [
         ContentQueueItem.status,
-        ContentQueueItem.needs_approval,
-        ContentQueueItem.approved_at,
+        ContentQueueItem.next_attempt_at,
     ]
     if include_rule_breakdown:
         cols.insert(0, ContentQueueItem.rule_id)
@@ -96,13 +91,13 @@ async def build_distribution_stats(
 
     for row in rows:
         if include_rule_breakdown:
-            rule_id, status, needs_approval, approved_at, count = row
+            rule_id, status, next_attempt_at, count = row
         else:
-            status, needs_approval, approved_at, count = row
+            status, next_attempt_at, count = row
             rule_id = None
 
         count_int = int(count or 0)
-        bucket = classify_distribution_status(status, bool(needs_approval), approved_at)
+        bucket = classify_distribution_status(status, next_attempt_at)
 
         distribution_stats[bucket] += count_int
         distribution_stats["total"] += count_int

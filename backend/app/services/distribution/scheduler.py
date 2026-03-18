@@ -4,20 +4,16 @@
 根据分发规则匹配结果，为每个 (Content × Rule × BotChat) 组合创建队列项。
 """
 from typing import Optional
-from datetime import datetime, timedelta
 
-from sqlalchemy import select, and_, insert, func
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.logging import logger
 from app.core.time_utils import utcnow
 from app.services.distribution.decision import (
-    evaluate_target_decision,
     should_distribute,
-    check_match_conditions,
     DECISION_FILTERED,
-    DECISION_PENDING_REVIEW,
 )
 from app.core.events import event_bus
 from app.models import (
@@ -29,77 +25,7 @@ from app.models import (
     QueueItemStatus,
     ContentStatus,
     ReviewStatus,
-    PushedRecord,
 )
-
-
-async def compute_auto_scheduled_at(
-    *,
-    session: AsyncSession,
-    rule: DistributionRule,
-    bot_chat_id: int,
-    target_id: str,
-) -> datetime:
-    """根据规则限流配置计算自动排期时间。"""
-    now = utcnow()
-
-    if not rule.rate_limit or not rule.time_window or rule.rate_limit <= 0 or rule.time_window <= 0:
-        return now
-
-    min_interval_seconds = max(1, int(rule.time_window) // int(rule.rate_limit))
-
-    latest_queue_result = await session.execute(
-        select(func.max(ContentQueueItem.scheduled_at)).where(
-            and_(
-                ContentQueueItem.rule_id == rule.id,
-                ContentQueueItem.bot_chat_id == bot_chat_id,
-                ContentQueueItem.status.in_(
-                    [
-                        QueueItemStatus.PENDING,
-                        QueueItemStatus.SCHEDULED,
-                        QueueItemStatus.PROCESSING,
-                        QueueItemStatus.FAILED,
-                    ]
-                ),
-            )
-        )
-    )
-    latest_queue_time = latest_queue_result.scalar_one_or_none()
-
-    latest_pushed_result = await session.execute(
-        select(func.max(PushedRecord.pushed_at)).where(
-            and_(
-                PushedRecord.target_id == target_id,
-                PushedRecord.push_status == "success",
-            )
-        )
-    )
-    latest_pushed_time = latest_pushed_result.scalar_one_or_none()
-
-    scheduled_at = now
-    anchor = latest_queue_time or latest_pushed_time
-    if anchor and anchor + timedelta(seconds=min_interval_seconds) > scheduled_at:
-        scheduled_at = anchor + timedelta(seconds=min_interval_seconds)
-
-    window_start = now - timedelta(seconds=int(rule.time_window))
-    recent_result = await session.execute(
-        select(PushedRecord.pushed_at)
-        .where(
-            and_(
-                PushedRecord.target_id == target_id,
-                PushedRecord.push_status == "success",
-                PushedRecord.pushed_at >= window_start,
-            )
-        )
-        .order_by(PushedRecord.pushed_at.asc())
-    )
-    recent_pushes = [p for p in recent_result.scalars().all() if p is not None]
-    if len(recent_pushes) >= int(rule.rate_limit):
-        throttle_until = recent_pushes[0] + timedelta(seconds=int(rule.time_window))
-        if throttle_until > scheduled_at:
-            scheduled_at = throttle_until
-
-    return scheduled_at
 
 
 async def enqueue_content(
@@ -116,7 +42,7 @@ async def enqueue_content(
     Args:
         content_id: 内容 ID
         session: 可选的数据库会话，若未提供则自动创建
-        force: 若为 True，则重置已失败的队列项为 PENDING
+        force: 若为 True，则重置已失败的队列项为 SCHEDULED
 
     Returns:
         创建或更新的队列项数量
@@ -151,18 +77,12 @@ async def _enqueue_content_impl(
         )
         return 0
 
-    if content.review_status not in (
-        ReviewStatus.APPROVED,
-        ReviewStatus.AUTO_APPROVED,
-        ReviewStatus.PENDING,
-    ):
+    if content.review_status not in (ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED):
         logger.info(
             f"Content not eligible (review): content_id={content_id}, "
             f"review_status={content.review_status}"
         )
         return 0
-
-    is_reviewed = content.review_status in (ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED)
 
     # 3. 加载启用规则（目标级统一判定）
     rules_result = await session.execute(
@@ -174,18 +94,8 @@ async def _enqueue_content_impl(
         logger.info(f"No enabled rules for content: content_id={content_id}")
         return 0
 
-    # 4. 先按内容条件筛选命中规则，避免扫描全部目标
-    matched_rules = [
-        rule
-        for rule in enabled_rules
-        if check_match_conditions(content, rule.match_conditions or {}).bucket != DECISION_FILTERED
-    ]
-    if not matched_rules:
-        logger.info(f"No matched rules for content: content_id={content_id}")
-        return 0
-
-    # 5. 批量查询命中规则的目标（避免 N+1）
-    rule_ids = [r.id for r in matched_rules]
+    # 4. 批量查询启用规则的目标（避免 N+1）
+    rule_ids = [r.id for r in enabled_rules]
     targets_result = await session.execute(
         select(DistributionTarget, BotChat)
         .join(BotChat, DistributionTarget.bot_chat_id == BotChat.id)
@@ -215,7 +125,7 @@ async def _enqueue_content_impl(
     }
 
     # 7. 构建规则 ID -> 规则对象映射
-    rules_map = {r.id: r for r in matched_rules}
+    rules_map = {r.id: r for r in enabled_rules}
 
     # 8. 逐目标创建/更新队列项
     count = 0
@@ -233,17 +143,17 @@ async def _enqueue_content_impl(
             ):
                 continue
 
-            # 未审批内容只允许进入需要审批的规则队列
-            if not is_reviewed and not rule.approval_required:
+            # AUTO_APPROVED 内容不应进入需要人工审批的规则队列
+            if rule.approval_required and content.review_status == ReviewStatus.AUTO_APPROVED:
                 continue
-            
+
             decision = should_distribute(
                 content=content,
                 rule=rule,
                 bot_chat=bot_chat,
-                require_approval=not is_reviewed,
+                require_approval=False,
             )
-            
+
             if decision.bucket == DECISION_FILTERED:
                 continue
 
@@ -261,13 +171,9 @@ async def _enqueue_content_impl(
                     )
                     continue
 
-                # 已失败且强制：重置为 PENDING
+                # 已失败且强制：重置为 SCHEDULED
                 if existing.status == QueueItemStatus.FAILED and force:
-                    existing.status = (
-                        QueueItemStatus.PENDING
-                        if decision.bucket == DECISION_PENDING_REVIEW
-                        else QueueItemStatus.SCHEDULED
-                    )
+                    existing.status = QueueItemStatus.SCHEDULED
                     existing.attempt_count = 0
                     existing.last_error = None
                     existing.last_error_type = None
@@ -280,17 +186,16 @@ async def _enqueue_content_impl(
                     existing.updated_at = utcnow()
                     count += 1
                     logger.info(
-                        f"Queue item reset to PENDING: content_id={content_id}, "
+                        f"Queue item reset to SCHEDULED: content_id={content_id}, "
                         f"rule_id={rule.id}, bot_chat_id={bot_chat.id}"
                     )
                     continue
 
-                # 其他状态（PENDING, SCHEDULED, PROCESSING 等）：跳过
+                # 其他状态（SCHEDULED, PROCESSING 等）：跳过
                 continue
 
             # 新建队列项
-            needs_approval = decision.bucket == DECISION_PENDING_REVIEW
-            status = QueueItemStatus.PENDING if needs_approval else QueueItemStatus.SCHEDULED
+            status = QueueItemStatus.SCHEDULED
             scheduled_time = utcnow()
 
             item = ContentQueueItem(
@@ -302,7 +207,6 @@ async def _enqueue_content_impl(
                 status=status,
                 priority=rule.priority + content.queue_priority,
                 scheduled_at=scheduled_time,
-                needs_approval=needs_approval,
                 nsfw_routing_result=decision.nsfw_routing_result,
             )
             session.add(item)
@@ -318,7 +222,7 @@ async def _enqueue_content_impl(
         })
         logger.info(
             f"Enqueued content: content_id={content_id}, "
-            f"rules_scanned={len(enabled_rules)}, rules_matched={len(matched_rules)}, "
+            f"rules_scanned={len(enabled_rules)}, "
             f"items_created_or_updated={count}"
         )
 
@@ -336,126 +240,3 @@ async def enqueue_content_background(content_id: int) -> None:
             await _enqueue_content_impl(content_id, session, force=False)
     except Exception:
         logger.exception(f"Background enqueue failed: content_id={content_id}")
-
-
-async def mark_historical_parse_success_as_pushed_for_rule(
-    *,
-    session: AsyncSession,
-    rule_id: int,
-    bot_chat_id: Optional[int] = None,
-) -> int:
-    """
-    将历史 parse_success 内容在指定规则（可选限定到指定 bot_chat）下标记为已推送。
-
-    用途：
-    1) 处理脚本回填历史数据；
-    2) 新增规则目标/规则绑定时，避免出现“历史内容悬空待推送”。
-
-    Returns:
-        新插入的 success 队列项数量
-    """
-    rule_result = await session.execute(
-        select(DistributionRule).where(DistributionRule.id == rule_id)
-    )
-    rule = rule_result.scalar_one_or_none()
-    if not rule:
-        logger.warning("Backfill skipped, rule not found: rule_id=%s", rule_id)
-        return 0
-
-    target_query = (
-        select(DistributionTarget, BotChat)
-        .join(BotChat, DistributionTarget.bot_chat_id == BotChat.id)
-        .where(DistributionTarget.rule_id == rule_id)
-        .where(DistributionTarget.enabled == True)
-        .where(BotChat.enabled == True)
-        .where(BotChat.is_accessible == True)
-    )
-    if bot_chat_id is not None:
-        target_query = target_query.where(DistributionTarget.bot_chat_id == bot_chat_id)
-
-    targets_result = await session.execute(target_query)
-    target_pairs = targets_result.all()
-    if not target_pairs:
-        return 0
-
-    target_chat_ids = [int(chat.id) for _, chat in target_pairs]
-    existing_result = await session.execute(
-        select(ContentQueueItem.content_id, ContentQueueItem.bot_chat_id)
-        .where(ContentQueueItem.rule_id == rule_id)
-        .where(ContentQueueItem.bot_chat_id.in_(target_chat_ids))
-    )
-    existing_keys = {(int(content_id), int(chat_id)) for content_id, chat_id in existing_result.all()}
-
-    contents_result = await session.execute(
-        select(Content)
-        .where(Content.status == ContentStatus.PARSE_SUCCESS)
-        .order_by(Content.id.asc())
-    )
-    contents = contents_result.scalars().all()
-    if not contents:
-        return 0
-
-    now = utcnow()
-    rows = []
-
-    for content in contents:
-        for _, bot_chat in target_pairs:
-            key = (int(content.id), int(bot_chat.id))
-            if key in existing_keys:
-                continue
-
-            decision = evaluate_target_decision(
-                content=content,
-                rule=rule,
-                bot_chat=bot_chat,
-                require_approval=True,
-            )
-
-            if decision.bucket != DECISION_FILTERED:
-                status = QueueItemStatus.SUCCESS
-                last_error = None
-                last_error_type = None
-                completed_at = now
-                approved_at = now
-            else:
-                status = QueueItemStatus.SKIPPED
-                last_error = decision.reason or "Filtered by unified decision"
-                last_error_type = decision.reason_code or "filtered_by_decision"
-                completed_at = now
-                approved_at = None
-
-            rows.append(
-                {
-                    "content_id": int(content.id),
-                    "rule_id": int(rule_id),
-                    "bot_chat_id": int(bot_chat.id),
-                    "target_platform": bot_chat.platform_type,
-                    "target_id": decision.target_id or bot_chat.chat_id,
-                    "status": status,
-                    "priority": 0,
-                    "scheduled_at": now,
-                    "needs_approval": False,
-                    "approved_at": approved_at,
-                    "started_at": now,
-                    "completed_at": completed_at,
-                    "last_error": last_error,
-                    "last_error_type": last_error_type,
-                    "nsfw_routing_result": decision.nsfw_routing_result,
-                    "created_at": now,
-                    "updated_at": now,
-                }
-            )
-
-    if not rows:
-        return 0
-
-    await session.execute(insert(ContentQueueItem), rows)
-    inserted = len(rows)
-    if inserted > 0:
-        logger.info(
-            "Backfilled historical queue items by rule: rule_id={}, bot_chat_id={}, inserted={}",
-            rule_id,
-            bot_chat_id,
-            inserted,
-        )
-    return inserted

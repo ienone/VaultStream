@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from sqlalchemy import and_, func, select, not_
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -13,9 +13,8 @@ from app.core.dependencies import require_api_token
 from app.core.events import event_bus
 from app.core.logging import logger
 from app.core.time_utils import utcnow
-from app.models import Content, ContentQueueItem, QueueItemStatus, DistributionRule, PushedRecord
+from app.models import Content, ContentQueueItem, QueueItemStatus, PushedRecord
 from app.tasks import DistributionQueueWorker
-from app.services.distribution.scheduler import compute_auto_scheduled_at
 
 def get_queue_worker():
     return DistributionQueueWorker()
@@ -56,8 +55,6 @@ def _to_queue_item_response(item: ContentQueueItem, content: Optional[Content] =
         status=item.status.value,
         priority=item.priority or 0,
         scheduled_at=_as_utc(item.scheduled_at),
-        needs_approval=bool(item.needs_approval),
-        approved_at=_as_utc(item.approved_at),
         approved_by=item.approved_by,
         attempt_count=item.attempt_count or 0,
         max_attempts=item.max_attempts or 3,
@@ -78,34 +75,29 @@ def _build_status_conditions(status: Optional[str]):
     if not status:
         return []
 
-    if status == "pending_review":
-        return [
-            ContentQueueItem.status == QueueItemStatus.PENDING,
-            ContentQueueItem.needs_approval == True,
-            ContentQueueItem.approved_at.is_(None),
-        ]
-
     if status == "will_push":
         return [
-            ContentQueueItem.status.in_(
-                [
-                    QueueItemStatus.PENDING,
-                    QueueItemStatus.SCHEDULED,
-                    QueueItemStatus.PROCESSING,
-                    QueueItemStatus.FAILED,
-                ]
-            ),
-            not_(
+            or_(
+                ContentQueueItem.status.in_(
+                    [
+                        QueueItemStatus.SCHEDULED,
+                        QueueItemStatus.PROCESSING,
+                    ]
+                ),
                 and_(
-                    ContentQueueItem.status == QueueItemStatus.PENDING,
-                    ContentQueueItem.needs_approval == True,
-                    ContentQueueItem.approved_at.is_(None),
-                )
+                    ContentQueueItem.status == QueueItemStatus.FAILED,
+                    ContentQueueItem.next_attempt_at.is_not(None),
+                ),
             ),
         ]
 
     if status == "filtered":
-        return [ContentQueueItem.status.in_([QueueItemStatus.CANCELED, QueueItemStatus.SKIPPED])]
+        return [
+            and_(
+                ContentQueueItem.status == QueueItemStatus.FAILED,
+                ContentQueueItem.next_attempt_at.is_(None),
+            )
+        ]
 
     if status == "pushed":
         return [ContentQueueItem.status == QueueItemStatus.SUCCESS]
@@ -133,49 +125,39 @@ async def get_queue_stats(
         select(
             ContentQueueItem.content_id,
             ContentQueueItem.status,
-            ContentQueueItem.needs_approval,
-            ContentQueueItem.approved_at,
+            ContentQueueItem.next_attempt_at,
         ).where(where_clause)
     )
 
     grouped: dict[int, dict[str, bool]] = {}
-    for content_id, status, needs_approval, approved_at in rows_result.all():
+    for content_id, status, next_attempt_at in rows_result.all():
         flags = grouped.setdefault(
             int(content_id),
             {
-                "pending_review": False,
                 "will_push": False,
                 "pushed": False,
                 "filtered": False,
             },
         )
 
-        if status == QueueItemStatus.PENDING and bool(needs_approval) and approved_at is None:
-            flags["pending_review"] = True
-        elif status in (
-            QueueItemStatus.PENDING,
-            QueueItemStatus.SCHEDULED,
-            QueueItemStatus.PROCESSING,
-            QueueItemStatus.FAILED,
-        ):
+        if status in (QueueItemStatus.SCHEDULED, QueueItemStatus.PROCESSING):
+            flags["will_push"] = True
+        elif status == QueueItemStatus.FAILED and next_attempt_at is not None:
             flags["will_push"] = True
         elif status == QueueItemStatus.SUCCESS:
             flags["pushed"] = True
-        elif status in (QueueItemStatus.SKIPPED, QueueItemStatus.CANCELED):
+        elif status == QueueItemStatus.FAILED:
             flags["filtered"] = True
 
     stats = {
         "will_push": 0,
         "filtered": 0,
-        "pending_review": 0,
         "pushed": 0,
         "total": len(grouped),
     }
 
     for flags in grouped.values():
-        if flags["pending_review"]:
-            stats["pending_review"] += 1
-        elif flags["will_push"]:
+        if flags["will_push"]:
             stats["will_push"] += 1
         elif flags["pushed"]:
             stats["pushed"] += 1
@@ -197,7 +179,6 @@ async def get_queue_stats(
     return QueueStatsResponse(
         will_push=stats["will_push"],
         filtered=stats["filtered"],
-        pending_review=stats["pending_review"],
         pushed=stats["pushed"],
         total=stats["total"],
         due_now=due_now,
@@ -206,7 +187,7 @@ async def get_queue_stats(
 
 @router.get("/items", response_model=ContentQueueItemListResponse)
 async def list_queue_items(
-    status: Optional[str] = Query(None, description="状态过滤（支持别名 will_push/filtered/pending_review/pushed）"),
+    status: Optional[str] = Query(None, description="状态过滤（支持别名 will_push/filtered/pushed）"),
     content_id: Optional[int] = Query(None, description="按内容ID过滤"),
     rule_id: Optional[int] = Query(None, description="按规则ID过滤"),
     bot_chat_id: Optional[int] = Query(None, description="按BotChat ID过滤"),
@@ -379,17 +360,18 @@ async def cancel_queue_item(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
-    """取消单个队列项。"""
+    """将队列项标记为手动过滤终态（不再重试）。"""
     result = await db.execute(select(ContentQueueItem).where(ContentQueueItem.id == item_id))
     item = result.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="Queue item not found")
 
-    item.status = QueueItemStatus.CANCELED
+    item.status = QueueItemStatus.FAILED
     item.locked_at = None
     item.locked_by = None
     item.last_error = "Canceled manually"
     item.last_error_type = "manual_canceled"
+    item.next_attempt_at = None
     item.last_error_at = utcnow()
 
     await db.commit()
@@ -399,7 +381,7 @@ async def cancel_queue_item(
         "queue_item_id": item_id,
         "timestamp": utcnow().isoformat(),
     })
-    return {"status": "canceled", "id": item_id}
+    return {"status": "filtered", "id": item_id}
 
 
 @router.post("/batch-retry")
@@ -461,38 +443,13 @@ async def set_content_queue_status(
     items = result.scalars().all()
 
     if target_status == "will_push":
-        rules_map: dict[int, DistributionRule] = {}
-
-        async def _get_rule(rule_id: int) -> Optional[DistributionRule]:
-            if rule_id in rules_map:
-                return rules_map[rule_id]
-            rule_result = await db.execute(
-                select(DistributionRule).where(DistributionRule.id == rule_id)
-            )
-            rule = rule_result.scalar_one_or_none()
-            if rule:
-                rules_map[rule_id] = rule
-            return rule
-
         changed = 0
         for item in items:
-            if item.status in (QueueItemStatus.SUCCESS, QueueItemStatus.CANCELED):
+            if item.status == QueueItemStatus.SUCCESS:
                 continue
 
-            rule = await _get_rule(item.rule_id)
-            if rule:
-                scheduled_at = await compute_auto_scheduled_at(
-                    session=db,
-                    rule=rule,
-                    bot_chat_id=item.bot_chat_id,
-                    target_id=item.target_id,
-                )
-            else:
-                scheduled_at = now
-
             item.status = QueueItemStatus.SCHEDULED
-            item.needs_approval = False
-            item.scheduled_at = scheduled_at
+            item.scheduled_at = now
             item.next_attempt_at = None
             item.last_error = None
             item.last_error_type = None
@@ -513,9 +470,10 @@ async def set_content_queue_status(
         for item in items:
             if item.status == QueueItemStatus.SUCCESS:
                 continue
-            item.status = QueueItemStatus.CANCELED
+            item.status = QueueItemStatus.FAILED
             item.locked_at = None
             item.locked_by = None
+            item.next_attempt_at = None
             item.last_error = reason
             item.last_error_type = "manual_filtered"
             item.last_error_at = now
@@ -553,7 +511,6 @@ async def repush_now_content_queue(
         if target_id and item.target_id != target_id:
             continue
         item.status = QueueItemStatus.SCHEDULED
-        item.needs_approval = False
         item.scheduled_at = now
         item.next_attempt_at = None
         item.locked_at = None
@@ -613,7 +570,6 @@ async def batch_repush_now_content_queue(
     target_pairs: set[tuple[int, str]] = set()
     for item in items:
         item.status = QueueItemStatus.SCHEDULED
-        item.needs_approval = False
         item.scheduled_at = now
         item.next_attempt_at = None
         item.locked_at = None
@@ -672,7 +628,7 @@ async def reorder_content_queue(
 
     changed = 0
     for item in items:
-        if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.PROCESSING, QueueItemStatus.PENDING):
+        if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.PROCESSING):
             item.priority = max(item.priority, boost)
             changed += 1
 
@@ -739,7 +695,7 @@ async def schedule_content_queue(
 
     changed = 0
     for item in items:
-        if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED, QueueItemStatus.PENDING):
+        if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
             item.status = QueueItemStatus.SCHEDULED
             item.scheduled_at = scheduled_at
             item.next_attempt_at = None
@@ -826,7 +782,7 @@ async def batch_reschedule_content_queue(
     for idx, content_id in enumerate(content_ids):
         scheduled = start_time + timedelta(seconds=interval_seconds * idx)
         for item in grouped.get(content_id, []):
-            if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED, QueueItemStatus.PENDING):
+            if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
                 item.status = QueueItemStatus.SCHEDULED
                 item.scheduled_at = scheduled
                 item.next_attempt_at = None

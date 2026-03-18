@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import logger, log_context
 from app.core.database import AsyncSessionLocal
 from app.core.time_utils import utcnow
-from app.models import Content, ContentStatus, Platform
+from app.models import Content, ContentStatus, Platform, DistributionRule, ReviewStatus
 from app.adapters import AdapterFactory
 from app.adapters.errors import AdapterError, RetryableAdapterError
 from app.core.config import settings
@@ -266,12 +266,33 @@ class ContentParser:
     async def _check_auto_approval(self, session, content):
         """M4: 解析完成后尝试自动审批"""
         try:
-            from app.services.distribution import DistributionEngine
-            engine = DistributionEngine(session)
-            auto_approved = await engine.auto_approve_if_eligible(content)
-            
-            if auto_approved:
-                logger.info(f"内容已自动审批: content_id={content.id}")
+            from app.services.distribution.decision import (
+                check_match_conditions,
+                DECISION_FILTERED,
+            )
+            from app.services.distribution.scheduler import enqueue_content
+
+            rules_result = await session.execute(
+                select(DistributionRule).where(DistributionRule.enabled == True)
+            )
+            enabled_rules = rules_result.scalars().all()
+
+            for rule in enabled_rules:
+                if rule.approval_required:
+                    continue
+
+                decision = check_match_conditions(content, rule.match_conditions or {})
+                if decision.bucket == DECISION_FILTERED:
+                    continue
+
+                content.review_status = ReviewStatus.AUTO_APPROVED
+                content.reviewed_at = utcnow()
+                content.review_note = f"Auto-approved (rule: {rule.name})"
+                await session.commit()
+
+                await enqueue_content(content.id, session=session)
+                logger.info(f"内容已自动审批: content_id={content.id}, rule={rule.name}")
+                return
         except Exception as e:
             logger.warning(f"自动审批检查失败: {e}", exc_info=True)
 

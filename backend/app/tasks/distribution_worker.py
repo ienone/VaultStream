@@ -7,7 +7,7 @@ import asyncio
 from datetime import timedelta
 from typing import Optional, List
 
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
@@ -26,12 +26,79 @@ from app.models import (
 from app.push.factory import get_push_service
 from app.tasks.distributor import ContentDistributor
 from app.core.events import event_bus
-from app.services.distribution.scheduler import compute_auto_scheduled_at
 
 # ── 常量 ──────────────────────────────────────────────
 POLL_INTERVAL = 5        # 轮询间隔（秒）
 BATCH_SIZE = 10          # 每次轮询最多领取的队列项
 LOCK_TIMEOUT = 600       # 锁超时（秒），10 分钟内未完成视为过期
+
+
+async def compute_auto_scheduled_at(
+    *,
+    session: AsyncSession,
+    rule: DistributionRule,
+    bot_chat_id: int,
+    target_id: str,
+):
+    """根据规则限流配置计算自动排期时间（消费侧）。"""
+    now = utcnow()
+
+    if not rule.rate_limit or not rule.time_window or rule.rate_limit <= 0 or rule.time_window <= 0:
+        return now
+
+    min_interval_seconds = max(1, int(rule.time_window) // int(rule.rate_limit))
+
+    latest_queue_result = await session.execute(
+        select(func.max(ContentQueueItem.scheduled_at)).where(
+            and_(
+                ContentQueueItem.rule_id == rule.id,
+                ContentQueueItem.bot_chat_id == bot_chat_id,
+                ContentQueueItem.status.in_(
+                    [
+                        QueueItemStatus.SCHEDULED,
+                        QueueItemStatus.PROCESSING,
+                        QueueItemStatus.FAILED,
+                    ]
+                ),
+            )
+        )
+    )
+    latest_queue_time = latest_queue_result.scalar_one_or_none()
+
+    latest_pushed_result = await session.execute(
+        select(func.max(PushedRecord.pushed_at)).where(
+            and_(
+                PushedRecord.target_id == target_id,
+                PushedRecord.push_status == "success",
+            )
+        )
+    )
+    latest_pushed_time = latest_pushed_result.scalar_one_or_none()
+
+    scheduled_at = now
+    anchor = latest_queue_time or latest_pushed_time
+    if anchor and anchor + timedelta(seconds=min_interval_seconds) > scheduled_at:
+        scheduled_at = anchor + timedelta(seconds=min_interval_seconds)
+
+    window_start = now - timedelta(seconds=int(rule.time_window))
+    recent_result = await session.execute(
+        select(PushedRecord.pushed_at)
+        .where(
+            and_(
+                PushedRecord.target_id == target_id,
+                PushedRecord.push_status == "success",
+                PushedRecord.pushed_at >= window_start,
+            )
+        )
+        .order_by(PushedRecord.pushed_at.asc())
+    )
+    recent_pushes = [p for p in recent_result.scalars().all() if p is not None]
+    if len(recent_pushes) >= int(rule.rate_limit):
+        throttle_until = recent_pushes[0] + timedelta(seconds=int(rule.time_window))
+        if throttle_until > scheduled_at:
+            scheduled_at = throttle_until
+
+    return scheduled_at
 
 
 class DistributionQueueWorker:
@@ -81,8 +148,6 @@ class DistributionQueueWorker:
 
             if item.status in (
                 QueueItemStatus.SUCCESS,
-                QueueItemStatus.SKIPPED,
-                QueueItemStatus.CANCELED,
             ):
                 raise ValueError(f"Queue item status not pushable: {item.status.value}")
 
@@ -139,7 +204,6 @@ class DistributionQueueWorker:
         筛选条件：
         - SCHEDULED 状态，或 FAILED 且已到重试时间
         - 已到排期时间（scheduled_at <= now）
-        - 无需审批（needs_approval == False）
         - 未被锁定，或锁已过期
         """
         now = utcnow()
@@ -161,7 +225,6 @@ class DistributionQueueWorker:
                         ContentQueueItem.scheduled_at.is_(None),
                         ContentQueueItem.scheduled_at <= now,
                     ),
-                    ContentQueueItem.needs_approval == False,
                     or_(
                         ContentQueueItem.locked_at.is_(None),
                         ContentQueueItem.locked_at < lock_expire,
@@ -275,9 +338,10 @@ class DistributionQueueWorker:
             ReviewStatus.APPROVED,
             ReviewStatus.AUTO_APPROVED,
         ) or content.status != ContentStatus.PARSE_SUCCESS:
-            item.status = QueueItemStatus.SKIPPED
+            item.status = QueueItemStatus.FAILED
             item.last_error = "Content not eligible"
             item.last_error_type = "content_not_eligible"
+            item.next_attempt_at = None
             item.locked_at = None
             item.locked_by = None
             await session.commit()
@@ -296,9 +360,10 @@ class DistributionQueueWorker:
             ).limit(1)
         )
         if dedupe_result.scalar_one_or_none():
-            item.status = QueueItemStatus.SKIPPED
+            item.status = QueueItemStatus.FAILED
             item.last_error = "Already pushed (dedupe)"
             item.last_error_type = "already_pushed_dedupe"
+            item.next_attempt_at = None
             item.locked_at = None
             item.locked_by = None
             await session.commit()

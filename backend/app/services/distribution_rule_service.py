@@ -23,7 +23,7 @@ from app.services.distribution.decision import (
     DECISION_PENDING_REVIEW,
     DECISION_WILL_PUSH,
     DistributionDecision,
-    evaluate_target_decision,
+    should_distribute,
 )
 from app.media.extractor import pick_preview_thumbnail
 from fastapi import HTTPException
@@ -272,7 +272,7 @@ class DistributionRuleService:
         first_filtered: Optional[DistributionDecision] = None
 
         for chat in chats:
-            decision = evaluate_target_decision(
+            decision = should_distribute(
                 content=content,
                 rule=rule,
                 bot_chat=chat,
