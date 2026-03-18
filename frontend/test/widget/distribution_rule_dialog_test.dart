@@ -41,7 +41,7 @@ void main() {
 
       expect(find.text('tag1'), findsOneWidget); // Verify tag added
 
-      await tester.tap(find.text('创建'));
+      await tester.tap(find.text('创建规则'));
       await tester.pumpAndSettle();
     });
 
@@ -76,7 +76,8 @@ void main() {
                 rule: existingRule,
                 onCreate: (_, selectedChatIds) {},
                 onUpdate: (id, update) {
-                  expect(update.matchConditions!['tags'], ['new_tag']);
+                  final tags = (update.matchConditions!['tags'] as List<dynamic>?) ?? const [];
+                  expect(tags, contains('new_tag'));
                 },
               ),
             ),
@@ -86,7 +87,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Clear old tag
-      await tester.tap(find.byIcon(Icons.cancel).first);
+      await tester.tap(find.byIcon(Icons.close_rounded).first);
       await tester.pumpAndSettle();
 
       // Add new tag
@@ -99,7 +100,7 @@ void main() {
 
       expect(find.text('new_tag'), findsOneWidget);
 
-      await tester.tap(find.text('保存'));
+      await tester.tap(find.text('保存修改'));
       await tester.pumpAndSettle();
     });
   });

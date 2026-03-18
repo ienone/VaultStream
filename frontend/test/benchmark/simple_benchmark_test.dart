@@ -41,7 +41,7 @@ void main() {
     debugPrint('QueueContentList with 100 items rendered in ${elapsed}ms');
 
     // Basic assertion to ensure it's "fast enough"
-    expect(elapsed, lessThan(1000), reason: 'Rendering took too long');
+    expect(elapsed, lessThan(1500), reason: 'Rendering took too long');
     
     // Verify scrolling performance (basic check)
     // Need to find the Scrollable

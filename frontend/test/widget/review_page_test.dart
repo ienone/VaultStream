@@ -148,7 +148,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Item 1'), findsOneWidget);
-      expect(find.textContaining('待推送 (1)'), findsAny);
+      expect(find.textContaining('待推送(1)'), findsAny);
 
       // Open dropdown to see Rule 1
       await tester.tap(find.byType(DropdownMenu<int?>));

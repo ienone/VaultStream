@@ -11,6 +11,10 @@ class ThemeModeNotifier extends _$ThemeModeNotifier {
 
   @override
   ThemeMode build() {
+    if (!isSharedPrefsInitialized) {
+      return ThemeMode.system;
+    }
+
     final savedMode = sharedPrefs.getString(_themeKey);
     if (savedMode != null) {
       return ThemeMode.values.firstWhere(
@@ -23,6 +27,8 @@ class ThemeModeNotifier extends _$ThemeModeNotifier {
 
   void set(ThemeMode mode) {
     state = mode;
-    sharedPrefs.setString(_themeKey, mode.name);
+    if (isSharedPrefsInitialized) {
+      sharedPrefs.setString(_themeKey, mode.name);
+    }
   }
 }

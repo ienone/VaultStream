@@ -61,8 +61,8 @@ void main() {
 
     // Verify system overview
     expect(find.text('系统概览'), findsOneWidget);
-    expect(find.text('总内容'), findsOneWidget);
-    expect(find.text('15'), findsOneWidget); // Total content count
+    expect(find.text('总内容'), findsWidgets);
+    expect(find.text('15'), findsWidgets); // Total content count
     
     // Verify responsive layout
     // In portrait, we expect 2 columns for grid

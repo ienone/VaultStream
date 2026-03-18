@@ -12,7 +12,16 @@ import 'core/providers/theme_provider.dart';
 import 'features/share_receiver/share_receiver_service.dart';
 
 List<SharedMediaFile>? _initialSharedMedia;
-late final SharedPreferences sharedPrefs;
+late SharedPreferences sharedPrefs;
+
+bool get isSharedPrefsInitialized {
+  try {
+    sharedPrefs;
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

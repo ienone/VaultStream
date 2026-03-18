@@ -26,6 +26,13 @@ class LocalSettings extends _$LocalSettings {
 
   @override
   LocalSettingsState build() {
+    if (!isSharedPrefsInitialized) {
+      return LocalSettingsState(
+        baseUrl: EnvConfig.baseUrl,
+        apiToken: EnvConfig.apiToken,
+      );
+    }
+
     return LocalSettingsState(
       baseUrl: sharedPrefs.getString(_keyBaseUrl) ?? EnvConfig.baseUrl,
       apiToken: sharedPrefs.getString(_keyApiToken) ?? EnvConfig.apiToken,
@@ -33,17 +40,23 @@ class LocalSettings extends _$LocalSettings {
   }
 
   Future<void> setBaseUrl(String url) async {
-    await sharedPrefs.setString(_keyBaseUrl, url);
+    if (isSharedPrefsInitialized) {
+      await sharedPrefs.setString(_keyBaseUrl, url);
+    }
     state = state.copyWith(baseUrl: url);
   }
 
   Future<void> setApiToken(String token) async {
-    await sharedPrefs.setString(_keyApiToken, token);
+    if (isSharedPrefsInitialized) {
+      await sharedPrefs.setString(_keyApiToken, token);
+    }
     state = state.copyWith(apiToken: token);
   }
 
   Future<void> clearAuth() async {
-    await sharedPrefs.remove(_keyApiToken);
+    if (isSharedPrefsInitialized) {
+      await sharedPrefs.remove(_keyApiToken);
+    }
     state = state.copyWith(apiToken: '');
   }
 
