@@ -1,60 +1,45 @@
 # 收藏读取逻辑参考自 xiaohongshu-cli:
 # https://github.com/jackwener/xiaohongshu-cli (Apache-2.0 License)
 # 本文件为基于 API 调用模式的原生复刻实现，非原始代码复制。
-
 from __future__ import annotations
 
 import asyncio
-import random
 from typing import Optional
 
 import httpx
-from xhshow import CryptoConfig, SessionManager, Xhshow
+from xhshow import SessionManager, Xhshow
 
 from app.adapters.base import PlatformAdapter
 from app.adapters.favorites.base import BaseFavoritesFetcher, FavoriteItem
+from app.adapters.favorites.errors import FavoritesFetchError
+from app.adapters.utils.anti_risk import (
+    exponential_backoff,
+    merge_response_cookies,
+    progressive_captcha_cooldown,
+    truncated_gaussian_delay,
+)
+from app.adapters.xiaohongshu_profile import (
+    DEFAULT_XHS_USER_AGENT,
+    build_xhs_crypto_config,
+)
 from app.core.logging import logger
 from app.services.settings_service import get_setting_value
 
-_USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
-)
+_USER_AGENT = DEFAULT_XHS_USER_AGENT
 _EDITH_HOST = "https://edith.xiaohongshu.com"
+_MAX_RETRY = 3
 
 
 class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
     """小红书收藏拉取器（原生 API 调用）。"""
 
     def __init__(self):
-        config = CryptoConfig().with_overrides(
-            PUBLIC_USERAGENT=_USER_AGENT,
-            SIGNATURE_DATA_TEMPLATE={
-                "x0": "4.2.6",
-                "x1": "xhs-pc-web",
-                "x2": "macOS",
-                "x3": "",
-                "x4": "",
-            },
-            SIGNATURE_XSCOMMON_TEMPLATE={
-                "s0": 5,
-                "s1": "",
-                "x0": "1",
-                "x1": "4.2.6",
-                "x2": "macOS",
-                "x3": "xhs-pc-web",
-                "x4": "4.86.0",
-                "x5": "",
-                "x6": "",
-                "x7": "",
-                "x8": "",
-                "x9": -596800761,
-                "x10": 0,
-                "x11": "normal",
-            },
-        )
+        config = build_xhs_crypto_config(_USER_AGENT)
         self._xhs_client = Xhshow(config)
         self._session = SessionManager(config)
+        self._base_request_delay = 1.0
+        self._request_delay = 1.0
+        self._verify_count = 0
 
     def platform_name(self) -> str:
         return "xiaohongshu"
@@ -91,51 +76,137 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
         *,
         cookies: dict[str, str],
         params: Optional[dict] = None,
-    ) -> Optional[dict]:
+    ) -> dict:
         params = params or {}
-        headers = {
-            **self._base_headers(),
-            **self._xhs_client.sign_headers_get(
-                uri=uri,
-                cookies=cookies,
-                params=params,
-                session=self._session,
-            ),
-        }
         proxy_url = await get_setting_value("http_proxy")
         url = f"{_EDITH_HOST}{uri}"
 
-        for attempt in range(3):
-            jitter = max(0.0, random.gauss(0.3, 0.15))
-            if random.random() < 0.05:
-                jitter += random.uniform(2.0, 5.0)
-            await asyncio.sleep(1.0 + jitter)
+        for attempt in range(_MAX_RETRY):
+            await asyncio.sleep(
+                truncated_gaussian_delay(
+                    base_delay=self._request_delay,
+                    mean=0.3,
+                    sigma=0.15,
+                    long_pause_probability=0.05,
+                    long_pause_range=(2.0, 5.0),
+                )
+            )
+
+            try:
+                sign_headers = self._xhs_client.sign_headers_get(
+                    uri=uri,
+                    cookies=cookies,
+                    params=params,
+                    session=self._session,
+                )
+            except Exception as e:
+                logger.warning("[xhs favorites] sign failed: {}", e)
+                raise FavoritesFetchError(
+                    code="sign_failed",
+                    message="Xiaohongshu signature generation failed",
+                    hint="签名失败，请重新登录小红书并稍后重试",
+                ) from e
+
+            headers = {**self._base_headers(), **sign_headers}
 
             try:
                 async with httpx.AsyncClient(timeout=15.0, proxy=proxy_url) as client:
                     resp = await client.get(url, params=params, headers=headers, cookies=cookies)
             except httpx.RequestError as e:
-                if attempt < 2:
-                    await asyncio.sleep(2**attempt)
+                if attempt < _MAX_RETRY - 1:
+                    await asyncio.sleep(exponential_backoff(attempt, jitter_max=0.0))
                     continue
                 logger.warning("[xhs favorites] request error: {}", e)
-                return None
+                raise FavoritesFetchError(
+                    code="network_error",
+                    message="Xiaohongshu request failed",
+                    hint="网络请求失败，请检查代理或网络后重试",
+                    retryable=True,
+                ) from e
+
+            merge_response_cookies(cookies, resp)
 
             if resp.status_code == 200:
-                return resp.json()
-            if resp.status_code in (429, 461, 471) or resp.status_code >= 500:
-                if attempt < 2:
-                    await asyncio.sleep((2**attempt) + random.uniform(0, 1))
-                    continue
-            logger.warning("[xhs favorites] http error: {}", resp.status_code)
-            return None
+                self._verify_count = 0
+                try:
+                    return resp.json()
+                except ValueError as e:
+                    raise FavoritesFetchError(
+                        code="parse_failed",
+                        message="Xiaohongshu API returned invalid JSON",
+                        hint="接口返回异常，请稍后重试",
+                        retryable=True,
+                    ) from e
 
-        return None
+            if resp.status_code in (461, 471):
+                self._verify_count += 1
+                self._request_delay = max(self._request_delay, self._base_request_delay * 2)
+                cooldown = progressive_captcha_cooldown(self._verify_count)
+                logger.warning(
+                    "[xhs favorites] captcha/risk triggered status={}, cooldown {:.1f}s",
+                    resp.status_code,
+                    cooldown,
+                )
+                if attempt < _MAX_RETRY - 1:
+                    await asyncio.sleep(cooldown)
+                    continue
+                raise FavoritesFetchError(
+                    code="captcha_required",
+                    message="Xiaohongshu risk verification required",
+                    hint="触发风控验证，请在网页端完成验证后重试",
+                    retryable=True,
+                )
+
+            self._verify_count = 0
+
+            if resp.status_code in (429,) or resp.status_code >= 500:
+                if attempt < _MAX_RETRY - 1:
+                    await asyncio.sleep(exponential_backoff(attempt))
+                    continue
+                if resp.status_code == 429:
+                    raise FavoritesFetchError(
+                        code="rate_limited",
+                        message="Xiaohongshu API rate limited",
+                        hint="请求频率过高，建议稍后重试或降低同步速率",
+                        retryable=True,
+                    )
+                raise FavoritesFetchError(
+                    code="upstream_error",
+                    message=f"Xiaohongshu API returned {resp.status_code}",
+                    hint="平台服务异常，请稍后重试",
+                    retryable=True,
+                )
+
+            logger.warning("[xhs favorites] http error: {}", resp.status_code)
+            raise FavoritesFetchError(
+                code="fetch_failed",
+                message=f"Xiaohongshu API returned {resp.status_code}",
+                hint="请求失败，请检查账号状态和网络配置",
+            )
+
+        raise FavoritesFetchError(
+            code="fetch_failed",
+            message="Xiaohongshu request failed after retries",
+            hint="请求失败，请稍后重试",
+            retryable=True,
+        )
 
     async def _get_self_user_id(self, cookies: dict[str, str]) -> Optional[str]:
         data = await self._request_signed_get("/api/sns/web/v2/user/me", cookies=cookies)
-        if not data or not data.get("success"):
-            return None
+        if not data.get("success"):
+            code = data.get("code")
+            if code == -100:
+                raise FavoritesFetchError(
+                    code="auth_required",
+                    message="Xiaohongshu session expired",
+                    hint="小红书登录已失效，请重新登录",
+                    auth_required=True,
+                )
+            raise FavoritesFetchError(
+                code="fetch_failed",
+                message="Failed to resolve current Xiaohongshu user",
+                hint="无法读取当前账号信息，请稍后重试",
+            )
         return (data.get("data") or {}).get("user_id")
 
     @staticmethod
@@ -155,16 +226,30 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
     ) -> tuple[list[FavoriteItem], Optional[str]]:
         cookies = await self._get_cookies()
         if not await self.check_auth():
-            return [], None
+            raise FavoritesFetchError(
+                code="auth_required",
+                message="Xiaohongshu auth cookie missing",
+                hint="请先在设置中配置小红书 Cookie",
+                auth_required=True,
+            )
+
+        self._request_delay = self._base_request_delay
+        self._verify_count = 0
 
         user_id = await self._get_self_user_id(cookies)
         if not user_id:
             logger.warning("[xhs favorites] failed to resolve current user")
-            return [], None
+            raise FavoritesFetchError(
+                code="auth_required",
+                message="Failed to resolve Xiaohongshu user",
+                hint="账号信息读取失败，请重新登录后重试",
+                auth_required=True,
+            )
 
         items: list[FavoriteItem] = []
         current_cursor = cursor or ""
         seen_ids: set[str] = set()
+        session_refresh_attempted = False
 
         while len(items) < max_items:
             params = {
@@ -177,17 +262,38 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
                 cookies=cookies,
                 params=params,
             )
-            if not body:
-                break
             if not body.get("success"):
                 code = body.get("code")
                 if code == -100:
                     logger.warning("[xhs favorites] session expired")
+                    if not session_refresh_attempted:
+                        latest_cookies = await self._get_cookies()
+                        if latest_cookies and latest_cookies != cookies:
+                            cookies = latest_cookies
+                            session_refresh_attempted = True
+                            logger.info("[xhs favorites] refreshed cookies from settings, retry current page")
+                            continue
+                    raise FavoritesFetchError(
+                        code="auth_required",
+                        message="Xiaohongshu session expired",
+                        hint="小红书登录已过期，请重新登录",
+                        auth_required=True,
+                    )
                 elif code == 300012:
                     logger.warning("[xhs favorites] ip blocked")
+                    raise FavoritesFetchError(
+                        code="ip_blocked",
+                        message="Xiaohongshu request blocked by risk control",
+                        hint="IP 已被风控拦截，请更换网络环境后重试",
+                        retryable=True,
+                    )
                 else:
                     logger.warning("[xhs favorites] api failed: code={}", code)
-                break
+                    raise FavoritesFetchError(
+                        code="fetch_failed",
+                        message=f"Xiaohongshu API failed with code={code}",
+                        hint="接口返回失败，请稍后重试",
+                    )
 
             data = body.get("data", {}) or {}
             notes = data.get("notes", []) or []

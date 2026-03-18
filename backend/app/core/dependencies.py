@@ -4,6 +4,7 @@ FastAPI Dependencies
 from typing import Optional
 from fastapi import Header, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.api_errors import build_error_payload
 from app.core.database import get_db
 from app.core.config import settings
 from app.services.content_service import ContentService
@@ -27,7 +28,14 @@ async def require_api_token(
         return
     provided = x_api_token or _extract_bearer(authorization)
     if not provided or provided != expected:
-        raise HTTPException(status_code=401, detail="Invalid or missing API Token")
+        raise HTTPException(
+            status_code=401,
+            detail=build_error_payload(
+                message="Invalid or missing API Token",
+                code="invalid_api_token",
+                hint="请在请求头中提供正确的 X-API-Token 或 Bearer Token",
+            ),
+        )
 
 async def get_content_service(db: AsyncSession = Depends(get_db)) -> ContentService:
     return ContentService(db)

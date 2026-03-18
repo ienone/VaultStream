@@ -13,11 +13,15 @@ import httpx
 from typing import Optional, Dict, Any
 from urllib.parse import urlparse, parse_qs, quote
 
-from xhshow import CryptoConfig, SessionManager, Xhshow
+from xhshow import SessionManager, Xhshow
 
 from app.core.logging import logger
 from app.adapters.base import PlatformAdapter, ParsedContent
 from app.adapters.errors import NonRetryableAdapterError
+from app.adapters.xiaohongshu_profile import (
+    DEFAULT_XHS_USER_AGENT,
+    build_xhs_crypto_config,
+)
 from app.core.config import settings
 
 # 导入parser
@@ -34,10 +38,7 @@ class XiaohongshuAdapter(PlatformAdapter):
     - settings.xiaohongshu_cookie: 必须配置有效的Cookie才能获取数据
     """
     
-    USER_AGENT = (
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-        'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36'
-    )
+    USER_AGENT = DEFAULT_XHS_USER_AGENT
 
     # URL模式
     PATTERNS = {
@@ -67,17 +68,7 @@ class XiaohongshuAdapter(PlatformAdapter):
             if settings.xiaohongshu_cookie else None
         )
         self.cookies = self._parse_cookies(self.cookie_str) if self.cookie_str else {}
-        _config = CryptoConfig().with_overrides(
-            PUBLIC_USERAGENT=self.USER_AGENT,
-            SIGNATURE_DATA_TEMPLATE={
-                "x0": "4.2.6", "x1": "xhs-pc-web", "x2": "macOS", "x3": "", "x4": "",
-            },
-            SIGNATURE_XSCOMMON_TEMPLATE={
-                "s0": 5, "s1": "", "x0": "1", "x1": "4.2.6", "x2": "macOS",
-                "x3": "xhs-pc-web", "x4": "4.86.0", "x5": "", "x6": "", "x7": "",
-                "x8": "", "x9": -596800761, "x10": 0, "x11": "normal",
-            },
-        )
+        _config = build_xhs_crypto_config(self.USER_AGENT)
         self.xhs_client = Xhshow(_config)
         self._session = SessionManager(_config)
         self.headers = {

@@ -4,6 +4,7 @@ import 'package:gap/gap.dart';
 import '../../providers/settings_provider.dart';
 import '../../models/system_setting.dart';
 import '../widgets/setting_components.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../discovery/providers/discovery_settings_provider.dart';
 import '../../../discovery/providers/discovery_sources_provider.dart';
 import '../../../discovery/models/discovery_models.dart';
@@ -310,11 +311,23 @@ class AutomationTab extends ConsumerWidget {
                           onPressed: statusMap[platform]?.available == false
                               ? null
                               : () async {
-                                  await ref
-                                      .read(favoritesSyncActionsProvider)
-                                      .triggerSync(platform: platform);
-                                  if (context.mounted) {
-                                    showToast(context, '已触发 ${_platformLabel(platform)} 同步');
+                                  try {
+                                    await ref
+                                        .read(favoritesSyncActionsProvider)
+                                        .triggerSync(platform: platform);
+                                    if (context.mounted) {
+                                      showToast(context, '已触发 ${_platformLabel(platform)} 同步');
+                                    }
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      showToast(
+                                        context,
+                                        formatApiErrorMessage(
+                                          e,
+                                          fallbackMessage: '手动同步失败',
+                                        ),
+                                      );
+                                    }
                                   }
                                 },
                         ),
@@ -384,8 +397,20 @@ class AutomationTab extends ConsumerWidget {
                   icon: status.running ? Icons.play_circle_fill_rounded : Icons.pause_circle_filled_rounded,
                   trailing: FilledButton.tonalIcon(
                     onPressed: () async {
-                      await ref.read(favoritesSyncActionsProvider).triggerSync();
-                      if (context.mounted) showToast(context, '已触发全平台同步');
+                      try {
+                        await ref.read(favoritesSyncActionsProvider).triggerSync();
+                        if (context.mounted) showToast(context, '已触发全平台同步');
+                      } catch (e) {
+                        if (context.mounted) {
+                          showToast(
+                            context,
+                            formatApiErrorMessage(
+                              e,
+                              fallbackMessage: '手动同步失败',
+                            ),
+                          );
+                        }
+                      }
                     },
                     icon: const Icon(Icons.sync_rounded),
                     label: const Text('手动同步'),
@@ -441,7 +466,40 @@ class AutomationTab extends ConsumerWidget {
       (_, false, 'twitter') => 'CLI 未就绪或未登录',
       _ => '未登录',
     };
-    return '$authText · ${configuredRate.toStringAsFixed(0)} 条/分钟';
+    final parts = <String>[
+      authText,
+      '${configuredRate.toStringAsFixed(0)} 条/分钟',
+    ];
+
+    final lastResult = status?.lastResult;
+    if (lastResult != null) {
+      final hint = (lastResult['error_hint'] ?? '').toString().trim();
+      final message = (lastResult['error_message'] ?? lastResult['error'] ?? '')
+          .toString()
+          .trim();
+      final resultStatus = (lastResult['status'] ?? '').toString();
+      if (hint.isNotEmpty) {
+        parts.add(hint);
+      } else if ((resultStatus == 'failed' || resultStatus == 'partial_success') &&
+          message.isNotEmpty) {
+        parts.add(message);
+      }
+    }
+
+    final statusError = status?.statusError;
+    if (statusError != null) {
+      final hint = (statusError['error_hint'] ?? '').toString().trim();
+      final message = (statusError['error_message'] ?? statusError['detail'] ?? '')
+          .toString()
+          .trim();
+      if (hint.isNotEmpty) {
+        parts.add(hint);
+      } else if (message.isNotEmpty) {
+        parts.add(message);
+      }
+    }
+
+    return parts.join(' · ');
   }
 
   dynamic _getSettingValue(List<SystemSetting> settings, String key, dynamic fallback) {

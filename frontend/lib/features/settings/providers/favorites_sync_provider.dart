@@ -11,6 +11,7 @@ class FavoritesPlatformStatus {
     required this.ratePerMinute,
     required this.lastResult,
     required this.error,
+    required this.statusError,
   });
 
   final String platform;
@@ -20,6 +21,7 @@ class FavoritesPlatformStatus {
   final double ratePerMinute;
   final Map<String, dynamic>? lastResult;
   final String? error;
+  final Map<String, dynamic>? statusError;
 
   factory FavoritesPlatformStatus.fromJson(Map<String, dynamic> json) {
     final rawRate = json['rate_per_minute'];
@@ -36,6 +38,9 @@ class FavoritesPlatformStatus {
           ? json['last_result'] as Map<String, dynamic>
           : null,
       error: json['error']?.toString(),
+      statusError: json['status_error'] is Map<String, dynamic>
+          ? json['status_error'] as Map<String, dynamic>
+          : null,
     );
   }
 }

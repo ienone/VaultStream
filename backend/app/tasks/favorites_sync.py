@@ -11,8 +11,9 @@ from app.adapters.favorites import (
     XiaohongshuFavoritesFetcher,
     ZhihuFavoritesFetcher,
 )
+from app.adapters.favorites.errors import FavoritesFetchError
 from app.core.database import AsyncSessionLocal
-from app.core.logging import logger
+from app.core.logging import ensure_task_id, log_context, logger
 from app.core.time_utils import utcnow
 from app.services.content_service import ContentService
 from app.services.settings_service import get_setting_value, set_setting_value
@@ -110,38 +111,55 @@ class FavoritesSyncTask:
                     interval = self._DEFAULT_INTERVAL_MINUTES
                 await self.sync_all_platforms_once()
             except Exception as e:
-                logger.error("Favorites sync loop failed: {}", e)
+                logger.exception("Favorites sync loop failed: {}", e)
             await asyncio.sleep(interval * 60)
 
     async def sync_all_platforms_once(self) -> dict[str, dict]:
-        async with self._lock:
-            enabled = await self.load_enabled_platforms()
-            results: dict[str, dict] = {}
-            for platform in enabled:
-                try:
-                    results[platform] = await self._sync_platform_by_name_inner(platform)
-                except Exception as e:
-                    logger.error("Favorites sync [{}] failed: {}", platform, e)
-                    results[platform] = {
-                        "platform": platform,
-                        "error": str(e),
-                        "fetched": 0,
-                        "imported": 0,
-                        "failed": 0,
-                    }
+        task_id = ensure_task_id()
+        with log_context(task_id=task_id):
+            async with self._lock:
+                enabled = await self.load_enabled_platforms()
+                results: dict[str, dict] = {}
+                for platform in enabled:
+                    try:
+                        results[platform] = await self._sync_platform_by_name_inner(platform)
+                    except FavoritesFetchError as e:
+                        logger.bind(
+                            event="favorites_sync_failed",
+                            platform=platform,
+                            error_code=e.code,
+                            retryable=e.retryable,
+                            auth_required=e.auth_required,
+                        ).error("Favorites sync failed: {}", e)
+                        results[platform] = self._build_failure_result(platform, e)
+                    except Exception as e:
+                        logger.bind(
+                            event="favorites_sync_failed",
+                            platform=platform,
+                            error_code="internal_error",
+                        ).exception("Favorites sync failed unexpectedly: {}", e)
+                        results[platform] = self._build_failure_result(
+                            platform,
+                            FavoritesFetchError(
+                                code="internal_error",
+                                message=str(e),
+                                hint="同步任务内部异常，请查看后端日志",
+                                retryable=True,
+                            ),
+                        )
 
-            now_iso = utcnow().isoformat()
-            await set_setting_value(
-                "favorites_sync_last_sync_at",
-                now_iso,
-                category="favorites_sync",
-            )
-            await set_setting_value(
-                "favorites_sync_last_result",
-                results,
-                category="favorites_sync",
-            )
-            return results
+                now_iso = utcnow().isoformat()
+                await set_setting_value(
+                    "favorites_sync_last_sync_at",
+                    now_iso,
+                    category="favorites_sync",
+                )
+                await set_setting_value(
+                    "favorites_sync_last_result",
+                    results,
+                    category="favorites_sync",
+                )
+                return results
 
     async def sync_platform_by_name(self, platform: str) -> dict:
         platform = (platform or "").strip().lower()
@@ -165,19 +183,61 @@ class FavoritesSyncTask:
         )
         return result
 
+    @staticmethod
+    def _build_failure_result(platform: str, error: FavoritesFetchError) -> dict:
+        return {
+            "platform": platform,
+            "status": "failed",
+            "authenticated": not error.auth_required,
+            "fetched": 0,
+            "imported": 0,
+            "failed": 0,
+            "skipped": 0,
+            "error": error.message,
+            **error.as_dict(),
+            "at": utcnow().isoformat(),
+        }
+
     async def _sync_platform(self, fetcher: BaseFavoritesFetcher) -> dict:
         platform = fetcher.platform_name()
-        if not await fetcher.check_auth():
+        try:
+            is_authenticated = await fetcher.check_auth()
+        except FavoritesFetchError as e:
+            logger.bind(
+                event="favorites_auth_check_failed",
+                platform=platform,
+                error_code=e.code,
+                retryable=e.retryable,
+                auth_required=e.auth_required,
+            ).warning("Favorites auth check failed: {}", e)
+            return self._build_failure_result(platform, e)
+        except Exception as e:
+            logger.bind(
+                event="favorites_auth_check_failed",
+                platform=platform,
+                error_code="auth_check_failed",
+            ).exception("Favorites auth check failed unexpectedly: {}", e)
+            return self._build_failure_result(
+                platform,
+                FavoritesFetchError(
+                    code="auth_check_failed",
+                    message=str(e),
+                    hint="认证状态检查失败，请稍后重试",
+                    retryable=True,
+                ),
+            )
+
+        if not is_authenticated:
             logger.warning("[{} favorites] not authenticated, skip", platform)
-            return {
-                "platform": platform,
-                "authenticated": False,
-                "fetched": 0,
-                "imported": 0,
-                "failed": 0,
-                "skipped": 0,
-                "at": utcnow().isoformat(),
-            }
+            return self._build_failure_result(
+                platform,
+                FavoritesFetchError(
+                    code="auth_required",
+                    message="Authentication required",
+                    hint="登录状态不可用，请先完成该平台登录",
+                    auth_required=True,
+                ),
+            )
 
         max_items = int(
             await get_setting_value(
@@ -196,10 +256,35 @@ class FavoritesSyncTask:
         if not isinstance(cursor, str):
             cursor = None
 
-        items, next_cursor = await fetcher.fetch_favorites(
-            max_items=max_items,
-            cursor=cursor,
-        )
+        try:
+            items, next_cursor = await fetcher.fetch_favorites(
+                max_items=max_items,
+                cursor=cursor,
+            )
+        except FavoritesFetchError as e:
+            logger.bind(
+                event="favorites_fetch_failed",
+                platform=platform,
+                error_code=e.code,
+                retryable=e.retryable,
+                auth_required=e.auth_required,
+            ).warning("Favorites fetch failed: {}", e)
+            return self._build_failure_result(platform, e)
+        except Exception as e:
+            logger.bind(
+                event="favorites_fetch_failed",
+                platform=platform,
+                error_code="fetch_failed",
+            ).exception("Favorites fetch failed unexpectedly: {}", e)
+            return self._build_failure_result(
+                platform,
+                FavoritesFetchError(
+                    code="fetch_failed",
+                    message=str(e),
+                    hint="拉取收藏失败，请查看日志并稍后重试",
+                    retryable=True,
+                ),
+            )
         logger.info("[{} favorites] fetched {}", platform, len(items))
 
         imported = 0
@@ -229,7 +314,11 @@ class FavoritesSyncTask:
                     skipped += 1
                 except Exception as e:
                     failed += 1
-                    logger.warning("[{} favorites] import failed: {} ({})", platform, item.url, e)
+                    logger.bind(
+                        event="favorites_import_failed",
+                        platform=platform,
+                        item_url=item.url,
+                    ).exception("Favorites import failed: {}", e)
                 await asyncio.sleep(delay)
 
         if next_cursor is not None:
@@ -241,12 +330,19 @@ class FavoritesSyncTask:
 
         result = {
             "platform": platform,
+            "status": "success" if failed == 0 else "partial_success",
             "authenticated": True,
             "fetched": len(items),
             "imported": imported,
             "failed": failed,
             "skipped": skipped,
             "next_cursor": next_cursor,
+            "error": None,
+            "error_code": None,
+            "error_message": None,
+            "error_hint": None,
+            "retryable": False,
+            "auth_required": False,
             "at": utcnow().isoformat(),
         }
         logger.info(

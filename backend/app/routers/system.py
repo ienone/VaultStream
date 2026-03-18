@@ -21,6 +21,8 @@ from app.schemas import (
 )
 from app.core.logging import logger
 from app.core.dependencies import require_api_token
+from app.core.api_errors import build_error_payload
+from app.adapters.favorites.errors import FavoritesFetchError
 from app.adapters.storage import get_storage_backend, LocalStorageBackend
 from app.core.queue import task_queue
 from app.utils.sensitive_display import as_configured_placeholder, is_sensitive_setting_key
@@ -189,7 +191,14 @@ async def get_tags_list(
         return tag_stats
     except Exception as e:
         logger.exception("获取标签列表失败")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=build_error_payload(
+                message="获取标签列表失败",
+                code="tags_query_failed",
+                hint="请稍后重试，若持续失败请检查后端日志",
+            ),
+        )
 
 # --- System Settings ---
 
@@ -212,7 +221,13 @@ async def get_setting(
     result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
     setting = result.scalar_one_or_none()
     if not setting:
-        raise HTTPException(status_code=404, detail="Setting not found")
+        raise HTTPException(
+            status_code=404,
+            detail=build_error_payload(
+                message="Setting not found",
+                code="setting_not_found",
+            ),
+        )
     return _serialize_setting_for_response(setting)
 
 @router.put("/settings/{key}", response_model=SystemSettingResponse)
@@ -236,7 +251,13 @@ async def delete_setting(
     from app.services.settings_service import delete_setting_value
     success = await delete_setting_value(key)
     if not success:
-        raise HTTPException(status_code=404, detail="Setting not found")
+        raise HTTPException(
+            status_code=404,
+            detail=build_error_payload(
+                message="Setting not found",
+                code="setting_not_found",
+            ),
+        )
     
     return {"status": "deleted", "key": key}
 
@@ -278,12 +299,43 @@ async def get_favorites_sync_status(
         authenticated = False
         available = True
         error: Optional[str] = None
+        status_error: Optional[dict[str, Any]] = None
         try:
             authenticated = await fetcher_cls().check_auth()
+        except ImportError as e:
+            available = False
+            error = str(e)
+            status_error = build_error_payload(
+                message=str(e),
+                code="dependency_missing",
+                hint="依赖缺失，请检查后端运行环境",
+                request_id=getattr(request.state, "request_id", None),
+            )
+            logger.warning("[favorites status] check_auth import error for {}: {}", platform, e)
+        except FavoritesFetchError as e:
+            available = e.code != "cli_unavailable"
+            error = e.message
+            status_error = {
+                "detail": e.message,
+                **e.as_dict(),
+                "request_id": getattr(request.state, "request_id", None),
+            }
+            logger.warning(
+                "[favorites status] structured check_auth failure for {}: code={} message={}",
+                platform,
+                e.code,
+                e.message,
+            )
         except Exception as e:
             available = False
             error = str(e)
-            logger.warning("[favorites status] check_auth failed for {}: {}", platform, e)
+            status_error = build_error_payload(
+                message=str(e),
+                code="auth_check_failed",
+                hint="认证检查失败，请稍后重试",
+                request_id=getattr(request.state, "request_id", None),
+            )
+            logger.exception("[favorites status] check_auth failed for {}", platform)
 
         rate = float(
             await get_setting_value(
@@ -302,6 +354,7 @@ async def get_favorites_sync_status(
                 "rate_per_minute": rate,
                 "last_result": last_result,
                 "error": error,
+                "status_error": status_error,
             }
         )
 
@@ -324,12 +377,28 @@ async def trigger_favorites_sync(
     """Trigger one round of favorites sync (all platforms or single platform)."""
     sync_task = getattr(request.app.state, "favorites_sync_task", None)
     if sync_task is None:
-        raise HTTPException(status_code=503, detail="Favorites sync task is not running")
+        raise HTTPException(
+            status_code=503,
+            detail=build_error_payload(
+                message="Favorites sync task is not running",
+                code="favorites_task_unavailable",
+                hint="请确认后端任务已启动后重试",
+                request_id=getattr(request.state, "request_id", None),
+            ),
+        )
 
     platform = ((body.platform if body else "") or "").strip().lower()
     if platform:
         if platform not in sync_task.get_supported_platforms():
-            raise HTTPException(status_code=400, detail=f"Unknown platform: {platform}")
+            raise HTTPException(
+                status_code=400,
+                detail=build_error_payload(
+                    message=f"Unknown platform: {platform}",
+                    code="unsupported_platform",
+                    hint="仅支持 zhihu / xiaohongshu / twitter",
+                    request_id=getattr(request.state, "request_id", None),
+                ),
+            )
         asyncio.create_task(sync_task.sync_platform_by_name(platform))
         return {"status": "accepted", "platform": platform}
 

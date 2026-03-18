@@ -22,8 +22,9 @@ import httpx
 import qrcode
 from loguru import logger
 from pydantic import BaseModel
-from xhshow import Xhshow, CryptoConfig, SessionManager
+from xhshow import Xhshow, SessionManager
 
+from app.adapters.xiaohongshu_profile import build_xhs_crypto_config
 from app.services.settings_service import set_setting_value, get_setting_value, delete_setting_value
 from app.adapters.browser import browser_manager
 
@@ -167,15 +168,7 @@ class BrowserAuthService:
         home = "https://www.xiaohongshu.com"
         
         # 配置 xhshow 签名环境 (与 Adapter 保持一致)
-        config = CryptoConfig().with_overrides(
-            PUBLIC_USERAGENT=ua,
-            SIGNATURE_DATA_TEMPLATE={"x0": "4.2.6", "x1": "xhs-pc-web", "x2": "macOS", "x3": "", "x4": ""},
-            SIGNATURE_XSCOMMON_TEMPLATE={
-                "s0": 5, "s1": "", "x0": "1", "x1": "4.2.6", "x2": "macOS",
-                "x3": "xhs-pc-web", "x4": "4.86.0", "x5": "", "x6": "", "x7": "",
-                "x8": "", "x9": -596800761, "x10": 0, "x11": "normal",
-            },
-        )
+        config = build_xhs_crypto_config(ua)
         xhs = Xhshow(config)
         sm = SessionManager(config)
 
@@ -460,15 +453,7 @@ class BrowserAuthService:
 
         # 构造签名头（与 Adapter 保持一致的 CryptoConfig）
         try:
-            config = CryptoConfig().with_overrides(
-                PUBLIC_USERAGENT=ua,
-                SIGNATURE_DATA_TEMPLATE={"x0": "4.2.6", "x1": "xhs-pc-web", "x2": "macOS", "x3": "", "x4": ""},
-                SIGNATURE_XSCOMMON_TEMPLATE={
-                    "s0": 5, "s1": "", "x0": "1", "x1": "4.2.6", "x2": "macOS",
-                    "x3": "xhs-pc-web", "x4": "4.86.0", "x5": "", "x6": "", "x7": "",
-                    "x8": "", "x9": -596800761, "x10": 0, "x11": "normal",
-                },
-            )
+            config = build_xhs_crypto_config(ua)
             xhs = Xhshow(config)
             sm = SessionManager(config)
             sign = xhs.sign_headers_get(check_uri, cookies, session=sm)

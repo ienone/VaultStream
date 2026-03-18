@@ -16,10 +16,13 @@ from pathlib import Path
 from time import perf_counter
 from fastapi import FastAPI
 from fastapi import Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.logging import logger, setup_logging, log_context, new_request_id
+from app.core.api_errors import normalize_http_error_detail
 
 from app.core.config import settings, validate_settings
 from app.core.database import init_db
@@ -175,6 +178,15 @@ app = FastAPI(
 )
 
 
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    payload = normalize_http_error_detail(exc.detail, status_code=exc.status_code)
+    request_id = getattr(request.state, "request_id", None)
+    if request_id:
+        payload["request_id"] = request_id
+    return JSONResponse(status_code=exc.status_code, content=payload, headers=exc.headers)
+
+
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
     request_id = request.headers.get("X-Request-Id") or new_request_id()
@@ -201,8 +213,6 @@ async def request_id_middleware(request: Request, call_next):
     if response is not None:
         response.headers["X-Request-Id"] = request_id
         return response
-
-    from fastapi.responses import JSONResponse
 
     return JSONResponse(status_code=500, content={"detail": "internal error"}, headers={"X-Request-Id": request_id})
 

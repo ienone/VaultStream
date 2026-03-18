@@ -9,6 +9,7 @@ import json
 from typing import Optional
 
 from app.adapters.favorites.base import BaseFavoritesFetcher, FavoriteItem
+from app.adapters.favorites.errors import FavoritesFetchError
 from app.core.logging import logger
 
 
@@ -32,11 +33,32 @@ class TwitterFavoritesFetcher(BaseFavoritesFetcher):
             _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
             if proc.returncode == 0:
                 return True
-            logger.warning("[twitter favorites] check_auth failed: {}", stderr.decode(errors="ignore")[:300])
+            err_text = stderr.decode(errors="ignore")[:300]
+            logger.warning("[twitter favorites] check_auth failed: {}", err_text)
+            lower = err_text.lower()
+            if "login" in lower or "auth" in lower or "unauthorized" in lower:
+                raise FavoritesFetchError(
+                    code="auth_required",
+                    message="Twitter CLI is not authenticated",
+                    hint="请先使用 `twitter login` 完成登录后再同步收藏",
+                    auth_required=True,
+                )
             return False
-        except (FileNotFoundError, asyncio.TimeoutError) as e:
+        except FileNotFoundError as e:
             logger.warning("[twitter favorites] cli unavailable: {}", e)
-            return False
+            raise FavoritesFetchError(
+                code="cli_unavailable",
+                message="twitter cli is not installed",
+                hint="请安装并配置 twitter CLI，再执行收藏同步",
+            ) from e
+        except asyncio.TimeoutError as e:
+            logger.warning("[twitter favorites] check_auth timeout: {}", e)
+            raise FavoritesFetchError(
+                code="network_timeout",
+                message="Twitter CLI auth check timeout",
+                hint="网络连接超时，请稍后重试",
+                retryable=True,
+            ) from e
 
     async def fetch_favorites(
         self,
@@ -56,19 +78,56 @@ class TwitterFavoritesFetcher(BaseFavoritesFetcher):
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
-        except (FileNotFoundError, asyncio.TimeoutError) as e:
+        except FileNotFoundError as e:
             logger.error("[twitter favorites] subprocess error: {}", e)
-            return [], None
+            raise FavoritesFetchError(
+                code="cli_unavailable",
+                message="twitter cli is not installed",
+                hint="请安装并配置 twitter CLI，再执行收藏同步",
+            ) from e
+        except asyncio.TimeoutError as e:
+            logger.error("[twitter favorites] subprocess timeout: {}", e)
+            raise FavoritesFetchError(
+                code="network_timeout",
+                message="Twitter CLI request timeout",
+                hint="请求超时，请稍后重试",
+                retryable=True,
+            ) from e
 
         if proc.returncode != 0:
-            logger.error("[twitter favorites] command failed: {}", stderr.decode(errors="ignore")[:500])
-            return [], None
+            err_text = stderr.decode(errors="ignore")[:500]
+            logger.error("[twitter favorites] command failed: {}", err_text)
+            lower = err_text.lower()
+            if "login" in lower or "auth" in lower or "unauthorized" in lower:
+                raise FavoritesFetchError(
+                    code="auth_required",
+                    message="Twitter CLI is not authenticated",
+                    hint="请先使用 `twitter login` 完成登录后再同步收藏",
+                    auth_required=True,
+                )
+            if "rate" in lower or "too many requests" in lower or "429" in lower:
+                raise FavoritesFetchError(
+                    code="rate_limited",
+                    message="Twitter API rate limited",
+                    hint="触发限流，建议稍后重试",
+                    retryable=True,
+                )
+            raise FavoritesFetchError(
+                code="fetch_failed",
+                message="Twitter CLI command failed",
+                hint="请检查 twitter CLI 输出日志和网络连通性",
+            )
 
         try:
             data = json.loads(stdout.decode(errors="ignore"))
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
             logger.error("[twitter favorites] invalid JSON output")
-            return [], None
+            raise FavoritesFetchError(
+                code="parse_failed",
+                message="Twitter CLI returned invalid JSON",
+                hint="CLI 输出格式异常，请升级 CLI 或稍后重试",
+                retryable=True,
+            ) from e
 
         tweets = data.get("data", data) if isinstance(data, dict) else data
         if isinstance(tweets, dict):
