@@ -120,6 +120,7 @@ sqlite3 data/vaultstream.db < migrations/m4_distribution_and_review.sql
 - 旧排期字段收口：`m11_drop_legacy_content_schedule_columns.sql`
 - Bot 配置链路：`m12_add_bot_config_table.sql`、`m14_bind_bot_chats_to_config.py`、`m15_add_napcat_access_token.py`
 - 状态机统一：`m17_replace_legacy_content_status.sql`
+- Phase 1 队列去旧：`scripts/migrate_phase1_db_cleanup.py`（删除 `needs_approval` / `approved_at` / `auto_approve_conditions`）
 
 治理约束：
 

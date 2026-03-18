@@ -100,7 +100,7 @@ eventSource.addEventListener('queue_updated', (e) => {
 
 ### GET /api/v1/distribution-queue/stats
 
-获取队列状态统计（`will_push` / `filtered` / `pending_review` / `pushed` 与 `due_now`）。
+获取队列状态统计（`will_push` / `filtered` / `pushed` 与 `due_now`）。
 
 ### GET /api/v1/distribution-queue/items
 
@@ -113,7 +113,7 @@ eventSource.addEventListener('queue_updated', (e) => {
 
 查询参数：
 
-- `status`（支持别名：`will_push`/`filtered`/`pending_review`/`pushed`）
+- `status`（支持别名：`will_push`/`filtered`/`pushed`）
 - `content_id`
 - `rule_id`
 - `bot_chat_id`
@@ -175,13 +175,10 @@ eventSource.addEventListener('queue_updated', (e) => {
 - `POST /api/v1/distribution-queue/content/{content_id}/schedule`
 - `POST /api/v1/distribution-queue/content/batch-push-now`
 - `POST /api/v1/distribution-queue/content/batch-reschedule`
-- `POST /api/v1/distribution-queue/content/merge-group`
 
 ### 队列项维度操作
 
 - `POST /api/v1/distribution-queue/items/{item_id}/push-now`
-
-`merge-group` 在 `ContentQueueItem` 模型下返回语义化成功响应。
 
 ---
 
@@ -231,7 +228,7 @@ eventSource.addEventListener('queue_updated', (e) => {
 
 `GET /api/v1/bot/status` 返回统一状态口径：
 - `parse_stats`: `unprocessed` / `processing` / `parse_success` / `parse_failed`
-- `distribution_stats`: `will_push` / `filtered` / `pending_review` / `pushed`
+- `distribution_stats`: `will_push` / `filtered` / `pushed`
 - `rule_breakdown`: 按规则 ID 聚合的分发状态统计
 
 其中 `parse_success` 为当前统一的解析成功物理状态。
@@ -266,7 +263,7 @@ QQ 配置支持字段：`napcat_http_url`、`napcat_ws_url`、`napcat_access_tok
 
 `GET /api/v1/dashboard/queue` 返回：
 - `parse`: 解析阶段四态统计（`unprocessed`/`processing`/`parse_success`/`parse_failed`）
-- `distribution`: 解析成功后的分发四态统计（`will_push`/`filtered`/`pending_review`/`pushed`）
+- `distribution`: 解析成功后的分发三态统计（`will_push`/`filtered`/`pushed`）
 
 ---
 
