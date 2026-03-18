@@ -155,13 +155,13 @@ async def test_match_rules_only_enabled(db_session):
 
 @pytest.mark.asyncio
 async def test_auto_approve_if_eligible_approves(db_session):
-    """Content with matching auto_approve_conditions gets AUTO_APPROVED."""
+    """Content matching a non-approval-required rule gets AUTO_APPROVED."""
     await _create_bot_chat(db_session)
     await _create_rule(
         db_session,
         name="auto_approve_rule",
-        match_conditions={},
-        auto_approve_conditions={"platform": "bilibili"},
+        match_conditions={"platform": "bilibili"},
+        approval_required=False,
     )
     content = await _create_content(
         db_session,
@@ -185,13 +185,13 @@ async def test_auto_approve_if_eligible_approves(db_session):
 
 @pytest.mark.asyncio
 async def test_auto_approve_if_eligible_no_match(db_session):
-    """No auto_approve_conditions match → returns False, status unchanged."""
+    """No non-approval-required rule matches → returns False, status unchanged."""
     await _create_bot_chat(db_session)
     await _create_rule(
         db_session,
         name="no_match_auto_rule",
-        match_conditions={},
-        auto_approve_conditions={"platform": "twitter"},
+        match_conditions={"platform": "twitter"},
+        approval_required=False,
     )
     content = await _create_content(
         db_session,
@@ -215,8 +215,8 @@ async def test_auto_approve_triggers_enqueue(db_session):
     await _create_rule(
         db_session,
         name="enqueue_trigger_rule",
-        match_conditions={},
-        auto_approve_conditions={"platform": "bilibili"},
+        match_conditions={"platform": "bilibili"},
+        approval_required=False,
     )
     content = await _create_content(
         db_session,
@@ -245,8 +245,8 @@ async def test_refresh_queue_reverts_invalid_auto_approve(db_session):
     await _create_rule(
         db_session,
         name="revert_rule",
-        match_conditions={},
-        auto_approve_conditions={"platform": "twitter"},
+        match_conditions={"platform": "twitter"},
+        approval_required=False,
     )
     content = await _create_content(
         db_session,
@@ -267,11 +267,11 @@ async def test_refresh_queue_reverts_invalid_auto_approve(db_session):
 async def test_refresh_queue_promotes_pending_to_auto_approved(db_session):
     """PENDING content now matching auto_approve → promotes to AUTO_APPROVED."""
     await _create_bot_chat(db_session)
-    rule = await _create_rule(
+    await _create_rule(
         db_session,
         name="promote_rule",
-        match_conditions={},
-        auto_approve_conditions={"platform": "bilibili"},
+        match_conditions={"platform": "bilibili"},
+        approval_required=False,
     )
     content = await _create_content(
         db_session,
@@ -286,4 +286,4 @@ async def test_refresh_queue_promotes_pending_to_auto_approved(db_session):
 
     await db_session.refresh(content)
     assert content.review_status == ReviewStatus.AUTO_APPROVED
-    assert rule.name in content.review_note
+    assert "auto-approved" in (content.review_note or "").lower()

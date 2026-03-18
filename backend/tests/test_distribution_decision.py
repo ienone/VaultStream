@@ -5,7 +5,6 @@ from app.services.distribution.decision import (
     DECISION_PENDING_REVIEW,
     DECISION_WILL_PUSH,
     check_match_conditions,
-    evaluate_target_decision,
     should_distribute,
 )
 from app.models import BotChat, Content, DistributionRule, Platform, ReviewStatus
@@ -46,7 +45,7 @@ async def test_separate_channel_without_route_fallbacks_to_block():
     )
     chat = BotChat(chat_id="-10001", enabled=True)
 
-    decision = evaluate_target_decision(content=content, rule=rule, bot_chat=chat)
+    decision = should_distribute(content=content, rule=rule, bot_chat=chat)
 
     assert decision.bucket == DECISION_FILTERED
     assert decision.reason_code == "nsfw_separate_unconfigured_blocked"
@@ -69,7 +68,7 @@ async def test_separate_channel_with_route_will_push():
     )
     chat = BotChat(chat_id="-10001", nsfw_chat_id="-10099", enabled=True)
 
-    decision = evaluate_target_decision(content=content, rule=rule, bot_chat=chat)
+    decision = should_distribute(content=content, rule=rule, bot_chat=chat)
 
     assert decision.bucket == DECISION_WILL_PUSH
     assert decision.target_id == "-10099"
@@ -93,14 +92,14 @@ async def test_approval_required_maps_to_pending_review():
     )
     chat = BotChat(chat_id="-10001", enabled=True)
 
-    decision = evaluate_target_decision(content=content, rule=rule, bot_chat=chat)
+    decision = should_distribute(content=content, rule=rule, bot_chat=chat)
 
     assert decision.bucket == DECISION_PENDING_REVIEW
     assert decision.reason_code == "approval_required"
 
 
 @pytest.mark.asyncio
-async def test_should_distribute_is_equivalent_to_legacy_evaluate():
+async def test_should_distribute_matches_expected_output():
     content = Content(
         platform=Platform.WEIBO,
         tags=["test"],
@@ -116,9 +115,7 @@ async def test_should_distribute_is_equivalent_to_legacy_evaluate():
     )
     chat = BotChat(chat_id="-10001", enabled=True)
 
-    legacy = evaluate_target_decision(content=content, rule=rule, bot_chat=chat)
-    unified = should_distribute(content=content, rule=rule, bot_chat=chat)
-
-    assert unified.bucket == legacy.bucket
-    assert unified.reason_code == legacy.reason_code
-    assert unified.target_id == legacy.target_id
+    decision = should_distribute(content=content, rule=rule, bot_chat=chat)
+    assert decision.bucket == DECISION_WILL_PUSH
+    assert decision.reason_code == "rule_matched"
+    assert decision.target_id == "-10001"

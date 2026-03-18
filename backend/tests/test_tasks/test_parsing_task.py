@@ -523,23 +523,56 @@ async def test_handle_parse_error_normal(db_session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_check_auto_approval_success(db_session, monkeypatch):
-    """auto_approve_if_eligible is called."""
-    content = await _make_content(db_session)
-    mock_engine = AsyncMock()
-    mock_engine.auto_approve_if_eligible = AsyncMock(return_value=True)
+    """命中免审批规则后应自动审批并触发入队。"""
+    from app.models import DistributionRule, ReviewStatus
 
-    with patch("app.services.distribution.DistributionEngine", return_value=mock_engine):
+    content = await _make_content(
+        db_session,
+        status=ContentStatus.PARSE_SUCCESS,
+        review_status=ReviewStatus.PENDING,
+        platform=Platform.BILIBILI,
+    )
+    rule = DistributionRule(
+        name="auto-approve-rule",
+        enabled=True,
+        approval_required=False,
+        match_conditions={"platform": "bilibili"},
+    )
+    db_session.add(rule)
+    await db_session.commit()
+
+    with patch(
+        "app.services.distribution.scheduler.enqueue_content",
+        new_callable=AsyncMock,
+    ) as mock_enqueue:
         parser = ContentParser()
         await parser._check_auto_approval(db_session, content)
-    mock_engine.auto_approve_if_eligible.assert_awaited_once_with(content)
+
+    await db_session.refresh(content)
+    assert content.review_status == ReviewStatus.AUTO_APPROVED
+    mock_enqueue.assert_awaited_once_with(content.id, session=db_session)
 
 
 @pytest.mark.asyncio
 async def test_check_auto_approval_exception(db_session, monkeypatch):
     """Exception in auto-approve is caught silently."""
-    content = await _make_content(db_session)
+    from app.models import DistributionRule
 
-    with patch("app.services.distribution.DistributionEngine", side_effect=RuntimeError("boom")):
+    content = await _make_content(db_session, status=ContentStatus.PARSE_SUCCESS)
+    rule = DistributionRule(
+        name="auto-approve-rule-exception",
+        enabled=True,
+        approval_required=False,
+        match_conditions={},
+    )
+    db_session.add(rule)
+    await db_session.commit()
+
+    with patch(
+        "app.services.distribution.scheduler.enqueue_content",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("boom"),
+    ):
         parser = ContentParser()
         # Should not raise
         await parser._check_auto_approval(db_session, content)
@@ -589,19 +622,21 @@ def test_truncate_archive_metadata_over_limit():
     assert "html" not in archive
 
 
-def test_get_platform_cookies_bilibili(monkeypatch):
+@pytest.mark.asyncio
+async def test_get_platform_cookies_bilibili(monkeypatch):
     from pydantic import SecretStr
     monkeypatch.setattr("app.core.config.settings.bilibili_sessdata", SecretStr("sess123"))
     monkeypatch.setattr("app.core.config.settings.bilibili_bili_jct", SecretStr("jct456"))
     monkeypatch.setattr("app.core.config.settings.bilibili_buvid3", SecretStr("buv789"))
     parser = ContentParser()
-    cookies = parser._get_platform_cookies(Platform.BILIBILI)
+    cookies = await parser._get_platform_cookies(Platform.BILIBILI)
     assert cookies == {"SESSDATA": "sess123", "bili_jct": "jct456", "buvid3": "buv789"}
 
 
-def test_get_platform_cookies_other():
+@pytest.mark.asyncio
+async def test_get_platform_cookies_other():
     parser = ContentParser()
-    assert parser._get_platform_cookies(Platform.WEIBO) == {}
+    assert await parser._get_platform_cookies(Platform.WEIBO) == {}
 
 
 # ===================================================================

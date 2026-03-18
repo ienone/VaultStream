@@ -2,7 +2,6 @@
 import pytest
 from httpx import AsyncClient
 from datetime import datetime, timezone
-from app.models import QueueItemStatus
 
 class TestDistributionQueueExtraAPI:
     """Extra tests for distribution queue management endpoints."""
@@ -89,6 +88,10 @@ class TestDistributionQueueExtraAPI:
                 "author_name": "Test Author"
             }
         )
+        await client.post(
+            f"/api/v1/cards/{content_id}/review",
+            json={"action": "approve"},
+        )
 
         return content_id, rule_id, chat_id
 
@@ -127,7 +130,7 @@ class TestDistributionQueueExtraAPI:
         
         # Verify status
         verify_resp = await client.get(f"/api/v1/distribution-queue/items/{item_id}")
-        assert verify_resp.json()["status"] == "canceled"
+        assert verify_resp.json()["status"] == "failed"
 
         # 5. Retry item
         retry_resp = await client.post(
@@ -202,7 +205,5 @@ class TestDistributionQueueExtraAPI:
         
         resp = await client.post(f"/api/v1/distribution-queue/items/{item_id}/push-now")
         assert resp.status_code == 200
-        # If the item was skipped by worker because it still needs approval, it stays 'pending'
-        assert resp.json()["status"] in ["scheduled", "pending"]
-
+        assert resp.json()["status"] == "scheduled"
 

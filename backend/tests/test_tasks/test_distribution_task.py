@@ -53,7 +53,6 @@ async def test_process_item_now_success(db_session, monkeypatch):
         target_platform="telegram",
         target_id="123",
         status=QueueItemStatus.SCHEDULED,
-        needs_approval=False,
         priority=10
     )
     db_session.add(item)
@@ -122,7 +121,6 @@ async def test_process_item_now_failure(db_session, monkeypatch):
         target_platform="telegram",
         target_id="123",
         status=QueueItemStatus.SCHEDULED,
-        needs_approval=False
     )
     db_session.add(item)
     await db_session.commit()
@@ -199,7 +197,6 @@ async def _setup_full_chain(db_session, *, bot_chat_enabled=True, bot_chat_acces
         target_platform=target_platform,
         target_id="123",
         status=item_status,
-        needs_approval=False,
         priority=10,
         nsfw_routing_result=nsfw_routing_result,
         attempt_count=attempt_count,
@@ -271,7 +268,7 @@ async def test_process_item_content_not_eligible(db_session, monkeypatch):
         await worker.process_item_now(item.id)
 
     await db_session.refresh(item)
-    assert item.status == QueueItemStatus.SKIPPED
+    assert item.status == QueueItemStatus.FAILED
     assert item.last_error_type == "content_not_eligible"
 
 
@@ -301,7 +298,7 @@ async def test_process_item_dedupe(db_session, monkeypatch):
         await worker.process_item_now(item.id)
 
     await db_session.refresh(item)
-    assert item.status == QueueItemStatus.SKIPPED
+    assert item.status == QueueItemStatus.FAILED
     assert item.last_error_type == "already_pushed_dedupe"
 
 
@@ -433,10 +430,12 @@ async def test_claim_items_scheduled(db_session, monkeypatch):
         worker = DistributionQueueWorker(worker_count=0)
         claimed = await worker._claim_items(session, "test-worker")
 
-    assert len(claimed) == 1
-    assert claimed[0].id == item.id
-    assert claimed[0].status == QueueItemStatus.PROCESSING
-    assert claimed[0].locked_by == "test-worker"
+    assert len(claimed) >= 1
+    claimed_ids = {c.id for c in claimed}
+    assert item.id in claimed_ids
+    target = next(c for c in claimed if c.id == item.id)
+    assert target.status == QueueItemStatus.PROCESSING
+    assert target.locked_by == "test-worker"
 
 
 # ── _claim_items — empty when nothing eligible ──────────

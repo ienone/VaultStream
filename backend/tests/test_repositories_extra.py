@@ -161,7 +161,7 @@ async def test_system_repo_queue_items(db_session):
         bot_chat_id=chat.id,
         target_platform="telegram",
         target_id="q_chat",
-        status=QueueItemStatus.PENDING,
+        status=QueueItemStatus.SCHEDULED,
         created_at=utcnow(),
     )
     db_session.add(item)
@@ -169,9 +169,9 @@ async def test_system_repo_queue_items(db_session):
 
     found = await repo.get_queue_item(item.id)
     assert found is not None
-    assert found.status == QueueItemStatus.PENDING
+    assert found.status == QueueItemStatus.SCHEDULED
 
-    items, total = await repo.list_queue_items(status=QueueItemStatus.PENDING)
+    items, total = await repo.list_queue_items(status=QueueItemStatus.SCHEDULED)
     assert total >= 1
     assert any(i.id == item.id for i in items)
 
@@ -199,7 +199,7 @@ async def test_system_repo_queue_stats(db_session):
         chats.append(c)
     await db_session.flush()
 
-    for chat_obj, st in zip(chats, [QueueItemStatus.PENDING, QueueItemStatus.PENDING, QueueItemStatus.SUCCESS]):
+    for chat_obj, st in zip(chats, [QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED, QueueItemStatus.SUCCESS]):
         qi = ContentQueueItem(
             content_id=content.id,
             rule_id=rule.id,
@@ -213,7 +213,8 @@ async def test_system_repo_queue_stats(db_session):
     await db_session.commit()
 
     stats = await repo.get_queue_stats()
-    assert stats["pending"] >= 2
+    assert stats["scheduled"] >= 1
+    assert stats["failed"] >= 1
     assert stats["success"] >= 1
     for s in QueueItemStatus:
         assert s.value in stats

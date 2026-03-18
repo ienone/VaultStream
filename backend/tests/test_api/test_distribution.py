@@ -17,13 +17,11 @@ class TestDistributionAPI:
         data = response.json()
         assert "will_push" in data
         assert "filtered" in data
-        assert "pending_review" in data
         assert "pushed" in data
         assert "total" in data
         assert "due_now" in data
         assert isinstance(data["will_push"], int)
         assert isinstance(data["filtered"], int)
-        assert isinstance(data["pending_review"], int)
         assert isinstance(data["pushed"], int)
         assert isinstance(data["total"], int)
         assert isinstance(data["due_now"], int)
@@ -51,7 +49,7 @@ class TestDistributionAPI:
         assert isinstance(data["items"], list)
         assert isinstance(data["total"], int)
         if data["items"]:
-            assert "reason_code" in data["items"][0]
+            assert "last_error_type" in data["items"][0]
 
     @pytest.mark.asyncio
     async def test_distribution_content_status_action(self, client: AsyncClient):

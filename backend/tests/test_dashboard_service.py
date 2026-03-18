@@ -36,37 +36,23 @@ def mock_event_bus():
 
 
 def test_classify_success():
-    assert classify_distribution_status(QueueItemStatus.SUCCESS, False, None) == "pushed"
-
-
-def test_classify_skipped():
-    assert classify_distribution_status(QueueItemStatus.SKIPPED, False, None) == "filtered"
-
-
-def test_classify_canceled():
-    assert classify_distribution_status(QueueItemStatus.CANCELED, False, None) == "filtered"
-
-
-def test_classify_pending_needs_approval():
-    assert classify_distribution_status(QueueItemStatus.PENDING, True, None) == "pending_review"
-
-
-def test_classify_pending_approved():
-    assert classify_distribution_status(
-        QueueItemStatus.PENDING, True, datetime(2025, 1, 1)
-    ) == "will_push"
+    assert classify_distribution_status(QueueItemStatus.SUCCESS, None) == "pushed"
 
 
 def test_classify_scheduled():
-    assert classify_distribution_status(QueueItemStatus.SCHEDULED, False, None) == "will_push"
+    assert classify_distribution_status(QueueItemStatus.SCHEDULED, None) == "will_push"
 
 
 def test_classify_processing():
-    assert classify_distribution_status(QueueItemStatus.PROCESSING, False, None) == "will_push"
+    assert classify_distribution_status(QueueItemStatus.PROCESSING, None) == "will_push"
 
 
 def test_classify_failed():
-    assert classify_distribution_status(QueueItemStatus.FAILED, False, None) == "will_push"
+    assert classify_distribution_status(QueueItemStatus.FAILED, None) == "filtered"
+
+
+def test_classify_failed_retrying():
+    assert classify_distribution_status(QueueItemStatus.FAILED, datetime(2025, 1, 1)) == "will_push"
 
 
 # ── empty_distribution_bucket ─────────────────────────────────────
@@ -74,7 +60,7 @@ def test_classify_failed():
 
 def test_empty_distribution_bucket():
     bucket = empty_distribution_bucket()
-    assert bucket == {"will_push": 0, "filtered": 0, "pending_review": 0, "pushed": 0, "total": 0}
+    assert bucket == {"will_push": 0, "filtered": 0, "pushed": 0, "total": 0}
     # Ensure each call returns a new dict
     assert empty_distribution_bucket() is not bucket
 
@@ -149,7 +135,7 @@ async def _setup_distribution_data(db_session):
         ),
     ]
     # Need unique bot_chat per queue item due to unique constraint
-    for i, status in enumerate([QueueItemStatus.PENDING, QueueItemStatus.SKIPPED], start=2):
+    for i, status in enumerate([QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED], start=2):
         chat = BotChat(
             bot_config_id=bot_config.id,
             chat_id=f"dash_chat_{i}_{uid}",
@@ -167,6 +153,7 @@ async def _setup_distribution_data(db_session):
                 target_platform="telegram",
                 target_id=f"dash_chat_{i}_{uid}",
                 status=status,
+                next_attempt_at=datetime(2025, 1, 1) if status == QueueItemStatus.FAILED else None,
             )
         )
 
@@ -181,7 +168,6 @@ async def test_build_distribution_stats(db_session):
 
     dist_stats, rule_breakdown = await build_distribution_stats(db_session)
     assert dist_stats["pushed"] >= 1
-    assert dist_stats["filtered"] >= 1
     assert dist_stats["will_push"] >= 1
     assert dist_stats["total"] >= 3
     assert rule_breakdown == {}

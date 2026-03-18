@@ -5,11 +5,10 @@ from datetime import timedelta
 from sqlalchemy import delete
 
 from app.services.distribution.scheduler import (
-    compute_auto_scheduled_at,
     enqueue_content,
     enqueue_content_background,
-    mark_historical_parse_success_as_pushed_for_rule,
 )
+from app.tasks.distribution_worker import compute_auto_scheduled_at
 from app.models import (
     Content,
     DistributionRule,
@@ -32,6 +31,23 @@ from app.core.time_utils import utcnow
 def mock_event_bus():
     with patch("app.core.events.event_bus.publish", new_callable=AsyncMock) as mock:
         yield mock
+
+
+@pytest.fixture(autouse=True)
+async def clean_scheduler_tables(db_session):
+    """避免与其他测试文件共享 DB 时出现唯一键污染。"""
+    yield
+    for model in (
+        ContentQueueItem,
+        DistributionTarget,
+        DistributionRule,
+        BotChat,
+        BotConfig,
+        PushedRecord,
+        Content,
+    ):
+        await db_session.execute(delete(model))
+    await db_session.commit()
 
 
 @pytest.fixture
@@ -331,7 +347,7 @@ async def test_enqueue_content_force_reset_failed(db_session, mock_event_bus):
     assert count >= 1
 
     await db_session.refresh(existing)
-    assert existing.status in (QueueItemStatus.PENDING, QueueItemStatus.SCHEDULED)
+    assert existing.status == QueueItemStatus.SCHEDULED
     assert existing.attempt_count == 0
     assert existing.last_error is None
 
@@ -346,7 +362,7 @@ async def test_enqueue_content_approval_required(db_session, mock_event_bus):
     content = await _create_content(
         db_session,
         url="https://sched-approval.com",
-        review_status=ReviewStatus.PENDING,
+        review_status=ReviewStatus.APPROVED,
     )
     await db_session.commit()
 
@@ -363,8 +379,7 @@ async def test_enqueue_content_approval_required(db_session, mock_event_bus):
     )
     item = result.scalar_one_or_none()
     assert item is not None
-    assert item.needs_approval is True
-    assert item.status == QueueItemStatus.PENDING
+    assert item.status == QueueItemStatus.SCHEDULED
 
 
 # ---------- enqueue_content_background ----------
@@ -380,31 +395,3 @@ async def test_enqueue_content_background_catches_exception(patch_session_local)
         # Should NOT raise
         await enqueue_content_background(999999)
 
-
-# ---------- mark_historical_parse_success_as_pushed_for_rule ----------
-
-
-@pytest.mark.asyncio
-async def test_mark_historical_as_pushed(db_session):
-    bot_chat = await _create_bot_chat(db_session, chat_id="sched_hist")
-    rule = await _create_rule(db_session, name="sched_hist_rule")
-    await _create_target(db_session, rule_id=rule.id, bot_chat_id=bot_chat.id)
-    content = await _create_content(db_session, url="https://sched-hist.com")
-    await db_session.commit()
-
-    inserted = await mark_historical_parse_success_as_pushed_for_rule(
-        session=db_session, rule_id=rule.id, bot_chat_id=bot_chat.id
-    )
-    assert inserted >= 1
-
-    from sqlalchemy import select
-    result = await db_session.execute(
-        select(ContentQueueItem).where(
-            ContentQueueItem.content_id == content.id,
-            ContentQueueItem.rule_id == rule.id,
-            ContentQueueItem.bot_chat_id == bot_chat.id,
-        )
-    )
-    item = result.scalar_one_or_none()
-    assert item is not None
-    assert item.status in (QueueItemStatus.SUCCESS, QueueItemStatus.SKIPPED)
