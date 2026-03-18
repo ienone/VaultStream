@@ -4,10 +4,30 @@ from pydantic import SecretStr
 
 from app.models import SystemSetting
 from app.core.db_adapter import AsyncSessionLocal
-from app.utils.sensitive_display import as_configured_placeholder, is_sensitive_setting_key
+from app.utils.sensitive_display import (
+    ENV_CONFIGURED_PLACEHOLDER,
+    as_configured_placeholder,
+    extract_secret_value,
+    is_sensitive_setting_key,
+)
 
 # Simple in-memory cache
 _SETTINGS_CACHE = {}
+
+
+def _secret_value(value: Any) -> str | None:
+    """Backwards-compatible secret extraction helper for tests and legacy callers."""
+    return extract_secret_value(value)
+
+
+def _resolve_env_display(value: Any, is_secret: bool = False) -> str | None:
+    """Return a safe display value for env-backed settings."""
+    text = _secret_value(value)
+    if text is None:
+        return None
+    if is_secret or isinstance(value, SecretStr):
+        return ENV_CONFIGURED_PLACEHOLDER
+    return text
 
 
 async def get_setting_value(key: str, default: Any = None) -> Any:

@@ -182,7 +182,10 @@ class TelegramAdapter(PlatformAdapter):
         if len(media_urls) >= 1 and len(main_body) < 100:
             layout_type = LAYOUT_GALLERY
             
-        content_id = msg.get('data-post', hashlib.md5(fallback_url.encode()).hexdigest())
+        content_id = msg.get(
+            'data-post',
+            hashlib.md5(fallback_url.encode(), usedforsecurity=False).hexdigest(),
+        )
 
         return ParsedContent(
             platform=Platform.TELEGRAM.value,

@@ -1,39 +1,39 @@
-# FastAPI 和异步支持
+# FastAPI and async support
 fastapi
 uvicorn[standard]
 pydantic
 pydantic-settings
 
-# 数据库（仅支持 SQLite 轻量模式）
-aiosqlite  # SQLite 异步驱动
+# Database (SQLite mode)
+aiosqlite  # SQLite async driver
 sqlalchemy
 alembic
 
-# HTTP 客户端
+# HTTP clients
 httpx[socks]
 requests
 
-# 小红书签名
+# Xiaohongshu signing helper
 xhshow
 
 # Telegram Bot
 python-telegram-bot
 
-# 工具库
+# Utility libraries
 loguru
 python-dateutil
 
-# 图片转码（可选：用于导出/归档时将图片转为 WebP）
+# Image transcoding (optional, for WebP archive export)
 Pillow
 
-# 内容解析与 Markdown 转换
+# Content parsing and Markdown conversion
 markdownify
 beautifulsoup4
 
-# RSS 订阅解析
+# RSS parsing
 feedparser
 
-# 爬虫与发现层 (Native Crawler & Discovery)
+# Crawler and discovery layer
 crawl4ai
 playwright
 langchain-openai

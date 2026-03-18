@@ -183,7 +183,7 @@ class UniversalAdapter(PlatformAdapter):
         return ParsedContent(
             platform="universal",
             content_type="webpage",
-            content_id=hashlib.md5(url.encode()).hexdigest(),
+            content_id=hashlib.md5(url.encode(), usedforsecurity=False).hexdigest(),
             clean_url=url,
             layout_type=layout_type,
             title=common.get("title") or "无标题",

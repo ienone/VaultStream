@@ -1,5 +1,5 @@
 from typing import List, Optional, Tuple
-from sqlalchemy import select, and_, or_, func, desc, text
+from sqlalchemy import select, and_, or_, func, desc, text, bindparam
 from sqlalchemy.orm import defer
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Content, ContentStatus, Platform, ReviewStatus, DiscoveryState
@@ -50,15 +50,11 @@ class ContentRepository:
         )
 
         if tags:
-            # 使用 SQLite json_each() 将 JSON 数组展开为行，再用 IN 匹配
-            # 条件数恒定为 1，不随标签数量膨胀
-            placeholders = ", ".join(f":tag_{i}" for i in range(len(tags)))
             tag_subquery = text(
-                f"SELECT DISTINCT c.id FROM contents c, json_each(c.tags) AS je "
-                f"WHERE je.value IN ({placeholders})"
-            )
-            params = {f"tag_{i}": t for i, t in enumerate(tags)}
-            tag_ids_result = await self.db.execute(tag_subquery, params)
+                "SELECT DISTINCT c.id FROM contents c, json_each(c.tags) AS je "
+                "WHERE je.value IN :tags"
+            ).bindparams(bindparam("tags", expanding=True))
+            tag_ids_result = await self.db.execute(tag_subquery, {"tags": tags})
             tag_ids = [row[0] for row in tag_ids_result.all()]
             if tag_ids:
                 conditions.append(Content.id.in_(tag_ids))
@@ -67,10 +63,9 @@ class ContentRepository:
 
         if q:
             # 整合 FTS5 与 ILIKE
-            safe_q = q.replace("'", "''")
             fts_stmt = text("SELECT content_id FROM contents_fts WHERE contents_fts MATCH :q")
             try:
-                fts_result = await self.db.execute(fts_stmt, {"q": safe_q})
+                fts_result = await self.db.execute(fts_stmt, {"q": q})
                 fts_ids = [row[0] for row in fts_result.all()]
             except Exception:
                 fts_ids = []
@@ -144,13 +139,11 @@ class ContentRepository:
         )
 
         if tags:
-            placeholders = ", ".join(f":tag_{i}" for i in range(len(tags)))
             tag_subquery = text(
-                f"SELECT DISTINCT c.id FROM contents c, json_each(c.tags) AS je "
-                f"WHERE je.value IN ({placeholders})"
-            )
-            params = {f"tag_{i}": t for i, t in enumerate(tags)}
-            tag_ids_result = await self.db.execute(tag_subquery, params)
+                "SELECT DISTINCT c.id FROM contents c, json_each(c.tags) AS je "
+                "WHERE je.value IN :tags"
+            ).bindparams(bindparam("tags", expanding=True))
+            tag_ids_result = await self.db.execute(tag_subquery, {"tags": tags})
             tag_ids = [row[0] for row in tag_ids_result.all()]
             if tag_ids:
                 conditions.append(Content.id.in_(tag_ids))
@@ -158,10 +151,9 @@ class ContentRepository:
                 conditions.append(text("0 = 1"))
 
         if q:
-            safe_q = q.replace("'", "''")
             fts_stmt = text("SELECT content_id FROM contents_fts WHERE contents_fts MATCH :q")
             try:
-                fts_result = await self.db.execute(fts_stmt, {"q": safe_q})
+                fts_result = await self.db.execute(fts_stmt, {"q": q})
                 fts_ids = [row[0] for row in fts_result.all()]
             except Exception:
                 fts_ids = []

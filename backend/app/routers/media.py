@@ -119,7 +119,7 @@ async def proxy_image(
         raise HTTPException(status_code=400, detail="目标 URL 不允许访问（内网地址或无效协议）")
 
     # 1. 生成缓存key（使用URL的MD5作为命名空间）
-    url_hash = hashlib.md5(url.encode()).hexdigest()
+    url_hash = hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()
     cache_namespace = f"proxy_cache/{url_hash[:2]}/{url_hash[2:4]}"
     
     # 2. 检查是否已缓存（查找任意扩展名的文件）

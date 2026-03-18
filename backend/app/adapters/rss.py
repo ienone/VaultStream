@@ -123,7 +123,11 @@ class RssAdapter(PlatformAdapter):
                 body = re.sub(r'\n{3,}', '\n\n', body)
                 
                 guid_tag = item.find('guid')
-                content_id = guid_tag.text if guid_tag is not None else hashlib.md5(link.encode()).hexdigest()
+                content_id = (
+                    guid_tag.text
+                    if guid_tag is not None
+                    else hashlib.md5(link.encode(), usedforsecurity=False).hexdigest()
+                )
 
                 parsed = ParsedContent(
                     platform=Platform.RSS.value,

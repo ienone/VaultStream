@@ -295,4 +295,4 @@ async def test_list_settings_values():
 
         filtered = await svc.list_settings_values(category="platform")
         assert len(filtered) == 1
-        assert filtered[0].key == "b"
+        assert filtered[0]["key"] == "b"

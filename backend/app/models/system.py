@@ -34,7 +34,7 @@ class SystemSetting(Base):
     """系统动态设置表"""
     __tablename__ = "system_settings"
     
-    key: Mapped[str] = mapped_column(String(100), primary_key=True, index=True)
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[Any] = mapped_column(JSON)
     category: Mapped[Optional[str]] = mapped_column(String(50), index=True, default=None) # platform, storage, general, etc.
     description: Mapped[Optional[str]] = mapped_column(Text, default=None)
