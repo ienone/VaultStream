@@ -40,7 +40,6 @@ void main() {
     test('QueueStatus.fromValue should parse values correctly', () {
       expect(QueueStatus.fromValue('will_push'), QueueStatus.willPush);
       expect(QueueStatus.fromValue('filtered'), QueueStatus.filtered);
-      expect(QueueStatus.fromValue('pending_review'), QueueStatus.pendingReview);
       expect(QueueStatus.fromValue('pushed'), QueueStatus.pushed);
       expect(QueueStatus.fromValue('unknown'), QueueStatus.filtered); // fallback
     });

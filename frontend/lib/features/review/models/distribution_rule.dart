@@ -15,8 +15,6 @@ abstract class DistributionRule with _$DistributionRule {
     @Default(0) int priority,
     @JsonKey(name: 'nsfw_policy') @Default('block') String nsfwPolicy,
     @JsonKey(name: 'approval_required') @Default(false) bool approvalRequired,
-    @JsonKey(name: 'auto_approve_conditions')
-    Map<String, dynamic>? autoApproveConditions,
     @JsonKey(name: 'rate_limit') int? rateLimit,
     @JsonKey(name: 'time_window') int? timeWindow,
     @JsonKey(name: 'template_id') String? templateId,
@@ -40,8 +38,6 @@ abstract class DistributionRuleCreate with _$DistributionRuleCreate {
     @Default(0) int priority,
     @JsonKey(name: 'nsfw_policy') @Default('block') String nsfwPolicy,
     @JsonKey(name: 'approval_required') @Default(false) bool approvalRequired,
-    @JsonKey(name: 'auto_approve_conditions')
-    Map<String, dynamic>? autoApproveConditions,
     @JsonKey(name: 'rate_limit') int? rateLimit,
     @JsonKey(name: 'time_window') int? timeWindow,
     @JsonKey(name: 'template_id') String? templateId,
@@ -62,8 +58,6 @@ abstract class DistributionRuleUpdate with _$DistributionRuleUpdate {
     int? priority,
     @JsonKey(name: 'nsfw_policy') String? nsfwPolicy,
     @JsonKey(name: 'approval_required') bool? approvalRequired,
-    @JsonKey(name: 'auto_approve_conditions')
-    Map<String, dynamic>? autoApproveConditions,
     @JsonKey(name: 'rate_limit') int? rateLimit,
     @JsonKey(name: 'time_window') int? timeWindow,
     @JsonKey(name: 'template_id') String? templateId,

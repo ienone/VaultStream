@@ -854,33 +854,6 @@ class _QueueItemCard extends StatelessWidget {
 
   Widget _buildActions(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    if (currentStatus == QueueStatus.pendingReview) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton.filledTonal(
-            onPressed: onApprove,
-            icon: const Icon(
-              Icons.check_rounded,
-              color: Colors.green,
-              size: 20,
-            ),
-            style: IconButton.styleFrom(
-              backgroundColor: Colors.green.withValues(alpha: 0.1),
-            ),
-          ),
-          const SizedBox(width: 8),
-          IconButton.filledTonal(
-            onPressed: onReject,
-            icon: const Icon(Icons.close_rounded, color: Colors.red, size: 20),
-            style: IconButton.styleFrom(
-              backgroundColor: Colors.red.withValues(alpha: 0.1),
-            ),
-          ),
-          const SizedBox(width: 12),
-        ],
-      );
-    }
     if (currentStatus == QueueStatus.willPush) {
       return Padding(
         padding: const EdgeInsets.only(right: 8),

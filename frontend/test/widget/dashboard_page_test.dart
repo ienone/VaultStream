@@ -31,7 +31,6 @@ void main() {
       distribution: DistributionStats(
         willPush: 3,
         filtered: 2,
-        pendingReview: 1,
         pushed: 12,
         total: 18,
       ),
@@ -98,7 +97,6 @@ void main() {
       distribution: DistributionStats(
         willPush: 3,
         filtered: 2,
-        pendingReview: 1,
         pushed: 12,
         total: 18,
       ),

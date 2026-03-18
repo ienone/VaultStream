@@ -148,7 +148,6 @@ abstract class DistributionStats with _$DistributionStats {
   const factory DistributionStats({
     @JsonKey(name: 'will_push') required int willPush,
     required int filtered,
-    @JsonKey(name: 'pending_review') required int pendingReview,
     required int pushed,
     required int total,
   }) = _DistributionStats;

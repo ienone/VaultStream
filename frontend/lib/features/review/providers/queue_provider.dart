@@ -268,7 +268,6 @@ Future<Map<String, int>> queueStats(Ref ref, int? ruleId) async {
   final mapped = <String, int>{
     'will_push': (data['will_push'] ?? 0),
     'filtered': (data['filtered'] ?? 0),
-    'pending_review': (data['pending_review'] ?? 0),
     'pushed': (data['pushed'] ?? 0),
     'total': (data['total'] ?? 0),
   };

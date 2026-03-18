@@ -513,7 +513,6 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         data: (stats) {
           final willPush = stats['will_push'] ?? 0;
           final filtered = stats['filtered'] ?? 0;
-          final pending = stats['pending_review'] ?? 0;
           final pushed = stats['pushed'] ?? 0;
 
           return SingleChildScrollView(
@@ -529,11 +528,6 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                   value: QueueStatus.filtered,
                   icon: const Icon(Icons.filter_list_off_rounded, size: 18),
                   label: Text('已过滤($filtered)'),
-                ),
-                ButtonSegment<QueueStatus>(
-                  value: QueueStatus.pendingReview,
-                  icon: const Icon(Icons.rate_review_rounded, size: 18),
-                  label: Text('待审批($pending)'),
                 ),
                 ButtonSegment<QueueStatus>(
                   value: QueueStatus.pushed,

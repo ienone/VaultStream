@@ -145,17 +145,7 @@ class RuleConfigPanel extends StatelessWidget {
                       ),
                     ],
                   ),
-                  if (rule.autoApproveConditions != null &&
-                      rule.autoApproveConditions!.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    _buildSection(
-                      context,
-                      icon: Icons.auto_awesome,
-                      title: '自动审批条件',
-                      child: _buildAutoApproveConditions(
-                          context, rule.autoApproveConditions!),
-                    ),
-                  ],
+
                   if (targets.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     _buildSection(
@@ -298,36 +288,6 @@ class RuleConfigPanel extends StatelessWidget {
           ),
         ],
       ],
-    );
-  }
-
-  Widget _buildAutoApproveConditions(
-      BuildContext context, Map<String, dynamic> conditions) {
-    final items = <String>[];
-    if (conditions['is_nsfw'] == false) items.add('非NSFW');
-    if (conditions['is_nsfw'] == true) items.add('NSFW');
-    if (conditions['platform'] != null) items.add('平台: ${conditions['platform']}');
-    if (conditions['tags'] != null) {
-      items.add('标签: ${(conditions['tags'] as List).join(', ')}');
-    }
-
-    return Wrap(
-      spacing: 6,
-      runSpacing: 4,
-      children: items
-          .map((item) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
-                ),
-                child: Text(
-                  item,
-                  style: const TextStyle(fontSize: 11, color: Colors.green),
-                ),
-              ))
-          .toList(),
     );
   }
 

@@ -21,8 +21,6 @@ Future<QueueOverviewStats> queueStats(Ref ref) async {
 @riverpod
 Future<SystemHealth> systemHealth(Ref ref) async {
   final dio = ref.watch(apiClientProvider);
-  final response = await dio.get('/health'); // Relative to /api/v1 as defined in client?
-  // Wait, Client base URL usually includes /api/v1?
-  // If so, /health call will go to /api/v1/health, which is what I implemented.
+  final response = await dio.get('/health');
   return SystemHealth.fromJson(response.data);
 }
