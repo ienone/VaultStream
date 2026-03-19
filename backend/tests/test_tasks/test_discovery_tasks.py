@@ -362,6 +362,68 @@ async def test_sync_records_error(db_session):
     assert source.last_sync_at is not None
 
 
+@pytest.mark.asyncio
+async def test_archive_discovery_media_rewrites_body_to_local_urls(db_session):
+    """Discovery media archiving should rewrite body markdown image URLs to local://."""
+    content = Content(
+        platform=Platform.UNIVERSAL,
+        url="https://example.com/post-localize",
+        canonical_url="https://example.com/post-localize",
+        title="Localize Body",
+        body="![img](https://img.example.com/a.jpg)",
+        media_urls=["https://img.example.com/a.jpg"],
+        cover_url="https://img.example.com/a.jpg",
+        status=ContentStatus.PARSE_SUCCESS,
+        discovery_state=DiscoveryState.INGESTED,
+    )
+    db_session.add(content)
+    await db_session.commit()
+    await db_session.refresh(content)
+
+    task = DiscoverySyncTask()
+
+    async def _setting_side_effect(key, default=None):
+        if key == "enable_archive_media_processing":
+            return True
+        if key == "archive_image_webp_quality":
+            return 80
+        if key == "archive_image_max_count":
+            return None
+        return default
+
+    async def _store_images_side_effect(*, archive, storage, namespace, quality, max_images):
+        archive["stored_images"] = [
+            {
+                "orig_url": "https://img.example.com/a.jpg",
+                "key": "vaultstream/blobs/sha256/aa/bb/aabb.webp",
+                "type": "image",
+            }
+        ]
+
+    mock_storage = AsyncMock()
+    mock_storage.ensure_bucket = AsyncMock()
+
+    with patch(
+        "app.tasks.discovery_sync.get_setting_value",
+        new_callable=AsyncMock,
+        side_effect=_setting_side_effect,
+    ), patch(
+        "app.tasks.discovery_sync.get_storage_backend",
+        return_value=mock_storage,
+    ), patch(
+        "app.tasks.discovery_sync.store_archive_images_as_webp",
+        new_callable=AsyncMock,
+        side_effect=_store_images_side_effect,
+    ):
+        await task._archive_discovery_media(db_session, [content.id])
+
+    await db_session.refresh(content)
+    expected_local = "local://vaultstream/blobs/sha256/aa/bb/aabb.webp"
+    assert content.media_urls == [expected_local]
+    assert content.cover_url == expected_local
+    assert expected_local in (content.body or "")
+
+
 # ---------------------------------------------------------------------------
 # DiscoveryCleanupTask tests
 # ---------------------------------------------------------------------------

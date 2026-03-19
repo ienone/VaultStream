@@ -767,6 +767,115 @@ async def test_handle_archived_media_fix_needs_media(db_session, monkeypatch):
     mocks["store_images"].assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_handle_archived_media_fix_updates_body_from_rewritten_markdown(db_session, monkeypatch):
+    """Archived media fix should persist rewritten markdown body back to content."""
+    content = await _make_content(
+        db_session,
+        body="old body",
+        cover_url="https://img.com/1.jpg",
+        archive_metadata={"archive": {"images": [{"url": "https://img.com/1.jpg"}], "markdown": "![img](https://img.com/1.jpg)"}},
+    )
+
+    async def _setting(key, default=None):
+        if key == "enable_archive_media_processing":
+            return True
+        if key == "archive_image_webp_quality":
+            return 80
+        if key == "archive_image_max_count":
+            return None
+        return default
+
+    async def _store_images_side_effect(*, archive, storage, namespace, quality, max_images):
+        archive["stored_images"] = [
+            {
+                "orig_url": "https://img.com/1.jpg",
+                "key": "abc/img1.webp",
+                "type": "cover",
+            }
+        ]
+        archive["markdown"] = "![img](local://abc/img1.webp)"
+
+    store_images_mock = AsyncMock(side_effect=_store_images_side_effect)
+    mocks = _patch_common(
+        monkeypatch,
+        get_setting_value=AsyncMock(side_effect=_setting),
+        store_images=store_images_mock,
+    )
+
+    with mocks["factory"]:
+        parser = ContentParser()
+        await parser._handle_archived_media_fix(db_session, content)
+
+    await db_session.refresh(content)
+    assert content.body == "![img](local://abc/img1.webp)"
+    assert content.cover_url == "local://abc/img1.webp"
+
+
+@pytest.mark.asyncio
+async def test_handle_archived_media_fix_rewrites_existing_remote_refs_without_redownload(db_session, monkeypatch):
+    """已有 stored_key 时，补处理应直接回写本地映射，不触发重新下载。"""
+    content = await _make_content(
+        db_session,
+        body="![img](https://img.com/1.jpg)",
+        cover_url="https://img.com/1.jpg",
+        author_avatar_url="https://img.com/avatar.jpg",
+        media_urls=["https://img.com/1.jpg"],
+        rich_payload={
+            "blocks": [
+                {
+                    "type": "sub_item",
+                    "data": {
+                        "cover_url": "https://img.com/1.jpg",
+                        "author_avatar_url": "https://img.com/avatar.jpg",
+                    },
+                }
+            ]
+        },
+        archive_metadata={
+            "archive": {
+                "images": [
+                    {"url": "https://img.com/1.jpg", "stored_key": "abc/img1.webp", "type": "cover"},
+                    {"url": "https://img.com/avatar.jpg", "stored_key": "abc/avatar.webp", "type": "avatar"},
+                ],
+                "stored_images": [
+                    {"orig_url": "https://img.com/1.jpg", "key": "abc/img1.webp", "type": "cover"},
+                    {"orig_url": "https://img.com/avatar.jpg", "key": "abc/avatar.webp", "type": "avatar"},
+                ],
+            }
+        },
+    )
+
+    async def _setting(key, default=None):
+        if key == "enable_archive_media_processing":
+            return True
+        if key == "archive_image_webp_quality":
+            return 80
+        if key == "archive_image_max_count":
+            return None
+        return default
+
+    store_images_mock = AsyncMock()
+    mocks = _patch_common(
+        monkeypatch,
+        get_setting_value=AsyncMock(side_effect=_setting),
+        store_images=store_images_mock,
+    )
+
+    with mocks["factory"]:
+        parser = ContentParser()
+        await parser._handle_archived_media_fix(db_session, content)
+
+    await db_session.refresh(content)
+    assert content.body == "![img](local://abc/img1.webp)"
+    assert content.cover_url == "local://abc/img1.webp"
+    assert content.author_avatar_url == "local://abc/avatar.webp"
+    assert content.media_urls == ["local://abc/img1.webp"]
+    assert content.rich_payload["blocks"][0]["data"]["cover_url"] == "local://abc/img1.webp"
+    assert content.rich_payload["blocks"][0]["data"]["author_avatar_url"] == "local://abc/avatar.webp"
+    store_images_mock.assert_not_awaited()
+
+
 # ===================================================================
 # retry_parse
 # ===================================================================

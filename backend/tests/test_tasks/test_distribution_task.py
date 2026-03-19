@@ -328,10 +328,10 @@ async def test_process_item_nsfw_routing(db_session, monkeypatch):
     assert actual_target == "nsfw_channel_456"
 
 
-# ── _process_item — no message_id, telegram fallback ────
+# ── _process_item — no message_id, telegram → FAILED ────
 
 @pytest.mark.asyncio
-async def test_process_item_no_message_id_telegram_fallback(db_session, monkeypatch):
+async def test_process_item_no_message_id_telegram_failed(db_session, monkeypatch):
     _, _, _, _, item = await _setup_full_chain(db_session, target_platform="telegram")
 
     from tests.conftest import TestingSessionLocal
@@ -345,8 +345,8 @@ async def test_process_item_no_message_id_telegram_fallback(db_session, monkeypa
         await worker.process_item_now(item.id)
 
     await db_session.refresh(item)
-    assert item.status == QueueItemStatus.SUCCESS
-    assert item.message_id.startswith("telegram-noid-")
+    assert item.status == QueueItemStatus.FAILED
+    assert "no message_id" in item.last_error
 
 
 # ── _process_item — no message_id, non-telegram → FAILED
