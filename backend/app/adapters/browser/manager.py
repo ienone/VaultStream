@@ -30,12 +30,19 @@ class PlaywrightBrowserManager:
     def __init__(self):
         self._pw_loop: Optional[asyncio.AbstractEventLoop] = None
         self._pw_thread: Optional[threading.Thread] = None
-        
+
         self._playwright = None
         self._browser: Optional[Browser] = None
-        
+
         self._started = False
+        self._initializing = False  # 防止并发重入导致递归
         self._loop_ready = threading.Event()
+        self._startup_lock: Optional[asyncio.Lock] = None
+
+    def _get_startup_lock(self) -> asyncio.Lock:
+        if self._startup_lock is None:
+            self._startup_lock = asyncio.Lock()
+        return self._startup_lock
 
     # ------------------------------------------------------------------
     # Lifespan 集成
@@ -44,39 +51,55 @@ class PlaywrightBrowserManager:
     async def startup(self):
         if self._started:
             return
-            
-        def _run_background_loop():
-            # 必须在线程起始时设置 policy 为 Proactor，确保支持 Windows subprocess
-            if sys.platform == "win32":
-                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-                
-            self._pw_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._pw_loop)
-            
-            # 通知主线程 loop 初始化完毕
-            self._loop_ready.set()
-            
-            # 开启永久循环
-            self._pw_loop.run_forever()
-            
-            # 清理
-            self._pw_loop.close()
 
-        self._pw_thread = threading.Thread(
-            target=_run_background_loop, 
-            daemon=True, 
-            name="PlaywrightLoopThread"
-        )
-        self._pw_thread.start()
-        
-        # 等待后台 loop 创建完毕
-        self._loop_ready.wait()
-        
-        # 在该 loop 中初始化 browser
-        await self.submit_coro(self._init_browser())
-        
-        self._started = True
-        logger.info("PlaywrightBrowserManager: WebKit 后台循环预热完成")
+        async with self._get_startup_lock():
+            if self._started:
+                return
+            self._initializing = True
+
+            try:
+                self._loop_ready.clear()
+
+                def _run_background_loop():
+                    # 必须在线程起始时设置 policy 为 Proactor，确保支持 Windows subprocess
+                    if sys.platform == "win32":
+                        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+                    self._pw_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(self._pw_loop)
+
+                    # 通知主线程 loop 初始化完毕
+                    self._loop_ready.set()
+
+                    # 开启永久循环
+                    self._pw_loop.run_forever()
+
+                    # 清理
+                    self._pw_loop.close()
+
+                self._pw_thread = threading.Thread(
+                    target=_run_background_loop,
+                    daemon=True,
+                    name="PlaywrightLoopThread",
+                )
+                self._pw_thread.start()
+
+                # 等待后台 loop 创建完毕
+                self._loop_ready.wait()
+
+                # 直接通过 run_coroutine_threadsafe 初始化浏览器，
+                # 不经过 submit_coro，避免 submit_coro → startup → submit_coro 的递归死循环
+                if self._pw_loop is None:
+                    raise RuntimeError("Playwright 后台 Loop 创建失败")
+                future = asyncio.run_coroutine_threadsafe(self._init_browser(), self._pw_loop)
+                await asyncio.wrap_future(future)
+
+                self._started = True
+                logger.info("PlaywrightBrowserManager: WebKit 后台循环预热完成")
+            except Exception:
+                raise
+            finally:
+                self._initializing = False
 
     async def _init_browser(self):
         self._playwright = await async_playwright().start()
@@ -96,6 +119,11 @@ class PlaywrightBrowserManager:
         self._pw_thread.join()
         
         self._started = False
+        self._pw_loop = None
+        self._pw_thread = None
+        self._playwright = None
+        self._browser = None
+        self._loop_ready.clear()
         logger.info("PlaywrightBrowserManager: 浏览器与后台循环已关闭")
 
     async def _close_browser(self):
@@ -118,7 +146,7 @@ class PlaywrightBrowserManager:
         """将协程抛入后台专有 loop，并跨事件循环无缝等待其结果返回。"""
         if not self._started:
             await self.startup()
-            
+
         if not self._pw_loop:
             raise RuntimeError("Playwright 后台循环尚未启动")
         future = asyncio.run_coroutine_threadsafe(coro, self._pw_loop)
