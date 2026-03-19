@@ -203,13 +203,25 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
           ? GestureDetector(
               onTap: () => _searchController.openView(),
               child: Text(
-                '搜索: ${filterState.searchQuery}',
+                '${filterState.isSemantic ? '语义搜索' : '关键词搜索'}: ${filterState.searchQuery}',
                 style: const TextStyle(fontSize: 16),
               ),
             )
           : const Text('收藏库'),
       actions: [
         _buildSearchAnchor(context, theme),
+        IconButton(
+          icon: Icon(
+            filterState.isSemantic
+                ? Icons.psychology_alt_rounded
+                : Icons.manage_search_rounded,
+          ),
+          tooltip: filterState.isSemantic ? '切换到关键词搜索' : '切换到语义搜索',
+          onPressed: () {
+            final nextMode = filterState.isSemantic ? 'keyword' : 'semantic';
+            ref.read(collectionFilterProvider.notifier).setSearchMode(nextMode);
+          },
+        ),
         if (filterState.searchQuery.isNotEmpty)
           IconButton(
             icon: const Icon(Icons.close_rounded),
@@ -235,6 +247,8 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
                     author: result['author'],
                     dateRange: result['dateRange'],
                     tags: (result['tags'] as List<dynamic>?)?.cast<String>(),
+                    searchMode: result['searchMode'] as String?,
+                    semanticTopK: result['semanticTopK'] as int?,
                   );
             }
           },
@@ -244,6 +258,8 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
             initialAuthor: filterState.author,
             initialDateRange: filterState.dateRange,
             initialTags: filterState.tags,
+            initialSearchMode: filterState.searchMode,
+            initialSemanticTopK: filterState.semanticTopK,
             availableTags: _getAvailableTags(),
           ),
           closedBuilder: (context, openContainer) => IconButton(

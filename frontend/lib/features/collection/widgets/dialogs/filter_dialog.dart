@@ -10,6 +10,8 @@ class FilterDialog extends ConsumerStatefulWidget {
   final DateTimeRange? initialDateRange;
   final List<String> initialTags;
   final List<String> availableTags;
+  final String initialSearchMode;
+  final int initialSemanticTopK;
 
   const FilterDialog({
     super.key,
@@ -19,6 +21,8 @@ class FilterDialog extends ConsumerStatefulWidget {
     this.initialDateRange,
     this.initialTags = const [],
     this.availableTags = const [],
+    this.initialSearchMode = 'keyword',
+    this.initialSemanticTopK = 20,
   });
 
   @override
@@ -32,6 +36,8 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
   late TextEditingController _tagInputController;
   late DateTimeRange? _dateRange;
   late Set<String> _selectedTags;
+  late String _searchMode;
+  late double _semanticTopK;
   List<String> _tagSuggestions = [];
 
   final List<String> _platforms = ['bilibili', 'twitter', 'xiaohongshu', 'douyin', 'weibo', 'zhihu'];
@@ -55,6 +61,8 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
     _tagInputController = TextEditingController();
     _dateRange = widget.initialDateRange;
     _selectedTags = Set<String>.from(widget.initialTags);
+    _searchMode = widget.initialSearchMode == 'semantic' ? 'semantic' : 'keyword';
+    _semanticTopK = widget.initialSemanticTopK.toDouble().clamp(1.0, 100.0);
   }
 
   @override
@@ -73,6 +81,8 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
       _dateRange = null;
       _selectedTags.clear();
       _tagSuggestions = [];
+      _searchMode = 'keyword';
+      _semanticTopK = 20;
     });
   }
 
@@ -310,6 +320,48 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
                         ],
                       ),
                       const SizedBox(height: 32),
+
+                      _buildSectionHeader('搜索模式'),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _buildChoiceChip(
+                            '关键词',
+                            _searchMode == 'keyword',
+                            (selected) {
+                              if (selected) {
+                                setState(() => _searchMode = 'keyword');
+                              }
+                            },
+                          ),
+                          _buildChoiceChip(
+                            '语义',
+                            _searchMode == 'semantic',
+                            (selected) {
+                              if (selected) {
+                                setState(() => _searchMode = 'semantic');
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                      if (_searchMode == 'semantic') ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          '语义召回数量: ${_semanticTopK.round()}',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                        Slider(
+                          value: _semanticTopK,
+                          min: 5,
+                          max: 100,
+                          divisions: 19,
+                          label: _semanticTopK.round().toString(),
+                          onChanged: (v) => setState(() => _semanticTopK = v),
+                        ),
+                      ],
+                      const SizedBox(height: 32),
                     ],
                   ),
                 ),
@@ -339,6 +391,8 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
                           'author': _authorController.text.trim().isEmpty ? null : _authorController.text.trim(),
                           'dateRange': _dateRange,
                           'tags': _selectedTags.toList(),
+                          'searchMode': _searchMode,
+                          'semanticTopK': _semanticTopK.round(),
                         });
                       },
                       style: FilledButton.styleFrom(

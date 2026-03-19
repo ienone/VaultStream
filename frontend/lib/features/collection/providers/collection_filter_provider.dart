@@ -11,6 +11,8 @@ class CollectionFilterState {
   final DateTimeRange? dateRange;
   final String searchQuery;
   final List<String> tags;
+  final String searchMode; // keyword | semantic
+  final int semanticTopK;
 
   const CollectionFilterState({
     this.platforms = const [],
@@ -19,6 +21,8 @@ class CollectionFilterState {
     this.dateRange,
     this.searchQuery = '',
     this.tags = const [],
+    this.searchMode = 'keyword',
+    this.semanticTopK = 20,
   });
 
   CollectionFilterState copyWith({
@@ -28,6 +32,8 @@ class CollectionFilterState {
     DateTimeRange? dateRange,
     String? searchQuery,
     List<String>? tags,
+    String? searchMode,
+    int? semanticTopK,
     bool clearPlatforms = false,
     bool clearStatuses = false,
     bool clearAuthor = false,
@@ -41,6 +47,8 @@ class CollectionFilterState {
       dateRange: clearDateRange ? null : (dateRange ?? this.dateRange),
       searchQuery: searchQuery ?? this.searchQuery,
       tags: clearTags ? const [] : (tags ?? this.tags),
+      searchMode: searchMode ?? this.searchMode,
+      semanticTopK: semanticTopK ?? this.semanticTopK,
     );
   }
 
@@ -50,6 +58,8 @@ class CollectionFilterState {
       author != null ||
       dateRange != null ||
       tags.isNotEmpty;
+
+  bool get isSemantic => searchMode == 'semantic';
 }
 
 @riverpod
@@ -66,6 +76,8 @@ class CollectionFilter extends _$CollectionFilter {
     String? author,
     DateTimeRange? dateRange,
     List<String>? tags,
+    String? searchMode,
+    int? semanticTopK,
   }) {
     state = state.copyWith(
       platforms: platforms,
@@ -73,6 +85,8 @@ class CollectionFilter extends _$CollectionFilter {
       author: author,
       dateRange: dateRange,
       tags: tags,
+      searchMode: searchMode,
+      semanticTopK: semanticTopK,
       clearPlatforms: platforms == null || platforms.isEmpty,
       clearStatuses: statuses == null || statuses.isEmpty,
       clearAuthor: author == null,
@@ -93,5 +107,15 @@ class CollectionFilter extends _$CollectionFilter {
 
   void clearFilters() {
     state = const CollectionFilterState(searchQuery: '');
+  }
+
+  void setSearchMode(String mode) {
+    if (mode != 'keyword' && mode != 'semantic') return;
+    state = state.copyWith(searchMode: mode);
+  }
+
+  void setSemanticTopK(int topK) {
+    final clamped = topK.clamp(1, 100);
+    state = state.copyWith(semanticTopK: clamped);
   }
 }

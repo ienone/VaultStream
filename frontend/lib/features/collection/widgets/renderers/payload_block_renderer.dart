@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:frontend/core/utils/safe_url_launcher.dart';
 import 'package:frontend/core/network/api_client.dart';
 import 'package:frontend/core/network/image_headers.dart';
+import 'package:frontend/core/utils/media_utils.dart' as media_utils;
 import '../../models/content.dart';
 
 class PayloadBlockRenderer extends ConsumerWidget {
@@ -60,6 +61,9 @@ class PayloadBlockRenderer extends ConsumerWidget {
     final author = quote['author']?.toString();
     final text = quote['text']?.toString() ?? '';
     final thumbnail = quote['thumbnail']?.toString();
+    final mappedThumbnail = (thumbnail != null && thumbnail.isNotEmpty)
+        ? media_utils.mapUrl(thumbnail, apiBaseUrl)
+        : null;
     
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -110,17 +114,17 @@ class PayloadBlockRenderer extends ConsumerWidget {
                     ],
                   ),
                 ),
-                if (thumbnail != null && thumbnail.isNotEmpty) ...[
+                if (mappedThumbnail != null && mappedThumbnail.isNotEmpty) ...[
                   const SizedBox(width: 12),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(6),
                     child: CachedNetworkImage(
-                      imageUrl: thumbnail,
+                      imageUrl: mappedThumbnail,
                       width: 60,
                       height: 60,
                       fit: BoxFit.cover,
                       httpHeaders: buildImageHeaders(
-                        imageUrl: thumbnail,
+                        imageUrl: mappedThumbnail,
                         baseUrl: apiBaseUrl,
                         apiToken: apiToken,
                       ),
@@ -160,11 +164,8 @@ class PayloadBlockRenderer extends ConsumerWidget {
 
     // Helper to map URLs
     String? mapUrl(String? url, String apiBaseUrl) {
-      if (url == null) return null;
-      if (url.startsWith('http')) {
-        return '$apiBaseUrl/proxy/image?url=${Uri.encodeComponent(url)}';
-      }
-      return url;
+      if (url == null || url.trim().isEmpty) return null;
+      return media_utils.mapUrl(url, apiBaseUrl);
     }
 
     final mappedAvatarUrl = mapUrl(authorAvatarUrl, apiBaseUrl);

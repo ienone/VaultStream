@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/sse_service.dart';
@@ -54,6 +55,8 @@ class Collection extends _$Collection {
       startDate: filter.dateRange?.start,
       endDate: filter.dateRange?.end,
       tags: filter.tags.isNotEmpty ? filter.tags : null,
+      searchMode: filter.searchMode,
+      semanticTopK: filter.semanticTopK,
     );
   }
 
@@ -219,8 +222,61 @@ class Collection extends _$Collection {
     DateTime? startDate,
     DateTime? endDate,
     String? query,
+    String searchMode = 'keyword',
+    int semanticTopK = 20,
   }) async {
     final dio = ref.watch(apiClientProvider);
+
+    final useSemantic = searchMode == 'semantic' && (query ?? '').trim().isNotEmpty;
+    if (useSemantic) {
+      try {
+        final requestTopK = (semanticTopK * 3).clamp(semanticTopK, 100);
+        final response = await dio.get(
+          '/search/semantic',
+          queryParameters: {
+            'q': query,
+            'top_k': requestTopK,
+            if (platforms != null && platforms.length == 1) 'platform': platforms.first,
+            if (tags != null && tags.isNotEmpty) 'tag': tags.join(','),
+            if (statuses != null && statuses.isNotEmpty) 'status': statuses.join(','),
+            if (author != null && author.trim().isNotEmpty) 'author': author.trim(),
+            if (startDate != null) 'date_from': startDate.toIso8601String(),
+            if (endDate != null) 'date_to': endDate.toIso8601String(),
+          },
+          options: Options(
+            sendTimeout: const Duration(seconds: 6),
+            receiveTimeout: const Duration(seconds: 6),
+          ),
+        );
+
+        final rows = (response.data['results'] as List<dynamic>? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .toList();
+        final cards = rows
+            .map(_semanticToShareCard)
+            .where(
+              (card) => _matchesSemanticFilters(
+                card,
+                tags: tags,
+                platforms: platforms,
+                statuses: statuses,
+                author: author,
+              ),
+            )
+            .take(semanticTopK)
+            .toList();
+
+        return ShareCardListResponse(
+          items: cards,
+          total: cards.length,
+          page: 1,
+          size: cards.length,
+          hasMore: false,
+        );
+      } on DioException {
+        // 性能/网络兜底：语义检索失败时回退关键词检索。
+      }
+    }
 
     final response = await dio.get(
       '/cards',
@@ -240,6 +296,60 @@ class Collection extends _$Collection {
     );
 
     return ShareCardListResponse.fromJson(response.data);
+  }
+
+  ShareCard _semanticToShareCard(Map<String, dynamic> row) {
+    return ShareCard(
+      id: (row['content_id'] as num?)?.toInt() ?? 0,
+      platform: (row['platform'] as String?) ?? '',
+      url: (row['url'] as String?) ?? '',
+      title: row['title'] as String?,
+      authorName: row['author_name'] as String?,
+      coverUrl: row['cover_url'] as String?,
+      tags: (row['tags'] as List<dynamic>? ?? []).map((e) => e.toString()).toList(),
+      createdAt: row['created_at'] != null ? DateTime.tryParse(row['created_at']) : null,
+      publishedAt: row['published_at'] != null ? DateTime.tryParse(row['published_at']) : null,
+    );
+  }
+
+  bool _matchesSemanticFilters(
+    ShareCard card, {
+    List<String>? tags,
+    List<String>? platforms,
+    List<String>? statuses,
+    String? author,
+  }) {
+    if (platforms != null && platforms.isNotEmpty) {
+      final allowed = platforms.map((e) => e.toLowerCase()).toSet();
+      if (!allowed.contains(card.platform.toLowerCase())) {
+        return false;
+      }
+    }
+
+    if (author != null && author.trim().isNotEmpty) {
+      final keyword = author.trim().toLowerCase();
+      final name = (card.authorName ?? '').toLowerCase();
+      if (!name.contains(keyword)) {
+        return false;
+      }
+    }
+
+    if (tags != null && tags.isNotEmpty) {
+      final selected = tags.map((e) => e.toLowerCase()).toSet();
+      final cardTags = card.tags.map((e) => e.toLowerCase()).toSet();
+      if (selected.intersection(cardTags).isEmpty) {
+        return false;
+      }
+    }
+
+    if (statuses != null && statuses.isNotEmpty) {
+      final normalized = statuses.map((e) => e.trim().toLowerCase()).toSet();
+      if (!normalized.contains('parse_success')) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   Future<void> fetchMore() async {
@@ -262,6 +372,8 @@ class Collection extends _$Collection {
         startDate: filter.dateRange?.start,
         endDate: filter.dateRange?.end,
         tags: filter.tags.isNotEmpty ? filter.tags : null,
+        searchMode: filter.searchMode,
+        semanticTopK: filter.semanticTopK,
       );
 
       state = AsyncData(

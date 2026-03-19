@@ -56,7 +56,7 @@ dependencies:
   flutter_math_fork: ^0.7.4
   flutter_highlight: ^0.7.0
   google_fonts: ^7.0.0
-  flutter_client_sse: ^2.0.3
+  http: ^1.4.0
   receive_sharing_intent: ^1.8.1
   extended_image: ^8.2.0
   timeago: ^3.7.0

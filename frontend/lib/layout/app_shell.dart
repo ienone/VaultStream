@@ -129,6 +129,11 @@ class _MobileShell extends StatelessWidget {
             selectedIcon: Icon(Icons.settings_rounded),
             label: 'Settings',
           ),
+          NavigationDestination(
+            icon: Icon(Icons.smart_toy_outlined),
+            selectedIcon: Icon(Icons.smart_toy_rounded),
+            label: 'Agent',
+          ),
         ],
       ),
     );
@@ -198,6 +203,11 @@ class _DesktopShell extends StatelessWidget {
                 icon: Icon(Icons.settings_outlined),
                 selectedIcon: Icon(Icons.settings_rounded),
                 label: Text('Settings'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.smart_toy_outlined),
+                selectedIcon: Icon(Icons.smart_toy_rounded),
+                label: Text('Agent'),
               ),
             ],
           ),
