@@ -4,7 +4,7 @@
 基于队列的分发模型，支持多 Worker 并发、乐观锁、指数退避重试。
 """
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Optional, List
 
 from sqlalchemy import select, and_, func, or_
@@ -209,40 +209,64 @@ class DistributionQueueWorker:
         now = utcnow()
         lock_expire = now - timedelta(seconds=LOCK_TIMEOUT)
 
-        stmt = (
+        base_conditions = [
+            or_(
+                ContentQueueItem.scheduled_at.is_(None),
+                ContentQueueItem.scheduled_at <= now,
+            ),
+            or_(
+                ContentQueueItem.locked_at.is_(None),
+                ContentQueueItem.locked_at < lock_expire,
+            ),
+            BotChat.enabled == True,
+            BotChat.is_accessible == True,
+        ]
+
+        order_by_cols = (
+            ContentQueueItem.priority.desc(),
+            ContentQueueItem.scheduled_at.asc(),
+            ContentQueueItem.id.asc(),
+        )
+
+        scheduled_stmt = (
             select(ContentQueueItem)
             .join(BotChat, BotChat.id == ContentQueueItem.bot_chat_id)
             .where(
                 and_(
-                    or_(
-                        ContentQueueItem.status == QueueItemStatus.SCHEDULED,
-                        and_(
-                            ContentQueueItem.status == QueueItemStatus.FAILED,
-                            ContentQueueItem.next_attempt_at <= now,
-                        ),
-                    ),
-                    or_(
-                        ContentQueueItem.scheduled_at.is_(None),
-                        ContentQueueItem.scheduled_at <= now,
-                    ),
-                    or_(
-                        ContentQueueItem.locked_at.is_(None),
-                        ContentQueueItem.locked_at < lock_expire,
-                    ),
-                    BotChat.enabled == True,
-                    BotChat.is_accessible == True,
+                    ContentQueueItem.status == QueueItemStatus.SCHEDULED,
+                    *base_conditions,
                 )
             )
-            .order_by(
-                ContentQueueItem.priority.desc(),
-                ContentQueueItem.scheduled_at.asc(),
-                ContentQueueItem.id.asc(),
+            .order_by(*order_by_cols)
+            .limit(BATCH_SIZE)
+        )
+        failed_stmt = (
+            select(ContentQueueItem)
+            .join(BotChat, BotChat.id == ContentQueueItem.bot_chat_id)
+            .where(
+                and_(
+                    ContentQueueItem.status == QueueItemStatus.FAILED,
+                    ContentQueueItem.next_attempt_at <= now,
+                    *base_conditions,
+                )
             )
+            .order_by(*order_by_cols)
             .limit(BATCH_SIZE)
         )
 
-        result = await session.execute(stmt)
-        items = list(result.scalars().all())
+        scheduled_rows = await session.execute(scheduled_stmt)
+        failed_rows = await session.execute(failed_stmt)
+
+        merged: dict[int, ContentQueueItem] = {}
+        for item in scheduled_rows.scalars().all():
+            merged[item.id] = item
+        for item in failed_rows.scalars().all():
+            merged[item.id] = item
+
+        items = sorted(
+            merged.values(),
+            key=self._claim_sort_key,
+        )[:BATCH_SIZE]
 
         if not items:
             return []
@@ -292,6 +316,17 @@ class DistributionQueueWorker:
             f"Worker {worker_name} 领取 {len(claimable)} 项 ids={[i.id for i in claimable]}"
         )
         return claimable
+
+    @staticmethod
+    def _claim_sort_key(item: ContentQueueItem):
+        # Keep NULL scheduled_at first to match SQL ASC semantics.
+        scheduled_at = item.scheduled_at
+        return (
+            -(item.priority or 0),
+            scheduled_at is not None,
+            scheduled_at or datetime.min,
+            item.id,
+        )
 
     # ── 处理单个队列项 ────────────────────────────────
 
@@ -391,24 +426,10 @@ class DistributionQueueWorker:
             return
 
         if not message_id:
-            if item.target_platform == "telegram":
-                fallback_message_id = (
-                    f"telegram-noid-{int(utcnow().timestamp() * 1000)}-"
-                    f"{item.id}-{item.attempt_count or 0}"
-                )
-                logger.warning(
-                    "Telegram push returned no message_id; treating as success to avoid duplicate retries: "
-                    "item_id={}, content_id={}, target_id={}",
-                    item.id,
-                    item.content_id,
-                    actual_target_id,
-                )
-                message_id = fallback_message_id
-            else:
-                await self._handle_failure(
-                    session, item, RuntimeError("Push returned no message_id")
-                )
-                return
+            await self._handle_failure(
+                session, item, RuntimeError("Push returned no message_id")
+            )
+            return
 
         # 7. 成功处理
         now = utcnow()

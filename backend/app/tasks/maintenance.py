@@ -81,6 +81,8 @@ class CookieKeepAliveTask:
 
     def start(self):
         try:
+            if self._tasks and any(not t.done() for t in self._tasks):
+                return
             self._tasks = [
                 asyncio.create_task(zhihu_keepalive_loop()),
                 asyncio.create_task(xiaohongshu_keepalive_loop()),

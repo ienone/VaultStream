@@ -12,6 +12,7 @@ alembic
 # HTTP clients
 httpx[socks]
 requests
+chardet>=5.2,<6
 
 # Xiaohongshu signing helper
 xhshow
@@ -29,6 +30,7 @@ Pillow
 # Content parsing and Markdown conversion
 markdownify
 beautifulsoup4
+bbcode
 
 # RSS parsing
 feedparser

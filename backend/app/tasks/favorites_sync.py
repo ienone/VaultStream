@@ -16,7 +16,10 @@ from app.core.database import AsyncSessionLocal
 from app.core.logging import ensure_task_id, log_context, logger
 from app.core.time_utils import utcnow
 from app.services.content_service import ContentService
-from app.services.settings_service import get_setting_value, set_setting_value
+from app.services.settings_service import (
+    get_setting_value_fresh,
+    set_setting_value,
+)
 
 
 class FavoritesSyncTask:
@@ -80,7 +83,8 @@ class FavoritesSyncTask:
         return []
 
     async def load_enabled_platforms(self) -> list[str]:
-        raw = await get_setting_value("favorites_sync_platforms", [])
+        # Read from DB directly to avoid stale in-process cache when running multi workers.
+        raw = await get_setting_value_fresh("favorites_sync_platforms", [])
         parsed = self._parse_enabled_platforms(raw)
         return [p for p in parsed if p in self._fetchers]
 
@@ -102,7 +106,7 @@ class FavoritesSyncTask:
         while True:
             try:
                 interval = int(
-                    await get_setting_value(
+                    await get_setting_value_fresh(
                         "favorites_sync_interval_minutes",
                         self._DEFAULT_INTERVAL_MINUTES,
                     )
@@ -121,6 +125,17 @@ class FavoritesSyncTask:
                 enabled = await self.load_enabled_platforms()
                 results: dict[str, dict] = {}
                 for platform in enabled:
+                    # Re-check enabled list before each platform to honor runtime toggles ASAP.
+                    latest_enabled = await self.load_enabled_platforms()
+                    if platform not in latest_enabled:
+                        logger.info("[favorites sync] platform disabled at runtime, skip {}", platform)
+                        results[platform] = {
+                            "platform": platform,
+                            "status": "skipped",
+                            "reason": "disabled",
+                            "at": utcnow().isoformat(),
+                        }
+                        continue
                     try:
                         results[platform] = await self._sync_platform_by_name_inner(platform)
                     except FavoritesFetchError as e:
@@ -240,19 +255,19 @@ class FavoritesSyncTask:
             )
 
         max_items = int(
-            await get_setting_value(
+            await get_setting_value_fresh(
                 "favorites_sync_max_items",
                 self._DEFAULT_MAX_ITEMS,
             )
         )
         rate_limit = float(
-            await get_setting_value(
+            await get_setting_value_fresh(
                 f"favorites_sync_rate_{platform}",
                 self.default_rate_for(platform),
             )
         )
         delay = 60.0 / max(rate_limit, 0.1)
-        cursor = await get_setting_value(f"favorites_sync_cursor_{platform}")
+        cursor = await get_setting_value_fresh(f"favorites_sync_cursor_{platform}")
         if not isinstance(cursor, str):
             cursor = None
 

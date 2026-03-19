@@ -300,42 +300,44 @@ async def get_favorites_sync_status(
         available = True
         error: Optional[str] = None
         status_error: Optional[dict[str, Any]] = None
-        try:
-            authenticated = await fetcher_cls().check_auth()
-        except ImportError as e:
-            available = False
-            error = str(e)
-            status_error = build_error_payload(
-                message=str(e),
-                code="dependency_missing",
-                hint="依赖缺失，请检查后端运行环境",
-                request_id=getattr(request.state, "request_id", None),
-            )
-            logger.warning("[favorites status] check_auth import error for {}: {}", platform, e)
-        except FavoritesFetchError as e:
-            available = e.code != "cli_unavailable"
-            error = e.message
-            status_error = {
-                "detail": e.message,
-                **e.as_dict(),
-                "request_id": getattr(request.state, "request_id", None),
-            }
-            logger.warning(
-                "[favorites status] structured check_auth failure for {}: code={} message={}",
-                platform,
-                e.code,
-                e.message,
-            )
-        except Exception as e:
-            available = False
-            error = str(e)
-            status_error = build_error_payload(
-                message=str(e),
-                code="auth_check_failed",
-                hint="认证检查失败，请稍后重试",
-                request_id=getattr(request.state, "request_id", None),
-            )
-            logger.exception("[favorites status] check_auth failed for {}", platform)
+        should_probe_auth = platform in enabled_platforms
+        if should_probe_auth:
+            try:
+                authenticated = await fetcher_cls().check_auth()
+            except ImportError as e:
+                available = False
+                error = str(e)
+                status_error = build_error_payload(
+                    message=str(e),
+                    code="dependency_missing",
+                    hint="依赖缺失，请检查后端运行环境",
+                    request_id=getattr(request.state, "request_id", None),
+                )
+                logger.warning("[favorites status] check_auth import error for {}: {}", platform, e)
+            except FavoritesFetchError as e:
+                available = e.code != "cli_unavailable"
+                error = e.message
+                status_error = {
+                    "detail": e.message,
+                    **e.as_dict(),
+                    "request_id": getattr(request.state, "request_id", None),
+                }
+                logger.warning(
+                    "[favorites status] structured check_auth failure for {}: code={} message={}",
+                    platform,
+                    e.code,
+                    e.message,
+                )
+            except Exception as e:
+                available = False
+                error = str(e)
+                status_error = build_error_payload(
+                    message=str(e),
+                    code="auth_check_failed",
+                    hint="认证检查失败，请稍后重试",
+                    request_id=getattr(request.state, "request_id", None),
+                )
+                logger.exception("[favorites status] check_auth failed for {}", platform)
 
         rate = float(
             await get_setting_value(

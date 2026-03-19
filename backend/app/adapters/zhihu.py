@@ -16,6 +16,7 @@ from app.adapters.zhihu_parser import (
 )
 from app.adapters.zhihu_parser.base import preprocess_zhihu_html, extract_images
 from app.adapters.zhihu_parser.models import ZhihuAuthor
+from app.adapters.utils.cookie_utils import normalize_cookie_header_value
 from app.core.config import settings
 
 
@@ -97,11 +98,81 @@ class ZhihuAdapter(PlatformAdapter):
         "collection": "https://api.zhihu.com/collections/{id}",
     }
 
-    def __init__(self, cookies: Optional[Dict[str, str]] = None):
+    def __init__(self, cookies: Optional[Dict[str, str]] = None, raw_cookie_str: Optional[str] = None):
+        # 保留 DB 中的原始 Cookie 串（含可能影响风控的边界字符），
+        # 在请求头直传时优先使用；同时保留 dict 形式用于需要按键读取的逻辑。
+        self.raw_cookie_str: Optional[str] = raw_cookie_str
+        if not self.raw_cookie_str and settings.zhihu_cookie:
+            self.raw_cookie_str = settings.zhihu_cookie.get_secret_value()
+
         self.cookies = cookies or {}
-        if not self.cookies and settings.zhihu_cookie:
-            cookie_str = settings.zhihu_cookie.get_secret_value()
-            self.cookies = self.parse_cookie_str(cookie_str)
+        if not self.cookies and self.raw_cookie_str:
+            self.cookies = self.parse_cookie_str(self.raw_cookie_str)
+
+    @staticmethod
+    def _extract_zhihu_error(response: httpx.Response) -> tuple[Optional[int], str]:
+        """Try extracting zhihu anti-risk code/message from response JSON."""
+        code: Optional[int] = None
+        message = ""
+        try:
+            payload = response.json()
+            if isinstance(payload, dict) and isinstance(payload.get("error"), dict):
+                err = payload["error"]
+                raw_code = err.get("code")
+                if isinstance(raw_code, int):
+                    code = raw_code
+                elif isinstance(raw_code, str) and raw_code.isdigit():
+                    code = int(raw_code)
+                raw_message = err.get("message")
+                if isinstance(raw_message, str):
+                    message = raw_message.strip()
+        except Exception:
+            pass
+        return code, message
+
+    @staticmethod
+    def _preview_text(text: Optional[str], limit: int = 80) -> str:
+        if not text:
+            return ""
+        normalized = re.sub(r"\s+", " ", text).strip()
+        if len(normalized) <= limit:
+            return normalized
+        return normalized[:limit] + "..."
+
+    @staticmethod
+    def _stats_preview(stats: Optional[Dict[str, Any]]) -> str:
+        if not stats:
+            return "-"
+        preferred = [
+            "like",
+            "reply",
+            "favorite",
+            "view",
+            "follower_count",
+            "answer_count",
+            "item_count",
+        ]
+        parts = []
+        for key in preferred:
+            if key in stats:
+                parts.append(f"{key}={stats.get(key)}")
+        if not parts:
+            for key, value in list(stats.items())[:4]:
+                parts.append(f"{key}={value}")
+        return ", ".join(parts[:4]) if parts else "-"
+
+    def _log_parse_success(self, *, channel: str, parsed: ParsedContent) -> None:
+        logger.info(
+            "[zhihu parsed] channel={} type={} id={} author={} media_count={} title_preview={} body_preview={} stats={}",
+            channel,
+            parsed.content_type,
+            parsed.content_id,
+            parsed.author_name or "-",
+            len(parsed.media_urls or []),
+            self._preview_text(parsed.title, 60) or "-",
+            self._preview_text(parsed.body, 120) or "-",
+            self._stats_preview(parsed.stats),
+        )
 
     async def detect_content_type(self, url: str) -> Optional[str]:
         if "zhuanlan.zhihu.com/p/" in url:
@@ -187,23 +258,29 @@ class ZhihuAdapter(PlatformAdapter):
         """通用API请求方法"""
         api_url = self._build_api_url(content_type, content_id)
         proxy_url = await self._get_proxy_url()
-        cookies = self.cookies if use_cookies else {}
+        request_cookies = self.cookies if use_cookies else {}
 
         # 动态添加 CSRF token header（某些 API 如 question 需要）
         extra_headers = {}
-        if use_cookies and cookies.get("_xsrf"):
-            extra_headers["x-xsrftoken"] = cookies["_xsrf"]
+        if use_cookies and self.cookies.get("_xsrf"):
+            extra_headers["x-xsrftoken"] = self.cookies["_xsrf"]
         # article 端点在 zhuanlan.zhihu.com，需要对应的 referer
         if content_type == "article":
             extra_headers["referer"] = f"https://zhuanlan.zhihu.com/p/{content_id}"
         elif content_type == "question":
             extra_headers["referer"] = f"https://www.zhihu.com/question/{content_id}"
+        if use_cookies and self.raw_cookie_str:
+            extra_headers["cookie"] = normalize_cookie_header_value(
+                self.raw_cookie_str,
+                ensure_outer_quotes=True,
+            )
+            request_cookies = None
 
         headers = {**self.API_HEADERS, **extra_headers}
 
         async with httpx.AsyncClient(
             headers=headers,
-            cookies=cookies,
+            cookies=request_cookies,
             follow_redirects=True,
             timeout=15.0,
             proxy=proxy_url
@@ -214,13 +291,57 @@ class ZhihuAdapter(PlatformAdapter):
                 if response.status_code == 404:
                     return {"_error": "not_found"}
                 if response.status_code in (401, 403):
+                    risk_code, risk_message = self._extract_zhihu_error(response)
+                    logger.bind(
+                        event="zhihu_risk_blocked",
+                        stage="api",
+                        content_type=content_type,
+                        content_id=content_id,
+                        status_code=response.status_code,
+                        zhihu_error_code=risk_code,
+                    ).warning(
+                        "Zhihu API blocked: type={} id={} status={} code={} msg={}",
+                        content_type,
+                        content_id,
+                        response.status_code,
+                        risk_code,
+                        (risk_message or response.text[:160]),
+                    )
                     return {"_error": "auth_required", "_status": response.status_code}
                 if response.status_code != 200:
+                    logger.bind(
+                        event="zhihu_api_failed",
+                        stage="api",
+                        content_type=content_type,
+                        content_id=content_id,
+                        status_code=response.status_code,
+                    ).warning(
+                        "Zhihu API request failed: type={} id={} status={}",
+                        content_type,
+                        content_id,
+                        response.status_code,
+                    )
                     return {"_error": "request_failed", "_status": response.status_code}
                 
                 data = response.json()
                 if "error" in data:
-                    return {"_error": "api_error", "_message": data["error"].get("message", "")}
+                    err = data.get("error") if isinstance(data, dict) else {}
+                    err_code = err.get("code") if isinstance(err, dict) else None
+                    err_msg = err.get("message", "") if isinstance(err, dict) else ""
+                    logger.bind(
+                        event="zhihu_api_error",
+                        stage="api",
+                        content_type=content_type,
+                        content_id=content_id,
+                        zhihu_error_code=err_code,
+                    ).warning(
+                        "Zhihu API responded with logical error: type={} id={} code={} msg={}",
+                        content_type,
+                        content_id,
+                        err_code,
+                        err_msg,
+                    )
+                    return {"_error": "api_error", "_message": err_msg}
                 
                 return data
                 
@@ -682,21 +803,32 @@ class ZhihuAdapter(PlatformAdapter):
             result = await api_parsers[content_type](content_id, url)
             if result:
                 logger.info(f"API解析成功: {content_type}/{content_id}")
+                self._log_parse_success(channel="api", parsed=result)
                 return result
             logger.info(f"API解析失败，回退到HTML解析: {content_type}/{content_id}")
         elif content_type == "pin":
             logger.info(f"Pin 类型仅支持HTML解析: {content_id}")
         
         # HTML解析回退
-        return await self._parse_via_html(url, clean_url, content_type)
+        html_result = await self._parse_via_html(url, clean_url, content_type)
+        self._log_parse_success(channel="html", parsed=html_result)
+        return html_result
 
     async def _parse_via_html(self, url: str, clean_url: str, content_type: str) -> ParsedContent:
         """通过HTML页面解析"""
         proxy_url = await self._get_proxy_url()
-    
+        headers = self._make_html_headers(clean_url)
+        request_cookies = self.cookies
+        if self.raw_cookie_str:
+            headers["cookie"] = normalize_cookie_header_value(
+                self.raw_cookie_str,
+                ensure_outer_quotes=True,
+            )
+            request_cookies = None
+
         async with httpx.AsyncClient(
-            headers=self._make_html_headers(clean_url),
-            cookies=self.cookies,
+            headers=headers,
+            cookies=request_cookies,
             follow_redirects=True,
             timeout=15.0,
             proxy=proxy_url
@@ -708,6 +840,20 @@ class ZhihuAdapter(PlatformAdapter):
                 if response.status_code == 404:
                     raise NonRetryableAdapterError(f"内容不存在: {url}")
                 if response.status_code in (401, 403):
+                    risk_code, risk_message = self._extract_zhihu_error(response)
+                    logger.bind(
+                        event="zhihu_risk_blocked",
+                        stage="html",
+                        content_type=content_type,
+                        status_code=response.status_code,
+                        zhihu_error_code=risk_code,
+                        target_url=clean_url,
+                    ).warning(
+                        "Zhihu HTML blocked: status={} code={} msg={}",
+                        response.status_code,
+                        risk_code,
+                        (risk_message or response.text[:180]),
+                    )
                     err_msg = "触发知乎安全验证" if "安全验证" in response.text else "访问知乎需要登录或权限不足"
                     
                     if getattr(self, "_refresh_zse_called", False):

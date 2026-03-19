@@ -51,12 +51,27 @@ class TwitterFavoritesFetcher(BaseFavoritesFetcher):
                 message="twitter cli is not installed",
                 hint="请安装并配置 twitter CLI，再执行收藏同步",
             ) from e
+        except OSError as e:
+            logger.warning("[twitter favorites] cli execution failed: {}", e)
+            raise FavoritesFetchError(
+                code="cli_unavailable",
+                message="twitter cli is unavailable",
+                hint="请确认 twitter CLI 已正确安装，并可在命令行直接运行",
+            ) from e
         except asyncio.TimeoutError as e:
             logger.warning("[twitter favorites] check_auth timeout: {}", e)
             raise FavoritesFetchError(
                 code="network_timeout",
                 message="Twitter CLI auth check timeout",
                 hint="网络连接超时，请稍后重试",
+                retryable=True,
+            ) from e
+        except Exception as e:
+            logger.warning("[twitter favorites] unexpected check_auth error: {}", e)
+            raise FavoritesFetchError(
+                code="auth_check_failed",
+                message="Twitter CLI auth check failed",
+                hint="Twitter 鉴权检查失败，请检查 CLI 登录状态和运行环境",
                 retryable=True,
             ) from e
 
@@ -85,12 +100,27 @@ class TwitterFavoritesFetcher(BaseFavoritesFetcher):
                 message="twitter cli is not installed",
                 hint="请安装并配置 twitter CLI，再执行收藏同步",
             ) from e
+        except OSError as e:
+            logger.error("[twitter favorites] subprocess execution failed: {}", e)
+            raise FavoritesFetchError(
+                code="cli_unavailable",
+                message="twitter cli is unavailable",
+                hint="请确认 twitter CLI 已正确安装，并可在命令行直接运行",
+            ) from e
         except asyncio.TimeoutError as e:
             logger.error("[twitter favorites] subprocess timeout: {}", e)
             raise FavoritesFetchError(
                 code="network_timeout",
                 message="Twitter CLI request timeout",
                 hint="请求超时，请稍后重试",
+                retryable=True,
+            ) from e
+        except Exception as e:
+            logger.error("[twitter favorites] unexpected subprocess error: {}", e)
+            raise FavoritesFetchError(
+                code="fetch_failed",
+                message="Twitter CLI command failed",
+                hint="Twitter 拉取异常，请检查 CLI 输出和运行环境",
                 retryable=True,
             ) from e
 

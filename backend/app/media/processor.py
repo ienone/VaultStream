@@ -12,14 +12,19 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import html
 from dataclasses import dataclass
 from typing import Any, Optional
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 import httpx
 
 from app.core.logging import logger
 from app.core.config import settings
 from app.adapters.storage import LocalStorageBackend
+
+_URL_PATH_SAFE_CHARS = "/%:@!$&'()*+,;=-._~"
+_URL_QUERY_SAFE_CHARS = "/?:@!$&'()*+,;=-._~%="
 
 
 def _request_headers_for_url(url: str) -> dict[str, str]:
@@ -61,6 +66,21 @@ class StoredImageInfo:
 def _sha256_bytes(data: bytes) -> str:
     """计算字节数据的SHA256哈希值"""
     return hashlib.sha256(data).hexdigest()
+
+
+def _build_request_url(raw_url: str) -> str:
+    """Build a request URL while preserving RFC3986 path/query delimiters."""
+    candidate = (raw_url or "").strip()
+    if not candidate:
+        return candidate
+
+    # Decode first to avoid double-encoding user-provided URLs that already contain %xx.
+    decoded = unquote(candidate)
+    parts = urlsplit(decoded)
+    encoded_path = quote(parts.path, safe=_URL_PATH_SAFE_CHARS)
+    encoded_query = quote(parts.query, safe=_URL_QUERY_SAFE_CHARS)
+    encoded_fragment = quote(parts.fragment, safe=_URL_QUERY_SAFE_CHARS)
+    return urlunsplit((parts.scheme, parts.netloc, encoded_path, encoded_query, encoded_fragment))
 
 
 def _content_addressed_key(namespace: str, sha256_hex: str, ext: str) -> str:
@@ -308,20 +328,29 @@ async def store_archive_images_as_webp(
                 continue
             orig_url = orig_url.strip()
             
-            # URL编码：处理中文字符和空格等特殊字符
-            from urllib.parse import urlsplit, urlunsplit, quote, unquote
-            
-            # 首先解码，防止已被错误编码的 URL 再次被编码
-            decoded_orig_url = unquote(orig_url)
-            
-            parts = urlsplit(decoded_orig_url)
-            # 只编码路径部分，保留已编码的字符
-            encoded_path = quote(parts.path, safe='/%')
-            encoded_query = quote(parts.query, safe='=&%')
-            request_url = urlunsplit((parts.scheme, parts.netloc, encoded_path, encoded_query, parts.fragment))
+            request_url = _build_request_url(orig_url)
 
-            # Skip if already processed
-            if isinstance(img.get("stored_key"), str) and img.get("stored_key"):
+            # 已处理条目：无需重复下载，但要参与 URL 映射重写（修复历史正文中的远程链接）
+            existing_stored_key = img.get("stored_key")
+            if isinstance(existing_stored_key, str) and existing_stored_key:
+                local_stored_url = f"local://{existing_stored_key}"
+                url_to_stored_url[orig_url] = local_stored_url
+
+                # 尽量补齐 stored_images，便于后续任务统一读取。
+                stored_item = {
+                    "orig_url": orig_url,
+                    "key": existing_stored_key,
+                    "url": img.get("stored_url"),
+                    "sha256": img.get("stored_sha256"),
+                    "size": img.get("stored_size"),
+                    "width": img.get("stored_width"),
+                    "height": img.get("stored_height"),
+                    "content_type": img.get("stored_content_type") or "image/webp",
+                }
+                for k, v in img.items():
+                    if k not in stored_item and not k.startswith("stored_"):
+                        stored_item[k] = v
+                stored_images.append(stored_item)
                 continue
 
             webp_bytes = None
@@ -424,9 +453,29 @@ async def store_archive_images_as_webp(
     if stored_images:
         archive["stored_images"] = stored_images
 
-    # 注意：不修改 archive["markdown"] 中的 URL
-    # 前端通过 stored_images 的 orig_url -> key 映射来查找本地图片
-    # 这样保持与知乎等其他解析器一致的结构
+    # 同步重写 markdown 中的图片 URL 为本地 local:// 地址，
+    # 避免详情页再次回落到 /proxy/image 冷缓存链路。
+    markdown = archive.get("markdown")
+    if isinstance(markdown, str) and markdown and url_to_stored_url:
+        rewritten = markdown
+        for orig_url, stored_url in url_to_stored_url.items():
+            if not orig_url or not stored_url:
+                continue
+            candidates = [orig_url]
+            decoded = unquote(orig_url)
+            if decoded and decoded not in candidates:
+                candidates.append(decoded)
+            unescaped = html.unescape(orig_url)
+            if unescaped and unescaped not in candidates:
+                candidates.append(unescaped)
+
+            for candidate in candidates:
+                if not candidate:
+                    continue
+                rewritten = rewritten.replace(f"({candidate})", f"({stored_url})")
+                rewritten = rewritten.replace(candidate, stored_url)
+
+        archive["markdown"] = rewritten
 
     logger.info(
         "Archive images processed: total_images={}, stored_images={}",

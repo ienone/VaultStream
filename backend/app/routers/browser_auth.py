@@ -75,4 +75,4 @@ async def refresh_zhihu_zse():
     if success:
         return {"status": "success", "message": "刷新成功"}
     else:
-        raise HTTPException(status_code=500, detail="刷新失败，可能 Cookie 已过期或遇到了网络问题")
+        raise HTTPException(status_code=503, detail="刷新失败，可能 Cookie 已过期、未配置或浏览器服务暂不可用")

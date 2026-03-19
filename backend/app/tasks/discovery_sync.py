@@ -4,7 +4,9 @@
 定期检查到期的发现源并抓取新内容入库。
 """
 import asyncio
+import html
 from datetime import timedelta
+from urllib.parse import unquote
 
 from loguru import logger
 from sqlalchemy import select
@@ -41,6 +43,8 @@ class DiscoverySyncTask:
         self._task: asyncio.Task | None = None
 
     def start(self):
+        if self._task and not self._task.done():
+            return
         self._task = asyncio.create_task(self._sync_loop())
 
     async def stop(self):
@@ -296,6 +300,27 @@ class DiscoverySyncTask:
                     content.cover_url = url_mapping[content.cover_url]
                 elif not content.cover_url and local_urls:
                     content.cover_url = local_urls[0]
+
+                # Rewrite inline markdown image URLs in body to local:// keys.
+                if content.body and url_mapping:
+                    rewritten = content.body
+                    for orig_url, local_url in url_mapping.items():
+                        candidates = [orig_url]
+                        decoded = unquote(orig_url or "")
+                        if decoded and decoded not in candidates:
+                            candidates.append(decoded)
+                        unescaped = html.unescape(orig_url or "")
+                        if unescaped and unescaped not in candidates:
+                            candidates.append(unescaped)
+
+                        for candidate in candidates:
+                            if not candidate:
+                                continue
+                            rewritten = rewritten.replace(f"({candidate})", f"({local_url})")
+                            rewritten = rewritten.replace(candidate, local_url)
+
+                    if rewritten != content.body:
+                        content.body = rewritten
 
                 # M4/M5: 提取并保留主色调 (cover_color)
                 dominant_color = archive.get("dominant_color")

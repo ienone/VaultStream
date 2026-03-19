@@ -1,4 +1,5 @@
 from typing import Optional, Dict, Type, Any
+from urllib.parse import urlparse
 from app.models import Platform
 from .base import PlatformAdapter, ParsedContent
 from .bilibili import BilibiliAdapter
@@ -7,6 +8,7 @@ from .twitter import TwitterAdapter
 from .xiaohongshu import XiaohongshuAdapter
 from .zhihu import ZhihuAdapter
 from .telegram import TelegramAdapter
+from .rss import RssAdapter
 from .universal_adapter import UniversalAdapter
 
 class AdapterFactory:
@@ -17,23 +19,35 @@ class AdapterFactory:
         Platform.XIAOHONGSHU: XiaohongshuAdapter,
         Platform.ZHIHU: ZhihuAdapter,
         Platform.TELEGRAM: TelegramAdapter,
+        Platform.RSS: RssAdapter,
     }
 
     @staticmethod
     def detect_platform(url: str) -> Platform:
-        url = url.lower()
-        if "bilibili.com" in url or "b23.tv" in url:
+        lowered = url.lower()
+        parsed = urlparse(lowered)
+        path = (parsed.path or "").lower()
+
+        if "bilibili.com" in lowered or "b23.tv" in lowered:
             return Platform.BILIBILI
-        if "weibo.com" in url or "weibo.cn" in url:
+        if "weibo.com" in lowered or "weibo.cn" in lowered:
             return Platform.WEIBO
-        if "twitter.com" in url or "x.com" in url:
+        if "twitter.com" in lowered or "x.com" in lowered:
             return Platform.TWITTER
-        if "xiaohongshu.com" in url or "xhslink.com" in url:
+        if "xiaohongshu.com" in lowered or "xhslink.com" in lowered:
             return Platform.XIAOHONGSHU
-        if "zhihu.com" in url:
+        if "zhihu.com" in lowered:
             return Platform.ZHIHU
-        if "t.me" in url or "telegram.org" in url:
+        if "t.me" in lowered or "telegram.org" in lowered:
             return Platform.TELEGRAM
+        if (
+            path.endswith((".xml", ".rss", ".atom"))
+            or path in ("/feed", "/rss", "/atom")
+            or "/feed/" in path
+            or "/rss/" in path
+            or "/atom/" in path
+        ):
+            return Platform.RSS
         return Platform.UNIVERSAL
 
     @classmethod
@@ -58,6 +72,7 @@ __all__ = [
     "XiaohongshuAdapter",
     "ZhihuAdapter",
     "TelegramAdapter",
+    "RssAdapter",
     "UniversalAdapter",
     "AdapterFactory",
 ]

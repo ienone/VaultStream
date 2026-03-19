@@ -4,12 +4,16 @@
 处理内容解析、元数据提取、媒体下载等逻辑
 """
 import asyncio
+import copy
+import html
 import json
 import traceback
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
+from urllib.parse import unquote
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.logging import logger, log_context
 from app.core.database import AsyncSessionLocal
@@ -95,9 +99,17 @@ class ContentParser:
         
         for i in range(remaining_attempts):
             try:
+                cookies = await self._get_platform_cookies(content.platform)
+                adapter_kwargs = {}
+                if content.platform == Platform.ZHIHU:
+                    raw_cookie = await self._get_platform_cookie_string(content.platform)
+                    if raw_cookie:
+                        adapter_kwargs["raw_cookie_str"] = raw_cookie
+
                 adapter = AdapterFactory.create(
                     content.platform,
-                    cookies=await self._get_platform_cookies(content.platform)
+                    cookies=cookies,
+                    **adapter_kwargs,
                 )
 
                 normalized_parse_url = normalize_share_url_input(content.url)
@@ -200,6 +212,9 @@ class ContentParser:
 
         await session.commit()
         logger.info("内容解析完成")
+
+        # Phase 2: 解析成功后异步建立语义索引（失败不阻断主链路）
+        self._schedule_embedding_index(content.id)
         
         # 自动生成摘要
         enable_auto_summary = await get_setting_value("enable_auto_summary", settings.enable_auto_summary)
@@ -222,6 +237,17 @@ class ContentParser:
             "platform": content.platform.value if content.platform else None,
             "cover_url": content.cover_url
         })
+
+    def _schedule_embedding_index(self, content_id: int) -> None:
+        async def _run():
+            try:
+                from app.services.embedding_service import EmbeddingService
+
+                await EmbeddingService().index_content(content_id)
+            except Exception as e:
+                logger.warning("语义索引失败(已忽略): content_id={}, error={}", content_id, e)
+
+        asyncio.create_task(_run())
 
     async def _handle_parse_error(self, session, content, task_data, error, attempt, max_attempts):
         """处理解析错误"""
@@ -358,9 +384,152 @@ class ContentParser:
         )
         return metadata
 
+    def _iter_url_candidates(self, url: str) -> list[str]:
+        candidates: list[str] = []
+        if not isinstance(url, str) or not url:
+            return candidates
+
+        stripped = url.strip()
+        if not stripped:
+            return candidates
+        candidates.append(stripped)
+
+        decoded = unquote(stripped)
+        if decoded and decoded not in candidates:
+            candidates.append(decoded)
+
+        unescaped = html.unescape(stripped)
+        if unescaped and unescaped not in candidates:
+            candidates.append(unescaped)
+
+        return candidates
+
+    def _map_url_with_mapping(self, url: Any, url_mapping: Dict[str, str]) -> Optional[str]:
+        if not isinstance(url, str) or not url_mapping:
+            return None
+        for candidate in self._iter_url_candidates(url):
+            mapped = url_mapping.get(candidate)
+            if isinstance(mapped, str) and mapped:
+                return mapped
+        return None
+
+    def _build_stored_image_mapping(self, archive: Dict[str, Any]) -> Dict[str, str]:
+        """从 archive 中构建原图 URL -> 本地可访问 URL 的映射。"""
+        mapping: Dict[str, str] = {}
+
+        def _add_mapping(orig_url: Any, mapped_url: Any) -> None:
+            if not isinstance(orig_url, str) or not isinstance(mapped_url, str):
+                return
+            orig = orig_url.strip()
+            mapped = mapped_url.strip()
+            if not orig or not mapped:
+                return
+            if orig.startswith("local://"):
+                return
+            mapping[orig] = mapped
+
+        stored_images = archive.get("stored_images")
+        if isinstance(stored_images, list):
+            for img in stored_images:
+                if not isinstance(img, dict):
+                    continue
+                orig_url = img.get("orig_url") or img.get("source_url") or img.get("url")
+                key = img.get("key") or img.get("stored_key")
+                mapped_url = f"local://{key}" if isinstance(key, str) and key else img.get("url") or img.get("stored_url")
+                _add_mapping(orig_url, mapped_url)
+
+        # 回退：有些历史数据只在 images 中带了 stored_key。
+        images = archive.get("images")
+        if isinstance(images, list):
+            for img in images:
+                if not isinstance(img, dict):
+                    continue
+                orig_url = img.get("url")
+                key = img.get("stored_key")
+                mapped_url = f"local://{key}" if isinstance(key, str) and key else img.get("stored_url")
+                _add_mapping(orig_url, mapped_url)
+
+        return mapping
+
+    def _rewrite_text_with_mapping(self, text: Optional[str], url_mapping: Dict[str, str]) -> Optional[str]:
+        if not isinstance(text, str) or not text or not url_mapping:
+            return text
+
+        rewritten = text
+        for orig_url, mapped_url in url_mapping.items():
+            for candidate in self._iter_url_candidates(orig_url):
+                rewritten = rewritten.replace(f"({candidate})", f"({mapped_url})")
+                rewritten = rewritten.replace(candidate, mapped_url)
+        return rewritten
+
+    def _apply_stored_mapping_to_record(self, record: Any, archive: Dict[str, Any]) -> bool:
+        """将 archive 的已存储映射回写到正文/封面/头像/媒体字段。"""
+        url_mapping = self._build_stored_image_mapping(archive)
+        if not url_mapping:
+            return False
+
+        changed = False
+
+        body = getattr(record, "body", None)
+        rewritten_body = self._rewrite_text_with_mapping(body, url_mapping)
+        if isinstance(rewritten_body, str) and rewritten_body != body:
+            record.body = rewritten_body
+            changed = True
+
+        cover_url = getattr(record, "cover_url", None)
+        mapped_cover = self._map_url_with_mapping(cover_url, url_mapping)
+        if mapped_cover and mapped_cover != cover_url:
+            record.cover_url = mapped_cover
+            changed = True
+
+        avatar_url = getattr(record, "author_avatar_url", None)
+        mapped_avatar = self._map_url_with_mapping(avatar_url, url_mapping)
+        if mapped_avatar and mapped_avatar != avatar_url:
+            record.author_avatar_url = mapped_avatar
+            changed = True
+
+        media_urls = getattr(record, "media_urls", None)
+        if isinstance(media_urls, list) and media_urls:
+            mapped_media: list[str] = []
+            media_changed = False
+            for media_url in media_urls:
+                mapped = self._map_url_with_mapping(media_url, url_mapping) or media_url
+                if mapped != media_url:
+                    media_changed = True
+                if isinstance(mapped, str):
+                    mapped_media.append(mapped)
+            if media_changed:
+                record.media_urls = mapped_media
+                changed = True
+
+        rich_payload = getattr(record, "rich_payload", None)
+        blocks = rich_payload.get("blocks") if isinstance(rich_payload, dict) else None
+        if isinstance(blocks, list):
+            payload_changed = False
+            for block in blocks:
+                if not isinstance(block, dict):
+                    continue
+                data = block.get("data")
+                if not isinstance(data, dict):
+                    continue
+                if isinstance(data.get("author_avatar_url"), str):
+                    mapped = self._map_url_with_mapping(data["author_avatar_url"], url_mapping)
+                    if mapped and mapped != data["author_avatar_url"]:
+                        data["author_avatar_url"] = mapped
+                        payload_changed = True
+                if isinstance(data.get("cover_url"), str):
+                    mapped = self._map_url_with_mapping(data["cover_url"], url_mapping)
+                    if mapped and mapped != data["cover_url"]:
+                        data["cover_url"] = mapped
+                        payload_changed = True
+            if payload_changed:
+                changed = True
+
+        return changed
+
     async def _get_platform_cookies(self, platform: Platform) -> dict:
         """获取平台 cookies（优先从数据库 settings 读取，回退到 .env 配置）"""
-        from app.services.settings_service import get_setting_value
+        from app.services.settings_service import get_setting_value_fresh
 
         if platform == Platform.BILIBILI:
             cookies = {}
@@ -375,7 +544,7 @@ class ContentParser:
         # 通过扫码登录保存的平台 cookie（存储在数据库 settings 表中）
         # 支持：知乎、微博、小红书等
         platform_name = platform.value  # 例如 "zhihu"、"weibo"、"xiaohongshu"
-        cookie_str = await get_setting_value(f"{platform_name}_cookie")
+        cookie_str = await get_setting_value_fresh(f"{platform_name}_cookie")
         if not cookie_str:
             # 对于知乎，还可以回退到 .env 中的 ZHIHU_COOKIE
             if platform == Platform.ZHIHU and settings.zhihu_cookie:
@@ -386,6 +555,19 @@ class ContentParser:
         # 将 cookie 字符串解析为字典（复用基类工具）
         from app.adapters.base import PlatformAdapter
         return PlatformAdapter.parse_cookie_str(cookie_str)
+
+    async def _get_platform_cookie_string(self, platform: Platform) -> Optional[str]:
+        """获取平台原始 cookie 串（用于需要直传 Cookie 头的平台）。"""
+        from app.services.settings_service import get_setting_value_fresh
+
+        platform_name = platform.value
+        cookie_str = await get_setting_value_fresh(f"{platform_name}_cookie")
+        if cookie_str:
+            return cookie_str
+
+        if platform == Platform.ZHIHU and settings.zhihu_cookie:
+            return settings.zhihu_cookie.get_secret_value()
+        return None
 
     async def _maybe_process_private_archive_media(self, parsed) -> None:
         """处理私有归档媒体"""
@@ -423,6 +605,9 @@ class ContentParser:
         # 更新 markdown 引用
         if archive.get("markdown"):
             parsed.body = archive["markdown"]
+
+        # 基于已存储映射修正正文/封面/头像等字段（兼容历史数据已存储但正文未改写场景）
+        self._apply_stored_mapping_to_record(parsed, archive)
         
         # 更新 media_urls — 优先使用本地 local:// 协议
         stored_images = archive.get("stored_images", [])
@@ -539,8 +724,26 @@ class ContentParser:
                     need_media = True
                     break
 
-        if need_media:
-            logger.info("内容已解析完成，但存在未处理图片；开始补处理归档媒体")
+        need_reference_fix = False
+        if isinstance(archive, dict):
+            url_mapping = self._build_stored_image_mapping(archive)
+            if url_mapping:
+                if self._rewrite_text_with_mapping(content.body, url_mapping) != content.body:
+                    need_reference_fix = True
+                elif self._map_url_with_mapping(content.cover_url, url_mapping):
+                    need_reference_fix = True
+                elif self._map_url_with_mapping(content.author_avatar_url, url_mapping):
+                    need_reference_fix = True
+                elif isinstance(content.media_urls, list) and any(
+                    self._map_url_with_mapping(u, url_mapping) for u in content.media_urls
+                ):
+                    need_reference_fix = True
+
+        if need_media or need_reference_fix:
+            if need_media:
+                logger.info("内容已解析完成，但存在未处理图片；开始补处理归档媒体")
+            else:
+                logger.info("内容已解析完成，检测到历史远程引用；开始回写本地映射")
             try:
                 @dataclass
                 class _ParsedLike:
@@ -553,12 +756,30 @@ class ContentParser:
                     body: Optional[str] = None
                     author_avatar_url: Optional[str] = None
 
-                parsed_like = _ParsedLike(archive_metadata=meta)
-                await self._maybe_process_private_archive_media(parsed_like)
+                parsed_like = _ParsedLike(
+                    archive_metadata=meta,
+                    rich_payload=content.rich_payload if isinstance(content.rich_payload, dict) else None,
+                    cover_url=content.cover_url,
+                    media_urls=list(content.media_urls) if isinstance(content.media_urls, list) else [],
+                    body=content.body,
+                    author_avatar_url=content.author_avatar_url,
+                )
+                if need_media:
+                    await self._maybe_process_private_archive_media(parsed_like)
+                else:
+                    self._apply_stored_mapping_to_record(parsed_like, archive)
                 
                 content.archive_metadata = meta
+                if parsed_like.body:
+                    content.body = parsed_like.body
                 if parsed_like.cover_url:
                     content.cover_url = parsed_like.cover_url
+                if parsed_like.author_avatar_url:
+                    content.author_avatar_url = parsed_like.author_avatar_url
+                if isinstance(parsed_like.rich_payload, dict):
+                    # 需要新对象触发 ORM 脏检查，避免 JSON 原地修改不落库。
+                    content.rich_payload = copy.deepcopy(parsed_like.rich_payload)
+                    flag_modified(content, "rich_payload")
                 if parsed_like.media_urls:
                     content.media_urls = sanitize_media_urls(
                         parsed_like.media_urls,

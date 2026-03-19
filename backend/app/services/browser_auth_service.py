@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from xhshow import Xhshow, SessionManager
 
 from app.adapters.xiaohongshu_profile import build_xhs_crypto_config
+from app.adapters.utils.cookie_utils import strip_cookie_wrapper_quotes
 from app.services.settings_service import set_setting_value, get_setting_value, delete_setting_value
 from app.adapters.browser import browser_manager
 
@@ -53,6 +54,11 @@ class AuthSession:
 class BrowserAuthService:
     def __init__(self):
         self.sessions: Dict[str, AuthSession] = {}
+        self._zhihu_refresh_lock = asyncio.Lock()
+        self._zhihu_refresh_inflight: Optional[asyncio.Task] = None
+        self._zhihu_refresh_last_ts: float = 0.0
+        self._zhihu_refresh_last_result: Optional[bool] = None
+        self._zhihu_refresh_cooldown_seconds: float = 90.0
         self.platforms = {
             "xiaohongshu": {
                 "check_url": "https://edith.xiaohongshu.com/api/sns/web/v1/user/me",
@@ -440,6 +446,7 @@ class BrowserAuthService:
     # ------------------------------------------------------------------
 
     async def _check_xiaohongshu_status(self, cookie_str: str) -> bool:
+        cookie_str = strip_cookie_wrapper_quotes(cookie_str)
         ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
         check_uri = "/api/sns/web/v1/user/me"
 
@@ -496,6 +503,7 @@ class BrowserAuthService:
             return False
 
     async def _check_weibo_status(self, cookie_str: str) -> bool:
+        cookie_str = strip_cookie_wrapper_quotes(cookie_str)
         headers = {
             "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
             "cookie": cookie_str,
@@ -509,6 +517,7 @@ class BrowserAuthService:
             return False
 
     async def _check_zhihu_status(self, cookie_str: str) -> bool:
+        cookie_str = strip_cookie_wrapper_quotes(cookie_str)
         headers = {
             "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
             "cookie": cookie_str,
@@ -524,80 +533,142 @@ class BrowserAuthService:
 
     async def refresh_zhihu_zse_cookie(self, target_url: str = "https://www.zhihu.com/people/liu-kan-shan-78") -> bool:
         """
+        Refresh zhihu anti-bot fingerprint cookie with in-process dedupe/cooldown.
+
+        This avoids multiple concurrent parse retries starting redundant browser runs.
+        """
+        now_ts = time.monotonic()
+
+        async with self._zhihu_refresh_lock:
+            inflight = self._zhihu_refresh_inflight
+            if inflight and not inflight.done():
+                logger.info("知乎指纹刷新进行中，复用进行中的任务")
+                task = inflight
+            else:
+                recent = now_ts - self._zhihu_refresh_last_ts
+                if (
+                    self._zhihu_refresh_last_result is not None
+                    and recent < self._zhihu_refresh_cooldown_seconds
+                ):
+                    logger.info(
+                        "知乎指纹刷新命中冷却窗口，跳过重复刷新: last_result={}, age_s={:.1f}",
+                        self._zhihu_refresh_last_result,
+                        recent,
+                    )
+                    return bool(self._zhihu_refresh_last_result)
+
+                task = asyncio.create_task(self._refresh_zhihu_zse_cookie_impl(target_url))
+                self._zhihu_refresh_inflight = task
+
+        try:
+            result = bool(await task)
+            async with self._zhihu_refresh_lock:
+                self._zhihu_refresh_last_ts = time.monotonic()
+                self._zhihu_refresh_last_result = result
+                if self._zhihu_refresh_inflight is task:
+                    self._zhihu_refresh_inflight = None
+            return result
+        except Exception as e:
+            async with self._zhihu_refresh_lock:
+                self._zhihu_refresh_last_ts = time.monotonic()
+                self._zhihu_refresh_last_result = False
+                if self._zhihu_refresh_inflight is task:
+                    self._zhihu_refresh_inflight = None
+            logger.error(f"提取知乎指纹失败: {e}")
+            return False
+
+    async def _refresh_zhihu_zse_cookie_impl(
+        self,
+        target_url: str = "https://www.zhihu.com/people/liu-kan-shan-78",
+    ) -> bool:
+        """
         触发无头浏览器访问知乎具体页面，提取并更新 __zse_ck。
         与原有的配置中的 zhihu_cookie 合并后保存。
+
+        注意：所有 Playwright 操作必须在专用后台 Loop 中执行，
+        因此将浏览器部分封装为内部协程，通过 submit_coro 整体派发。
         """
         cookie_str = await get_setting_value("zhihu_cookie")
+        if not cookie_str:
+            # 测试场景下常直接注入 settings.zhihu_cookie（不写入 test DB）
+            # 这里做一次回退，避免误报“未配置 zhihu_cookie”。
+            from app.core.config import settings
+
+            if settings.zhihu_cookie:
+                cookie_str = settings.zhihu_cookie.get_secret_value()
         if not cookie_str:
             logger.warning("未配置 zhihu_cookie，无法刷新 __zse_ck")
             return False
 
         logger.info(f"正在后台启动 WebKit 更新知乎指纹，目标 URL: {target_url}")
-        
+
+        normalized_cookie_str = strip_cookie_wrapper_quotes(cookie_str)
+
         # 将原 cookie str 转为 playwright 兼容的列表
         cookies_list = []
-        for item in cookie_str.split(";"):
+        for item in normalized_cookie_str.split(";"):
             item = item.strip()
             if "=" in item:
                 k, v = item.split("=", 1)
                 cookies_list.append({"name": k.strip(), "value": v.strip(), "domain": ".zhihu.com", "path": "/"})
 
-        try:
-            browser = await browser_manager.get_browser()
+        async def _browser_task() -> dict:
+            """
+            在专用 Playwright Loop 中执行所有浏览器操作，返回提取到的 cookie 名值字典。
+            注意：此协程由 submit_coro 调度，不能直接 await asyncio.sleep，
+            因为专用 loop 中的 asyncio.sleep 是安全的。
+            """
+            # get_browser() 是同步方法，直接调用即可（已在专用 loop 线程中）
+            browser = browser_manager.get_browser()
             context = await browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
-                viewport={"width": 1280, "height": 720}
+                viewport={"width": 1280, "height": 720},
             )
-            # 注入旧 Cookie 保持登录态
-            await context.add_cookies(cookies_list)
-            
-            page = await context.new_page()
-            await page.goto(target_url, wait_until="networkidle", timeout=30000)
-            await asyncio.sleep(5)  # 等待反爬引擎计算下发指纹
+            try:
+                await context.add_cookies(cookies_list)
+                page = await context.new_page()
+                await page.goto(target_url, wait_until="networkidle", timeout=30000)
+                await asyncio.sleep(5)  # 等待反爬引擎计算下发指纹
 
-            new_cookies = await context.cookies()
-            zse_ck = None
-            for c in new_cookies:
-                if c["name"] == "__zse_ck":
-                    zse_ck = c["value"]
-            
-            if not zse_ck:
-                logger.warning("未能提取到新的 __zse_ck")
-                return False
-                
-            logger.info(f"成功提取到新的 __zse_ck: {zse_ck[:30]}...")
-
-            # 合并 Cookie
-            cookie_dict = {}
-            for item in cookie_str.split(";"):
-                item = item.strip()
-                if "=" in item:
-                    k, v = item.split("=", 1)
-                    cookie_dict[k.strip()] = v.strip()
-            
-            cookie_dict["__zse_ck"] = zse_ck
-            
-            # 从 playwright 拿回的主域 cookie（可能顺带刷新了 d_c0 等）也可顺便更新
-            for c in new_cookies:
-                if c["name"] in ["__zse_ck", "d_c0", "_zap", "_xsrf", "z_c0"]:
-                    cookie_dict[c["name"]] = c["value"]
-
-            new_cookie_str = "; ".join(f"{k}={v}" for k, v in cookie_dict.items())
-            
-            await set_setting_value(
-                key="zhihu_cookie",
-                value=new_cookie_str,
-                category="platform"
-            )
-            logger.info("已成功合并并保存新的知乎 Cookie")
-            return True
-            
-        except Exception as e:
-            logger.error(f"提取知乎指纹失败: {e}")
-            return False
-        finally:
-            if 'context' in locals():
+                new_cookies = await context.cookies()
+                # 返回感兴趣的 cookie 名值字典
+                result = {}
+                for c in new_cookies:
+                    if c["name"] in ["__zse_ck", "d_c0", "_zap", "_xsrf", "z_c0"]:
+                        result[c["name"]] = c["value"]
+                return result
+            finally:
                 await context.close()
+
+        # submit_coro 内部会自动触发 startup（如果尚未启动），
+        # 不需要手动调用 startup()，否则会与内部逻辑产生递归
+        extracted: dict = await browser_manager.submit_coro(_browser_task())
+
+        zse_ck = extracted.get("__zse_ck")
+        if not zse_ck:
+            logger.warning("未能提取到新的 __zse_ck")
+            return False
+
+        logger.info(f"成功提取到新的 __zse_ck: {zse_ck[:30]}...")
+
+        # 合并 Cookie：以原有 cookie 为基础，用提取结果覆盖更新
+        cookie_dict: dict = {}
+        for item in normalized_cookie_str.split(";"):
+            item = item.strip()
+            if "=" in item:
+                k, v = item.split("=", 1)
+                cookie_dict[k.strip()] = v.strip()
+
+        cookie_dict.update(extracted)  # 覆盖更新 __zse_ck 及其他刷新的 cookie
+
+        new_cookie_str = "; ".join(f"{k}={v}" for k, v in cookie_dict.items())
+        await set_setting_value(
+            key="zhihu_cookie",
+            value=new_cookie_str,
+            category="platform",
+        )
+        logger.info("已成功合并并保存新的知乎 Cookie")
+        return True
 
 
 browser_auth_service = BrowserAuthService()

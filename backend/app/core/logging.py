@@ -1,9 +1,9 @@
 """VaultStream 日志模块
 
-目标（M0）：提供带有 \`request_id\`、\`content_id\`、\`task_id\` 的结构化日志。
+目标（M0）：提供带有 `request_id`、`content_id`、`task_id` 的结构化日志。
 
 - 使用 loguru。
-- 通过 contextvars 注入上下文，使现有的 \`logger.info(...)\` 调用自动带上这些 ID。
+- 通过 contextvars 注入上下文，使现有的 `logger.info(...)` 调用自动带上这些 ID。
 """
 
 from __future__ import annotations

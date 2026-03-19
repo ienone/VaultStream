@@ -20,6 +20,8 @@ class DiscoveryCleanupTask:
         self._task: asyncio.Task | None = None
 
     def start(self):
+        if self._task and not self._task.done():
+            return
         self._task = asyncio.create_task(self._cleanup_loop())
 
     async def stop(self):

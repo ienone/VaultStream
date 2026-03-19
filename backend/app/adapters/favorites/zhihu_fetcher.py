@@ -147,6 +147,29 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
                             ) from e
 
                     if resp.status_code in (401, 403):
+                        risk_code = None
+                        risk_message = ""
+                        try:
+                            payload = resp.json()
+                            if isinstance(payload, dict) and isinstance(payload.get("error"), dict):
+                                err = payload["error"]
+                                risk_code = err.get("code")
+                                risk_message = str(err.get("message") or "").strip()
+                        except Exception:
+                            pass
+
+                        logger.bind(
+                            event="zhihu_favorites_risk_blocked",
+                            stage="favorites_api",
+                            status_code=resp.status_code,
+                            zhihu_error_code=risk_code,
+                            target_url=url,
+                        ).warning(
+                            "[zhihu favorites] auth/risk blocked status={} code={} msg={}",
+                            resp.status_code,
+                            risk_code,
+                            risk_message or resp.text[:160],
+                        )
                         refreshed = await self._try_refresh_zhihu_fingerprint(url, cookies)
                         if refreshed and attempt < self._MAX_RETRY - 1:
                             await asyncio.sleep(exponential_backoff(attempt, jitter_max=0.5))

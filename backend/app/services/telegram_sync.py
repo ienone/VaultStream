@@ -34,7 +34,7 @@ async def refresh_telegram_chats(
          "inaccessible": int, "details": list}
     """
     from telegram import Bot
-    from telegram.error import TelegramError
+    from telegram.error import TelegramError, RetryAfter
 
     if not bot_config.bot_token:
         raise ValueError("bot_token is required for telegram sync")
@@ -105,6 +105,16 @@ async def refresh_telegram_chats(
                 "timestamp": now.isoformat(),
             })
 
+        except RetryAfter as e:
+            # Flood Control 限流：记录为 failed，停止继续同步避免持续触发
+            error_msg = str(e)
+            failed += 1
+            chat.sync_error = error_msg
+            chat.last_sync_at = now
+            details.append({"chat_id": chat.chat_id, "title": chat.title, "status": "flood_control", "error": error_msg})
+            logger.warning(f"同步群组触发 Flood Control {chat.chat_id}，将停止本次同步: {e}")
+            break  # 触发限流后立即退出循环，避免连续调用
+
         except TelegramError as e:
             error_msg = str(e)
             if "chat not found" in error_msg.lower() or "forbidden" in error_msg.lower():
@@ -149,7 +159,11 @@ async def refresh_telegram_chats(
             logger.error(f"同步群组异常 {chat.chat_id}: {e}")
 
     await db.commit()
-    await bot.close()
+    # 关闭 bot 连接时忽略 Flood Control / 网络等错误，避免影响正常返回
+    try:
+        await bot.close()
+    except Exception as close_err:
+        logger.warning(f"bot.close() 发生异常（已忽略）: {close_err}")
 
     await event_bus.publish("bot_sync_completed", {
         "bot_config_id": bot_config.id,

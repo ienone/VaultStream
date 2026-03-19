@@ -4,6 +4,7 @@ RSS/Atom 订阅源适配器
 基于 Horizon RSSScraper 移植，适配 VaultStream DiscoverySource 模型。
 """
 import calendar
+import html
 import os
 import re
 from datetime import datetime, timezone
@@ -17,6 +18,7 @@ import httpx
 
 from app.core.logging import logger
 from app.adapters.discovery.base import BaseDiscoveryScraper, DiscoveryItem
+from app.utils.bbcode_utils import convert_bbcode_to_html
 
 
 class RSSDiscoveryScraper(BaseDiscoveryScraper):
@@ -62,22 +64,25 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
 
             # 优先使用 content (bytes) 传给 feedparser，让其根据 XML 声明检测编码 (对 GBK/Big5 等源更准确)
             feed = feedparser.parse(response.content)
+            raw_nodes = self._extract_raw_nodes(response.content)
 
             if feed.bozo and not feed.entries:
                 logger.warning("RSS formatting error (Bozo) for %s: %s", feed_url, feed.bozo_exception)
 
-            for entry in feed.entries:
+            for entry_index, entry in enumerate(feed.entries):
                 entry_id: str = str(entry.get("id") or entry.get("link") or "")
                 entry_url: str = str(entry.get("link") or feed_url)
+                raw_node = raw_nodes[entry_index] if entry_index < len(raw_nodes) else None
 
                 if last_cursor and entry_id == last_cursor:
                     break
 
                 published_at = self._parse_date(entry)
-                raw_content = self._extract_content(entry)
+                raw_content = self._extract_content(entry, raw_node=raw_node)
                 explicit_cover_url = self._extract_cover_url(entry, entry_url)
                 
                 # BBCode → HTML 预处理（兼容论坛 RSS 源）
+                raw_content = html.unescape(raw_content)
                 raw_content = self._convert_bbcode_to_html(raw_content)
                 # 强化版清洗逻辑：原地提取并替换为 Markdown (0-Token 策略)
                 content_soup = BeautifulSoup(raw_content, 'html.parser')
@@ -210,20 +215,7 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
 
     @staticmethod
     def _convert_bbcode_to_html(text: str) -> str:
-        """将常见 BBCode 标签转换为 HTML 等价标签。"""
-        _flags = re.IGNORECASE | re.DOTALL
-        text = re.sub(r'\[b\](.*?)\[/b\]', r'<strong>\1</strong>', text, flags=_flags)
-        text = re.sub(r'\[i\](.*?)\[/i\]', r'<em>\1</em>', text, flags=_flags)
-        text = re.sub(r'\[u\](.*?)\[/u\]', r'<u>\1</u>', text, flags=_flags)
-        text = re.sub(r'\[s\](.*?)\[/s\]', r'<s>\1</s>', text, flags=_flags)
-        text = re.sub(r'\[url=(.*?)\](.*?)\[/url\]', r'<a href="\1">\2</a>', text, flags=_flags)
-        text = re.sub(r'\[url\](.*?)\[/url\]', r'<a href="\1">\1</a>', text, flags=_flags)
-        text = re.sub(r'\[img\](.*?)\[/img\]', r'<img src="\1"/>', text, flags=_flags)
-        text = re.sub(r'\[code\](.*?)\[/code\]', r'<pre><code>\1</code></pre>', text, flags=_flags)
-        text = re.sub(r'\[quote\](.*?)\[/quote\]', r'<blockquote>\1</blockquote>', text, flags=_flags)
-        text = re.sub(r'\[size=[^\]]*\](.*?)\[/size\]', r'\1', text, flags=_flags)
-        text = re.sub(r'\[color=[^\]]*\](.*?)\[/color\]', r'\1', text, flags=_flags)
-        return text
+        return convert_bbcode_to_html(text)
 
     @staticmethod
     def _expand_env_vars(url: str) -> str:
@@ -251,7 +243,18 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
         return None
 
     @staticmethod
-    def _extract_content(entry: dict) -> str:
+    def _extract_content(entry: dict, *, raw_node: Any = None) -> str:
+        if raw_node is not None:
+            raw_content = RSSDiscoveryScraper._extract_raw_content(raw_node)
+            if raw_content:
+                return raw_content
+            raw_summary = RSSDiscoveryScraper._extract_raw_summary(raw_node)
+            if raw_summary:
+                return raw_summary
+            raw_description = RSSDiscoveryScraper._extract_raw_description(raw_node)
+            if raw_description:
+                return raw_description
+
         if "content" in entry:
             content = entry.get("content")
             if isinstance(content, list) and content:
@@ -261,6 +264,66 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
         if "description" in entry:
             return str(entry.get("description", ""))
         return ""
+
+    @staticmethod
+    def _extract_raw_nodes(xml_content: bytes) -> list[Any]:
+        if not xml_content:
+            return []
+        try:
+            soup = BeautifulSoup(xml_content, "xml")
+        except Exception:
+            return []
+        return soup.find_all(["item", "entry"])
+
+    @staticmethod
+    def _safe_tag_text(tag: Any) -> str:
+        if tag is None:
+            return ""
+        try:
+            return str(tag.get_text() or "").strip()
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _safe_tag_html(tag: Any) -> str:
+        if tag is None:
+            return ""
+        try:
+            return str(tag.decode_contents() or "").strip()
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _extract_raw_content(raw_node: Any) -> str:
+        if raw_node is None:
+            return ""
+
+        for tag in raw_node.find_all():
+            name = str(getattr(tag, "name", "")).lower()
+            if name in ("content:encoded", "encoded") or name.endswith(":encoded"):
+                value = RSSDiscoveryScraper._safe_tag_html(tag) or RSSDiscoveryScraper._safe_tag_text(tag)
+                if value:
+                    return value
+
+        for tag in raw_node.find_all("content"):
+            value = RSSDiscoveryScraper._safe_tag_html(tag) or RSSDiscoveryScraper._safe_tag_text(tag)
+            if value:
+                return value
+        return ""
+
+    @staticmethod
+    def _extract_raw_summary(raw_node: Any) -> str:
+        if raw_node is None:
+            return ""
+        tag = raw_node.find("summary")
+        return RSSDiscoveryScraper._safe_tag_html(tag) or RSSDiscoveryScraper._safe_tag_text(tag)
+
+    @staticmethod
+    def _extract_raw_description(raw_node: Any) -> str:
+        if raw_node is None:
+            return ""
+        tag = raw_node.find("description")
+        return RSSDiscoveryScraper._safe_tag_html(tag) or RSSDiscoveryScraper._safe_tag_text(tag)
 
     @classmethod
     def _normalize_candidate_url(cls, url: Any, base_url: str) -> Optional[str]:
