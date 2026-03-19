@@ -25,6 +25,12 @@ def _get_api_base(context: ContextTypes.DEFAULT_TYPE) -> str:
 def _get_target_platform(context: ContextTypes.DEFAULT_TYPE) -> str:
     return context.bot_data.get("target_platform")
 
+def _get_api_headers(context: ContextTypes.DEFAULT_TYPE) -> dict:
+    token = context.bot_data.get("api_token")
+    if token:
+        return {"X-API-Token": token}
+    return {}
+
 async def _check_perm(update: Update, context: ContextTypes.DEFAULT_TYPE, require_admin: bool = False) -> bool:
     """统一权限检查 helper"""
     user = update.effective_user
@@ -123,7 +129,11 @@ async def list_tags_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         client = await _get_client(context)
         api_base = _get_api_base(context)
         
-        response = await client.get(f"{api_base}/tags", timeout=5.0)
+        response = await client.get(
+            f"{api_base}/tags",
+            timeout=5.0,
+            headers=_get_api_headers(context),
+        )
         
         if response.status_code != 200:
             await update.message.reply_text("无法获取标签列表")
@@ -205,7 +215,11 @@ async def _get_content_by_filter(
             await update.message.reply_text("当前 BotConfig 未绑定默认频道，请先在 Bot 配置里同步并绑定 BotChat")
             return
 
-        chat_resp = await client.get(f"{api_base}/bot/chats/{channel_id}", timeout=10.0)
+        chat_resp = await client.get(
+            f"{api_base}/bot/chats/{channel_id}",
+            timeout=10.0,
+            headers=_get_api_headers(context),
+        )
         if chat_resp.status_code != 200:
             await update.message.reply_text("未找到当前频道对应的 Bot Chat 配置")
             return
@@ -223,6 +237,7 @@ async def _get_content_by_filter(
                 "size": 50,
             },
             timeout=10.0,
+            headers=_get_api_headers(context),
         )
         if queue_resp.status_code != 200:
             await update.message.reply_text("获取队列失败")
@@ -239,7 +254,11 @@ async def _get_content_by_filter(
             content_id = item.get("content_id")
             if not content_id:
                 continue
-            detail_resp = await client.get(f"{api_base}/contents/{content_id}", timeout=10.0)
+            detail_resp = await client.get(
+                f"{api_base}/contents/{content_id}",
+                timeout=10.0,
+                headers=_get_api_headers(context),
+            )
             if detail_resp.status_code != 200:
                 continue
             content = detail_resp.json()
@@ -256,7 +275,11 @@ async def _get_content_by_filter(
             return
 
         item_id = selected_item.get("id")
-        push_resp = await client.post(f"{api_base}/distribution-queue/items/{item_id}/push-now", timeout=20.0)
+        push_resp = await client.post(
+            f"{api_base}/distribution-queue/items/{item_id}/push-now",
+            timeout=20.0,
+            headers=_get_api_headers(context),
+        )
         if push_resp.status_code != 200:
             error_msg = "未知错误"
             try:
@@ -274,3 +297,75 @@ async def _get_content_by_filter(
     except Exception as e:
         logger.exception("获取内容失败")
         await update.message.reply_text(f"发送失败: {str(e)[:100]}")
+
+
+def _format_agent_result(tool: str, result: dict) -> str:
+    if tool == "search_content":
+        items = result.get("items") or []
+        if not items:
+            return "未找到相关内容。"
+        lines = [f"共找到 {len(items)} 条结果："]
+        for item in items[:5]:
+            cid = item.get("content_id")
+            title = item.get("title") or item.get("url") or "无标题"
+            score = item.get("score")
+            score_text = f" (score={float(score):.3f})" if isinstance(score, (int, float)) else ""
+            lines.append(f"- [{cid}] {title}{score_text}")
+        return "\n".join(lines)
+
+    if tool == "list_groups":
+        groups = result.get("groups") or []
+        if not groups:
+            return "当前没有可用群组。"
+        lines = [f"可用群组 {len(groups)} 个："]
+        for group in groups[:8]:
+            lines.append(f"- {group.get('title') or group.get('chat_id')} ({group.get('chat_id')})")
+        return "\n".join(lines)
+
+    if tool == "import_favorites":
+        sync_result = result.get("result") or {}
+        status = sync_result.get("status") or "unknown"
+        imported = sync_result.get("imported") or 0
+        fetched = sync_result.get("fetched") or 0
+        return f"收藏同步完成: status={status}, fetched={fetched}, imported={imported}"
+
+    return str(result)
+
+
+async def ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """处理 /ai 命令，转发到 Agent Tool 链路。"""
+    user = update.effective_user
+    if not user:
+        return
+
+    if not await _check_perm(update, context):
+        return
+
+    prompt = " ".join(context.args or []).strip()
+    if not prompt:
+        await update.message.reply_text("用法: /ai 你的自然语言指令")
+        return
+
+    try:
+        client = await _get_client(context)
+        api_base = _get_api_base(context)
+        payload = {"message": prompt, "session_id": f"tg-{user.id}"}
+
+        response = await client.post(
+            f"{api_base}/agent/run",
+            json=payload,
+            timeout=25.0,
+            headers=_get_api_headers(context),
+        )
+        if response.status_code != 200:
+            await update.message.reply_text(f"Agent 调用失败: HTTP {response.status_code}")
+            return
+
+        data = response.json()
+        tool = str(data.get("tool") or "unknown")
+        result = data.get("result") or {}
+        text = _format_agent_result(tool, result)
+        await update.message.reply_text(f"[{tool}]\n{text}")
+    except Exception as e:
+        logger.exception("/ai 命令失败: {}", e)
+        await update.message.reply_text("Agent 处理失败，请稍后再试。")

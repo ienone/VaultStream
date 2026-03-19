@@ -12,6 +12,7 @@ HELP_TEXT_START = (
     "/get_twitter - 获取 Twitter 推文\n"
     "/get_bilibili - 获取 B站内容\n"
     "/list_tags - 查看所有可用标签\n"
+    "/ai - 自然语言调用 Agent\n"
     "/status - 查看系统状态\n"
     "/help - 显示详细帮助\n\n"
     "<b>示例</b>:\n"
@@ -29,6 +30,7 @@ HELP_TEXT_FULL = (
     "<b>按标签筛选</b>\n"
     "/get_tag &lt;标签&gt; - 获取带指定标签的内容\n"
     "/list_tags - 查看所有可用标签及其数量\n"
+    "/ai &lt;指令&gt; - 自然语言调用 Agent（搜索/同步/群组查询）\n"
     "示例: <code>/get_tag 技术</code>\n\n"
     
     "<b>按平台筛选</b>\n"

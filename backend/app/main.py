@@ -34,7 +34,7 @@ from app.services.distribution import enqueue_content
 # 导入新路由
 from app.routers import (
     contents, discovery, distribution, system, media, bot_management, 
-    events, distribution_queue, bot_config, browser_auth
+    events, distribution_queue, bot_config, browser_auth, search, agent
 )
 
 setup_logging(level=settings.log_level, fmt=settings.log_format, debug=settings.debug)
@@ -108,43 +108,54 @@ async def lifespan(app: FastAPI):
     queue_worker = DistributionQueueWorker(worker_count=settings.queue_worker_count)
     queue_worker.start()
     logger.info("分发队列 Worker 已启动 (worker_count={})", settings.queue_worker_count)
-    
-    # 启动 Cookie 保活任务
+
+    # 初始化周期任务实例（即使本进程不是 leader，也保留实例用于手动触发场景）
     from app.tasks import CookieKeepAliveTask
-    maintenance_worker = CookieKeepAliveTask()
-    maintenance_worker.start()
-    logger.info("Cookie 保活任务队列已启动")
-    
-    # 启动发现流同步和清理任务
     from app.tasks import DiscoverySyncTask, DiscoveryCleanupTask, FavoritesSyncTask
+    maintenance_worker = CookieKeepAliveTask()
     discovery_sync_task = DiscoverySyncTask()
-    discovery_sync_task.start()
     discovery_cleanup_task = DiscoveryCleanupTask()
-    discovery_cleanup_task.start()
-    logger.info("发现流同步和清理任务已启动")
     favorites_sync_task = FavoritesSyncTask()
-    favorites_sync_task.start()
-    logger.info("收藏同步任务已启动")
+
+    # 周期任务单实例机制：只有 leader 进程启动后台循环
+    from app.services.background_task_leader import background_task_leader
+    periodic_tasks_started = background_task_leader.try_acquire()
+    if periodic_tasks_started:
+        maintenance_worker.start()
+        logger.info("Cookie 保活任务队列已启动")
+
+        discovery_sync_task.start()
+        discovery_cleanup_task.start()
+        logger.info("发现流同步和清理任务已启动")
+
+        favorites_sync_task.start()
+        logger.info("收藏同步任务已启动")
+    else:
+        logger.warning("当前进程未获得周期任务 leader 锁，跳过自动循环任务启动")
 
     # 将 task 实例挂载到 app.state，供路由层访问
     app.state.discovery_sync_task = discovery_sync_task
     app.state.favorites_sync_task = favorites_sync_task
+    app.state.periodic_tasks_started = periodic_tasks_started
     
     yield
     
     # 关闭时
     logger.info("关闭 VaultStream 应用程序...")
 
-    # 停止发现流任务
-    await discovery_sync_task.stop()
-    await discovery_cleanup_task.stop()
-    logger.info("发现流同步和清理任务已停止")
-    await favorites_sync_task.stop()
-    logger.info("收藏同步任务已停止")
+    # 停止周期任务（仅在本进程持有 leader 时执行）
+    if app.state.periodic_tasks_started:
+        await discovery_sync_task.stop()
+        await discovery_cleanup_task.stop()
+        logger.info("发现流同步和清理任务已停止")
+        await favorites_sync_task.stop()
+        logger.info("收藏同步任务已停止")
 
-    # 停止 Cookie 保活任务
-    await maintenance_worker.stop()
-    logger.info("Cookie 保活任务已停止")
+        await maintenance_worker.stop()
+        logger.info("Cookie 保活任务已停止")
+
+        from app.services.background_task_leader import background_task_leader
+        background_task_leader.release()
 
     # 停止分发队列 Worker
     await queue_worker.stop()
@@ -237,6 +248,8 @@ app.include_router(bot_config.router, prefix="/api/v1", tags=["bot-config"])
 app.include_router(events.router, prefix="/api/v1", tags=["events"])
 app.include_router(distribution_queue.router, prefix="/api/v1", tags=["distribution-queue"])
 app.include_router(browser_auth.router, prefix="/api/v1/browser-auth", tags=["browser-auth"])
+app.include_router(search.router, prefix="/api/v1", tags=["search"])
+app.include_router(agent.router, prefix="/api/v1", tags=["agent"])
 
 
 @app.get("/api")

@@ -11,6 +11,8 @@ from . import (
 	media,
 	system,
 	browser_auth,
+	search,
+	agent,
 )
 
 __all__ = [
@@ -24,5 +26,6 @@ __all__ = [
 	"media",
 	"system",
 	"browser_auth",
+	"search",
+	"agent",
 ]
-

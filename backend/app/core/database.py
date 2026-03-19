@@ -14,6 +14,8 @@ async def init_db():
     """初始化数据库"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await _migrate_content_embeddings_table(conn)
+        await _ensure_content_queue_claim_indexes(conn)
 
     # 一次性数据更新：ReviewStatus 大写 → 小写
     await _migrate_review_status_lowercase()
@@ -82,6 +84,89 @@ async def _table_exists(conn, table_name: str) -> bool:
 async def _table_columns(conn, table_name: str) -> set[str]:
     result = await conn.execute(text(f"PRAGMA table_info({table_name})"))
     return {str(row[1]) for row in result.fetchall() if len(row) > 1 and row[1]}
+
+
+async def _migrate_content_embeddings_table(conn) -> None:
+    """
+    创建并补齐 content_embeddings 表（幂等）。
+
+    说明：
+    - 新库由 metadata.create_all 创建；
+    - 旧库走此函数补齐列与索引，避免依赖手工迁移脚本。
+    """
+    await conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS content_embeddings (
+                id INTEGER PRIMARY KEY NOT NULL,
+                content_id INTEGER NOT NULL,
+                embedding_model VARCHAR(100) NOT NULL DEFAULT 'text-embedding-3-small',
+                embedding JSON,
+                text_hash VARCHAR(64),
+                source_text TEXT,
+                indexed_at DATETIME,
+                created_at DATETIME,
+                updated_at DATETIME,
+                FOREIGN KEY(content_id) REFERENCES contents (id) ON DELETE CASCADE
+            )
+            """
+        )
+    )
+
+    columns = await _table_columns(conn, "content_embeddings")
+    if "source_text" not in columns:
+        await conn.execute(text("ALTER TABLE content_embeddings ADD COLUMN source_text TEXT"))
+    if "text_hash" not in columns:
+        await conn.execute(text("ALTER TABLE content_embeddings ADD COLUMN text_hash VARCHAR(64)"))
+    if "embedding_model" not in columns:
+        await conn.execute(
+            text(
+                "ALTER TABLE content_embeddings ADD COLUMN embedding_model VARCHAR(100) "
+                "DEFAULT 'text-embedding-3-small'"
+            )
+        )
+
+    await conn.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_content_embeddings_content_id "
+            "ON content_embeddings(content_id)"
+        )
+    )
+    await conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_content_embeddings_indexed_at "
+            "ON content_embeddings(indexed_at)"
+        )
+    )
+    await conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_content_embeddings_model "
+            "ON content_embeddings(embedding_model)"
+        )
+    )
+    await conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_content_embeddings_text_hash "
+            "ON content_embeddings(text_hash)"
+        )
+    )
+
+
+async def _ensure_content_queue_claim_indexes(conn) -> None:
+    """为队列领取热点查询补齐索引（幂等）。"""
+    if not await _table_exists(conn, "content_queue_items"):
+        return
+
+    index_sql = [
+        "CREATE INDEX IF NOT EXISTS ix_queue_claim_scheduled_priority "
+        "ON content_queue_items(status, priority DESC, scheduled_at, id)",
+        "CREATE INDEX IF NOT EXISTS ix_queue_claim_failed_retry "
+        "ON content_queue_items(status, next_attempt_at, priority DESC, scheduled_at, id)",
+        "CREATE INDEX IF NOT EXISTS ix_queue_claim_status_lock "
+        "ON content_queue_items(status, locked_at)",
+    ]
+    for sql in index_sql:
+        await conn.execute(text(sql))
 
 
 async def _backup_auto_approve_conditions(conn) -> int:
@@ -294,6 +379,9 @@ async def _rebuild_content_queue_items_without_legacy_columns(conn) -> None:
         "CREATE INDEX IF NOT EXISTS ix_queue_rule_status ON content_queue_items(rule_id, status)",
         "CREATE INDEX IF NOT EXISTS ix_queue_chat_status ON content_queue_items(bot_chat_id, status)",
         "CREATE INDEX IF NOT EXISTS ix_queue_next_attempt ON content_queue_items(status, next_attempt_at)",
+        "CREATE INDEX IF NOT EXISTS ix_queue_claim_scheduled_priority ON content_queue_items(status, priority DESC, scheduled_at, id)",
+        "CREATE INDEX IF NOT EXISTS ix_queue_claim_failed_retry ON content_queue_items(status, next_attempt_at, priority DESC, scheduled_at, id)",
+        "CREATE INDEX IF NOT EXISTS ix_queue_claim_status_lock ON content_queue_items(status, locked_at)",
         "CREATE INDEX IF NOT EXISTS ix_content_queue_items_content_id ON content_queue_items(content_id)",
         "CREATE INDEX IF NOT EXISTS ix_content_queue_items_rule_id ON content_queue_items(rule_id)",
         "CREATE INDEX IF NOT EXISTS ix_content_queue_items_bot_chat_id ON content_queue_items(bot_chat_id)",

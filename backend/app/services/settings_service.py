@@ -58,6 +58,31 @@ async def get_setting_value(key: str, default: Any = None) -> Any:
     return val
 
 
+async def get_setting_value_fresh(key: str, default: Any = None) -> Any:
+    """
+    强制从数据库读取配置项，并回写内存缓存。
+    用于跨进程一致性要求较高的场景（如后台轮询任务开关）。
+    """
+    async with AsyncSessionLocal() as db:
+        from app.repositories import SystemRepository
+        repo = SystemRepository(db)
+        setting = await repo.get_setting(key)
+
+        if setting:
+            _SETTINGS_CACHE[key] = setting.value
+            val = setting.value
+        else:
+            val = default
+
+    # Keep behavior aligned with get_setting_value.
+    if isinstance(val, str):
+        if val.lower() == "true":
+            return True
+        elif val.lower() == "false":
+            return False
+    return val
+
+
 async def set_setting_value(key: str, value: Any, category: str = "general", description: Optional[str] = None) -> SystemSetting:
     """
     Set a system setting value and update cache.
