@@ -216,14 +216,16 @@ async def _get_content_by_filter(
             return
 
         chat_resp = await client.get(
-            f"{api_base}/bot/chats/{channel_id}",
+            f"{api_base}/bot/chats",
+            params={"chat_id": channel_id},
             timeout=10.0,
             headers=_get_api_headers(context),
         )
         if chat_resp.status_code != 200:
             await update.message.reply_text("未找到当前频道对应的 Bot Chat 配置")
             return
-        bot_chat_id = chat_resp.json().get("id")
+        chat_items = chat_resp.json() or []
+        bot_chat_id = chat_items[0].get("id") if chat_items else None
         if not bot_chat_id:
             await update.message.reply_text("Bot Chat 配置缺少 ID")
             return

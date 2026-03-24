@@ -68,7 +68,7 @@ class VaultStreamBot:
         async with AsyncSessionLocal() as db:
             cfg, default_chat_id = await get_primary_telegram_runtime(db)
             if not cfg or not cfg.bot_token:
-                logger.error("未找到可用的主 Telegram BotConfig（enabled + is_primary）")
+                logger.error("未找到可用的 Telegram BotConfig（enabled）")
                 return False
 
             self.bot_token = cfg.bot_token
@@ -103,6 +103,7 @@ class VaultStreamBot:
                 return
             
             payload = {
+                "platform": "telegram",
                 "bot_id": str(bot_info.id),
                 "bot_username": bot_info.username,
                 "bot_first_name": bot_info.first_name,

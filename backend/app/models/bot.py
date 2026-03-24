@@ -111,10 +111,15 @@ class BotChat(Base):
 
 
 class BotRuntime(Base):
-    """Bot 运行时状态（单例表，只有一条记录）"""
+    """Bot 运行时状态（按平台唯一）"""
     __tablename__ = "bot_runtime"
-    
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    platform: Mapped[BotConfigPlatform] = mapped_column(
+        SQLEnum(BotConfigPlatform, native_enum=False, values_callable=lambda x: [e.value for e in x]),
+        index=True,
+        default=BotConfigPlatform.TELEGRAM,
+    )
     
     bot_id: Mapped[Optional[str]] = mapped_column(String(50), default=None)
     bot_username: Mapped[Optional[str]] = mapped_column(String(100), default=None)

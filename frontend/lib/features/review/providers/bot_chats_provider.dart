@@ -36,7 +36,7 @@ class BotChats extends _$BotChats {
   }
 
   Future<BotChat> updateChat(
-    String chatId,
+    int botChatId,
     BotChatUpdate update, {
     String? newChatId,
   }) async {
@@ -45,19 +45,21 @@ class BotChats extends _$BotChats {
     if (newChatId case final id?) {
       payload['chat_id'] = id;
     }
-    final response = await dio.patch(
-      '/bot/chats/$chatId',
-      data: payload,
-    );
+    final response = await dio.patch('/bot/chats/$botChatId', data: payload);
     final updatedChat = BotChat.fromJson(response.data);
     ref.invalidateSelf();
     return updatedChat;
   }
 
-  Future<void> updateChatStatus(String chatId, {bool? isMonitoring, bool? isPushTarget, bool? enabled}) async {
+  Future<void> updateChatStatus(
+    int botChatId, {
+    bool? isMonitoring,
+    bool? isPushTarget,
+    bool? enabled,
+  }) async {
     final dio = ref.read(apiClientProvider);
     await dio.patch(
-      '/bot/chats/$chatId',
+      '/bot/chats/$botChatId',
       data: {
         if (isMonitoring != null) 'is_monitoring': isMonitoring,
         if (isPushTarget != null) 'is_push_target': isPushTarget,
@@ -67,15 +69,15 @@ class BotChats extends _$BotChats {
     ref.invalidateSelf();
   }
 
-  Future<void> toggleChat(String chatId) async {
+  Future<void> toggleChat(int botChatId) async {
     final dio = ref.watch(apiClientProvider);
-    await dio.post('/bot/chats/$chatId/toggle');
+    await dio.post('/bot/chats/$botChatId/toggle');
     ref.invalidateSelf();
   }
 
-  Future<void> deleteChat(String chatId) async {
+  Future<void> deleteChat(int botChatId) async {
     final dio = ref.watch(apiClientProvider);
-    await dio.delete('/bot/chats/$chatId');
+    await dio.delete('/bot/chats/$botChatId');
     ref.invalidateSelf();
   }
 
@@ -102,13 +104,16 @@ Future<BotStatus> botStatus(Ref ref) async {
 Future<BotRuntime> botRuntime(Ref ref) async {
   ref.keepAlive();
   final dio = ref.watch(apiClientProvider);
-  final response = await dio.get('/bot/runtime');
+  final response = await dio.get(
+    '/bot/runtime',
+    queryParameters: {'platform': 'telegram'},
+  );
   return BotRuntime.fromJson(response.data);
 }
 
 @riverpod
-Future<BotChat> botChatDetail(Ref ref, String chatId) async {
+Future<BotChat> botChatDetail(Ref ref, int botChatId) async {
   final dio = ref.watch(apiClientProvider);
-  final response = await dio.get('/bot/chats/$chatId');
+  final response = await dio.get('/bot/chats/$botChatId');
   return BotChat.fromJson(response.data);
 }

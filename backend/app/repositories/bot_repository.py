@@ -26,21 +26,17 @@ class BotRepository:
         platform: BotConfigPlatform, 
         enabled_only: bool = True
     ) -> Optional[BotConfig]:
-        """获取主配置，如果没有主配置则返回第一个可用配置"""
+        """获取平台唯一配置；优先返回启用记录。"""
         query = select(BotConfig).where(BotConfig.platform == platform)
         if enabled_only:
             query = query.where(BotConfig.enabled == True)
-        
-        # 尝试获取 is_primary=True 的
-        primary_query = query.where(BotConfig.is_primary == True).order_by(BotConfig.id.asc()).limit(1)
-        result = await self.db.execute(primary_query)
-        cfg = result.scalar_one_or_none()
-        if cfg:
-            return cfg
-        
-        # Fallback: 获取第一个
-        fallback_query = query.order_by(BotConfig.id.asc()).limit(1)
-        result = await self.db.execute(fallback_query)
+
+        result = await self.db.execute(
+            query.order_by(
+                BotConfig.enabled.desc(),
+                BotConfig.id.asc(),
+            ).limit(1)
+        )
         return result.scalar_one_or_none()
 
     async def create_config(self, **kwargs) -> BotConfig:
@@ -84,17 +80,29 @@ class BotRepository:
 
     # --- Runtime Methods ---
 
-    async def get_runtime(self) -> Optional[BotRuntime]:
-        result = await self.db.execute(select(BotRuntime).limit(1))
+    async def get_runtime(
+        self,
+        platform: BotConfigPlatform = BotConfigPlatform.TELEGRAM,
+    ) -> Optional[BotRuntime]:
+        result = await self.db.execute(
+            select(BotRuntime)
+            .where(BotRuntime.platform == platform)
+            .limit(1)
+        )
         return result.scalar_one_or_none()
 
-    async def update_runtime(self, **kwargs) -> BotRuntime:
-        runtime = await self.get_runtime()
+    async def update_runtime(
+        self,
+        platform: BotConfigPlatform = BotConfigPlatform.TELEGRAM,
+        **kwargs,
+    ) -> BotRuntime:
+        runtime = await self.get_runtime(platform=platform)
         if not runtime:
-            runtime = BotRuntime(id=1, **kwargs)
+            runtime = BotRuntime(platform=platform, **kwargs)
             self.db.add(runtime)
         else:
             for k, v in kwargs.items():
                 setattr(runtime, k, v)
+            runtime.platform = platform
         await self.db.flush()
         return runtime

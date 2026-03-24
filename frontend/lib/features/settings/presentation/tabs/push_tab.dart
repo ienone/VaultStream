@@ -92,7 +92,6 @@ class _PushTabState extends ConsumerState<PushTab> {
             data: {
               'bot_token': _tgTokenController.text.trim(),
               'enabled': true,
-              'is_primary': true,
             },
           );
         } else {
@@ -103,7 +102,6 @@ class _PushTabState extends ConsumerState<PushTab> {
               'name': 'Main Telegram Bot',
               'bot_token': _tgTokenController.text.trim(),
               'enabled': true,
-              'is_primary': true,
             },
           );
         }
@@ -115,7 +113,6 @@ class _PushTabState extends ConsumerState<PushTab> {
             data: {
               'napcat_http_url': _qqUrlController.text.trim(),
               'enabled': true,
-              'is_primary': true,
             },
           );
         } else {
@@ -126,7 +123,6 @@ class _PushTabState extends ConsumerState<PushTab> {
               'name': 'Main QQ Bot',
               'napcat_http_url': _qqUrlController.text.trim(),
               'enabled': true,
-              'is_primary': true,
             },
           );
         }
@@ -249,9 +245,7 @@ class _PushTabState extends ConsumerState<PushTab> {
       );
     }
 
-    final primary = candidates.where((config) => config['is_primary'] == true);
-    final chosen = primary.isNotEmpty ? primary.first : candidates.first;
-    return (chosen['id'] as num).toInt();
+    return (candidates.first['id'] as num).toInt();
   }
 
   Future<void> _syncConfiguredChats() async {
@@ -841,7 +835,7 @@ class _PushTabState extends ConsumerState<PushTab> {
                 value: chat.enabled,
                 onChanged: (val) => ref
                     .read(botChatsProvider.notifier)
-                    .updateChatStatus(chat.chatId, enabled: val),
+                    .updateChatStatus(chat.id, enabled: val),
               ),
             ],
           ),
@@ -854,7 +848,7 @@ class _PushTabState extends ConsumerState<PushTab> {
                 chat.isMonitoring,
                 (val) => ref
                     .read(botChatsProvider.notifier)
-                    .updateChatStatus(chat.chatId, isMonitoring: val),
+                    .updateChatStatus(chat.id, isMonitoring: val),
                 Icons.radar_rounded,
               ),
               const SizedBox(width: 12),
@@ -864,7 +858,7 @@ class _PushTabState extends ConsumerState<PushTab> {
                 chat.isPushTarget,
                 (val) => ref
                     .read(botChatsProvider.notifier)
-                    .updateChatStatus(chat.chatId, isPushTarget: val),
+                    .updateChatStatus(chat.id, isPushTarget: val),
                 Icons.auto_awesome_motion_rounded,
               ),
             ],

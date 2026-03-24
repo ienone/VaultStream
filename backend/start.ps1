@@ -84,6 +84,7 @@ sys.path.append(os.getcwd())
 from sqlalchemy import select
 from app.core.database import AsyncSessionLocal
 from app.models import BotConfig, BotConfigPlatform
+from app.services.bot_config_runtime import get_primary_bot_config
 
 async def main():
     async with AsyncSessionLocal() as db:
@@ -95,14 +96,11 @@ async def main():
         )
         enabled_cfgs = enabled_result.scalars().all()
 
-        result = await db.execute(
-            select(BotConfig).where(
-                BotConfig.platform == BotConfigPlatform.TELEGRAM,
-                BotConfig.is_primary == True,
-                BotConfig.enabled == True,
-            ).limit(1)
+        cfg = await get_primary_bot_config(
+            db,
+            BotConfigPlatform.TELEGRAM,
+            enabled_only=True,
         )
-        cfg = result.scalar_one_or_none()
         has_primary = bool(cfg and (cfg.bot_token or '').strip())
 
         enabled_with_token = [c for c in enabled_cfgs if (c.bot_token or '').strip()]
@@ -132,13 +130,13 @@ if ($botCheckText -match "BOT_ENABLED_WITH_TOKEN_COUNT=(\d+)") {
 }
 
 if ($autoStartBot) {
-    Write-Host "Primary Telegram Bot config detected, starting bot process..." -ForegroundColor Green
+    Write-Host "Enabled Telegram Bot config detected, starting bot process..." -ForegroundColor Green
     & $PYTHON -m app.services.telegram_bot_service start
 } else {
-    Write-Host "No enabled primary Telegram Bot config found, skip bot startup." -ForegroundColor DarkGray
+    Write-Host "No enabled Telegram Bot config found, skip bot startup." -ForegroundColor DarkGray
     Write-Host "  enabled configs: $enabledCount, enabled with token: $enabledWithTokenCount" -ForegroundColor DarkGray
     if ($enabledWithTokenCount -gt 0) {
-        Write-Host "  Hint: there are enabled Telegram configs with token, but none is primary. Activate one as primary in Bot Config page." -ForegroundColor Yellow
+        Write-Host "  Hint: there are enabled Telegram configs with token, but none can be resolved as the active platform config." -ForegroundColor Yellow
     } elseif ($enabledCount -eq 0) {
         Write-Host "  Hint: no enabled Telegram config exists. Create/enable one in Settings -> Bot 管理 -> Bot Config." -ForegroundColor Yellow
     }

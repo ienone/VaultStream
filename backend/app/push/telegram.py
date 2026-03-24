@@ -89,6 +89,17 @@ class TelegramPushService(BasePushService):
         structure = render_config.get("structure", render_config)
         return structure.get("media_mode", "auto")
 
+    @staticmethod
+    def _normalize_target_id(target_id: str) -> str:
+        target = str(target_id or "").strip()
+        if not target:
+            return target
+        if target.startswith("@"):
+            return target
+        if target.lstrip("-").isdigit():
+            return target
+        return f"@{target}"
+
     def _build_payload(self, content: Dict[str, Any]) -> Tuple[str, List[Dict]]:
         """
         构建 Telegram 发送载荷
@@ -290,6 +301,7 @@ class TelegramPushService(BasePushService):
         Returns:
             成功返回消息ID，失败返回 None
         """
+        normalized_target_id = self._normalize_target_id(target_id)
         try:
             bot = await self._get_bot()
             text, media_items = self._build_payload(content)
@@ -297,15 +309,22 @@ class TelegramPushService(BasePushService):
             message = None
             
             # 根据媒体数量选择发送方式
-            logger.info(f"准备发送至 Telegram: target={target_id}, media_count={len(media_items)}, text_len={len(text)}")
+            logger.info(
+                f"准备发送至 Telegram: target={normalized_target_id}, "
+                f"raw_target={target_id}, media_count={len(media_items)}, text_len={len(text)}"
+            )
             if len(media_items) > 1:
-                message = await self._send_media_group(bot, target_id, text, media_items, reply_markup)
+                message = await self._send_media_group(
+                    bot, normalized_target_id, text, media_items, reply_markup
+                )
             elif len(media_items) == 1:
-                message = await self._send_single_media(bot, target_id, media_items[0], text, reply_markup)
+                message = await self._send_single_media(
+                    bot, normalized_target_id, media_items[0], text, reply_markup
+                )
             else:
                 # 纯文本消息
                 message = await bot.send_message(
-                    chat_id=target_id,
+                    chat_id=normalized_target_id,
                     text=text,
                     parse_mode='HTML',
                     disable_web_page_preview=False,
@@ -314,17 +333,27 @@ class TelegramPushService(BasePushService):
             
             if message:
                 message_id = str(message.message_id)
-                logger.info(f"成功推送到 Telegram: target_id={target_id}, message_id={message_id}")
+                logger.info(
+                    f"成功推送到 Telegram: target_id={normalized_target_id}, "
+                    f"message_id={message_id}"
+                )
                 return message_id
             else:
-                logger.error(f"推送失败，未获取到消息ID: target_id={target_id}")
+                logger.error(
+                    f"推送失败，未获取到消息ID: target_id={normalized_target_id}, "
+                    f"raw_target={target_id}"
+                )
                 return None
                 
         except TelegramError as e:
-            logger.error(f"Telegram 发送失败: {e}")
+            logger.error(
+                f"Telegram 发送失败: {e}; target_id={normalized_target_id}, raw_target={target_id}"
+            )
             return None
         except Exception as e:
-            logger.exception(f"推送失败: {e}")
+            logger.exception(
+                f"推送失败: {e}; target_id={normalized_target_id}, raw_target={target_id}"
+            )
             return None
     
     async def close(self):

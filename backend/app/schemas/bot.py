@@ -85,7 +85,6 @@ class BotConfigCreate(BaseModel):
     napcat_ws_url: Optional[str] = None
     napcat_access_token: Optional[str] = None
     enabled: bool = True
-    is_primary: bool = False
 
 
 class BotConfigUpdate(BaseModel):
@@ -95,7 +94,6 @@ class BotConfigUpdate(BaseModel):
     napcat_ws_url: Optional[str] = None
     napcat_access_token: Optional[str] = None
     enabled: Optional[bool] = None
-    is_primary: Optional[bool] = None
 
 
 class BotConfigResponse(BaseModel):
@@ -110,7 +108,6 @@ class BotConfigResponse(BaseModel):
     napcat_access_token_masked: Optional[str] = None
     
     enabled: bool
-    is_primary: bool
     
     bot_id: Optional[str]
     bot_username: Optional[str]
@@ -123,6 +120,7 @@ class BotConfigResponse(BaseModel):
 
 
 class BotRuntimeResponse(BaseModel):
+    platform: Optional[BotConfigPlatform] = None
     bot_id: Optional[str]
     bot_username: Optional[str]
     bot_first_name: Optional[str]
@@ -184,6 +182,7 @@ class BotChatUpsert(BaseModel):
 
 class BotHeartbeat(BaseModel):
     """Bot 心跳请求"""
+    platform: BotConfigPlatform = BotConfigPlatform.TELEGRAM
     bot_id: str
     bot_username: str
     bot_first_name: Optional[str] = None
@@ -209,6 +208,7 @@ class ChatRuleBindingInfo(BaseModel):
 
 class BotChatRulesResponse(BaseModel):
     """群组规则列表"""
+    bot_chat_id: int
     chat_id: str
     rule_ids: List[int] = Field(default_factory=list)
     rules: List[ChatRuleBindingInfo] = Field(default_factory=list)
@@ -228,14 +228,6 @@ class BotConfigBase(BaseModel):
     napcat_ws_url: Optional[str] = None
     napcat_access_token: Optional[str] = None
     enabled: bool = True
-    is_primary: bool = False
-
-
-class BotConfigActivateResponse(BaseModel):
-    """激活主 Bot 响应"""
-    id: int
-    platform: str
-    is_primary: bool
 
 
 class BotConfigSyncChatsResponse(BaseModel):

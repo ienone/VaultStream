@@ -31,16 +31,29 @@ from app.schemas import (
     BotChatUpsert, BotHeartbeat, BotRuntimeResponse, BotSyncResult,
     BotChatRulesResponse, BotChatRuleAssignRequest, ChatRuleBindingInfo,
 )
+from app.schemas.common import QueueStats, DistributionStatusStats
 from app.services.bot_config_runtime import get_primary_bot_config
 
 router = APIRouter()
 
 
-async def _build_pipeline_stats(db: AsyncSession) -> tuple[dict, dict, dict[str, dict]]:
+async def _build_pipeline_stats(
+    db: AsyncSession,
+) -> tuple[QueueStats, DistributionStatusStats, dict[str, DistributionStatusStats]]:
     from app.services.dashboard_service import build_parse_stats, build_distribution_stats
-    parse_stats = await build_parse_stats(db)
-    distribution_stats, rule_breakdown = await build_distribution_stats(db, include_rule_breakdown=True)
-    return parse_stats, distribution_stats, rule_breakdown
+    parse_stats_raw = await build_parse_stats(db)
+    distribution_stats_raw, rule_breakdown_raw = await build_distribution_stats(
+        db,
+        include_rule_breakdown=True,
+    )
+    return (
+        QueueStats(**parse_stats_raw),
+        DistributionStatusStats(**distribution_stats_raw),
+        {
+            rule_id: DistributionStatusStats(**stats)
+            for rule_id, stats in rule_breakdown_raw.items()
+        },
+    )
 
 
 # ========== Bot Chat 管理 ==========
@@ -49,6 +62,7 @@ async def _build_pipeline_stats(db: AsyncSession) -> tuple[dict, dict, dict[str,
 async def list_bot_chats(
     enabled: Optional[bool] = None,
     chat_type: Optional[str] = None,
+    chat_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
@@ -59,6 +73,8 @@ async def list_bot_chats(
         query = query.where(BotChat.enabled == enabled)
     if chat_type:
         query = query.where(BotChat.chat_type == chat_type)
+    if chat_id:
+        query = query.where(BotChat.chat_id == chat_id)
     
     result = await db.execute(query)
     chats = result.scalars().all()
@@ -80,7 +96,10 @@ async def create_bot_chat(
 
     # 检查是否已存在
     result = await db.execute(
-        select(BotChat).where(BotChat.chat_id == chat.chat_id)
+        select(BotChat).where(
+            BotChat.bot_config_id == chat.bot_config_id,
+            BotChat.chat_id == chat.chat_id,
+        )
     )
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Chat already exists")
@@ -105,15 +124,15 @@ async def create_bot_chat(
     return _chat_to_response(db_chat)
 
 
-@router.get("/bot/chats/{chat_id}", response_model=BotChatResponse)
+@router.get("/bot/chats/{bot_chat_id}", response_model=BotChatResponse)
 async def get_bot_chat(
-    chat_id: str,
+    bot_chat_id: int,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """获取单个群组/频道详情"""
     result = await db.execute(
-        select(BotChat).where(BotChat.chat_id == chat_id)
+        select(BotChat).where(BotChat.id == bot_chat_id)
     )
     chat = result.scalar_one_or_none()
     if not chat:
@@ -121,14 +140,14 @@ async def get_bot_chat(
     return _chat_to_response(chat)
 
 
-@router.get("/bot/chats/{chat_id}/rules", response_model=BotChatRulesResponse)
+@router.get("/bot/chats/{bot_chat_id}/rules", response_model=BotChatRulesResponse)
 async def get_bot_chat_rules(
-    chat_id: str,
+    bot_chat_id: int,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """获取某个群组绑定的规则"""
-    chat_result = await db.execute(select(BotChat).where(BotChat.chat_id == chat_id))
+    chat_result = await db.execute(select(BotChat).where(BotChat.id == bot_chat_id))
     chat = chat_result.scalar_one_or_none()
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
@@ -150,21 +169,22 @@ async def get_bot_chat_rules(
         for target, rule in rows
     ]
     return BotChatRulesResponse(
-        chat_id=chat_id,
+        bot_chat_id=chat.id,
+        chat_id=chat.chat_id,
         rule_ids=[r.rule_id for r in rules],
         rules=rules,
     )
 
 
-@router.put("/bot/chats/{chat_id}/rules", response_model=BotChatRulesResponse)
+@router.put("/bot/chats/{bot_chat_id}/rules", response_model=BotChatRulesResponse)
 async def assign_bot_chat_rules(
-    chat_id: str,
+    bot_chat_id: int,
     payload: BotChatRuleAssignRequest,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """为群组批量配置规则（全量覆盖）"""
-    chat_result = await db.execute(select(BotChat).where(BotChat.chat_id == chat_id))
+    chat_result = await db.execute(select(BotChat).where(BotChat.id == bot_chat_id))
     chat = chat_result.scalar_one_or_none()
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
@@ -202,20 +222,20 @@ async def assign_bot_chat_rules(
 
     await db.commit()
 
-    refreshed = await get_bot_chat_rules(chat_id=chat_id, db=db, _=None)
+    refreshed = await get_bot_chat_rules(bot_chat_id=bot_chat_id, db=db, _=None)
     return refreshed
 
 
-@router.patch("/bot/chats/{chat_id}", response_model=BotChatResponse)
+@router.patch("/bot/chats/{bot_chat_id}", response_model=BotChatResponse)
 async def update_bot_chat(
-    chat_id: str,
+    bot_chat_id: int,
     update: BotChatUpdate,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """更新群组/频道配置"""
     result = await db.execute(
-        select(BotChat).where(BotChat.chat_id == chat_id)
+        select(BotChat).where(BotChat.id == bot_chat_id)
     )
     db_chat = result.scalar_one_or_none()
     if not db_chat:
@@ -230,6 +250,7 @@ async def update_bot_chat(
 
         duplicate_result = await db.execute(
             select(BotChat).where(
+                BotChat.bot_config_id == db_chat.bot_config_id,
                 BotChat.chat_id == new_chat_id,
                 BotChat.id != db_chat.id,
             )
@@ -249,15 +270,15 @@ async def update_bot_chat(
     return _chat_to_response(db_chat)
 
 
-@router.delete("/bot/chats/{chat_id}")
+@router.delete("/bot/chats/{bot_chat_id}")
 async def delete_bot_chat(
-    chat_id: str,
+    bot_chat_id: int,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """删除群组/频道"""
     result = await db.execute(
-        select(BotChat).where(BotChat.chat_id == chat_id)
+        select(BotChat).where(BotChat.id == bot_chat_id)
     )
     db_chat = result.scalar_one_or_none()
     if not db_chat:
@@ -278,19 +299,19 @@ async def delete_bot_chat(
     await db.delete(db_chat)
     await db.commit()
     
-    logger.info(f"Bot 群组已删除: {db_chat.title or chat_id}")
-    return {"status": "deleted", "chat_id": chat_id}
+    logger.info(f"Bot 群组已删除: {db_chat.title or db_chat.chat_id}")
+    return {"status": "deleted", "bot_chat_id": bot_chat_id}
 
 
-@router.post("/bot/chats/{chat_id}/toggle")
+@router.post("/bot/chats/{bot_chat_id}/toggle")
 async def toggle_bot_chat(
-    chat_id: str,
+    bot_chat_id: int,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """切换群组/频道启用状态"""
     result = await db.execute(
-        select(BotChat).where(BotChat.chat_id == chat_id)
+        select(BotChat).where(BotChat.id == bot_chat_id)
     )
     db_chat = result.scalar_one_or_none()
     if not db_chat:
@@ -300,7 +321,7 @@ async def toggle_bot_chat(
     await db.commit()
     
     status = "enabled" if db_chat.enabled else "disabled"
-    logger.info(f"Bot 群组状态切换: {db_chat.title or chat_id} -> {status}")
+    logger.info(f"Bot 群组状态切换: {db_chat.title or db_chat.chat_id} -> {status}")
     return {"status": status, "enabled": db_chat.enabled}
 
 
@@ -319,7 +340,10 @@ async def upsert_bot_chat(
         raise HTTPException(status_code=400, detail=f"Bot config not found: {chat.bot_config_id}")
 
     result = await db.execute(
-        select(BotChat).where(BotChat.chat_id == chat.chat_id)
+        select(BotChat).where(
+            BotChat.bot_config_id == chat.bot_config_id,
+            BotChat.chat_id == chat.chat_id,
+        )
     )
     db_chat = result.scalar_one_or_none()
     
@@ -374,11 +398,14 @@ async def bot_heartbeat(
 ):
     """Bot 心跳上报"""
     now = utcnow()
-    
-    result = await db.execute(select(BotRuntime).where(BotRuntime.id == 1))
+
+    result = await db.execute(
+        select(BotRuntime).where(BotRuntime.platform == heartbeat.platform)
+    )
     runtime = result.scalar_one_or_none()
-    
+
     if runtime:
+        runtime.platform = heartbeat.platform
         runtime.bot_id = heartbeat.bot_id
         runtime.bot_username = heartbeat.bot_username
         runtime.bot_first_name = heartbeat.bot_first_name
@@ -389,7 +416,7 @@ async def bot_heartbeat(
             runtime.last_error_at = now
     else:
         runtime = BotRuntime(
-            id=1,
+            platform=heartbeat.platform,
             bot_id=heartbeat.bot_id,
             bot_username=heartbeat.bot_username,
             bot_first_name=heartbeat.bot_first_name,
@@ -407,17 +434,21 @@ async def bot_heartbeat(
 
 @router.get("/bot/runtime", response_model=BotRuntimeResponse)
 async def get_bot_runtime(
+    platform: BotConfigPlatform = Query(BotConfigPlatform.TELEGRAM),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """获取 Bot 运行时状态"""
-    result = await db.execute(select(BotRuntime).where(BotRuntime.id == 1))
+    result = await db.execute(
+        select(BotRuntime).where(BotRuntime.platform == platform)
+    )
     runtime = result.scalar_one_or_none()
-    
+
     now = utcnow()
-    
+
     if not runtime:
         return BotRuntimeResponse(
+            platform=platform,
             bot_id=None,
             bot_username=None,
             bot_first_name=None,
@@ -440,6 +471,7 @@ async def get_bot_runtime(
         uptime_seconds = int((now - runtime.started_at).total_seconds())
     
     return BotRuntimeResponse(
+        platform=runtime.platform,
         bot_id=runtime.bot_id,
         bot_username=runtime.bot_username,
         bot_first_name=runtime.bot_first_name,
@@ -464,7 +496,9 @@ async def get_bot_status(
     primary_tg_cfg = await get_primary_bot_config(db, BotConfigPlatform.TELEGRAM, enabled_only=False)
 
     # 获取运行时状态
-    runtime_result = await db.execute(select(BotRuntime).where(BotRuntime.id == 1))
+    runtime_result = await db.execute(
+        select(BotRuntime).where(BotRuntime.platform == BotConfigPlatform.TELEGRAM)
+    )
     runtime = runtime_result.scalar_one_or_none()
     
     # 统计主 Telegram 配置下关联且启用的群组数

@@ -7,7 +7,7 @@ class BotChatDialog extends ConsumerStatefulWidget {
   final BotChat? chat;
   final Future<void> Function(BotChatCreate) onCreate;
   final Future<int> Function(String chatType) resolveBotConfigId;
-  final Future<void> Function(String, BotChatUpdate, String?)? onUpdate;
+  final Future<void> Function(int, BotChatUpdate, String?)? onUpdate;
 
   const BotChatDialog({
     super.key,
@@ -342,7 +342,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
 
       if (isEditing) {
         await widget.onUpdate?.call(
-          widget.chat!.chatId,
+          widget.chat!.id,
           BotChatUpdate(
             title: _titleController.text.isEmpty ? null : _titleController.text,
             enabled: _enabled,

@@ -80,10 +80,19 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
     }
   }
 
+  Map<String, dynamic>? _configFor(String platform) {
+    for (final config in _configs) {
+      if ((config['platform'] ?? '').toString() == platform) {
+        return config;
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Bot 管理')),
+      appBar: AppBar(title: const Text('推送渠道管理')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -107,72 +116,54 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
                       ),
                       child: Text(_syncProgressText!),
                     ),
-                  FilledButton.icon(
-                    onPressed: _showAddBotWizard,
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('添加 Bot'),
-                  ),
                   const SizedBox(height: 16),
-                  if (_configs.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 40),
-                      child: Center(child: Text('暂无 Bot 配置')),
-                    )
-                  else
-                    ..._configs.map(_buildConfigCard),
+                  _buildPlatformCard('telegram'),
+                  const SizedBox(height: 12),
+                  _buildPlatformCard('qq'),
                 ],
               ),
             ),
     );
   }
 
-  Widget _buildConfigCard(Map<String, dynamic> cfg) {
-    final isPrimary = cfg['is_primary'] == true;
-    final platform = (cfg['platform'] ?? '').toString();
-    final subtitle = [
-      '平台: $platform',
-      '状态: ${cfg['enabled'] == true ? '启用' : '禁用'}',
-      '群组数: ${cfg['chat_count'] ?? 0}',
-      if (cfg['bot_username'] != null) '@${cfg['bot_username']}',
-    ].join('  ·  ');
+  Widget _buildPlatformCard(String platform) {
+    final cfg = _configFor(platform);
+    final title = platform == 'telegram' ? 'Telegram Bot' : 'QQ / Napcat';
+    final subtitle = cfg == null
+        ? '尚未配置'
+        : [
+            '状态: ${cfg['enabled'] == true ? '启用' : '禁用'}',
+            '群组数: ${cfg['chat_count'] ?? 0}',
+            if (cfg['bot_username'] != null) '@${cfg['bot_username']}',
+          ].join('  ·  ');
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: EdgeInsets.zero,
       child: ListTile(
-        title: Text('${cfg['name'] ?? 'Bot'}${isPrimary ? '（主）' : ''}'),
+        title: Text(cfg == null ? title : (cfg['name'] ?? title).toString()),
         subtitle: Text(subtitle),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) async {
-            switch (value) {
-              case 'activate':
-                await _activate(cfg);
-              case 'sync':
-                await _sync(cfg);
-              case 'qr':
-                await _showQr(cfg);
-              case 'edit':
-                await _showEditDialog(cfg);
-              case 'delete':
-                await _delete(cfg);
-            }
-          },
-          itemBuilder: (context) => [
-            const PopupMenuItem(value: 'activate', child: Text('设为主 Bot')),
-            const PopupMenuItem(value: 'sync', child: Text('同步群组')),
-            if (platform == 'qq')
-              const PopupMenuItem(value: 'qr', child: Text('获取登录二维码')),
-            const PopupMenuItem(value: 'edit', child: Text('编辑')),
-            const PopupMenuItem(value: 'delete', child: Text('删除')),
-          ],
-        ),
+        trailing: cfg == null
+            ? const Icon(Icons.chevron_right_rounded)
+            : PopupMenuButton<String>(
+                onSelected: (value) async {
+                  switch (value) {
+                    case 'sync':
+                      await _sync(cfg);
+                    case 'qr':
+                      await _showQr(cfg);
+                    case 'edit':
+                      await _showEditDialog(cfg);
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'sync', child: Text('同步群组')),
+                  if (platform == 'qq')
+                    const PopupMenuItem(value: 'qr', child: Text('获取登录二维码')),
+                  const PopupMenuItem(value: 'edit', child: Text('编辑')),
+                ],
+              ),
       ),
     );
-  }
-
-  Future<void> _activate(Map<String, dynamic> cfg) async {
-    final dio = ref.read(apiClientProvider);
-    await dio.post('/bot-config/${cfg['id']}/activate');
-    await _loadConfigs();
   }
 
   Future<void> _sync(Map<String, dynamic> cfg) async {
@@ -207,12 +198,6 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
         ],
       ),
     );
-  }
-
-  Future<void> _delete(Map<String, dynamic> cfg) async {
-    final dio = ref.read(apiClientProvider);
-    await dio.delete('/bot-config/${cfg['id']}');
-    await _loadConfigs();
   }
 
   Future<void> _showEditDialog(Map<String, dynamic> cfg) async {
@@ -328,7 +313,10 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
                   final enabledNow = enabled.value;
                   final tokenUpdated = tokenController.text.trim().isNotEmpty;
                   if (isTelegram && (enabledNow || tokenUpdated)) {
-                    Toast.show(context, 'Telegram 配置已保存。若状态仍未运行，请确认“设为主 Bot”后重启后端或手动启动 app.bot.main');
+                    Toast.show(
+                      context,
+                      'Telegram 配置已保存。若状态仍未运行，请检查 Token 后重启后端或手动启动 app.bot.main',
+                    );
                   }
                 } on DioException catch (e) {
                   final detail = e.response?.data is Map
@@ -341,195 +329,6 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
                 }
               },
               child: const Text('保存'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showAddBotWizard() async {
-    String platform = 'telegram';
-    final nameController = TextEditingController();
-    final tokenController = TextEditingController();
-    final httpController = TextEditingController();
-    final wsController = TextEditingController();
-
-    int step = 0;
-    String? nameError;
-    String? tokenError;
-    String? httpUrlError;
-    const stepTitles = ['选择平台', '输入凭证', '创建并同步'];
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setStateDialog) => AlertDialog(
-          title: const Text('添加 Bot'),
-          content: SizedBox(
-            width: 560,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 460),
-              child: SingleChildScrollView(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildWizardTimeline(currentStep: step),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${step + 1}  ${stepTitles[step]}',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          const SizedBox(height: 14),
-                          if (step == 0)
-                            SegmentedButton<String>(
-                              segments: const [
-                                ButtonSegment(
-                                  value: 'telegram',
-                                  label: Text('Telegram'),
-                                ),
-                                ButtonSegment(
-                                  value: 'qq',
-                                  label: Text('QQ/Napcat'),
-                                ),
-                              ],
-                              selected: {platform},
-                              onSelectionChanged: (s) =>
-                                  setStateDialog(() => platform = s.first),
-                            ),
-                          if (step == 1)
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                _buildDialogTextField(
-                                  controller: nameController,
-                                  labelText: 'Bot 名称',
-                                  errorText: nameError,
-                                ),
-                                if (platform == 'telegram') ...[
-                                  const SizedBox(height: 12),
-                                  _buildDialogTextField(
-                                    controller: tokenController,
-                                    labelText: 'Bot Token',
-                                    errorText: tokenError,
-                                  ),
-                                ],
-                                if (platform == 'qq') ...[
-                                  const SizedBox(height: 12),
-                                  _buildDialogTextField(
-                                    controller: httpController,
-                                    labelText: 'Napcat HTTP URL',
-                                    errorText: httpUrlError,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  _buildDialogTextField(
-                                    controller: wsController,
-                                    labelText: 'Napcat WS URL',
-                                  ),
-                                ],
-                              ],
-                            ),
-                          if (step == 2) const Text('保存配置后自动触发一次同步。'),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                if (step == 0) {
-                  Navigator.of(ctx).pop();
-                } else {
-                  setStateDialog(() => step -= 1);
-                }
-              },
-              child: Text(step == 0 ? '取消' : '上一步'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                setStateDialog(() {
-                  nameError = null;
-                  tokenError = null;
-                  httpUrlError = null;
-                });
-
-                if (step < 2) {
-                  if (step == 1) {
-                    final trimmedName = nameController.text.trim();
-                    final trimmedToken = tokenController.text.trim();
-                    final trimmedHttp = httpController.text.trim();
-
-                    if (trimmedName.isEmpty) {
-                      setStateDialog(() => nameError = 'Bot 名称为必填项');
-                      return;
-                    }
-                    if (platform == 'telegram' && trimmedToken.isEmpty) {
-                      setStateDialog(
-                        () => tokenError = 'Telegram Bot Token 为必填项',
-                      );
-                      return;
-                    }
-                    if (platform == 'qq' && trimmedHttp.isEmpty) {
-                      setStateDialog(
-                        () => httpUrlError = 'QQ/Napcat 至少需要填写 HTTP URL',
-                      );
-                      return;
-                    }
-                  }
-                  setStateDialog(() => step += 1);
-                  return;
-                }
-                final dio = ref.read(apiClientProvider);
-                final trimmedName = nameController.text.trim();
-                final trimmedToken = tokenController.text.trim();
-                final trimmedHttp = httpController.text.trim();
-                final hasPrimaryTelegram = _configs.any(
-                  (c) => c['platform'] == 'telegram' && c['is_primary'] == true,
-                );
-                final payload = <String, dynamic>{
-                  'platform': platform,
-                  'name': trimmedName,
-                  'enabled': true,
-                  if (platform == 'telegram' && !hasPrimaryTelegram)
-                    'is_primary': true,
-                };
-                if (platform == 'telegram') {
-                  payload['bot_token'] = trimmedToken;
-                } else {
-                  payload['napcat_http_url'] = trimmedHttp;
-                  payload['napcat_ws_url'] = wsController.text.trim();
-                }
-                try {
-                  final createResp = await dio.post(
-                    '/bot-config',
-                    data: payload,
-                  );
-                  final cfg = (createResp.data as Map).cast<String, dynamic>();
-                  await dio.post('/bot-config/${cfg['id']}/sync-chats');
-                  if (ctx.mounted) Navigator.of(ctx).pop();
-                  await _loadConfigs();
-                  if (!mounted) return;
-                  if (platform == 'telegram' && cfg['is_primary'] != true) {
-                    Toast.show(context, '已创建 Telegram Bot。请在该条目的菜单中执行“设为主 Bot”，然后重启后端以启动 Bot。');
-                  }
-                } on DioException catch (e) {
-                  final detail = e.response?.data is Map
-                      ? (e.response?.data['detail']?.toString() ??
-                            e.message ??
-                            '请求失败')
-                      : (e.message ?? '请求失败');
-                  if (!mounted) return;
-                  Toast.show(context, '创建失败: $detail', isError: true);
-                }
-              },
-              child: Text(step < 2 ? '下一步' : '完成'),
             ),
           ],
         ),
@@ -552,61 +351,6 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
           horizontal: 16,
           vertical: 14,
         ),
-      ),
-    );
-  }
-
-  Widget _buildWizardTimeline({required int currentStep}) {
-    const circleSize = 34.0;
-    final scheme = Theme.of(context).colorScheme;
-
-    Widget buildCircle(int index) {
-      final isActive = currentStep == index;
-      final isComplete = currentStep > index;
-      final bgColor = (isActive || isComplete)
-          ? scheme.primaryContainer
-          : scheme.surfaceContainerHighest;
-      final fgColor = (isActive || isComplete)
-          ? scheme.onPrimaryContainer
-          : scheme.onSurfaceVariant;
-
-      return Container(
-        width: circleSize,
-        height: circleSize,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: bgColor,
-          shape: BoxShape.circle,
-          border: Border.all(color: scheme.outlineVariant),
-        ),
-        child: Text(
-          '${index + 1}',
-          style: TextStyle(fontWeight: FontWeight.w700, color: fgColor),
-        ),
-      );
-    }
-
-    Widget buildLine(bool active) {
-      return Container(
-        width: 2,
-        height: 38,
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        color: active
-            ? scheme.primaryContainer
-            : scheme.outlineVariant.withValues(alpha: 0.7),
-      );
-    }
-
-    return SizedBox(
-      width: circleSize,
-      child: Column(
-        children: [
-          buildCircle(0),
-          buildLine(currentStep > 0),
-          buildCircle(1),
-          buildLine(currentStep > 1),
-          buildCircle(2),
-        ],
       ),
     );
   }
