@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import math
 import re
@@ -7,7 +8,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from openai import AsyncOpenAI
 from sqlalchemy import and_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,12 +42,17 @@ class EmbeddingService:
     _RRF_K = 60
     _LOCAL_DIM = 256
     _MAX_BODY_CHARS = 4000
+    _DEFAULT_MODEL = "gemini-embedding-2-preview"
+    _DEFAULT_OUTPUT_DIMENSIONALITY = 1536
+    _DOCUMENT_TASK_TYPE = "RETRIEVAL_DOCUMENT"
+    _QUERY_TASK_TYPE = "RETRIEVAL_QUERY"
+
     async def embed_content(self, content: Content) -> list[float]:
         text_payload = self._build_content_text(content)
-        return await self._embed_text(text_payload)
+        return await self._embed_text(text_payload, task_type=self._DOCUMENT_TASK_TYPE)
 
     async def embed_query(self, query: str) -> list[float]:
-        return await self._embed_text(query)
+        return await self._embed_text(query, task_type=self._QUERY_TASK_TYPE)
 
     async def index_content(self, content_id: int, *, session: Optional[AsyncSession] = None) -> bool:
         if session is not None:
@@ -112,19 +117,19 @@ class EmbeddingService:
             return False
 
         text_hash = self._hash_text(payload)
-        model = await self._get_embedding_model()
+        model_signature = await self._get_document_embedding_signature()
         existing = (
             await session.execute(
                 select(ContentEmbedding).where(ContentEmbedding.content_id == content_id)
             )
         ).scalar_one_or_none()
 
-        if existing and existing.text_hash == text_hash and existing.embedding_model == model:
+        if existing and existing.text_hash == text_hash and existing.embedding_model == model_signature:
             return False
 
-        vector = await self._embed_text(payload)
+        vector = await self._embed_text(payload, task_type=self._DOCUMENT_TASK_TYPE)
         record = existing or ContentEmbedding(content_id=content_id)
-        record.embedding_model = model
+        record.embedding_model = model_signature
         record.embedding = vector
         record.text_hash = text_hash
         record.source_text = payload[:4000]
@@ -207,26 +212,43 @@ class EmbeddingService:
         filters: list,
         limit: int,
     ) -> list[tuple[int, float]]:
+        # 补充模型维度隔离墙：防止模型更替后新老向量维度不一致导致的错误截断或计算垃圾分数
+        current_model = await self._get_document_embedding_signature()
+        model_filters = list(filters)
+        model_filters.append(ContentEmbedding.embedding_model == current_model)
+        
         rows = (
             await session.execute(
                 select(ContentEmbedding.content_id, ContentEmbedding.embedding)
                 .join(Content, Content.id == ContentEmbedding.content_id)
-                .where(and_(*filters))
+                .where(and_(*model_filters))
             )
         ).all()
 
-        scored: list[tuple[int, float]] = []
-        for content_id, embedding in rows:
-            vec = self._coerce_vector(embedding)
-            if not vec:
-                continue
-            score = self._cosine_similarity(query_vec, vec)
-            if math.isnan(score):
-                continue
-            scored.append((int(content_id), float(score)))
+        if not rows:
+            return []
 
-        scored.sort(key=lambda x: x[1], reverse=True)
-        return scored[:limit]
+        import numpy as np
+        
+        q = np.array(query_vec, dtype=np.float32)
+        doc_ids = np.array([row.content_id for row in rows])
+        
+        # 安全转换：提取出纯净的、同维度的向量数组
+        vec_list = [self._coerce_vector(row.embedding) for row in rows]
+        valid_indices = [i for i, vec in enumerate(vec_list) if len(vec) == len(q) and len(vec) > 0]
+        
+        if not valid_indices:
+            return []
+            
+        filtered_ids = doc_ids[valid_indices]
+        filtered_vecs = np.array([vec_list[i] for i in valid_indices], dtype=np.float32)
+
+
+        scores = np.dot(filtered_vecs, q)
+
+        top_indices = np.argsort(scores)[::-1][:limit]
+        
+        return [(int(filtered_ids[i]), float(scores[i])) for i in top_indices]
 
     async def _fts_rank_ids(
         self,
@@ -330,66 +352,90 @@ class EmbeddingService:
             f"作者: {(content.author_name or '').strip()}",
             f"标签: {' '.join([str(t) for t in tags if str(t).strip()])}",
         ]
+        
+        # 融合 Agent 提纯的隐藏向量数据
+        if isinstance(content.context_data, dict):
+            rag_keywords = content.context_data.get("rag_keywords")
+            if isinstance(rag_keywords, list) and rag_keywords:
+                parts.append(f"核心提取关键词: {', '.join([str(k) for k in rag_keywords])}")
+            core_args = content.context_data.get("core_arguments")
+            if isinstance(core_args, str) and core_args:
+                parts.append(f"核心长文主旨: {core_args}")
+
         return "\n".join(p for p in parts if p).strip()
 
     def _hash_text(self, text_value: str) -> str:
         return hashlib.sha256(text_value.encode("utf-8")).hexdigest()
 
-    async def _embed_text(self, text_value: str) -> list[float]:
+    async def _embed_text(
+        self,
+        text_value: str,
+        *,
+        task_type: str,
+    ) -> list[float]:
         text_value = text_value.strip()
         if not text_value:
             return self._build_local_embedding("")
 
         model = await self._get_embedding_model()
         api_key = await self._get_embedding_api_key()
-        base_url = await self._get_embedding_base_url()
+        output_dimensionality = await self._get_embedding_output_dimensionality()
         if not api_key:
             return self._build_local_embedding(text_value)
 
         try:
-            client = AsyncOpenAI(
-                api_key=api_key,
-                base_url=base_url or None,
-                timeout=20.0,
-            )
-            response = await client.embeddings.create(
-                model=model,
-                input=text_value,
-            )
-            vector = response.data[0].embedding if response.data else None
+            from google import genai
+            from google.genai import types
+
+            # google-genai 的 embed 接口是同步调用，放到线程池里避免阻塞事件循环。
+            def _call_gemini():
+                client = genai.Client(api_key=api_key)
+                return client.models.embed_content(
+                    model=model,
+                    contents=text_value,
+                    config=types.EmbedContentConfig(
+                        task_type=task_type,
+                        output_dimensionality=output_dimensionality,
+                    ),
+                )
+
+            response = await asyncio.to_thread(_call_gemini)
+            vector = response.embeddings[0].values if response.embeddings else None
+
             if not vector:
                 return self._build_local_embedding(text_value)
             return self._normalize_vector([float(v) for v in vector])
         except Exception as e:
-            logger.warning("Embedding remote call failed, fallback to local: {}", e)
+            logger.warning(f"Embedding remote call failed, fallback to local: {e}")
             return self._build_local_embedding(text_value)
 
     async def _get_embedding_model(self) -> str:
         model = await get_setting_value("embedding_model")
         if isinstance(model, str) and model.strip():
             return model.strip()
-
-        model = await get_setting_value("text_embedding_model")
-        if isinstance(model, str) and model.strip():
-            return model.strip()
-
-        return "text-embedding-3-small"
+        return self._DEFAULT_MODEL
 
     async def _get_embedding_api_key(self) -> Optional[str]:
         key = await get_setting_value("embedding_api_key")
         if isinstance(key, str) and key.strip():
             return key.strip()
-        key = await get_setting_value("text_llm_api_key")
-        if isinstance(key, str) and key.strip():
-            return key.strip()
         return None
 
-    async def _get_embedding_base_url(self) -> Optional[str]:
-        for setting_key in ("embedding_api_base", "text_embedding_api_base", "text_llm_api_base", "text_llm_base_url"):
-            value = await get_setting_value(setting_key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-        return None
+    async def _get_embedding_output_dimensionality(self) -> int:
+        value = await get_setting_value("embedding_output_dimensionality")
+        try:
+            dimension = int(value)
+        except (TypeError, ValueError):
+            return self._DEFAULT_OUTPUT_DIMENSIONALITY
+
+        if 128 <= dimension <= 3072:
+            return dimension
+        return self._DEFAULT_OUTPUT_DIMENSIONALITY
+
+    async def _get_document_embedding_signature(self) -> str:
+        model = await self._get_embedding_model()
+        dimension = await self._get_embedding_output_dimensionality()
+        return f"{model}|dim={dimension}|task={self._DOCUMENT_TASK_TYPE}"
 
     def _build_local_embedding(self, text_value: str) -> list[float]:
         vec = [0.0] * self._LOCAL_DIM

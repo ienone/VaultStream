@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     vision_llm_base_url: Optional[str] = None
     vision_llm_model: str = "qwen-vl-max"
 
+    # Gemini Embedding 配置
+    embedding_api_key: Optional[SecretStr] = None
+    embedding_model: str = "gemini-embedding-2-preview"
+    embedding_output_dimensionality: int = 1536
+
     # 存储后端配置
     storage_backend: Literal["local", "s3"] = "local"
     storage_public_base_url: Optional[str] = None

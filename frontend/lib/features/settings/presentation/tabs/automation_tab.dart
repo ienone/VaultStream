@@ -618,6 +618,12 @@ class AutomationTab extends ConsumerWidget {
               'vision',
             ),
           ),
+          ExpandableSettingTile(
+            title: 'Gemini Embedding',
+            subtitle: _getEmbeddingSubtitle(settings),
+            icon: Icons.hub_rounded,
+            expandedContent: _buildEmbeddingConfigEditor(context, ref),
+          ),
         ],
       ),
       loading: () => const LoadingGroup(),
@@ -690,6 +696,36 @@ class AutomationTab extends ConsumerWidget {
     final keyLabel = _isEnvConfigured(apiKey) ? '密钥已配置' : _maskKey(apiKey);
     if (model.isEmpty) return keyLabel;
     return '$model • $keyLabel';
+  }
+
+  String _getEmbeddingSubtitle(List<SystemSetting> settings) {
+    final model =
+        settings
+                .firstWhere(
+                  (s) => s.key == 'embedding_model',
+                  orElse: () => const SystemSetting(key: '', value: ''),
+                )
+                .value
+            as String? ??
+        '';
+    final apiKey =
+        settings
+                .firstWhere(
+                  (s) => s.key == 'embedding_api_key',
+                  orElse: () => const SystemSetting(key: '', value: ''),
+                )
+                .value
+            as String? ??
+        '';
+    final dimension = _parseInt(
+      _getSettingValue(settings, 'embedding_output_dimensionality', 1536),
+      1536,
+    );
+
+    if (model.isEmpty && apiKey.isEmpty) return '未配置';
+    final keyLabel = _isEnvConfigured(apiKey) ? '密钥已配置' : _maskKey(apiKey);
+    final modelLabel = model.isEmpty ? 'gemini-embedding-2-preview' : model;
+    return '$modelLabel • $dimension 维 • $keyLabel';
   }
 
   Widget _buildLlmConfigEditor(
@@ -799,6 +835,119 @@ class AutomationTab extends ConsumerWidget {
                     category: 'llm',
                   );
                   if (context.mounted) showToast(context, 'LLM 配置已保存');
+                },
+                child: const Text('保存配置'),
+              ),
+            ),
+          ],
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (_, _) => const Text('加载失败'),
+    );
+  }
+
+  Widget _buildEmbeddingConfigEditor(BuildContext context, WidgetRef ref) {
+    final settingsAsync = ref.watch(systemSettingsProvider);
+    return settingsAsync.when(
+      data: (settings) {
+        final apiKey =
+            settings
+                    .firstWhere(
+                      (s) => s.key == 'embedding_api_key',
+                      orElse: () => const SystemSetting(key: '', value: ''),
+                    )
+                    .value
+                as String? ??
+            '';
+        final model =
+            settings
+                    .firstWhere(
+                      (s) => s.key == 'embedding_model',
+                      orElse: () => const SystemSetting(
+                        key: '',
+                        value: 'gemini-embedding-2-preview',
+                      ),
+                    )
+                    .value
+                as String? ??
+            'gemini-embedding-2-preview';
+        final dimension = _parseInt(
+          _getSettingValue(settings, 'embedding_output_dimensionality', 1536),
+          1536,
+        );
+
+        final isKeyFromEnv = _isEnvConfigured(apiKey);
+        final keyController = TextEditingController(
+          text: isKeyFromEnv ? '' : apiKey,
+        );
+        final modelController = TextEditingController(text: model);
+        final dimController = TextEditingController(text: '$dimension');
+
+        return Column(
+          children: [
+            TextField(
+              controller: keyController,
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: 'Embedding API Key',
+                hintText: isKeyFromEnv ? '已配置，输入新值可覆盖' : 'AIza...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: modelController,
+              decoration: InputDecoration(
+                labelText: 'Embedding Model',
+                hintText: 'gemini-embedding-2-preview',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: dimController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: '输出维度',
+                helperText: '推荐 768 / 1536 / 3072',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.tonal(
+                onPressed: () async {
+                  final notifier = ref.read(systemSettingsProvider.notifier);
+                  if (keyController.text.isNotEmpty) {
+                    await notifier.updateSetting(
+                      'embedding_api_key',
+                      keyController.text,
+                      category: 'embedding',
+                    );
+                  }
+                  await notifier.updateSetting(
+                    'embedding_model',
+                    modelController.text.trim().isEmpty
+                        ? 'gemini-embedding-2-preview'
+                        : modelController.text.trim(),
+                    category: 'embedding',
+                  );
+                  final dimension =
+                      int.tryParse(dimController.text.trim()) ?? 1536;
+                  await notifier.updateSetting(
+                    'embedding_output_dimensionality',
+                    dimension,
+                    category: 'embedding',
+                  );
+                  if (context.mounted) showToast(context, 'Embedding 配置已保存');
                 },
                 child: const Text('保存配置'),
               ),

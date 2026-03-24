@@ -32,6 +32,12 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   final _visionBaseUrlController = TextEditingController();
   final _visionKeyController = TextEditingController();
   final _visionModelController = TextEditingController(text: 'qwen-vl-max');
+  bool _enableEmbedding = false;
+  final _embeddingKeyController = TextEditingController();
+  final _embeddingModelController = TextEditingController(
+    text: 'gemini-embedding-2-preview',
+  );
+  final _embeddingDimController = TextEditingController(text: '1536');
 
   // 步骤1: Bot
   bool _enableBot = false;
@@ -62,6 +68,9 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     _visionBaseUrlController.dispose();
     _visionKeyController.dispose();
     _visionModelController.dispose();
+    _embeddingKeyController.dispose();
+    _embeddingModelController.dispose();
+    _embeddingDimController.dispose();
     _tgTokenController.dispose();
     _tgAdminIdController.dispose();
     _qqUrlController.dispose();
@@ -122,6 +131,27 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         );
       }
 
+      // 1c. Gemini Embedding 配置（可选）
+      if (_enableEmbedding && _embeddingKeyController.text.trim().isNotEmpty) {
+        await dio.put(
+          '/settings/embedding_api_key',
+          data: {'value': _embeddingKeyController.text.trim()},
+        );
+        if (_embeddingModelController.text.trim().isNotEmpty) {
+          await dio.put(
+            '/settings/embedding_model',
+            data: {'value': _embeddingModelController.text.trim()},
+          );
+        }
+        final dim = int.tryParse(_embeddingDimController.text.trim());
+        if (dim != null) {
+          await dio.put(
+            '/settings/embedding_output_dimensionality',
+            data: {'value': dim},
+          );
+        }
+      }
+
       // 1b. 视觉模型配置（可选）
       if (_enableVisionLlm && _visionKeyController.text.trim().isNotEmpty) {
         if (_visionBaseUrlController.text.trim().isNotEmpty) {
@@ -152,7 +182,6 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
               'name': 'Main Telegram Bot',
               'bot_token': _tgTokenController.text.trim(),
               'enabled': true,
-              'is_primary': true,
             },
           );
           if (_tgAdminIdController.text.isNotEmpty) {
@@ -169,7 +198,6 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
               'name': 'Main QQ Bot',
               'napcat_http_url': _qqUrlController.text.trim(),
               'enabled': true,
-              'is_primary': true,
             },
           );
           if (_qqAdminIdController.text.trim().isNotEmpty) {
@@ -366,6 +394,64 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                 labelText: '模型名称 (Model)',
                 hintText: 'deepseek-chat',
                 border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: colorScheme.outlineVariant),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                children: [
+                  SwitchListTile(
+                    title: const Text('配置 Gemini Embedding'),
+                    subtitle: const Text('用于语义检索与向量搜索（可选，推荐开启）'),
+                    secondary: const Icon(Icons.hub_rounded),
+                    value: _enableEmbedding,
+                    onChanged: (v) => setState(() => _enableEmbedding = v),
+                  ),
+                  if (_enableEmbedding) ...[
+                    const Divider(height: 1),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          TextField(
+                            controller: _embeddingKeyController,
+                            obscureText: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Embedding API Key',
+                              border: OutlineInputBorder(),
+                              suffixIcon: Icon(Icons.password),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _embeddingModelController,
+                            decoration: const InputDecoration(
+                              labelText: 'Embedding 模型名称',
+                              hintText: 'gemini-embedding-2-preview',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _embeddingDimController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: '输出维度',
+                              hintText: '1536',
+                              helperText: '官方推荐维度之一：768 / 1536 / 3072',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
             const SizedBox(height: 20),

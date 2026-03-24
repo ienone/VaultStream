@@ -29,7 +29,7 @@ class ContentEmbedding(Base):
         index=True,
     )
 
-    embedding_model: Mapped[str] = mapped_column(String(100), default="text-embedding-3-small")
+    embedding_model: Mapped[str] = mapped_column(String(100), default="gemini-embedding-2-preview")
     embedding: Mapped[Any] = mapped_column(JSON, default=list)
     text_hash: Mapped[Optional[str]] = mapped_column(String(64), default=None)
     source_text: Mapped[Optional[str]] = mapped_column(Text, default=None)

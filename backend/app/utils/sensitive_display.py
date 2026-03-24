@@ -23,6 +23,7 @@ SENSITIVE_SETTING_KEYS = {
     "weibo_cookie",
     "text_llm_api_key",
     "vision_llm_api_key",
+    "embedding_api_key",
 }
 
 
