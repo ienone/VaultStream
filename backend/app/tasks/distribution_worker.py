@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Optional, List
 
-from sqlalchemy import select, and_, func, or_
+from sqlalchemy import select, and_, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
@@ -299,12 +299,66 @@ class DistributionQueueWorker:
                     deferred += 1
                     continue
 
-            item.status = QueueItemStatus.PROCESSING
-            item.locked_at = now
-            item.locked_by = worker_name
-            if item.started_at is None:
-                item.started_at = now
-            claimable.append(item)
+            if item.status == QueueItemStatus.SCHEDULED:
+                claim_stmt = (
+                    update(ContentQueueItem)
+                    .where(
+                        and_(
+                            ContentQueueItem.id == item.id,
+                            ContentQueueItem.status == QueueItemStatus.SCHEDULED,
+                            or_(
+                                ContentQueueItem.scheduled_at.is_(None),
+                                ContentQueueItem.scheduled_at <= now,
+                            ),
+                            or_(
+                                ContentQueueItem.locked_at.is_(None),
+                                ContentQueueItem.locked_at < lock_expire,
+                            ),
+                        )
+                    )
+                    .values(
+                        status=QueueItemStatus.PROCESSING,
+                        locked_at=now,
+                        locked_by=worker_name,
+                        started_at=func.coalesce(ContentQueueItem.started_at, now),
+                    )
+                )
+            else:
+                claim_stmt = (
+                    update(ContentQueueItem)
+                    .where(
+                        and_(
+                            ContentQueueItem.id == item.id,
+                            ContentQueueItem.status == QueueItemStatus.FAILED,
+                            ContentQueueItem.next_attempt_at <= now,
+                            or_(
+                                ContentQueueItem.scheduled_at.is_(None),
+                                ContentQueueItem.scheduled_at <= now,
+                            ),
+                            or_(
+                                ContentQueueItem.locked_at.is_(None),
+                                ContentQueueItem.locked_at < lock_expire,
+                            ),
+                        )
+                    )
+                    .values(
+                        status=QueueItemStatus.PROCESSING,
+                        locked_at=now,
+                        locked_by=worker_name,
+                        started_at=func.coalesce(ContentQueueItem.started_at, now),
+                    )
+                )
+
+            claim_result = await session.execute(claim_stmt)
+            if int(claim_result.rowcount or 0) == 0:
+                continue
+
+            claimed_result = await session.execute(
+                select(ContentQueueItem).where(ContentQueueItem.id == item.id)
+            )
+            claimed = claimed_result.scalar_one_or_none()
+            if claimed is not None:
+                claimable.append(claimed)
 
         await session.commit()
 
