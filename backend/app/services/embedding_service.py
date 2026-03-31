@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.logging import logger
+from app.utils.text_search import rank_ids_by_fts_or_like
 from app.models import (
     Content,
     ContentEmbedding,
@@ -167,11 +168,12 @@ class EmbeddingService:
         vector_ids = [cid for cid, _ in vector_ranked]
         vector_score_map = {cid: score for cid, score in vector_ranked}
 
-        fts_ids = await self._fts_rank_ids(
+        fts_ids = await rank_ids_by_fts_or_like(
             session=session,
             query=query,
             filters=filters,
             limit=candidate_limit,
+            like_columns=(Content.title, Content.summary, Content.body),
         )
 
         merged = self._rrf_merge(vector_ids=vector_ids, fts_ids=fts_ids, top_k=top_k)
@@ -249,59 +251,6 @@ class EmbeddingService:
         top_indices = np.argsort(scores)[::-1][:limit]
         
         return [(int(filtered_ids[i]), float(scores[i])) for i in top_indices]
-
-    async def _fts_rank_ids(
-        self,
-        *,
-        session: AsyncSession,
-        query: str,
-        filters: list,
-        limit: int,
-    ) -> list[int]:
-        try:
-            fts_rows = (
-                await session.execute(
-                    text(
-                        "SELECT content_id FROM contents_fts "
-                        "WHERE contents_fts MATCH :q "
-                        "LIMIT :limit"
-                    ),
-                    {"q": query, "limit": int(limit)},
-                )
-            ).all()
-            raw_ids = [int(row[0]) for row in fts_rows]
-            if not raw_ids:
-                return []
-
-            filtered_ids = (
-                await session.execute(
-                    select(Content.id).where(Content.id.in_(raw_ids), and_(*filters))
-                )
-            ).scalars().all()
-            filtered_set = set(int(cid) for cid in filtered_ids)
-            return [cid for cid in raw_ids if cid in filtered_set]
-        except Exception:
-            logger.debug("FTS query unavailable, fallback to LIKE ranking")
-
-        like_expr = f"%{query}%"
-        fallback_ids = (
-            await session.execute(
-                select(Content.id)
-                .where(
-                    and_(
-                        *filters,
-                        or_(
-                            Content.title.ilike(like_expr),
-                            Content.summary.ilike(like_expr),
-                            Content.body.ilike(like_expr),
-                        ),
-                    )
-                )
-                .order_by(Content.created_at.desc())
-                .limit(limit)
-            )
-        ).scalars().all()
-        return [int(cid) for cid in fallback_ids]
 
     def _rrf_merge(self, *, vector_ids: list[int], fts_ids: list[int], top_k: int) -> list[tuple[int, float]]:
         scores: dict[int, float] = {}

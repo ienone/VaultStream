@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import '../../providers/settings_provider.dart';
 import '../../models/system_setting.dart';
+import '../../utils/setting_value.dart';
 import '../widgets/setting_components.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../discovery/providers/discovery_settings_provider.dart';
@@ -208,17 +209,17 @@ class AutomationTab extends ConsumerWidget {
     return settingsAsync.when(
       data: (settings) {
         final currentEnabled = _parsePlatformsSetting(
-          _getSettingValue(settings, 'favorites_sync_platforms', const <String>[]),
+          getSettingValue(settings, 'favorites_sync_platforms', const <String>[]),
         );
         const intervalOptions = <int>[60, 180, 360, 720, 1440];
         const maxItemOptions = <int>[20, 50, 100, 200];
         const rateOptions = <int>[1, 3, 5, 10, 20];
-        final interval = _parseInt(
-          _getSettingValue(settings, 'favorites_sync_interval_minutes', 360),
+        final interval = parseIntSetting(
+          getSettingValue(settings, 'favorites_sync_interval_minutes', 360),
           360,
         );
-        final maxItems = _parseInt(
-          _getSettingValue(settings, 'favorites_sync_max_items', 50),
+        final maxItems = parseIntSetting(
+          getSettingValue(settings, 'favorites_sync_max_items', 50),
           50,
         );
 
@@ -236,8 +237,8 @@ class AutomationTab extends ConsumerWidget {
                     title: _platformLabel(platform),
                     subtitle: _platformSubtitle(
                       platform: platform,
-                      configuredRate: _parseDouble(
-                        _getSettingValue(
+                      configuredRate: parseDoubleSetting(
+                        getSettingValue(
                           settings,
                           'favorites_sync_rate_$platform',
                           5,
@@ -252,8 +253,8 @@ class AutomationTab extends ConsumerWidget {
                       children: [
                         DropdownButton<int>(
                           value: (() {
-                            final configuredRate = _parseDouble(
-                              _getSettingValue(
+                            final configuredRate = parseDoubleSetting(
+                              getSettingValue(
                                 settings,
                                 'favorites_sync_rate_$platform',
                                 5,
@@ -502,14 +503,6 @@ class AutomationTab extends ConsumerWidget {
     return parts.join(' · ');
   }
 
-  dynamic _getSettingValue(List<SystemSetting> settings, String key, dynamic fallback) {
-    try {
-      return settings.firstWhere((s) => s.key == key).value;
-    } catch (_) {
-      return fallback;
-    }
-  }
-
   List<String> _parsePlatformsSetting(dynamic raw) {
     if (raw == null) return <String>[];
     if (raw is List) {
@@ -523,20 +516,6 @@ class AutomationTab extends ConsumerWidget {
           .toList();
     }
     return <String>[];
-  }
-
-  int _parseInt(dynamic value, int fallback) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    if (value is String) return int.tryParse(value) ?? fallback;
-    return fallback;
-  }
-
-  double _parseDouble(dynamic value, double fallback) {
-    if (value is double) return value;
-    if (value is num) return value.toDouble();
-    if (value is String) return double.tryParse(value) ?? fallback;
-    return fallback;
   }
 
   Widget _buildContentGenSettings(
@@ -717,8 +696,8 @@ class AutomationTab extends ConsumerWidget {
                 .value
             as String? ??
         '';
-    final dimension = _parseInt(
-      _getSettingValue(settings, 'embedding_output_dimensionality', 1536),
+    final dimension = parseIntSetting(
+      getSettingValue(settings, 'embedding_output_dimensionality', 1536),
       1536,
     );
 
@@ -872,8 +851,8 @@ class AutomationTab extends ConsumerWidget {
                     .value
                 as String? ??
             'gemini-embedding-2-preview';
-        final dimension = _parseInt(
-          _getSettingValue(settings, 'embedding_output_dimensionality', 1536),
+        final dimension = parseIntSetting(
+          getSettingValue(settings, 'embedding_output_dimensionality', 1536),
           1536,
         );
 

@@ -360,10 +360,10 @@ async def llm_target_selector(
     url: str, dom_info: dict, llm_config: dict, verbose: bool = True
 ) -> dict:
     """Lightweight LLM call for CSS selector. Only used when auto-detect fails."""
-    from openai import OpenAI
+    from openai import AsyncOpenAI
 
     model = llm_config["provider"].split("/")[-1]
-    client = OpenAI(api_key=llm_config["api_token"], base_url=llm_config["base_url"])
+    client = AsyncOpenAI(api_key=llm_config["api_token"], base_url=llm_config["base_url"])
 
     prompt = _TARGETING_PROMPT.format(
         url=url,
@@ -375,7 +375,7 @@ async def llm_target_selector(
         logger.debug("LLM targeting ({})", model)
 
     try:
-        resp = client.chat.completions.create(
+        resp = await client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
         )
