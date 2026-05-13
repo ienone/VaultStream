@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 import 'package:frontend/core/utils/media_utils.dart';
 import '../../../../core/layout/responsive_layout.dart';
 import '../../models/content.dart';
 import '../../../../core/widgets/platform_badge.dart';
+import '../../../../core/widgets/network_thumbnail.dart';
 import '../../utils/content_parser.dart';
 import '../../../../core/utils/dynamic_color_helper.dart';
 
@@ -302,7 +302,6 @@ class _CardCover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     return AspectRatio(
       aspectRatio: imageAspectRatio,
       child: Stack(
@@ -310,30 +309,12 @@ class _CardCover extends StatelessWidget {
         children: [
           Hero(
             tag: 'content-image-${content.id}',
-            child: CachedNetworkImage(
+            child: NetworkThumbnail(
               imageUrl: content.thumbnailUrl ?? imageUrl, // 优先使用缩略图
               httpHeaders: imageHeaders,
               fit: BoxFit.cover,
               maxHeightDiskCache: 800,
-              placeholder: (context, url) => Container(
-                color: colorScheme.surfaceContainerHighest,
-                child: const Center(
-                  child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              ),
-              errorWidget: (context, url, error) => Container(
-                color: colorScheme.errorContainer,
-                child: Center(
-                  child: Icon(
-                    Icons.broken_image_rounded,
-                    color: colorScheme.error,
-                  ),
-                ),
-              ),
+              errorIcon: Icons.broken_image_rounded,
             ),
           ),
           Positioned.fill(
@@ -393,7 +374,7 @@ class _CardAuthor extends StatelessWidget {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(10),
-              child: CachedNetworkImage(
+              child: NetworkThumbnail(
                 imageUrl: mapUrl(content.authorAvatarUrl!, apiBaseUrl),
                 httpHeaders: buildImageHeaders(
                   imageUrl: mapUrl(content.authorAvatarUrl!, apiBaseUrl),
@@ -403,10 +384,7 @@ class _CardAuthor extends StatelessWidget {
                 width: 18,
                 height: 18,
                 fit: BoxFit.cover,
-                placeholder: (context, url) =>
-                    Container(color: colorScheme.surfaceContainerHighest),
-                errorWidget: (context, url, error) =>
-                    const Icon(Icons.person_rounded, size: 12),
+                errorIcon: Icons.person_rounded,
               ),
             ),
           ),

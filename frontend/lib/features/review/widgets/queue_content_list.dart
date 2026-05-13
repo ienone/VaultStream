@@ -3,9 +3,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import '../../../core/utils/toast.dart';
+import '../../../core/widgets/network_thumbnail.dart';
 import '../models/queue_item.dart';
 import '../providers/queue_provider.dart';
 
@@ -840,13 +840,11 @@ class _QueueItemCard extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: CachedNetworkImage(
+        child: NetworkThumbnail(
           imageUrl: item.coverUrl!,
           width: 52,
           height: 52,
           fit: BoxFit.cover,
-          placeholder: (context, url) =>
-              Container(color: colorScheme.surfaceContainerHighest),
         ),
       ),
     );

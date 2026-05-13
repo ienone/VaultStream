@@ -1,10 +1,10 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/network/api_client.dart';
 import '../../../core/network/image_headers.dart';
 import '../../../core/utils/media_utils.dart';
+import '../../../core/widgets/network_thumbnail.dart';
 import '../models/discovery_models.dart';
 
 class DiscoveryItemCard extends ConsumerWidget {
@@ -83,30 +83,12 @@ class DiscoveryItemCard extends ConsumerWidget {
               children: [
                 // 封面缩略图
                 if (hasCover) ...[
-                  ClipRRect(
+                  NetworkThumbnail(
+                    imageUrl: coverImageUrl,
+                    httpHeaders: coverHeaders,
+                    width: 56,
+                    height: 56,
                     borderRadius: BorderRadius.circular(10),
-                    child: CachedNetworkImage(
-                      imageUrl: coverImageUrl,
-                      httpHeaders: coverHeaders,
-                      width: 56,
-                      height: 56,
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => Container(
-                        width: 56,
-                        height: 56,
-                        color: colorScheme.surfaceContainerHighest,
-                      ),
-                      errorWidget: (context, url, error) => Container(
-                        width: 56,
-                        height: 56,
-                        color: colorScheme.surfaceContainerHighest,
-                        child: Icon(
-                          Icons.hide_image_outlined,
-                          size: 20,
-                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-                        ),
-                      ),
-                    ),
                   ),
                   const SizedBox(width: 12),
                 ],

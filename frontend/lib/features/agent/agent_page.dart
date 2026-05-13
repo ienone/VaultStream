@@ -1,10 +1,9 @@
-import 'dart:convert';
-
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
+import 'models/agent_result.dart';
 
 class AgentPage extends ConsumerStatefulWidget {
   const AgentPage({super.key});
@@ -43,10 +42,7 @@ class _AgentPageState extends ConsumerState<AgentPage> {
       final dio = ref.read(apiClientProvider);
       final response = await dio.post(
         '/agent/run',
-        data: {
-          'message': prompt,
-          'session_id': _sessionId,
-        },
+        data: {'message': prompt, 'session_id': _sessionId},
         options: Options(
           sendTimeout: const Duration(seconds: 8),
           receiveTimeout: const Duration(seconds: 20),
@@ -54,21 +50,21 @@ class _AgentPageState extends ConsumerState<AgentPage> {
       );
 
       final data = response.data as Map<String, dynamic>? ?? {};
-      final tool = (data['tool'] as String?) ?? 'unknown';
-      final result = data['result'] as Map<String, dynamic>? ?? {};
-      final content = _formatAgentOutput(tool: tool, result: result);
+      final agentResponse = AgentRunResponse.fromJson(data);
 
       setState(() {
-        _messages.add(_AgentMessage.assistant(content, tool: tool));
+        _messages.add(
+          _AgentMessage.assistant(
+            agentResponse.result.toDisplayText(),
+            tool: agentResponse.tool,
+          ),
+        );
       });
     } on DioException catch (e) {
       setState(() {
         _messages.add(
           _AgentMessage.error(
-            formatApiErrorMessage(
-              e,
-              fallbackMessage: 'Agent 请求失败，请稍后重试',
-            ),
+            formatApiErrorMessage(e, fallbackMessage: 'Agent 请求失败，请稍后重试'),
           ),
         );
       });
@@ -82,41 +78,6 @@ class _AgentPageState extends ConsumerState<AgentPage> {
         _scrollToBottom();
       }
     }
-  }
-
-  String _formatAgentOutput({
-    required String tool,
-    required Map<String, dynamic> result,
-  }) {
-    if (tool == 'search_content') {
-      final items = (result['items'] as List<dynamic>? ?? [])
-          .whereType<Map<String, dynamic>>()
-          .toList();
-      if (items.isEmpty) return '未找到相关内容。';
-      final lines = <String>['共 ${items.length} 条结果:'];
-      for (final item in items.take(6)) {
-        final title = (item['title'] as String?)?.trim();
-        final url = (item['url'] as String?)?.trim();
-        final contentId = item['content_id'];
-        lines.add('- [${contentId ?? "-"}] ${title?.isNotEmpty == true ? title : url ?? "无标题"}');
-      }
-      return lines.join('\n');
-    }
-
-    if (tool == 'list_groups') {
-      final groups = (result['groups'] as List<dynamic>? ?? [])
-          .whereType<Map<String, dynamic>>()
-          .toList();
-      if (groups.isEmpty) return '当前没有可用群组。';
-      final lines = <String>['可用群组 ${groups.length} 个:'];
-      for (final group in groups.take(8)) {
-        lines.add('- ${group['title'] ?? group['chat_id']} (${group['chat_id']})');
-      }
-      return lines.join('\n');
-    }
-
-    const encoder = JsonEncoder.withIndent('  ');
-    return encoder.convert(result);
   }
 
   void _scrollToBottom() {
@@ -325,11 +286,7 @@ class _MessageBubble extends StatelessWidget {
 enum _MessageRole { user, assistant, error }
 
 class _AgentMessage {
-  const _AgentMessage({
-    required this.role,
-    required this.content,
-    this.tool,
-  });
+  const _AgentMessage({required this.role, required this.content, this.tool});
 
   factory _AgentMessage.user(String content) =>
       _AgentMessage(role: _MessageRole.user, content: content);

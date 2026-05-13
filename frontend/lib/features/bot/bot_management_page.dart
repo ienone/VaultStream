@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/sse_service.dart';
 import '../../core/utils/toast.dart';
+import 'models/bot_config.dart';
 
 class BotManagementPage extends ConsumerStatefulWidget {
   const BotManagementPage({super.key});
@@ -17,7 +18,7 @@ class BotManagementPage extends ConsumerStatefulWidget {
 
 class _BotManagementPageState extends ConsumerState<BotManagementPage> {
   bool _loading = true;
-  List<Map<String, dynamic>> _configs = const [];
+  List<BotConfig> _configs = const [];
   StreamSubscription<SseEvent>? _sseSub;
   String? _syncProgressText;
 
@@ -64,7 +65,8 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
       final dio = ref.read(apiClientProvider);
       final response = await dio.get('/bot-config');
       final data = (response.data as List<dynamic>)
-          .map((e) => (e as Map).cast<String, dynamic>())
+          .whereType<Map>()
+          .map((item) => BotConfig.fromJson(item.cast<String, dynamic>()))
           .toList();
       if (mounted) {
         setState(() {
@@ -80,9 +82,9 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
     }
   }
 
-  Map<String, dynamic>? _configFor(String platform) {
+  BotConfig? _configFor(String platform) {
     for (final config in _configs) {
-      if ((config['platform'] ?? '').toString() == platform) {
+      if (config.platform == platform) {
         return config;
       }
     }
@@ -132,15 +134,17 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
     final subtitle = cfg == null
         ? '尚未配置'
         : [
-            '状态: ${cfg['enabled'] == true ? '启用' : '禁用'}',
-            '群组数: ${cfg['chat_count'] ?? 0}',
-            if (cfg['bot_username'] != null) '@${cfg['bot_username']}',
+            '状态: ${cfg.enabled ? '启用' : '禁用'}',
+            '群组数: ${cfg.chatCount}',
+            if (cfg.botUsername != null) '@${cfg.botUsername}',
           ].join('  ·  ');
 
     return Card(
       margin: EdgeInsets.zero,
       child: ListTile(
-        title: Text(cfg == null ? title : (cfg['name'] ?? title).toString()),
+        title: Text(
+          cfg == null ? title : (cfg.name.isEmpty ? title : cfg.name),
+        ),
         subtitle: Text(subtitle),
         trailing: cfg == null
             ? const Icon(Icons.chevron_right_rounded)
@@ -166,9 +170,9 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
     );
   }
 
-  Future<void> _sync(Map<String, dynamic> cfg) async {
+  Future<void> _sync(BotConfig cfg) async {
     final dio = ref.read(apiClientProvider);
-    final response = await dio.post('/bot-config/${cfg['id']}/sync-chats');
+    final response = await dio.post('/bot-config/${cfg.id}/sync-chats');
     final data = (response.data as Map).cast<String, dynamic>();
     if (!mounted) return;
     Toast.show(
@@ -178,9 +182,9 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
     await _loadConfigs();
   }
 
-  Future<void> _showQr(Map<String, dynamic> cfg) async {
+  Future<void> _showQr(BotConfig cfg) async {
     final dio = ref.read(apiClientProvider);
-    final response = await dio.get('/bot-config/${cfg['id']}/qr-code');
+    final response = await dio.get('/bot-config/${cfg.id}/qr-code');
     final data = (response.data as Map).cast<String, dynamic>();
     if (!mounted) return;
     showDialog(
@@ -200,18 +204,12 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
     );
   }
 
-  Future<void> _showEditDialog(Map<String, dynamic> cfg) async {
-    final nameController = TextEditingController(
-      text: (cfg['name'] ?? '').toString(),
-    );
+  Future<void> _showEditDialog(BotConfig cfg) async {
+    final nameController = TextEditingController(text: cfg.name);
     final tokenController = TextEditingController();
-    final httpController = TextEditingController(
-      text: (cfg['napcat_http_url'] ?? '').toString(),
-    );
-    final wsController = TextEditingController(
-      text: (cfg['napcat_ws_url'] ?? '').toString(),
-    );
-    final enabled = ValueNotifier<bool>(cfg['enabled'] == true);
+    final httpController = TextEditingController(text: cfg.napcatHttpUrl ?? '');
+    final wsController = TextEditingController(text: cfg.napcatWsUrl ?? '');
+    final enabled = ValueNotifier<bool>(cfg.enabled);
     String? nameError;
     String? httpUrlError;
 
@@ -232,14 +230,14 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
                     labelText: '名称',
                     errorText: nameError,
                   ),
-                  if (cfg['platform'] == 'telegram') ...[
+                  if (cfg.platform == 'telegram') ...[
                     const SizedBox(height: 12),
                     _buildDialogTextField(
                       controller: tokenController,
                       labelText: '新 Token（可留空）',
                     ),
                   ],
-                  if (cfg['platform'] == 'qq') ...[
+                  if (cfg.platform == 'qq') ...[
                     const SizedBox(height: 12),
                     _buildDialogTextField(
                       controller: httpController,
@@ -284,7 +282,7 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
                   setStateDialog(() => nameError = '名称为必填项');
                   return;
                 }
-                if (cfg['platform'] == 'qq' && trimmedHttp.isEmpty) {
+                if (cfg.platform == 'qq' && trimmedHttp.isEmpty) {
                   setStateDialog(
                     () => httpUrlError = 'QQ/Napcat 至少需要填写 HTTP URL',
                   );
@@ -296,20 +294,20 @@ class _BotManagementPageState extends ConsumerState<BotManagementPage> {
                   'name': trimmedName,
                   'enabled': enabled.value,
                 };
-                if (cfg['platform'] == 'telegram' &&
+                if (cfg.platform == 'telegram' &&
                     tokenController.text.trim().isNotEmpty) {
                   payload['bot_token'] = tokenController.text.trim();
                 }
-                if (cfg['platform'] == 'qq') {
+                if (cfg.platform == 'qq') {
                   payload['napcat_http_url'] = trimmedHttp;
                   payload['napcat_ws_url'] = wsController.text.trim();
                 }
                 try {
-                  await dio.patch('/bot-config/${cfg['id']}', data: payload);
+                  await dio.patch('/bot-config/${cfg.id}', data: payload);
                   if (ctx.mounted) Navigator.of(ctx).pop();
                   await _loadConfigs();
                   if (!mounted) return;
-                  final isTelegram = cfg['platform'] == 'telegram';
+                  final isTelegram = cfg.platform == 'telegram';
                   final enabledNow = enabled.value;
                   final tokenUpdated = tokenController.text.trim().isNotEmpty;
                   if (isTelegram && (enabledNow || tokenUpdated)) {
