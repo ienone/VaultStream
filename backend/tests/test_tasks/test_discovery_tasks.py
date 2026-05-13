@@ -67,7 +67,7 @@ async def test_sync_creates_content_from_rss(db_session):
         new_callable=AsyncMock,
         return_value=(fake_items, "cursor-abc"),
     ), patch(
-        "app.tasks.discovery_sync.PatrolService.score_pending",
+        "app.services.patrol_service.PatrolService.score_pending",
         new_callable=AsyncMock,
         return_value=0,
     ), patch(
@@ -118,7 +118,7 @@ async def test_sync_prefers_explicit_cover_url_over_first_media_url(db_session):
         new_callable=AsyncMock,
         return_value=(fake_items, None),
     ), patch(
-        "app.tasks.discovery_sync.PatrolService.score_pending",
+        "app.services.patrol_service.PatrolService.score_pending",
         new_callable=AsyncMock,
         return_value=0,
     ), patch(

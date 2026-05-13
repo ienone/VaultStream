@@ -18,7 +18,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.core.logging import logger, log_context
 from app.core.database import AsyncSessionLocal
 from app.core.time_utils import utcnow
-from app.models import Content, ContentStatus, Platform, DistributionRule, ReviewStatus
+from app.models import Content, ContentStatus, Platform
 from app.adapters import AdapterFactory, close_adapter
 from app.adapters.errors import AdapterError, RetryableAdapterError
 from app.core.config import settings
@@ -29,6 +29,8 @@ from app.media.color import extract_cover_color
 from app.core.queue import task_queue
 from app.utils.datetime_utils import normalize_datetime_for_db
 from app.utils.url_utils import normalize_share_url_input
+from app.services.post_ingest import PostIngestService
+from app.services.settings_service import get_setting_value
 
 
 class ContentParser:
@@ -164,7 +166,6 @@ class ContentParser:
         content.rich_payload = getattr(parsed, 'rich_payload', None)
 
         # 私有归档媒体处理（可能更新 parsed.body / media_urls / cover_url 等）
-        from app.services.settings_service import get_setting_value
         enable_processing = await get_setting_value("enable_archive_media_processing", settings.enable_archive_media_processing)
         if enable_processing:
             try:
@@ -220,20 +221,15 @@ class ContentParser:
         await session.commit()
         logger.info("内容解析完成")
 
-        # 自动生成摘要
-        enable_auto_summary = await get_setting_value("enable_auto_summary", settings.enable_auto_summary)
-        from app.services.content_summary_service import generate_summary_for_content
-        try:
-            if enable_auto_summary:
-                await generate_summary_for_content(session, content.id)
-                logger.info(f"摘要处理完成: content_id={content.id}, auto_ai={enable_auto_summary}")
-            else:
-                logger.debug(f"未开启自动摘要生成, 跳过: content_id={content.id}")
-        except Exception as e:
-            logger.warning(f"摘要生成/处理失败: {e}")
-
-        # Phase 2: 解析成功且摘要（可能）生成后异步建立语义索引
-        self._schedule_embedding_index(content.id)
+        await PostIngestService().run_for_content(
+            session,
+            content,
+            source="parse",
+            summary=True,
+            embedding=True,
+            patrol=False,
+            distribution=False,
+        )
 
         # 广播更新事件
         from app.core.events import event_bus
@@ -246,15 +242,7 @@ class ContentParser:
         })
 
     def _schedule_embedding_index(self, content_id: int) -> None:
-        async def _run():
-            try:
-                from app.services.embedding_service import EmbeddingService
-
-                await EmbeddingService().index_content(content_id)
-            except Exception as e:
-                logger.warning("语义索引失败(已忽略): content_id={}, error={}", content_id, e)
-
-        asyncio.create_task(_run())
+        PostIngestService().schedule_embedding_index(content_id)
 
     async def _handle_parse_error(self, session, content, task_data, error, attempt, max_attempts):
         """处理解析错误"""
@@ -298,36 +286,7 @@ class ContentParser:
 
     async def _check_auto_approval(self, session, content):
         """M4: 解析完成后尝试自动审批"""
-        try:
-            from app.services.distribution.decision import (
-                check_match_conditions,
-                DECISION_FILTERED,
-            )
-            from app.services.distribution.scheduler import enqueue_content
-
-            rules_result = await session.execute(
-                select(DistributionRule).where(DistributionRule.enabled == True)
-            )
-            enabled_rules = rules_result.scalars().all()
-
-            for rule in enabled_rules:
-                if rule.approval_required:
-                    continue
-
-                decision = check_match_conditions(content, rule.match_conditions or {})
-                if decision.bucket == DECISION_FILTERED:
-                    continue
-
-                content.review_status = ReviewStatus.AUTO_APPROVED
-                content.reviewed_at = utcnow()
-                content.review_note = f"Auto-approved (rule: {rule.name})"
-                await session.commit()
-
-                await enqueue_content(content.id, session=session)
-                logger.info(f"内容已自动审批: content_id={content.id}, rule={rule.name}")
-                return
-        except Exception as e:
-            logger.warning(f"自动审批检查失败: {e}", exc_info=True)
+        await PostIngestService().auto_approve_and_enqueue(session, content)
 
     _MAX_ARCHIVE_METADATA_BYTES = 512 * 1024  # 512KB
 

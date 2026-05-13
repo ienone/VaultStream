@@ -6,9 +6,9 @@ M4: 分发引擎模块。
 from typing import List
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime
 
 from app.core.logging import logger
+from app.core.time_utils import utcnow
 from app.models import Content, DistributionRule, ReviewStatus
 from .decision import check_match_conditions, DECISION_FILTERED
 
@@ -53,7 +53,7 @@ class DistributionEngine:
 
             if await self._check_match(content, rule):
                 content.review_status = ReviewStatus.AUTO_APPROVED
-                content.reviewed_at = datetime.utcnow()
+                content.reviewed_at = utcnow()
                 content.review_note = f"Auto-approved (rule: {rule.name})"
 
                 await self.db.commit()
@@ -63,10 +63,10 @@ class DistributionEngine:
                     content.id,
                 )
                 
-                # 自动审批后触发队列入队
                 try:
-                    from .scheduler import enqueue_content_background
-                    await enqueue_content_background(content.id)
+                    from .scheduler import enqueue_content
+
+                    await enqueue_content(content.id, session=self.db)
                 except Exception as e:
                     logger.warning(f"Failed to enqueue after auto-approve: {e}")
                 
@@ -101,7 +101,7 @@ class DistributionEngine:
             elif content.review_status == ReviewStatus.PENDING:
                 if await _matches_any_auto_approve_rule(content):
                     content.review_status = ReviewStatus.AUTO_APPROVED
-                    content.reviewed_at = datetime.utcnow()
+                    content.reviewed_at = utcnow()
                     content.review_note = "Rule update auto-approved"
                     changes += 1
                     auto_approved_ids.append(int(content.id))
@@ -111,10 +111,10 @@ class DistributionEngine:
             logger.info("Rules updated: %s content status changes", changes)
 
         if auto_approved_ids:
-            from .scheduler import enqueue_content_background
+            from .scheduler import enqueue_content
 
             for content_id in auto_approved_ids:
                 try:
-                    await enqueue_content_background(content_id)
+                    await enqueue_content(content_id, session=self.db)
                 except Exception as e:
                     logger.warning("Failed to enqueue after refresh auto-approve: {}", e)

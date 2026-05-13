@@ -30,7 +30,7 @@ from app.models import (
     LayoutType,
     Platform,
 )
-from app.services.patrol_service import PatrolService
+from app.services.post_ingest import PostIngestService
 from app.services.settings_service import get_setting_value
 from app.utils.url_utils import normalize_url_for_dedup
 from app.utils.datetime_utils import normalize_datetime_for_db
@@ -219,8 +219,21 @@ class DiscoverySyncTask:
                 except Exception as e:
                     logger.warning(f"Discovery media archiving [{source.name}] error: {e}")
 
-                patrol = PatrolService()
-                await patrol.score_pending(db)
+                pipeline = PostIngestService()
+                for content_id in new_content_ids:
+                    result = await db.execute(select(Content).where(Content.id == content_id))
+                    content = result.scalar_one_or_none()
+                    if content is not None:
+                        await pipeline.run_for_content(
+                            db,
+                            content,
+                            source="discovery",
+                            summary=True,
+                            embedding=True,
+                            patrol=False,
+                            distribution=True,
+                        )
+                await pipeline.score_discovery(db)
 
         except Exception as e:
             source.last_error = str(e)[:500]

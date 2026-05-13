@@ -15,6 +15,7 @@ from app.utils.tags import normalize_tags
 from app.core.queue import task_queue
 from app.core.logging import logger
 from app.core.events import event_bus
+from app.services.post_ingest import PostIngestService
 
 class ContentService:
     def __init__(self, db: AsyncSession):
@@ -155,6 +156,16 @@ class ContentService:
                 "platform": content.platform.value if content.platform else None,
                 "status": content.status.value if content.status else None,
             })
+        elif content.status == ContentStatus.PARSE_SUCCESS:
+            await PostIngestService().run_for_content(
+                self.db,
+                content,
+                source=source_name or "share",
+                summary=True,
+                embedding=True,
+                patrol=False,
+                distribution=True,
+            )
 
         return content
 
