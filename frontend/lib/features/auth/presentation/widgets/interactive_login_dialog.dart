@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:frontend/core/network/api_client.dart';
+import 'package:frontend/core/utils/safe_url_launcher.dart';
 
 class InteractiveLoginDialog extends ConsumerStatefulWidget {
   final String platform;
@@ -154,10 +154,7 @@ class _InteractiveLoginDialogState
 
   Future<void> _launchCaptchaUrl() async {
     if (_captchaUrl != null) {
-      final url = Uri.parse(_captchaUrl!);
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url, mode: LaunchMode.externalApplication);
-      }
+      await SafeUrlLauncher.openExternal(context, _captchaUrl);
     }
   }
 
@@ -174,7 +171,8 @@ class _InteractiveLoginDialogState
             children: [
               if (_status == 'initializing')
                 const CircularProgressIndicator()
-              else if (_status == 'waiting_scan' || _status == 'needs_captcha') ...[
+              else if (_status == 'waiting_scan' ||
+                  _status == 'needs_captcha') ...[
                 // 使用 ValueListenableBuilder 单独监听二维码变化，不引发整棵树重建
                 ValueListenableBuilder<String?>(
                   valueListenable: _qrcodeNotifier,
@@ -203,7 +201,10 @@ class _InteractiveLoginDialogState
                   const SizedBox(height: 8),
                   const Text(
                     '触发人机验证',
-                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   ElevatedButton.icon(

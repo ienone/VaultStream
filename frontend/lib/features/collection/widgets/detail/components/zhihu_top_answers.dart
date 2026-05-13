@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:frontend/core/utils/media_utils.dart';
+import 'package:frontend/core/utils/safe_url_launcher.dart';
 import '../../../../../core/network/api_client.dart';
 import '../../../../../core/network/image_headers.dart';
 import 'small_stat_item.dart';
@@ -74,10 +74,7 @@ class ZhihuTopAnswers extends ConsumerWidget {
               child: InkWell(
                 onTap: () {
                   if (url != null) {
-                    launchUrl(
-                      Uri.parse(url),
-                      mode: LaunchMode.externalApplication,
-                    );
+                    SafeUrlLauncher.openExternal(context, url);
                   }
                 },
                 child: Padding(
@@ -93,10 +90,7 @@ class ZhihuTopAnswers extends ConsumerWidget {
                               backgroundImage: CachedNetworkImageProvider(
                                 mapUrl(authorAvatar, apiBaseUrl),
                                 headers: buildImageHeaders(
-                                  imageUrl: mapUrl(
-                                    authorAvatar,
-                                    apiBaseUrl,
-                                  ),
+                                  imageUrl: mapUrl(authorAvatar, apiBaseUrl),
                                   baseUrl: apiBaseUrl,
                                   apiToken: apiToken,
                                 ),
@@ -146,9 +140,7 @@ class ZhihuTopAnswers extends ConsumerWidget {
                                     SmallStatItem(
                                       icon: Icons.chat_bubble_outline,
                                       label: '评论',
-                                      value: formatCount(
-                                        commentCount,
-                                      ),
+                                      value: formatCount(commentCount),
                                     ),
                                   ],
                                 ),
@@ -160,15 +152,9 @@ class ZhihuTopAnswers extends ConsumerWidget {
                             ClipRRect(
                               borderRadius: BorderRadius.circular(16),
                               child: CachedNetworkImage(
-                                imageUrl: mapUrl(
-                                  coverUrl,
-                                  apiBaseUrl,
-                                ),
+                                imageUrl: mapUrl(coverUrl, apiBaseUrl),
                                 httpHeaders: buildImageHeaders(
-                                  imageUrl: mapUrl(
-                                    coverUrl,
-                                    apiBaseUrl,
-                                  ),
+                                  imageUrl: mapUrl(coverUrl, apiBaseUrl),
                                   baseUrl: apiBaseUrl,
                                   apiToken: apiToken,
                                 ),

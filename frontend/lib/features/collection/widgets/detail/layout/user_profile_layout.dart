@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:frontend/core/utils/media_utils.dart';
+import 'package:frontend/core/utils/safe_url_launcher.dart';
 import '../../../../../core/network/image_headers.dart';
 import '../../../../../core/constants/platform_constants.dart';
 import '../../../models/content.dart';
@@ -118,7 +118,8 @@ class UserProfileLayout extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               GestureDetector(
-                                onTap: () => _launchAuthorProfile(detail),
+                                onTap: () =>
+                                    _launchAuthorProfile(context, detail),
                                 child: Text(
                                   detail.authorName ?? 'Unknown',
                                   style: theme.textTheme.displaySmall?.copyWith(
@@ -155,8 +156,7 @@ class UserProfileLayout extends StatelessWidget {
                     const SizedBox(height: 40),
                     SummarySection(detail: detail),
                     const SizedBox(height: 40),
-                    if (detail.body != null &&
-                        detail.body!.isNotEmpty)
+                    if (detail.body != null && detail.body!.isNotEmpty)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                         child: Text(
@@ -181,7 +181,7 @@ class UserProfileLayout extends StatelessWidget {
     );
   }
 
-  void _launchAuthorProfile(ContentDetail detail) {
+  void _launchAuthorProfile(BuildContext context, ContentDetail detail) {
     if (detail.authorId != null && detail.authorId!.isNotEmpty) {
       String url;
       if (detail.platform.isZhihu) {
@@ -195,7 +195,7 @@ class UserProfileLayout extends StatelessWidget {
       } else {
         return;
       }
-      launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      SafeUrlLauncher.openExternal(context, url);
     }
   }
 }

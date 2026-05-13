@@ -3,9 +3,9 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/platform_constants.dart';
 import '../../core/network/sse_service.dart';
+import '../../core/utils/safe_url_launcher.dart';
 import '../../core/utils/toast.dart';
 import 'models/content.dart';
 import 'providers/collection_provider.dart';
@@ -261,10 +261,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         IconButton.filledTonal(
           tooltip: '阅读原文',
           icon: const Icon(Icons.open_in_new_rounded, size: 20),
-          onPressed: () => launchUrl(
-            Uri.parse(detail.url),
-            mode: LaunchMode.externalApplication,
-          ),
+          onPressed: () => SafeUrlLauncher.openExternal(context, detail.url),
         ),
       ],
     );

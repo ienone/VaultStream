@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/providers/system_status_provider.dart';
+import '../../../core/utils/safe_url_launcher.dart';
 import '../../settings/presentation/widgets/setting_components.dart'
     as settings_ui;
 import '../../review/providers/bot_chats_provider.dart';
@@ -328,10 +328,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
           childrenPadding: const EdgeInsets.all(16),
           children: [
             OutlinedButton.icon(
-              onPressed: () => launchUrl(
-                Uri.parse(url),
-                mode: LaunchMode.externalApplication,
-              ),
+              onPressed: () => SafeUrlLauncher.openExternal(context, url),
               icon: Icon(icon, size: 18),
               label: Text('在浏览器中打开 $platform'),
               style: OutlinedButton.styleFrom(

@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:frontend/core/utils/media_utils.dart';
+import 'package:frontend/core/utils/safe_url_launcher.dart';
 import '../../../../../core/network/api_client.dart';
 import '../../../../../core/network/image_headers.dart';
 import '../../../../../core/constants/platform_constants.dart';
@@ -41,16 +41,16 @@ class AuthorHeader extends ConsumerWidget {
 
     final bool isEdited =
         detail.updatedAt
-                .difference(detail.publishedAt ?? detail.createdAt)
-                .inMinutes
-                .abs() >
-            60;
+            .difference(detail.publishedAt ?? detail.createdAt)
+            .inMinutes
+            .abs() >
+        60;
     final String editedStr = isEdited
         ? DateFormat('yyyy-MM-dd HH:mm').format(detail.updatedAt.toLocal())
         : '';
 
     return GestureDetector(
-      onTap: () => _launchAuthorProfile(detail),
+      onTap: () => _launchAuthorProfile(context, detail),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -143,13 +143,13 @@ class AuthorHeader extends ConsumerWidget {
     );
   }
 
-  void _launchAuthorProfile(ContentDetail detail) {
+  void _launchAuthorProfile(BuildContext context, ContentDetail detail) {
     // 优先使用后端返回的 authorUrl
     if (detail.authorUrl != null && detail.authorUrl!.isNotEmpty) {
-      launchUrl(Uri.parse(detail.authorUrl!), mode: LaunchMode.externalApplication);
+      SafeUrlLauncher.openExternal(context, detail.authorUrl);
       return;
     }
-    
+
     // 根据平台构造 URL
     if (detail.authorId != null && detail.authorId!.isNotEmpty) {
       String url;
@@ -166,7 +166,7 @@ class AuthorHeader extends ConsumerWidget {
       } else {
         return;
       }
-      launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      SafeUrlLauncher.openExternal(context, url);
     }
   }
 }

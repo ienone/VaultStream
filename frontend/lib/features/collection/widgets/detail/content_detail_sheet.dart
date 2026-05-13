@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../models/content.dart';
 import '../../providers/collection_provider.dart';
 import '../../utils/content_parser.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/utils/safe_url_launcher.dart';
 import 'components/content_side_info_card.dart';
 import 'components/rich_content.dart';
 
@@ -145,9 +145,9 @@ class ContentDetailSheet extends ConsumerWidget {
                         children: [
                           Expanded(
                             child: FilledButton.icon(
-                              onPressed: () => launchUrl(
-                                Uri.parse(detail.url),
-                                mode: LaunchMode.externalApplication,
+                              onPressed: () => SafeUrlLauncher.openExternal(
+                                context,
+                                detail.url,
                               ),
                               icon: const Icon(Icons.open_in_new),
                               label: const Text('原始链接'),
