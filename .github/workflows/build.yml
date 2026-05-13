@@ -44,7 +44,8 @@ jobs:
         run: |
           flutter build apk --debug \
             --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL || 'http://localhost:8000' }} \
-            --dart-define=API_TOKEN=${{ secrets.API_TOKEN || '' }}
+            --dart-define=API_TOKEN=${{ secrets.API_TOKEN || '' }} \
+            --dart-define=DEBUG_LOG=false
         working-directory: frontend
         env:
           GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
@@ -53,7 +54,8 @@ jobs:
         run: |
           flutter build apk --release \
             --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL || 'http://localhost:8000' }} \
-            --dart-define=API_TOKEN=${{ secrets.API_TOKEN || '' }}
+            --dart-define=API_TOKEN=${{ secrets.API_TOKEN || '' }} \
+            --dart-define=DEBUG_LOG=false
         working-directory: frontend
         env:
           GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
@@ -95,7 +97,8 @@ jobs:
         run: |
           flutter build web --release \
             --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL || 'http://localhost:8000' }} \
-            --dart-define=API_TOKEN=${{ secrets.API_TOKEN || '' }}
+            --dart-define=API_TOKEN=${{ secrets.API_TOKEN || '' }} \
+            --dart-define=DEBUG_LOG=false
         working-directory: frontend
 
       - name: Upload Web Build
@@ -131,7 +134,7 @@ jobs:
         working-directory: frontend
 
       - name: Build Linux
-        run: flutter build linux --release
+        run: flutter build linux --release --dart-define=DEBUG_LOG=false
         working-directory: frontend
 
       - name: Upload Linux Build

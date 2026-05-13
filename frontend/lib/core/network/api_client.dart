@@ -69,12 +69,43 @@ String formatApiErrorMessage(
     parts.add(info.message);
   }
 
-  if (includeRequestId && info.requestId != null && info.requestId!.isNotEmpty) {
+  if (includeRequestId &&
+      info.requestId != null &&
+      info.requestId!.isNotEmpty) {
     final rid = info.requestId!;
     final shortId = rid.length > 8 ? rid.substring(0, 8) : rid;
     parts.add('RID:$shortId');
   }
   return parts.join(' | ');
+}
+
+final _sensitiveHeaderPattern = RegExp(
+  r'^(\s*)(authorization|x-api-token|cookie|set-cookie)(\s*:\s*).*$',
+  caseSensitive: false,
+);
+
+final _sensitiveValuePattern = RegExp(
+  r'\b(api[_-]?token|apitoken|authorization|cookie|bot[_-]?token)(\s*[:=]\s*)([^,\s}\]]+)',
+  caseSensitive: false,
+);
+
+String redactDebugLogLine(String line) {
+  var redacted = line.replaceFirstMapped(
+    _sensitiveHeaderPattern,
+    (match) => '${match.group(1)}${match.group(2)}${match.group(3)}<redacted>',
+  );
+  redacted = redacted.replaceAllMapped(
+    _sensitiveValuePattern,
+    (match) => '${match.group(1)}${match.group(2)}<redacted>',
+  );
+  return redacted;
+}
+
+void redactedDebugPrint(Object object) {
+  for (final line in object.toString().split('\n')) {
+    // ignore: avoid_print
+    print(redactDebugLogLine(line));
+  }
 }
 
 @riverpod
@@ -98,7 +129,9 @@ Dio apiClient(Ref ref) {
         final info = parseApiErrorInfo(e);
         if (EnvConfig.debugLog) {
           // ignore: avoid_print
-          print('API error: code=${info.code} message=${info.message} rid=${info.requestId}');
+          print(
+            'API error: code=${info.code} message=${info.message} rid=${info.requestId}',
+          );
         }
         return handler.next(e);
       },
@@ -111,10 +144,10 @@ Dio apiClient(Ref ref) {
         responseBody: true,
         requestHeader: true,
         requestBody: true,
+        logPrint: redactedDebugPrint,
       ),
     );
   }
 
   return dio;
 }
-

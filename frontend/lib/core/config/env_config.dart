@@ -11,6 +11,6 @@ class EnvConfig {
 
   static const bool debugLog = bool.fromEnvironment(
     'DEBUG_LOG',
-    defaultValue: true,
+    defaultValue: false,
   );
 }
