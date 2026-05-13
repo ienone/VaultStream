@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Body
 from sqlalchemy import select, and_, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db, db_ping
+from app.core.database import get_db, get_database_health
 from app.models import SystemSetting, Content, DiscoveryState
 from app.schemas import (
     SystemSettingResponse, SystemSettingUpdate, DashboardStats, 
@@ -72,18 +72,24 @@ def _serialize_setting_for_response(setting: SystemSetting) -> dict:
 async def health_check():
     """健康检查"""
     queue_ok = await task_queue.ping()
-    db_ok = await db_ping()
+    db_health = await get_database_health()
+    db_ok = db_health["status"] == "ok"
+    fts_ok = db_health.get("fts", {}).get("available", False)
     queue_size = await task_queue.get_queue_size()
     
-    status = "ok" if (queue_ok and db_ok) else "degraded"
+    status = "ok" if (queue_ok and db_ok and fts_ok) else "degraded"
     
     return {
         "status": status,
         "queue_size": queue_size,
         "components": {
             "db": "ok" if db_ok else "error",
-            "queue": "ok" if queue_ok else "error"
-        }
+            "queue": "ok" if queue_ok else "error",
+            "fts": "ok" if fts_ok else db_health.get("fts", {}).get("status", "error"),
+        },
+        "checks": {
+            "database": db_health,
+        },
     }
 
 @router.get("/init-status")

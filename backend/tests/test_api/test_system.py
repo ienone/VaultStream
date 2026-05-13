@@ -19,6 +19,9 @@ class TestSystemAPI:
         assert data["status"] in ["ok", "degraded"]
         assert "components" in data
         assert "db" in data["components"]
+        assert "fts" in data["components"]
+        assert "checks" in data
+        assert data["checks"]["database"]["fts"]["available"] is True
     
     @pytest.mark.asyncio
     async def test_api_root(self, client: AsyncClient):

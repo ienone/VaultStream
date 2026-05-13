@@ -9,6 +9,8 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.models import Content
 
+_fts_warning_emitted = False
+
 
 def build_like_condition(query: str, *, columns: Sequence[ColumnElement]) -> ColumnElement:
     like_expr = f"%{query}%"
@@ -26,10 +28,14 @@ async def fetch_fts_content_ids(
     if limit is not None:
         sql += " LIMIT :limit"
         params["limit"] = int(limit)
+    global _fts_warning_emitted
     try:
         rows = (await session.execute(text(sql), params)).all()
         return [int(r[0]) for r in rows]
-    except Exception:
+    except Exception as e:
+        if not _fts_warning_emitted:
+            logger.warning("FTS search unavailable, falling back to LIKE queries: {}", e)
+            _fts_warning_emitted = True
         return []
 
 
@@ -85,4 +91,3 @@ async def rank_ids_by_fts_or_like(
         )
     ).scalars().all()
     return [int(cid) for cid in fallback_ids]
-
