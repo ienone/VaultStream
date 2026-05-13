@@ -9,11 +9,23 @@ import asyncio
 import os
 import time
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Body
-from sqlalchemy import select, and_, func, or_
+from sqlalchemy import Integer, select, and_, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db, get_database_health
-from app.models import SystemSetting, Content, DiscoveryState
+from app.core.db_adapter import AsyncSessionLocal
+from app.models import (
+    BotConfig,
+    Content,
+    ContentQueueItem,
+    DiscoverySource,
+    DiscoveryState,
+    QueueItemStatus,
+    SystemSetting,
+    Task,
+    TaskStatus,
+)
 from app.schemas import (
     SystemSettingResponse, SystemSettingUpdate, DashboardStats, 
     QueueStats, TagStats, QueueOverviewStats, DistributionStatusStats,
@@ -68,6 +80,111 @@ def _serialize_setting_for_response(setting: SystemSetting) -> dict:
         "updated_at": setting.updated_at,
     }
 
+
+async def _count_by_status(db: AsyncSession, model, status_column, enum_cls) -> dict[str, int]:
+    rows = (
+        await db.execute(
+            select(status_column, func.count())
+            .select_from(model)
+            .group_by(status_column)
+        )
+    ).all()
+    counts = {item.value: 0 for item in enum_cls}
+    for status, count in rows:
+        key = status.value if hasattr(status, "value") else str(status)
+        counts[key] = int(count or 0)
+    return counts
+
+
+async def _build_background_diagnostics(db: AsyncSession) -> dict[str, Any]:
+    task_counts = await _count_by_status(db, Task, Task.status, TaskStatus)
+    queue_counts = await _count_by_status(
+        db,
+        ContentQueueItem,
+        ContentQueueItem.status,
+        QueueItemStatus,
+    )
+    retryable_distribution = (
+        await db.execute(
+            select(func.count())
+            .select_from(ContentQueueItem)
+            .where(ContentQueueItem.status == QueueItemStatus.FAILED)
+            .where(ContentQueueItem.attempt_count < ContentQueueItem.max_attempts)
+        )
+    ).scalar() or 0
+
+    source_stats = (
+        await db.execute(
+            select(
+                func.count(DiscoverySource.id),
+                func.max(DiscoverySource.last_sync_at),
+                func.sum(
+                    func.cast(DiscoverySource.last_error.is_not(None), Integer)
+                ),
+            )
+        )
+    ).one()
+
+    return {
+        "parse_tasks": {
+            "pending": task_counts.get(TaskStatus.PENDING.value, 0),
+            "running": task_counts.get(TaskStatus.RUNNING.value, 0),
+            "failed": task_counts.get(TaskStatus.FAILED.value, 0),
+            "completed": task_counts.get(TaskStatus.COMPLETED.value, 0),
+        },
+        "distribution_queue": {
+            "scheduled": queue_counts.get(QueueItemStatus.SCHEDULED.value, 0),
+            "processing": queue_counts.get(QueueItemStatus.PROCESSING.value, 0),
+            "failed": queue_counts.get(QueueItemStatus.FAILED.value, 0),
+            "success": queue_counts.get(QueueItemStatus.SUCCESS.value, 0),
+            "retryable_failed": int(retryable_distribution),
+        },
+        "discovery_sync": {
+            "source_count": int(source_stats[0] or 0),
+            "last_success_at": source_stats[1],
+            "last_error_count": int(source_stats[2] or 0),
+        },
+    }
+
+
+async def _build_provider_diagnostics(db: AsyncSession) -> dict[str, Any]:
+    setting_rows = (
+        await db.execute(
+            select(SystemSetting.key, SystemSetting.value).where(
+                SystemSetting.key.in_(
+                    [
+                        "text_llm_api_key",
+                        "text_llm_model",
+                        "embedding_api_key",
+                        "embedding_model",
+                    ]
+                )
+            )
+        )
+    ).all()
+    stored = {key: value for key, value in setting_rows}
+
+    enabled_bot_count = (
+        await db.execute(
+            select(func.count()).select_from(BotConfig).where(BotConfig.enabled == True)  # noqa: E712
+        )
+    ).scalar() or 0
+
+    return {
+        "text_llm": {
+            "configured": bool(stored.get("text_llm_api_key") or settings.text_llm_api_key),
+            "model": stored.get("text_llm_model") or settings.text_llm_model,
+        },
+        "embedding": {
+            "configured": bool(stored.get("embedding_api_key") or settings.embedding_api_key),
+            "model": stored.get("embedding_model") or settings.embedding_model,
+        },
+        "bots": {
+            "enabled_configs": int(enabled_bot_count),
+        },
+    }
+
+
 @router.get("/health")
 async def health_check():
     """健康检查"""
@@ -76,6 +193,9 @@ async def health_check():
     db_ok = db_health["status"] == "ok"
     fts_ok = db_health.get("fts", {}).get("available", False)
     queue_size = await task_queue.get_queue_size()
+    async with AsyncSessionLocal() as db:
+        background = await _build_background_diagnostics(db)
+        providers = await _build_provider_diagnostics(db)
     
     status = "ok" if (queue_ok and db_ok and fts_ok) else "degraded"
     
@@ -86,9 +206,17 @@ async def health_check():
             "db": "ok" if db_ok else "error",
             "queue": "ok" if queue_ok else "error",
             "fts": "ok" if fts_ok else db_health.get("fts", {}).get("status", "error"),
+            "workers": "ok",
+            "providers": "ok",
         },
         "checks": {
             "database": db_health,
+            "workers": {
+                "parse_worker_count": settings.parse_worker_count,
+                "queue_worker_count": settings.queue_worker_count,
+            },
+            "providers": providers,
+            "background_tasks": background,
         },
     }
 

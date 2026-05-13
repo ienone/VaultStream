@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import math
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -235,6 +236,7 @@ class EmbeddingService:
         date_to: Optional[datetime],
         session: AsyncSession,
     ) -> list[SemanticSearchHit]:
+        started_at = time.perf_counter()
         filters = self._build_content_filters(platform=platform, date_from=date_from, date_to=date_to)
         candidate_limit = max(50, top_k * 6)
 
@@ -258,6 +260,14 @@ class EmbeddingService:
 
         merged = self._rrf_merge(vector_ids=vector_ids, fts_ids=fts_ids, top_k=top_k)
         if not merged:
+            logger.bind(
+                component="semantic_search",
+                candidate_limit=candidate_limit,
+                vector_candidates=len(vector_ids),
+                fts_candidates=len(fts_ids),
+                result_count=0,
+                elapsed_ms=round((time.perf_counter() - started_at) * 1000, 2),
+            ).info("Semantic search completed")
             return []
 
         merged_ids = [cid for cid, _ in merged]
@@ -293,6 +303,14 @@ class EmbeddingService:
                 chunk_index=cidx,
                 chunk_title=ctitle
             ))
+        logger.bind(
+            component="semantic_search",
+            candidate_limit=candidate_limit,
+            vector_candidates=len(vector_ids),
+            fts_candidates=len(fts_ids),
+            result_count=len(results),
+            elapsed_ms=round((time.perf_counter() - started_at) * 1000, 2),
+        ).info("Semantic search completed")
         return results
 
 
@@ -465,7 +483,12 @@ class EmbeddingService:
                 return self._build_local_embedding(text_value)
             return self._normalize_vector([float(v) for v in vector])
         except Exception as e:
-            logger.warning(f"Embedding remote call failed, fallback to local: {e}")
+            logger.bind(
+                component="embedding",
+                model=model,
+                task_type=task_type,
+                fallback="local_hash",
+            ).warning(f"Embedding remote call failed, fallback to local: {e}")
             return self._build_local_embedding(text_value)
 
     async def _get_embedding_model(self) -> str:
