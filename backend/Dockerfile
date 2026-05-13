@@ -12,6 +12,7 @@ ENV SQLITE_DB_PATH=/app/data/vaultstream.db
 ENV QUEUE_TYPE=sqlite
 ENV STORAGE_BACKEND=local
 ENV STORAGE_LOCAL_ROOT=/app/data/media
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 # 安全默认值
 ENV APP_ENV=prod
 ENV DEBUG=False
@@ -36,11 +37,19 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY app /app/app
 COPY systemd /app/systemd
 
-# 创建数据目录
-RUN mkdir -p /app/data/media /app/logs
+# 创建运行用户和数据目录
+RUN groupadd --system vaultstream \
+    && useradd --system --gid vaultstream --home-dir /app --shell /usr/sbin/nologin vaultstream \
+    && mkdir -p /app/data/media /app/logs \
+    && chown -R vaultstream:vaultstream /app /ms-playwright
 
 # 暴露端口
 EXPOSE 8000
+
+USER vaultstream
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v1/health || exit 1
 
 # 启动命令
 CMD ["python", "-m", "app.main"]
