@@ -152,10 +152,12 @@ class PatrolService:
         Returns count of successfully scored items.
         """
         scored = 0
-        for item in items:
-            ok = await self.score_item(item, interest_profile=interest_profile)
-            if ok:
-                scored += 1
+        size = max(1, batch_size)
+        for start in range(0, len(items), size):
+            for item in items[start:start + size]:
+                ok = await self.score_item(item, interest_profile=interest_profile)
+                if ok:
+                    scored += 1
         return scored
 
     async def score_pending(self, db: AsyncSession) -> int:

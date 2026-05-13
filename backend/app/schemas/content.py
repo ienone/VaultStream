@@ -3,11 +3,10 @@
 """
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 import json
 
 from app.models import Platform, ContentStatus, ReviewStatus, LayoutType
-from app.constants import SUPPORTED_PLATFORMS
 from app.schemas.base import UtcDatetime, OptionalUtcDatetime
 
 NOTE_MAX_LENGTH = 2000 # 备注内容的最大长度

@@ -2,7 +2,7 @@
 通用的 schema 定义与基类模型
 """
 from datetime import datetime
-from typing import Optional, List, Dict, Any, TypeVar, Generic
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 from app.models import Platform, ContentStatus, ReviewStatus, LayoutType
 from app.schemas.base import UtcDatetime

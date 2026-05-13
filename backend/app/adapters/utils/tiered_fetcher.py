@@ -12,7 +12,6 @@ import re
 import asyncio
 from dataclasses import dataclass, field
 from typing import Optional
-import anyio
 from urllib.parse import urlparse
 from loguru import logger
 

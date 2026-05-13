@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any
 from markdownify import markdownify as md
 from bs4 import BeautifulSoup
-from .models import ZhihuQuestion, ZhihuAuthor
+from .models import ZhihuAuthor
 from .base import extract_initial_data, preprocess_zhihu_html, extract_images
 from app.adapters.base import ParsedContent, LAYOUT_ARTICLE, LAYOUT_GALLERY
 from datetime import datetime

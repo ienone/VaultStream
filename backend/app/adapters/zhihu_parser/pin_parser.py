@@ -1,7 +1,7 @@
 import re
 from typing import Optional, Dict, Any
 from bs4 import BeautifulSoup
-from .models import ZhihuPin, ZhihuAuthor
+from .models import ZhihuAuthor
 from .base import extract_initial_data, preprocess_zhihu_html, extract_images
 from app.adapters.base import ParsedContent, LAYOUT_GALLERY
 from app.adapters.utils import generate_title_from_text

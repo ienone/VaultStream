@@ -25,7 +25,7 @@ def _create_engine():
     )
     
     @event.listens_for(_engine.sync_engine, "connect")
-    def set_sqlite_pragma(dbapi_conn, connection_record):
+    def set_sqlite_pragma(dbapi_conn, _connection_record):
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA busy_timeout=30000")
@@ -39,11 +39,11 @@ def _create_engine():
     # 慢查询日志
     if settings.slow_query_threshold_ms > 0:
         @event.listens_for(_engine.sync_engine, "before_cursor_execute")
-        def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        def _before_cursor_execute(conn, cursor, statement, parameters, context, _executemany):
             conn.info.setdefault("query_start_time", []).append(time.monotonic())
 
         @event.listens_for(_engine.sync_engine, "after_cursor_execute")
-        def _after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        def _after_cursor_execute(conn, cursor, statement, parameters, context, _executemany):
             start_times = conn.info.get("query_start_time")
             if not start_times:
                 return

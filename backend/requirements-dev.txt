@@ -7,3 +7,4 @@ pytest-env
 respx
 pip-audit
 bandit
+vulture
