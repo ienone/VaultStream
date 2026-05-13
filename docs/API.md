@@ -1,8 +1,8 @@
 # VaultStream API 文档
 
 > 版本: v0.1.0  
-> 更新: 2026-03-17  
-> 本文档按当前代码实现更新（SSE + ContentQueueItem + /distribution-queue/*）
+> 更新: 2026-05-13  
+> 本文档按当前代码实现更新（OpenAPI endpoint inventory + health diagnostics + ContentQueueItem + /distribution-queue/*）
 
 ---
 
@@ -14,6 +14,111 @@
 - `Authorization: Bearer <token>`
 
 未配置 `API_TOKEN` 时可跳过鉴权（仅建议本地开发）。
+
+---
+
+## OpenAPI 端点清单
+
+该清单由当前 FastAPI 应用的 OpenAPI schema 生成：
+
+```powershell
+.venv\Scripts\python.exe scripts\export_openapi_endpoints.py
+```
+
+| Methods | Path |
+| :--- | :--- |
+| `GET` | `/api` |
+| `POST` | `/api/v1/agent/run` |
+| `GET` | `/api/v1/agent/tools` |
+| `POST` | `/api/v1/agent/tools/{tool_name}/invoke` |
+| `GET, POST` | `/api/v1/bot-config` |
+| `POST` | `/api/v1/bot-config/service/telegram/restart` |
+| `POST` | `/api/v1/bot-config/service/telegram/start` |
+| `POST` | `/api/v1/bot-config/service/telegram/stop` |
+| `DELETE, PATCH` | `/api/v1/bot-config/{config_id}` |
+| `POST` | `/api/v1/bot-config/{config_id}/activate` |
+| `GET` | `/api/v1/bot-config/{config_id}/qr-code` |
+| `POST` | `/api/v1/bot-config/{config_id}/sync-chats` |
+| `GET, POST` | `/api/v1/bot/chats` |
+| `POST` | `/api/v1/bot/chats/sync` |
+| `DELETE, GET, PATCH` | `/api/v1/bot/chats/{bot_chat_id}` |
+| `GET, PUT` | `/api/v1/bot/chats/{bot_chat_id}/rules` |
+| `POST` | `/api/v1/bot/chats/{bot_chat_id}/toggle` |
+| `PUT` | `/api/v1/bot/chats:upsert` |
+| `POST` | `/api/v1/bot/heartbeat` |
+| `GET` | `/api/v1/bot/runtime` |
+| `GET` | `/api/v1/bot/status` |
+| `POST` | `/api/v1/browser-auth/session/{platform}` |
+| `GET` | `/api/v1/browser-auth/session/{session_id}/qrcode` |
+| `GET` | `/api/v1/browser-auth/session/{session_id}/status` |
+| `POST` | `/api/v1/browser-auth/zhihu/refresh-zse` |
+| `DELETE` | `/api/v1/browser-auth/{platform}` |
+| `POST` | `/api/v1/browser-auth/{platform}/check` |
+| `POST` | `/api/v1/browser-auth/{platform}/logout` |
+| `GET` | `/api/v1/cards` |
+| `POST` | `/api/v1/cards/batch-review` |
+| `GET` | `/api/v1/cards/{card_id}` |
+| `POST` | `/api/v1/cards/{card_id}/review` |
+| `GET` | `/api/v1/contents` |
+| `DELETE, GET, PATCH` | `/api/v1/contents/{content_id}` |
+| `POST` | `/api/v1/contents/{content_id}/generate-summary` |
+| `POST` | `/api/v1/contents/{content_id}/re-parse` |
+| `POST` | `/api/v1/contents/{content_id}/retry` |
+| `GET` | `/api/v1/dashboard/queue` |
+| `GET` | `/api/v1/dashboard/stats` |
+| `GET` | `/api/v1/discovery/items` |
+| `POST` | `/api/v1/discovery/items/bulk-action` |
+| `GET, PATCH` | `/api/v1/discovery/items/{item_id}` |
+| `GET, PATCH` | `/api/v1/discovery/settings` |
+| `GET, POST` | `/api/v1/discovery/sources` |
+| `DELETE, GET, PUT` | `/api/v1/discovery/sources/{source_id}` |
+| `POST` | `/api/v1/discovery/sources/{source_id}/sync` |
+| `GET` | `/api/v1/discovery/stats` |
+| `POST` | `/api/v1/distribution-queue/batch-retry` |
+| `POST` | `/api/v1/distribution-queue/content/batch-push-now` |
+| `POST` | `/api/v1/distribution-queue/content/batch-repush-now` |
+| `POST` | `/api/v1/distribution-queue/content/batch-reschedule` |
+| `POST` | `/api/v1/distribution-queue/content/{content_id}/push-now` |
+| `POST` | `/api/v1/distribution-queue/content/{content_id}/reorder` |
+| `POST` | `/api/v1/distribution-queue/content/{content_id}/repush-now` |
+| `POST` | `/api/v1/distribution-queue/content/{content_id}/schedule` |
+| `POST` | `/api/v1/distribution-queue/content/{content_id}/status` |
+| `POST` | `/api/v1/distribution-queue/enqueue/{content_id}` |
+| `GET` | `/api/v1/distribution-queue/items` |
+| `GET` | `/api/v1/distribution-queue/items/{item_id}` |
+| `POST` | `/api/v1/distribution-queue/items/{item_id}/cancel` |
+| `POST` | `/api/v1/distribution-queue/items/{item_id}/push-now` |
+| `POST` | `/api/v1/distribution-queue/items/{item_id}/retry` |
+| `GET` | `/api/v1/distribution-queue/stats` |
+| `GET, POST` | `/api/v1/distribution-rules` |
+| `GET` | `/api/v1/distribution-rules/preview/stats` |
+| `DELETE, GET, PATCH` | `/api/v1/distribution-rules/{rule_id}` |
+| `GET` | `/api/v1/distribution-rules/{rule_id}/preview` |
+| `GET, POST` | `/api/v1/distribution-rules/{rule_id}/targets` |
+| `DELETE, PATCH` | `/api/v1/distribution-rules/{rule_id}/targets/{target_id}` |
+| `POST` | `/api/v1/distribution/trigger-run` |
+| `GET` | `/api/v1/events/health` |
+| `GET` | `/api/v1/events/subscribe` |
+| `GET` | `/api/v1/favorites-sync/status` |
+| `POST` | `/api/v1/favorites-sync/sync` |
+| `GET` | `/api/v1/health` |
+| `GET` | `/api/v1/init-status` |
+| `GET` | `/api/v1/media/{key}` |
+| `GET` | `/api/v1/proxy/image` |
+| `GET` | `/api/v1/pushed-records` |
+| `DELETE` | `/api/v1/pushed-records/{record_id}` |
+| `GET` | `/api/v1/render-config-presets` |
+| `GET` | `/api/v1/render-config-presets/{preset_id}` |
+| `GET` | `/api/v1/search/semantic` |
+| `GET` | `/api/v1/settings` |
+| `DELETE, GET, PUT` | `/api/v1/settings/{key}` |
+| `POST` | `/api/v1/shares` |
+| `GET` | `/api/v1/storage/stats` |
+| `GET` | `/api/v1/tags` |
+| `GET` | `/api/v1/targets` |
+| `POST` | `/api/v1/targets/batch-update` |
+| `POST` | `/api/v1/targets/test` |
+| `GET` | `/health` |
 
 ---
 
@@ -259,11 +364,18 @@ QQ 配置支持字段：`napcat_http_url`、`napcat_ws_url`、`napcat_access_tok
 - `GET /api/v1/tags`
 - `GET /api/v1/dashboard/stats`
 - `GET /api/v1/dashboard/queue`
+- `GET /api/v1/health`
 - `GET /health`
 
 `GET /api/v1/dashboard/queue` 返回：
 - `parse`: 解析阶段四态统计（`unprocessed`/`processing`/`parse_success`/`parse_failed`）
 - `distribution`: 解析成功后的分发三态统计（`will_push`/`filtered`/`pushed`）
+
+`GET /api/v1/health` 与 `GET /health` 返回同一结构，除 `db/queue/fts` 外还包含：
+
+- `checks.workers`: 解析 worker 与分发队列 worker 的配置数量。
+- `checks.providers`: text LLM、embedding、Bot 配置是否已配置。
+- `checks.background_tasks`: 解析任务表、分发队列、Discovery 同步源的 pending/failed/retry 统计与最近成功时间。
 
 ---
 

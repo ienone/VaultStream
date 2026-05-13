@@ -199,13 +199,14 @@ DatabaseAdapter (ABC)
 | PRAGMA | 值 | 效果 |
 |--------|-----|------|
 | `journal_mode` | WAL | 允许并发读写 |
+| `busy_timeout` | 30000 | 全量测试和后台任务竞争写锁时等待最多 30s |
 | `synchronous` | NORMAL | 平衡性能与安全 |
 | `cache_size` | -64000 | 64MB 缓存 |
 | `temp_store` | MEMORY | 临时表放内存 |
 | `mmap_size` | 268435456 | 256MB mmap |
 | `foreign_keys` | ON | 外键约束 |
 
-全局导出 `engine` 和 `AsyncSessionLocal`，供全项目使用。
+全局导出 `engine` 和 `AsyncSessionLocal`，供全项目使用。`init_db()` 还会调用 `ensure_content_fts()`，在启动时补齐 `contents_fts`、FTS trigger 和缺失行 backfill。
 
 ### 3.3 任务队列 — `queue.py` + `queue_adapter.py`
 
@@ -391,12 +392,13 @@ class QueueItemStatus: PENDING, SCHEDULED, PROCESSING, SUCCESS, FAILED, SKIPPED,
 | `distribution.py` | `/api/v1` | `CRUD /distribution-rules`, 预览, 渲染配置预设 |
 | `distribution.py` | `/api/v1` | 分发规则 + 分发目标管理 |
 | `distribution_queue.py` | `/api/v1` | 队列统计, 手动入队/重试/取消 |
-| `system.py` | `/api/v1` | `/health`, `/dashboard/stats`, `/settings` |
+| `system.py` | `/api/v1` | `/health`, `/dashboard/stats`, `/dashboard/queue`, `/settings`, `/tags` |
 | `media.py` | `/api/v1` | `GET /media/{key}` (本地代理), `GET /proxy/image` (远程代理) |
 | `bot_config.py` | `/api/v1` | Bot 配置 CRUD, 同步群组 |
 | `bot_management.py` | `/api/v1` | Bot 运行时, 心跳, 群组上报 |
-| `crawler.py` | `/api/v1/crawler` | 爬虫采集接口 |
 | `events.py` | `/api/v1` | `GET /events/subscribe` (SSE) |
+| `discovery.py` | `/api/v1` | Discovery source/item/settings/stats |
+| `agent.py` | `/api/v1` | Agent tools/run |
 
 ### 5.2 中间件
 
@@ -584,11 +586,12 @@ RetryableAdapterError (retryable=True)
 - **并发控制**：独立配置解析 Worker 和分发 Worker 的并发数。
 
 ### 9.2 内容解析 (parsing.py)
-- **职责**：调用适配器进行内容抓取、媒体转码、FTS5 索引更新。
-- **自动触发**：解析成功后可根据规则自动触发审批及分发。
+- **职责**：调用适配器进行内容抓取、媒体转码、摘要/RAG chunk、FTS5 索引更新。
+- **自动触发**：解析成功后可根据设置生成 summary，调度 embedding 索引，并根据分发规则触发审批及入队。
+- **诊断字段**：解析失败会写入 `failure_count`、`last_error`、`last_error_type`、`last_error_detail`、`last_error_at`，成功后清理最近错误字段。
 
 ### 9.3 分发推送 (distribution_worker.py)
-- **职责**：执行具体的推送动作，包含重试逻辑、PushedRecord 记录。
+- **职责**：执行具体的推送动作，包含重试逻辑、ContentQueueItem 状态推进与 PushedRecord 记录。
 - **解耦**：不关心具体的推送协议，通过 `push/` 工厂进行协议转发。
 
 ---
@@ -846,11 +849,26 @@ API 输出:
 ### 17.3 健康检查
 
 ```
-GET /health → { status, db }
-GET /api/v1/health → { status, queue_size, components }
+GET /health
+GET /api/v1/health
 ```
 
-### 17.4 运行参数
+两者返回同一结构：
+
+- `status`: `ok` 或 `degraded`
+- `components`: `db` / `queue` / `fts` / `workers` / `providers`
+- `checks.database`: DB ping 与 FTS 表、trigger、索引行数
+- `checks.workers`: 解析 worker 与分发队列 worker 配置数
+- `checks.providers`: text LLM、embedding、Bot 配置状态
+- `checks.background_tasks`: 解析任务、分发队列、Discovery 同步的 pending/failed/retry 统计
+
+后端 Docker 镜像内置 `HEALTHCHECK`，探测地址为 `http://localhost:8000/api/v1/health`。
+
+### 17.4 Docker 运行用户
+
+后端镜像使用非 root 用户 `vaultstream` 运行应用。构建阶段仍以 root 安装系统依赖和 Playwright WebKit，随后将 `/app` 与 `/ms-playwright` 授权给运行用户。
+
+### 17.5 运行参数
 
 | 参数 | 默认 | 说明 |
 |------|------|------|

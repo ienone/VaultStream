@@ -18,7 +18,8 @@
 | `source` | String | 来源标识 (如 `web_test`, `ios_shortcut`) |
 | 通用元数据 | | |
 | `title` | Text | 标题 |
-| `description` | Text | 简介/正文 |
+| `body` | Text | 正文/描述 |
+| `summary` | Text | AI 摘要，用于详情展示、RAG chunk 与全文检索 |
 | `author_name` | String | 作者昵称 |
 | `author_id` | String | 作者平台唯一 ID |
 | `cover_url` | Text | 封面图链接 |
@@ -52,12 +53,7 @@
 
 注意：这些字段由 worker 在解析异常时写入；成功解析后会清理 `last_error*` 字段但保留 `failure_count` 作为历史统计。
 
-架构初始化：使用仓库内的 SQL 脚本执行（位于 `backend/migrations/`）。例如：
-
-```bash
-cd backend
-sqlite3 data/vaultstream.db < migrations/m4_distribution_and_review.sql
-```
+架构初始化：应用启动时会通过 `Base.metadata.create_all` 创建 ORM 表，并在 `init_db()` 中补齐运行期必需的兼容结构，例如 `contents_fts`。历史库升级仍需要按版本执行 `backend/migrations/` 与 `scripts/` 中的一次性迁移脚本。
 
 ## 4. 索引 (M3)
 
@@ -69,8 +65,25 @@ sqlite3 data/vaultstream.db < migrations/m4_distribution_and_review.sql
 
 ### 全文搜索 (FTS5)
 针对 SQLite 平台，利用 `FTS5` 扩展创建了虚拟表 `contents_fts`，并配置了自动化触发器。
-- **搜索范围**: 标题 (`title`)、正文描述 (`description`)、作者昵称 (`author_name`)。
-- **同步机制**: 采用数据库级触发器 (`AFTER INSERT/UPDATE/DELETE`) 保证搜索索引与 `contents` 原表实时一致。
+- **搜索范围**: 标题 (`title`)、正文 (`body`)、摘要 (`summary`)。
+- **同步机制**: `app.core.database.ensure_content_fts()` 创建 `contents_fts` 及 `AFTER INSERT/UPDATE/DELETE` 触发器，并在启动时 backfill 缺失行。
+- **健康检查**: `/api/v1/health` 会返回 `checks.database.fts`，包含 `available`、`indexed_rows`、`content_rows`、`triggers`。
+
+## 4.1 语义检索索引 (`content_embeddings`)
+
+语义检索使用普通 SQLite 表保存向量 JSON，当前尚未依赖 sqlite-vec/sqlite-vss 扩展。
+
+| 字段名 | 类型 | 说明 |
+| :--- | :--- | :--- |
+| `content_id` | Integer | 外键，关联 `contents.id`，删除内容时级联清理 |
+| `chunk_index` | Integer | `-1` 表示全文/摘要，`0+` 表示 RAG chunk |
+| `chunk_title` | Text | chunk 标题 |
+| `embedding_model` | String | 模型签名，包含模型名与维度 |
+| `embedding` | JSON | 向量数组 |
+| `text_hash` | String | 文本 hash，用于避免重复索引 |
+| `source_text` | Text | 用于检索解释的原始文本片段 |
+
+`EmbeddingService.search_similar()` 会限制候选范围后在应用层计算相似度；后续如引入 sqlite-vec/sqlite-vss，需要同步迁移本表或新增虚拟表。
 
 ## 5. 任务队列表 (`tasks`)
 
@@ -84,6 +97,23 @@ sqlite3 data/vaultstream.db < migrations/m4_distribution_and_review.sql
 | `status` | Enum | `pending`, `running`, `completed`, `failed` |
 | `priority` | Integer | 优先级 (越大越靠前) |
 | `retry_count`| Integer | 已重试次数 |
+
+## 5.1 分发队列表 (`content_queue_items`)
+
+分发队列按 `(content_id, rule_id, bot_chat_id)` 建模，避免同一内容在同一规则/目标下重复入队。
+
+| 字段名 | 类型 | 说明 |
+| :--- | :--- | :--- |
+| `content_id` | Integer | 外键，关联 `contents.id` |
+| `rule_id` | Integer | 外键，关联 `distribution_rules.id` |
+| `bot_chat_id` | Integer | 外键，关联 `bot_chats.id` |
+| `status` | Enum | `scheduled`, `processing`, `success`, `failed` |
+| `attempt_count` | Integer | 已尝试次数 |
+| `max_attempts` | Integer | 最大尝试次数 |
+| `next_attempt_at` | DateTime | 下次可重试时间 |
+| `last_error` / `last_error_type` / `last_error_at` | 多类型 | 最近一次推送失败诊断 |
+
+`/api/v1/health` 的 `checks.background_tasks.distribution_queue` 会暴露 scheduled/processing/failed/success 与 retryable_failed 统计。
 
 
 ## 2. `pushed_records` 表 (分发追踪)
