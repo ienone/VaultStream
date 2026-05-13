@@ -3,6 +3,7 @@ Telegram 频道发现源适配器
 """
 from typing import Optional
 from app.core.logging import logger
+from app.adapters import managed_adapter
 from app.adapters.discovery.base import BaseDiscoveryScraper, DiscoveryItem
 from app.adapters.telegram import TelegramAdapter
 
@@ -20,9 +21,8 @@ class TelegramDiscoveryScraper(BaseDiscoveryScraper):
         new_cursor = last_cursor
 
         try:
-            adapter = TelegramAdapter()
-            parsed_contents = await adapter.parse_channel(channel_url, limit=15)
-            await adapter.close()
+            async with managed_adapter(TelegramAdapter()) as adapter:
+                parsed_contents = await adapter.parse_channel(channel_url, limit=15)
 
             # Telegram 抓取的顺序是从旧到新（网页底部是最新消息）
             # 反转为从新到旧

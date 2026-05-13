@@ -1,4 +1,6 @@
-from typing import Optional, Dict, Type, Any
+import inspect
+from contextlib import asynccontextmanager
+from typing import AsyncIterator, Optional, Dict, Type, Any
 from urllib.parse import urlparse
 from app.models import Platform
 from .base import PlatformAdapter, ParsedContent
@@ -63,6 +65,34 @@ class AdapterFactory:
         # 回退到通用适配器
         return UniversalAdapter(cookies=cookies, **kwargs)
 
+
+async def close_adapter(adapter: Any) -> None:
+    close = getattr(adapter, "close", None)
+    if close is None:
+        return
+    result = close()
+    if inspect.isawaitable(result):
+        await result
+
+
+@asynccontextmanager
+async def managed_adapter(adapter: PlatformAdapter) -> AsyncIterator[PlatformAdapter]:
+    try:
+        yield adapter
+    finally:
+        await close_adapter(adapter)
+
+
+@asynccontextmanager
+async def open_adapter(
+    platform: Platform,
+    cookies: Optional[Dict[str, str]] = None,
+    **kwargs: Any,
+) -> AsyncIterator[PlatformAdapter]:
+    adapter = AdapterFactory.create(platform, cookies=cookies, **kwargs)
+    async with managed_adapter(adapter) as active_adapter:
+        yield active_adapter
+
 __all__ = [
     "PlatformAdapter",
     "ParsedContent",
@@ -75,4 +105,7 @@ __all__ = [
     "RssAdapter",
     "UniversalAdapter",
     "AdapterFactory",
+    "close_adapter",
+    "managed_adapter",
+    "open_adapter",
 ]

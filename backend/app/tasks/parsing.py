@@ -19,7 +19,7 @@ from app.core.logging import logger, log_context
 from app.core.database import AsyncSessionLocal
 from app.core.time_utils import utcnow
 from app.models import Content, ContentStatus, Platform, DistributionRule, ReviewStatus
-from app.adapters import AdapterFactory
+from app.adapters import AdapterFactory, close_adapter
 from app.adapters.errors import AdapterError, RetryableAdapterError
 from app.core.config import settings
 from app.adapters.storage import get_storage_backend
@@ -74,10 +74,14 @@ class ContentParser:
                     await session.commit()
 
                     # 执行解析（带重试）
-                    parsed, adapter = await self._execute_parse_with_retry(content, attempt, max_attempts)
+                    adapter = None
+                    try:
+                        parsed, adapter = await self._execute_parse_with_retry(content, attempt, max_attempts)
 
-                    # 更新数据库
-                    await self._update_content(session, content, parsed, adapter)
+                        # 更新数据库
+                        await self._update_content(session, content, parsed, adapter)
+                    finally:
+                        await close_adapter(adapter)
                     
                     # 自动审批检查
                     await self._check_auto_approval(session, content)
@@ -98,6 +102,7 @@ class ContentParser:
         remaining_attempts = max(1, max_attempts - current_attempt)
         
         for i in range(remaining_attempts):
+            adapter = None
             try:
                 cookies = await self._get_platform_cookies(content.platform)
                 adapter_kwargs = {}
@@ -122,6 +127,7 @@ class ContentParser:
                 last_err = None
                 return parsed, adapter
             except AdapterError as e:
+                await close_adapter(adapter)
                 last_err = e
                 if not e.retryable:
                     raise
@@ -130,6 +136,7 @@ class ContentParser:
                 logger.warning(f"可重试错误，{delay:.1f}s 后重试: {e}")
                 await asyncio.sleep(delay)
             except Exception as e:
+                await close_adapter(adapter)
                 # 未分类异常：默认不重试
                 last_err = e
                 raise
@@ -817,8 +824,12 @@ class ContentParser:
                     await session.commit()
 
                     # 复用内部执行逻辑
-                    parsed, adapter = await self._execute_parse_with_retry(content, 0, 1)
-                    await self._update_content(session, content, parsed, adapter)
+                    adapter = None
+                    try:
+                        parsed, adapter = await self._execute_parse_with_retry(content, 0, 1)
+                        await self._update_content(session, content, parsed, adapter)
+                    finally:
+                        await close_adapter(adapter)
                     
                     logger.info(f"重试解析成功: {content_id} (attempt={attempt})")
                     return True

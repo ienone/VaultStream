@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func
 from sqlalchemy.exc import IntegrityError
 from app.models import Content, ContentStatus, ContentSource, PushedRecord, Platform, ReviewStatus
-from app.adapters import AdapterFactory
+from app.adapters import AdapterFactory, open_adapter
 from app.utils.url_utils import (
     extract_primary_url_candidate,
     is_url_like_input,
@@ -47,8 +47,8 @@ class ContentService:
             raise ValueError("Unsupported platform URL")
 
         # 3. 计算唯一标识
-        adapter = AdapterFactory.create(platform)
-        canonical_url = await adapter.clean_url(url_for_detect)
+        async with open_adapter(platform) as adapter:
+            canonical_url = await adapter.clean_url(url_for_detect)
         
         # 4. 去重查询
         stmt = select(Content).where(
