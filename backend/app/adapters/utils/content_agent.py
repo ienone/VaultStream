@@ -18,7 +18,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit, quote
 from loguru import logger
 
 from bs4 import BeautifulSoup
-from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
+from markdownify import markdownify
 from app.utils.html_preprocess import preprocess_code_blocks
 
 
@@ -235,7 +235,7 @@ def _build_image_summary(soup, base_url: str, limit: int = 20) -> str:
 # ============================================================
 
 def tool_convert_html(html: str, url: str, selector: str = "body", verbose: bool = True) -> str:
-    """BS4 + DefaultMarkdownGenerator, with link fixing and cleanup."""
+    """BS4 + markdownify conversion, with link fixing and cleanup."""
     soup = BeautifulSoup(html, "html.parser")
     try:
         target = soup.select_one(selector) if selector != "body" else None
@@ -252,16 +252,12 @@ def tool_convert_html(html: str, url: str, selector: str = "body", verbose: bool
                         break
                         
         clean_html = preprocess_code_blocks(str(target))
-        md_gen = DefaultMarkdownGenerator(
-            options={
-                "ignore_images": False,
-                "escape_html": True,
-                "skip_internal_links": True,
-                "body_width": 0,
-            }
+        md = markdownify(
+            clean_html,
+            heading_style="ATX",
+            bullets="-",
+            strip=["script", "style"],
         )
-        result = md_gen.generate_markdown(clean_html)
-        md = result.raw_markdown if hasattr(result, "raw_markdown") else str(result)
     except Exception as e:
         if verbose:
             logger.warning("conversion failed ({}), fallback to body text", e)

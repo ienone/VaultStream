@@ -1,5 +1,5 @@
 """
-HTML 预处理器：在传递给 DefaultMarkdownGenerator 之前，
+HTML 预处理器：在传递给 HTML-to-Markdown 转换器之前，
 清理代码块中的行号元素，将博客框架的代码高亮结构还原为标准 <pre><code>。
 """
 

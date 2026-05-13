@@ -37,7 +37,6 @@ feedparser
 
 # Crawler and discovery layer
 google-genai
-crawl4ai
 playwright
 langchain-openai
 openai
