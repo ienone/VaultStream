@@ -224,8 +224,11 @@ async def _get_content_by_filter(
         if chat_resp.status_code != 200:
             await update.message.reply_text("未找到当前频道对应的 Bot Chat 配置")
             return
-        chat_items = chat_resp.json() or []
-        bot_chat_id = chat_items[0].get("id") if chat_items else None
+        chat_data = chat_resp.json() or []
+        if isinstance(chat_data, dict):
+            bot_chat_id = chat_data.get("id")
+        else:
+            bot_chat_id = chat_data[0].get("id") if chat_data else None
         if not bot_chat_id:
             await update.message.reply_text("Bot Chat 配置缺少 ID")
             return

@@ -85,6 +85,7 @@ class BotConfigCreate(BaseModel):
     napcat_ws_url: Optional[str] = None
     napcat_access_token: Optional[str] = None
     enabled: bool = True
+    is_primary: bool = True
 
 
 class BotConfigUpdate(BaseModel):
@@ -94,6 +95,7 @@ class BotConfigUpdate(BaseModel):
     napcat_ws_url: Optional[str] = None
     napcat_access_token: Optional[str] = None
     enabled: Optional[bool] = None
+    is_primary: Optional[bool] = None
 
 
 class BotConfigResponse(BaseModel):
@@ -108,6 +110,7 @@ class BotConfigResponse(BaseModel):
     napcat_access_token_masked: Optional[str] = None
     
     enabled: bool
+    is_primary: bool
     
     bot_id: Optional[str]
     bot_username: Optional[str]

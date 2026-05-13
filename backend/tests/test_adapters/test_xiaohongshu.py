@@ -44,7 +44,7 @@ class TestXiaohongshuAdapter(AdapterTestBase):
     @pytest.mark.asyncio
     async def test_parse_note_mocked(self, adapter, httpx_mock):
         """Test parsing XHS note with mocked API response"""
-        note_id = "649f88b4000000001303eb07"
+        note_id = "69a7a9ff000000002802080d"
         url = f"https://www.xiaohongshu.com/discovery/item/{note_id}"
         mock_data = load_mock_json(f"note_{note_id}.json")
         
@@ -70,7 +70,7 @@ class TestXiaohongshuAdapter(AdapterTestBase):
     @pytest.mark.asyncio
     async def test_parse_user_mocked(self, adapter, httpx_mock):
         """Test parsing XHS user profile with mocked API response"""
-        user_id = "605fd1d10000000001008467"
+        user_id = "6458b418000000000f004c64"
         url = f"https://www.xiaohongshu.com/user/profile/{user_id}"
         mock_data = load_mock_json(f"user_{user_id}.json")
         

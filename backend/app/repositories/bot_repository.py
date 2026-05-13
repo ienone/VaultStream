@@ -33,6 +33,7 @@ class BotRepository:
 
         result = await self.db.execute(
             query.order_by(
+                BotConfig.is_primary.desc(),
                 BotConfig.enabled.desc(),
                 BotConfig.id.asc(),
             ).limit(1)

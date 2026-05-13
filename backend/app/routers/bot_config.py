@@ -4,7 +4,7 @@ import os
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -99,6 +99,7 @@ async def _to_bot_config_response(db: AsyncSession, cfg: BotConfig) -> BotConfig
         napcat_ws_url=cfg.napcat_ws_url,
         napcat_access_token_masked=mask_token_partial(cfg.napcat_access_token),
         enabled=bool(cfg.enabled),
+        is_primary=bool(cfg.is_primary),
         bot_id=cfg.bot_id,
         bot_username=cfg.bot_username,
         chat_count=chat_count,
@@ -117,35 +118,25 @@ async def create_bot_config(
     await _validate_bot_config_payload(payload, payload.platform)
 
     platform = BotConfigPlatform(payload.platform)
-    existing_result = await db.execute(
-        select(BotConfig).where(BotConfig.platform == platform)
-    )
-    db_cfg = existing_result.scalar_one_or_none()
-    created = False
-
-    if db_cfg:
-        db_cfg.name = payload.name
-        db_cfg.bot_token = payload.bot_token
-        db_cfg.napcat_http_url = payload.napcat_http_url
-        db_cfg.napcat_ws_url = payload.napcat_ws_url
-        db_cfg.napcat_access_token = payload.napcat_access_token
-        db_cfg.enabled = payload.enabled
-        db_cfg.updated_at = utcnow()
-    else:
-        db_cfg = BotConfig(
-            platform=platform,
-            name=payload.name,
-            bot_token=payload.bot_token,
-            napcat_http_url=payload.napcat_http_url,
-            napcat_ws_url=payload.napcat_ws_url,
-            napcat_access_token=payload.napcat_access_token,
-            enabled=payload.enabled,
-            # 历史兼容：启动脚本仍可能依赖 is_primary 判断 Telegram 自动拉起。
-            is_primary=True,
+    if payload.is_primary:
+        await db.execute(
+            update(BotConfig)
+            .where(BotConfig.platform == platform)
+            .values(is_primary=False, updated_at=utcnow())
         )
-        db.add(db_cfg)
-        await db.flush()
-        created = True
+
+    db_cfg = BotConfig(
+        platform=platform,
+        name=payload.name,
+        bot_token=payload.bot_token,
+        napcat_http_url=payload.napcat_http_url,
+        napcat_ws_url=payload.napcat_ws_url,
+        napcat_access_token=payload.napcat_access_token,
+        enabled=payload.enabled,
+        is_primary=payload.is_primary,
+    )
+    db.add(db_cfg)
+    await db.flush()
 
     await db.commit()
     await db.refresh(db_cfg)
@@ -158,8 +149,7 @@ async def create_bot_config(
         background_tasks.add_task(_auto_sync_chats_background, db_cfg.id)
 
     logger.info(
-        "Bot 配置已{}: id={} name={} platform={}",
-        "创建" if created else "更新",
+        "Bot 配置已创建: id={} name={} platform={}",
         db_cfg.id,
         db_cfg.name,
         db_cfg.platform.value,
@@ -193,6 +183,12 @@ async def update_bot_config(
     await _validate_bot_config_payload(payload, cfg.platform.value)
 
     update_data = payload.model_dump(exclude_unset=True)
+    if update_data.get("is_primary") is True:
+        await db.execute(
+            update(BotConfig)
+            .where(BotConfig.platform == cfg.platform, BotConfig.id != cfg.id)
+            .values(is_primary=False, updated_at=utcnow())
+        )
     for key, value in update_data.items():
         setattr(cfg, key, value)
 
@@ -208,6 +204,36 @@ async def update_bot_config(
         background_tasks.add_task(_auto_sync_chats_background, cfg.id)
 
     logger.info("Bot 配置已更新: id={} name={}", cfg.id, cfg.name)
+    return await _to_bot_config_response(db, cfg)
+
+
+@router.post("/{config_id}/activate", response_model=BotConfigResponse)
+async def activate_bot_config(
+    config_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    result = await db.execute(select(BotConfig).where(BotConfig.id == config_id))
+    cfg = result.scalar_one_or_none()
+    if not cfg:
+        raise HTTPException(status_code=404, detail="Bot config not found")
+
+    await db.execute(
+        update(BotConfig)
+        .where(BotConfig.platform == cfg.platform, BotConfig.id != cfg.id)
+        .values(is_primary=False, updated_at=utcnow())
+    )
+    cfg.is_primary = True
+    cfg.enabled = True
+    cfg.updated_at = utcnow()
+    await db.commit()
+    await db.refresh(cfg)
+
+    if cfg.platform == BotConfigPlatform.TELEGRAM:
+        sync_result = await _sync_telegram_bot_process(db, reason=f"activate_config:{cfg.id}")
+        logger.info("Telegram bot sync after activate: {}", sync_result)
+
+    logger.info("Bot 配置已激活: id={} name={}", cfg.id, cfg.name)
     return await _to_bot_config_response(db, cfg)
 
 

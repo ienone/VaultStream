@@ -37,6 +37,18 @@ from app.services.bot_config_runtime import get_primary_bot_config
 router = APIRouter()
 
 
+async def _get_chat_by_identifier(db: AsyncSession, identifier: str | int) -> BotChat | None:
+    text_id = str(identifier)
+    if text_id.isdigit():
+        result = await db.execute(select(BotChat).where(BotChat.id == int(text_id)))
+        chat = result.scalar_one_or_none()
+        if chat:
+            return chat
+
+    result = await db.execute(select(BotChat).where(BotChat.chat_id == text_id))
+    return result.scalar_one_or_none()
+
+
 async def _build_pipeline_stats(
     db: AsyncSession,
 ) -> tuple[QueueStats, DistributionStatusStats, dict[str, DistributionStatusStats]]:
@@ -126,15 +138,12 @@ async def create_bot_chat(
 
 @router.get("/bot/chats/{bot_chat_id}", response_model=BotChatResponse)
 async def get_bot_chat(
-    bot_chat_id: int,
+    bot_chat_id: str,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """获取单个群组/频道详情"""
-    result = await db.execute(
-        select(BotChat).where(BotChat.id == bot_chat_id)
-    )
-    chat = result.scalar_one_or_none()
+    chat = await _get_chat_by_identifier(db, bot_chat_id)
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
     return _chat_to_response(chat)
@@ -142,13 +151,12 @@ async def get_bot_chat(
 
 @router.get("/bot/chats/{bot_chat_id}/rules", response_model=BotChatRulesResponse)
 async def get_bot_chat_rules(
-    bot_chat_id: int,
+    bot_chat_id: str,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """获取某个群组绑定的规则"""
-    chat_result = await db.execute(select(BotChat).where(BotChat.id == bot_chat_id))
-    chat = chat_result.scalar_one_or_none()
+    chat = await _get_chat_by_identifier(db, bot_chat_id)
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
 
@@ -178,14 +186,13 @@ async def get_bot_chat_rules(
 
 @router.put("/bot/chats/{bot_chat_id}/rules", response_model=BotChatRulesResponse)
 async def assign_bot_chat_rules(
-    bot_chat_id: int,
+    bot_chat_id: str,
     payload: BotChatRuleAssignRequest,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """为群组批量配置规则（全量覆盖）"""
-    chat_result = await db.execute(select(BotChat).where(BotChat.id == bot_chat_id))
-    chat = chat_result.scalar_one_or_none()
+    chat = await _get_chat_by_identifier(db, bot_chat_id)
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
 
@@ -222,22 +229,19 @@ async def assign_bot_chat_rules(
 
     await db.commit()
 
-    refreshed = await get_bot_chat_rules(bot_chat_id=bot_chat_id, db=db, _=None)
+    refreshed = await get_bot_chat_rules(bot_chat_id=str(chat.id), db=db, _=None)
     return refreshed
 
 
 @router.patch("/bot/chats/{bot_chat_id}", response_model=BotChatResponse)
 async def update_bot_chat(
-    bot_chat_id: int,
+    bot_chat_id: str,
     update: BotChatUpdate,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """更新群组/频道配置"""
-    result = await db.execute(
-        select(BotChat).where(BotChat.id == bot_chat_id)
-    )
-    db_chat = result.scalar_one_or_none()
+    db_chat = await _get_chat_by_identifier(db, bot_chat_id)
     if not db_chat:
         raise HTTPException(status_code=404, detail="Chat not found")
     
@@ -272,15 +276,12 @@ async def update_bot_chat(
 
 @router.delete("/bot/chats/{bot_chat_id}")
 async def delete_bot_chat(
-    bot_chat_id: int,
+    bot_chat_id: str,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """删除群组/频道"""
-    result = await db.execute(
-        select(BotChat).where(BotChat.id == bot_chat_id)
-    )
-    db_chat = result.scalar_one_or_none()
+    db_chat = await _get_chat_by_identifier(db, bot_chat_id)
     if not db_chat:
         raise HTTPException(status_code=404, detail="Chat not found")
 
@@ -305,15 +306,12 @@ async def delete_bot_chat(
 
 @router.post("/bot/chats/{bot_chat_id}/toggle")
 async def toggle_bot_chat(
-    bot_chat_id: int,
+    bot_chat_id: str,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """切换群组/频道启用状态"""
-    result = await db.execute(
-        select(BotChat).where(BotChat.id == bot_chat_id)
-    )
-    db_chat = result.scalar_one_or_none()
+    db_chat = await _get_chat_by_identifier(db, bot_chat_id)
     if not db_chat:
         raise HTTPException(status_code=404, detail="Chat not found")
     

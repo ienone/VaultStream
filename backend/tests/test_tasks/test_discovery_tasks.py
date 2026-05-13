@@ -87,7 +87,7 @@ async def test_sync_creates_content_from_rss(db_session):
     synced = [c for c in contents if c.title in ("Post 1", "Post 2")]
     assert len(synced) == 2
     assert synced[0].platform == Platform.UNIVERSAL
-    assert synced[0].status == ContentStatus.UNPROCESSED
+    assert synced[0].status == ContentStatus.PARSE_SUCCESS
 
 
 @pytest.mark.asyncio
@@ -237,6 +237,7 @@ async def test_sync_dedup_backfills_missing_cover_from_explicit_rss_cover(db_ses
     )
     db_session.add(existing)
     await db_session.flush()
+    existing_id = existing.id
 
     source = DiscoverySource(
         kind=DiscoverySourceKind.RSS,
@@ -272,7 +273,7 @@ async def test_sync_dedup_backfills_missing_cover_from_explicit_rss_cover(db_ses
     db_session.expire_all()
     from sqlalchemy import select
 
-    result = await db_session.execute(select(Content).where(Content.id == existing.id))
+    result = await db_session.execute(select(Content).where(Content.id == existing_id))
     updated = result.scalar_one()
     assert updated.cover_url == "https://img.example.com/explicit-cover.jpg"
 

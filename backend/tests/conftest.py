@@ -24,7 +24,7 @@ DB_URL = f"sqlite+aiosqlite:///{TEST_DB_PATH}"
 # Ensure data directory exists
 os.makedirs("data", exist_ok=True)
 
-engine = create_async_engine(DB_URL, echo=False)
+engine = create_async_engine(DB_URL, echo=False, connect_args={"timeout": 30})
 TestingSessionLocal = sessionmaker(
     bind=engine,
     class_=AsyncSession,

@@ -6,11 +6,19 @@
 import asyncio
 
 from loguru import logger
-from sqlalchemy import delete, update
+from sqlalchemy import delete, select, update
 
 from app.core.db_adapter import AsyncSessionLocal
 from app.core.time_utils import utcnow
-from app.models import Content, DiscoveryState
+from app.models import (
+    Content,
+    ContentDiscoveryLink,
+    ContentEmbedding,
+    ContentQueueItem,
+    ContentSource,
+    DiscoveryState,
+    PushedRecord,
+)
 
 
 class DiscoveryCleanupTask:
@@ -57,18 +65,42 @@ class DiscoveryCleanupTask:
             )
 
             # Hard delete expired and old ignored items
-            result = await db.execute(
-                delete(Content)
-                .where(
-                    Content.discovery_state.in_(
-                        [
-                            DiscoveryState.EXPIRED,
-                            DiscoveryState.IGNORED,
-                        ]
+            target_ids = (
+                await db.execute(
+                    select(Content.id)
+                    .where(
+                        Content.discovery_state.in_(
+                            [
+                                DiscoveryState.EXPIRED,
+                                DiscoveryState.IGNORED,
+                            ]
+                        )
                     )
+                    .where(Content.expire_at != None)  # noqa: E711
+                    .where(Content.expire_at < now)
                 )
-                .where(Content.expire_at != None)  # noqa: E711
-                .where(Content.expire_at < now)
+            ).scalars().all()
+
+            if not target_ids:
+                await db.commit()
+                return
+
+            await db.execute(
+                update(Content)
+                .where(Content.parent_id.in_(target_ids))
+                .values(parent_id=None)
+            )
+            for model in (
+                ContentDiscoveryLink,
+                ContentEmbedding,
+                ContentQueueItem,
+                ContentSource,
+                PushedRecord,
+            ):
+                await db.execute(delete(model).where(model.content_id.in_(target_ids)))
+
+            result = await db.execute(
+                delete(Content).where(Content.id.in_(target_ids))
             )
 
             await db.commit()
