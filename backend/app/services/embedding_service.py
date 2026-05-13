@@ -503,7 +503,7 @@ class EmbeddingService:
             return vec
 
         for token in tokens:
-            digest = hashlib.md5(token.encode("utf-8")).hexdigest()
+            digest = hashlib.md5(token.encode("utf-8"), usedforsecurity=False).hexdigest()
             hashed = int(digest, 16)
             idx = hashed % self._LOCAL_DIM
             sign = -1.0 if ((hashed >> 8) & 1) else 1.0

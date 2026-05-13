@@ -35,6 +35,8 @@ REAL_KEY, REAL_BASE, REAL_MODEL = get_keys_manually()
 from app.adapters.utils.content_agent import process_content
 from app.adapters.utils.tiered_fetcher import FetchResult
 
+pytestmark = pytest.mark.integration
+
 # Load real HTML data for testing
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "universal")
 ITHOME_HTML_PATH = os.path.join(DATA_DIR, "ithome_926158.html")
