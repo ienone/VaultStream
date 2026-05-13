@@ -22,6 +22,7 @@ from app.models import (
     Platform,
 )
 from app.services.settings_service import get_setting_value
+from app.adapters.storage.manager import get_storage_backend
 
 
 @dataclass
@@ -29,15 +30,13 @@ class SemanticSearchHit:
     content: Content
     score: float
     match_source: str  # vector | fts | hybrid
+    chunk_index: int = -1
+    chunk_title: Optional[str] = None
 
 
 class EmbeddingService:
     """
-    语义索引与混合检索服务。
-
-    设计原则：
-    - 没有外部 embedding 配置时自动降级到本地确定性向量，保证功能可用；
-    - 索引和搜索接口可独立使用，便于任务/脚本/API 复用。
+    语义索引与混合检索服务。支持 AI 智能切片与多模态嵌入。
     """
 
     _RRF_K = 60
@@ -48,19 +47,8 @@ class EmbeddingService:
     _DOCUMENT_TASK_TYPE = "RETRIEVAL_DOCUMENT"
     _QUERY_TASK_TYPE = "RETRIEVAL_QUERY"
 
-    async def embed_content(self, content: Content) -> list[float]:
-        text_payload = self._build_content_text(content)
-        return await self._embed_text(text_payload, task_type=self._DOCUMENT_TASK_TYPE)
-
     async def embed_query(self, query: str) -> list[float]:
         return await self._embed_text(query, task_type=self._QUERY_TASK_TYPE)
-
-    async def index_content(self, content_id: int, *, session: Optional[AsyncSession] = None) -> bool:
-        if session is not None:
-            return await self._index_content_impl(content_id, session, own_session=False)
-
-        async with AsyncSessionLocal() as local_session:
-            return await self._index_content_impl(content_id, local_session, own_session=True)
 
     async def search(
         self,
@@ -95,6 +83,14 @@ class EmbeddingService:
                 session=local_session,
             )
 
+    async def index_content(self, content_id: int, *, session: Optional[AsyncSession] = None) -> bool:
+
+        if session is not None:
+            return await self._index_content_impl(content_id, session, own_session=False)
+
+        async with AsyncSessionLocal() as local_session:
+            return await self._index_content_impl(content_id, local_session, own_session=True)
+
     async def _index_content_impl(
         self,
         content_id: int,
@@ -113,37 +109,121 @@ class EmbeddingService:
         if content is None:
             return False
 
-        payload = self._build_content_text(content)
-        if not payload:
-            return False
-
-        text_hash = self._hash_text(payload)
-        model_signature = await self._get_document_embedding_signature()
-        existing = (
-            await session.execute(
-                select(ContentEmbedding).where(ContentEmbedding.content_id == content_id)
+        # 1. 准备全局摘要向量 (Index = -1)
+        global_payload = self._build_content_text(content)
+        if global_payload:
+            await self._upsert_embedding(
+                session, content_id, -1, "全局摘要", global_payload, []
             )
-        ).scalar_one_or_none()
 
-        if existing and existing.text_hash == text_hash and existing.embedding_model == model_signature:
-            return False
-
-        vector = await self._embed_text(payload, task_type=self._DOCUMENT_TASK_TYPE)
-        record = existing or ContentEmbedding(content_id=content_id)
-        record.embedding_model = model_signature
-        record.embedding = vector
-        record.text_hash = text_hash
-        record.source_text = payload[:4000]
-        record.indexed_at = datetime.utcnow()
-
-        if existing is None:
-            session.add(record)
+        # 2. 处理 AI 智能切片 (Index >= 0)
+        chunks = (content.rich_payload or {}).get("chunks", [])
+        if chunks:
+            logger.info(f"Indexing {len(chunks)} semantic chunks for content_id={content_id}")
+            for idx, chunk in enumerate(chunks):
+                title = chunk.get("title", f"片段 {idx}")
+                text_part = chunk.get("content", "")
+                media_refs = chunk.get("media_refs", [])
+                
+                if text_part:
+                    await self._upsert_embedding(
+                        session, content_id, idx, title, text_part, media_refs
+                    )
 
         if own_session:
             await session.commit()
         else:
             await session.flush()
         return True
+
+    async def _upsert_embedding(
+        self, 
+        session: AsyncSession, 
+        content_id: int, 
+        chunk_index: int, 
+        chunk_title: str,
+        text_val: str,
+        media_refs: list[str]
+    ):
+        """执行单个切片的向量化与入库"""
+        text_hash = self._hash_text(text_val + "".join(media_refs))
+        model_signature = await self._get_document_embedding_signature()
+        
+        existing = (
+            await session.execute(
+                select(ContentEmbedding).where(
+                    ContentEmbedding.content_id == content_id,
+                    ContentEmbedding.chunk_index == chunk_index
+                )
+            )
+        ).scalar_one_or_none()
+
+        if existing and existing.text_hash == text_hash and existing.embedding_model == model_signature:
+            return
+
+        # 调用多模态嵌入
+        vector = await self._embed_multimodal(text_val, media_refs)
+        
+        record = existing or ContentEmbedding(content_id=content_id, chunk_index=chunk_index)
+        record.embedding_model = model_signature
+        record.embedding = vector
+        record.text_hash = text_hash
+        record.source_text = text_val[:4000]
+        record.chunk_title = chunk_title
+        record.indexed_at = datetime.utcnow()
+
+        if existing is None:
+            session.add(record)
+
+    async def _embed_multimodal(self, text_val: str, media_refs: list[str]) -> list[float]:
+        """调用 Gemini V2 生成图文混合向量"""
+        if not media_refs:
+            return await self._embed_text(text_val, task_type=self._DOCUMENT_TASK_TYPE)
+
+        api_key = await self._get_embedding_api_key()
+        if not api_key:
+            return self._build_local_embedding(text_val)
+
+        storage = get_storage_backend()
+        mm_parts = []
+        
+        # 组装文本
+        mm_parts.append(text_val)
+        
+        # 组装图片
+        for ref in media_refs[:3]: # 限制每个切片最多 3 张图
+            if ref.startswith("local://"):
+                key = ref.replace("local://", "")
+                try:
+                    img_bytes = await storage.get_bytes(key)
+                    mm_parts.append({"mime_type": "image/jpeg", "data": img_bytes})
+                except Exception:
+                    continue
+
+        try:
+            from google import genai
+            from google.genai import types
+            model = await self._get_embedding_model()
+            output_dimensionality = await self._get_embedding_output_dimensionality()
+
+            def _call():
+                client = genai.Client(api_key=api_key)
+                return client.models.embed_content(
+                    model=model,
+                    contents=mm_parts,
+                    config=types.EmbedContentConfig(
+                        task_type=self._DOCUMENT_TASK_TYPE,
+                        output_dimensionality=output_dimensionality,
+                    ),
+                )
+
+            response = await asyncio.to_thread(_call)
+            vector = response.embeddings[0].values
+            return self._normalize_vector([float(v) for v in vector])
+        except Exception as e:
+            logger.warning(f"Multimodal embedding failed: {e}")
+            return await self._embed_text(text_val, task_type=self._DOCUMENT_TASK_TYPE)
+
 
     async def _search_impl(
         self,
@@ -165,8 +245,8 @@ class EmbeddingService:
             filters=filters,
             limit=candidate_limit,
         )
-        vector_ids = [cid for cid, _ in vector_ranked]
-        vector_score_map = {cid: score for cid, score in vector_ranked}
+        vector_ids = [cid for cid, _, _, _ in vector_ranked]
+        vector_meta_map = {cid: (score, cidx, ctitle) for cid, score, cidx, ctitle in vector_ranked}
 
         fts_ids = await rank_ids_by_fts_or_like(
             session=session,
@@ -192,19 +272,29 @@ class EmbeddingService:
             if content is None:
                 continue
 
-            in_vector = content_id in vector_score_map
+            in_vector = content_id in vector_meta_map
             in_fts = content_id in set(fts_ids)
-            if in_vector and in_fts:
-                source = "hybrid"
-            elif in_vector:
-                source = "vector"
+            
+            score = rrf_score
+            cidx, ctitle = -1, None
+            
+            if in_vector:
+                v_score, cidx, ctitle = vector_meta_map[content_id]
+                if not in_fts:
+                    score = max(rrf_score, v_score)
+                source = "hybrid" if in_fts else "vector"
             else:
                 source = "fts"
 
-            # 对外 score 使用融合分数；如果仅向量召回则保留较直观相似度下界
-            score = float(rrf_score if source != "vector" else max(rrf_score, vector_score_map[content_id]))
-            results.append(SemanticSearchHit(content=content, score=score, match_source=source))
+            results.append(SemanticSearchHit(
+                content=content, 
+                score=float(score), 
+                match_source=source,
+                chunk_index=cidx,
+                chunk_title=ctitle
+            ))
         return results
+
 
     async def _vector_rank_ids(
         self,
@@ -213,19 +303,32 @@ class EmbeddingService:
         query_vec: list[float],
         filters: list,
         limit: int,
-    ) -> list[tuple[int, float]]:
-        # 补充模型维度隔离墙：防止模型更替后新老向量维度不一致导致的错误截断或计算垃圾分数
-        current_model = await self._get_document_embedding_signature()
-        model_filters = list(filters)
-        model_filters.append(ContentEmbedding.embedding_model == current_model)
+    ) -> list[tuple[int, float, int, Optional[str]]]:
+        """
+        向量搜索：支持多切片。
+        返回: list[(content_id, score, chunk_index, chunk_title)]
+        """
+        # 获取当前模型的基础签名（忽略 task 类型）
+        model_base = await self._get_embedding_model()
+        dim = await self._get_embedding_output_dimensionality()
+        model_pattern = f"{model_base}|dim={dim}%" # 使用 LIKE 匹配
         
-        rows = (
-            await session.execute(
-                select(ContentEmbedding.content_id, ContentEmbedding.embedding)
-                .join(Content, Content.id == ContentEmbedding.content_id)
-                .where(and_(*model_filters))
+        model_filters = list(filters)
+        model_filters.append(ContentEmbedding.embedding_model.like(model_pattern))
+        
+        stmt = (
+            select(
+                ContentEmbedding.content_id, 
+                ContentEmbedding.embedding,
+                ContentEmbedding.chunk_index,
+                ContentEmbedding.chunk_title
             )
-        ).all()
+            .join(Content, Content.id == ContentEmbedding.content_id)
+            .where(and_(*model_filters))
+        )
+
+        
+        rows = (await session.execute(stmt)).all()
 
         if not rows:
             return []
@@ -233,24 +336,31 @@ class EmbeddingService:
         import numpy as np
         
         q = np.array(query_vec, dtype=np.float32)
-        doc_ids = np.array([row.content_id for row in rows])
         
-        # 安全转换：提取出纯净的、同维度的向量数组
-        vec_list = [self._coerce_vector(row.embedding) for row in rows]
-        valid_indices = [i for i, vec in enumerate(vec_list) if len(vec) == len(q) and len(vec) > 0]
-        
-        if not valid_indices:
-            return []
+        results = []
+        for row in rows:
+            vec = self._coerce_vector(row.embedding)
+            if len(vec) != len(q):
+                continue
             
-        filtered_ids = doc_ids[valid_indices]
-        filtered_vecs = np.array([vec_list[i] for i in valid_indices], dtype=np.float32)
+            score = float(np.dot(vec, q))
+            results.append((row.content_id, score, row.chunk_index, row.chunk_title))
 
-
-        scores = np.dot(filtered_vecs, q)
-
-        top_indices = np.argsort(scores)[::-1][:limit]
+        # 按分数排序
+        results.sort(key=lambda x: x[1], reverse=True)
         
-        return [(int(filtered_ids[i]), float(scores[i])) for i in top_indices]
+        # 结果去重：同一篇文章如果命中多个 chunk，只保留最高分的那个，但记录 chunk 信息
+        seen_content_ids = set()
+        unique_results = []
+        for cid, score, cidx, ctitle in results:
+            if cid not in seen_content_ids:
+                unique_results.append((cid, score, cidx, ctitle))
+                seen_content_ids.add(cid)
+                if len(unique_results) >= limit:
+                    break
+                    
+        return unique_results
+
 
     def _rrf_merge(self, *, vector_ids: list[int], fts_ids: list[int], top_k: int) -> list[tuple[int, float]]:
         scores: dict[int, float] = {}

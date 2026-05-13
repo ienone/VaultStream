@@ -213,9 +213,6 @@ class ContentParser:
         await session.commit()
         logger.info("内容解析完成")
 
-        # Phase 2: 解析成功后异步建立语义索引（失败不阻断主链路）
-        self._schedule_embedding_index(content.id)
-        
         # 自动生成摘要
         enable_auto_summary = await get_setting_value("enable_auto_summary", settings.enable_auto_summary)
         from app.services.content_summary_service import generate_summary_for_content
@@ -227,6 +224,9 @@ class ContentParser:
                 logger.debug(f"未开启自动摘要生成, 跳过: content_id={content.id}")
         except Exception as e:
             logger.warning(f"摘要生成/处理失败: {e}")
+
+        # Phase 2: 解析成功且摘要（可能）生成后异步建立语义索引
+        self._schedule_embedding_index(content.id)
 
         # 广播更新事件
         from app.core.events import event_bus

@@ -13,14 +13,15 @@ from app.models.base import Base
 
 
 class ContentEmbedding(Base):
-    """内容向量索引。每条内容最多一条当前向量记录。"""
+    """内容向量索引。支持一篇文章多个语义切片。"""
 
     __tablename__ = "content_embeddings"
     __table_args__ = (
-        UniqueConstraint("content_id", name="uq_content_embeddings_content_id"),
+        Index("ix_content_embeddings_content_chunk", "content_id", "chunk_index"),
         Index("ix_content_embeddings_indexed_at", "indexed_at"),
         Index("ix_content_embeddings_model", "embedding_model"),
     )
+
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     content_id: Mapped[int] = mapped_column(
@@ -28,6 +29,9 @@ class ContentEmbedding(Base):
         ForeignKey("contents.id", ondelete="CASCADE"),
         index=True,
     )
+
+    chunk_index: Mapped[int] = mapped_column(Integer, default=-1, index=True) # -1 表示全文/摘要，0+ 表示语义块
+    chunk_title: Mapped[Optional[str]] = mapped_column(Text, default=None)
 
     embedding_model: Mapped[str] = mapped_column(String(100), default="gemini-embedding-2-preview")
     embedding: Mapped[Any] = mapped_column(JSON, default=list)
