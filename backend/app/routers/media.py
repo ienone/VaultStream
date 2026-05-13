@@ -8,7 +8,7 @@ import ipaddress
 import mimetypes
 import socket
 import urllib.parse
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -19,6 +19,9 @@ from app.core.config import settings
 from app.adapters.storage import get_storage_backend, LocalStorageBackend
 
 router = APIRouter()
+
+_MAX_PROXY_IMAGE_BYTES = 10 * 1024 * 1024
+_MAX_PROXY_REDIRECTS = 5
 
 
 def _is_safe_url(url: str) -> bool:
@@ -34,10 +37,6 @@ def _is_safe_url(url: str) -> bool:
         for info in socket.getaddrinfo(hostname, None):
             addr = ipaddress.ip_address(info[4][0])
             
-            # 调试模式下放行所有 IP，避免 Fake-IP (TUN 模式) 或 Loopback 被误判拦截
-            if settings.debug:
-                continue
-
             # 放行 Fake-IP 常见网段 (Clash / V2Ray 等代理环境)
             if addr.version == 4 and addr in ipaddress.ip_network('198.18.0.0/15'):
                 continue
@@ -47,6 +46,68 @@ def _is_safe_url(url: str) -> bool:
         return True
     except (ValueError, socket.gaierror):
         return False
+
+
+async def _download_remote_image(
+    client: httpx.AsyncClient,
+    url: str,
+    headers: dict[str, str],
+) -> tuple[bytes, str, str]:
+    """下载远程图片，并在每次重定向前重新执行 SSRF 与大小校验。"""
+    current_url = url
+    for _ in range(_MAX_PROXY_REDIRECTS + 1):
+        if not _is_safe_url(current_url):
+            raise HTTPException(
+                status_code=400,
+                detail="目标 URL 不允许访问（内网地址或无效协议）",
+            )
+
+        async with client.stream(
+            "GET",
+            current_url,
+            headers=headers,
+            follow_redirects=False,
+        ) as resp:
+            if 300 <= resp.status_code < 400:
+                location = resp.headers.get("location")
+                if not location:
+                    raise HTTPException(
+                        status_code=502,
+                        detail="上游重定向缺少 Location",
+                    )
+                current_url = urljoin(current_url, location)
+                continue
+
+            if resp.status_code != 200:
+                logger.error(f"图片代理上游错误 {resp.status_code}: {current_url}")
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"上游服务器返回错误: {resp.status_code}",
+                )
+
+            content_type = resp.headers.get("content-type", "image/jpeg")
+            if not content_type.lower().startswith("image/"):
+                raise HTTPException(status_code=415, detail="上游资源不是图片")
+
+            content_length = resp.headers.get("content-length")
+            if content_length:
+                try:
+                    if int(content_length) > _MAX_PROXY_IMAGE_BYTES:
+                        raise HTTPException(status_code=413, detail="图片过大")
+                except ValueError:
+                    pass
+
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in resp.aiter_bytes():
+                total += len(chunk)
+                if total > _MAX_PROXY_IMAGE_BYTES:
+                    raise HTTPException(status_code=413, detail="图片过大")
+                chunks.append(chunk)
+            return b"".join(chunks), content_type, current_url
+
+    raise HTTPException(status_code=400, detail="图片重定向次数过多")
+
 
 @router.get("/media/{key:path}")
 async def proxy_media(
@@ -103,12 +164,9 @@ async def proxy_image(
     2. 后续访问：直接返回本地缓存（速度提升100倍+）
     """
     import hashlib
-    from pathlib import Path
     from app.media.processor import (
         _image_to_webp,
         _request_headers_for_url,
-        _content_addressed_key,
-        _sha256_bytes,
     )
     
     # 还原 URL 编码以确保 hash 一致性 (前端通过 query 参数传过来往往会被 encode)
@@ -148,29 +206,22 @@ async def proxy_image(
     
     try:
         async with httpx.AsyncClient(proxy=proxy, timeout=httpx.Timeout(10.0, connect=5.0)) as client:
-            resp = await client.get(url, headers=headers, follow_redirects=True)
-            
-            if resp.status_code != 200:
-                logger.error(f"图片代理上游错误 {resp.status_code}: {url}")
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"上游服务器返回错误: {resp.status_code}"
-                )
-            
-            original_data = resp.content
-            content_type = resp.headers.get("content-type", "image/jpeg")
+            original_data, content_type, final_url = await _download_remote_image(
+                client,
+                url,
+                headers,
+            )
             
             # 4. 转码为WebP（支持动画GIF）
             try:
                 webp_data, width, height = _image_to_webp(original_data, quality=80)
-                sha256 = _sha256_bytes(webp_data)
                 
                 # 5. 存储到本地
                 cache_key = f"{cache_namespace}/{url_hash}.webp"
                 await storage.put_bytes(key=cache_key, data=webp_data, content_type="image/webp")
                 
                 logger.info(
-                    f"图片代理已缓存: {url} -> {cache_key} "
+                    f"图片代理已缓存: {final_url} -> {cache_key} "
                     f"[{len(original_data)//1024}KB原始 -> {len(webp_data)//1024}KB WebP, "
                     f"{width}x{height}]"
                 )
@@ -207,6 +258,9 @@ async def proxy_image(
                     }
                 )
     
+    except HTTPException:
+        raise
+
     except httpx.TimeoutException:
         logger.error(f"图片代理请求超时: {url}")
         raise HTTPException(status_code=504, detail="上游服务器响应超时")
