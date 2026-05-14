@@ -37,6 +37,14 @@ jobs:
       - name: Run Bandit high severity scan
         run: python -m bandit -r app --severity-level high --confidence-level high
 
+      - name: Check OpenAPI docs inventory
+        run: python ../scripts/check_openapi_docs.py ../docs/API.md
+
+      - name: Scan for committed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   frontend:
     name: Frontend analyze and tests
     runs-on: ubuntu-latest
