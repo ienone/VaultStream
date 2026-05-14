@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'theme/app_theme.dart';
 import 'routing/app_router.dart';
 import 'core/providers/theme_provider.dart';
@@ -14,6 +15,10 @@ import 'features/share_receiver/share_receiver_service.dart';
 
 List<SharedMediaFile>? _initialSharedMedia;
 late SharedPreferences sharedPrefs;
+late FlutterSecureStorage secureStorage;
+String? initialApiToken;
+
+const String apiTokenStorageKey = 'api_token';
 
 bool get isSharedPrefsInitialized {
   try {
@@ -21,6 +26,34 @@ bool get isSharedPrefsInitialized {
     return true;
   } catch (_) {
     return false;
+  }
+}
+
+bool get isSecureStorageInitialized {
+  try {
+    secureStorage;
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+Future<void> initializeLocalSecrets() async {
+  secureStorage = const FlutterSecureStorage();
+  final secureToken = await secureStorage.read(key: apiTokenStorageKey);
+  final legacyToken = sharedPrefs.getString(apiTokenStorageKey);
+
+  if ((secureToken == null || secureToken.isEmpty) &&
+      legacyToken != null &&
+      legacyToken.isNotEmpty) {
+    await secureStorage.write(key: apiTokenStorageKey, value: legacyToken);
+    initialApiToken = legacyToken;
+  } else {
+    initialApiToken = secureToken;
+  }
+
+  if (legacyToken != null) {
+    await sharedPrefs.remove(apiTokenStorageKey);
   }
 }
 
@@ -32,6 +65,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   configureRuntimeAssets();
   sharedPrefs = await SharedPreferences.getInstance();
+  await initializeLocalSecrets();
 
   timeago.setLocaleMessages('zh_CN', timeago.ZhCnMessages());
 

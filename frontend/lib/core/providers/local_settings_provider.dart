@@ -22,7 +22,6 @@ class LocalSettingsState {
 @riverpod
 class LocalSettings extends _$LocalSettings {
   static const _keyBaseUrl = 'api_base_url';
-  static const _keyApiToken = 'api_token';
 
   @override
   LocalSettingsState build() {
@@ -35,7 +34,7 @@ class LocalSettings extends _$LocalSettings {
 
     return LocalSettingsState(
       baseUrl: sharedPrefs.getString(_keyBaseUrl) ?? EnvConfig.baseUrl,
-      apiToken: sharedPrefs.getString(_keyApiToken) ?? EnvConfig.apiToken,
+      apiToken: initialApiToken ?? EnvConfig.apiToken,
     );
   }
 
@@ -47,16 +46,24 @@ class LocalSettings extends _$LocalSettings {
   }
 
   Future<void> setApiToken(String token) async {
-    if (isSharedPrefsInitialized) {
-      await sharedPrefs.setString(_keyApiToken, token);
+    if (isSecureStorageInitialized) {
+      await secureStorage.write(key: apiTokenStorageKey, value: token);
     }
+    if (isSharedPrefsInitialized) {
+      await sharedPrefs.remove(apiTokenStorageKey);
+    }
+    initialApiToken = token;
     state = state.copyWith(apiToken: token);
   }
 
   Future<void> clearAuth() async {
-    if (isSharedPrefsInitialized) {
-      await sharedPrefs.remove(_keyApiToken);
+    if (isSecureStorageInitialized) {
+      await secureStorage.delete(key: apiTokenStorageKey);
     }
+    if (isSharedPrefsInitialized) {
+      await sharedPrefs.remove(apiTokenStorageKey);
+    }
+    initialApiToken = null;
     state = state.copyWith(apiToken: '');
   }
 
