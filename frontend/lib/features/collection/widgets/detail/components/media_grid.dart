@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:frontend/core/widgets/network_thumbnail.dart';
 import 'package:frontend/core/utils/media_utils.dart';
 import '../../../../../core/network/image_headers.dart';
 import 'media_gallery_item.dart';
 
 /// 通用媒体网格组件
-/// 
+///
 /// 用于 GalleryLayout 的图片/视频展示，支持自适应布局：
 /// - 竖屏：单图大图、双图对半、三图以上九宫格
 /// - 横屏：单图大图，底部横向滚动预览
-/// 
+///
 /// 符合 Material 3 Expressive Design 规范
 class MediaGrid extends StatelessWidget {
   final List<String> images;
@@ -19,13 +19,13 @@ class MediaGrid extends StatelessWidget {
   final Color? contentColor;
   final Function(int index)? onImageTap;
   final Function(int index)? onPageChanged;
-  
+
   /// 是否为横屏模式（由外部 LayoutBuilder 决定）
   final bool isLandscape;
-  
+
   /// 横屏模式下使用的 PageController
   final PageController? pageController;
-  
+
   /// 当前选中的图片索引（横屏模式）
   final int currentIndex;
 
@@ -179,14 +179,17 @@ class MediaGrid extends StatelessWidget {
                               width: 3,
                             )
                           : Border.all(
-                              color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                              color: colorScheme.outlineVariant.withValues(
+                                alpha: 0.5,
+                              ),
                               width: 1,
                             ),
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: isSelected
                           ? [
                               BoxShadow(
-                                color: (contentColor ?? colorScheme.primary).withValues(alpha: 0.2),
+                                color: (contentColor ?? colorScheme.primary)
+                                    .withValues(alpha: 0.2),
                                 blurRadius: 8,
                                 spreadRadius: 2,
                               ),
@@ -206,7 +209,7 @@ class MediaGrid extends StatelessWidget {
                                 ),
                               ),
                             )
-                          : CachedNetworkImage(
+                          : NetworkThumbnail(
                               imageUrl: img,
                               httpHeaders: buildImageHeaders(
                                 imageUrl: img,
@@ -214,9 +217,6 @@ class MediaGrid extends StatelessWidget {
                                 apiToken: apiToken,
                               ),
                               fit: BoxFit.cover,
-                              placeholder: (context, url) => Container(
-                                color: colorScheme.surfaceContainerHighest,
-                              ),
                             ),
                     ),
                   ),
@@ -260,7 +260,7 @@ class MediaGrid extends StatelessWidget {
           tag: _getHeroTag(index),
           child: isVideo(imageUrl)
               ? _buildVideoThumbnail(context, imageUrl)
-              : CachedNetworkImage(
+              : NetworkThumbnail(
                   imageUrl: imageUrl,
                   httpHeaders: buildImageHeaders(
                     imageUrl: imageUrl,
@@ -269,12 +269,6 @@ class MediaGrid extends StatelessWidget {
                   ),
                   fit: BoxFit.cover,
                   width: double.infinity,
-                  placeholder: (context, url) => AspectRatio(
-                    aspectRatio: 16 / 9,
-                    child: Container(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    ),
-                  ),
                 ),
         ),
       ),
@@ -293,7 +287,7 @@ class MediaGrid extends StatelessWidget {
             tag: _getHeroTag(index),
             child: isVideo(imageUrl)
                 ? _buildVideoThumbnail(context, imageUrl)
-                : CachedNetworkImage(
+                : NetworkThumbnail(
                     imageUrl: imageUrl,
                     httpHeaders: buildImageHeaders(
                       imageUrl: imageUrl,
@@ -301,9 +295,6 @@ class MediaGrid extends StatelessWidget {
                       apiToken: apiToken,
                     ),
                     fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    ),
                   ),
           ),
         ),
@@ -315,8 +306,6 @@ class MediaGrid extends StatelessWidget {
   Widget _buildNineGrid(BuildContext context) {
     final displayCount = images.length > 9 ? 9 : images.length;
     final hasMore = images.length > 9;
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
 
     return GridView.builder(
       shrinkWrap: true,
@@ -329,7 +318,7 @@ class MediaGrid extends StatelessWidget {
       itemCount: displayCount,
       itemBuilder: (context, index) {
         final isLast = index == displayCount - 1 && hasMore;
-        
+
         return GestureDetector(
           onTap: () => onImageTap?.call(index),
           child: ClipRRect(
@@ -341,7 +330,7 @@ class MediaGrid extends StatelessWidget {
                   tag: _getHeroTag(index),
                   child: isVideo(images[index])
                       ? _buildVideoThumbnail(context, images[index])
-                      : CachedNetworkImage(
+                      : NetworkThumbnail(
                           imageUrl: images[index],
                           httpHeaders: buildImageHeaders(
                             imageUrl: images[index],
@@ -349,9 +338,6 @@ class MediaGrid extends StatelessWidget {
                             apiToken: apiToken,
                           ),
                           fit: BoxFit.cover,
-                          placeholder: (context, url) => Container(
-                            color: colorScheme.surfaceContainerHighest,
-                          ),
                         ),
                 ),
                 if (isLast)

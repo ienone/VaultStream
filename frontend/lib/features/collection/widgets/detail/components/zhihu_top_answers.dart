@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:frontend/core/widgets/network_thumbnail.dart';
 import 'package:frontend/core/utils/media_utils.dart';
 import 'package:frontend/core/utils/safe_url_launcher.dart';
 import '../../../../../core/network/api_client.dart';
@@ -85,15 +85,17 @@ class ZhihuTopAnswers extends ConsumerWidget {
                       Row(
                         children: [
                           if (authorAvatar != null) ...[
-                            CircleAvatar(
-                              radius: 16,
-                              backgroundImage: CachedNetworkImageProvider(
-                                mapUrl(authorAvatar, apiBaseUrl),
-                                headers: buildImageHeaders(
+                            ClipOval(
+                              child: NetworkThumbnail(
+                                imageUrl: mapUrl(authorAvatar, apiBaseUrl),
+                                width: 32,
+                                height: 32,
+                                httpHeaders: buildImageHeaders(
                                   imageUrl: mapUrl(authorAvatar, apiBaseUrl),
                                   baseUrl: apiBaseUrl,
                                   apiToken: apiToken,
                                 ),
+                                errorIcon: Icons.person_outline_rounded,
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -151,7 +153,7 @@ class ZhihuTopAnswers extends ConsumerWidget {
                             const SizedBox(width: 16),
                             ClipRRect(
                               borderRadius: BorderRadius.circular(16),
-                              child: CachedNetworkImage(
+                              child: NetworkThumbnail(
                                 imageUrl: mapUrl(coverUrl, apiBaseUrl),
                                 httpHeaders: buildImageHeaders(
                                   imageUrl: mapUrl(coverUrl, apiBaseUrl),

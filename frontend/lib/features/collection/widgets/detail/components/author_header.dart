@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'package:frontend/core/utils/media_utils.dart';
 import 'package:frontend/core/utils/safe_url_launcher.dart';
+import 'package:frontend/core/widgets/network_thumbnail.dart';
 import '../../../../../core/network/api_client.dart';
 import '../../../../../core/network/image_headers.dart';
 import '../../../../../core/constants/platform_constants.dart';
@@ -64,21 +64,24 @@ class AuthorHeader extends ConsumerWidget {
                     : [colorScheme.primary, colorScheme.tertiary],
               ),
             ),
-            child: CircleAvatar(
-              radius: 22,
-              backgroundColor: colorScheme.surface,
-              backgroundImage: mappedAvatarUrl != null
-                  ? CachedNetworkImageProvider(
-                      mappedAvatarUrl,
-                      headers: buildImageHeaders(
+            child: mappedAvatarUrl != null
+                ? ClipOval(
+                    child: NetworkThumbnail(
+                      imageUrl: mappedAvatarUrl,
+                      width: 44,
+                      height: 44,
+                      httpHeaders: buildImageHeaders(
                         imageUrl: mappedAvatarUrl,
                         baseUrl: apiBaseUrl,
                         apiToken: apiToken,
                       ),
-                    )
-                  : null,
-              child: mappedAvatarUrl == null
-                  ? Text(
+                      errorIcon: Icons.person_outline_rounded,
+                    ),
+                  )
+                : CircleAvatar(
+                    radius: 22,
+                    backgroundColor: colorScheme.surface,
+                    child: Text(
                       (detail.authorName?.isNotEmpty == true
                               ? detail.authorName!
                               : '?')
@@ -90,9 +93,8 @@ class AuthorHeader extends ConsumerWidget {
                             : colorScheme.primary,
                         fontWeight: FontWeight.bold,
                       ),
-                    )
-                  : null,
-            ),
+                    ),
+                  ),
           ),
           const SizedBox(width: 16),
           Expanded(

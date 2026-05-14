@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:frontend/core/widgets/network_thumbnail.dart';
 import '../../../../../core/network/image_headers.dart';
 import '../../../models/content.dart';
 import '../../../utils/content_parser.dart';
@@ -51,7 +51,7 @@ class VideoLandscapeLayout extends StatelessWidget {
                             onTap: () => onImageTap(images, 0),
                             child: Hero(
                               tag: 'content-image-${detail.id}',
-                              child: CachedNetworkImage(
+                              child: NetworkThumbnail(
                                 imageUrl: images.first,
                                 httpHeaders: buildImageHeaders(
                                   imageUrl: images.first,
@@ -76,7 +76,7 @@ class VideoLandscapeLayout extends StatelessWidget {
                                   tag: index == 0
                                       ? 'content-image-${detail.id}'
                                       : 'image-$index-${detail.id}',
-                                  child: CachedNetworkImage(
+                                  child: NetworkThumbnail(
                                     imageUrl: images[index],
                                     httpHeaders: buildImageHeaders(
                                       imageUrl: images[index],
@@ -130,7 +130,10 @@ class VideoLandscapeLayout extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 20),
-                      UnifiedStats(detail: detail, useContainer: false), // Use internal layout
+                      UnifiedStats(
+                        detail: detail,
+                        useContainer: false,
+                      ), // Use internal layout
                       const SizedBox(height: 16),
                       SummarySection(detail: detail),
                       const SizedBox(height: 16),
@@ -140,9 +143,9 @@ class VideoLandscapeLayout extends StatelessWidget {
                     ],
                   ),
                 ),
-                
+
                 const SizedBox(height: 24),
-                
+
                 // Bottom: Description (Scrollable)
                 if (detail.body != null &&
                     detail.body!.isNotEmpty &&
@@ -166,7 +169,11 @@ class VideoLandscapeLayout extends StatelessWidget {
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.notes_rounded, size: 18, color: colorScheme.primary),
+                              Icon(
+                                Icons.notes_rounded,
+                                size: 18,
+                                color: colorScheme.primary,
+                              ),
                               const SizedBox(width: 8),
                               Text(
                                 '简介',

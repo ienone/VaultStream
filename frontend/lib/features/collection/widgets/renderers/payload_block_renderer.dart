@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:frontend/core/utils/safe_url_launcher.dart';
 import 'package:frontend/core/network/api_client.dart';
 import 'package:frontend/core/network/image_headers.dart';
 import 'package:frontend/core/utils/media_utils.dart' as media_utils;
+import 'package:frontend/core/widgets/network_thumbnail.dart';
 import '../../models/content.dart';
 
 class PayloadBlockRenderer extends ConsumerWidget {
@@ -27,7 +27,9 @@ class PayloadBlockRenderer extends ConsumerWidget {
     final quotedRaw = payload['quoted_content'];
     if (quotedRaw is Map) {
       final quoteMap = Map<String, dynamic>.from(quotedRaw);
-      children.add(_buildQuotedContent(context, quoteMap, apiBaseUrl, apiToken));
+      children.add(
+        _buildQuotedContent(context, quoteMap, apiBaseUrl, apiToken),
+      );
     }
 
     // 2. 渲染动态 Blocks (Zhihu Top Answers 等)
@@ -54,7 +56,12 @@ class PayloadBlockRenderer extends ConsumerWidget {
     );
   }
 
-  Widget _buildQuotedContent(BuildContext context, Map<String, dynamic> quote, String apiBaseUrl, String? apiToken) {
+  Widget _buildQuotedContent(
+    BuildContext context,
+    Map<String, dynamic> quote,
+    String apiBaseUrl,
+    String? apiToken,
+  ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final quoteUrl = quote['url']?.toString();
@@ -64,18 +71,13 @@ class PayloadBlockRenderer extends ConsumerWidget {
     final mappedThumbnail = (thumbnail != null && thumbnail.isNotEmpty)
         ? media_utils.mapUrl(thumbnail, apiBaseUrl)
         : null;
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(12),
-        border: Border(
-          left: BorderSide(
-            color: colorScheme.primary,
-            width: 4,
-          ),
-        ),
+        border: Border(left: BorderSide(color: colorScheme.primary, width: 4)),
       ),
       child: Material(
         color: Colors.transparent,
@@ -116,24 +118,15 @@ class PayloadBlockRenderer extends ConsumerWidget {
                 ),
                 if (mappedThumbnail != null && mappedThumbnail.isNotEmpty) ...[
                   const SizedBox(width: 12),
-                  ClipRRect(
+                  NetworkThumbnail(
+                    imageUrl: mappedThumbnail,
+                    width: 60,
+                    height: 60,
                     borderRadius: BorderRadius.circular(6),
-                    child: CachedNetworkImage(
+                    httpHeaders: buildImageHeaders(
                       imageUrl: mappedThumbnail,
-                      width: 60,
-                      height: 60,
-                      fit: BoxFit.cover,
-                      httpHeaders: buildImageHeaders(
-                        imageUrl: mappedThumbnail,
-                        baseUrl: apiBaseUrl,
-                        apiToken: apiToken,
-                      ),
-                      placeholder: (context, url) => Container(
-                        width: 60,
-                        height: 60,
-                        color: colorScheme.surfaceContainerHighest,
-                      ),
-                      errorWidget: (context, url, error) => const SizedBox.shrink(),
+                      baseUrl: apiBaseUrl,
+                      apiToken: apiToken,
                     ),
                   ),
                 ],
@@ -145,7 +138,12 @@ class PayloadBlockRenderer extends ConsumerWidget {
     );
   }
 
-  Widget _buildSubItem(BuildContext context, Map<String, dynamic> data, String apiBaseUrl, String? apiToken) {
+  Widget _buildSubItem(
+    BuildContext context,
+    Map<String, dynamic> data,
+    String apiBaseUrl,
+    String? apiToken,
+  ) {
     final title = data['title'] as String?;
     final authorName = data['author_name'] as String?;
     final authorAvatarUrl = data['author_avatar_url'] as String?;
@@ -199,16 +197,17 @@ class PayloadBlockRenderer extends ConsumerWidget {
                   child: Row(
                     children: [
                       if (mappedAvatarUrl != null)
-                        CircleAvatar(
-                          radius: 12,
-                          backgroundColor: colorScheme.surfaceContainerHighest,
-                          backgroundImage: CachedNetworkImageProvider(
-                            mappedAvatarUrl,
-                            headers: buildImageHeaders(
+                        ClipOval(
+                          child: NetworkThumbnail(
+                            imageUrl: mappedAvatarUrl,
+                            width: 24,
+                            height: 24,
+                            httpHeaders: buildImageHeaders(
                               imageUrl: mappedAvatarUrl,
                               baseUrl: apiBaseUrl,
                               apiToken: apiToken,
                             ),
+                            errorIcon: Icons.person_outline_rounded,
                           ),
                         )
                       else
@@ -216,7 +215,9 @@ class PayloadBlockRenderer extends ConsumerWidget {
                           radius: 12,
                           backgroundColor: colorScheme.primaryContainer,
                           child: Text(
-                            (authorName?.isNotEmpty == true ? authorName! : '?').substring(0, 1).toUpperCase(),
+                            (authorName?.isNotEmpty == true ? authorName! : '?')
+                                .substring(0, 1)
+                                .toUpperCase(),
                             style: TextStyle(
                               fontSize: 10,
                               color: colorScheme.primary,
@@ -238,7 +239,10 @@ class PayloadBlockRenderer extends ConsumerWidget {
                       ),
                       if (voteupCount != null && voteupCount > 0)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: colorScheme.primary.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(10),
@@ -246,10 +250,16 @@ class PayloadBlockRenderer extends ConsumerWidget {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.thumb_up_alt_outlined, size: 10, color: colorScheme.primary),
+                              Icon(
+                                Icons.thumb_up_alt_outlined,
+                                size: 10,
+                                color: colorScheme.primary,
+                              ),
                               const SizedBox(width: 4),
                               Text(
-                                voteupCount > 1000 ? '${(voteupCount/1000).toStringAsFixed(1)}k' : '$voteupCount',
+                                voteupCount > 1000
+                                    ? '${(voteupCount / 1000).toStringAsFixed(1)}k'
+                                    : '$voteupCount',
                                 style: theme.textTheme.labelSmall?.copyWith(
                                   color: colorScheme.primary,
                                   fontWeight: FontWeight.bold,
@@ -261,7 +271,7 @@ class PayloadBlockRenderer extends ConsumerWidget {
                     ],
                   ),
                 ),
-              
+
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -294,27 +304,17 @@ class PayloadBlockRenderer extends ConsumerWidget {
                       ],
                     ),
                   ),
+                  if (mappedCoverUrl != null) const SizedBox(width: 16),
                   if (mappedCoverUrl != null)
-                    const SizedBox(width: 16),
-                  if (mappedCoverUrl != null)
-                    ClipRRect(
+                    NetworkThumbnail(
+                      imageUrl: mappedCoverUrl,
+                      width: 80,
+                      height: 60,
                       borderRadius: BorderRadius.circular(8),
-                      child: CachedNetworkImage(
+                      httpHeaders: buildImageHeaders(
                         imageUrl: mappedCoverUrl,
-                        width: 80,
-                        height: 60,
-                        fit: BoxFit.cover,
-                        httpHeaders: buildImageHeaders(
-                          imageUrl: mappedCoverUrl,
-                          baseUrl: apiBaseUrl,
-                          apiToken: apiToken,
-                        ),
-                        placeholder: (context, url) => Container(
-                          width: 80,
-                          height: 60,
-                          color: colorScheme.surfaceContainerHighest,
-                        ),
-                        errorWidget: (context, url, error) => const SizedBox.shrink(),
+                        baseUrl: apiBaseUrl,
+                        apiToken: apiToken,
                       ),
                     ),
                 ],

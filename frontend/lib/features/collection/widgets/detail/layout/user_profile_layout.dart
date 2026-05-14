@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:frontend/core/widgets/network_thumbnail.dart';
 import 'package:frontend/core/utils/media_utils.dart';
 import 'package:frontend/core/utils/safe_url_launcher.dart';
 import '../../../../../core/network/image_headers.dart';
@@ -53,7 +53,7 @@ class UserProfileLayout extends StatelessWidget {
                       aspectRatio: 1,
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(24),
-                        child: CachedNetworkImage(
+                        child: NetworkThumbnail(
                           imageUrl: mappedAvatarUrl,
                           httpHeaders: buildImageHeaders(
                             imageUrl: mappedAvatarUrl,
@@ -61,10 +61,7 @@ class UserProfileLayout extends StatelessWidget {
                             apiToken: apiToken,
                           ),
                           fit: BoxFit.cover,
-                          placeholder: (context, url) =>
-                              const CircularProgressIndicator(),
-                          errorWidget: (context, url, error) =>
-                              const Icon(Icons.person, size: 120),
+                          errorIcon: Icons.person,
                         ),
                       ),
                     ),
@@ -100,7 +97,7 @@ class UserProfileLayout extends StatelessWidget {
                     Row(
                       children: [
                         ClipOval(
-                          child: CachedNetworkImage(
+                          child: NetworkThumbnail(
                             imageUrl: mappedAvatarUrl,
                             httpHeaders: buildImageHeaders(
                               imageUrl: mappedAvatarUrl,

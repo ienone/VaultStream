@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:frontend/core/widgets/network_thumbnail.dart';
 import 'package:frontend/core/utils/media_utils.dart';
 import '../../../../../core/network/image_headers.dart';
 import '../../../models/content.dart';
@@ -225,7 +225,7 @@ class GalleryLandscapeLayout extends StatelessWidget {
                                 ),
                               ),
                             )
-                          : CachedNetworkImage(
+                          : NetworkThumbnail(
                               imageUrl: img,
                               httpHeaders: buildImageHeaders(
                                 imageUrl: img,
@@ -233,11 +233,6 @@ class GalleryLandscapeLayout extends StatelessWidget {
                                 apiToken: apiToken,
                               ),
                               fit: BoxFit.cover,
-                              placeholder: (context, url) => Container(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.surfaceContainerHighest,
-                              ),
                             ),
                     ),
                   ),
@@ -251,26 +246,22 @@ class GalleryLandscapeLayout extends StatelessWidget {
 
   Widget _buildAvatarFallback(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     // 无图片时显示头像作为视觉焦点（正文在右侧ContentSideInfoCard中显示）
     final avatarUrl = detail.authorAvatarUrl;
-    
+
     if (avatarUrl == null || avatarUrl.isEmpty) {
       return Center(
-        child: Icon(
-          Icons.text_fields,
-          size: 64,
-          color: colorScheme.outline,
-        ),
+        child: Icon(Icons.text_fields, size: 64, color: colorScheme.outline),
       );
     }
-    
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(48),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(32),
-          child: CachedNetworkImage(
+          child: NetworkThumbnail(
             imageUrl: mapUrl(avatarUrl, apiBaseUrl),
             httpHeaders: buildImageHeaders(
               imageUrl: mapUrl(avatarUrl, apiBaseUrl),
@@ -280,21 +271,7 @@ class GalleryLandscapeLayout extends StatelessWidget {
             width: 200,
             height: 200,
             fit: BoxFit.cover,
-            placeholder: (context, url) => Container(
-              width: 200,
-              height: 200,
-              color: colorScheme.surfaceContainerHighest,
-            ),
-            errorWidget: (context, url, error) => Container(
-              width: 200,
-              height: 200,
-              color: colorScheme.surfaceContainerHighest,
-              child: Icon(
-                Icons.person,
-                size: 80,
-                color: colorScheme.outline,
-              ),
-            ),
+            errorIcon: Icons.person,
           ),
         ),
       ),
