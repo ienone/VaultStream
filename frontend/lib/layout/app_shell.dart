@@ -66,20 +66,28 @@ class _AppShellState extends ConsumerState<AppShell> {
       }
     });
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < ResponsiveLayout.mobileBreakpoint) {
-          return _MobileShell(
-            navigationShell: widget.navigationShell,
-            onDestinationSelected: _onDestinationSelected,
-          );
-        } else {
-          return _DesktopShell(
-            navigationShell: widget.navigationShell,
-            onDestinationSelected: _onDestinationSelected,
-          );
+    return PopScope(
+      canPop: widget.navigationShell.currentIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && widget.navigationShell.currentIndex != 0) {
+          widget.navigationShell.goBranch(0);
         }
       },
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < ResponsiveLayout.mobileBreakpoint) {
+            return _MobileShell(
+              navigationShell: widget.navigationShell,
+              onDestinationSelected: _onDestinationSelected,
+            );
+          } else {
+            return _DesktopShell(
+              navigationShell: widget.navigationShell,
+              onDestinationSelected: _onDestinationSelected,
+            );
+          }
+        },
+      ),
     );
   }
 }

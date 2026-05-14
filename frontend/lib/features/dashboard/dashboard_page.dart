@@ -16,30 +16,43 @@ import 'widgets/queue_status_card.dart';
 import 'widgets/platform_distribution_card.dart';
 import 'widgets/growth_chart_card.dart';
 import 'widgets/discovery_overview_card.dart';
+import 'widgets/background_diagnostics_card.dart';
 
 class DashboardPage extends ConsumerWidget {
   const DashboardPage({super.key});
 
-  void _navigateToDiscovery(BuildContext context, WidgetRef ref, {String? state, bool showAll = false}) {
+  void _navigateToDiscovery(
+    BuildContext context,
+    WidgetRef ref, {
+    String? state,
+    bool showAll = false,
+  }) {
     // 原子化设置筛选条件，避免 clearFilters+setFilters 两步触发双重请求导致空列表被覆盖
-    ref.read(discoveryFilterProvider.notifier).resetToFilters(
-      discoveryState: state,
-      showAll: showAll,
-    );
+    ref
+        .read(discoveryFilterProvider.notifier)
+        .resetToFilters(discoveryState: state, showAll: showAll);
     context.go('/discovery');
   }
 
-  void _navigateToCollection(BuildContext context, WidgetRef ref, {List<String>? statuses, List<String>? platforms, DateTimeRange? dateRange}) {
+  void _navigateToCollection(
+    BuildContext context,
+    WidgetRef ref, {
+    List<String>? statuses,
+    List<String>? platforms,
+    DateTimeRange? dateRange,
+  }) {
     // Clear existing filters first
     ref.read(collectionFilterProvider.notifier).clearFilters();
-    
+
     // Set new filters if provided
-    ref.read(collectionFilterProvider.notifier).setFilters(
-      statuses: statuses,
-      platforms: platforms,
-      dateRange: dateRange,
-    );
-    
+    ref
+        .read(collectionFilterProvider.notifier)
+        .setFilters(
+          statuses: statuses,
+          platforms: platforms,
+          dateRange: dateRange,
+        );
+
     // Navigate (switch tab)
     context.go('/collection');
   }
@@ -49,6 +62,9 @@ class DashboardPage extends ConsumerWidget {
     final statsAsync = ref.watch(dashboardStatsProvider);
     final queueAsync = ref.watch(queueStatsProvider);
     final discoveryStatsAsync = ref.watch(discoveryStatsProvider);
+    final backgroundDiagnosticsAsync = ref.watch(
+      backgroundTaskDiagnosticsProvider,
+    );
 
     final hasError = statsAsync.hasError || queueAsync.hasError;
     final theme = Theme.of(context);
@@ -74,7 +90,11 @@ class DashboardPage extends ConsumerWidget {
         ],
       ),
       body: hasError
-          ? _buildConnectionError(context, ref, statsAsync.error ?? queueAsync.error)
+          ? _buildConnectionError(
+              context,
+              ref,
+              statsAsync.error ?? queueAsync.error,
+            )
           : RefreshIndicator(
               onRefresh: () async {
                 ref.invalidate(dashboardStatsProvider);
@@ -84,7 +104,10 @@ class DashboardPage extends ConsumerWidget {
               },
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -108,11 +131,20 @@ class DashboardPage extends ConsumerWidget {
                     queueAsync.when(
                       data: (q) => QueueStatusCard(
                         queue: q,
-                        onStatusTap: (status) =>
-                            _navigateToCollection(context, ref, statuses: [status]),
+                        onStatusTap: (status) => _navigateToCollection(
+                          context,
+                          ref,
+                          statuses: [status],
+                        ),
                       ),
                       loading: () => const LoadingPlaceholder(height: 240),
                       error: (e, _) => ErrorCard(message: '加载队列失败: $e'),
+                    ),
+                    const SizedBox(height: 16),
+                    backgroundDiagnosticsAsync.when(
+                      data: (d) => BackgroundDiagnosticsCard(diagnostics: d),
+                      loading: () => const LoadingPlaceholder(height: 160),
+                      error: (e, _) => ErrorCard(message: '加载后台诊断失败: $e'),
                     ),
                     const SizedBox(height: 40),
 
@@ -126,7 +158,11 @@ class DashboardPage extends ConsumerWidget {
                     statsAsync.when(
                       data: (s) => GrowthChartCard(
                         stats: s,
-                        onDateTap: (range) => _navigateToCollection(context, ref, dateRange: range),
+                        onDateTap: (range) => _navigateToCollection(
+                          context,
+                          ref,
+                          dateRange: range,
+                        ),
                       ),
                       loading: () => const LoadingPlaceholder(height: 220),
                       error: (e, _) => ErrorCard(message: '加载图表失败: $e'),
@@ -143,7 +179,8 @@ class DashboardPage extends ConsumerWidget {
                     statsAsync.when(
                       data: (s) => PlatformDistributionCard(
                         stats: s,
-                        onPlatformTap: (p) => _navigateToCollection(context, ref, platforms: [p]),
+                        onPlatformTap: (p) =>
+                            _navigateToCollection(context, ref, platforms: [p]),
                       ),
                       loading: () => const LoadingPlaceholder(height: 300),
                       error: (e, _) => ErrorCard(message: '加载分布失败: $e'),
@@ -165,9 +202,12 @@ class DashboardPage extends ConsumerWidget {
                     discoveryStatsAsync.when(
                       data: (s) => DiscoveryOverviewCard(
                         stats: s,
-                        onStateTap: (state, showAll) =>
-                            _navigateToDiscovery(context, ref,
-                                state: state, showAll: showAll),
+                        onStateTap: (state, showAll) => _navigateToDiscovery(
+                          context,
+                          ref,
+                          state: state,
+                          showAll: showAll,
+                        ),
                       ),
                       loading: () => const LoadingPlaceholder(height: 260),
                       error: (e, _) => ErrorCard(message: '加载探索数据失败: $e'),
@@ -187,7 +227,7 @@ class DashboardPage extends ConsumerWidget {
     AsyncValue<QueueOverviewStats> queueAsync,
   ) {
     final isWide = MediaQuery.of(context).size.width > 900;
-    
+
     return GridView.count(
       crossAxisCount: isWide ? 4 : 2,
       shrinkWrap: true,
@@ -199,7 +239,8 @@ class DashboardPage extends ConsumerWidget {
         StatCard(
           label: '总内容',
           value: statsAsync.when(
-            data: (s) => s.platformCounts.values.fold(0, (a, b) => a + b).toString(),
+            data: (s) =>
+                s.platformCounts.values.fold(0, (a, b) => a + b).toString(),
             loading: () => '...',
             error: (_, _) => '!',
           ),
@@ -226,7 +267,11 @@ class DashboardPage extends ConsumerWidget {
           ),
           icon: Icons.hourglass_top_rounded,
           color: Theme.of(context).colorScheme.tertiary,
-          onTap: () => _navigateToCollection(context, ref, statuses: ['unprocessed', 'processing']),
+          onTap: () => _navigateToCollection(
+            context,
+            ref,
+            statuses: ['unprocessed', 'processing'],
+          ),
         ),
         StatCard(
           label: '解析失败',
@@ -237,13 +282,18 @@ class DashboardPage extends ConsumerWidget {
           ),
           icon: Icons.error_outline_rounded,
           color: Theme.of(context).colorScheme.error,
-          onTap: () => _navigateToCollection(context, ref, statuses: ['parse_failed']),
+          onTap: () =>
+              _navigateToCollection(context, ref, statuses: ['parse_failed']),
         ),
       ],
     );
   }
 
-  Widget _buildConnectionError(BuildContext context, WidgetRef ref, Object? error) {
+  Widget _buildConnectionError(
+    BuildContext context,
+    WidgetRef ref,
+    Object? error,
+  ) {
     final theme = Theme.of(context);
     return Center(
       child: Padding(
@@ -266,7 +316,9 @@ class DashboardPage extends ConsumerWidget {
             const SizedBox(height: 32),
             Text(
               '连接服务器失败',
-              style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 12),
             Text(
@@ -288,7 +340,10 @@ class DashboardPage extends ConsumerWidget {
                   icon: const Icon(Icons.refresh_rounded),
                   label: const Text('重试连接'),
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -297,7 +352,10 @@ class DashboardPage extends ConsumerWidget {
                   icon: const Icon(Icons.settings_rounded),
                   label: const Text('前往设置'),
                   style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
                   ),
                 ),
               ],
@@ -315,4 +373,3 @@ class DashboardPage extends ConsumerWidget {
     return "${(bytes / math.pow(1024, i)).toStringAsFixed(1)} ${suffixes[i]}";
   }
 }
-

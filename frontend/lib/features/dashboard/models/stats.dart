@@ -56,10 +56,8 @@ abstract class DashboardStats with _$DashboardStats {
 
 @freezed
 abstract class TagStats with _$TagStats {
-  const factory TagStats({
-    required String name,
-    required int count,
-  }) = _TagStats;
+  const factory TagStats({required String name, required int count}) =
+      _TagStats;
 
   factory TagStats.fromJson(Map<String, dynamic> json) =>
       _$TagStatsFromJson(json);
@@ -75,4 +73,169 @@ abstract class SystemHealth with _$SystemHealth {
 
   factory SystemHealth.fromJson(Map<String, dynamic> json) =>
       _$SystemHealthFromJson(json);
+}
+
+class BackgroundTaskDiagnostics {
+  const BackgroundTaskDiagnostics({
+    required this.summary,
+    required this.taskStates,
+    required this.failedParseTasks,
+    required this.failedDistributionItems,
+    required this.failedDiscoverySources,
+  });
+
+  factory BackgroundTaskDiagnostics.fromJson(Map<String, dynamic> json) {
+    return BackgroundTaskDiagnostics(
+      summary: Map<String, dynamic>.from(json['summary'] as Map? ?? {}),
+      taskStates: (json['task_states'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(BackgroundTaskState.fromJson)
+          .toList(),
+      failedParseTasks: (json['failed_parse_tasks'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(FailedParseTask.fromJson)
+          .toList(),
+      failedDistributionItems:
+          (json['failed_distribution_items'] as List<dynamic>? ?? [])
+              .whereType<Map<String, dynamic>>()
+              .map(FailedDistributionItem.fromJson)
+              .toList(),
+      failedDiscoverySources:
+          (json['failed_discovery_sources'] as List<dynamic>? ?? [])
+              .whereType<Map<String, dynamic>>()
+              .map(FailedDiscoverySource.fromJson)
+              .toList(),
+    );
+  }
+
+  final Map<String, dynamic> summary;
+  final List<BackgroundTaskState> taskStates;
+  final List<FailedParseTask> failedParseTasks;
+  final List<FailedDistributionItem> failedDistributionItems;
+  final List<FailedDiscoverySource> failedDiscoverySources;
+
+  int get totalFailures =>
+      failedParseTasks.length +
+      failedDistributionItems.length +
+      failedDiscoverySources.length +
+      taskStates.where((state) => state.status == 'error').length;
+}
+
+class BackgroundTaskState {
+  const BackgroundTaskState({
+    required this.task,
+    required this.status,
+    this.lastError,
+    this.errorCount = 0,
+  });
+
+  factory BackgroundTaskState.fromJson(Map<String, dynamic> json) {
+    return BackgroundTaskState(
+      task: json['task']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'unknown',
+      lastError: json['last_error']?.toString(),
+      errorCount: (json['error_count'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  final String task;
+  final String status;
+  final String? lastError;
+  final int errorCount;
+}
+
+class FailedParseTask {
+  const FailedParseTask({
+    required this.id,
+    required this.taskType,
+    required this.retryCount,
+    required this.maxRetries,
+    required this.retryable,
+    this.contentId,
+    this.lastError,
+  });
+
+  factory FailedParseTask.fromJson(Map<String, dynamic> json) {
+    return FailedParseTask(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      taskType: json['task_type']?.toString() ?? '',
+      contentId: (json['content_id'] as num?)?.toInt(),
+      retryCount: (json['retry_count'] as num?)?.toInt() ?? 0,
+      maxRetries: (json['max_retries'] as num?)?.toInt() ?? 0,
+      retryable: json['retryable'] == true,
+      lastError: json['last_error']?.toString(),
+    );
+  }
+
+  final int id;
+  final String taskType;
+  final int? contentId;
+  final int retryCount;
+  final int maxRetries;
+  final bool retryable;
+  final String? lastError;
+}
+
+class FailedDistributionItem {
+  const FailedDistributionItem({
+    required this.id,
+    required this.contentId,
+    required this.targetPlatform,
+    required this.targetId,
+    required this.attemptCount,
+    required this.maxAttempts,
+    required this.retryable,
+    this.title,
+    this.lastError,
+  });
+
+  factory FailedDistributionItem.fromJson(Map<String, dynamic> json) {
+    return FailedDistributionItem(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      contentId: (json['content_id'] as num?)?.toInt() ?? 0,
+      title: json['title']?.toString(),
+      targetPlatform: json['target_platform']?.toString() ?? '',
+      targetId: json['target_id']?.toString() ?? '',
+      attemptCount: (json['attempt_count'] as num?)?.toInt() ?? 0,
+      maxAttempts: (json['max_attempts'] as num?)?.toInt() ?? 0,
+      retryable: json['retryable'] == true,
+      lastError: json['last_error']?.toString(),
+    );
+  }
+
+  final int id;
+  final int contentId;
+  final String? title;
+  final String targetPlatform;
+  final String targetId;
+  final int attemptCount;
+  final int maxAttempts;
+  final bool retryable;
+  final String? lastError;
+}
+
+class FailedDiscoverySource {
+  const FailedDiscoverySource({
+    required this.id,
+    required this.name,
+    required this.kind,
+    required this.enabled,
+    this.lastError,
+  });
+
+  factory FailedDiscoverySource.fromJson(Map<String, dynamic> json) {
+    return FailedDiscoverySource(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      name: json['name']?.toString() ?? '',
+      kind: json['kind']?.toString() ?? '',
+      enabled: json['enabled'] == true,
+      lastError: json['last_error']?.toString(),
+    );
+  }
+
+  final int id;
+  final String name;
+  final String kind;
+  final bool enabled;
+  final String? lastError;
 }

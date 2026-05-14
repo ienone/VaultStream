@@ -1,4 +1,5 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../models/stats.dart';
 
@@ -24,3 +25,10 @@ Future<SystemHealth> systemHealth(Ref ref) async {
   final response = await dio.get('/health');
   return SystemHealth.fromJson(response.data);
 }
+
+final backgroundTaskDiagnosticsProvider =
+    FutureProvider<BackgroundTaskDiagnostics>((ref) async {
+      final dio = ref.watch(apiClientProvider);
+      final response = await dio.get('/background-tasks/diagnostics');
+      return BackgroundTaskDiagnostics.fromJson(response.data);
+    });
