@@ -87,6 +87,49 @@ async def test_create_share_incremental_tags(db_session):
 
 
 @pytest.mark.asyncio
+async def test_create_share_reuses_parsed_content_and_runs_post_ingest(db_session):
+    service = ContentService(db_session)
+    url = "https://www.zhihu.com/question/123456789/answer/987654321"
+    content = Content(
+        platform=Platform.ZHIHU,
+        url=url,
+        canonical_url=url,
+        clean_url=url,
+        status=ContentStatus.PARSE_SUCCESS,
+        title="existing parsed content",
+        tags=[],
+    )
+    db_session.add(content)
+    await db_session.commit()
+    await db_session.refresh(content)
+
+    with patch("app.services.content_service.task_queue", AsyncMock()), \
+         patch("app.services.content_service.event_bus", AsyncMock()), \
+         patch("app.adapters.AdapterFactory.detect_platform", return_value=Platform.ZHIHU), \
+         patch("app.adapters.AdapterFactory.create") as mock_factory, \
+         patch("app.services.content_service.PostIngestService") as post_ingest_cls:
+        mock_adapter = MagicMock()
+        mock_adapter.clean_url = AsyncMock(return_value=url)
+        mock_adapter.close = AsyncMock()
+        mock_factory.return_value = mock_adapter
+        post_ingest = post_ingest_cls.return_value
+        post_ingest.run_for_content = AsyncMock()
+
+        result = await service.create_share(
+            url,
+            tags=["favorite"],
+            source_name="favorites_sync:zhihu",
+        )
+
+    assert result.id == content.id
+    post_ingest.run_for_content.assert_awaited_once()
+    args, kwargs = post_ingest.run_for_content.await_args
+    assert args[1].id == content.id
+    assert kwargs["source"] == "favorites_sync:zhihu"
+    assert kwargs["distribution"] is True
+
+
+@pytest.mark.asyncio
 async def test_create_share_extracts_url_from_mixed_text(db_session):
     service = ContentService(db_session)
     raw_input = (

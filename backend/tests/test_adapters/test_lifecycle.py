@@ -34,6 +34,18 @@ def test_managed_adapter_closes_on_error():
     assert adapter.closed is True
 
 
+def test_managed_adapter_closes_on_success():
+    adapter = AsyncClosableAdapter()
+
+    async def run():
+        async with managed_adapter(adapter) as active:
+            assert active is adapter
+
+    asyncio.run(run())
+
+    assert adapter.closed is True
+
+
 def test_close_adapter_supports_sync_close():
     adapter = SyncClosableAdapter()
 
