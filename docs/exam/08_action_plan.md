@@ -53,15 +53,16 @@
    - `engine.py`、`scheduler.py`、`tasks/parsing.py` 只保留一个 service 作为业务入口。
    - 增加规则行为回归测试。
 
-11. 改进语义检索性能  
+11. 改进语义检索性能（已修，sqlite-vec 按阈值触发）  
    - 记录候选数和查询耗时。
-   - 限制候选范围。
-   - 评估 sqlite-vec/sqlite-vss 或独立向量索引。
+   - 限制候选范围和 SQL 向量扫描行数。
+   - 已评估 sqlite-vec/sqlite-vss/独立索引；当前保留 JSON 路径，达到阈值后试点 sqlite-vec。
 
-12. 给 Agent 和 Bot 前端补 typed DTO  
+12. 给 Agent 和 Bot 前端补 typed DTO（已修）  
    - Agent result sealed union。
    - Bot config model。
    - 后端 response schema 对齐。
+   - Review 渲染配置改为 `RenderConfig` 领域类型，动态配置面保留 JSON 扩展能力。
 
 13. 修正文档漂移  
    - 用 OpenAPI 自动生成 endpoint 清单。
@@ -115,7 +116,7 @@
 
 - P1-5 FTS
 - P2-9 post-ingest
-- P2-11 vector search
+- P2-11 vector search（当前轮已完成短期整改；sqlite-vec 为阈值触发项）
 
 ### Batch 4：工程收敛
 

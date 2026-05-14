@@ -23,11 +23,11 @@
 | Adapter 生命周期 | 已修 | `close_adapter/open_adapter` 已接入解析和分享主路径 | 继续审计脚本/边缘 adapter |
 | Google Fonts 运行时拉取 | 已修 | `configureRuntimeAssets()` 禁用 runtime fetching，widget test 覆盖 | 后续可打包字体资产进一步优化首屏 |
 | Discovery post-ingest | 已修 | parse/discovery/share 接入 `PostIngestService`，覆盖 summary/embedding/distribution | favorites 全链路仍需抽样确认 |
-| 向量检索 O(N) | 部分修复 | 已有候选限制、耗时日志、`VECTOR_SEARCH_EVALUATION.md` | 尚未引入 sqlite-vec；需按阈值触发试点 |
+| 向量检索 O(N) | 已修 | `embedding_search_max_rows` 限制 SQL 向量行扫描，语义检索日志记录 scan/candidate/result/elapsed；`VECTOR_SEARCH_EVALUATION.md` 明确 sqlite-vec 阈值触发策略 | 未提前引入 sqlite-vec；达到阈值后再试点，避免当前自托管部署面扩大 |
 | 后台任务诊断 | 已修 | `background_task_state` + `/health` task_states | 还缺失败队列详情页/指标导出 |
 | Docker root 用户 | 已修 | Dockerfile 已使用非 root 用户和 healthcheck | 仍需镜像扫描/SBOM |
 | CI 安全门禁 | 已修 | quality/release 有 pytest、pip-audit、Bandit、Flutter、Trivy、DEBUG_LOG、Gitleaks；本地 pip-audit/Bandit 通过 | 后续可补 SBOM 产物留档 |
-| Agent/Bot typed DTO | 部分修复 | Agent 前端有 sealed result；Bot 有 typed model；Discovery list 已有 response schema | review render config 等仍大量 `Map<String,dynamic>` |
+| Agent/Bot typed DTO | 已修 | Agent 前端有 sealed result；Agent tool registry 暴露 `result_schema`；Bot 有 typed model；Discovery list 已有 response schema；review 渲染配置改为 `RenderConfig` 领域类型 | `match_conditions` 和 `RenderConfig` 仍是动态配置面，不按固定业务 DTO 硬编码 |
 | API 文档漂移 | 已修 | `scripts/check_openapi_docs.py` 比对 FastAPI OpenAPI 与 `docs/API.md`；quality/release 均接入；本地 92 endpoints 通过 | 继续要求新增 endpoint 同步文档 |
 | 资源泄漏 warning | 已修 | 修复 async mock 未 await；测试 engine 使用 `NullPool` 并 dispose app/test engine；全量非 integration 在 `-W error::ResourceWarning` 下通过 | 继续要求新增 fixture 显式关闭 async engine/session |
 | Vulture 候选 | 已修 | 测试中的副作用 fixture 改为 `usefixtures` 或显式断言，未用 mock 参数下划线化，未用 import 已删除；`vulture --min-confidence 80` 通过 | 后续新增动态入口时可用 whitelist 避免误报 |
@@ -38,13 +38,13 @@
 | Discovery list raw dict | 已修 | `/discovery/items` 改为 `DiscoveryItemListResponse` | 可补 OpenAPI schema 快照 |
 | Agent tool error | 已修 | HTTP/WS 返回结构化 `error_code`；Agent 页面按错误码展示可恢复提示并保留 RID | 仍可继续补 WS 流式交互的细粒度 UI 状态 |
 
-## 假修复/弱验证清单
+## 边界与后续触发条件
 
-1. 向量检索：已有候选收敛和评估文档，但这不是专用向量索引。数据量超过阈值后仍可能退化。
+1. 向量检索：未提前接入 sqlite-vec 不是假修复；当前修复目标是让现有 JSON 向量路径有明确扫描上限、日志和试点阈值。超过阈值后应按评估文档启动 sqlite-vec。
 2. 后台任务诊断：`/health` 有 task state，但还不是完整“失败面板”；没有逐项失败记录、重试明细和可视化入口。
-3. Agent 类型化：前端展示模型已有，但后端 tool result schema 仍主要是 `dict`，还没做到端到端 schema 生成或契约测试。
+3. Agent 类型化：已有 `result_schema` 元数据和前端 sealed rendering；后续若要更严格，可把这些 schema 生成到前端模型，而不是手写同步。
 4. 图片代理：像素限制、缓存配额和生产 Origin/Referer 限制已落地；但未做签名 URL。如果未来把代理暴露给第三方站点或 CDN，应再补签名/短时效策略。
 
 ## 下一批建议
 
-1. P2：按向量检索评估阈值启动 sqlite-vec/sqlite-vss 试点。
+1. P2：达到 `VECTOR_SEARCH_EVALUATION.md` 中任一阈值后，启动 sqlite-vec 试点；sqlite-vss 不再投入。

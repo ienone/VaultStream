@@ -4,6 +4,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/network/api_client.dart';
 import '../models/target_list_response.dart';
 import '../models/render_config_preset.dart';
+import '../models/render_config.dart';
 
 part 'targets_provider.g.dart';
 
@@ -47,7 +48,7 @@ class Targets extends _$Targets {
     required String targetId,
     bool? enabled,
     bool? mergeForward,
-    Map<String, dynamic>? renderConfig,
+    RenderConfig? renderConfig,
   }) async {
     final dio = ref.watch(apiClientProvider);
     await dio.post(
@@ -60,7 +61,7 @@ class Targets extends _$Targets {
         if (mergeForward case final mergeForward?)
           'merge_forward': mergeForward,
         if (renderConfig case final renderConfig?)
-          'render_config': renderConfig,
+          'render_config': renderConfig.toJson(),
       },
     );
     ref.invalidateSelf();

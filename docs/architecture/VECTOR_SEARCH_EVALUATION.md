@@ -4,11 +4,12 @@
 
 ## 当前实现
 
-当前 `EmbeddingService.search_similar()` 使用 `content_embeddings` 普通表保存 JSON 向量，并通过两层收敛控制成本：
+当前 `EmbeddingService.search_similar()` 使用 `content_embeddings` 普通表保存 JSON 向量，并通过多层收敛控制成本：
 
 - 先按 `top_k` 计算候选上限，当前为 `max(50, top_k * 6)`。
+- 向量行扫描受 `embedding_search_max_rows` 限制，默认最多读取 5000 行；候选按 `indexed_at` 降序收敛后再在应用层计算相似度。
 - 结合 FTS 候选、向量候选与内容状态过滤后，在应用层计算 cosine 相似度。
-- 日志记录 `candidate_limit`、`vector_candidates`、`fts_candidates`、`result_count`、`elapsed_ms`，用于判断是否需要切换专用向量索引。
+- 日志记录 `candidate_limit`、`vector_candidates`、`fts_candidates`、`result_count`、`elapsed_ms`、`vector_scan_rows`、`vector_scan_limit`，用于判断是否需要切换专用向量索引。
 
 这个方案的优点是部署简单、与现有 SQLite/Windows/单机自托管一致，不需要加载 SQLite 扩展或维护额外索引文件。缺点是高数据量下仍会受 Python 层向量计算和 JSON 反序列化影响。
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/distribution_rule.dart';
 import '../models/bot_chat.dart';
+import '../models/render_config.dart';
 import 'render_config_editor.dart';
 
 class DistributionRuleDialog extends StatefulWidget {
@@ -38,7 +39,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
   late List<String> _includeTags;
   late List<String> _excludeTags;
   late String _tagsMatchMode;
-  late Map<String, dynamic> _renderConfig;
+  late RenderConfig _renderConfig;
   late Set<int> _selectedTargetChatIds;
 
   bool get isEditing => widget.rule != null;
@@ -64,7 +65,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
     _includeTags = List.from(conditions['tags'] ?? []);
     _excludeTags = List.from(conditions['tags_exclude'] ?? []);
     _tagsMatchMode = conditions['tags_match_mode'] ?? 'any';
-    _renderConfig = Map<String, dynamic>.from(rule?.renderConfig ?? {});
+    _renderConfig = rule?.renderConfig ?? {};
     _selectedTargetChatIds = Set<int>.from(widget.initialSelectedChatIds);
   }
 

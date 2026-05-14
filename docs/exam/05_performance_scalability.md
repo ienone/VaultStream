@@ -38,7 +38,7 @@
 `backend/app/services/embedding_service.py` 中：
 
 - embedding 存储在 `content_embeddings.embedding` JSON 字段。
-- `_vector_rank_ids()` 查询候选 rows 后在 Python 中逐条转 numpy、点积、排序。
+- `_vector_rank_ids()` 现在受 `embedding_search_max_rows` 控制，默认最多扫描 5000 行候选，再在 Python 中逐条转 numpy、点积、排序。
 - 当前索引只覆盖 `content_id`、`chunk_index`、`indexed_at`、`model` 等普通字段，没有向量索引。
 
 影响：
@@ -46,10 +46,10 @@
 - 小库可用；内容和 chunk 数量上来后查询延迟线性增长。
 - SQLite JSON 存向量不利于压缩、批量计算和 ANN。
 
-建议：
+状态与建议：
 
-- 短期：限制候选范围、缓存 query embedding、记录耗时和候选数量。
-- 中期：使用 sqlite-vec/sqlite-vss，或独立向量索引。
+- 短期整改已完成：限制扫描行数、限制候选范围，并记录 scan/candidate/result/elapsed 日志。
+- 中期：按 `docs/architecture/VECTOR_SEARCH_EVALUATION.md` 的阈值试点 sqlite-vec；sqlite-vss 不再投入。
 - 长期：统一 text FTS + vector rerank pipeline，并把向量索引 backfill 纳入任务队列。
 
 ## Discovery/RAG 数据链路未闭环

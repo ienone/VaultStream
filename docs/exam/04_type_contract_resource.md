@@ -21,18 +21,19 @@
 - 将 `rich_payload` 中稳定字段拆出 typed model；不稳定扩展字段保留在 `extras`。
 - pytest 增加 OpenAPI schema 快照或最小契约测试。
 
-### 前端
+### 前端（整改后状态）
 
-问题集中在 Agent 和 Bot 页面：
+原问题集中在 Agent 和 Bot 页面：
 
 - `agent_page.dart` 直接解析 raw `Map<String, dynamic>`。
 - `bot_management_page.dart` 用 `List<Map<String, dynamic>>` 管理配置。
 
-建议：
+已落地：
 
-- 用 freezed/json_serializable 建立 DTO。
-- 对 tool result 采用 sealed union：`SearchResult`、`StatsResult`、`CreateRuleResult`、`PushBatchResult`。
-- 后端 tool registry 的 `args_schema` 和 result schema 同步生成或至少在测试中校验。
+- Agent 工具结果采用 typed/sealed rendering，不再由页面散落解析 raw result。
+- Agent tool registry 暴露 `result_schema`，`/agent/tools` 可返回输入和输出契约。
+- Bot 管理页面使用 typed model 承载配置和状态。
+- Review 渲染配置保留 JSON 扩展面，但前端字段已收敛到 `RenderConfig` 领域类型，避免页面直接裸传 `Map<String,dynamic>`。
 
 ## 资源生命周期
 
@@ -90,4 +91,3 @@ finally:
 ### Agent tool error
 
 `agent.py` 把 tool 异常转为 500 或 websocket error 文本。建议工具层定义结构化错误码，例如 `invalid_args`、`not_found`、`upstream_failed`、`permission_required`，前端才能做可恢复交互。
-

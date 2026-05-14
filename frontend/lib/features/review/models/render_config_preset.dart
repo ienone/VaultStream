@@ -1,4 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'render_config.dart';
 
 part 'render_config_preset.freezed.dart';
 part 'render_config_preset.g.dart';
@@ -9,7 +10,7 @@ abstract class RenderConfigPreset with _$RenderConfigPreset {
     required String id,
     required String name,
     String? description,
-    required Map<String,dynamic> config,
+    required RenderConfig config,
     @JsonKey(name: 'is_builtin') @Default(false) bool isBuiltin,
     @JsonKey(name: 'created_at') DateTime? createdAt,
     @JsonKey(name: 'updated_at') DateTime? updatedAt,

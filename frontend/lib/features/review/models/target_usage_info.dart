@@ -1,4 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'render_config.dart';
 
 part 'target_usage_info.freezed.dart';
 part 'target_usage_info.g.dart';
@@ -17,7 +18,7 @@ abstract class TargetUsageInfo with _$TargetUsageInfo {
     @JsonKey(name: 'merge_forward') @Default(false) bool mergeForward,
     @JsonKey(name: 'use_author_name') @Default(false) bool useAuthorName,
     @Default('') String summary,
-    @JsonKey(name: 'render_config') Map<String, dynamic>? renderConfig,
+    @JsonKey(name: 'render_config') RenderConfig? renderConfig,
     @JsonKey(name: 'connection_status') String? connectionStatus,
     @JsonKey(name: 'connection_message') String? connectionMessage,
   }) = _TargetUsageInfo;

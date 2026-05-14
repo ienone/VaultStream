@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/utils/toast.dart';
+import '../models/render_config.dart';
 import '../models/render_config_preset.dart';
 import '../providers/targets_provider.dart';
 
@@ -12,8 +13,8 @@ class RenderConfigEditor extends ConsumerStatefulWidget {
     this.showPresetSelector = true,
   });
 
-  final Map<String, dynamic> config;
-  final ValueChanged<Map<String, dynamic>> onChanged;
+  final RenderConfig config;
+  final ValueChanged<RenderConfig> onChanged;
   final bool showPresetSelector;
 
   @override
@@ -25,11 +26,7 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
   late final TextEditingController _footerController;
 
   Map<String, dynamic> get _structure {
-    final cfg = widget.config;
-    if (cfg.containsKey('structure') && cfg['structure'] is Map) {
-      return Map<String, dynamic>.from(cfg['structure'] as Map);
-    }
-    return Map<String, dynamic>.from(cfg);
+    return widget.config.structure;
   }
 
   @override
@@ -54,11 +51,7 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
   }
 
   void _emitChange(Map<String, dynamic> structure) {
-    if (widget.config.containsKey('structure')) {
-      widget.onChanged({'structure': structure});
-    } else {
-      widget.onChanged(structure);
-    }
+    widget.onChanged(widget.config.withStructure(structure));
   }
 
   bool _getBool(String key, [bool fallback = false]) =>
@@ -340,7 +333,7 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
 
   void _applyPreset(RenderConfigPreset preset) {
     // Apply preset config
-    final presetConfig = Map<String, dynamic>.from(preset.config);
+    final presetConfig = preset.config.structure;
     
     // Update text controllers
     _headerController.text = presetConfig['header_text'] ?? '';
@@ -353,4 +346,3 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
     Toast.show(context, '已应用预设: ${preset.name}');
   }
 }
-
