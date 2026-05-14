@@ -71,7 +71,7 @@
 
 ## 4.1 语义检索索引 (`content_embeddings`)
 
-语义检索使用普通 SQLite 表保存向量 JSON，当前尚未依赖 sqlite-vec/sqlite-vss 扩展。
+语义检索使用普通 SQLite 表保存向量 JSON，当前尚未依赖 sqlite-vec/sqlite-vss 扩展；方案评估见 `docs/architecture/VECTOR_SEARCH_EVALUATION.md`。
 
 | 字段名 | 类型 | 说明 |
 | :--- | :--- | :--- |
@@ -83,7 +83,7 @@
 | `text_hash` | String | 文本 hash，用于避免重复索引 |
 | `source_text` | Text | 用于检索解释的原始文本片段 |
 
-`EmbeddingService.search_similar()` 会限制候选范围后在应用层计算相似度；后续如引入 sqlite-vec/sqlite-vss，需要同步迁移本表或新增虚拟表。
+`EmbeddingService.search_similar()` 会限制候选范围后在应用层计算相似度，并记录候选数与耗时。后续如引入 sqlite-vec，需要同步迁移本表或新增虚拟表。
 
 ## 5. 任务队列表 (`tasks`)
 
