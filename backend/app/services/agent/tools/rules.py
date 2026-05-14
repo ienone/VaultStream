@@ -22,6 +22,18 @@ def register_rules_tool(registry: AgentToolRegistry) -> None:
             "approval_required": {"type": "boolean", "required": False, "default": False},
             "target_bot_chat_id": {"type": "integer", "required": False},
         },
+        result_schema={
+            "type": "object",
+            "required": ["rule_id", "name", "match_conditions", "approval_required", "enabled", "target"],
+            "properties": {
+                "rule_id": {"type": "integer"},
+                "name": {"type": "string"},
+                "match_conditions": {"type": "object"},
+                "approval_required": {"type": "boolean"},
+                "enabled": {"type": "boolean"},
+                "target": {"type": ["object", "null"]},
+            },
+        },
         handler=_create_rule_tool,
     )
 

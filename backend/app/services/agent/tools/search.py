@@ -18,6 +18,16 @@ def register_search_tool(registry: AgentToolRegistry) -> None:
             "date_from": {"type": "string", "required": False, "format": "iso8601"},
             "date_to": {"type": "string", "required": False, "format": "iso8601"},
         },
+        result_schema={
+            "type": "object",
+            "required": ["query", "top_k", "count", "items"],
+            "properties": {
+                "query": {"type": "string"},
+                "top_k": {"type": "integer"},
+                "count": {"type": "integer"},
+                "items": {"type": "array"},
+            },
+        },
         handler=_search_content_tool,
     )
 

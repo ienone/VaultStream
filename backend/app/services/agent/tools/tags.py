@@ -18,6 +18,15 @@ def register_tags_tool(registry: AgentToolRegistry) -> None:
             "add_tags": {"type": "array", "required": False, "items": {"type": "string"}},
             "remove_tags": {"type": "array", "required": False, "items": {"type": "string"}},
         },
+        result_schema={
+            "type": "object",
+            "required": ["content_id", "tags", "count"],
+            "properties": {
+                "content_id": {"type": "integer"},
+                "tags": {"type": "array"},
+                "count": {"type": "integer"},
+            },
+        },
         handler=_manage_tags_tool,
     )
 

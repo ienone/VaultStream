@@ -10,6 +10,7 @@ class AgentToolInfo(BaseModel):
     name: str
     description: str
     args_schema: Dict[str, Any] = Field(default_factory=dict)
+    result_schema: Dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentToolInvokeRequest(BaseModel):

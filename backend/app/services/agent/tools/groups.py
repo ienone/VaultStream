@@ -13,6 +13,14 @@ def register_groups_tool(registry: AgentToolRegistry) -> None:
         name="list_groups",
         description="列出可用推送群组/频道。",
         args_schema={},
+        result_schema={
+            "type": "object",
+            "required": ["count", "groups"],
+            "properties": {
+                "count": {"type": "integer"},
+                "groups": {"type": "array"},
+            },
+        },
         handler=_list_groups_tool,
     )
 

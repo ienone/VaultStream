@@ -20,6 +20,18 @@ def register_push_tool(registry: AgentToolRegistry) -> None:
             "force_enqueue": {"type": "boolean", "required": False, "default": True},
             "include_success": {"type": "boolean", "required": False, "default": False},
         },
+        result_schema={
+            "type": "object",
+            "required": ["content_ids", "bot_chat_id", "enqueued_total", "queue_items_total", "scheduled_count", "scheduled_item_ids"],
+            "properties": {
+                "content_ids": {"type": "array"},
+                "bot_chat_id": {"type": ["integer", "null"]},
+                "enqueued_total": {"type": "integer"},
+                "queue_items_total": {"type": "integer"},
+                "scheduled_count": {"type": "integer"},
+                "scheduled_item_ids": {"type": "array"},
+            },
+        },
         handler=_push_batch_tool,
     )
 

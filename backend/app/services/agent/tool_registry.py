@@ -20,6 +20,7 @@ class AgentToolSpec:
     name: str
     description: str
     args_schema: Dict[str, Any]
+    result_schema: Dict[str, Any]
     handler: AgentToolHandler
 
 
@@ -33,6 +34,7 @@ class AgentToolRegistry:
         name: str,
         description: str,
         args_schema: Dict[str, Any],
+        result_schema: Dict[str, Any] | None = None,
         handler: AgentToolHandler,
     ) -> None:
         if name in self._tools:
@@ -41,6 +43,7 @@ class AgentToolRegistry:
             name=name,
             description=description,
             args_schema=args_schema,
+            result_schema=result_schema or {"type": "object"},
             handler=handler,
         )
 

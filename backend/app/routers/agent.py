@@ -50,7 +50,12 @@ def _is_valid_token(
 async def list_agent_tools(_: None = Depends(require_api_token)):
     registry = get_tool_registry()
     return [
-        AgentToolInfo(name=tool.name, description=tool.description, args_schema=tool.args_schema)
+        AgentToolInfo(
+            name=tool.name,
+            description=tool.description,
+            args_schema=tool.args_schema,
+            result_schema=tool.result_schema,
+        )
         for tool in registry.list_specs()
     ]
 

@@ -13,6 +13,14 @@ def register_favorites_tool(registry: AgentToolRegistry) -> None:
         args_schema={
             "platform": {"type": "string", "required": True},
         },
+        result_schema={
+            "type": "object",
+            "required": ["platform", "result"],
+            "properties": {
+                "platform": {"type": "string"},
+                "result": {"type": "object"},
+            },
+        },
         handler=_import_favorites_tool,
     )
 

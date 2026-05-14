@@ -16,6 +16,17 @@ def register_stats_tool(registry: AgentToolRegistry) -> None:
         args_schema={
             "include_rule_breakdown": {"type": "boolean", "required": False, "default": False},
         },
+        result_schema={
+            "type": "object",
+            "required": ["parse", "distribution", "enabled_rules", "enabled_groups", "rule_breakdown"],
+            "properties": {
+                "parse": {"type": "object"},
+                "distribution": {"type": "object"},
+                "enabled_rules": {"type": "integer"},
+                "enabled_groups": {"type": "integer"},
+                "rule_breakdown": {"type": "object"},
+            },
+        },
         handler=_get_stats_tool,
     )
 

@@ -43,6 +43,8 @@ async def test_agent_list_tools(client: AsyncClient):
         "get_stats",
         "push_batch",
     }.issubset(names)
+    for item in resp.json():
+        assert item["result_schema"]["type"] == "object"
 
 
 @pytest.mark.asyncio
