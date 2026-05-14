@@ -39,6 +39,7 @@ VaultStream 的主体架构已经具备可运行产品形态：FastAPI 后端、
 - `07_feature_gaps_roadmap.md`：README/ROADMAP/API 与当前实现的功能差距。
 - `08_action_plan.md`：按 P0/P1/P2/P3 排序的落地计划。
 - `09_goal_mode_prompt.md`：可复用的下一轮 Goal Mode 提示词。
+- `10_implementation_status.md`：审计问题实现状态总览，区分已修、未修和假修复/弱验证。
 
 ## 优先级定义
 
