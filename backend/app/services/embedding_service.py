@@ -345,8 +345,17 @@ class EmbeddingService:
             .where(and_(*model_filters))
         )
 
+        row_scan_limit = await self._get_embedding_search_max_rows()
+        row_scan_limit = max(limit, row_scan_limit)
+        if row_scan_limit > 0:
+            stmt = stmt.order_by(ContentEmbedding.indexed_at.desc()).limit(row_scan_limit)
         
         rows = (await session.execute(stmt)).all()
+        logger.bind(
+            component="semantic_search",
+            vector_scan_rows=len(rows),
+            vector_scan_limit=row_scan_limit,
+        ).debug("Semantic vector scan completed")
 
         if not rows:
             return []
@@ -513,6 +522,17 @@ class EmbeddingService:
         if 128 <= dimension <= 3072:
             return dimension
         return self._DEFAULT_OUTPUT_DIMENSIONALITY
+
+    async def _get_embedding_search_max_rows(self) -> int:
+        value = await get_setting_value("embedding_search_max_rows", 5000)
+        try:
+            row_limit = int(value)
+        except (TypeError, ValueError):
+            return 5000
+
+        if row_limit <= 0:
+            return 5000
+        return min(row_limit, 100_000)
 
     async def _get_document_embedding_signature(self) -> str:
         model = await self._get_embedding_model()
