@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:extended_image/extended_image.dart';
 import '../../../../../core/network/image_headers.dart';
+import '../../../../../core/widgets/network_thumbnail.dart';
 import '../../common/video_player_widget.dart';
 import '../../../../../theme/design_tokens.dart';
 import '../gallery/gallery_navigation.dart';
@@ -42,7 +42,6 @@ class MediaGalleryItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final effectiveBorderRadius =
         borderRadius ?? BorderRadius.circular(AppRadius.xxl);
 
@@ -75,43 +74,17 @@ class MediaGalleryItem extends StatelessWidget {
           borderRadius: effectiveBorderRadius,
           child: Hero(
             tag: heroTag,
-            child: ExtendedImage.network(
-              url,
-              headers: buildImageHeaders(
+            child: NetworkThumbnail(
+              imageUrl: url,
+              httpHeaders: buildImageHeaders(
                 imageUrl: url,
                 baseUrl: apiBaseUrl,
                 apiToken: apiToken,
               ),
+              width: width,
+              height: height,
               fit: fit,
-              cache: true,
-              enableMemoryCache: true,
-              clearMemoryCacheWhenDispose: false,
-              loadStateChanged: (state) {
-                switch (state.extendedImageLoadState) {
-                  case LoadState.loading:
-                    return Container(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          value: state.loadingProgress != null
-                              ? state.loadingProgress!.cumulativeBytesLoaded /
-                                    (state
-                                            .loadingProgress!
-                                            .expectedTotalBytes ??
-                                        1)
-                              : null,
-                        ),
-                      ),
-                    );
-                  case LoadState.failed:
-                    return Container(
-                      color: theme.colorScheme.errorContainer,
-                      child: const Icon(Icons.broken_image),
-                    );
-                  case LoadState.completed:
-                    return state.completedWidget;
-                }
-              },
+              errorIcon: Icons.broken_image,
             ),
           ),
         ),

@@ -31,7 +31,7 @@
 | API 文档漂移 | 已修 | `scripts/check_openapi_docs.py` 比对 FastAPI OpenAPI 与 `docs/API.md`；quality/release 均接入；本地 92 endpoints 通过 | 继续要求新增 endpoint 同步文档 |
 | 资源泄漏 warning | 已修 | 修复 async mock 未 await；测试 engine 使用 `NullPool` 并 dispose app/test engine；全量非 integration 在 `-W error::ResourceWarning` 下通过 | 继续要求新增 fixture 显式关闭 async engine/session |
 | Vulture 候选 | 已修 | 测试中的副作用 fixture 改为 `usefixtures` 或显式断言，未用 mock 参数下划线化，未用 import 已删除；`vulture --min-confidence 80` 通过 | 后续新增动态入口时可用 whitelist 避免误报 |
-| 图片缓存库边界 | 未修 | 未看到统一策略改动 | 需收敛 cached_network_image / extended_image 用途 |
+| 图片缓存库边界 | 已修 | 普通详情缩略图改走 `NetworkThumbnail`/`cached_network_image`；`extended_image` 保留给全屏/手势图库 | 后续新增图片入口应复用同一边界 |
 | API token 本地存储 | 已修 | 启动时迁移 legacy `SharedPreferences` token 到 `flutter_secure_storage`；设置/清除 token 均写安全存储并清理旧 key | Web 平台安全属性依赖浏览器/插件实现，仍不应把 token 写入日志 |
 | Distribution 决策入口 | 未修 | engine/scheduler/parsing 仍并存 | 需收敛单一业务入口并补回归测试 |
 | Browser manager shutdown | 已修 | `join(timeout=5s)` 并记录未退出错误 | 可补单元测试模拟线程未退出 |
@@ -48,5 +48,4 @@
 ## 下一批建议
 
 1. P2：收敛 Distribution 决策入口，保留一个 service 作为业务入口。
-2. P2：收敛前端图片缓存库边界，明确 `cached_network_image` 与 `extended_image` 的职责。
-3. P2：按向量检索评估阈值启动 sqlite-vec/sqlite-vss 试点。
+2. P2：按向量检索评估阈值启动 sqlite-vec/sqlite-vss 试点。
