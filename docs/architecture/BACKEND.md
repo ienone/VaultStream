@@ -292,6 +292,8 @@ get_content_service   # → ContentService(db)
 get_content_repo      # → ContentRepository(db)
 ```
 
+Agent WebSocket 同样只接受 Header/Bearer Token；URL query token 已禁用，避免凭据进入代理日志、浏览器历史或监控系统。
+
 ---
 
 ## 4. 数据模型层 (models / schemas)
@@ -861,6 +863,7 @@ GET /api/v1/health
 - `checks.workers`: 解析 worker 与分发队列 worker 配置数
 - `checks.providers`: text LLM、embedding、Bot 配置状态
 - `checks.background_tasks`: 解析任务、分发队列、Discovery 同步的 pending/failed/retry 统计
+- `checks.background_tasks.task_states`: `system_settings` 中持久化的后台任务运行状态，记录 `last_started_at`、`last_success_at`、`last_error_at`、`last_error`、`run_count`、`error_count`
 
 后端 Docker 镜像内置 `HEALTHCHECK`，探测地址为 `http://localhost:8000/api/v1/health`。
 

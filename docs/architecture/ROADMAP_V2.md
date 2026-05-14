@@ -1344,6 +1344,7 @@ POST /api/v1/agent/chat
 # WebSocket 端点 (流式输出)
 WS /api/v1/agent/ws?session_id=user-xxx
 → 支持流式输出 Agent 思考过程和最终结果
+→ 鉴权只允许请求头 `X-API-Token` 或 `Authorization: Bearer <token>`，不允许 URL query token
 ```
 
 ### 3.3 Tool Using 体系

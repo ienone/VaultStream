@@ -15,6 +15,8 @@
 
 未配置 `API_TOKEN` 时可跳过鉴权（仅建议本地开发）。
 
+WebSocket 接口同样只接受请求头中的 `X-API-Token` 或 `Authorization: Bearer <token>`；不要把 token 放入 URL query。
+
 ---
 
 ## OpenAPI 端点清单
@@ -376,6 +378,7 @@ QQ 配置支持字段：`napcat_http_url`、`napcat_ws_url`、`napcat_access_tok
 - `checks.workers`: 解析 worker 与分发队列 worker 的配置数量。
 - `checks.providers`: text LLM、embedding、Bot 配置是否已配置。
 - `checks.background_tasks`: 解析任务表、分发队列、Discovery 同步源的 pending/failed/retry 统计与最近成功时间。
+- `checks.background_tasks.task_states`: 后台任务持久化状态，包含 `last_started_at`、`last_success_at`、`last_error_at`、`last_error`、`run_count`、`error_count`。
 
 ---
 
