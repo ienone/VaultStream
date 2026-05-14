@@ -8,10 +8,11 @@ import ipaddress
 import mimetypes
 import socket
 import urllib.parse
+from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 
 from app.core.logging import logger
@@ -22,6 +23,8 @@ router = APIRouter()
 
 _MAX_PROXY_IMAGE_BYTES = 10 * 1024 * 1024
 _MAX_PROXY_REDIRECTS = 5
+_MAX_PROXY_IMAGE_PIXELS = 40_000_000
+_MAX_PROXY_CACHE_BYTES = 512 * 1024 * 1024
 
 
 def _is_safe_url(url: str) -> bool:
@@ -46,6 +49,41 @@ def _is_safe_url(url: str) -> bool:
         return True
     except (ValueError, socket.gaierror):
         return False
+
+
+def _allowed_proxy_origins() -> set[str]:
+    origins = {
+        origin.strip().rstrip("/")
+        for origin in settings.cors_allowed_origins.split(",")
+        if origin.strip() and origin.strip() != "*"
+    }
+    if settings.base_url:
+        origins.add(settings.base_url.strip().rstrip("/"))
+    return origins
+
+
+def _origin_from_referer(referer: str | None) -> str | None:
+    if not referer:
+        return None
+    parsed = urlparse(referer)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+
+
+def _is_allowed_proxy_request_origin(request: Request) -> bool:
+    """In production, reject browser proxy requests from untrusted origins."""
+    if settings.app_env != "prod":
+        return True
+
+    origin = request.headers.get("origin")
+    if not origin:
+        origin = _origin_from_referer(request.headers.get("referer"))
+
+    if not origin:
+        return True
+
+    return origin.rstrip("/") in _allowed_proxy_origins()
 
 
 async def _download_remote_image(
@@ -109,6 +147,86 @@ async def _download_remote_image(
     raise HTTPException(status_code=400, detail="图片重定向次数过多")
 
 
+def _validate_proxy_image_pixels(data: bytes) -> tuple[int | None, int | None]:
+    """Validate decoded image dimensions before transcoding or caching."""
+    try:
+        from PIL import Image  # type: ignore
+    except Exception as e:  # pragma: no cover
+        raise HTTPException(status_code=500, detail="图片解码组件不可用") from e
+
+    from io import BytesIO
+
+    try:
+        with Image.open(BytesIO(data)) as image:
+            width, height = image.size
+            pixels = int(width or 0) * int(height or 0)
+            if pixels <= 0:
+                raise HTTPException(status_code=415, detail="图片尺寸无效")
+            if pixels > _MAX_PROXY_IMAGE_PIXELS:
+                raise HTTPException(status_code=413, detail="图片像素尺寸过大")
+            image.verify()
+            return int(width), int(height)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=415, detail="上游资源不是有效图片") from e
+
+
+def _proxy_cache_root(storage: LocalStorageBackend) -> Path:
+    root = Path(storage._full_path("proxy_cache")).resolve()
+    storage_root = Path(storage.root_dir).resolve()
+    try:
+        root.relative_to(storage_root)
+    except ValueError as e:  # pragma: no cover
+        raise HTTPException(status_code=500, detail="图片缓存路径配置异常") from e
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+async def _enforce_proxy_cache_quota(storage: LocalStorageBackend) -> None:
+    """Keep proxy image cache under a local quota using oldest-file eviction."""
+    cache_root = _proxy_cache_root(storage)
+
+    def trim_cache() -> None:
+        files: list[tuple[float, int, Path]] = []
+        total = 0
+        for path in cache_root.rglob("*"):
+            if not path.is_file():
+                continue
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            total += stat.st_size
+            files.append((stat.st_mtime, stat.st_size, path))
+
+        if total <= _MAX_PROXY_CACHE_BYTES:
+            return
+
+        for _mtime, size, path in sorted(files, key=lambda item: item[0]):
+            try:
+                path.unlink()
+                total -= size
+            except OSError as e:
+                logger.warning(f"图片代理缓存清理失败: {path}, {e}")
+            if total <= _MAX_PROXY_CACHE_BYTES:
+                break
+
+        for directory in sorted(
+            (p for p in cache_root.rglob("*") if p.is_dir()),
+            key=lambda p: len(p.parts),
+            reverse=True,
+        ):
+            try:
+                directory.rmdir()
+            except OSError:
+                pass
+
+    import asyncio
+
+    await asyncio.to_thread(trim_cache)
+
+
 @router.get("/media/{key:path}")
 async def proxy_media(
     key: str,
@@ -154,6 +272,7 @@ async def proxy_media(
 
 @router.get("/proxy/image")
 async def proxy_image(
+    request: Request,
     url: str = Query(..., description="要代理的图片 URL"),
     storage: LocalStorageBackend = Depends(get_storage_backend),
 ):
@@ -175,6 +294,8 @@ async def proxy_image(
     # SSRF 防护：禁止访问内网地址
     if not _is_safe_url(url):
         raise HTTPException(status_code=400, detail="目标 URL 不允许访问（内网地址或无效协议）")
+    if not _is_allowed_proxy_request_origin(request):
+        raise HTTPException(status_code=403, detail="图片代理来源不允许")
 
     # 1. 生成缓存key（使用URL的MD5作为命名空间）
     url_hash = hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()
@@ -211,14 +332,19 @@ async def proxy_image(
                 url,
                 headers,
             )
+            _validate_proxy_image_pixels(original_data)
             
             # 4. 转码为WebP（支持动画GIF）
             try:
                 webp_data, width, height = _image_to_webp(original_data, quality=80)
+                if width is not None and height is not None:
+                    if int(width) * int(height) > _MAX_PROXY_IMAGE_PIXELS:
+                        raise HTTPException(status_code=413, detail="图片像素尺寸过大")
                 
                 # 5. 存储到本地
                 cache_key = f"{cache_namespace}/{url_hash}.webp"
                 await storage.put_bytes(key=cache_key, data=webp_data, content_type="image/webp")
+                await _enforce_proxy_cache_quota(storage)
                 
                 logger.info(
                     f"图片代理已缓存: {final_url} -> {cache_key} "
@@ -237,6 +363,8 @@ async def proxy_image(
                         "X-Compressed-Size": str(len(webp_data)),
                     }
                 )
+            except HTTPException:
+                raise
             
             except Exception as transcode_error:
                 # 转码失败，返回原图
@@ -248,6 +376,7 @@ async def proxy_image(
                     ext = "jpg"
                 cache_key = f"{cache_namespace}/{url_hash}.{ext}"
                 await storage.put_bytes(key=cache_key, data=original_data, content_type=content_type)
+                await _enforce_proxy_cache_quota(storage)
                 
                 return StreamingResponse(
                     iter([original_data]),
