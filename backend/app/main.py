@@ -40,6 +40,12 @@ from app.routers import (
 setup_logging(level=settings.log_level, fmt=settings.log_format, debug=settings.debug)
 
 
+def _token_fingerprint(token: str) -> str:
+    if len(token) <= 12:
+        return "***"
+    return f"{token[:6]}...{token[-4:]}"
+
+
 async def _bootstrap_system_settings():
     """初始化系统设置，如生成 API Token"""
     from app.services.settings_service import get_setting_value, set_setting_value, load_all_settings_to_memory
@@ -61,11 +67,12 @@ async def _bootstrap_system_settings():
         # 更新内存中的 settings 对象，确保后续鉴权通过
         settings.api_token = SecretStr(new_token)
         
-        # 醒目打印
+        # 首次启动只输出指纹，避免完整 API Token 进入日志/终端历史。
+        fingerprint = _token_fingerprint(new_token)
         print("\n" + "="*70)
-        print("  " + "首次启动! 请复制以下 API 访问密钥以连接前端:".center(66))
-        print("\n" + f"  {new_token}  ".center(70, " "))
-        print("\n" + "  该密钥已安全存储在数据库中，您稍后可在设置页面修改。".center(66))
+        print("  " + "首次启动已生成 API 访问密钥".center(66))
+        print("\n" + f"  指纹: {fingerprint}  ".center(70, " "))
+        print("\n" + "  请通过受控配置渠道设置 API_TOKEN，或在设置页面轮换密钥。".center(66))
         print("="*70 + "\n")
     elif env_token:
         # 如果环境变量有，确保内存中使用环境变量的

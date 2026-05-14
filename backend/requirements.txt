@@ -31,6 +31,8 @@ Pillow
 markdownify
 beautifulsoup4
 bbcode
+# Pin a safe XML parser version explicitly for the parsing stack.
+lxml>=6.1.0
 
 # RSS parsing
 feedparser

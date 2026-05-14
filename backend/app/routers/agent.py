@@ -35,14 +35,13 @@ def _extract_bearer(value: Optional[str]) -> Optional[str]:
 
 def _is_valid_token(
     *,
-    query_token: Optional[str],
     header_token: Optional[str],
     auth_header: Optional[str],
 ) -> bool:
     expected = settings.api_token.get_secret_value() if settings.api_token else ""
     if not expected:
         return True
-    provided = query_token or header_token or _extract_bearer(auth_header)
+    provided = header_token or _extract_bearer(auth_header)
     return bool(provided and provided == expected)
 
 
@@ -98,11 +97,9 @@ async def run_agent(
 
 @router.websocket("/agent/ws")
 async def agent_ws(websocket: WebSocket):
-    query_token = websocket.query_params.get("token")
     header_token = websocket.headers.get("x-api-token")
     auth_header = websocket.headers.get("authorization")
     if not _is_valid_token(
-        query_token=query_token,
         header_token=header_token,
         auth_header=auth_header,
     ):
