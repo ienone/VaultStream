@@ -15,6 +15,7 @@ from app.main import app
 from app.core.config import settings
 from app.core.database import ensure_content_fts
 from app.core.db_adapter import engine as app_engine
+from app.core.schema_gate import ensure_schema_metadata
 from app.models import Base, Content
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
@@ -52,6 +53,7 @@ async def setup_test_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await ensure_content_fts(conn)
+        await ensure_schema_metadata(conn)
     
     yield
 

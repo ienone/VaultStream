@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.core.db_adapter import AsyncSessionLocal, engine
+from app.core.schema_gate import ensure_schema_metadata, validate_database_schema
 from app.models import Base
 
 
@@ -15,6 +16,7 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await ensure_content_fts(conn)
+        await ensure_schema_metadata(conn)
 
 
 async def ensure_content_fts(conn: AsyncConnection) -> None:
@@ -146,8 +148,11 @@ async def get_database_health() -> dict[str, Any]:
     details: dict[str, Any] = {"status": "ok" if ping_ok else "error", "ping": ping_ok}
     if ping_ok:
         details["fts"] = await get_content_fts_health()
+        async with engine.connect() as conn:
+            details["schema"] = await validate_database_schema(conn)
     else:
         details["fts"] = {"status": "unknown", "available": False}
+        details["schema"] = {"status": "unknown"}
     return details
 
 
