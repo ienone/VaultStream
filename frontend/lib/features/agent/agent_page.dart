@@ -62,11 +62,7 @@ class _AgentPageState extends ConsumerState<AgentPage> {
       });
     } on DioException catch (e) {
       setState(() {
-        _messages.add(
-          _AgentMessage.error(
-            formatApiErrorMessage(e, fallbackMessage: 'Agent 请求失败，请稍后重试'),
-          ),
-        );
+        _messages.add(_AgentMessage.error(_formatAgentErrorMessage(e)));
       });
     } catch (_) {
       setState(() {
@@ -89,6 +85,26 @@ class _AgentPageState extends ConsumerState<AgentPage> {
         curve: Curves.easeOutCubic,
       );
     });
+  }
+
+  String _formatAgentErrorMessage(DioException error) {
+    final info = parseApiErrorInfo(error, fallbackMessage: 'Agent 请求失败，请稍后重试');
+    final message = switch (info.code) {
+      'agent_invalid_message' => '没有识别到可执行指令。请换一种说法，或使用下方示例指令。',
+      'agent_tool_not_found' => '当前指令匹配到的工具不可用。请刷新页面后重试，或改用其他指令。',
+      'agent_tool_invalid_args' => '指令参数不完整或格式不正确。请补充目标、关键词或群组信息后重试。',
+      'agent_tool_execution_failed' => '工具执行失败。请检查相关配置是否可用，然后重试。',
+      'agent_execution_failed' => 'Agent 执行失败。请稍后重试，或改成更具体的单步指令。',
+      _ => formatApiErrorMessage(error, fallbackMessage: 'Agent 请求失败，请稍后重试'),
+    };
+
+    if (info.requestId == null || info.requestId!.isEmpty) {
+      return message;
+    }
+    final shortId = info.requestId!.length > 8
+        ? info.requestId!.substring(0, 8)
+        : info.requestId!;
+    return '$message | RID:$shortId';
   }
 
   @override

@@ -36,7 +36,7 @@
 | Distribution 决策入口 | 未修 | engine/scheduler/parsing 仍并存 | 需收敛单一业务入口并补回归测试 |
 | Browser manager shutdown | 已修 | `join(timeout=5s)` 并记录未退出错误 | 可补单元测试模拟线程未退出 |
 | Discovery list raw dict | 已修 | `/discovery/items` 改为 `DiscoveryItemListResponse` | 可补 OpenAPI schema 快照 |
-| Agent tool error | 部分修复 | HTTP/WS 返回结构化 `error_code` | 前端还未基于错误码做恢复式交互 |
+| Agent tool error | 已修 | HTTP/WS 返回结构化 `error_code`；Agent 页面按错误码展示可恢复提示并保留 RID | 仍可继续补 WS 流式交互的细粒度 UI 状态 |
 
 ## 假修复/弱验证清单
 
