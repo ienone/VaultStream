@@ -24,9 +24,13 @@ bool get isSharedPrefsInitialized {
   }
 }
 
+void configureRuntimeAssets() {
+  GoogleFonts.config.allowRuntimeFetching = false;
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  GoogleFonts.config.allowRuntimeFetching = false;
+  configureRuntimeAssets();
   sharedPrefs = await SharedPreferences.getInstance();
 
   timeago.setLocaleMessages('zh_CN', timeago.ZhCnMessages());

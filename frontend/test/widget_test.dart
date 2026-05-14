@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:frontend/main.dart';
 import 'package:frontend/core/network/api_client.dart';
 import 'package:dio/dio.dart';
@@ -18,16 +19,21 @@ class MockDio extends Mock implements Dio {
     ProgressCallback? onReceiveProgress,
   }) {
     // Return empty success response for all gets
-    return Future.value(Response(
-      requestOptions: RequestOptions(path: path),
-      data: null, // Return null or empty dict depending on expected T
-      statusCode: 200,
-    ));
+    return Future.value(
+      Response(
+        requestOptions: RequestOptions(path: path),
+        data: null, // Return null or empty dict depending on expected T
+        statusCode: 200,
+      ),
+    );
   }
 }
 
 void main() {
   testWidgets('App smoke test', (WidgetTester tester) async {
+    configureRuntimeAssets();
+    expect(GoogleFonts.config.allowRuntimeFetching, isFalse);
+
     SharedPreferences.setMockInitialValues({});
     if (!isSharedPrefsInitialized) {
       sharedPrefs = await SharedPreferences.getInstance();
@@ -42,9 +48,7 @@ void main() {
     // Override apiClientProvider to prevent real network calls
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
-          apiClientProvider.overrideWith((ref) => MockDio()),
-        ],
+        overrides: [apiClientProvider.overrideWith((ref) => MockDio())],
         child: const VaultStreamApp(),
       ),
     );
