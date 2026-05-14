@@ -59,6 +59,13 @@ def _make_context(bot_config_id=1):
     return ctx
 
 
+def _make_fake_session() -> MagicMock:
+    session = MagicMock()
+    session.execute = AsyncMock()
+    session.commit = AsyncMock()
+    return session
+
+
 @pytest.mark.asyncio
 async def test_skips_non_monitoring_chat():
     """Non-monitoring chat → no Content created."""
@@ -66,7 +73,7 @@ async def test_skips_non_monitoring_chat():
     context = _make_context()
 
     # DB returns no BotChat (is_monitoring=False or chat not found)
-    fake_session = AsyncMock()
+    fake_session = _make_fake_session()
     fake_result = MagicMock()
     fake_result.scalars.return_value.first.return_value = None
     fake_session.execute.return_value = fake_result
@@ -98,7 +105,7 @@ async def test_creates_content_for_monitoring_chat():
     chat_result = MagicMock()
     chat_result.scalars.return_value.first.return_value = bot_chat_mock
 
-    fake_session = AsyncMock()
+    fake_session = _make_fake_session()
     fake_session.execute.side_effect = [chat_result, dedup_result]
 
     async_ctx = AsyncMock()
@@ -139,7 +146,7 @@ async def test_dedup_skips_existing_url():
     dedup_result = MagicMock()
     dedup_result.scalars.return_value.first.return_value = 42
 
-    fake_session = AsyncMock()
+    fake_session = _make_fake_session()
     fake_session.execute.side_effect = [chat_result, dedup_result]
 
     async_ctx = AsyncMock()
@@ -176,7 +183,7 @@ async def test_no_urls_in_text():
     chat_result = MagicMock()
     chat_result.scalars.return_value.first.return_value = bot_chat_mock
 
-    fake_session = AsyncMock()
+    fake_session = _make_fake_session()
     fake_session.execute.return_value = chat_result
 
     async_ctx = AsyncMock()
@@ -206,7 +213,7 @@ async def test_multiple_urls_creates_multiple_records():
     dedup_none_2 = MagicMock()
     dedup_none_2.scalars.return_value.first.return_value = None
 
-    fake_session = AsyncMock()
+    fake_session = _make_fake_session()
     fake_session.execute.side_effect = [chat_result, dedup_none_1, dedup_none_2]
 
     async_ctx = AsyncMock()

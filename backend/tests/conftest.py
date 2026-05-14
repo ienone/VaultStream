@@ -14,17 +14,24 @@ os.environ["SQLITE_DB_PATH"] = TEST_DB_PATH
 from app.main import app
 from app.core.config import settings
 from app.core.database import ensure_content_fts
+from app.core.db_adapter import engine as app_engine
 from app.models import Base, Content
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import select, text
+from sqlalchemy.pool import NullPool
 
 DB_URL = f"sqlite+aiosqlite:///{TEST_DB_PATH}"
 
 # Ensure data directory exists
 os.makedirs("data", exist_ok=True)
 
-engine = create_async_engine(DB_URL, echo=False, connect_args={"timeout": 30})
+engine = create_async_engine(
+    DB_URL,
+    echo=False,
+    connect_args={"timeout": 30},
+    poolclass=NullPool,
+)
 TestingSessionLocal = sessionmaker(
     bind=engine,
     class_=AsyncSession,
@@ -49,6 +56,7 @@ async def setup_test_db():
     yield
 
     await engine.dispose()
+    await app_engine.dispose()
 
 @pytest.fixture(scope="session")
 def event_loop():

@@ -24,8 +24,13 @@ async def test_event_bus_subscribe_timeout_heartbeat():
     """Test that subscribe() yields a ping event on timeout."""
     mock_settings = MagicMock()
     mock_settings.max_sse_subscribers = 5
+
+    async def timeout_wait_for(awaitable, timeout):
+        awaitable.close()
+        raise asyncio.TimeoutError
+
     with patch("app.core.config.settings", mock_settings):
-        with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
+        with patch("asyncio.wait_for", side_effect=timeout_wait_for):
             gen = EventBus.subscribe()
             async for item in gen:
                 assert item["event"] == "ping"
