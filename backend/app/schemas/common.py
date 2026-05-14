@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 from app.models import Platform, ContentStatus, ReviewStatus, LayoutType
-from app.schemas.base import UtcDatetime
+from app.schemas.base import OptionalUtcDatetime, UtcDatetime
 
 class APIResponse(BaseModel):
     """标准的 API 响应包裹体（如需扩展）"""
@@ -44,6 +44,74 @@ class QueueOverviewStats(BaseModel):
     """看板队列总览统计（解析+分发）"""
     parse: QueueStats
     distribution: DistributionStatusStats
+
+
+class BackgroundTaskStateResponse(BaseModel):
+    """Background task runtime state exported from system_settings."""
+
+    task: str
+    status: str
+    last_started_at: Optional[str] = None
+    last_success_at: Optional[str] = None
+    last_error_at: Optional[str] = None
+    last_error: Optional[str] = None
+    run_count: int = 0
+    error_count: int = 0
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+
+
+class FailedParseTaskResponse(BaseModel):
+    """Failed parse task detail for diagnostics pages."""
+
+    id: int
+    task_type: str
+    content_id: Optional[int] = None
+    retry_count: int
+    max_retries: int
+    retryable: bool
+    last_error: Optional[str] = None
+    created_at: OptionalUtcDatetime
+    started_at: OptionalUtcDatetime
+    completed_at: OptionalUtcDatetime
+
+
+class FailedDistributionQueueItemResponse(BaseModel):
+    """Failed distribution queue detail with retry status."""
+
+    id: int
+    content_id: int
+    title: Optional[str] = None
+    target_platform: str
+    target_id: str
+    attempt_count: int
+    max_attempts: int
+    retryable: bool
+    next_attempt_at: OptionalUtcDatetime
+    last_error: Optional[str] = None
+    last_error_type: Optional[str] = None
+    last_error_at: OptionalUtcDatetime
+    updated_at: UtcDatetime
+
+
+class FailedDiscoverySourceResponse(BaseModel):
+    """Discovery source with last sync error."""
+
+    id: int
+    name: str
+    kind: str
+    enabled: bool
+    last_sync_at: OptionalUtcDatetime
+    last_error: Optional[str] = None
+
+
+class BackgroundTaskDiagnosticsResponse(BaseModel):
+    """Detailed backend diagnostics for failed background work."""
+
+    summary: Dict[str, Any]
+    task_states: List[BackgroundTaskStateResponse]
+    failed_parse_tasks: List[FailedParseTaskResponse]
+    failed_distribution_items: List[FailedDistributionQueueItemResponse]
+    failed_discovery_sources: List[FailedDiscoverySourceResponse]
 
 
 class SystemSettingBase(BaseModel):

@@ -1,7 +1,7 @@
 # VaultStream API 文档
 
 > 版本: v0.1.0  
-> 更新: 2026-05-13  
+> 更新: 2026-05-14
 > 本文档按当前代码实现更新（OpenAPI endpoint inventory + health diagnostics + ContentQueueItem + /distribution-queue/*）
 
 ---
@@ -66,6 +66,8 @@ WebSocket 接口同样只接受请求头中的 `X-API-Token` 或 `Authorization:
 | `POST` | `/api/v1/contents/{content_id}/generate-summary` |
 | `POST` | `/api/v1/contents/{content_id}/re-parse` |
 | `POST` | `/api/v1/contents/{content_id}/retry` |
+| `GET` | `/api/v1/background-tasks/diagnostics` |
+| `GET` | `/api/v1/background-tasks/metrics` |
 | `GET` | `/api/v1/dashboard/queue` |
 | `GET` | `/api/v1/dashboard/stats` |
 | `GET` | `/api/v1/discovery/items` |

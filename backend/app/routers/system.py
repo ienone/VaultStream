@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import asyncio
 import os
 import time
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Body, Response
 from sqlalchemy import Integer, select, and_, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,7 +29,7 @@ from app.models import (
 from app.schemas import (
     SystemSettingResponse, SystemSettingUpdate, DashboardStats, 
     QueueStats, TagStats, QueueOverviewStats, DistributionStatusStats,
-    FavoritesSyncTriggerRequest,
+    FavoritesSyncTriggerRequest, BackgroundTaskDiagnosticsResponse,
 )
 from app.core.logging import logger
 from app.core.dependencies import require_api_token
@@ -147,6 +147,126 @@ async def _build_background_diagnostics(db: AsyncSession) -> dict[str, Any]:
             "last_error_count": int(source_stats[2] or 0),
         },
         "task_states": task_states,
+    }
+
+
+def _serialize_task_state(task_name: str, state: dict[str, Any]) -> dict[str, Any]:
+    known = {
+        "task",
+        "status",
+        "last_started_at",
+        "last_success_at",
+        "last_error_at",
+        "last_error",
+        "run_count",
+        "error_count",
+    }
+    return {
+        "task": str(state.get("task") or task_name),
+        "status": str(state.get("status") or "unknown"),
+        "last_started_at": state.get("last_started_at"),
+        "last_success_at": state.get("last_success_at"),
+        "last_error_at": state.get("last_error_at"),
+        "last_error": state.get("last_error"),
+        "run_count": int(state.get("run_count") or 0),
+        "error_count": int(state.get("error_count") or 0),
+        "metrics": {k: v for k, v in state.items() if k not in known},
+    }
+
+
+async def _build_background_failure_details(
+    db: AsyncSession,
+    *,
+    limit: int = 20,
+) -> dict[str, Any]:
+    summary = await _build_background_diagnostics(db)
+    task_states_raw = await get_background_task_states()
+    task_states = [
+        _serialize_task_state(name, state)
+        for name, state in sorted(task_states_raw.items())
+    ]
+
+    failed_tasks_rows = (
+        await db.execute(
+            select(Task)
+            .where(Task.status == TaskStatus.FAILED)
+            .order_by(Task.completed_at.desc().nullslast(), Task.created_at.desc())
+            .limit(limit)
+        )
+    ).scalars().all()
+    failed_parse_tasks = []
+    for task in failed_tasks_rows:
+        payload = task.payload if isinstance(task.payload, dict) else {}
+        content_id_raw = payload.get("content_id")
+        failed_parse_tasks.append(
+            {
+                "id": task.id,
+                "task_type": task.task_type,
+                "content_id": int(content_id_raw) if content_id_raw is not None else None,
+                "retry_count": task.retry_count or 0,
+                "max_retries": task.max_retries or 0,
+                "retryable": (task.retry_count or 0) < (task.max_retries or 0),
+                "last_error": task.last_error,
+                "created_at": task.created_at,
+                "started_at": task.started_at,
+                "completed_at": task.completed_at,
+            }
+        )
+
+    failed_queue_rows = (
+        await db.execute(
+            select(ContentQueueItem, Content.title)
+            .join(Content, Content.id == ContentQueueItem.content_id, isouter=True)
+            .where(ContentQueueItem.status == QueueItemStatus.FAILED)
+            .order_by(ContentQueueItem.last_error_at.desc().nullslast(), ContentQueueItem.updated_at.desc())
+            .limit(limit)
+        )
+    ).all()
+    failed_distribution_items = [
+        {
+            "id": item.id,
+            "content_id": item.content_id,
+            "title": title,
+            "target_platform": item.target_platform,
+            "target_id": item.target_id,
+            "attempt_count": item.attempt_count or 0,
+            "max_attempts": item.max_attempts or 0,
+            "retryable": (item.attempt_count or 0) < (item.max_attempts or 0),
+            "next_attempt_at": item.next_attempt_at,
+            "last_error": item.last_error,
+            "last_error_type": item.last_error_type,
+            "last_error_at": item.last_error_at,
+            "updated_at": item.updated_at,
+        }
+        for item, title in failed_queue_rows
+    ]
+
+    failed_sources = (
+        await db.execute(
+            select(DiscoverySource)
+            .where(DiscoverySource.last_error.is_not(None))
+            .order_by(DiscoverySource.last_sync_at.desc().nullslast(), DiscoverySource.updated_at.desc())
+            .limit(limit)
+        )
+    ).scalars().all()
+    failed_discovery_sources = [
+        {
+            "id": source.id,
+            "name": source.name,
+            "kind": source.kind.value if hasattr(source.kind, "value") else str(source.kind),
+            "enabled": bool(source.enabled),
+            "last_sync_at": source.last_sync_at,
+            "last_error": source.last_error,
+        }
+        for source in failed_sources
+    ]
+
+    return {
+        "summary": summary,
+        "task_states": task_states,
+        "failed_parse_tasks": failed_parse_tasks,
+        "failed_distribution_items": failed_distribution_items,
+        "failed_discovery_sources": failed_discovery_sources,
     }
 
 
@@ -304,6 +424,47 @@ async def get_dashboard_queue(
         "parse": QueueStats(**parse_stats),
         "distribution": DistributionStatusStats(**distribution_stats),
     }
+
+
+@router.get("/background-tasks/diagnostics", response_model=BackgroundTaskDiagnosticsResponse)
+async def get_background_task_diagnostics(
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """Return failed background work and retry details for operator diagnostics."""
+    return await _build_background_failure_details(db, limit=limit)
+
+
+@router.get("/background-tasks/metrics")
+async def get_background_task_metrics(
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """Export lightweight Prometheus-style background task metrics."""
+    diagnostics = await _build_background_diagnostics(db)
+    parse = diagnostics["parse_tasks"]
+    distribution = diagnostics["distribution_queue"]
+    discovery = diagnostics["discovery_sync"]
+    lines = [
+        "# HELP vaultstream_parse_tasks Number of parse tasks by status.",
+        "# TYPE vaultstream_parse_tasks gauge",
+        *[
+            f'vaultstream_parse_tasks{{status="{status}"}} {count}'
+            for status, count in sorted(parse.items())
+        ],
+        "# HELP vaultstream_distribution_queue Number of distribution queue items by status.",
+        "# TYPE vaultstream_distribution_queue gauge",
+        *[
+            f'vaultstream_distribution_queue{{status="{status}"}} {count}'
+            for status, count in sorted(distribution.items())
+        ],
+        "# HELP vaultstream_discovery_sources Discovery source diagnostics.",
+        "# TYPE vaultstream_discovery_sources gauge",
+        f'vaultstream_discovery_sources{{state="configured"}} {discovery["source_count"]}',
+        f'vaultstream_discovery_sources{{state="last_error"}} {discovery["last_error_count"]}',
+    ]
+    return Response("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
 
 @router.get("/tags", response_model=List[TagStats])
 async def get_tags_list(

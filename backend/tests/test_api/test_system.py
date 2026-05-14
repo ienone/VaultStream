@@ -22,6 +22,7 @@ class TestSystemAPI:
         assert "fts" in data["components"]
         assert "checks" in data
         assert data["checks"]["database"]["fts"]["available"] is True
+        assert data["checks"]["database"]["schema"]["status"] == "ok"
         assert "background_tasks" in data["checks"]
         assert "task_states" in data["checks"]["background_tasks"]
     
@@ -49,3 +50,22 @@ class TestSystemAPI:
         assert isinstance(data["daily_growth"], list)
         assert "storage_usage_bytes" in data
         assert isinstance(data["storage_usage_bytes"], int)
+
+    @pytest.mark.asyncio
+    async def test_background_task_diagnostics(self, client: AsyncClient):
+        response = await client.get("/api/v1/background-tasks/diagnostics")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert "summary" in data
+        assert "task_states" in data
+        assert "failed_parse_tasks" in data
+        assert "failed_distribution_items" in data
+        assert "failed_discovery_sources" in data
+
+    @pytest.mark.asyncio
+    async def test_background_task_metrics(self, client: AsyncClient):
+        response = await client.get("/api/v1/background-tasks/metrics")
+        assert response.status_code == 200
+        assert "vaultstream_parse_tasks" in response.text
+        assert "vaultstream_distribution_queue" in response.text
