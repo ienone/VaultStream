@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.dependencies import require_api_token
 from app.core.config import settings
+from app.core.api_errors import build_error_payload
 from app.schemas import (
     AgentRunRequest,
     AgentRunResponse,
@@ -63,15 +64,33 @@ async def invoke_agent_tool(
 ):
     registry = get_tool_registry()
     if not registry.has_tool(tool_name):
-        raise HTTPException(status_code=404, detail=f"Unknown tool: {tool_name}")
+        raise HTTPException(
+            status_code=404,
+            detail=build_error_payload(
+                message=f"Unknown tool: {tool_name}",
+                code="agent_tool_not_found",
+            ),
+        )
 
     context = AgentToolContext(db=db)
     try:
         result = await registry.invoke(tool_name, payload.args, context)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(
+            status_code=400,
+            detail=build_error_payload(
+                message=str(e),
+                code="agent_tool_invalid_args",
+            ),
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Tool execution failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=build_error_payload(
+                message="Tool execution failed",
+                code="agent_tool_execution_failed",
+            ),
+        )
 
     return AgentToolInvokeResponse(tool=tool_name, ok=True, result=result)
 
@@ -89,9 +108,21 @@ async def run_agent(
     try:
         result = await run_agent_message(payload.message, context)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(
+            status_code=400,
+            detail=build_error_payload(
+                message=str(e),
+                code="agent_invalid_message",
+            ),
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Agent execution failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=build_error_payload(
+                message="Agent execution failed",
+                code="agent_execution_failed",
+            ),
+        )
     return AgentRunResponse(tool=result.tool, result=result.result)
 
 
@@ -121,7 +152,13 @@ async def agent_ws(websocket: WebSocket):
 
             if isinstance(tool_name, str) and tool_name.strip():
                 if not registry.has_tool(tool_name):
-                    await websocket.send_json({"type": "error", "error": f"Unknown tool: {tool_name}"})
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "error_code": "agent_tool_not_found",
+                            "error": f"Unknown tool: {tool_name}",
+                        }
+                    )
                     continue
                 async for event in _stream_tool_result(
                     tool_name=tool_name.strip(),
@@ -132,7 +169,13 @@ async def agent_ws(websocket: WebSocket):
                         break
             else:
                 if not isinstance(message, str) or not message.strip():
-                    await websocket.send_json({"type": "error", "error": "message or tool is required"})
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "error_code": "agent_invalid_message",
+                            "error": "message or tool is required",
+                        }
+                    )
                     continue
                 async for event in _stream_agent_message(
                     message=message,
@@ -152,8 +195,24 @@ async def _stream_tool_result(*, tool_name: str, args: dict, websocket: WebSocke
         context = AgentToolContext(db=db, app=websocket.app)
         try:
             result = await get_tool_registry().invoke(tool_name, args, context)
+        except ValueError as e:
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "error_code": "agent_tool_invalid_args",
+                    "error": str(e),
+                }
+            )
+            yield "done"
+            return
         except Exception as e:
-            await websocket.send_json({"type": "error", "error": str(e)})
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "error_code": "agent_tool_execution_failed",
+                    "error": str(e),
+                }
+            )
             yield "done"
             return
 
@@ -173,8 +232,24 @@ async def _stream_agent_message(*, message: str, websocket: WebSocket):
         context = AgentToolContext(db=db, app=websocket.app)
         try:
             result = await run_agent_message(message, context)
+        except ValueError as e:
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "error_code": "agent_invalid_message",
+                    "error": str(e),
+                }
+            )
+            yield "done"
+            return
         except Exception as e:
-            await websocket.send_json({"type": "error", "error": str(e)})
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "error_code": "agent_execution_failed",
+                    "error": str(e),
+                }
+            )
             yield "done"
             return
 

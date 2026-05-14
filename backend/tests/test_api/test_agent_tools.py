@@ -49,6 +49,7 @@ async def test_agent_list_tools(client: AsyncClient):
 async def test_agent_invoke_unknown_tool(client: AsyncClient):
     resp = await client.post("/api/v1/agent/tools/not-exists/invoke", json={"args": {}})
     assert resp.status_code == 404
+    assert resp.json()["error_code"] == "agent_tool_not_found"
 
 
 @pytest.mark.asyncio
@@ -376,6 +377,7 @@ def test_agent_ws_stream_tool_unknown():
             second = ws.receive_json()
             assert first.get("type") == "start"
             assert second.get("type") == "error"
+            assert second.get("error_code") == "agent_tool_not_found"
             assert "Unknown tool" in str(second.get("error"))
 
 

@@ -68,6 +68,14 @@ class DiscoveryItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
+class DiscoveryItemListResponse(BaseModel):
+    items: List[DiscoveryItemListItem] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    size: int = 20
+    has_more: bool = False
+
+
 class DiscoveryItemUpdate(BaseModel):
     state: Literal["promoted", "ignored"]
 

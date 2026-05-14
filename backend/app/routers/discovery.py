@@ -12,7 +12,7 @@ from app.core.dependencies import require_api_token
 from app.core.time_utils import utcnow
 from app.models import Content, DiscoverySource, DiscoveryState, DiscoverySourceKind
 from app.schemas.discovery import (
-    DiscoveryItemListItem, DiscoveryItemResponse,
+    DiscoveryItemListItem, DiscoveryItemListResponse, DiscoveryItemResponse,
     DiscoveryItemUpdate, DiscoveryBulkAction,
     DiscoverySourceCreate, DiscoverySourceUpdate, DiscoverySourceResponse,
     DiscoverySettingsResponse, DiscoverySettingsUpdate,
@@ -49,7 +49,7 @@ def _parse_list_param(values: Optional[List[str]]) -> Optional[List[str]]:
 
 # ── Items ──────────────────────────────────────────────────────────────
 
-@router.get("/discovery/items", response_model=dict)
+@router.get("/discovery/items", response_model=DiscoveryItemListResponse)
 async def list_discovery_items(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),

@@ -20,6 +20,8 @@ class AgentToolInvokeResponse(BaseModel):
     tool: str
     ok: bool
     result: Optional[Dict[str, Any]] = None
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
     error: Optional[str] = None
 
 

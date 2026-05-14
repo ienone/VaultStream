@@ -24,6 +24,7 @@ _WEBKIT_UA = (
 )
 _AUTH_VIEWPORT = {"width": 1280, "height": 800}
 _FETCH_VIEWPORT = {"width": 1280, "height": 900}
+_SHUTDOWN_JOIN_TIMEOUT_SECONDS = 5.0
 
 
 class PlaywrightBrowserManager:
@@ -116,7 +117,12 @@ class PlaywrightBrowserManager:
         
         # 停止 loop
         self._pw_loop.call_soon_threadsafe(self._pw_loop.stop)
-        self._pw_thread.join()
+        self._pw_thread.join(timeout=_SHUTDOWN_JOIN_TIMEOUT_SECONDS)
+        if self._pw_thread.is_alive():
+            logger.error(
+                "PlaywrightBrowserManager: 后台循环线程在 {}s 内未退出",
+                _SHUTDOWN_JOIN_TIMEOUT_SECONDS,
+            )
         
         self._started = False
         self._pw_loop = None
