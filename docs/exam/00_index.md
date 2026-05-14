@@ -2,7 +2,7 @@
 
 审计日期：2026-05-13  
 审计范围：`backend/`、`frontend/`、`docs/`、`.github/workflows/`、`backend/Dockerfile`、`backend/docker-compose.yml`、当前 SQLite 数据库样本 `backend/data/vaultstream.db`。  
-约束：本次只产出审计文档，未修改业务代码。
+初始约束：2026-05-13 只产出审计文档，未修改业务代码。2026-05-14 已进入整改阶段，当前实现状态以 `10_implementation_status.md` 为准。
 
 ## 结论
 
@@ -18,14 +18,15 @@ VaultStream 的主体架构已经具备可运行产品形态：FastAPI 后端、
 
 | 项目 | 命令/检查 | 结果 |
 | --- | --- | --- |
-| 后端测试 | `.venv\Scripts\python.exe -m pytest backend/tests -q` | 失败：`backend/tests/test_content_summary.py` 导入不存在的 `generate_summary_llm` |
-| 依赖漏洞 | `.venv\Scripts\python.exe -m pip_audit -r backend\requirements.txt -f json` | 失败：`lxml 5.4.0` 命中 `CVE-2026-41066`，修复版本 `6.1.0` |
-| Bandit | `.venv\Scripts\python.exe -m bandit -r backend\app -f json -q` | 1 个 HIGH：`embedding_service.py:506` 使用 MD5；49 个 LOW |
+| 后端测试 | `.venv\Scripts\python.exe -m pytest backend\tests -q -m "not integration" -W error::ResourceWarning` | 通过：646 passed, 4 skipped, 16 deselected |
+| 依赖漏洞 | `.venv\Scripts\python.exe -m pip_audit -r backend\requirements.txt` | 通过：No known vulnerabilities found |
+| Bandit | `.venv\Scripts\python.exe -m bandit -r backend\app --severity-level high --confidence-level high` | 通过：No issues identified |
 | Vulture | `.venv\Scripts\python.exe -m vulture backend\app backend\tests --min-confidence 80` | 多处未使用 import/变量/fixture 候选 |
 | SQLite | `PRAGMA integrity_check; PRAGMA foreign_key_check;` | `ok`，外键检查空；16 张表、86 个索引 |
-| FTS 表 | 当前 DB 表清单 + 代码搜索 | 未发现 `contents_fts` 表；`text_search.py` 查询异常后静默返回空 |
-| Flutter analyze | `cd frontend && flutter analyze` | 通过：No issues found，15.2s |
-| Flutter test | `cd frontend && flutter test` | 通过：All tests passed，24.8s；输出中仍打印 Dio 请求 header，佐证日志脱敏风险 |
+| FTS 表 | 当前 DB 表清单 + 代码搜索 | 已有 `ensure_content_fts()`、trigger、backfill 和 health 暴露 |
+| Flutter analyze | `cd frontend && flutter analyze` | 通过：No issues found，10.8s |
+| Flutter test | `cd frontend && flutter test` | 通过：All tests passed；仍有一个既有 widget tap offset warning |
+| OpenAPI 文档 | `.venv\Scripts\python.exe scripts\check_openapi_docs.py` | 通过：OpenAPI docs check passed: 92 endpoints covered |
 | 自动审计脚本 | `audit_repo.py --with-tests` | 外层 903s 超时；未生成完整自动报告 |
 
 ## 文件导航

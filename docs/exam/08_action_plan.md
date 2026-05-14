@@ -2,24 +2,24 @@
 
 ## P0：先恢复交付可信度
 
-1. 修复后端 pytest 收集失败  
+1. 修复后端 pytest 收集失败（已修）  
    - 同步 `backend/tests/test_content_summary.py` 与当前 `content_summary_service.py`。
    - 决定是恢复 `generate_summary_llm` 兼容函数，还是重写测试指向新接口。
    - 验证：`.venv\Scripts\python.exe -m pytest backend/tests -q`。
 
-2. 关闭前端默认敏感日志  
+2. 关闭前端默认敏感日志（已修）  
    - `DEBUG_LOG` 默认改为 false。
    - Dio LogInterceptor redacts `X-API-Token`、`Authorization`、cookie、bot token。
    - release workflow 显式传 `--dart-define=DEBUG_LOG=false`。
 
 ## P1：安全与核心功能
 
-3. 升级 `lxml`  
+3. 升级 `lxml`（已修）  
    - 升到 `>=6.1.0`。
    - 检查 parser 调用是否处理不可信 XML。
    - 验证 adapter/parser 测试。
 
-4. 修复图片代理 SSRF 与大文件风险  
+4. 修复图片代理 SSRF 与大文件风险（已修，未加入签名 URL）  
    - debug 不再全量跳过内网 IP 校验。
    - redirect 后重验最终地址。
    - 增加 Content-Length、累计读取、像素尺寸限制。
@@ -30,7 +30,7 @@
    - search health 暴露 FTS 状态。
    - `text_search.py` 不再静默吞掉缺表问题。
 
-6. 固化 Flutter 验证口径  
+6. 固化 Flutter 验证口径（已修）  
    - 在 `frontend` 目录顺序执行 `flutter analyze` 与 `flutter test`。
    - 生成文件不提交时，CI/新环境先跑 build_runner。
    - 测试日志应避免打印敏感 header。
@@ -66,10 +66,12 @@
 13. 修正文档漂移  
    - 用 OpenAPI 自动生成 endpoint 清单。
    - 更新 `docs/API.md`、`docs/DATABASE.md`、`docs/architecture/BACKEND.md`。
+   - 状态：OpenAPI 与 `docs/API.md` 自动比对已接入 CI；数据库/架构文档仍按后续变更维护。
 
 14. CI 加质量门禁  
    - PR：pytest、build_runner、flutter analyze、flutter test。
    - Release：pip-audit、bandit、Docker scan、debug flag check。
+   - 状态：pytest、build_runner、Flutter analyze/test、pip-audit、Bandit、Trivy、Gitleaks、DEBUG_LOG、OpenAPI docs check 已接入 quality/release 相关 workflow。
 
 15. 补齐健康检查与后台任务诊断
    - `/health` 暴露 DB、FTS、worker、provider 配置状态。

@@ -10,13 +10,13 @@
 .venv\Scripts\python.exe -m pytest backend/tests -q
 ```
 
-结果：失败，收集阶段报错：
+2026-05-14 复核结果：非 integration 后端测试已通过。
 
-```text
-ImportError: cannot import name 'generate_summary_llm' from 'app.services.content_summary_service'
+```powershell
+.venv\Scripts\python.exe -m pytest backend\tests -q -m "not integration"
 ```
 
-结论：当前后端测试门禁不可用，需要先修复测试/实现契约。
+结果：`646 passed, 4 skipped, 16 deselected`。该命令在 `-W error::ResourceWarning` 下通过，测试侧 SQLite ResourceWarning 已收敛。
 
 ### pip-audit
 
@@ -26,7 +26,7 @@ ImportError: cannot import name 'generate_summary_llm' from 'app.services.conten
 .venv\Scripts\python.exe -m pip_audit -r backend\requirements.txt -f json
 ```
 
-结果：发现 `lxml 5.4.0` 漏洞，修复版本 `6.1.0`。
+2026-05-14 复核结果：通过，`No known vulnerabilities found`。
 
 ### Bandit
 
@@ -36,7 +36,7 @@ ImportError: cannot import name 'generate_summary_llm' from 'app.services.conten
 .venv\Scripts\python.exe -m bandit -r backend\app -f json -q
 ```
 
-结果：1 个 HIGH，49 个 LOW。HIGH 是 `embedding_service.py:506` 的 MD5。该处用于本地 embedding hashing，不一定是密码学风险，但应改为 `usedforsecurity=False` 或换成非安全用途更明确的 hash，并加测试/注释。
+2026-05-14 复核结果：按 high severity / high confidence 门禁通过，`No issues identified`。低严重度项仍可按常规清理节奏处理。
 
 ### Vulture
 
@@ -60,18 +60,18 @@ flutter test
 
 结果：
 
-- `flutter analyze` 通过：`No issues found! (ran in 15.2s)`。
-- `flutter test` 通过：`All tests passed!`，总耗时约 24.8s。
+- `flutter analyze` 通过：`No issues found! (ran in 10.8s)`。
+- `flutter test` 通过：`All tests passed!`。
 
 说明：此前从 repo root 或在 sandbox 内并行执行 `flutter analyze/test` 出现超时，该结果不能作为 Flutter 项目失败证据。正确口径应以 `frontend` 目录下、顺序执行的结果为准。
 
-补充观察：`flutter test` 输出中多次打印 Dio request header，包括 `X-API-Token:`。即使本次 token 为空，也说明前端日志脱敏风险是真实存在的。
+补充观察：Dio 日志和 API token 本地存储已整改；`flutter test` 仍有一个既有 widget `tap()` offset warning，未导致测试失败。
 
 ## CI 现状
 
 ### `.github/workflows/build.yml`
 
-观察到 workflow_dispatch 构建 Android/Web/Linux，并运行 build_runner，但未看到：
+观察到 workflow_dispatch 构建 Android/Web/Linux，并运行 build_runner。安全/质量门禁主要集中在 `.github/workflows/quality.yml` 与 `.github/workflows/release.yml`。
 
 - backend pytest
 - Flutter analyze
@@ -82,7 +82,7 @@ flutter test
 
 ### `.github/workflows/release.yml`
 
-tag push 发布 APK 和 Docker image，但未看到 release 前测试/审计门禁。Android/Web release build 也未看到明确 `--dart-define=DEBUG_LOG=false`。
+tag push 发布 APK 和 Docker image。当前 release quality-gates 已包含 backend pytest、pip-audit、Bandit、OpenAPI 文档比对、Gitleaks 和 DEBUG_LOG 检查。
 
 ## 可观测性与故障恢复
 
@@ -108,6 +108,7 @@ cd frontend
 dart run build_runner build --delete-conflicting-outputs
 flutter analyze
 flutter test
+.venv\Scripts\python.exe scripts\check_openapi_docs.py
 ```
 
 ### 每日或 release 必跑
