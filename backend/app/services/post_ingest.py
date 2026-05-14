@@ -74,8 +74,8 @@ class PostIngestService:
 
     async def auto_approve_and_enqueue(self, session: AsyncSession, content: Content) -> None:
         try:
-            from app.services.distribution.engine import DistributionEngine
+            from app.services.distribution import DistributionService
 
-            await DistributionEngine(session).auto_approve_if_eligible(content)
+            await DistributionService(session).auto_approve_if_eligible(content)
         except Exception as e:
             logger.warning("自动审批检查失败: {}", e, exc_info=True)

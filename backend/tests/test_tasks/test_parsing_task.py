@@ -542,7 +542,7 @@ async def test_check_auto_approval_success(db_session, monkeypatch):
     await db_session.commit()
 
     with patch(
-        "app.services.distribution.scheduler.enqueue_content",
+        "app.services.distribution.service.DistributionService.enqueue_content",
         new_callable=AsyncMock,
     ) as mock_enqueue:
         parser = ContentParser()
@@ -550,7 +550,7 @@ async def test_check_auto_approval_success(db_session, monkeypatch):
 
     await db_session.refresh(content)
     assert content.review_status == ReviewStatus.AUTO_APPROVED
-    mock_enqueue.assert_awaited_once_with(content.id, session=db_session)
+    mock_enqueue.assert_awaited_once_with(content.id)
 
 
 @pytest.mark.asyncio
@@ -569,7 +569,7 @@ async def test_check_auto_approval_exception(db_session, monkeypatch):
     await db_session.commit()
 
     with patch(
-        "app.services.distribution.scheduler.enqueue_content",
+        "app.services.distribution.service.DistributionService.enqueue_content",
         new_callable=AsyncMock,
         side_effect=RuntimeError("boom"),
     ):

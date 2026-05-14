@@ -29,7 +29,6 @@ from app.core.database import init_db
 from app.core.queue import task_queue
 from app.core.events import event_bus
 from app.tasks import worker, DistributionQueueWorker
-from app.services.distribution import enqueue_content
 
 # 导入新路由
 from app.routers import (

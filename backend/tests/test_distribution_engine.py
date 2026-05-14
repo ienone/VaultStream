@@ -171,7 +171,7 @@ async def test_auto_approve_if_eligible_approves(db_session):
     await db_session.commit()
 
     with patch(
-        "app.services.distribution.scheduler.enqueue_content",
+        "app.services.distribution.service.DistributionService.enqueue_content",
         new_callable=AsyncMock,
     ):
         engine = DistributionEngine(db_session)
@@ -226,13 +226,13 @@ async def test_auto_approve_triggers_enqueue(db_session):
     await db_session.commit()
 
     with patch(
-        "app.services.distribution.scheduler.enqueue_content",
+        "app.services.distribution.service.DistributionService.enqueue_content",
         new_callable=AsyncMock,
     ) as mock_enqueue:
         engine = DistributionEngine(db_session)
         await engine.auto_approve_if_eligible(content)
 
-    mock_enqueue.assert_awaited_once_with(content.id, session=db_session)
+    mock_enqueue.assert_awaited_once_with(content.id)
 
 
 # --- refresh_queue_by_rules tests ---

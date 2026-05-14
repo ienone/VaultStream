@@ -300,9 +300,12 @@ async def enqueue_content_endpoint(
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Content not found")
 
-    from app.services.distribution import enqueue_content
+    from app.services.distribution import DistributionService
 
-    enqueued_count = await enqueue_content(content_id, session=db, force=request.force)
+    enqueued_count = await DistributionService(db).enqueue_content(
+        content_id,
+        force=request.force,
+    )
     logger.info(f"手动入队: content_id={content_id}, enqueued={enqueued_count}")
     await event_bus.publish("queue_updated", {
         "action": "manual_enqueue",

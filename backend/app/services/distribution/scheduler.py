@@ -1,31 +1,11 @@
-"""
-队列入队服务 - 事件驱动的内容入队逻辑。
-
-根据分发规则匹配结果，为每个 (Content × Rule × BotChat) 组合创建队列项。
-"""
+"""Compatibility wrappers for distribution queue enqueueing."""
 from typing import Optional
 
-from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.logging import logger
-from app.core.time_utils import utcnow
-from app.services.distribution.decision import (
-    should_distribute,
-    DECISION_FILTERED,
-)
-from app.core.events import event_bus
-from app.models import (
-    Content,
-    DistributionRule,
-    DistributionTarget,
-    BotChat,
-    ContentQueueItem,
-    QueueItemStatus,
-    ContentStatus,
-    ReviewStatus,
-)
+from app.services.distribution.service import DistributionService
 
 
 async def enqueue_content(
@@ -48,10 +28,10 @@ async def enqueue_content(
         创建或更新的队列项数量
     """
     if session is not None:
-        return await _enqueue_content_impl(content_id, session, force)
+        return await DistributionService(session).enqueue_content(content_id, force=force)
 
     async with AsyncSessionLocal() as session:
-        return await _enqueue_content_impl(content_id, session, force)
+        return await DistributionService(session).enqueue_content(content_id, force=force)
 
 
 async def _enqueue_content_impl(
@@ -59,174 +39,8 @@ async def _enqueue_content_impl(
     session: AsyncSession,
     force: bool,
 ) -> int:
-    """入队核心实现。"""
-    # 1. 加载内容
-    result = await session.execute(
-        select(Content).where(Content.id == content_id)
-    )
-    content = result.scalar_one_or_none()
-
-    if not content:
-        logger.warning(f"Content not found: content_id={content_id}")
-        return 0
-
-    # 2. 资格检查
-    if content.status != ContentStatus.PARSE_SUCCESS:
-        logger.info(
-            f"Content not eligible (status): content_id={content_id}, status={content.status}"
-        )
-        return 0
-
-    if content.review_status not in (ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED):
-        logger.info(
-            f"Content not eligible (review): content_id={content_id}, "
-            f"review_status={content.review_status}"
-        )
-        return 0
-
-    # 3. 加载启用规则（目标级统一判定）
-    rules_result = await session.execute(
-        select(DistributionRule).where(DistributionRule.enabled == True)
-    )
-    enabled_rules = rules_result.scalars().all()
-
-    if not enabled_rules:
-        logger.info(f"No enabled rules for content: content_id={content_id}")
-        return 0
-
-    # 4. 批量查询启用规则的目标（避免 N+1）
-    rule_ids = [r.id for r in enabled_rules]
-    targets_result = await session.execute(
-        select(DistributionTarget, BotChat)
-        .join(BotChat, DistributionTarget.bot_chat_id == BotChat.id)
-        .where(DistributionTarget.rule_id.in_(rule_ids))
-        .where(DistributionTarget.enabled == True)
-        .where(BotChat.enabled == True)
-        .where(BotChat.is_accessible == True)
-    )
-
-    # 按 rule_id 组织
-    rule_targets: dict[int, list[tuple[DistributionTarget, BotChat]]] = {}
-    for target, bot_chat in targets_result.all():
-        rule_targets.setdefault(target.rule_id, []).append((target, bot_chat))
-
-    # 6. 批量查询已有的队列项（避免逐条查询）
-    existing_result = await session.execute(
-        select(ContentQueueItem).where(
-            and_(
-                ContentQueueItem.content_id == content_id,
-                ContentQueueItem.rule_id.in_(rule_ids),
-            )
-        )
-    )
-    existing_items: dict[tuple[int, int], ContentQueueItem] = {
-        (item.rule_id, item.bot_chat_id): item
-        for item in existing_result.scalars().all()
-    }
-
-    # 7. 构建规则 ID -> 规则对象映射
-    rules_map = {r.id: r for r in enabled_rules}
-
-    # 8. 逐目标创建/更新队列项
-    count = 0
-
-    for rule_id, pairs in rule_targets.items():
-        rule = rules_map.get(rule_id)
-        if not rule:
-            continue
-
-        for target, bot_chat in pairs:
-            if (
-                target.backfill_watermark is not None
-                and content.created_at is not None
-                and content.created_at < target.backfill_watermark
-            ):
-                continue
-
-            # AUTO_APPROVED 内容不应进入需要人工审批的规则队列
-            if rule.approval_required and content.review_status == ReviewStatus.AUTO_APPROVED:
-                continue
-
-            decision = should_distribute(
-                content=content,
-                rule=rule,
-                bot_chat=bot_chat,
-                require_approval=False,
-            )
-
-            if decision.bucket == DECISION_FILTERED:
-                continue
-
-            target_id = decision.target_id or bot_chat.chat_id
-
-            key = (rule.id, bot_chat.id)
-            existing = existing_items.get(key)
-
-            if existing:
-                # 已成功且非强制：跳过
-                if existing.status == QueueItemStatus.SUCCESS and not force:
-                    logger.debug(
-                        f"Queue item already succeeded: content_id={content_id}, "
-                        f"rule_id={rule.id}, bot_chat_id={bot_chat.id}"
-                    )
-                    continue
-
-                # 已失败且强制：重置为 SCHEDULED
-                if existing.status == QueueItemStatus.FAILED and force:
-                    existing.status = QueueItemStatus.SCHEDULED
-                    existing.attempt_count = 0
-                    existing.last_error = None
-                    existing.last_error_type = None
-                    existing.last_error_at = None
-                    existing.next_attempt_at = None
-                    existing.target_id = target_id
-                    existing.nsfw_routing_result = decision.nsfw_routing_result
-                    existing.scheduled_at = utcnow()
-                        
-                    existing.updated_at = utcnow()
-                    count += 1
-                    logger.info(
-                        f"Queue item reset to SCHEDULED: content_id={content_id}, "
-                        f"rule_id={rule.id}, bot_chat_id={bot_chat.id}"
-                    )
-                    continue
-
-                # 其他状态（SCHEDULED, PROCESSING 等）：跳过
-                continue
-
-            # 新建队列项
-            status = QueueItemStatus.SCHEDULED
-            scheduled_time = utcnow()
-
-            item = ContentQueueItem(
-                content_id=content_id,
-                rule_id=rule.id,
-                bot_chat_id=bot_chat.id,
-                target_platform=bot_chat.platform_type,
-                target_id=target_id,
-                status=status,
-                priority=rule.priority + content.queue_priority,
-                scheduled_at=scheduled_time,
-                nsfw_routing_result=decision.nsfw_routing_result,
-            )
-            session.add(item)
-            count += 1
-
-    if count > 0:
-        await session.commit()
-        await event_bus.publish("queue_updated", {
-            "action": "enqueue",
-            "content_id": content_id,
-            "items_changed": count,
-            "timestamp": utcnow().isoformat(),
-        })
-        logger.info(
-            f"Enqueued content: content_id={content_id}, "
-            f"rules_scanned={len(enabled_rules)}, "
-            f"items_created_or_updated={count}"
-        )
-
-    return count
+    """Backward-compatible test seam for enqueue implementation."""
+    return await DistributionService(session).enqueue_content(content_id, force=force)
 
 
 async def enqueue_content_background(content_id: int) -> None:

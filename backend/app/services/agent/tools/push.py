@@ -7,7 +7,7 @@ from sqlalchemy import select
 from app.core.time_utils import utcnow
 from app.models import ContentQueueItem, QueueItemStatus
 from app.services.agent.tool_registry import AgentToolContext, AgentToolRegistry
-from app.services.distribution import enqueue_content
+from app.services.distribution import DistributionService
 
 
 def register_push_tool(registry: AgentToolRegistry) -> None:
@@ -40,8 +40,12 @@ async def _push_batch_tool(args: Dict[str, Any], context: AgentToolContext) -> D
 
     enqueued_total = 0
     if force_enqueue:
+        distribution_service = DistributionService(context.db)
         for content_id in content_ids:
-            enqueued_total += await enqueue_content(content_id, session=context.db, force=False)
+            enqueued_total += await distribution_service.enqueue_content(
+                content_id,
+                force=False,
+            )
 
     stmt = select(ContentQueueItem).where(ContentQueueItem.content_id.in_(content_ids))
     if bot_chat_id is not None:

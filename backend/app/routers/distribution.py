@@ -67,9 +67,8 @@ async def create_distribution_rule(
     db_rule = await service.create_rule(rule)
     
     # 规则变动后，自动刷新队列状态和排期
-    from app.services.distribution import DistributionEngine
-    engine = DistributionEngine(db)
-    await engine.refresh_queue_by_rules()
+    from app.services.distribution import DistributionService
+    await DistributionService(db).refresh_queue_by_rules()
     
     logger.info(f"分发规则已创建并刷新队列: {db_rule.name} (ID: {db_rule.id})")
     return db_rule
@@ -107,9 +106,8 @@ async def update_distribution_rule(
     db_rule = await service.update_rule(rule_id, rule_update)
     
     # 规则变动后，自动刷新队列状态和排期
-    from app.services.distribution import DistributionEngine
-    engine = DistributionEngine(db)
-    await engine.refresh_queue_by_rules()
+    from app.services.distribution import DistributionService
+    await DistributionService(db).refresh_queue_by_rules()
     
     logger.info(f"分发规则已更新并刷新队列: {db_rule.name} (ID: {db_rule.id})")
     return db_rule
@@ -125,9 +123,8 @@ async def delete_distribution_rule(
     await DistributionRuleService(db).delete_rule(rule_id)
     
     # 规则变动后，自动刷新队列状态和排期
-    from app.services.distribution import DistributionEngine
-    engine = DistributionEngine(db)
-    await engine.refresh_queue_by_rules()
+    from app.services.distribution import DistributionService
+    await DistributionService(db).refresh_queue_by_rules()
     
     logger.info(f"分发规则已删除并刷新队列: ID={rule_id}")
     return {"status": "deleted", "id": rule_id}
@@ -172,10 +169,11 @@ async def trigger_distribution_run(
         )
         contents = result.scalars().all()
         
-        from app.services.distribution import enqueue_content
+        from app.services.distribution import DistributionService
+        distribution_service = DistributionService(session)
         total = 0
         for content in contents:
-            count = await enqueue_content(content.id, session=session)
+            count = await distribution_service.enqueue_content(content.id)
             total += count
     
     return {"status": "triggered", "enqueued_count": total}
