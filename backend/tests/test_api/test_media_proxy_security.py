@@ -12,7 +12,7 @@ def test_is_safe_url_blocks_private_ip_even_when_debug(monkeypatch):
     monkeypatch.setattr(
         media.socket,
         "getaddrinfo",
-        lambda host, port: [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", 0))],
+        lambda host, _port: [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", 0))],
     )
 
     assert media._is_safe_url("http://example.test/image.png") is False

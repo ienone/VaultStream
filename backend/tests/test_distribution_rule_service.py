@@ -160,7 +160,8 @@ async def test_list_rule_targets(db_session):
 
 
 @pytest.mark.asyncio
-async def test_create_rule_target(db_session, mock_backfill):
+@pytest.mark.usefixtures("mock_backfill")
+async def test_create_rule_target(db_session):
     svc = DistributionRuleService(db_session)
     rule = await svc.create_rule(_rule_create("tgt_create"))
     chat = await _make_chat(db_session)

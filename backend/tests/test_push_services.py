@@ -12,7 +12,6 @@ from app.push.napcat import (
     _build_video_segment,
     _build_record_segment,
 )
-from app.push import factory
 from app.push.factory import get_push_service, _push_service_cache
 
 
@@ -259,7 +258,7 @@ class TestNapcatBuildMessageSegments:
     ])
     @patch("app.push.napcat.strip_markdown", return_value="clean text")
     @patch("app.push.napcat.format_content_with_render_config", return_value="raw text")
-    def test_segments_with_photo(self, mock_fmt, mock_strip, mock_extract, mock_resolve):
+    def test_segments_with_photo(self, _mock_fmt, _mock_strip, _mock_extract, _mock_resolve):
         content = {"title": "t", "archive_metadata": {}}
         segments = self.service._build_message_segments(content)
         assert segments[0] == {"type": "text", "data": {"text": "clean text"}}
@@ -271,7 +270,7 @@ class TestNapcatBuildMessageSegments:
     ])
     @patch("app.push.napcat.strip_markdown", return_value="clean text")
     @patch("app.push.napcat.format_content_with_render_config", return_value="raw text")
-    def test_segments_with_video(self, mock_fmt, mock_strip, mock_extract, mock_resolve):
+    def test_segments_with_video(self, _mock_fmt, _mock_strip, _mock_extract, _mock_resolve):
         content = {"title": "t", "archive_metadata": {}}
         segments = self.service._build_message_segments(content)
         assert segments[1] == {"type": "video", "data": {"file": "http://resolved.mp4"}}
@@ -282,7 +281,7 @@ class TestNapcatBuildMessageSegments:
     ])
     @patch("app.push.napcat.strip_markdown", return_value="text")
     @patch("app.push.napcat.format_content_with_render_config", return_value="text")
-    def test_skips_media_with_no_resolved_url(self, mock_fmt, mock_strip, mock_extract, mock_resolve):
+    def test_skips_media_with_no_resolved_url(self, _mock_fmt, _mock_strip, _mock_extract, _mock_resolve):
         content = {"title": "t", "archive_metadata": {}}
         segments = self.service._build_message_segments(content)
         assert len(segments) == 1  # text only
@@ -290,7 +289,7 @@ class TestNapcatBuildMessageSegments:
     @patch("app.push.napcat.extract_media_urls", return_value=[])
     @patch("app.push.napcat.strip_markdown", return_value="")
     @patch("app.push.napcat.format_content_with_render_config", return_value="")
-    def test_empty_text_becomes_placeholder(self, mock_fmt, mock_strip, mock_extract):
+    def test_empty_text_becomes_placeholder(self, _mock_fmt, _mock_strip, _mock_extract):
         content = {"title": "t"}
         segments = self.service._build_message_segments(content)
         assert segments[0]["data"]["text"] == "(no content)"

@@ -59,7 +59,7 @@ def test_proxy_image_pixel_guard_rejects_oversized_header(monkeypatch):
         def __enter__(self):
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(self, _exc_type, _exc, _tb):
             return False
 
         def verify(self):
@@ -80,7 +80,7 @@ def test_proxy_image_pixel_guard_accepts_valid_header(monkeypatch):
         def __enter__(self):
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(self, _exc_type, _exc, _tb):
             return False
 
         def verify(self):

@@ -101,21 +101,24 @@ def adapter():
 @pytest.mark.integration
 @pytest.mark.asyncio
 class TestZhihuAdapter:
-    async def test_parse_answer(self, adapter, require_zhihu_cookie):
+    @pytest.mark.usefixtures("require_zhihu_cookie")
+    async def test_parse_answer(self, adapter):
         result = await adapter.parse(ZHIHU_URLS["answer"])
         assert result.content_type == "answer"
         assert result.content_id == "2015063270705365482"
         assert result.author_name
         assert _via_api(result), "answer 应优先走 API 解析"
 
-    async def test_parse_article(self, adapter, require_zhihu_cookie):
+    @pytest.mark.usefixtures("require_zhihu_cookie")
+    async def test_parse_article(self, adapter):
         result = await adapter.parse(ZHIHU_URLS["article"])
         assert result.content_type == "article"
         assert result.content_id == "2015109109989533543"
         assert result.title
         assert result.body
 
-    async def test_parse_user(self, adapter, require_zhihu_cookie):
+    @pytest.mark.usefixtures("require_zhihu_cookie")
+    async def test_parse_user(self, adapter):
         try:
             result = await adapter.parse(ZHIHU_URLS["user"])
             assert result.content_type == "user_profile"
@@ -126,13 +129,15 @@ class TestZhihuAdapter:
             # User page may also be blocked by runtime anti-bot rules.
             return
 
-    async def test_parse_collection(self, adapter, require_zhihu_cookie):
+    @pytest.mark.usefixtures("require_zhihu_cookie")
+    async def test_parse_collection(self, adapter):
         result = await adapter.parse(ZHIHU_URLS["collection"])
         assert result.content_type == "collection"
         assert result.content_id == "454292599"
         assert result.title
 
-    async def test_parse_question_tolerates_auth_gate(self, adapter, require_zhihu_cookie):
+    @pytest.mark.usefixtures("require_zhihu_cookie")
+    async def test_parse_question_tolerates_auth_gate(self, adapter):
         try:
             result = await adapter.parse(ZHIHU_URLS["question"])
             assert result.content_type == "question"
@@ -142,7 +147,8 @@ class TestZhihuAdapter:
         except RetryableAdapterError:
             _handle_risk_block("question", RetryableAdapterError("retryable after fingerprint refresh"))
 
-    async def test_parse_pin_tolerates_auth_gate(self, adapter, require_zhihu_cookie):
+    @pytest.mark.usefixtures("require_zhihu_cookie")
+    async def test_parse_pin_tolerates_auth_gate(self, adapter):
         try:
             result = await adapter.parse(ZHIHU_URLS["pin"])
             assert result.content_type == "pin"

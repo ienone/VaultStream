@@ -10,6 +10,7 @@ from app.services.distribution.scheduler import (
 )
 from app.tasks.distribution_worker import compute_auto_scheduled_at
 from app.models import (
+    Base,
     Content,
     DistributionRule,
     DistributionTarget,
@@ -24,6 +25,7 @@ from app.models import (
     PushedRecord,
     Platform,
 )
+from app.core.database import ensure_content_fts
 from app.core.time_utils import utcnow
 
 
@@ -36,6 +38,9 @@ def mock_event_bus():
 @pytest.fixture(autouse=True)
 async def clean_scheduler_tables(db_session):
     """避免与其他测试文件共享 DB 时出现唯一键污染。"""
+    conn = await db_session.connection()
+    await conn.run_sync(Base.metadata.create_all)
+    await ensure_content_fts(conn)
     yield
     for model in (
         ContentQueueItem,
@@ -387,6 +392,7 @@ async def test_enqueue_content_approval_required(db_session, mock_event_bus):
 
 @pytest.mark.asyncio
 async def test_enqueue_content_background_catches_exception(patch_session_local):
+    assert patch_session_local is None
     with patch(
         "app.services.distribution.scheduler._enqueue_content_impl",
         new_callable=AsyncMock,
@@ -394,4 +400,3 @@ async def test_enqueue_content_background_catches_exception(patch_session_local)
     ):
         # Should NOT raise
         await enqueue_content_background(999999)
-
