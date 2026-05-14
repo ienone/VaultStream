@@ -24,6 +24,11 @@ from app.models import (
     ReviewStatus,
 )
 from app.push.factory import get_push_service
+from app.services.background_task_state import (
+    record_task_error,
+    record_task_started,
+    record_task_success,
+)
 from app.tasks.distributor import ContentDistributor
 from app.core.events import event_bus
 
@@ -115,6 +120,7 @@ class DistributionQueueWorker:
         if self.running:
             return
         self.running = True
+        asyncio.create_task(record_task_started("distribution_worker"))
         for i in range(self.worker_count):
             task = asyncio.create_task(
                 self._worker_loop(f"queue-worker-{i}"),
@@ -183,6 +189,7 @@ class DistributionQueueWorker:
                                 f"Worker {worker_name} 处理失败 item_id={item.id} error={e}",
                                 exc_info=True,
                             )
+                            await record_task_error("distribution_worker", e, worker=worker_name)
                             await session.rollback()
             except asyncio.CancelledError:
                 raise
@@ -191,6 +198,7 @@ class DistributionQueueWorker:
                     f"Worker {worker_name} 循环异常: {e}",
                     exc_info=True,
                 )
+                await record_task_error("distribution_worker", e, worker=worker_name)
                 await asyncio.sleep(10)
 
     # ── 领取队列项 ────────────────────────────────────
@@ -541,6 +549,12 @@ class DistributionQueueWorker:
         logger.info(
             f"推送成功 item_id={item.id} content_id={item.content_id} target={actual_target_id} message_id={message_id}"
         )
+        await record_task_success(
+            "distribution_worker",
+            queue_item_id=item.id,
+            content_id=item.content_id,
+            worker=worker_name,
+        )
 
     # ── 失败处理 ──────────────────────────────────────
 
@@ -595,6 +609,14 @@ class DistributionQueueWorker:
             "status": item.status.value,
             "timestamp": now.isoformat(),
         })
+        await record_task_error(
+            "distribution_worker",
+            error,
+            queue_item_id=item.id,
+            content_id=item.content_id,
+            attempt_count=item.attempt_count,
+            max_attempts=item.max_attempts,
+        )
 
 
 # ── 全局单例 ──────────────────────────────────────────

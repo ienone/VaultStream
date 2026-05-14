@@ -2,6 +2,26 @@ import asyncio
 import random
 from loguru import logger
 from app.services.browser_auth_service import browser_auth_service
+from app.services.background_task_state import (
+    record_task_error,
+    record_task_started,
+    record_task_success,
+)
+
+
+async def _recorded_platform_check(task_name: str, label: str, check_coro):
+    try:
+        success = await check_coro
+    except Exception as e:
+        logger.warning("{} keepalive raised: {}", label, e)
+        await record_task_error(task_name, e)
+        return False
+
+    if success:
+        await record_task_success(task_name)
+    else:
+        await record_task_error(task_name, f"{label} keepalive check failed")
+    return success
 
 async def zhihu_keepalive_loop():
     """
@@ -16,7 +36,11 @@ async def zhihu_keepalive_loop():
         await asyncio.sleep(sleep_hours * 3600)
         
         logger.info("Running Zhihu zse cookie refresh...")
-        success = await browser_auth_service.refresh_zhihu_zse_cookie()
+        success = await _recorded_platform_check(
+            "cookie_keepalive_zhihu",
+            "Zhihu",
+            browser_auth_service.refresh_zhihu_zse_cookie(),
+        )
         if not success:
             logger.warning("Zhihu zse refresh failed. The primary cookie might be invalid.")
         else:
@@ -35,7 +59,11 @@ async def weibo_keepalive_loop():
         await asyncio.sleep(sleep_hours * 3600)
         
         logger.info("Running Weibo keepalive check...")
-        is_valid = await browser_auth_service.check_platform_status("weibo")
+        is_valid = await _recorded_platform_check(
+            "cookie_keepalive_weibo",
+            "Weibo",
+            browser_auth_service.check_platform_status("weibo"),
+        )
         if not is_valid:
             logger.warning("Weibo keepalive check failed.")
         else:
@@ -54,7 +82,11 @@ async def xiaohongshu_keepalive_loop():
         await asyncio.sleep(sleep_hours * 3600)
         
         logger.info("Running Xiaohongshu keepalive check...")
-        is_valid = await browser_auth_service.check_platform_status("xiaohongshu")
+        is_valid = await _recorded_platform_check(
+            "cookie_keepalive_xiaohongshu",
+            "Xiaohongshu",
+            browser_auth_service.check_platform_status("xiaohongshu"),
+        )
         if not is_valid:
             logger.warning("Xiaohongshu keepalive check failed.")
         else:
@@ -83,6 +115,12 @@ class CookieKeepAliveTask:
         try:
             if self._tasks and any(not t.done() for t in self._tasks):
                 return
+            for task_name in (
+                "cookie_keepalive_zhihu",
+                "cookie_keepalive_xiaohongshu",
+                "cookie_keepalive_weibo",
+            ):
+                asyncio.create_task(record_task_started(task_name))
             self._tasks = [
                 asyncio.create_task(zhihu_keepalive_loop()),
                 asyncio.create_task(xiaohongshu_keepalive_loop()),

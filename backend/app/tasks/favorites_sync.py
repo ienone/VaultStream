@@ -15,6 +15,11 @@ from app.adapters.favorites.errors import FavoritesFetchError
 from app.core.database import AsyncSessionLocal
 from app.core.logging import ensure_task_id, log_context, logger
 from app.core.time_utils import utcnow
+from app.services.background_task_state import (
+    record_task_error,
+    record_task_started,
+    record_task_success,
+)
 from app.services.content_service import ContentService
 from app.services.settings_service import (
     get_setting_value_fresh,
@@ -92,6 +97,7 @@ class FavoritesSyncTask:
         if self.is_running():
             return
         self._task = asyncio.create_task(self._sync_loop())
+        asyncio.create_task(record_task_started("favorites_sync"))
         logger.info("FavoritesSyncTask started")
 
     async def stop(self):
@@ -116,6 +122,7 @@ class FavoritesSyncTask:
                 await self.sync_all_platforms_once()
             except Exception as e:
                 logger.exception("Favorites sync loop failed: {}", e)
+                await record_task_error("favorites_sync", e)
             await asyncio.sleep(interval * 60)
 
     async def sync_all_platforms_once(self) -> dict[str, dict]:
@@ -174,6 +181,22 @@ class FavoritesSyncTask:
                     results,
                     category="favorites_sync",
                 )
+                failed_platforms = [
+                    platform
+                    for platform, result in results.items()
+                    if result.get("status") not in ("success", "skipped")
+                ]
+                await record_task_success(
+                    "favorites_sync",
+                    platform_count=len(results),
+                    failed_platforms=failed_platforms,
+                )
+                if failed_platforms:
+                    await record_task_error(
+                        "favorites_sync",
+                        f"Failed platforms: {', '.join(failed_platforms)}",
+                        failed_platforms=failed_platforms,
+                    )
                 return results
 
     async def sync_platform_by_name(self, platform: str) -> dict:
@@ -181,7 +204,21 @@ class FavoritesSyncTask:
         if platform not in self._fetchers:
             raise ValueError(f"Unknown platform: {platform}")
         async with self._lock:
-            return await self._sync_platform_by_name_inner(platform)
+            result = await self._sync_platform_by_name_inner(platform)
+            await record_task_success(
+                "favorites_sync",
+                platform_count=1,
+                last_platform=platform,
+                failed_platforms=[] if result.get("status") == "success" else [platform],
+            )
+            if result.get("status") != "success":
+                await record_task_error(
+                    "favorites_sync",
+                    result.get("error") or result.get("error_message") or result.get("status"),
+                    failed_platforms=[platform],
+                    last_platform=platform,
+                )
+            return result
 
     async def _sync_platform_by_name_inner(self, platform: str) -> dict:
         fetcher_cls = self._fetchers[platform]

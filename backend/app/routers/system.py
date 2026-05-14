@@ -37,6 +37,7 @@ from app.core.api_errors import build_error_payload
 from app.adapters.favorites.errors import FavoritesFetchError
 from app.adapters.storage import get_storage_backend, LocalStorageBackend
 from app.core.queue import task_queue
+from app.services.background_task_state import get_background_task_states
 from app.utils.sensitive_display import as_configured_placeholder, is_sensitive_setting_key
 
 router = APIRouter()
@@ -124,6 +125,7 @@ async def _build_background_diagnostics(db: AsyncSession) -> dict[str, Any]:
             )
         )
     ).one()
+    task_states = await get_background_task_states()
 
     return {
         "parse_tasks": {
@@ -144,6 +146,7 @@ async def _build_background_diagnostics(db: AsyncSession) -> dict[str, Any]:
             "last_success_at": source_stats[1],
             "last_error_count": int(source_stats[2] or 0),
         },
+        "task_states": task_states,
     }
 
 

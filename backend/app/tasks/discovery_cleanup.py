@@ -10,6 +10,11 @@ from sqlalchemy import delete, select, update
 
 from app.core.db_adapter import AsyncSessionLocal
 from app.core.time_utils import utcnow
+from app.services.background_task_state import (
+    record_task_error,
+    record_task_started,
+    record_task_success,
+)
 from app.models import (
     Content,
     ContentDiscoveryLink,
@@ -31,6 +36,7 @@ class DiscoveryCleanupTask:
         if self._task and not self._task.done():
             return
         self._task = asyncio.create_task(self._cleanup_loop())
+        asyncio.create_task(record_task_started("discovery_cleanup"))
 
     async def stop(self):
         if self._task and not self._task.done():
@@ -45,12 +51,14 @@ class DiscoveryCleanupTask:
         logger.info("Discovery cleanup task started")
         while True:
             try:
-                await self._cleanup_expired()
+                deleted = await self._cleanup_expired()
+                await record_task_success("discovery_cleanup", deleted_count=deleted)
             except Exception as e:
                 logger.error(f"Discovery cleanup error: {e}")
+                await record_task_error("discovery_cleanup", e)
             await asyncio.sleep(6 * 3600)
 
-    async def _cleanup_expired(self):
+    async def _cleanup_expired(self) -> int:
         """Delete contents where expire_at < now and state in (ignored, expired)"""
         async with AsyncSessionLocal() as db:
             now = utcnow()
@@ -83,7 +91,7 @@ class DiscoveryCleanupTask:
 
             if not target_ids:
                 await db.commit()
-                return
+                return 0
 
             await db.execute(
                 update(Content)
@@ -108,3 +116,4 @@ class DiscoveryCleanupTask:
             deleted = result.rowcount
             if deleted > 0:
                 logger.info(f"Discovery cleanup: deleted {deleted} expired items")
+            return int(deleted or 0)

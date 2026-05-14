@@ -141,7 +141,7 @@ class TaskQueue:
                 )
                 await session.execute(stmt)
                 await session.commit()
-                logger.info(f"任务已完成: {content_id}")
+                logger.debug(f"任务已完成: {content_id}")
         except Exception as e:
             logger.error(f"标记任务完成失败: {e}")
     

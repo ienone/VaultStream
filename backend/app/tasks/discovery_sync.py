@@ -31,6 +31,11 @@ from app.models import (
     Platform,
 )
 from app.services.post_ingest import PostIngestService
+from app.services.background_task_state import (
+    record_task_error,
+    record_task_started,
+    record_task_success,
+)
 from app.services.settings_service import get_setting_value
 from app.utils.url_utils import normalize_url_for_dedup
 from app.utils.datetime_utils import normalize_datetime_for_db
@@ -46,6 +51,7 @@ class DiscoverySyncTask:
         if self._task and not self._task.done():
             return
         self._task = asyncio.create_task(self._sync_loop())
+        asyncio.create_task(record_task_started("discovery_sync"))
 
     async def stop(self):
         if self._task and not self._task.done():
@@ -63,6 +69,7 @@ class DiscoverySyncTask:
                 await self._sync_due_sources()
             except Exception as e:
                 logger.error(f"Discovery sync error: {e}")
+                await record_task_error("discovery_sync", e)
             await asyncio.sleep(60)
 
     async def _sync_due_sources(self):
@@ -76,6 +83,7 @@ class DiscoverySyncTask:
             sources = result.scalars().all()
 
             now = utcnow()
+            checked = 0
             for source in sources:
                 if source.last_sync_at:
                     next_sync = source.last_sync_at + timedelta(
@@ -84,7 +92,13 @@ class DiscoverySyncTask:
                     if now < next_sync:
                         continue
 
+                checked += 1
                 await self._sync_single_source(db, source)
+            await record_task_success(
+                "discovery_sync",
+                checked_sources=checked,
+                source_count=len(sources),
+            )
 
     async def sync_source_by_id(self, source_id: int):
         """Manually trigger sync for a specific source, managing its own DB session."""
@@ -234,12 +248,24 @@ class DiscoverySyncTask:
                             distribution=True,
                         )
                 await pipeline.score_discovery(db)
+            await record_task_success(
+                "discovery_sync",
+                source_id=source.id,
+                source_name=source.name,
+                ingested_count=ingested_count,
+            )
 
         except Exception as e:
             source.last_error = str(e)[:500]
             source.last_sync_at = utcnow()
             await db.commit()
             logger.warning(f"Discovery sync [{source.name}] failed: {e}")
+            await record_task_error(
+                "discovery_sync",
+                e,
+                source_id=source.id,
+                source_name=source.name,
+            )
 
     async def _archive_discovery_media(self, db, content_ids: list[int]):
         """Download and convert images to WebP for newly ingested discovery items."""

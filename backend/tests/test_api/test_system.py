@@ -22,6 +22,8 @@ class TestSystemAPI:
         assert "fts" in data["components"]
         assert "checks" in data
         assert data["checks"]["database"]["fts"]["available"] is True
+        assert "background_tasks" in data["checks"]
+        assert "task_states" in data["checks"]["background_tasks"]
     
     @pytest.mark.asyncio
     async def test_api_root(self, client: AsyncClient):
