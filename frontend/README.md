@@ -21,7 +21,7 @@ Flutter 跨平台客户端，支持 Web、Desktop、Mobile 多端统一的 Vault
 | 路由 | go_router |
 | 序列化 | freezed + json_serializable |
 | HTTP 客户端 | dio |
-| 存储 | shared_preferences (本地缓存) |
+| 存储 | shared_preferences (普通偏好) + flutter_secure_storage (敏感凭据) |
 | 分析 | Flutter Lints |
 
 ## 快速开始
@@ -57,7 +57,7 @@ flutter pub get
 
 ```bash
 # 生成模型和序列化代码
-dart run build_runner build
+dart run build_runner build --delete-conflicting-outputs
 
 # 或监听文件变化自动生成 (开发时推荐)
 dart run build_runner watch
@@ -343,7 +343,7 @@ MaterialApp(
 
 ### 本地存储
 
-使用 `shared_preferences` 存储简单数据：
+使用 `shared_preferences` 存储普通偏好，API Token 等敏感凭据使用 `flutter_secure_storage`。`LocalSettings` 会在启动时把历史 `SharedPreferences` 中的 `api_token` 迁移到安全存储，并删除旧 key。
 
 ```dart
 // lib/core/services/local_storage_service.dart
@@ -359,16 +359,16 @@ class LocalStorageService {
     _prefs = await SharedPreferences.getInstance();
   }
 
-  Future<void> saveToken(String token) async {
-    await _prefs.setString('auth_token', token);
+  Future<void> saveThemeMode(String mode) async {
+    await _prefs.setString('theme_mode', mode);
   }
 
-  String? getToken() => _prefs.getString('auth_token');
+  String? getThemeMode() => _prefs.getString('theme_mode');
 }
 
 // 在 Provider 中使用
-final tokenProvider = FutureProvider<String?>((ref) async {
-  return LocalStorageService().getToken();
+final themeModeProvider = FutureProvider<String?>((ref) async {
+  return LocalStorageService().getThemeMode();
 });
 ```
 
@@ -422,6 +422,8 @@ flutter build linux --release
 ### 运行单元测试
 
 ```bash
+dart run build_runner build --delete-conflicting-outputs
+flutter analyze
 flutter test
 ```
 

@@ -19,7 +19,7 @@
 | 图片代理 SSRF/大文件 | 已修 | URL 安全校验、redirect 重验、Content-Length/累计大小限制、content-type allowlist、像素尺寸限制、生产 Origin/Referer 限制、缓存配额均已落地 | 未加入签名 URL；若未来代理面向第三方站点/CDN 暴露再补短时效签名 |
 | 外部 URL 打开 | 已修 | `frontend/lib` 直接 `launchUrl(` 仅剩 `safe_url_launcher.dart` | 继续为新增页面加测试 |
 | FTS 缺表/静默失败 | 已修 | `ensure_content_fts()` 创建表、trigger、backfill；health 暴露 FTS；搜索降级 warning once | 需补迁移版本化/DB 门禁脚本 |
-| Flutter codegen 口径 | 部分修复 | CI 已有 build_runner + analyze/test；本地提权验证通过 | README/开发脚本仍可进一步固化一键验证 |
+| Flutter codegen 口径 | 已修 | CI 已有 build_runner + analyze/test；README 固化 `--delete-conflicting-outputs`、`flutter analyze`、`flutter test` 验证口径 | 后续可再加一键本地脚本 |
 | Adapter 生命周期 | 已修 | `close_adapter/open_adapter` 已接入解析和分享主路径 | 继续审计脚本/边缘 adapter |
 | Google Fonts 运行时拉取 | 已修 | `configureRuntimeAssets()` 禁用 runtime fetching，widget test 覆盖 | 后续可打包字体资产进一步优化首屏 |
 | Discovery post-ingest | 已修 | parse/discovery/share 接入 `PostIngestService`，覆盖 summary/embedding/distribution | favorites 全链路仍需抽样确认 |
