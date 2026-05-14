@@ -45,6 +45,9 @@ jobs:
       - name: Check OpenAPI docs inventory
         run: python scripts/check_openapi_docs.py
 
+      - name: Check SQLite schema gate
+        run: python scripts/check_database_schema.py
+
       - name: Check release debug flag
         shell: bash
         run: |
@@ -64,6 +67,20 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"
           ignore-unfixed: true
+
+      - name: Generate backend image SBOM
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: vaultstream-api:scan
+          format: cyclonedx
+          output: vaultstream-api.sbom.cdx.json
+          exit-code: "0"
+
+      - name: Upload backend image SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: vaultstream-api-sbom
+          path: vaultstream-api.sbom.cdx.json
 
   # ────────────────────────────────────────────
   # 1. Android APK

@@ -40,6 +40,9 @@ jobs:
       - name: Check OpenAPI docs inventory
         run: python ../scripts/check_openapi_docs.py ../docs/API.md
 
+      - name: Check SQLite schema gate
+        run: python ../scripts/check_database_schema.py
+
       - name: Scan for committed secrets
         uses: gitleaks/gitleaks-action@v2
         env:
