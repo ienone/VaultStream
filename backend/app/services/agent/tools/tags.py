@@ -2,22 +2,26 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.models import Content
 from app.services.agent.tool_registry import AgentToolContext, AgentToolRegistry
+from app.services.content_service import ContentService
 from app.utils.tags import normalize_tags
+
+
+class ManageTagsArgs(BaseModel):
+    content_id: int
+    add_tags: list[str] = Field(default_factory=list)
+    remove_tags: list[str] = Field(default_factory=list)
 
 
 def register_tags_tool(registry: AgentToolRegistry) -> None:
     registry.register(
         name="manage_tags",
         description="为指定内容添加或移除标签。",
-        args_schema={
-            "content_id": {"type": "integer", "required": True},
-            "add_tags": {"type": "array", "required": False, "items": {"type": "string"}},
-            "remove_tags": {"type": "array", "required": False, "items": {"type": "string"}},
-        },
+        args_model=ManageTagsArgs,
         result_schema={
             "type": "object",
             "required": ["content_id", "tags", "count"],
@@ -27,6 +31,7 @@ def register_tags_tool(registry: AgentToolRegistry) -> None:
                 "count": {"type": "integer"},
             },
         },
+        permission_level="write",
         handler=_manage_tags_tool,
     )
 
@@ -54,9 +59,8 @@ async def _manage_tags_tool(args: Dict[str, Any], context: AgentToolContext) -> 
     for tag in remove_tags:
         lowered_map.pop(tag, None)
 
-    content.tags = list(lowered_map.values())
-    await context.db.commit()
-    await context.db.refresh(content)
+    service = ContentService(context.db)
+    content = await service.update_content(content.id, {"tags": list(lowered_map.values())})
 
     return {
         "content_id": content.id,

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+
+from pydantic import BaseModel, Field
 
 from app.models import Platform
 from app.schemas.distribution import DistributionRuleCreate, DistributionTargetCreate
@@ -10,18 +12,20 @@ from app.services.distribution_rule_service import DistributionRuleService
 from app.utils.tags import normalize_tags
 
 
+class CreateRuleArgs(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    platform: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)
+    tags_match_mode: str = Field(default="any", pattern="^(any|all)$")
+    approval_required: bool = False
+    target_bot_chat_id: Optional[int] = None
+
+
 def register_rules_tool(registry: AgentToolRegistry) -> None:
     registry.register(
         name="create_rule",
         description="创建分发规则，可选绑定目标群组。",
-        args_schema={
-            "name": {"type": "string", "required": True},
-            "platform": {"type": "string", "required": False},
-            "tags": {"type": "array", "required": False, "items": {"type": "string"}},
-            "tags_match_mode": {"type": "string", "required": False, "enum": ["any", "all"]},
-            "approval_required": {"type": "boolean", "required": False, "default": False},
-            "target_bot_chat_id": {"type": "integer", "required": False},
-        },
+        args_model=CreateRuleArgs,
         result_schema={
             "type": "object",
             "required": ["rule_id", "name", "match_conditions", "approval_required", "enabled", "target"],
@@ -34,6 +38,7 @@ def register_rules_tool(registry: AgentToolRegistry) -> None:
                 "target": {"type": ["object", "null"]},
             },
         },
+        permission_level="write",
         handler=_create_rule_tool,
     )
 

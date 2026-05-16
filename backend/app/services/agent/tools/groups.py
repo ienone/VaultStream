@@ -2,17 +2,22 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.models import BotChat
 from app.services.agent.tool_registry import AgentToolContext, AgentToolRegistry
 
 
+class ListGroupsArgs(BaseModel):
+    pass
+
+
 def register_groups_tool(registry: AgentToolRegistry) -> None:
     registry.register(
         name="list_groups",
         description="列出可用推送群组/频道。",
-        args_schema={},
+        args_model=ListGroupsArgs,
         result_schema={
             "type": "object",
             "required": ["count", "groups"],
@@ -21,6 +26,7 @@ def register_groups_tool(registry: AgentToolRegistry) -> None:
                 "groups": {"type": "array"},
             },
         },
+        permission_level="read",
         handler=_list_groups_tool,
     )
 

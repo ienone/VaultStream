@@ -41,4 +41,5 @@ feedparser
 google-genai
 playwright
 langchain-openai
+langgraph
 openai

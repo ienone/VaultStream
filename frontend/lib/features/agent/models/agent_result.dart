@@ -1,123 +1,167 @@
 import 'dart:convert';
 
+class AgentSessionSummary {
+  const AgentSessionSummary({
+    required this.id,
+    required this.title,
+    required this.status,
+    this.lastMessageAt,
+    this.pendingConfirmations = 0,
+  });
+
+  factory AgentSessionSummary.fromJson(Map<String, dynamic> json) {
+    return AgentSessionSummary(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '新会话',
+      status: json['status']?.toString() ?? 'active',
+      lastMessageAt: DateTime.tryParse(
+        json['last_message_at']?.toString() ?? '',
+      ),
+      pendingConfirmations:
+          (json['pending_confirmations'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  final String id;
+  final String title;
+  final String status;
+  final DateTime? lastMessageAt;
+  final int pendingConfirmations;
+}
+
+class AgentMessageRecord {
+  const AgentMessageRecord({
+    required this.id,
+    required this.role,
+    required this.content,
+    this.runId,
+    this.payload = const {},
+  });
+
+  factory AgentMessageRecord.fromJson(Map<String, dynamic> json) {
+    final payload = json['payload'];
+    return AgentMessageRecord(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      runId: json['run_id']?.toString(),
+      role: json['role']?.toString() ?? 'assistant',
+      content: json['content']?.toString() ?? '',
+      payload: payload is Map<String, dynamic> ? payload : const {},
+    );
+  }
+
+  final int id;
+  final String? runId;
+  final String role;
+  final String content;
+  final Map<String, dynamic> payload;
+}
+
+class AgentConfirmation {
+  const AgentConfirmation({
+    required this.id,
+    required this.toolName,
+    required this.permissionLevel,
+    required this.summary,
+    this.args = const {},
+  });
+
+  factory AgentConfirmation.fromJson(Map<String, dynamic> json) {
+    final args = json['args'];
+    return AgentConfirmation(
+      id: json['id']?.toString() ?? '',
+      toolName: json['tool_name']?.toString() ?? '',
+      permissionLevel: json['permission_level']?.toString() ?? 'write',
+      summary: json['summary']?.toString() ?? '',
+      args: args is Map<String, dynamic> ? args : const {},
+    );
+  }
+
+  final String id;
+  final String toolName;
+  final String permissionLevel;
+  final String summary;
+  final Map<String, dynamic> args;
+}
+
+class AgentCitation {
+  const AgentCitation({
+    required this.contentId,
+    required this.title,
+    required this.url,
+    required this.matchSource,
+    this.chunkTitle,
+    this.sourceText,
+  });
+
+  factory AgentCitation.fromJson(Map<String, dynamic> json) {
+    return AgentCitation(
+      contentId: json['content_id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '无标题',
+      url: json['url']?.toString() ?? '',
+      matchSource: json['match_source']?.toString() ?? '',
+      chunkTitle: json['chunk_title']?.toString(),
+      sourceText: json['source_text']?.toString(),
+    );
+  }
+
+  final String contentId;
+  final String title;
+  final String url;
+  final String matchSource;
+  final String? chunkTitle;
+  final String? sourceText;
+}
+
 class AgentRunResponse {
-  const AgentRunResponse({required this.tool, required this.result});
+  const AgentRunResponse({
+    required this.sessionId,
+    required this.runId,
+    required this.status,
+    required this.message,
+    this.tool,
+    this.events = const [],
+    this.confirmation,
+  });
 
   factory AgentRunResponse.fromJson(Map<String, dynamic> json) {
-    final tool = (json['tool'] as String?) ?? 'unknown';
-    final result = json['result'] is Map<String, dynamic>
-        ? json['result'] as Map<String, dynamic>
-        : <String, dynamic>{};
+    final events = (json['events'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+    final confirmation = json['confirmation'];
     return AgentRunResponse(
-      tool: tool,
-      result: AgentResult.fromToolResult(tool, result),
+      sessionId: json['session_id']?.toString() ?? '',
+      runId: json['run_id']?.toString() ?? '',
+      status: json['status']?.toString() ?? '',
+      tool: json['tool']?.toString(),
+      message: json['message']?.toString() ?? '',
+      events: events,
+      confirmation: confirmation is Map<String, dynamic>
+          ? AgentConfirmation.fromJson(confirmation)
+          : null,
     );
   }
 
-  final String tool;
-  final AgentResult result;
+  final String sessionId;
+  final String runId;
+  final String status;
+  final String? tool;
+  final String message;
+  final List<Map<String, dynamic>> events;
+  final AgentConfirmation? confirmation;
 }
 
-sealed class AgentResult {
-  const AgentResult();
-
-  factory AgentResult.fromToolResult(String tool, Map<String, dynamic> result) {
-    return switch (tool) {
-      'search_content' => SearchContentResult.fromJson(result),
-      'list_groups' => ListGroupsResult.fromJson(result),
-      _ => RawAgentResult(result),
-    };
-  }
-
-  String toDisplayText();
+String prettyJson(Object? value) {
+  if (value == null) return '';
+  return const JsonEncoder.withIndent('  ').convert(value);
 }
 
-class SearchContentResult extends AgentResult {
-  const SearchContentResult(this.items);
-
-  factory SearchContentResult.fromJson(Map<String, dynamic> json) {
-    final items = (json['items'] as List<dynamic>? ?? [])
-        .whereType<Map<String, dynamic>>()
-        .map(AgentSearchItem.fromJson)
-        .toList();
-    return SearchContentResult(items);
-  }
-
-  final List<AgentSearchItem> items;
-
-  @override
-  String toDisplayText() {
-    if (items.isEmpty) return '未找到相关内容。';
-    final lines = <String>['共 ${items.length} 条结果:'];
-    for (final item in items.take(6)) {
-      final title = item.title?.trim();
-      lines.add(
-        '- [${item.contentId ?? "-"}] ${title?.isNotEmpty == true ? title : item.url ?? "无标题"}',
-      );
-    }
-    return lines.join('\n');
-  }
-}
-
-class AgentSearchItem {
-  const AgentSearchItem({this.contentId, this.title, this.url});
-
-  factory AgentSearchItem.fromJson(Map<String, dynamic> json) {
-    return AgentSearchItem(
-      contentId: json['content_id'],
-      title: json['title'] as String?,
-      url: json['url'] as String?,
-    );
-  }
-
-  final Object? contentId;
-  final String? title;
-  final String? url;
-}
-
-class ListGroupsResult extends AgentResult {
-  const ListGroupsResult(this.groups);
-
-  factory ListGroupsResult.fromJson(Map<String, dynamic> json) {
-    final groups = (json['groups'] as List<dynamic>? ?? [])
-        .whereType<Map<String, dynamic>>()
-        .map(AgentGroup.fromJson)
-        .toList();
-    return ListGroupsResult(groups);
-  }
-
-  final List<AgentGroup> groups;
-
-  @override
-  String toDisplayText() {
-    if (groups.isEmpty) return '当前没有可用群组。';
-    final lines = <String>['可用群组 ${groups.length} 个:'];
-    for (final group in groups.take(8)) {
-      lines.add('- ${group.title ?? group.chatId} (${group.chatId})');
-    }
-    return lines.join('\n');
-  }
-}
-
-class AgentGroup {
-  const AgentGroup({required this.chatId, this.title});
-
-  factory AgentGroup.fromJson(Map<String, dynamic> json) {
-    return AgentGroup(
-      chatId: json['chat_id']?.toString() ?? '',
-      title: json['title'] as String?,
-    );
-  }
-
-  final String chatId;
-  final String? title;
-}
-
-class RawAgentResult extends AgentResult {
-  const RawAgentResult(this.value);
-
-  final Map<String, dynamic> value;
-
-  @override
-  String toDisplayText() => const JsonEncoder.withIndent('  ').convert(value);
+List<AgentCitation> citationsFromToolResult(Map<String, dynamic> event) {
+  final result = event['result'];
+  if (result is! Map<String, dynamic>) return const [];
+  final items = result['items'];
+  if (items is! List) return const [];
+  return items
+      .whereType<Map<String, dynamic>>()
+      .map(AgentCitation.fromJson)
+      .toList(growable: false);
 }

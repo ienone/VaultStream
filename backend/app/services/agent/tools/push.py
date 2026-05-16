@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.core.time_utils import utcnow
@@ -10,16 +11,18 @@ from app.services.agent.tool_registry import AgentToolContext, AgentToolRegistry
 from app.services.distribution import DistributionService
 
 
+class PushBatchArgs(BaseModel):
+    content_ids: list[int] = Field(min_length=1)
+    bot_chat_id: int | None = None
+    force_enqueue: bool = True
+    include_success: bool = False
+
+
 def register_push_tool(registry: AgentToolRegistry) -> None:
     registry.register(
         name="push_batch",
         description="将内容批量推送到队列（基于现有规则匹配结果）。",
-        args_schema={
-            "content_ids": {"type": "array", "required": True, "items": {"type": "integer"}},
-            "bot_chat_id": {"type": "integer", "required": False},
-            "force_enqueue": {"type": "boolean", "required": False, "default": True},
-            "include_success": {"type": "boolean", "required": False, "default": False},
-        },
+        args_model=PushBatchArgs,
         result_schema={
             "type": "object",
             "required": ["content_ids", "bot_chat_id", "enqueued_total", "queue_items_total", "scheduled_count", "scheduled_item_ids"],
@@ -32,6 +35,7 @@ def register_push_tool(registry: AgentToolRegistry) -> None:
                 "scheduled_item_ids": {"type": "array"},
             },
         },
+        permission_level="external_side_effect",
         handler=_push_batch_tool,
     )
 

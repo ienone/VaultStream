@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from app.models import BotChat, DistributionRule
@@ -9,13 +10,15 @@ from app.services.agent.tool_registry import AgentToolContext, AgentToolRegistry
 from app.services.dashboard_service import build_distribution_stats, build_parse_stats
 
 
+class GetStatsArgs(BaseModel):
+    include_rule_breakdown: bool = False
+
+
 def register_stats_tool(registry: AgentToolRegistry) -> None:
     registry.register(
         name="get_stats",
         description="获取系统解析/分发统计。",
-        args_schema={
-            "include_rule_breakdown": {"type": "boolean", "required": False, "default": False},
-        },
+        args_model=GetStatsArgs,
         result_schema={
             "type": "object",
             "required": ["parse", "distribution", "enabled_rules", "enabled_groups", "rule_breakdown"],
@@ -27,6 +30,7 @@ def register_stats_tool(registry: AgentToolRegistry) -> None:
                 "rule_breakdown": {"type": "object"},
             },
         },
+        permission_level="read",
         handler=_get_stats_tool,
     )
 

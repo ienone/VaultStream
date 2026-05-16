@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import uuid
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,7 +26,10 @@ from app.models import (
     Platform,
     QueueItemStatus,
     ReviewStatus,
+    AgentMessage,
+    AgentRun,
 )
+from app.services.agent import AgentRunResult, AgentService
 from app.services.embedding_service import SemanticSearchHit
 
 
@@ -45,6 +49,7 @@ async def test_agent_list_tools(client: AsyncClient):
     }.issubset(names)
     for item in resp.json():
         assert item["result_schema"]["type"] == "object"
+        assert item["permission_level"] in {"read", "write", "external_side_effect", "dangerous"}
 
 
 @pytest.mark.asyncio
@@ -135,13 +140,27 @@ async def test_agent_invoke_import_favorites_success(client: AsyncClient, monkey
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["ok"] is True
-    assert data["result"]["platform"] == "zhihu"
-    assert data["result"]["result"]["imported"] == 3
+    assert data["ok"] is False
+    assert data["confirmation_required"] is True
+    confirmation_id = data["confirmation"]["id"]
+
+    detail = await client.get(f"/api/v1/agent/confirmations/{confirmation_id}")
+    assert detail.status_code == 200
+    assert detail.json()["status"] == "pending"
+
+    decided = await client.post(
+        f"/api/v1/agent/confirmations/{confirmation_id}/decide",
+        json={"approved": True},
+    )
+    assert decided.status_code == 200
+    decided_data = decided.json()
+    assert decided_data["status"] == "completed"
+    assert decided_data["result"]["platform"] == "zhihu"
+    assert decided_data["result"]["result"]["imported"] == 3
 
 
 @pytest.mark.asyncio
-async def test_agent_run_uses_list_groups_tool(client: AsyncClient, db_session):
+async def test_agent_run_uses_list_groups_tool(client: AsyncClient, db_session, monkeypatch):
     cfg = BotConfig(platform=BotConfigPlatform.TELEGRAM, name="agent-run-test")
     db_session.add(cfg)
     await db_session.flush()
@@ -156,6 +175,19 @@ async def test_agent_run_uses_list_groups_tool(client: AsyncClient, db_session):
         )
     )
     await db_session.commit()
+
+    async def _fake_run(self, *, message: str, session_id: str | None = None):
+        return AgentRunResult(
+            session_id=session_id or "sess_test",
+            run_id="run_test",
+            status="completed",
+            tool="list_groups",
+            result={"groups": [{"chat_id": "-100agentrun"}]},
+            message="ok",
+            events=[{"type": "start"}, {"type": "final", "status": "completed"}],
+        )
+
+    monkeypatch.setattr("app.routers.agent.AgentService.run_message", _fake_run)
 
     resp = await client.post("/api/v1/agent/run", json={"message": "请列出可用群组"})
     assert resp.status_code == 200
@@ -196,7 +228,8 @@ async def test_agent_invoke_create_rule(client: AsyncClient, db_session):
                 "platform": "bilibili",
                 "tags": ["Rust", "Async"],
                 "target_bot_chat_id": chat.id,
-            }
+            },
+            "confirmed": True,
         },
     )
     assert resp.status_code == 200
@@ -223,7 +256,7 @@ async def test_agent_invoke_manage_tags(client: AsyncClient, db_session):
 
     add_resp = await client.post(
         "/api/v1/agent/tools/manage_tags/invoke",
-        json={"args": {"content_id": content.id, "add_tags": ["new", "rust"]}},
+        json={"args": {"content_id": content.id, "add_tags": ["new", "rust"]}, "confirmed": True},
     )
     assert add_resp.status_code == 200
     add_data = add_resp.json()
@@ -232,7 +265,7 @@ async def test_agent_invoke_manage_tags(client: AsyncClient, db_session):
 
     remove_resp = await client.post(
         "/api/v1/agent/tools/manage_tags/invoke",
-        json={"args": {"content_id": content.id, "remove_tags": ["old"]}},
+        json={"args": {"content_id": content.id, "remove_tags": ["old"]}, "confirmed": True},
     )
     assert remove_resp.status_code == 200
     remove_data = remove_resp.json()
@@ -244,7 +277,7 @@ async def test_agent_invoke_manage_tags(client: AsyncClient, db_session):
 async def test_agent_invoke_manage_tags_not_found(client: AsyncClient):
     resp = await client.post(
         "/api/v1/agent/tools/manage_tags/invoke",
-        json={"args": {"content_id": 999999, "add_tags": ["x"]}},
+        json={"args": {"content_id": 999999, "add_tags": ["x"]}, "confirmed": True},
     )
     assert resp.status_code == 400
 
@@ -312,7 +345,7 @@ async def test_agent_invoke_push_batch(client: AsyncClient, db_session):
 
     resp = await client.post(
         "/api/v1/agent/tools/push_batch/invoke",
-        json={"args": {"content_ids": [content.id], "bot_chat_id": chat.id}},
+        json={"args": {"content_ids": [content.id], "bot_chat_id": chat.id}, "confirmed": True},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -329,20 +362,101 @@ async def test_agent_invoke_push_batch(client: AsyncClient, db_session):
 
 
 @pytest.mark.asyncio
+async def test_agent_session_messages_stop_redo_and_clear(client: AsyncClient, monkeypatch):
+    async def _fake_run(self, *, message: str, session_id: str | None = None):
+        session = await self.ensure_session(session_id, title="session api")
+        run = AgentRun(
+            id=f"run_session_api_{uuid.uuid4().hex}",
+            session_id=session.id,
+            status="completed",
+            input_message=message,
+            output_message="done",
+        )
+        self.db.add(run)
+        self.db.add(AgentMessage(session_id=session.id, run_id=run.id, role="user", content=message))
+        self.db.add(AgentMessage(session_id=session.id, run_id=run.id, role="assistant", content="done"))
+        await self.db.commit()
+        return AgentRunResult(session_id=session.id, run_id=run.id, status="completed", message="done")
+
+    monkeypatch.setattr("app.routers.agent.AgentService.run_message", _fake_run)
+
+    created = await client.post("/api/v1/agent/sessions", json={"title": "A"})
+    assert created.status_code == 200
+    session_id = created.json()["id"]
+
+    renamed = await client.patch(f"/api/v1/agent/sessions/{session_id}", json={"title": "B"})
+    assert renamed.status_code == 200
+    assert renamed.json()["title"] == "B"
+
+    run = await client.post("/api/v1/agent/run", json={"session_id": session_id, "message": "hello"})
+    assert run.status_code == 200
+    messages = await client.get(f"/api/v1/agent/sessions/{session_id}/messages")
+    assert messages.status_code == 200
+    assert len(messages.json()["messages"]) >= 2
+
+    stopped = await client.post(f"/api/v1/agent/runs/{run.json()['run_id']}/stop")
+    assert stopped.status_code == 200
+
+    redo = await client.post(f"/api/v1/agent/sessions/{session_id}/redo")
+    assert redo.status_code == 200
+
+    cleared = await client.post(f"/api/v1/agent/sessions/{session_id}/clear")
+    assert cleared.status_code == 200
+    messages_after = await client.get(f"/api/v1/agent/sessions/{session_id}/messages")
+    assert messages_after.json()["messages"] == []
+
+
+@pytest.mark.asyncio
+async def test_agent_context_compression_records_summary(db_session):
+    service = AgentService(db_session)
+    session = await service.ensure_session("ctx-test", title="ctx")
+    run = AgentRun(id="run_ctx", session_id=session.id, status="running", input_message="now")
+    db_session.add(run)
+    for idx in range(18):
+        db_session.add(
+            AgentMessage(
+                session_id=session.id,
+                role="user" if idx % 2 == 0 else "assistant",
+                content=f"message-{idx} " + ("x" * 2000),
+            )
+        )
+    await db_session.commit()
+
+    events: list[dict] = []
+    messages = await service._build_context_messages(session.id, run.id, events)
+    assert any(event["type"] == "context_summary" for event in events)
+    assert any("历史摘要" in getattr(message, "content", "") for message in messages)
+
+
+@pytest.mark.asyncio
 async def test_agent_run_import_favorites_end_to_end(client: AsyncClient, monkeypatch):
     async def _fake_sync(self, platform: str):
         return {"platform": platform, "status": "success", "imported": 2}
 
-    monkeypatch.setattr(
-        "app.services.agent.tools.favorites.FavoritesSyncTask.sync_platform_by_name",
-        _fake_sync,
-    )
+    async def _fake_run(self, *, message: str, session_id: str | None = None):
+        return AgentRunResult(
+            session_id=session_id or "sess_fav",
+            run_id="run_fav",
+            status="waiting_confirmation",
+            tool="import_favorites",
+            confirmation={
+                "id": "confirm_fav",
+                "tool_name": "import_favorites",
+                "permission_level": "external_side_effect",
+                "args": {"platform": "zhihu"},
+                "summary": "sync zhihu",
+            },
+            events=[{"type": "confirmation_required"}],
+        )
+
+    monkeypatch.setattr("app.routers.agent.AgentService.run_message", _fake_run)
 
     resp = await client.post("/api/v1/agent/run", json={"message": "请同步知乎收藏"})
     assert resp.status_code == 200
     data = resp.json()
-    assert data["tool"] == "import_favorites"
-    assert data["result"]["result"]["imported"] == 2
+    assert data["status"] == "waiting_confirmation"
+    assert data["confirmation_required"] is True
+    assert data["confirmation"]["tool_name"] == "import_favorites"
 
 
 def _ws_headers() -> dict[str, str]:
@@ -365,7 +479,7 @@ def test_agent_ws_stream_tool_success():
                     break
 
             types = {event.get("type") for event in events}
-            assert {"start", "tool_call", "delta", "final"}.issubset(types)
+            assert {"start", "tool_call", "tool_result", "final"}.issubset(types)
 
 
 def test_agent_ws_stream_tool_unknown():
@@ -375,12 +489,10 @@ def test_agent_ws_stream_tool_unknown():
             headers=_ws_headers(),
         ) as ws:
             ws.send_json({"tool": "not_exists_tool", "args": {}})
-            first = ws.receive_json()
-            second = ws.receive_json()
-            assert first.get("type") == "start"
-            assert second.get("type") == "error"
-            assert second.get("error_code") == "agent_tool_not_found"
-            assert "Unknown tool" in str(second.get("error"))
+            event = ws.receive_json()
+            assert event.get("type") == "error"
+            assert event.get("error_code") == "agent_tool_not_found"
+            assert "Unknown tool" in str(event.get("message"))
 
 
 def test_agent_ws_unauthorized(monkeypatch):

@@ -3,21 +3,25 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from pydantic import BaseModel, Field
+
 from app.services.agent.tool_registry import AgentToolContext, AgentToolRegistry
 from app.services.embedding_service import EmbeddingService
+
+
+class SearchContentArgs(BaseModel):
+    query: str = Field(min_length=1)
+    top_k: int = Field(default=10, ge=1, le=100)
+    platform: Optional[str] = None
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
 
 
 def register_search_tool(registry: AgentToolRegistry) -> None:
     registry.register(
         name="search_content",
         description="语义检索内容库，支持平台和时间过滤。",
-        args_schema={
-            "query": {"type": "string", "required": True},
-            "top_k": {"type": "integer", "required": False, "default": 10},
-            "platform": {"type": "string", "required": False},
-            "date_from": {"type": "string", "required": False, "format": "iso8601"},
-            "date_to": {"type": "string", "required": False, "format": "iso8601"},
-        },
+        args_model=SearchContentArgs,
         result_schema={
             "type": "object",
             "required": ["query", "top_k", "count", "items"],
@@ -28,6 +32,7 @@ def register_search_tool(registry: AgentToolRegistry) -> None:
                 "items": {"type": "array"},
             },
         },
+        permission_level="read",
         handler=_search_content_tool,
     )
 
@@ -77,6 +82,8 @@ async def _search_content_tool(args: Dict[str, Any], context: AgentToolContext) 
                 "url": hit.content.url,
                 "score": float(hit.score),
                 "match_source": hit.match_source,
+                "chunk_title": hit.chunk_title,
+                "source_text": (hit.source_text or "")[:500],
             }
             for hit in hits
         ],
