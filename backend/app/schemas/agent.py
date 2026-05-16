@@ -11,6 +11,9 @@ class AgentToolInfo(BaseModel):
     name: str
     description: str
     permission_level: str = "read"
+    risk_level: str = "read"
+    require_confirmation: bool = False
+    permissions: List[str] = Field(default_factory=list)
     args_schema: Dict[str, Any] = Field(default_factory=dict)
     result_schema: Dict[str, Any] = Field(default_factory=dict)
 

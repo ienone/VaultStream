@@ -53,6 +53,10 @@ async def test_agent_list_tools(client: AsyncClient):
     for item in resp.json():
         assert item["result_schema"]["type"] == "object"
         assert item["permission_level"] in {"read", "write", "external_side_effect", "dangerous"}
+        assert item["risk_level"] in {"read", "write", "external_side_effect", "dangerous"}
+        assert isinstance(item["require_confirmation"], bool)
+        assert isinstance(item["permissions"], list)
+        assert item["permissions"]
 
 
 @pytest.mark.asyncio
@@ -341,6 +345,16 @@ async def test_agent_api_get_reuses_internal_content_api(client: AsyncClient, db
 
 
 @pytest.mark.asyncio
+async def test_agent_api_get_rejects_unlisted_internal_api(client: AsyncClient):
+    resp = await client.post(
+        "/api/v1/agent/tools/api_get/invoke",
+        json={"args": {"path": "/browser-auth/session/zhihu/status"}},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["error_code"] == "agent_api_path_not_allowed"
+
+
+@pytest.mark.asyncio
 async def test_agent_api_mutation_requires_confirmation(client: AsyncClient):
     resp = await client.post(
         "/api/v1/agent/tools/api_mutation/invoke",
@@ -398,6 +412,59 @@ async def test_agent_api_mutation_reuses_internal_content_update_api(client: Asy
     assert data["result"]["status_code"] == 200
     assert data["result"]["data"]["title"] == "After API Mutation"
     assert data["result"]["data"]["review_status"] == "approved"
+
+
+@pytest.mark.asyncio
+async def test_actions_endpoint_uses_same_registry_and_executor(client: AsyncClient, db_session):
+    listed = await client.get("/api/v1/actions")
+    assert listed.status_code == 200
+    action_names = {item["name"] for item in listed.json()}
+    assert {"search_content", "api_get", "api_mutation"}.issubset(action_names)
+    action_info = next(item for item in listed.json() if item["name"] == "api_mutation")
+    assert action_info["risk_level"] == "dangerous"
+    assert action_info["require_confirmation"] is True
+    assert action_info["permissions"] == ["api:write"]
+
+    content = Content(
+        platform=Platform.BILIBILI,
+        url="https://www.bilibili.com/video/BV-agent-action-api-get",
+        canonical_url=f"agent://action-api-get/{int(utcnow().timestamp())}",
+        status=ContentStatus.PARSE_SUCCESS,
+        review_status=ReviewStatus.APPROVED,
+        title="Action API GET",
+        body="read through action endpoint",
+        created_at=utcnow(),
+    )
+    db_session.add(content)
+    await db_session.commit()
+    await db_session.refresh(content)
+
+    invoked = await client.post(
+        "/api/v1/actions/api_get",
+        json={"input": {"path": f"/contents/{content.id}"}},
+    )
+    assert invoked.status_code == 200
+    data = invoked.json()
+    assert data["ok"] is True
+    assert data["status"] == "completed"
+    assert data["result"]["data"]["title"] == "Action API GET"
+
+    confirmation = await client.post(
+        "/api/v1/actions/api_mutation",
+        json={
+            "input": {
+                "method": "PATCH",
+                "path": f"/contents/{content.id}",
+                "body": {"title": "Needs confirmation"},
+                "reason": "验证 Action endpoint confirmation",
+            }
+        },
+    )
+    assert confirmation.status_code == 200
+    confirmation_data = confirmation.json()
+    assert confirmation_data["status"] == "requires_confirmation"
+    assert confirmation_data["requires_confirmation"] is True
+    assert confirmation_data["pending_confirmation"]["tool_name"] == "api_mutation"
 
 
 @pytest.mark.asyncio

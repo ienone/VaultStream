@@ -39,6 +39,7 @@ def register_rules_tool(registry: AgentToolRegistry) -> None:
             },
         },
         permission_level="write",
+        permissions=["distribution_rules:write"],
         handler=_create_rule_tool,
     )
 

@@ -32,6 +32,7 @@ def register_tags_tool(registry: AgentToolRegistry) -> None:
             },
         },
         permission_level="write",
+        permissions=["content:tags:write"],
         handler=_manage_tags_tool,
     )
 

@@ -33,6 +33,7 @@ def register_search_tool(registry: AgentToolRegistry) -> None:
             },
         },
         permission_level="read",
+        permissions=["content:read", "semantic_search:read"],
         handler=_search_content_tool,
     )
 

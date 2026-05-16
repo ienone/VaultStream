@@ -26,6 +26,7 @@ def register_favorites_tool(registry: AgentToolRegistry) -> None:
             },
         },
         permission_level="external_side_effect",
+        permissions=["favorites:sync"],
         handler=_import_favorites_tool,
     )
 

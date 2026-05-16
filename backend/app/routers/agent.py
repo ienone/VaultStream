@@ -93,6 +93,9 @@ async def list_agent_tools(_: None = Depends(require_api_token)):
             name=tool.name,
             description=tool.description,
             permission_level=tool.permission_level.value,
+            risk_level=tool.risk_level,
+            require_confirmation=tool.requires_confirmation,
+            permissions=tool.permissions,
             args_schema=tool.args_schema,
             result_schema=tool.result_schema,
         )

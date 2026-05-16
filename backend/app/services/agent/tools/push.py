@@ -36,6 +36,7 @@ def register_push_tool(registry: AgentToolRegistry) -> None:
             },
         },
         permission_level="external_side_effect",
+        permissions=["distribution_queue:write", "push:enqueue"],
         handler=_push_batch_tool,
     )
 

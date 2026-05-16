@@ -23,6 +23,29 @@ _BINARY_PREFIXES = (
 )
 _SAFE_METHODS = {"GET"}
 _MUTATION_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+_ALLOWED_PREFIXES = (
+    "/api/v1/actions",
+    "/api/v1/contents",
+    "/api/v1/cards",
+    "/api/v1/pushed-records",
+    "/api/v1/tags",
+    "/api/v1/dashboard",
+    "/api/v1/background-tasks",
+    "/api/v1/discovery",
+    "/api/v1/distribution-rules",
+    "/api/v1/distribution",
+    "/api/v1/targets",
+    "/api/v1/render-config-presets",
+    "/api/v1/distribution-queue",
+    "/api/v1/bot",
+    "/api/v1/bot-config",
+    "/api/v1/storage/stats",
+    "/api/v1/search/semantic",
+    "/api/v1/settings",
+    "/api/v1/favorites-sync",
+    "/api/v1/health",
+    "/api/v1/init-status",
+)
 
 
 class ApiCatalogArgs(BaseModel):
@@ -55,33 +78,36 @@ def register_api_bridge_tools(registry: AgentToolRegistry) -> None:
     registry.register(
         name="api_catalog",
         description=(
-            "列出 VaultStream 后端 API 能力目录。用于发现客户端 UI 已具备、但没有专用 Agent tool 的能力。"
+            "列出 VaultStream 允许 Agent 复用的受控 API 能力目录。只包含核心 GUI 业务域，不暴露内部/二进制/Agent 自身接口。"
         ),
         args_model=ApiCatalogArgs,
         result_schema={"type": "object", "required": ["count", "endpoints"], "properties": {"endpoints": {"type": "array"}}},
         permission_level="read",
+        permissions=["api:catalog:read"],
         handler=_api_catalog_tool,
     )
     registry.register(
         name="api_get",
         description=(
-            "调用 VaultStream 内部 GET API，复用客户端同一套后端实现完成只读查询。"
+            "调用 VaultStream 受控 allowlist 内的 GET API，复用客户端同一套后端实现完成只读查询。"
             "适合内容列表/详情、发现源、队列、规则、Bot、设置、Dashboard 等读取操作。"
         ),
         args_model=ApiGetArgs,
         result_schema={"type": "object", "required": ["status_code", "data"], "properties": {"data": {"type": "object"}}},
         permission_level="read",
+        permissions=["api:read"],
         handler=_api_get_tool,
     )
     registry.register(
         name="api_mutation",
         description=(
-            "调用 VaultStream 内部 POST/PUT/PATCH/DELETE API，复用客户端同一套后端实现完成写操作。"
+            "调用 VaultStream 受控 allowlist 内的 POST/PUT/PATCH/DELETE API，复用客户端同一套后端实现完成写操作。"
             "此工具会强制用户确认，适合内容编辑/审核、队列操作、分发规则、发现源、Bot、设置等变更。"
         ),
         args_model=ApiMutationArgs,
         result_schema={"type": "object", "required": ["status_code", "data"], "properties": {"data": {"type": "object"}}},
         permission_level="dangerous",
+        permissions=["api:write"],
         handler=_api_mutation_tool,
     )
 
@@ -227,7 +253,13 @@ def _is_allowed_path(path: str) -> bool:
         return False
     if path.startswith(_BLOCKED_PREFIXES):
         return False
-    return True
+    if path.startswith(_BINARY_PREFIXES):
+        return False
+    return any(_matches_prefix(path, prefix) for prefix in _ALLOWED_PREFIXES)
+
+
+def _matches_prefix(path: str, prefix: str) -> bool:
+    return path == prefix or path.startswith(prefix + "/") or path.startswith(prefix + "?")
 
 
 def _raise_blocked_path(path: str, message: str | None = None) -> None:

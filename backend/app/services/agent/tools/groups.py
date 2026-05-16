@@ -27,6 +27,7 @@ def register_groups_tool(registry: AgentToolRegistry) -> None:
             },
         },
         permission_level="read",
+        permissions=["bot_groups:read"],
         handler=_list_groups_tool,
     )
 

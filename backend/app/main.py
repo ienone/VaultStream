@@ -33,7 +33,7 @@ from app.tasks import worker, DistributionQueueWorker
 # 导入新路由
 from app.routers import (
     contents, discovery, distribution, system, media, bot_management, 
-    events, distribution_queue, bot_config, browser_auth, search, agent
+    events, distribution_queue, bot_config, browser_auth, search, agent, actions
 )
 
 setup_logging(level=settings.log_level, fmt=settings.log_format, debug=settings.debug)
@@ -256,6 +256,7 @@ app.include_router(distribution_queue.router, prefix="/api/v1", tags=["distribut
 app.include_router(browser_auth.router, prefix="/api/v1/browser-auth", tags=["browser-auth"])
 app.include_router(search.router, prefix="/api/v1", tags=["search"])
 app.include_router(agent.router, prefix="/api/v1", tags=["agent"])
+app.include_router(actions.router, prefix="/api/v1", tags=["actions"])
 
 
 @app.get("/api")

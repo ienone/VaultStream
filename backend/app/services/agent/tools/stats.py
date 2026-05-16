@@ -31,6 +31,7 @@ def register_stats_tool(registry: AgentToolRegistry) -> None:
             },
         },
         permission_level="read",
+        permissions=["dashboard:read"],
         handler=_get_stats_tool,
     )
 

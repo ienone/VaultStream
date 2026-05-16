@@ -64,6 +64,7 @@ class AgentToolSpec:
     result_schema: Dict[str, Any]
     handler: AgentToolHandler
     permission_level: AgentToolPermission = AgentToolPermission.READ
+    permissions: list[str] = field(default_factory=list)
     args_model: Type[BaseModel] | None = None
 
     @property
@@ -73,6 +74,10 @@ class AgentToolSpec:
             AgentToolPermission.EXTERNAL_SIDE_EFFECT,
             AgentToolPermission.DANGEROUS,
         }
+
+    @property
+    def risk_level(self) -> str:
+        return self.permission_level.value
 
 
 @dataclass
@@ -88,6 +93,7 @@ class AgentToolRegistry:
         result_schema: Dict[str, Any] | None = None,
         args_model: Type[BaseModel] | None = None,
         permission_level: AgentToolPermission | str = AgentToolPermission.READ,
+        permissions: list[str] | None = None,
         handler: AgentToolHandler,
     ) -> None:
         if name in self._tools:
@@ -103,6 +109,7 @@ class AgentToolRegistry:
             result_schema=result_schema or {"type": "object"},
             handler=handler,
             permission_level=permission_level,
+            permissions=list(permissions or []),
             args_model=args_model,
         )
 
