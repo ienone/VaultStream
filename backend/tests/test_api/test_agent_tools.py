@@ -39,6 +39,9 @@ async def test_agent_list_tools(client: AsyncClient):
     assert resp.status_code == 200
     names = {item["name"] for item in resp.json()}
     assert {
+        "api_catalog",
+        "api_get",
+        "api_mutation",
         "search_content",
         "list_groups",
         "import_favorites",
@@ -293,6 +296,108 @@ async def test_agent_invoke_get_stats(client: AsyncClient):
     assert data["ok"] is True
     assert "parse" in data["result"]
     assert "distribution" in data["result"]
+
+
+@pytest.mark.asyncio
+async def test_agent_api_catalog_lists_client_api_surface(client: AsyncClient):
+    resp = await client.post(
+        "/api/v1/agent/tools/api_catalog/invoke",
+        json={"args": {"prefix": "/contents", "include_mutations": True}},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    endpoints = {(item["method"], item["path"]) for item in data["result"]["endpoints"]}
+    assert ("GET", "/api/v1/contents") in endpoints
+    assert ("PATCH", "/api/v1/contents/{content_id}") in endpoints
+
+
+@pytest.mark.asyncio
+async def test_agent_api_get_reuses_internal_content_api(client: AsyncClient, db_session):
+    content = Content(
+        platform=Platform.BILIBILI,
+        url="https://www.bilibili.com/video/BV-agent-api-get",
+        canonical_url=f"agent://api-get/{int(utcnow().timestamp())}",
+        status=ContentStatus.PARSE_SUCCESS,
+        review_status=ReviewStatus.APPROVED,
+        title="Agent API GET",
+        body="read through api bridge",
+        created_at=utcnow(),
+    )
+    db_session.add(content)
+    await db_session.commit()
+    await db_session.refresh(content)
+
+    resp = await client.post(
+        "/api/v1/agent/tools/api_get/invoke",
+        json={"args": {"path": f"/contents/{content.id}"}},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["result"]["status_code"] == 200
+    assert data["result"]["data"]["id"] == content.id
+    assert data["result"]["data"]["title"] == "Agent API GET"
+
+
+@pytest.mark.asyncio
+async def test_agent_api_mutation_requires_confirmation(client: AsyncClient):
+    resp = await client.post(
+        "/api/v1/agent/tools/api_mutation/invoke",
+        json={
+            "args": {
+                "method": "PATCH",
+                "path": "/contents/1",
+                "body": {"title": "blocked"},
+                "reason": "测试 mutation confirmation",
+            }
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is False
+    assert data["confirmation_required"] is True
+    assert data["confirmation"]["tool_name"] == "api_mutation"
+
+
+@pytest.mark.asyncio
+async def test_agent_api_mutation_reuses_internal_content_update_api(client: AsyncClient, db_session):
+    content = Content(
+        platform=Platform.ZHIHU,
+        url="https://www.zhihu.com/question/1/answer/agent-api-mutation",
+        canonical_url=f"agent://api-mutation/{int(utcnow().timestamp())}",
+        status=ContentStatus.PARSE_SUCCESS,
+        review_status=ReviewStatus.PENDING,
+        title="Before API Mutation",
+        body="write through api bridge",
+        created_at=utcnow(),
+    )
+    db_session.add(content)
+    await db_session.commit()
+    await db_session.refresh(content)
+
+    resp = await client.post(
+        "/api/v1/agent/tools/api_mutation/invoke",
+        json={
+            "confirmed": True,
+            "args": {
+                "method": "PATCH",
+                "path": f"/contents/{content.id}",
+                "body": {
+                    "title": "After API Mutation",
+                    "review_status": "approved",
+                    "review_note": "agent api bridge",
+                },
+                "reason": "通过 Agent 调用内容编辑 API",
+            },
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["result"]["status_code"] == 200
+    assert data["result"]["data"]["title"] == "After API Mutation"
+    assert data["result"]["data"]["review_status"] == "approved"
 
 
 @pytest.mark.asyncio

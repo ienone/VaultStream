@@ -1,4 +1,5 @@
 from app.services.agent.tool_registry import AgentToolRegistry
+from .api_bridge import register_api_bridge_tools
 from .favorites import register_favorites_tool
 from .groups import register_groups_tool
 from .push import register_push_tool
@@ -9,6 +10,7 @@ from .tags import register_tags_tool
 
 
 def register_builtin_tools(registry: AgentToolRegistry) -> None:
+    register_api_bridge_tools(registry)
     register_search_tool(registry)
     register_groups_tool(registry)
     register_favorites_tool(registry)
