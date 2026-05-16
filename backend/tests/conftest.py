@@ -13,7 +13,7 @@ os.environ["SQLITE_DB_PATH"] = TEST_DB_PATH
 
 from app.main import app
 from app.core.config import settings
-from app.core.database import ensure_content_fts
+from app.core.database import ensure_content_embeddings_schema, ensure_content_fts
 from app.core.db_adapter import engine as app_engine
 from app.core.schema_gate import ensure_schema_metadata
 from app.models import Base, Content
@@ -52,6 +52,7 @@ async def setup_test_db():
     """Create a clean database for the test session."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await ensure_content_embeddings_schema(conn)
         await ensure_content_fts(conn)
         await ensure_schema_metadata(conn)
     

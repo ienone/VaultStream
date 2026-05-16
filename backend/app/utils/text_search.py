@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Iterable, Sequence
 
 from loguru import logger
@@ -13,8 +14,44 @@ _fts_warning_emitted = False
 
 
 def build_like_condition(query: str, *, columns: Sequence[ColumnElement]) -> ColumnElement:
-    like_expr = f"%{query}%"
-    return or_(*[col.ilike(like_expr) for col in columns])
+    terms = _query_terms(query)
+    if not terms:
+        terms = [query]
+    return or_(
+        *[
+            col.ilike(f"%{term}%")
+            for term in terms
+            for col in columns
+            if term.strip()
+        ]
+    )
+
+
+def _query_terms(query: str) -> list[str]:
+    raw_parts = [part.strip() for part in re.split(r"\s+", query) if part.strip()]
+    terms: list[str] = []
+    for part in raw_parts:
+        if len(part) >= 2:
+            terms.append(part)
+        terms.extend(re.findall(r"[A-Za-z0-9][A-Za-z0-9_\-]{1,}", part))
+    if not terms and query.strip():
+        terms.append(query.strip())
+    deduped: list[str] = []
+    seen = set()
+    for term in terms:
+        lowered = term.lower()
+        if lowered not in seen:
+            deduped.append(term)
+            seen.add(lowered)
+    return deduped[:12]
+
+
+def _fts_query(query: str) -> str:
+    terms = _query_terms(query)
+    if not terms:
+        return query
+    escaped = [term.replace('"', '""') for term in terms]
+    return " OR ".join(f'"{term}"' for term in escaped)
 
 
 async def fetch_fts_content_ids(
@@ -24,7 +61,7 @@ async def fetch_fts_content_ids(
     limit: int | None = None,
 ) -> list[int]:
     sql = "SELECT content_id FROM contents_fts WHERE contents_fts MATCH :q"
-    params: dict = {"q": query}
+    params: dict = {"q": _fts_query(query)}
     if limit is not None:
         sql += " LIMIT :limit"
         params["limit"] = int(limit)
@@ -74,9 +111,14 @@ async def rank_ids_by_fts_or_like(
                 await session.execute(select(Content.id).where(Content.id.in_(raw_ids), and_(*filters)))
             ).scalars().all()
             filtered_set = {int(cid) for cid in filtered_ids}
-            return [cid for cid in raw_ids if cid in filtered_set]
+            ranked = [cid for cid in raw_ids if cid in filtered_set]
+            if len(ranked) >= limit:
+                return ranked[:limit]
+        else:
+            ranked = []
     except Exception as e:
         logger.debug("FTS ranking failed, fallback to LIKE ranking: {}", e)
+        ranked = []
 
     like_cond = build_like_condition(query, columns=like_columns)
     if order_by is None:
@@ -90,4 +132,8 @@ async def rank_ids_by_fts_or_like(
             .limit(int(limit))
         )
     ).scalars().all()
-    return [int(cid) for cid in fallback_ids]
+    for cid in fallback_ids:
+        cid = int(cid)
+        if cid not in ranked:
+            ranked.append(cid)
+    return ranked[:limit]

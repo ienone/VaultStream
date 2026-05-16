@@ -35,7 +35,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   bool _enableEmbedding = false;
   final _embeddingKeyController = TextEditingController();
   final _embeddingModelController = TextEditingController(
-    text: 'gemini-embedding-2-preview',
+    text: 'gemini-embedding-2',
   );
   final _embeddingDimController = TextEditingController(text: '1536');
 
@@ -429,7 +429,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                             controller: _embeddingModelController,
                             decoration: const InputDecoration(
                               labelText: 'Embedding 模型名称',
-                              hintText: 'gemini-embedding-2-preview',
+                              hintText: 'gemini-embedding-2',
                               border: OutlineInputBorder(),
                             ),
                           ),

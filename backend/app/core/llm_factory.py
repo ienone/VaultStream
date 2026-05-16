@@ -56,7 +56,9 @@ class LLMFactory:
         读取 TEXT_LLM_* 配置
         """
         api_key = await get_setting_value("text_llm_api_key")
-        base_url = await get_setting_value("text_llm_api_base")
+        base_url = await get_setting_value("text_llm_base_url")
+        if not base_url:
+            base_url = await get_setting_value("text_llm_api_base")
         model = await get_setting_value("text_llm_model")
 
         if not api_key:
@@ -85,7 +87,9 @@ class LLMFactory:
         prefix = "vision" if model_type == "vision" else "text"
         
         api_key = await get_setting_value(f"{prefix}_llm_api_key")
-        base_url = await get_setting_value(f"{prefix}_llm_api_base")
+        base_url = await get_setting_value(f"{prefix}_llm_base_url")
+        if not base_url:
+            base_url = await get_setting_value(f"{prefix}_llm_api_base")
         model = await get_setting_value(f"{prefix}_llm_model")
         
         # 兼容性处理：Crawl4AI 的 provider 格式通常是 "openai/model-name"
@@ -100,4 +104,3 @@ class LLMFactory:
             "api_token": api_key,
             "base_url": base_url
         }
-

@@ -24,17 +24,16 @@ async def test_text_only_document_embedding_uses_retrieval_document(monkeypatch)
         body="Tokio runtime benchmark",
     )
 
-    async def _fake_embed_text(text: str, *, task_type: str) -> list[float]:
+    async def _fake_embed_text(text: str) -> list[float]:
         captured["text"] = text
-        captured["task_type"] = task_type
         return [0.1, 0.2]
 
     monkeypatch.setattr(svc, "_embed_text", _fake_embed_text)
 
-    vector = await svc._embed_multimodal(svc._build_content_text(content), [])
+    vector = await svc._embed_document_text(svc._build_content_text(content), [])
 
     assert vector == [0.1, 0.2]
-    assert captured["task_type"] == svc._DOCUMENT_TASK_TYPE
+    assert captured["text"].startswith("VaultStream retrieval document:\n")
     assert "Rust 异步实践" in captured["text"]
 
 
@@ -43,9 +42,8 @@ async def test_embed_query_uses_retrieval_query(monkeypatch):
     svc = EmbeddingService()
     captured: dict[str, str] = {}
 
-    async def _fake_embed_text(text: str, *, task_type: str) -> list[float]:
+    async def _fake_embed_text(text: str) -> list[float]:
         captured["text"] = text
-        captured["task_type"] = task_type
         return [0.3, 0.4]
 
     monkeypatch.setattr(svc, "_embed_text", _fake_embed_text)
@@ -53,8 +51,7 @@ async def test_embed_query_uses_retrieval_query(monkeypatch):
     vector = await svc.embed_query("rust async")
 
     assert vector == [0.3, 0.4]
-    assert captured["task_type"] == svc._QUERY_TASK_TYPE
-    assert captured["text"] == "rust async"
+    assert captured["text"] == "VaultStream retrieval query:\nrust async"
 
 
 @pytest.mark.asyncio
@@ -74,8 +71,10 @@ async def test_index_content_creates_embedding_record(db_session, monkeypatch):
     await db_session.commit()
 
     svc = EmbeddingService()
-    async def _fake_embed_text(_: str, *, task_type: str) -> list[float]:
-        assert task_type == svc._DOCUMENT_TASK_TYPE
+
+    async def _fake_embed_text(text: str) -> list[float]:
+        assert text.startswith("VaultStream retrieval document:\n")
+        assert "Rust 异步实践" in text
         return [0.5, 0.5]
 
     monkeypatch.setattr(svc, "_embed_text", _fake_embed_text)
@@ -91,7 +90,12 @@ async def test_index_content_creates_embedding_record(db_session, monkeypatch):
     assert record is not None
     assert isinstance(record.embedding, list)
     assert len(record.embedding) == 2
-    assert record.embedding_model == "gemini-embedding-2-preview|dim=1536|task=RETRIEVAL_DOCUMENT"
+    assert record.embedding_model == "gemini-embedding-2"
+    assert record.embedding_model_signature == await svc._get_document_embedding_signature()
+    assert record.index_status == "indexed"
+    assert record.chunk_index == -1
+    assert record.source_text and "Tokio runtime benchmark" in record.source_text
+    assert record.last_indexed_at is not None
 
 
 @pytest.mark.asyncio
@@ -119,24 +123,28 @@ async def test_search_hybrid_returns_ranked_hits(db_session, monkeypatch):
     )
     db_session.add_all([item1, item2])
     await db_session.flush()
+    svc = EmbeddingService()
+    model_signature = await svc._get_document_embedding_signature()
 
     db_session.add_all(
         [
             ContentEmbedding(
                 content_id=item1.id,
-                embedding_model="gemini-embedding-2-preview|dim=1536|task=RETRIEVAL_DOCUMENT",
+                embedding_model="gemini-embedding-2",
+                embedding_model_signature=model_signature,
+                index_status="indexed",
                 embedding=[1.0, 0.0],
             ),
             ContentEmbedding(
                 content_id=item2.id,
-                embedding_model="gemini-embedding-2-preview|dim=1536|task=RETRIEVAL_DOCUMENT",
+                embedding_model="gemini-embedding-2",
+                embedding_model_signature=model_signature,
+                index_status="indexed",
                 embedding=[0.0, 1.0],
             ),
         ]
     )
     await db_session.commit()
-
-    svc = EmbeddingService()
 
     async def _fake_embed_query(_: str) -> list[float]:
         return [1.0, 0.0]
@@ -174,23 +182,27 @@ async def test_search_respects_platform_and_date_filters(db_session, monkeypatch
     )
     db_session.add_all([old_item, new_item])
     await db_session.flush()
+    svc = EmbeddingService()
+    model_signature = await svc._get_document_embedding_signature()
     db_session.add_all(
         [
             ContentEmbedding(
                 content_id=old_item.id,
-                embedding_model="gemini-embedding-2-preview|dim=1536|task=RETRIEVAL_DOCUMENT",
+                embedding_model="gemini-embedding-2",
+                embedding_model_signature=model_signature,
+                index_status="indexed",
                 embedding=[1.0, 0.0],
             ),
             ContentEmbedding(
                 content_id=new_item.id,
-                embedding_model="gemini-embedding-2-preview|dim=1536|task=RETRIEVAL_DOCUMENT",
+                embedding_model="gemini-embedding-2",
+                embedding_model_signature=model_signature,
+                index_status="indexed",
                 embedding=[1.0, 0.0],
             ),
         ]
     )
     await db_session.commit()
-
-    svc = EmbeddingService()
 
     async def _fake_embed_query(_: str) -> list[float]:
         return [1.0, 0.0]
@@ -228,7 +240,9 @@ async def test_search_ignores_embeddings_with_non_matching_signature(db_session,
     db_session.add(
         ContentEmbedding(
             content_id=item.id,
-            embedding_model="gemini-embedding-2-preview|dim=768|task=RETRIEVAL_DOCUMENT",
+            embedding_model="gemini-embedding-2",
+            embedding_model_signature="gemini-embedding-2|dim=768|prefix=vaultstream_rag_v1|role=document",
+            index_status="indexed",
             embedding=[1.0, 0.0],
         )
     )
@@ -265,12 +279,16 @@ async def test_vector_rank_limits_database_scan(db_session, monkeypatch):
         items.append(item)
 
     await db_session.flush()
+    svc = EmbeddingService()
+    model_signature = await svc._get_document_embedding_signature()
 
     for idx, item in enumerate(items):
         db_session.add(
             ContentEmbedding(
                 content_id=item.id,
-                embedding_model="gemini-embedding-2-preview|dim=1536|task=RETRIEVAL_DOCUMENT",
+                embedding_model="gemini-embedding-2",
+                embedding_model_signature=model_signature,
+                index_status="indexed",
                 embedding=[1.0, 0.0],
                 indexed_at=now - timedelta(minutes=idx),
             )
@@ -287,7 +305,6 @@ async def test_vector_rank_limits_database_scan(db_session, monkeypatch):
         _fake_setting,
     )
 
-    svc = EmbeddingService()
     ranked = await svc._vector_rank_ids(
         session=db_session,
         query_vec=[1.0, 0.0],

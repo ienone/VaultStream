@@ -4,13 +4,20 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import AsyncSessionLocal
 from app.core.database import get_db
 from app.core.dependencies import require_api_token
 from app.models import Platform
-from app.schemas import SemanticSearchResponse, SemanticSearchItem
+from app.schemas import (
+    SemanticIndexStatusResponse,
+    SemanticReindexRequest,
+    SemanticReindexResponse,
+    SemanticSearchResponse,
+    SemanticSearchItem,
+)
 from app.services.embedding_service import EmbeddingService
 
 router = APIRouter()
@@ -52,6 +59,8 @@ async def semantic_search(
             content_id=hit.content.id,
             score=float(hit.score),
             match_source=hit.match_source,
+            chunk_title=hit.chunk_title,
+            source_text=hit.source_text,
             platform=hit.content.platform.value if hit.content.platform else "",
             url=hit.content.url,
             title=hit.content.title,
@@ -69,4 +78,61 @@ async def semantic_search(
         query=q,
         top_k=top_k,
         results=results,
+    )
+
+
+@router.get("/search/semantic/index-status", response_model=SemanticIndexStatusResponse)
+async def semantic_index_status(
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    status = await EmbeddingService().get_index_status(session=db)
+    return SemanticIndexStatusResponse(**status)
+
+
+async def _run_reindex_job(scope: str, content_id: int | None, limit: int) -> None:
+    async with AsyncSessionLocal() as session:
+        await EmbeddingService().reindex_scope(
+            scope=scope,
+            content_id=content_id,
+            limit=limit,
+            batch_size=8,
+            delay_seconds=0.2,
+            session=session,
+        )
+
+
+@router.post("/search/semantic/reindex", response_model=SemanticReindexResponse)
+async def semantic_reindex(
+    payload: SemanticReindexRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    scope = payload.scope.strip().lower()
+    if scope not in {"single", "all", "failed"}:
+        raise HTTPException(status_code=400, detail="scope must be single, all or failed")
+    if scope == "single" and payload.content_id is None:
+        raise HTTPException(status_code=400, detail="content_id is required for single reindex")
+
+    content_ids, estimated_calls = await EmbeddingService().plan_reindex(
+        scope=scope,
+        content_id=payload.content_id,
+        limit=payload.limit,
+        session=db,
+    )
+    if not payload.dry_run:
+        background_tasks.add_task(_run_reindex_job, scope, payload.content_id, payload.limit)
+    return SemanticReindexResponse(
+        scope=scope,
+        content_id=payload.content_id,
+        dry_run=payload.dry_run,
+        candidate_count=len(content_ids),
+        estimated_embedding_calls=estimated_calls,
+        scheduled=not payload.dry_run,
+        message=(
+            "dry run only; no paid embedding calls scheduled"
+            if payload.dry_run
+            else "reindex job scheduled with batch_size=8 and 0.2s inter-batch delay"
+        ),
     )

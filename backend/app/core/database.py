@@ -15,8 +15,67 @@ async def init_db():
     """初始化数据库基础结构。"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await ensure_content_embeddings_schema(conn)
         await ensure_content_fts(conn)
         await ensure_schema_metadata(conn)
+
+
+async def ensure_content_embeddings_schema(conn: AsyncConnection) -> None:
+    """Ensure existing SQLite databases have the current semantic index columns."""
+    rows = await conn.execute(text("PRAGMA table_info(content_embeddings)"))
+    columns = {row[1] for row in rows.fetchall()}
+    additions = {
+        "chunk_index": "INTEGER DEFAULT -1",
+        "chunk_title": "TEXT DEFAULT NULL",
+        "embedding_model_signature": "VARCHAR(240) DEFAULT NULL",
+        "index_status": "VARCHAR(40) DEFAULT 'indexed'",
+        "failure_reason": "TEXT DEFAULT NULL",
+        "retry_count": "INTEGER DEFAULT 0",
+        "last_indexed_at": "DATETIME DEFAULT NULL",
+    }
+    for name, ddl in additions.items():
+        if name not in columns:
+            await conn.execute(text(f"ALTER TABLE content_embeddings ADD COLUMN {name} {ddl}"))
+
+    await conn.execute(
+        text(
+            """
+            UPDATE content_embeddings
+            SET chunk_index = -1
+            WHERE chunk_index IS NULL
+            """
+        )
+    )
+    await conn.execute(
+        text(
+            """
+            UPDATE content_embeddings
+            SET index_status = 'indexed'
+            WHERE index_status IS NULL OR index_status = ''
+            """
+        )
+    )
+    await conn.execute(
+        text(
+            """
+            UPDATE content_embeddings
+            SET last_indexed_at = indexed_at
+            WHERE last_indexed_at IS NULL AND indexed_at IS NOT NULL
+            """
+        )
+    )
+    await conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_content_embeddings_signature "
+            "ON content_embeddings (embedding_model_signature)"
+        )
+    )
+    await conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_content_embeddings_status "
+            "ON content_embeddings (index_status)"
+        )
+    )
 
 
 async def ensure_content_fts(conn: AsyncConnection) -> None:

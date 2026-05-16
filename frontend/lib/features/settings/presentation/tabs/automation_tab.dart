@@ -24,14 +24,28 @@ class AutomationTab extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       children: [
-        const SectionHeader(title: 'AI 巡逻 (Patrol)', icon: Icons.auto_awesome_rounded),
+        const SectionHeader(
+          title: 'AI 巡逻 (Patrol)',
+          icon: Icons.auto_awesome_rounded,
+        ),
         _buildPatrolSettings(context, ref, discoverySettingsAsync),
         const SizedBox(height: 32),
-        const SectionHeader(title: '发现来源 (Sources)', icon: Icons.sensors_rounded),
+        const SectionHeader(
+          title: '发现来源 (Sources)',
+          icon: Icons.sensors_rounded,
+        ),
         _buildDiscoverySources(context, ref, discoverySourcesAsync),
         const SizedBox(height: 32),
-        const SectionHeader(title: '收藏自动同步', icon: Icons.bookmark_added_rounded),
-        _buildFavoritesSyncSettings(context, ref, settingsAsync, favoritesSyncAsync),
+        const SectionHeader(
+          title: '收藏自动同步',
+          icon: Icons.bookmark_added_rounded,
+        ),
+        _buildFavoritesSyncSettings(
+          context,
+          ref,
+          settingsAsync,
+          favoritesSyncAsync,
+        ),
         const SizedBox(height: 32),
         const SectionHeader(title: '内容生成', icon: Icons.summarize_rounded),
         _buildContentGenSettings(context, ref, settingsAsync),
@@ -56,9 +70,15 @@ class AutomationTab extends ConsumerWidget {
         children: [
           ExpandableSettingTile(
             title: '我的兴趣画像',
-            subtitle: settings.interestProfile.isEmpty ? '描述你感兴趣的内容' : settings.interestProfile,
+            subtitle: settings.interestProfile.isEmpty
+                ? '描述你感兴趣的内容'
+                : settings.interestProfile,
             icon: Icons.face_retouching_natural_rounded,
-            expandedContent: _buildInterestProfileEditor(context, ref, settings.interestProfile),
+            expandedContent: _buildInterestProfileEditor(
+              context,
+              ref,
+              settings.interestProfile,
+            ),
           ),
           SettingTile(
             title: 'AI 评分阈值',
@@ -71,7 +91,9 @@ class AutomationTab extends ConsumerWidget {
                 min: 0,
                 max: 10,
                 divisions: 20,
-                onChanged: (val) => ref.read(discoverySettingsStateProvider.notifier).updateSettings(scoreThreshold: val),
+                onChanged: (val) => ref
+                    .read(discoverySettingsStateProvider.notifier)
+                    .updateSettings(scoreThreshold: val),
               ),
             ),
           ),
@@ -82,13 +104,14 @@ class AutomationTab extends ConsumerWidget {
             trailing: DropdownButton<int>(
               value: settings.retentionDays,
               underline: const SizedBox.shrink(),
-              items: [1, 3, 7, 15, 30].map((d) => DropdownMenuItem(
-                value: d,
-                child: Text('$d 天'),
-              )).toList(),
+              items: [1, 3, 7, 15, 30]
+                  .map((d) => DropdownMenuItem(value: d, child: Text('$d 天')))
+                  .toList(),
               onChanged: (val) {
                 if (val != null) {
-                  ref.read(discoverySettingsStateProvider.notifier).updateSettings(retentionDays: val);
+                  ref
+                      .read(discoverySettingsStateProvider.notifier)
+                      .updateSettings(retentionDays: val);
                 }
               },
             ),
@@ -100,7 +123,11 @@ class AutomationTab extends ConsumerWidget {
     );
   }
 
-  Widget _buildInterestProfileEditor(BuildContext context, WidgetRef ref, String currentProfile) {
+  Widget _buildInterestProfileEditor(
+    BuildContext context,
+    WidgetRef ref,
+    String currentProfile,
+  ) {
     final controller = TextEditingController(text: currentProfile);
     return Column(
       children: [
@@ -117,7 +144,9 @@ class AutomationTab extends ConsumerWidget {
           alignment: Alignment.centerRight,
           child: FilledButton.tonal(
             onPressed: () async {
-              await ref.read(discoverySettingsStateProvider.notifier).updateSettings(interestProfile: controller.text);
+              await ref
+                  .read(discoverySettingsStateProvider.notifier)
+                  .updateSettings(interestProfile: controller.text);
               if (context.mounted) showToast(context, '兴趣画像已更新');
             },
             child: const Text('更新画像'),
@@ -149,7 +178,9 @@ class AutomationTab extends ConsumerWidget {
         return Column(
           children: [
             SettingGroup(
-              children: sources.map((s) => _buildSourceTile(context, ref, s)).toList(),
+              children: sources
+                  .map((s) => _buildSourceTile(context, ref, s))
+                  .toList(),
             ),
             const Gap(12),
             OutlinedButton.icon(
@@ -165,22 +196,31 @@ class AutomationTab extends ConsumerWidget {
     );
   }
 
-  Widget _buildSourceTile(BuildContext context, WidgetRef ref, DiscoverySource source) {
+  Widget _buildSourceTile(
+    BuildContext context,
+    WidgetRef ref,
+    DiscoverySource source,
+  ) {
     return SettingTile(
       title: source.name,
-      subtitle: '${source.kind.toUpperCase()} • 每 ${source.syncIntervalMinutes} 分钟同步',
+      subtitle:
+          '${source.kind.toUpperCase()} • 每 ${source.syncIntervalMinutes} 分钟同步',
       icon: _sourceIcon(source.kind),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Switch(
             value: source.enabled,
-            onChanged: (val) => ref.read(discoverySourcesProvider.notifier).updateSource(source.id, enabled: val),
+            onChanged: (val) => ref
+                .read(discoverySourcesProvider.notifier)
+                .updateSource(source.id, enabled: val),
           ),
           IconButton(
             icon: const Icon(Icons.sync_rounded),
             onPressed: () async {
-              await ref.read(discoverySourcesProvider.notifier).triggerSync(source.id);
+              await ref
+                  .read(discoverySourcesProvider.notifier)
+                  .triggerSync(source.id);
               if (context.mounted) showToast(context, '已手动触发同步');
             },
           ),
@@ -192,11 +232,16 @@ class AutomationTab extends ConsumerWidget {
 
   IconData _sourceIcon(String kind) {
     switch (kind.toLowerCase()) {
-      case 'rss': return Icons.rss_feed_rounded;
-      case 'hackernews': return Icons.whatshot_rounded;
-      case 'reddit': return Icons.forum_rounded;
-      case 'telegram_channel': return Icons.telegram_rounded;
-      default: return Icons.sensors_rounded;
+      case 'rss':
+        return Icons.rss_feed_rounded;
+      case 'hackernews':
+        return Icons.whatshot_rounded;
+      case 'reddit':
+        return Icons.forum_rounded;
+      case 'telegram_channel':
+        return Icons.telegram_rounded;
+      default:
+        return Icons.sensors_rounded;
     }
   }
 
@@ -209,7 +254,11 @@ class AutomationTab extends ConsumerWidget {
     return settingsAsync.when(
       data: (settings) {
         final currentEnabled = _parsePlatformsSetting(
-          getSettingValue(settings, 'favorites_sync_platforms', const <String>[]),
+          getSettingValue(
+            settings,
+            'favorites_sync_platforms',
+            const <String>[],
+          ),
         );
         const intervalOptions = <int>[60, 180, 360, 720, 1440];
         const maxItemOptions = <int>[20, 50, 100, 200];
@@ -261,7 +310,9 @@ class AutomationTab extends ConsumerWidget {
                               ),
                               statusMap[platform]?.ratePerMinute ?? 5,
                             ).round();
-                            return rateOptions.contains(configuredRate) ? configuredRate : 5;
+                            return rateOptions.contains(configuredRate)
+                                ? configuredRate
+                                : 5;
                           })(),
                           underline: const SizedBox.shrink(),
                           items: rateOptions
@@ -274,14 +325,19 @@ class AutomationTab extends ConsumerWidget {
                               .toList(),
                           onChanged: (value) async {
                             if (value == null) return;
-                            await ref.read(systemSettingsProvider.notifier).updateSetting(
-                              'favorites_sync_rate_$platform',
-                              value,
-                              category: 'favorites_sync',
-                            );
+                            await ref
+                                .read(systemSettingsProvider.notifier)
+                                .updateSetting(
+                                  'favorites_sync_rate_$platform',
+                                  value,
+                                  category: 'favorites_sync',
+                                );
                             ref.invalidate(favoritesSyncStatusProvider);
                             if (context.mounted) {
-                              showToast(context, '${_platformLabel(platform)} 速率已更新');
+                              showToast(
+                                context,
+                                '${_platformLabel(platform)} 速率已更新',
+                              );
                             }
                           },
                         ),
@@ -291,18 +347,25 @@ class AutomationTab extends ConsumerWidget {
                           onChanged: (enabled) async {
                             final updated = [...currentEnabled];
                             if (enabled) {
-                              if (!updated.contains(platform)) updated.add(platform);
+                              if (!updated.contains(platform)) {
+                                updated.add(platform);
+                              }
                             } else {
                               updated.remove(platform);
                             }
-                            await ref.read(systemSettingsProvider.notifier).updateSetting(
-                              'favorites_sync_platforms',
-                              updated,
-                              category: 'favorites_sync',
-                            );
+                            await ref
+                                .read(systemSettingsProvider.notifier)
+                                .updateSetting(
+                                  'favorites_sync_platforms',
+                                  updated,
+                                  category: 'favorites_sync',
+                                );
                             ref.invalidate(favoritesSyncStatusProvider);
                             if (context.mounted) {
-                              showToast(context, '${_platformLabel(platform)} 已${enabled ? '启用' : '禁用'}同步');
+                              showToast(
+                                context,
+                                '${_platformLabel(platform)} 已${enabled ? '启用' : '禁用'}同步',
+                              );
                             }
                           },
                         ),
@@ -317,7 +380,10 @@ class AutomationTab extends ConsumerWidget {
                                         .read(favoritesSyncActionsProvider)
                                         .triggerSync(platform: platform);
                                     if (context.mounted) {
-                                      showToast(context, '已触发 ${_platformLabel(platform)} 同步');
+                                      showToast(
+                                        context,
+                                        '已触发 ${_platformLabel(platform)} 同步',
+                                      );
                                     }
                                   } catch (e) {
                                     if (context.mounted) {
@@ -347,17 +413,21 @@ class AutomationTab extends ConsumerWidget {
                         .map(
                           (val) => DropdownMenuItem<int>(
                             value: val,
-                            child: Text(val >= 60 ? '${val ~/ 60}h' : '$val min'),
+                            child: Text(
+                              val >= 60 ? '${val ~/ 60}h' : '$val min',
+                            ),
                           ),
                         )
                         .toList(),
                     onChanged: (value) async {
                       if (value == null) return;
-                      await ref.read(systemSettingsProvider.notifier).updateSetting(
-                        'favorites_sync_interval_minutes',
-                        value,
-                        category: 'favorites_sync',
-                      );
+                      await ref
+                          .read(systemSettingsProvider.notifier)
+                          .updateSetting(
+                            'favorites_sync_interval_minutes',
+                            value,
+                            category: 'favorites_sync',
+                          );
                       ref.invalidate(favoritesSyncStatusProvider);
                     },
                   ),
@@ -380,11 +450,13 @@ class AutomationTab extends ConsumerWidget {
                         .toList(),
                     onChanged: (value) async {
                       if (value == null) return;
-                      await ref.read(systemSettingsProvider.notifier).updateSetting(
-                        'favorites_sync_max_items',
-                        value,
-                        category: 'favorites_sync',
-                      );
+                      await ref
+                          .read(systemSettingsProvider.notifier)
+                          .updateSetting(
+                            'favorites_sync_max_items',
+                            value,
+                            category: 'favorites_sync',
+                          );
                       ref.invalidate(favoritesSyncStatusProvider);
                     },
                   ),
@@ -395,20 +467,21 @@ class AutomationTab extends ConsumerWidget {
                   subtitle: status.lastSyncAt == null
                       ? '尚未同步'
                       : '上次同步: ${status.lastSyncAt}',
-                  icon: status.running ? Icons.play_circle_fill_rounded : Icons.pause_circle_filled_rounded,
+                  icon: status.running
+                      ? Icons.play_circle_fill_rounded
+                      : Icons.pause_circle_filled_rounded,
                   trailing: FilledButton.tonalIcon(
                     onPressed: () async {
                       try {
-                        await ref.read(favoritesSyncActionsProvider).triggerSync();
+                        await ref
+                            .read(favoritesSyncActionsProvider)
+                            .triggerSync();
                         if (context.mounted) showToast(context, '已触发全平台同步');
                       } catch (e) {
                         if (context.mounted) {
                           showToast(
                             context,
-                            formatApiErrorMessage(
-                              e,
-                              fallbackMessage: '手动同步失败',
-                            ),
+                            formatApiErrorMessage(e, fallbackMessage: '手动同步失败'),
                           );
                         }
                       }
@@ -461,7 +534,11 @@ class AutomationTab extends ConsumerWidget {
     required double configuredRate,
     required FavoritesPlatformStatus? status,
   }) {
-    final authText = switch ((status?.available ?? true, status?.authenticated ?? false, platform)) {
+    final authText = switch ((
+      status?.available ?? true,
+      status?.authenticated ?? false,
+      platform,
+    )) {
       (false, _, _) => '状态检查失败',
       (_, true, _) => '已认证',
       (_, false, 'twitter') => 'CLI 未就绪或未登录',
@@ -481,7 +558,8 @@ class AutomationTab extends ConsumerWidget {
       final resultStatus = (lastResult['status'] ?? '').toString();
       if (hint.isNotEmpty) {
         parts.add(hint);
-      } else if ((resultStatus == 'failed' || resultStatus == 'partial_success') &&
+      } else if ((resultStatus == 'failed' ||
+              resultStatus == 'partial_success') &&
           message.isNotEmpty) {
         parts.add(message);
       }
@@ -490,9 +568,10 @@ class AutomationTab extends ConsumerWidget {
     final statusError = status?.statusError;
     if (statusError != null) {
       final hint = (statusError['error_hint'] ?? '').toString().trim();
-      final message = (statusError['error_message'] ?? statusError['detail'] ?? '')
-          .toString()
-          .trim();
+      final message =
+          (statusError['error_message'] ?? statusError['detail'] ?? '')
+              .toString()
+              .trim();
       if (hint.isNotEmpty) {
         parts.add(hint);
       } else if (message.isNotEmpty) {
@@ -551,11 +630,7 @@ class AutomationTab extends ConsumerWidget {
                 value: enableAutoSummary,
                 onChanged: (val) => ref
                     .read(systemSettingsProvider.notifier)
-                    .updateSetting(
-                      'enable_auto_summary',
-                      val,
-                      category: 'llm',
-                    ),
+                    .updateSetting('enable_auto_summary', val, category: 'llm'),
               ),
               onTap: () => ref
                   .read(systemSettingsProvider.notifier)
@@ -591,11 +666,7 @@ class AutomationTab extends ConsumerWidget {
             title: '视觉大模型 (Vision LLM)',
             subtitle: _getLlmSubtitle(settings, 'vision'),
             icon: Icons.image_search_rounded,
-            expandedContent: _buildLlmConfigEditor(
-              context,
-              ref,
-              'vision',
-            ),
+            expandedContent: _buildLlmConfigEditor(context, ref, 'vision'),
           ),
           ExpandableSettingTile(
             title: 'Gemini Embedding',
@@ -614,25 +685,33 @@ class AutomationTab extends ConsumerWidget {
     // Basic dialog implementation for adding source
     showDialog(
       context: context,
-      builder: (ctx) => _SourceEditDialog(onSave: (source) {
-        ref.read(discoverySourcesProvider.notifier).createSource(source);
-      }),
+      builder: (ctx) => _SourceEditDialog(
+        onSave: (source) {
+          ref.read(discoverySourcesProvider.notifier).createSource(source);
+        },
+      ),
     );
   }
 
-  void _showEditSourceDialog(BuildContext context, WidgetRef ref, DiscoverySource source) {
+  void _showEditSourceDialog(
+    BuildContext context,
+    WidgetRef ref,
+    DiscoverySource source,
+  ) {
     showDialog(
       context: context,
       builder: (ctx) => _SourceEditDialog(
         initialSource: source,
         onSave: (updated) {
-          ref.read(discoverySourcesProvider.notifier).updateSource(
-            source.id,
-            name: updated.name,
-            enabled: updated.enabled,
-            config: updated.config,
-            syncIntervalMinutes: updated.syncIntervalMinutes,
-          );
+          ref
+              .read(discoverySourcesProvider.notifier)
+              .updateSource(
+                source.id,
+                name: updated.name,
+                enabled: updated.enabled,
+                config: updated.config,
+                syncIntervalMinutes: updated.syncIntervalMinutes,
+              );
         },
         onDelete: () {
           ref.read(discoverySourcesProvider.notifier).deleteSource(source.id);
@@ -640,7 +719,6 @@ class AutomationTab extends ConsumerWidget {
       ),
     );
   }
-
 
   String _maskKey(String key) {
     if (key.isEmpty) return '未配置';
@@ -703,7 +781,7 @@ class AutomationTab extends ConsumerWidget {
 
     if (model.isEmpty && apiKey.isEmpty) return '未配置';
     final keyLabel = _isEnvConfigured(apiKey) ? '密钥已配置' : _maskKey(apiKey);
-    final modelLabel = model.isEmpty ? 'gemini-embedding-2-preview' : model;
+    final modelLabel = model.isEmpty ? 'gemini-embedding-2' : model;
     return '$modelLabel • $dimension 维 • $keyLabel';
   }
 
@@ -845,12 +923,12 @@ class AutomationTab extends ConsumerWidget {
                       (s) => s.key == 'embedding_model',
                       orElse: () => const SystemSetting(
                         key: '',
-                        value: 'gemini-embedding-2-preview',
+                        value: 'gemini-embedding-2',
                       ),
                     )
                     .value
                 as String? ??
-            'gemini-embedding-2-preview';
+            'gemini-embedding-2';
         final dimension = parseIntSetting(
           getSettingValue(settings, 'embedding_output_dimensionality', 1536),
           1536,
@@ -881,7 +959,7 @@ class AutomationTab extends ConsumerWidget {
               controller: modelController,
               decoration: InputDecoration(
                 labelText: 'Embedding Model',
-                hintText: 'gemini-embedding-2-preview',
+                hintText: 'gemini-embedding-2',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -915,7 +993,7 @@ class AutomationTab extends ConsumerWidget {
                   await notifier.updateSetting(
                     'embedding_model',
                     modelController.text.trim().isEmpty
-                        ? 'gemini-embedding-2-preview'
+                        ? 'gemini-embedding-2'
                         : modelController.text.trim(),
                     category: 'embedding',
                   );
@@ -979,9 +1057,15 @@ class _SourceEditDialogState extends State<_SourceEditDialog> {
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.initialSource?.name ?? '');
-    _urlController = TextEditingController(text: widget.initialSource?.config['url'] ?? '');
-    _categoryController = TextEditingController(text: widget.initialSource?.config['category'] ?? '');
+    _nameController = TextEditingController(
+      text: widget.initialSource?.name ?? '',
+    );
+    _urlController = TextEditingController(
+      text: widget.initialSource?.config['url'] ?? '',
+    );
+    _categoryController = TextEditingController(
+      text: widget.initialSource?.config['category'] ?? '',
+    );
     _kind = widget.initialSource?.kind ?? 'rss';
     // 若已有来源的 kind 不在支持列表中，回退到 rss
     if (!_kindMeta.containsKey(_kind)) _kind = 'rss';
@@ -1008,16 +1092,23 @@ class _SourceEditDialogState extends State<_SourceEditDialog> {
             DropdownButtonFormField<String>(
               initialValue: _kind,
               decoration: const InputDecoration(labelText: '来源类型'),
-              items: _kindMeta.entries.map((e) => DropdownMenuItem(
-                value: e.key,
-                child: Text(e.value.label),
-              )).toList(),
+              items: _kindMeta.entries
+                  .map(
+                    (e) => DropdownMenuItem(
+                      value: e.key,
+                      child: Text(e.value.label),
+                    ),
+                  )
+                  .toList(),
               onChanged: (val) => setState(() => _kind = val!),
             ),
             const Gap(12),
             TextField(
               controller: _nameController,
-              decoration: const InputDecoration(labelText: '名称', hintText: '如: IT之家'),
+              decoration: const InputDecoration(
+                labelText: '名称',
+                hintText: '如: IT之家',
+              ),
             ),
             const Gap(12),
             TextField(
@@ -1040,10 +1131,14 @@ class _SourceEditDialogState extends State<_SourceEditDialog> {
             DropdownButtonFormField<int>(
               initialValue: _interval,
               decoration: const InputDecoration(labelText: '同步频率'),
-              items: [15, 30, 60, 120, 360, 1440].map((i) => DropdownMenuItem(
-                value: i,
-                child: Text(i >= 60 ? '${i ~/ 60} 小时' : '$i 分钟'),
-              )).toList(),
+              items: [15, 30, 60, 120, 360, 1440]
+                  .map(
+                    (i) => DropdownMenuItem(
+                      value: i,
+                      child: Text(i >= 60 ? '${i ~/ 60} 小时' : '$i 分钟'),
+                    ),
+                  )
+                  .toList(),
               onChanged: (val) => setState(() => _interval = val!),
             ),
           ],
@@ -1056,7 +1151,9 @@ class _SourceEditDialogState extends State<_SourceEditDialog> {
               widget.onDelete!();
               Navigator.pop(context);
             },
-            style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
             child: const Text('删除'),
           ),
         TextButton(

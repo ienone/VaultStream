@@ -3,13 +3,12 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import math
-import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import and_, or_, select, text
+from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
@@ -23,7 +22,6 @@ from app.models import (
     Platform,
 )
 from app.services.settings_service import get_setting_value
-from app.adapters.storage.manager import get_storage_backend
 
 
 @dataclass
@@ -33,6 +31,7 @@ class SemanticSearchHit:
     match_source: str  # vector | fts | hybrid
     chunk_index: int = -1
     chunk_title: Optional[str] = None
+    source_text: Optional[str] = None
 
 
 class EmbeddingService:
@@ -41,15 +40,16 @@ class EmbeddingService:
     """
 
     _RRF_K = 60
-    _LOCAL_DIM = 256
     _MAX_BODY_CHARS = 4000
-    _DEFAULT_MODEL = "gemini-embedding-2-preview"
+    _SUPPORTED_MODEL = "gemini-embedding-2"
     _DEFAULT_OUTPUT_DIMENSIONALITY = 1536
-    _DOCUMENT_TASK_TYPE = "RETRIEVAL_DOCUMENT"
-    _QUERY_TASK_TYPE = "RETRIEVAL_QUERY"
+    _SIGNATURE_VERSION = "vaultstream_rag_v1"
+    _REMOTE_CONCURRENCY = 2
+    _EMBED_CACHE: dict[str, list[float]] = {}
+    _REMOTE_SEMAPHORE = asyncio.Semaphore(_REMOTE_CONCURRENCY)
 
     async def embed_query(self, query: str) -> list[float]:
-        return await self._embed_text(query, task_type=self._QUERY_TASK_TYPE)
+        return await self._embed_text(self._prefix_query(query))
 
     async def search(
         self,
@@ -92,6 +92,245 @@ class EmbeddingService:
         async with AsyncSessionLocal() as local_session:
             return await self._index_content_impl(content_id, local_session, own_session=True)
 
+    async def plan_reindex(
+        self,
+        *,
+        scope: str,
+        content_id: int | None = None,
+        limit: int = 100,
+        session: Optional[AsyncSession] = None,
+    ) -> tuple[list[int], int]:
+        if session is not None:
+            return await self._plan_reindex_impl(
+                scope=scope,
+                content_id=content_id,
+                limit=limit,
+                session=session,
+            )
+        async with AsyncSessionLocal() as local_session:
+            return await self._plan_reindex_impl(
+                scope=scope,
+                content_id=content_id,
+                limit=limit,
+                session=local_session,
+            )
+
+    async def reindex_scope(
+        self,
+        *,
+        scope: str,
+        content_id: int | None = None,
+        limit: int = 100,
+        batch_size: int = 8,
+        delay_seconds: float = 0.2,
+        session: Optional[AsyncSession] = None,
+    ) -> dict:
+        if session is not None:
+            return await self._reindex_scope_impl(
+                scope=scope,
+                content_id=content_id,
+                limit=limit,
+                batch_size=batch_size,
+                delay_seconds=delay_seconds,
+                session=session,
+                own_session=False,
+            )
+        async with AsyncSessionLocal() as local_session:
+            return await self._reindex_scope_impl(
+                scope=scope,
+                content_id=content_id,
+                limit=limit,
+                batch_size=batch_size,
+                delay_seconds=delay_seconds,
+                session=local_session,
+                own_session=True,
+            )
+
+    async def get_index_status(self, *, session: Optional[AsyncSession] = None) -> dict:
+        if session is not None:
+            return await self._get_index_status_impl(session)
+        async with AsyncSessionLocal() as local_session:
+            return await self._get_index_status_impl(local_session)
+
+    async def _plan_reindex_impl(
+        self,
+        *,
+        scope: str,
+        content_id: int | None,
+        limit: int,
+        session: AsyncSession,
+    ) -> tuple[list[int], int]:
+        normalized_scope = scope.strip().lower()
+        limit = max(1, min(int(limit or 100), 5000))
+        if normalized_scope == "single":
+            if content_id is None:
+                raise ValueError("content_id is required for single reindex")
+            stmt = select(Content).where(
+                Content.id == content_id,
+                Content.status == ContentStatus.PARSE_SUCCESS,
+            )
+        elif normalized_scope == "failed":
+            failed_ids = (
+                select(ContentEmbedding.content_id)
+                .where(ContentEmbedding.index_status == "failed")
+                .distinct()
+            )
+            stmt = (
+                select(Content)
+                .where(Content.id.in_(failed_ids), Content.status == ContentStatus.PARSE_SUCCESS)
+                .order_by(Content.updated_at.desc())
+                .limit(limit)
+            )
+        elif normalized_scope == "all":
+            stmt = (
+                select(Content)
+                .where(Content.status == ContentStatus.PARSE_SUCCESS)
+                .order_by(Content.updated_at.desc())
+                .limit(limit)
+            )
+        else:
+            raise ValueError("scope must be single, all or failed")
+
+        contents = (await session.execute(stmt)).scalars().all()
+        signature = await self._get_document_embedding_signature()
+        estimated_calls = 0
+        for content in contents:
+            estimated_calls += await self._estimate_missing_embedding_calls(
+                session=session,
+                content=content,
+                model_signature=signature,
+            )
+        return [c.id for c in contents], estimated_calls
+
+    async def _reindex_scope_impl(
+        self,
+        *,
+        scope: str,
+        content_id: int | None,
+        limit: int,
+        batch_size: int,
+        delay_seconds: float,
+        session: AsyncSession,
+        own_session: bool,
+    ) -> dict:
+        content_ids, estimated_calls = await self._plan_reindex_impl(
+            scope=scope,
+            content_id=content_id,
+            limit=limit,
+            session=session,
+        )
+        indexed = 0
+        failed = 0
+        batch_size = max(1, min(batch_size, 32))
+        for idx, cid in enumerate(content_ids, start=1):
+            ok = await self._index_content_impl(cid, session, own_session=False)
+            indexed += int(ok)
+            failed += int(not ok)
+            if idx % batch_size == 0:
+                await session.commit()
+                await asyncio.sleep(max(0.0, delay_seconds))
+        if own_session:
+            await session.commit()
+        else:
+            await session.flush()
+        return {
+            "scope": scope,
+            "content_id": content_id,
+            "candidate_count": len(content_ids),
+            "estimated_embedding_calls": estimated_calls,
+            "indexed": indexed,
+            "failed": failed,
+        }
+
+    async def _estimate_missing_embedding_calls(
+        self,
+        *,
+        session: AsyncSession,
+        content: Content,
+        model_signature: str,
+    ) -> int:
+        units = self._content_embedding_units(content)
+        if not units:
+            return 0
+        existing_rows = (
+            await session.execute(
+                select(
+                    ContentEmbedding.chunk_index,
+                    ContentEmbedding.text_hash,
+                    ContentEmbedding.embedding_model_signature,
+                    ContentEmbedding.embedding_model,
+                    ContentEmbedding.index_status,
+                ).where(ContentEmbedding.content_id == content.id)
+            )
+        ).all()
+        existing = {row.chunk_index: row for row in existing_rows}
+        missing = 0
+        for chunk_index, text_value, media_refs, _title in units:
+            expected_hash = self._hash_text(text_value + "".join(media_refs))
+            row = existing.get(chunk_index)
+            row_signature = (row.embedding_model_signature or row.embedding_model) if row else None
+            if (
+                row is None
+                or row.text_hash != expected_hash
+                or row_signature != model_signature
+                or row.index_status != "indexed"
+            ):
+                missing += 1
+        return missing
+
+    async def _get_index_status_impl(self, session: AsyncSession) -> dict:
+        contents_total = (await session.execute(select(func.count(Content.id)))).scalar() or 0
+        parse_success_total = (
+            await session.execute(
+                select(func.count(Content.id)).where(Content.status == ContentStatus.PARSE_SUCCESS)
+            )
+        ).scalar() or 0
+        indexed_total = (
+            await session.execute(
+                select(func.count(func.distinct(ContentEmbedding.content_id))).where(
+                    ContentEmbedding.index_status == "indexed"
+                )
+            )
+        ).scalar() or 0
+        raw_status_counts = (
+            await session.execute(
+                select(ContentEmbedding.index_status, func.count(ContentEmbedding.id))
+                .group_by(ContentEmbedding.index_status)
+                .order_by(ContentEmbedding.index_status)
+            )
+        ).all()
+        none_count = max(0, int(parse_success_total) - int(indexed_total))
+        status_counts = [{"status": "none", "count": none_count}]
+        status_counts.extend(
+            {"status": str(status or "unknown"), "count": int(count)}
+            for status, count in raw_status_counts
+        )
+        model_distribution = [
+            {
+                "embedding_model": str(model or "NULL"),
+                "embedding_model_signature": str(signature or "NULL"),
+                "count": int(count),
+            }
+            for model, signature, count in (
+                await session.execute(
+                    select(
+                        ContentEmbedding.embedding_model,
+                        ContentEmbedding.embedding_model_signature,
+                        func.count(ContentEmbedding.id),
+                    )
+                    .group_by(ContentEmbedding.embedding_model, ContentEmbedding.embedding_model_signature)
+                    .order_by(desc(func.count(ContentEmbedding.id)))
+                )
+            ).all()
+        ]
+        return {
+            "contents_total": int(contents_total),
+            "parse_success_total": int(parse_success_total),
+            "indexed_total": int(indexed_total),
+            "status_counts": status_counts,
+            "model_distribution": model_distribution,
+        }
+
     async def _index_content_impl(
         self,
         content_id: int,
@@ -110,32 +349,39 @@ class EmbeddingService:
         if content is None:
             return False
 
-        # 1. 准备全局摘要向量 (Index = -1)
-        global_payload = self._build_content_text(content)
-        if global_payload:
+        units = self._content_embedding_units(content)
+        logger.info(f"Indexing {len(units)} semantic units for content_id={content_id}")
+        for chunk_index, text_part, media_refs, title in units:
             await self._upsert_embedding(
-                session, content_id, -1, "全局摘要", global_payload, []
+                session, content_id, chunk_index, title, text_part, media_refs
             )
-
-        # 2. 处理 AI 智能切片 (Index >= 0)
-        chunks = (content.rich_payload or {}).get("chunks", [])
-        if chunks:
-            logger.info(f"Indexing {len(chunks)} semantic chunks for content_id={content_id}")
-            for idx, chunk in enumerate(chunks):
-                title = chunk.get("title", f"片段 {idx}")
-                text_part = chunk.get("content", "")
-                media_refs = chunk.get("media_refs", [])
-                
-                if text_part:
-                    await self._upsert_embedding(
-                        session, content_id, idx, title, text_part, media_refs
-                    )
 
         if own_session:
             await session.commit()
         else:
             await session.flush()
         return True
+
+    def _content_embedding_units(self, content: Content) -> list[tuple[int, str, list[str], str]]:
+        units: list[tuple[int, str, list[str], str]] = []
+        global_payload = self._build_content_text(content)
+        if global_payload:
+            units.append((-1, global_payload, [], "全局摘要"))
+
+        chunks = (content.rich_payload or {}).get("chunks", [])
+        if isinstance(chunks, list):
+            for idx, chunk in enumerate(chunks):
+                if not isinstance(chunk, dict):
+                    continue
+                text_part = str(chunk.get("content") or "").strip()
+                if not text_part:
+                    continue
+                title = str(chunk.get("title") or f"片段 {idx}")
+                media_refs = chunk.get("media_refs") or []
+                if not isinstance(media_refs, list):
+                    media_refs = []
+                units.append((idx, text_part, [str(ref) for ref in media_refs], title))
+        return units
 
     async def _upsert_embedding(
         self, 
@@ -149,6 +395,7 @@ class EmbeddingService:
         """执行单个切片的向量化与入库"""
         text_hash = self._hash_text(text_val + "".join(media_refs))
         model_signature = await self._get_document_embedding_signature()
+        model = await self._get_embedding_model()
         
         existing = (
             await session.execute(
@@ -159,71 +406,51 @@ class EmbeddingService:
             )
         ).scalar_one_or_none()
 
-        if existing and existing.text_hash == text_hash and existing.embedding_model == model_signature:
+        existing_signature = existing.embedding_model_signature or existing.embedding_model if existing else None
+        if (
+            existing
+            and existing.text_hash == text_hash
+            and existing_signature == model_signature
+            and existing.index_status == "indexed"
+        ):
             return
 
-        # 调用多模态嵌入
-        vector = await self._embed_multimodal(text_val, media_refs)
-        
         record = existing or ContentEmbedding(content_id=content_id, chunk_index=chunk_index)
-        record.embedding_model = model_signature
-        record.embedding = vector
         record.text_hash = text_hash
         record.source_text = text_val[:4000]
         record.chunk_title = chunk_title
-        record.indexed_at = datetime.utcnow()
+        record.embedding_model = model
+        record.embedding_model_signature = model_signature
+        record.index_status = "pending"
+        record.failure_reason = None
+
+        try:
+            vector = await self._embed_document_text(text_val, media_refs)
+            record.embedding = vector
+            record.index_status = "indexed"
+            record.last_indexed_at = datetime.utcnow()
+            record.indexed_at = record.last_indexed_at
+        except Exception as exc:
+            record.embedding = []
+            record.index_status = "failed"
+            record.failure_reason = str(exc)[:1000]
+            record.retry_count = int(record.retry_count or 0) + 1
+            logger.bind(
+                component="embedding",
+                content_id=content_id,
+                chunk_index=chunk_index,
+                model_signature=model_signature,
+            ).warning(f"Embedding indexing failed: {exc}")
 
         if existing is None:
             session.add(record)
 
-    async def _embed_multimodal(self, text_val: str, media_refs: list[str]) -> list[float]:
-        """调用 Gemini V2 生成图文混合向量"""
-        if not media_refs:
-            return await self._embed_text(text_val, task_type=self._DOCUMENT_TASK_TYPE)
-
-        api_key = await self._get_embedding_api_key()
-        if not api_key:
-            return self._build_local_embedding(text_val)
-
-        storage = get_storage_backend()
-        mm_parts = []
-        
-        # 组装文本
-        mm_parts.append(text_val)
-        
-        # 组装图片
-        for ref in media_refs[:3]: # 限制每个切片最多 3 张图
-            if ref.startswith("local://"):
-                key = ref.replace("local://", "")
-                try:
-                    img_bytes = await storage.get_bytes(key)
-                    mm_parts.append({"mime_type": "image/jpeg", "data": img_bytes})
-                except Exception:
-                    continue
-
-        try:
-            from google import genai
-            from google.genai import types
-            model = await self._get_embedding_model()
-            output_dimensionality = await self._get_embedding_output_dimensionality()
-
-            def _call():
-                client = genai.Client(api_key=api_key)
-                return client.models.embed_content(
-                    model=model,
-                    contents=mm_parts,
-                    config=types.EmbedContentConfig(
-                        task_type=self._DOCUMENT_TASK_TYPE,
-                        output_dimensionality=output_dimensionality,
-                    ),
-                )
-
-            response = await asyncio.to_thread(_call)
-            vector = response.embeddings[0].values
-            return self._normalize_vector([float(v) for v in vector])
-        except Exception as e:
-            logger.warning(f"Multimodal embedding failed: {e}")
-            return await self._embed_text(text_val, task_type=self._DOCUMENT_TASK_TYPE)
+    async def _embed_document_text(self, text_val: str, media_refs: list[str]) -> list[float]:
+        """Generate a document embedding using the project text-prefix convention."""
+        media_note = ""
+        if media_refs:
+            media_note = "\n媒体引用: " + " ".join(media_refs[:10])
+        return await self._embed_text(self._prefix_document(text_val + media_note))
 
 
     async def _search_impl(
@@ -240,15 +467,17 @@ class EmbeddingService:
         filters = self._build_content_filters(platform=platform, date_from=date_from, date_to=date_to)
         candidate_limit = max(50, top_k * 6)
 
-        query_vec = await self.embed_query(query)
-        vector_ranked = await self._vector_rank_ids(
-            session=session,
-            query_vec=query_vec,
-            filters=filters,
-            limit=candidate_limit,
-        )
-        vector_ids = [cid for cid, _, _, _ in vector_ranked]
-        vector_meta_map = {cid: (score, cidx, ctitle) for cid, score, cidx, ctitle in vector_ranked}
+        vector_ranked = []
+        if await self._has_current_index(session=session, filters=filters):
+            query_vec = await self.embed_query(query)
+            vector_ranked = await self._vector_rank_ids(
+                session=session,
+                query_vec=query_vec,
+                filters=filters,
+                limit=candidate_limit,
+            )
+        vector_ids = [cid for cid, _, _, _, _ in vector_ranked]
+        vector_meta_map = {cid: (score, cidx, ctitle, source_text) for cid, score, cidx, ctitle, source_text in vector_ranked}
 
         fts_ids = await rank_ids_by_fts_or_like(
             session=session,
@@ -286,10 +515,10 @@ class EmbeddingService:
             in_fts = content_id in set(fts_ids)
             
             score = rrf_score
-            cidx, ctitle = -1, None
+            cidx, ctitle, source_text = -1, None, None
             
             if in_vector:
-                v_score, cidx, ctitle = vector_meta_map[content_id]
+                v_score, cidx, ctitle, source_text = vector_meta_map[content_id]
                 if not in_fts:
                     score = max(rrf_score, v_score)
                 source = "hybrid" if in_fts else "vector"
@@ -301,7 +530,8 @@ class EmbeddingService:
                 score=float(score), 
                 match_source=source,
                 chunk_index=cidx,
-                chunk_title=ctitle
+                chunk_title=ctitle,
+                source_text=source_text,
             ))
         logger.bind(
             component="semantic_search",
@@ -313,6 +543,22 @@ class EmbeddingService:
         ).info("Semantic search completed")
         return results
 
+    async def _has_current_index(self, *, session: AsyncSession, filters: list) -> bool:
+        model_signature = await self._get_document_embedding_signature()
+        stmt = (
+            select(ContentEmbedding.id)
+            .join(Content, Content.id == ContentEmbedding.content_id)
+            .where(
+                and_(
+                    *filters,
+                    ContentEmbedding.embedding_model_signature == model_signature,
+                    ContentEmbedding.index_status == "indexed",
+                )
+            )
+            .limit(1)
+        )
+        return (await session.execute(stmt)).scalar_one_or_none() is not None
+
 
     async def _vector_rank_ids(
         self,
@@ -321,25 +567,24 @@ class EmbeddingService:
         query_vec: list[float],
         filters: list,
         limit: int,
-    ) -> list[tuple[int, float, int, Optional[str]]]:
+    ) -> list[tuple[int, float, int, Optional[str], Optional[str]]]:
         """
         向量搜索：支持多切片。
         返回: list[(content_id, score, chunk_index, chunk_title)]
         """
-        # 获取当前模型的基础签名（忽略 task 类型）
-        model_base = await self._get_embedding_model()
-        dim = await self._get_embedding_output_dimensionality()
-        model_pattern = f"{model_base}|dim={dim}%" # 使用 LIKE 匹配
+        model_signature = await self._get_document_embedding_signature()
         
         model_filters = list(filters)
-        model_filters.append(ContentEmbedding.embedding_model.like(model_pattern))
+        model_filters.append(ContentEmbedding.embedding_model_signature == model_signature)
+        model_filters.append(ContentEmbedding.index_status == "indexed")
         
         stmt = (
             select(
                 ContentEmbedding.content_id, 
                 ContentEmbedding.embedding,
                 ContentEmbedding.chunk_index,
-                ContentEmbedding.chunk_title
+                ContentEmbedding.chunk_title,
+                ContentEmbedding.source_text,
             )
             .join(Content, Content.id == ContentEmbedding.content_id)
             .where(and_(*model_filters))
@@ -371,7 +616,7 @@ class EmbeddingService:
                 continue
             
             score = float(np.dot(vec, q))
-            results.append((row.content_id, score, row.chunk_index, row.chunk_title))
+            results.append((row.content_id, score, row.chunk_index, row.chunk_title, row.source_text))
 
         # 按分数排序
         results.sort(key=lambda x: x[1], reverse=True)
@@ -379,9 +624,9 @@ class EmbeddingService:
         # 结果去重：同一篇文章如果命中多个 chunk，只保留最高分的那个，但记录 chunk 信息
         seen_content_ids = set()
         unique_results = []
-        for cid, score, cidx, ctitle in results:
+        for cid, score, cidx, ctitle, source_text in results:
             if cid not in seen_content_ids:
-                unique_results.append((cid, score, cidx, ctitle))
+                unique_results.append((cid, score, cidx, ctitle, source_text))
                 seen_content_ids.add(cid)
                 if len(unique_results) >= limit:
                     break
@@ -453,21 +698,21 @@ class EmbeddingService:
     def _hash_text(self, text_value: str) -> str:
         return hashlib.sha256(text_value.encode("utf-8")).hexdigest()
 
-    async def _embed_text(
-        self,
-        text_value: str,
-        *,
-        task_type: str,
-    ) -> list[float]:
+    async def _embed_text(self, text_value: str) -> list[float]:
         text_value = text_value.strip()
         if not text_value:
-            return self._build_local_embedding("")
+            raise RuntimeError("embedding text is empty")
 
         model = await self._get_embedding_model()
         api_key = await self._get_embedding_api_key()
         output_dimensionality = await self._get_embedding_output_dimensionality()
         if not api_key:
-            return self._build_local_embedding(text_value)
+            raise RuntimeError("embedding_api_key is required")
+
+        cache_key = self._hash_text(f"{model}|dim={output_dimensionality}|{text_value}")
+        cached = self._EMBED_CACHE.get(cache_key)
+        if cached is not None:
+            return list(cached)
 
         try:
             from google import genai
@@ -480,31 +725,35 @@ class EmbeddingService:
                     model=model,
                     contents=text_value,
                     config=types.EmbedContentConfig(
-                        task_type=task_type,
                         output_dimensionality=output_dimensionality,
                     ),
                 )
 
-            response = await asyncio.to_thread(_call_gemini)
+            async with self._REMOTE_SEMAPHORE:
+                response = await asyncio.to_thread(_call_gemini)
             vector = response.embeddings[0].values if response.embeddings else None
 
             if not vector:
-                return self._build_local_embedding(text_value)
-            return self._normalize_vector([float(v) for v in vector])
+                raise RuntimeError("Gemini returned an empty embedding")
+            normalized = self._normalize_vector([float(v) for v in vector])
+            self._EMBED_CACHE[cache_key] = list(normalized)
+            return normalized
         except Exception as e:
             logger.bind(
                 component="embedding",
                 model=model,
-                task_type=task_type,
-                fallback="local_hash",
-            ).warning(f"Embedding remote call failed, fallback to local: {e}")
-            return self._build_local_embedding(text_value)
+            ).warning(f"Embedding remote call failed: {e}")
+            raise
 
     async def _get_embedding_model(self) -> str:
         model = await get_setting_value("embedding_model")
         if isinstance(model, str) and model.strip():
-            return model.strip()
-        return self._DEFAULT_MODEL
+            normalized = model.strip()
+        else:
+            normalized = self._SUPPORTED_MODEL
+        if normalized != self._SUPPORTED_MODEL:
+            raise RuntimeError(f"Only {self._SUPPORTED_MODEL} is supported")
+        return normalized
 
     async def _get_embedding_api_key(self) -> Optional[str]:
         key = await get_setting_value("embedding_api_key")
@@ -537,21 +786,13 @@ class EmbeddingService:
     async def _get_document_embedding_signature(self) -> str:
         model = await self._get_embedding_model()
         dimension = await self._get_embedding_output_dimensionality()
-        return f"{model}|dim={dimension}|task={self._DOCUMENT_TASK_TYPE}"
+        return f"{model}|dim={dimension}|prefix={self._SIGNATURE_VERSION}|role=document"
 
-    def _build_local_embedding(self, text_value: str) -> list[float]:
-        vec = [0.0] * self._LOCAL_DIM
-        tokens = re.findall(r"[\w\u4e00-\u9fff]+", text_value.lower())
-        if not tokens:
-            return vec
+    def _prefix_document(self, text_value: str) -> str:
+        return f"VaultStream retrieval document:\n{text_value.strip()}"
 
-        for token in tokens:
-            digest = hashlib.md5(token.encode("utf-8"), usedforsecurity=False).hexdigest()
-            hashed = int(digest, 16)
-            idx = hashed % self._LOCAL_DIM
-            sign = -1.0 if ((hashed >> 8) & 1) else 1.0
-            vec[idx] += sign
-        return self._normalize_vector(vec)
+    def _prefix_query(self, text_value: str) -> str:
+        return f"VaultStream retrieval query:\n{text_value.strip()}"
 
     def _normalize_vector(self, vector: list[float]) -> list[float]:
         norm = math.sqrt(sum(v * v for v in vector))

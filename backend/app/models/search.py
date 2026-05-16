@@ -4,7 +4,7 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import JSON
 
@@ -33,10 +33,15 @@ class ContentEmbedding(Base):
     chunk_index: Mapped[int] = mapped_column(Integer, default=-1, index=True) # -1 表示全文/摘要，0+ 表示语义块
     chunk_title: Mapped[Optional[str]] = mapped_column(Text, default=None)
 
-    embedding_model: Mapped[str] = mapped_column(String(100), default="gemini-embedding-2-preview")
+    embedding_model: Mapped[str] = mapped_column(String(200), default="gemini-embedding-2")
+    embedding_model_signature: Mapped[Optional[str]] = mapped_column(String(240), default=None, index=True)
     embedding: Mapped[Any] = mapped_column(JSON, default=list)
     text_hash: Mapped[Optional[str]] = mapped_column(String(64), default=None)
     source_text: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    index_status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    failure_reason: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_indexed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
 
     indexed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow)
