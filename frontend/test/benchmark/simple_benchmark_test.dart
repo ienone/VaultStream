@@ -5,17 +5,22 @@ import 'package:frontend/features/review/models/queue_item.dart';
 import 'package:frontend/features/review/widgets/queue_content_list.dart';
 
 void main() {
-  testWidgets('QueueContentList rendering benchmark', (WidgetTester tester) async {
+  testWidgets('QueueContentList renders and scrolls large lists', (
+    WidgetTester tester,
+  ) async {
     // Create a large list of items to simulate load
-    final items = List.generate(100, (index) => QueueItem(
-      id: index,
-      contentId: index + 1000,
-      title: 'Benchmark Item $index ' * 5, // Long title
-      platform: index % 2 == 0 ? 'twitter' : 'bilibili',
-      tags: ['tag1', 'tag2', 'tag3'],
-      status: 'will_push',
-      scheduledTime: DateTime.now().add(Duration(minutes: index)),
-    ));
+    final items = List.generate(
+      100,
+      (index) => QueueItem(
+        id: index,
+        contentId: index + 1000,
+        title: 'Benchmark Item $index ' * 5, // Long title
+        platform: index % 2 == 0 ? 'twitter' : 'bilibili',
+        tags: ['tag1', 'tag2', 'tag3'],
+        status: 'will_push',
+        scheduledTime: DateTime.now().add(Duration(minutes: index)),
+      ),
+    );
 
     final stopwatch = Stopwatch()..start();
 
@@ -40,9 +45,10 @@ void main() {
     final elapsed = stopwatch.elapsedMilliseconds;
     debugPrint('QueueContentList with 100 items rendered in ${elapsed}ms');
 
-    // Basic assertion to ensure it's "fast enough"
-    expect(elapsed, lessThan(1500), reason: 'Rendering took too long');
-    
+    // Keep the timing log for manual trend checks, but avoid wall-clock
+    // assertions because shared CI runners can vary significantly.
+    expect(tester.takeException(), isNull);
+
     // Verify scrolling performance (basic check)
     // Need to find the Scrollable
     final listFinder = find.byType(Scrollable);
@@ -50,11 +56,12 @@ void main() {
 
     stopwatch.reset();
     stopwatch.start();
-    
+
     await tester.fling(listFinder, const Offset(0, -500), 1000);
     await tester.pumpAndSettle();
-    
+
     stopwatch.stop();
     debugPrint('Scrolling list took ${stopwatch.elapsedMilliseconds}ms');
+    expect(tester.takeException(), isNull);
   });
 }

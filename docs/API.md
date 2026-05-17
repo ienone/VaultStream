@@ -1,8 +1,8 @@
 # VaultStream API 文档
 
 > 版本: v0.1.0  
-> 更新: 2026-05-14
-> 本文档按当前代码实现更新（OpenAPI endpoint inventory + health diagnostics + ContentQueueItem + /distribution-queue/*）
+> 更新: 2026-05-18
+> 本文档按当前代码实现更新（OpenAPI endpoint inventory + health diagnostics + ContentQueueItem + /distribution-queue/* + Agent/semantic search）
 
 ---
 
@@ -30,7 +30,18 @@ WebSocket 接口同样只接受请求头中的 `X-API-Token` 或 `Authorization:
 | Methods | Path |
 | :--- | :--- |
 | `GET` | `/api` |
+| `GET` | `/api/v1/actions` |
+| `GET, POST` | `/api/v1/actions/{action_name}` |
+| `GET` | `/api/v1/agent/confirmations/{confirmation_id}` |
+| `POST` | `/api/v1/agent/confirmations/{confirmation_id}/decide` |
 | `POST` | `/api/v1/agent/run` |
+| `POST` | `/api/v1/agent/runs/{run_id}/stop` |
+| `GET, POST` | `/api/v1/agent/sessions` |
+| `DELETE, PATCH` | `/api/v1/agent/sessions/{session_id}` |
+| `POST` | `/api/v1/agent/sessions/{session_id}/clear` |
+| `GET` | `/api/v1/agent/sessions/{session_id}/messages` |
+| `POST` | `/api/v1/agent/sessions/{session_id}/redo` |
+| `GET` | `/api/v1/agent/sse` |
 | `GET` | `/api/v1/agent/tools` |
 | `POST` | `/api/v1/agent/tools/{tool_name}/invoke` |
 | `GET, POST` | `/api/v1/bot-config` |
@@ -114,6 +125,8 @@ WebSocket 接口同样只接受请求头中的 `X-API-Token` 或 `Authorization:
 | `GET` | `/api/v1/render-config-presets` |
 | `GET` | `/api/v1/render-config-presets/{preset_id}` |
 | `GET` | `/api/v1/search/semantic` |
+| `GET` | `/api/v1/search/semantic/index-status` |
+| `POST` | `/api/v1/search/semantic/reindex` |
 | `GET` | `/api/v1/settings` |
 | `DELETE, GET, PUT` | `/api/v1/settings/{key}` |
 | `POST` | `/api/v1/shares` |
