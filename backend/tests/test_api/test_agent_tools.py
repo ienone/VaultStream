@@ -29,7 +29,7 @@ from app.models import (
     AgentMessage,
     AgentRun,
 )
-from app.services.agent import AgentRunResult, AgentService
+from app.services.agent import AgentRunResult, AgentService, AgentToolError
 from app.services.embedding_service import SemanticSearchHit
 
 
@@ -665,6 +665,39 @@ def test_agent_ws_stream_tool_unknown():
             assert event.get("type") == "error"
             assert event.get("error_code") == "agent_tool_not_found"
             assert "Unknown tool" in str(event.get("message"))
+
+
+def test_agent_sse_does_not_duplicate_streamed_error(monkeypatch):
+    async def _fake_run(
+        self,
+        *,
+        message: str,
+        session_id: str | None = None,
+        event_sink=None,
+    ):
+        error = AgentToolError(
+            error_code="agent_model_unavailable",
+            message="Text LLM is not configured",
+            retryable=True,
+        )
+        event_sink({"type": "start", "session_id": session_id or "sess_sse", "run_id": "run_sse"})
+        event_sink({"type": "error", **error.to_payload()})
+        raise error
+
+    monkeypatch.setattr("app.routers.agent.AgentService.run_message", _fake_run)
+
+    with TestClient(app) as sync_client:
+        with sync_client.stream(
+            "GET",
+            "/api/v1/agent/sse",
+            params={"message": "hello"},
+            headers=_ws_headers(),
+        ) as response:
+            body = response.read().decode("utf-8")
+
+    assert response.status_code == 200
+    assert body.count("event: error") == 1
+    assert body.count("agent_model_unavailable") == 1
 
 
 def test_agent_ws_unauthorized(monkeypatch):

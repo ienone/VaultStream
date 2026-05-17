@@ -4,7 +4,7 @@ import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Callable, Dict, Iterable, Optional
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.tools import StructuredTool
@@ -60,6 +60,21 @@ def _message_text(message: BaseMessage) -> str:
     if isinstance(content, str):
         return content
     return json.dumps(content, ensure_ascii=False, default=str)
+
+
+AgentEventSink = Callable[[Dict[str, Any]], None]
+
+
+def _event_collector(
+    events: list[Dict[str, Any]],
+    event_sink: AgentEventSink | None = None,
+) -> AgentEventSink:
+    def _emit(event: Dict[str, Any]) -> None:
+        events.append(event)
+        if event_sink is not None:
+            event_sink(event)
+
+    return _emit
 
 
 @dataclass
@@ -188,7 +203,13 @@ class AgentService:
         rows.reverse()
         return rows, next_before
 
-    async def run_message(self, *, message: str, session_id: str | None = None) -> AgentRunResult:
+    async def run_message(
+        self,
+        *,
+        message: str,
+        session_id: str | None = None,
+        event_sink: AgentEventSink | None = None,
+    ) -> AgentRunResult:
         user_message = message.strip()
         if not user_message:
             raise AgentToolError(
@@ -224,7 +245,9 @@ class AgentService:
             session.title = self._derive_title(user_message)
         await self.db.flush()
 
-        events: list[Dict[str, Any]] = [{"type": "start", "session_id": session.id, "run_id": run.id}]
+        events: list[Dict[str, Any]] = []
+        emit_event = _event_collector(events, event_sink)
+        emit_event({"type": "start", "session_id": session.id, "run_id": run.id})
         try:
             llm = await LLMFactory.get_text_llm()
             if llm is None:
@@ -237,11 +260,11 @@ class AgentService:
 
             graph = create_react_agent(
                 llm,
-                self._build_langchain_tools(session=session, run=run, events=events),
+                self._build_langchain_tools(session=session, run=run, emit_event=emit_event),
                 prompt=self._system_prompt(),
                 version="v2",
             )
-            messages = await self._build_context_messages(session.id, run.id, events)
+            messages = await self._build_context_messages(session.id, run.id, emit_event)
             result = await graph.ainvoke(
                 {"messages": messages},
                 config={"recursion_limit": 8, "configurable": {"thread_id": session.id}},
@@ -255,6 +278,28 @@ class AgentService:
                 final_message = "需要确认后才能继续执行该操作。"
 
             await self.db.refresh(run)
+            if run.status == "stopped":
+                final_message = "已停止当前 run。"
+                run.output_message = final_message
+                run.updated_at = utcnow()
+                await self.db.commit()
+                emit_event(
+                    {
+                        "type": "final",
+                        "session_id": session.id,
+                        "run_id": run.id,
+                        "status": "stopped",
+                        "message": final_message,
+                    }
+                )
+                return AgentRunResult(
+                    session_id=session.id,
+                    run_id=run.id,
+                    status="stopped",
+                    message=final_message,
+                    events=events,
+                    usage=usage,
+                )
             if run.status == "waiting_confirmation":
                 pending = await self._latest_pending_confirmation(run.id)
                 if final_message:
@@ -271,7 +316,7 @@ class AgentService:
                 run.usage = usage
                 run.updated_at = utcnow()
                 await self.db.commit()
-                events.append(
+                emit_event(
                     {
                         "type": "final",
                         "session_id": session.id,
@@ -306,9 +351,9 @@ class AgentService:
             )
             await self.db.commit()
             if final_message:
-                events.append({"type": "assistant_delta", "content": final_message})
-            events.append({"type": "usage", "usage": usage})
-            events.append(
+                emit_event({"type": "assistant_delta", "content": final_message})
+            emit_event({"type": "usage", "usage": usage})
+            emit_event(
                 {
                     "type": "final",
                     "session_id": session.id,
@@ -328,7 +373,7 @@ class AgentService:
             )
         except AgentToolError as exc:
             await self._fail_run(run, exc)
-            events.append({"type": "error", **exc.to_payload()})
+            emit_event({"type": "error", **exc.to_payload()})
             await self.db.commit()
             raise
         except Exception as exc:
@@ -341,7 +386,7 @@ class AgentService:
                 suggested_fix="Retry the request or reduce it to a smaller step.",
             )
             await self._fail_run(run, error)
-            events.append({"type": "error", **error.to_payload()})
+            emit_event({"type": "error", **error.to_payload()})
             await self.db.commit()
             raise error from exc
 
@@ -364,7 +409,9 @@ class AgentService:
         )
         self.db.add(run)
         await self.db.flush()
-        events: list[Dict[str, Any]] = [{"type": "start", "session_id": session.id, "run_id": run.id}]
+        events: list[Dict[str, Any]] = []
+        emit_event = _event_collector(events)
+        emit_event({"type": "start", "session_id": session.id, "run_id": run.id})
 
         if spec.requires_confirmation and not confirmed:
             call = await self._record_tool_call(
@@ -377,7 +424,7 @@ class AgentService:
             confirmation = await self._create_confirmation(run=run, session=session, call=call, args=args)
             await self.db.commit()
             payload = self._confirmation_payload(confirmation)
-            events.append({"type": "confirmation_required", "confirmation": payload})
+            emit_event({"type": "confirmation_required", "confirmation": payload})
             return AgentRunResult(
                 session_id=session.id,
                 run_id=run.id,
@@ -388,7 +435,7 @@ class AgentService:
             )
 
         call = await self._record_tool_call(run=run, session=session, tool_name=tool_name, args=args, status="running")
-        events.append(
+        emit_event(
             {
                 "type": "tool_call",
                 "tool_call_id": call.id,
@@ -397,7 +444,14 @@ class AgentService:
                 "permission_level": spec.permission_level.value,
             }
         )
-        result = await self._execute_tool_call(spec.name, args, run=run, session=session, call=call, events=events)
+        result = await self._execute_tool_call(
+            spec.name,
+            args,
+            run=run,
+            session=session,
+            call=call,
+            emit_event=emit_event,
+        )
         if isinstance(result, dict) and result.get("ok") is False and isinstance(result.get("error"), dict):
             error_payload = result["error"]
             error = AgentToolError(
@@ -414,7 +468,7 @@ class AgentService:
         run.output_message = json.dumps(result, ensure_ascii=False, default=str)
         run.completed_at = utcnow()
         await self.db.commit()
-        events.append({"type": "final", "session_id": session.id, "run_id": run.id, "status": "completed", "result": result})
+        emit_event({"type": "final", "session_id": session.id, "run_id": run.id, "status": "completed", "result": result})
         return AgentRunResult(
             session_id=session.id,
             run_id=run.id,
@@ -442,7 +496,9 @@ class AgentService:
                 retryable=False,
             )
 
-        events: list[Dict[str, Any]] = [{"type": "start", "session_id": session.id, "run_id": run.id}]
+        events: list[Dict[str, Any]] = []
+        emit_event = _event_collector(events)
+        emit_event({"type": "start", "session_id": session.id, "run_id": run.id})
         confirmation.decided_at = utcnow()
         if not approved:
             confirmation.status = "rejected"
@@ -460,7 +516,7 @@ class AgentService:
                 )
             )
             await self.db.commit()
-            events.append({"type": "final", "status": run.status, "message": run.output_message})
+            emit_event({"type": "final", "status": run.status, "message": run.output_message})
             return AgentRunResult(
                 session_id=session.id,
                 run_id=run.id,
@@ -480,7 +536,7 @@ class AgentService:
                 run=run,
                 session=session,
                 call=call,
-                events=events,
+                emit_event=emit_event,
                 confirmed=True,
             )
             confirmation.result = _jsonable(result)
@@ -506,7 +562,7 @@ class AgentService:
                 )
             )
             await self.db.commit()
-            events.append(
+            emit_event(
                 {
                     "type": "final",
                     "session_id": session.id,
@@ -530,7 +586,7 @@ class AgentService:
             confirmation.error = exc.to_payload()
             await self._fail_run(run, exc)
             await self.db.commit()
-            events.append({"type": "error", **exc.to_payload()})
+            emit_event({"type": "error", **exc.to_payload()})
             raise
 
     async def stop_run(self, run_id: str) -> AgentRun:
@@ -564,7 +620,7 @@ class AgentService:
         *,
         session: AgentSession,
         run: AgentRun,
-        events: list[Dict[str, Any]],
+        emit_event: AgentEventSink,
     ) -> list[StructuredTool]:
         tools: list[StructuredTool] = []
         for spec in self.registry.list_specs():
@@ -577,7 +633,7 @@ class AgentService:
                     args=kwargs,
                     status="running",
                 )
-                events.append(
+                emit_event(
                     {
                         "type": "tool_call",
                         "tool_call_id": call.id,
@@ -596,7 +652,7 @@ class AgentService:
                     )
                     await self.db.flush()
                     payload = self._confirmation_payload(confirmation)
-                    events.append({"type": "confirmation_required", "confirmation": payload})
+                    emit_event({"type": "confirmation_required", "confirmation": payload})
                     return {"ok": False, "confirmation_required": True, "confirmation": payload}
 
                 return await self._execute_tool_call(
@@ -605,7 +661,7 @@ class AgentService:
                     run=run,
                     session=session,
                     call=call,
-                    events=events,
+                    emit_event=emit_event,
                 )
 
             tools.append(
@@ -630,7 +686,7 @@ class AgentService:
         run: AgentRun,
         session: AgentSession,
         call: AgentToolCall,
-        events: list[Dict[str, Any]],
+        emit_event: AgentEventSink,
         confirmed: bool = False,
     ) -> Dict[str, Any]:
         context = AgentToolContext(
@@ -648,7 +704,7 @@ class AgentService:
             call.completed_at = utcnow()
             await self.db.flush()
             payload = {"ok": False, "error": exc.to_payload()}
-            events.append({"type": "tool_result", "tool_call_id": call.id, "tool": tool_name, **payload})
+            emit_event({"type": "tool_result", "tool_call_id": call.id, "tool": tool_name, **payload})
             return payload
         except Exception as exc:
             error = AgentToolError(
@@ -663,7 +719,7 @@ class AgentService:
             call.completed_at = utcnow()
             await self.db.flush()
             payload = {"ok": False, "error": error.to_payload()}
-            events.append({"type": "tool_result", "tool_call_id": call.id, "tool": tool_name, **payload})
+            emit_event({"type": "tool_result", "tool_call_id": call.id, "tool": tool_name, **payload})
             return payload
 
         call.status = "completed"
@@ -671,7 +727,7 @@ class AgentService:
         call.completed_at = utcnow()
         await self.db.flush()
         payload = {"ok": True, "result": result}
-        events.append({"type": "tool_result", "tool_call_id": call.id, "tool": tool_name, **payload})
+        emit_event({"type": "tool_result", "tool_call_id": call.id, "tool": tool_name, **payload})
         return result
 
     async def _record_tool_call(
@@ -727,8 +783,11 @@ class AgentService:
         self,
         session_id: str,
         run_id: str,
-        events: list[Dict[str, Any]],
+        emit_event: AgentEventSink,
     ) -> list[BaseMessage]:
+        if isinstance(emit_event, list):
+            emit_event = _event_collector(emit_event)
+
         rows = (
             await self.db.execute(
                 select(AgentMessage)
@@ -765,7 +824,7 @@ class AgentService:
             await self.db.flush()
             latest_summary = summary
             messages = keep
-            events.append(
+            emit_event(
                 {
                     "type": "context_summary",
                     "summary_id": summary.id,

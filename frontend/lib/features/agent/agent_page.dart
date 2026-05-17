@@ -28,6 +28,7 @@ class _AgentPageState extends ConsumerState<AgentPage> {
   String _assistantDraft = '';
   bool _loading = true;
   bool _streaming = false;
+  bool _stopRequested = false;
   String? _error;
   http.Client? _streamClient;
 
@@ -116,6 +117,7 @@ class _AgentPageState extends ConsumerState<AgentPage> {
     _inputController.clear();
     setState(() {
       _streaming = true;
+      _stopRequested = false;
       _error = null;
       _assistantDraft = '';
       _timeline.add(_TimelineItem.user(text));
@@ -154,7 +156,7 @@ class _AgentPageState extends ConsumerState<AgentPage> {
         }
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && !_stopRequested) {
         setState(() {
           _error = 'Agent 流式请求失败: $e';
           _replaceDraft(_TimelineItem.error(_error!));
@@ -165,6 +167,7 @@ class _AgentPageState extends ConsumerState<AgentPage> {
       if (identical(_streamClient, client)) _streamClient = null;
       if (mounted) {
         setState(() => _streaming = false);
+        _stopRequested = false;
         unawaited(_loadSessions());
         _scrollToBottom();
       }
@@ -265,6 +268,7 @@ class _AgentPageState extends ConsumerState<AgentPage> {
   }
 
   Future<void> _stop() async {
+    _stopRequested = true;
     _streamClient?.close();
     final runId = _activeRunId;
     if (runId == null) {

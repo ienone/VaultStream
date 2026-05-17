@@ -4,6 +4,8 @@ Agent + Tool Calling API.
 from __future__ import annotations
 
 import json
+import asyncio
+from contextlib import suppress
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
@@ -299,15 +301,57 @@ async def agent_sse(
     from app.core.database import AsyncSessionLocal
 
     async def _event_stream():
-        async with AsyncSessionLocal() as db:
-            service = AgentService(db, app=request.app)
-            try:
-                result = await service.run_message(message=message, session_id=session_id)
-                for event in result.events:
-                    yield f"event: {event.get('type', 'message')}\ndata: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
-            except AgentToolError as exc:
-                event = {"type": "error", **exc.to_payload()}
-                yield f"event: error\ndata: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
+        queue: asyncio.Queue[dict] = asyncio.Queue()
+        active_run_id: dict[str, str | None] = {"value": None}
+        error_emitted: dict[str, bool] = {"value": False}
+
+        def _emit(event: dict) -> None:
+            if event.get("type") == "start":
+                active_run_id["value"] = event.get("run_id")
+            elif event.get("type") == "error":
+                error_emitted["value"] = True
+            queue.put_nowait(event)
+
+        async def _runner() -> None:
+            async with AsyncSessionLocal() as db:
+                service = AgentService(db, app=request.app)
+                try:
+                    await service.run_message(
+                        message=message,
+                        session_id=session_id,
+                        event_sink=_emit,
+                    )
+                except asyncio.CancelledError:
+                    run_id = active_run_id.get("value")
+                    if run_id:
+                        with suppress(Exception):
+                            await service.stop_run(run_id)
+                    raise
+                except AgentToolError as exc:
+                    if not error_emitted["value"]:
+                        _emit({"type": "error", **exc.to_payload()})
+
+        task = asyncio.create_task(_runner())
+        try:
+            while True:
+                if await request.is_disconnected():
+                    task.cancel()
+                    break
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    if task.done():
+                        break
+                    yield ": keep-alive\n\n"
+                    continue
+                yield f"event: {event.get('type', 'message')}\ndata: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
+                if task.done() and queue.empty():
+                    break
+        finally:
+            if not task.done():
+                task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
 
     return StreamingResponse(_event_stream(), media_type="text/event-stream")
 
