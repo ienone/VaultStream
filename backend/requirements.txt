@@ -27,6 +27,9 @@ python-dateutil
 # Image transcoding (optional, for WebP archive export)
 Pillow
 
+# QR code generation for browser-auth login flows
+qrcode[pil]
+
 # Content parsing and Markdown conversion
 markdownify
 beautifulsoup4
