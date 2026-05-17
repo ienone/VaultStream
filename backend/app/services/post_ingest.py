@@ -57,13 +57,22 @@ class PostIngestService:
         async def _run():
             try:
                 from app.services.embedding_service import EmbeddingService
+                from app.services.background_task_state import record_task_success
 
-                await EmbeddingService().index_content(content_id)
+                indexed = await EmbeddingService().index_content(content_id)
+                await record_task_success(
+                    "embedding_index",
+                    content_id=content_id,
+                    indexed=bool(indexed),
+                )
             except Exception as e:
+                from app.services.background_task_state import record_task_error
+
                 logger.bind(component="embedding", content_id=content_id).warning(
                     "语义索引失败(已忽略): {}",
                     e,
                 )
+                await record_task_error("embedding_index", e, content_id=content_id)
 
         asyncio.create_task(_run())
 

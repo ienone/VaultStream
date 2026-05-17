@@ -30,6 +30,7 @@ from app.models import (
     LayoutType,
     Platform,
 )
+from app.services.embedding_service import EmbeddingService
 from app.services.post_ingest import PostIngestService
 from app.services.background_task_state import (
     record_task_error,
@@ -123,6 +124,25 @@ class DiscoverySyncTask:
 
             ingested_count = 0
             new_content_ids = []
+            post_ingest_work: dict[int, dict[str, bool]] = {}
+
+            def queue_post_ingest_work(
+                content_id: int,
+                *,
+                summary: bool = False,
+                embedding: bool = False,
+                distribution: bool = False,
+            ) -> None:
+                if not (summary or embedding or distribution):
+                    return
+                work = post_ingest_work.setdefault(
+                    content_id,
+                    {"summary": False, "embedding": False, "distribution": False},
+                )
+                work["summary"] = work["summary"] or summary
+                work["embedding"] = work["embedding"] or embedding
+                work["distribution"] = work["distribution"] or distribution
+
             for item in items:
                 canonical = normalize_url_for_dedup(item.url)
                 cover_candidate = item.cover_url or (item.media_urls[0] if item.media_urls else None)
@@ -173,6 +193,27 @@ class DiscoverySyncTask:
                     if item.media_urls and not existing_content.media_urls:
                         existing_content.media_urls = item.media_urls
 
+                    has_summary_chunks = bool(
+                        existing_content.summary
+                        and isinstance(existing_content.rich_payload, dict)
+                        and existing_content.rich_payload.get("chunks")
+                    )
+                    has_current_index = await EmbeddingService().has_current_content_index(
+                        existing_content.id,
+                        session=db,
+                    )
+                    if existing_content.status == ContentStatus.PARSE_SUCCESS:
+                        enable_auto_summary = await get_setting_value(
+                            "enable_auto_summary",
+                            settings.enable_auto_summary,
+                        )
+                        queue_post_ingest_work(
+                            existing_content.id,
+                            summary=bool(enable_auto_summary) and not has_summary_chunks,
+                            embedding=not has_current_index,
+                            distribution=False,
+                        )
+
                     continue
 
                 retention_days_raw = await get_setting_value("discovery_retention_days", 7)
@@ -214,6 +255,12 @@ class DiscoverySyncTask:
                     url=item.url,
                 ))
                 new_content_ids.append(content.id)
+                queue_post_ingest_work(
+                    content.id,
+                    summary=True,
+                    embedding=True,
+                    distribution=True,
+                )
                 ingested_count += 1
 
             source.last_sync_at = utcnow()
@@ -233,21 +280,24 @@ class DiscoverySyncTask:
                 except Exception as e:
                     logger.warning(f"Discovery media archiving [{source.name}] error: {e}")
 
+            if post_ingest_work:
                 pipeline = PostIngestService()
-                for content_id in new_content_ids:
+                for content_id in sorted(post_ingest_work):
                     result = await db.execute(select(Content).where(Content.id == content_id))
                     content = result.scalar_one_or_none()
                     if content is not None:
+                        work = post_ingest_work[content_id]
                         await pipeline.run_for_content(
                             db,
                             content,
                             source="discovery",
-                            summary=True,
-                            embedding=True,
+                            summary=work["summary"],
+                            embedding=work["embedding"],
                             patrol=False,
-                            distribution=True,
+                            distribution=work["distribution"],
                         )
-                await pipeline.score_discovery(db)
+                if ingested_count > 0:
+                    await pipeline.score_discovery(db)
             await record_task_success(
                 "discovery_sync",
                 source_id=source.id,

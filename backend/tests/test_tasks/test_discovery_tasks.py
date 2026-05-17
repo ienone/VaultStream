@@ -279,6 +279,178 @@ async def test_sync_dedup_backfills_missing_cover_from_explicit_rss_cover(db_ses
 
 
 @pytest.mark.asyncio
+async def test_sync_existing_parse_success_skips_post_ingest_when_no_enabled_work(db_session):
+    url = "https://example.com/rediscover-no-work"
+    canonical = normalize_url_for_dedup(url)
+    existing = Content(
+        platform=Platform.UNIVERSAL,
+        url=url,
+        canonical_url=canonical,
+        title="Existing Parsed No Work",
+        status=ContentStatus.PARSE_SUCCESS,
+        summary=None,
+        rich_payload={},
+    )
+    db_session.add(existing)
+    await db_session.flush()
+
+    source = DiscoverySource(
+        kind=DiscoverySourceKind.RSS,
+        name="Rediscover No Work",
+        enabled=True,
+        config={"url": "https://example.com/feed-no-work.xml"},
+    )
+    db_session.add(source)
+    await db_session.flush()
+
+    async def _setting_side_effect(key, default=None):
+        if key == "enable_auto_summary":
+            return False
+        return default
+
+    task = DiscoverySyncTask()
+
+    with patch(
+        "app.tasks.discovery_sync.RSSDiscoveryScraper.fetch",
+        new_callable=AsyncMock,
+        return_value=([DiscoveryItem(url=url, title="Duplicate")], None),
+    ), patch(
+        "app.tasks.discovery_sync.get_setting_value",
+        new_callable=AsyncMock,
+        side_effect=_setting_side_effect,
+    ), patch(
+        "app.tasks.discovery_sync.EmbeddingService.has_current_content_index",
+        new_callable=AsyncMock,
+        return_value=True,
+    ), patch("app.tasks.discovery_sync.PostIngestService") as post_ingest_cls:
+        await task._sync_single_source(db_session, source)
+
+    post_ingest_cls.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sync_existing_parse_success_runs_only_missing_embedding(db_session):
+    url = "https://example.com/rediscover-missing-embedding"
+    canonical = normalize_url_for_dedup(url)
+    existing = Content(
+        platform=Platform.UNIVERSAL,
+        url=url,
+        canonical_url=canonical,
+        title="Existing Missing Embedding",
+        status=ContentStatus.PARSE_SUCCESS,
+        summary=None,
+        rich_payload={},
+    )
+    db_session.add(existing)
+    await db_session.flush()
+    existing_id = existing.id
+
+    source = DiscoverySource(
+        kind=DiscoverySourceKind.RSS,
+        name="Rediscover Missing Embedding",
+        enabled=True,
+        config={"url": "https://example.com/feed-missing-embedding.xml"},
+    )
+    db_session.add(source)
+    await db_session.flush()
+
+    async def _setting_side_effect(key, default=None):
+        if key == "enable_auto_summary":
+            return False
+        return default
+
+    task = DiscoverySyncTask()
+
+    with patch(
+        "app.tasks.discovery_sync.RSSDiscoveryScraper.fetch",
+        new_callable=AsyncMock,
+        return_value=([DiscoveryItem(url=url, title="Duplicate")], None),
+    ), patch(
+        "app.tasks.discovery_sync.get_setting_value",
+        new_callable=AsyncMock,
+        side_effect=_setting_side_effect,
+    ), patch(
+        "app.tasks.discovery_sync.EmbeddingService.has_current_content_index",
+        new_callable=AsyncMock,
+        return_value=False,
+    ), patch("app.tasks.discovery_sync.PostIngestService") as post_ingest_cls:
+        pipeline = post_ingest_cls.return_value
+        pipeline.run_for_content = AsyncMock()
+        pipeline.score_discovery = AsyncMock()
+
+        await task._sync_single_source(db_session, source)
+
+    pipeline.run_for_content.assert_awaited_once()
+    args, kwargs = pipeline.run_for_content.await_args
+    assert args[1].id == existing_id
+    assert kwargs["summary"] is False
+    assert kwargs["embedding"] is True
+    assert kwargs["distribution"] is False
+    pipeline.score_discovery.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sync_existing_parse_success_runs_only_enabled_missing_summary(db_session):
+    url = "https://example.com/rediscover-missing-summary"
+    canonical = normalize_url_for_dedup(url)
+    existing = Content(
+        platform=Platform.UNIVERSAL,
+        url=url,
+        canonical_url=canonical,
+        title="Existing Missing Summary",
+        status=ContentStatus.PARSE_SUCCESS,
+        summary=None,
+        rich_payload={},
+    )
+    db_session.add(existing)
+    await db_session.flush()
+    existing_id = existing.id
+
+    source = DiscoverySource(
+        kind=DiscoverySourceKind.RSS,
+        name="Rediscover Missing Summary",
+        enabled=True,
+        config={"url": "https://example.com/feed-missing-summary.xml"},
+    )
+    db_session.add(source)
+    await db_session.flush()
+
+    async def _setting_side_effect(key, default=None):
+        if key == "enable_auto_summary":
+            return True
+        return default
+
+    task = DiscoverySyncTask()
+
+    with patch(
+        "app.tasks.discovery_sync.RSSDiscoveryScraper.fetch",
+        new_callable=AsyncMock,
+        return_value=([DiscoveryItem(url=url, title="Duplicate")], None),
+    ), patch(
+        "app.tasks.discovery_sync.get_setting_value",
+        new_callable=AsyncMock,
+        side_effect=_setting_side_effect,
+    ), patch(
+        "app.tasks.discovery_sync.EmbeddingService.has_current_content_index",
+        new_callable=AsyncMock,
+        return_value=True,
+    ), patch("app.tasks.discovery_sync.PostIngestService") as post_ingest_cls:
+        pipeline = post_ingest_cls.return_value
+        pipeline.run_for_content = AsyncMock()
+        pipeline.score_discovery = AsyncMock()
+
+        await task._sync_single_source(db_session, source)
+
+    pipeline.run_for_content.assert_awaited_once()
+    args, kwargs = pipeline.run_for_content.await_args
+    assert args[1].id == existing_id
+    assert kwargs["summary"] is True
+    assert kwargs["embedding"] is False
+    assert kwargs["distribution"] is False
+    pipeline.score_discovery.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_sync_dedup_handles_multiple_existing_rows(db_session):
     """Dedup should remain stable even if canonical_url has multiple rows."""
     url = "https://example.com/dup-multi"
