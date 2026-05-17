@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import AsyncSessionLocal
 from app.core.database import get_db
 from app.core.dependencies import require_api_token
-from app.models import Platform
+from app.models import ContentStatus, Platform
 from app.schemas import (
     SemanticIndexStatusResponse,
     SemanticReindexRequest,
@@ -23,34 +23,72 @@ from app.services.embedding_service import EmbeddingService
 router = APIRouter()
 
 
+def _parse_list_param(values: Optional[list[str]]) -> list[str] | None:
+    if not values:
+        return None
+    parsed: list[str] = []
+    for value in values:
+        if "," in value:
+            parsed.extend(part.strip() for part in value.split(",") if part.strip())
+        elif value.strip():
+            parsed.append(value.strip())
+    return parsed or None
+
+
 @router.get("/search/semantic", response_model=SemanticSearchResponse)
 async def semantic_search(
     q: str = Query(..., min_length=1, description="检索关键词"),
     top_k: int = Query(20, ge=1, le=100, description="返回结果数量"),
-    platform: Optional[str] = Query(None, description="平台过滤，如 bilibili/zhihu/twitter"),
+    platforms: Optional[list[str]] = Query(None, alias="platform", description="平台过滤，如 bilibili/zhihu/twitter"),
+    statuses: Optional[list[str]] = Query(None, alias="status", description="内容处理状态过滤"),
+    tags: Optional[list[str]] = Query(None, alias="tag", description="标签过滤"),
+    author: Optional[str] = Query(None, description="作者名关键词"),
     date_from: Optional[datetime] = Query(None, description="开始时间（ISO8601）"),
     date_to: Optional[datetime] = Query(None, description="结束时间（ISO8601）"),
+    scope: str = Query("library", description="检索范围：library/discovery/all"),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
-    platform_value: Optional[str] = None
-    if platform:
-        normalized = platform.strip().lower()
+    platform_values = _parse_list_param(platforms)
+    if platform_values:
         valid_platforms = {p.value for p in Platform}
-        if normalized not in valid_platforms:
+        normalized_platforms = [platform.strip().lower() for platform in platform_values]
+        invalid_platforms = [platform for platform in normalized_platforms if platform not in valid_platforms]
+        if invalid_platforms:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid platform: {platform}. valid={sorted(valid_platforms)}",
+                detail=f"Invalid platform: {invalid_platforms[0]}. valid={sorted(valid_platforms)}",
             )
-        platform_value = normalized
+        platform_values = normalized_platforms
+
+    status_values = _parse_list_param(statuses)
+    if status_values:
+        valid_statuses = {s.value for s in ContentStatus}
+        normalized_statuses = [status.strip().lower() for status in status_values]
+        invalid_statuses = [status for status in normalized_statuses if status not in valid_statuses]
+        if invalid_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status: {invalid_statuses[0]}. valid={sorted(valid_statuses)}",
+            )
+        status_values = normalized_statuses
+
+    tag_values = _parse_list_param(tags)
+    normalized_scope = scope.strip().lower()
+    if normalized_scope not in {"library", "discovery", "all"}:
+        raise HTTPException(status_code=400, detail="scope must be library, discovery or all")
 
     svc = EmbeddingService()
     hits = await svc.search(
         query=q,
         top_k=top_k,
-        platform=platform_value,
+        platforms=platform_values,
+        statuses=status_values,
+        tags=tag_values,
+        author=author.strip() if author and author.strip() else None,
         date_from=date_from,
         date_to=date_to,
+        scope=normalized_scope,
         session=db,
     )
 
@@ -63,6 +101,9 @@ async def semantic_search(
             source_text=hit.source_text,
             platform=hit.content.platform.value if hit.content.platform else "",
             url=hit.content.url,
+            status=hit.content.status.value if hit.content.status else "",
+            review_status=hit.content.review_status.value if hit.content.review_status else None,
+            discovery_state=hit.content.discovery_state.value if hit.content.discovery_state else None,
             title=hit.content.title,
             summary=hit.content.summary,
             author_name=hit.content.author_name,
@@ -77,6 +118,7 @@ async def semantic_search(
     return SemanticSearchResponse(
         query=q,
         top_k=top_k,
+        scope=normalized_scope,
         results=results,
     )
 

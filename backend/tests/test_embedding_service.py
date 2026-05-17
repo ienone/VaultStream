@@ -95,6 +95,7 @@ async def test_index_content_creates_embedding_record(db_session, monkeypatch):
     assert record.index_status == "indexed"
     assert record.chunk_index == -1
     assert record.source_text and "Tokio runtime benchmark" in record.source_text
+    assert record.last_attempted_at is not None
     assert record.last_indexed_at is not None
 
 
@@ -212,7 +213,7 @@ async def test_search_respects_platform_and_date_filters(db_session, monkeypatch
     hits = await svc.search(
         query="Rust",
         top_k=10,
-        platform="zhihu",
+        platforms=["zhihu"],
         date_from=now - timedelta(days=1),
         session=db_session,
     )
@@ -308,7 +309,16 @@ async def test_vector_rank_limits_database_scan(db_session, monkeypatch):
     ranked = await svc._vector_rank_ids(
         session=db_session,
         query_vec=[1.0, 0.0],
-        filters=svc._build_content_filters(platform=None, date_from=None, date_to=None),
+        filters=await svc._build_content_filters(
+            session=db_session,
+            platforms=None,
+            statuses=None,
+            tags=None,
+            author=None,
+            date_from=None,
+            date_to=None,
+            scope="library",
+        ),
         limit=1,
     )
 

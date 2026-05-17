@@ -1,14 +1,17 @@
 import re
 import json
 import asyncio
+import os
 from typing import Optional, List
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.core.config import settings
 from app.core.logging import logger
 from app.models import Content
-from app.core.llm_factory import LLMFactory
+from app.services.settings_service import get_setting_value
+from app.utils.sensitive_display import extract_secret_value
 
 
 class SemanticChunk(BaseModel):
@@ -24,6 +27,30 @@ class ContentIntelligence(BaseModel):
     summary: str = Field(..., description="120字以内的极简总结")
     tags: List[str] = Field(default_factory=list, description="提取的 3-5 个核心标签")
     rag_chunks: List[SemanticChunk] = Field(..., description="将全文拆解为若干个语义逻辑块，用于精准检索")
+
+
+def _as_nonempty_string(value: object) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+async def _get_summary_llm_config() -> tuple[str | None, str, str]:
+    """Return summary-specific Gemini config without falling back to embedding settings."""
+    key = _as_nonempty_string(await get_setting_value("summary_api_key"))
+    if not key:
+        key = extract_secret_value(settings.summary_api_key)
+    if not key:
+        # Backward-compatible env alias; still intentionally separate from embedding_api_key.
+        key = os.environ.get("GEMINI_API_KEY")
+
+    model = _as_nonempty_string(
+        await get_setting_value("summary_model", settings.summary_model)
+    ) or settings.summary_model
+    api_version = _as_nonempty_string(
+        await get_setting_value("summary_api_version", settings.summary_api_version)
+    ) or settings.summary_api_version
+    return key, model, api_version
 
 
 def strip_markdown(text: str) -> str:
@@ -67,15 +94,10 @@ async def generate_summary_for_content(
         logger.debug(f"AI 理解数据已存在，跳过: content_id={content_id}")
         return content
 
-    # 获取 API Key
-    import os
-    gemini_key = os.environ.get("GEMINI_API_KEY")
-    if not gemini_key:
-        from app.services.settings_service import get_setting_value
-        gemini_key = await get_setting_value("embedding_api_key")
+    gemini_key, summary_model, summary_api_version = await _get_summary_llm_config()
 
     if not gemini_key:
-        logger.warning("Gemini API Key 未配置，跳过智能分析")
+        logger.warning("Summary API Key 未配置，跳过智能分析")
         return content
 
     # 准备 Prompt
@@ -98,16 +120,15 @@ async def generate_summary_for_content(
         from google import genai
         from google.genai import types
         
-        # 显式初始化 Client 并指定 api_version (针对 Gemini 3 预览版)
+        # 显式初始化 Client 并指定 api_version；模型名来自 summary_model 设置。
         client = genai.Client(
             api_key=gemini_key,
-            http_options={'api_version': 'v1beta'}
+            http_options={'api_version': summary_api_version}
         )
         
         def _call():
-            # 使用 2026 主力预览版模型 gemini-3.1-flash-lite-preview
             return client.models.generate_content(
-                model="gemini-3.1-flash-lite-preview",
+                model=summary_model,
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",

@@ -107,6 +107,9 @@ class Settings(BaseSettings):
 
     # 摘要生成
     enable_auto_summary: bool = False
+    summary_api_key: Optional[SecretStr] = None
+    summary_model: str = "gemini-3.1-flash-lite-preview"
+    summary_api_version: str = "v1beta"
 
     # 媒体处理
     enable_archive_media_processing: bool = True

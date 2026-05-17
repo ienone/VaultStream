@@ -31,6 +31,7 @@ async def ensure_content_embeddings_schema(conn: AsyncConnection) -> None:
         "index_status": "VARCHAR(40) DEFAULT 'indexed'",
         "failure_reason": "TEXT DEFAULT NULL",
         "retry_count": "INTEGER DEFAULT 0",
+        "last_attempted_at": "DATETIME DEFAULT NULL",
         "last_indexed_at": "DATETIME DEFAULT NULL",
     }
     for name, ddl in additions.items():
@@ -66,6 +67,15 @@ async def ensure_content_embeddings_schema(conn: AsyncConnection) -> None:
     )
     await conn.execute(
         text(
+            """
+            UPDATE content_embeddings
+            SET last_attempted_at = last_indexed_at
+            WHERE last_attempted_at IS NULL AND last_indexed_at IS NOT NULL
+            """
+        )
+    )
+    await conn.execute(
+        text(
             "CREATE INDEX IF NOT EXISTS ix_content_embeddings_signature "
             "ON content_embeddings (embedding_model_signature)"
         )
@@ -74,6 +84,12 @@ async def ensure_content_embeddings_schema(conn: AsyncConnection) -> None:
         text(
             "CREATE INDEX IF NOT EXISTS ix_content_embeddings_status "
             "ON content_embeddings (index_status)"
+        )
+    )
+    await conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_content_embeddings_attempted_at "
+            "ON content_embeddings (last_attempted_at)"
         )
     )
 

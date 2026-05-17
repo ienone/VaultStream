@@ -153,7 +153,7 @@ class TestGenerateSummaryForContent:
         session.get.return_value = content
 
         with patch.dict("os.environ", {}, clear=True), patch(
-            "app.services.settings_service.get_setting_value",
+            "app.services.content_summary_service.get_setting_value",
             new_callable=AsyncMock,
             return_value=None,
         ):

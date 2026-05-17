@@ -278,6 +278,8 @@ async def _build_provider_diagnostics(db: AsyncSession) -> dict[str, Any]:
                     [
                         "text_llm_api_key",
                         "text_llm_model",
+                        "summary_api_key",
+                        "summary_model",
                         "embedding_api_key",
                         "embedding_model",
                     ]
@@ -297,6 +299,10 @@ async def _build_provider_diagnostics(db: AsyncSession) -> dict[str, Any]:
         "text_llm": {
             "configured": bool(stored.get("text_llm_api_key") or settings.text_llm_api_key),
             "model": stored.get("text_llm_model") or settings.text_llm_model,
+        },
+        "summary": {
+            "configured": bool(stored.get("summary_api_key") or settings.summary_api_key),
+            "model": stored.get("summary_model") or settings.summary_model,
         },
         "embedding": {
             "configured": bool(stored.get("embedding_api_key") or settings.embedding_api_key),

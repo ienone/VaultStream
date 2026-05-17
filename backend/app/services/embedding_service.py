@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy import and_, bindparam, desc, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
@@ -56,9 +56,13 @@ class EmbeddingService:
         *,
         query: str,
         top_k: int = 20,
-        platform: Optional[str] = None,
+        platforms: Optional[list[str]] = None,
+        statuses: Optional[list[str]] = None,
+        tags: Optional[list[str]] = None,
+        author: Optional[str] = None,
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
+        scope: str = "library",
         session: Optional[AsyncSession] = None,
     ) -> list[SemanticSearchHit]:
         if not query.strip():
@@ -68,9 +72,13 @@ class EmbeddingService:
             return await self._search_impl(
                 query=query,
                 top_k=top_k,
-                platform=platform,
+                platforms=platforms,
+                statuses=statuses,
+                tags=tags,
+                author=author,
                 date_from=date_from,
                 date_to=date_to,
+                scope=scope,
                 session=session,
             )
 
@@ -78,9 +86,13 @@ class EmbeddingService:
             return await self._search_impl(
                 query=query,
                 top_k=top_k,
-                platform=platform,
+                platforms=platforms,
+                statuses=statuses,
+                tags=tags,
+                author=author,
                 date_from=date_from,
                 date_to=date_to,
+                scope=scope,
                 session=local_session,
             )
 
@@ -151,6 +163,17 @@ class EmbeddingService:
             return await self._get_index_status_impl(session)
         async with AsyncSessionLocal() as local_session:
             return await self._get_index_status_impl(local_session)
+
+    async def has_current_content_index(
+        self,
+        content_id: int,
+        *,
+        session: Optional[AsyncSession] = None,
+    ) -> bool:
+        if session is not None:
+            return await self._has_current_content_index_impl(content_id, session)
+        async with AsyncSessionLocal() as local_session:
+            return await self._has_current_content_index_impl(content_id, local_session)
 
     async def _plan_reindex_impl(
         self,
@@ -279,6 +302,7 @@ class EmbeddingService:
         return missing
 
     async def _get_index_status_impl(self, session: AsyncSession) -> dict:
+        model_signature = await self._get_document_embedding_signature()
         contents_total = (await session.execute(select(func.count(Content.id)))).scalar() or 0
         parse_success_total = (
             await session.execute(
@@ -300,11 +324,18 @@ class EmbeddingService:
             )
         ).all()
         none_count = max(0, int(parse_success_total) - int(indexed_total))
+        status_count_map = {
+            str(status or "unknown"): int(count)
+            for status, count in raw_status_counts
+        }
         status_counts = [{"status": "none", "count": none_count}]
         status_counts.extend(
             {"status": str(status or "unknown"), "count": int(count)}
             for status, count in raw_status_counts
         )
+        last_attempt_at = (
+            await session.execute(select(func.max(ContentEmbedding.last_attempted_at)))
+        ).scalar()
         model_distribution = [
             {
                 "embedding_model": str(model or "NULL"),
@@ -323,12 +354,42 @@ class EmbeddingService:
                 )
             ).all()
         ]
+        recent_failure_rows = (
+            await session.execute(
+                select(ContentEmbedding, Content.title)
+                .join(Content, Content.id == ContentEmbedding.content_id, isouter=True)
+                .where(ContentEmbedding.index_status == "failed")
+                .order_by(
+                    ContentEmbedding.last_attempted_at.desc().nullslast(),
+                    ContentEmbedding.updated_at.desc().nullslast(),
+                )
+                .limit(10)
+            )
+        ).all()
+        recent_failures = [
+            {
+                "content_id": row.content_id,
+                "title": title,
+                "chunk_index": row.chunk_index,
+                "chunk_title": row.chunk_title,
+                "failure_reason": row.failure_reason,
+                "retry_count": int(row.retry_count or 0),
+                "last_attempted_at": row.last_attempted_at,
+                "updated_at": row.updated_at,
+            }
+            for row, title in recent_failure_rows
+        ]
         return {
             "contents_total": int(contents_total),
             "parse_success_total": int(parse_success_total),
             "indexed_total": int(indexed_total),
+            "pending_total": int(status_count_map.get("pending", 0)),
+            "failed_total": int(status_count_map.get("failed", 0)),
+            "last_attempt_at": last_attempt_at,
+            "current_model_signature": model_signature,
             "status_counts": status_counts,
             "model_distribution": model_distribution,
+            "recent_failures": recent_failures,
         }
 
     async def _index_content_impl(
@@ -423,6 +484,7 @@ class EmbeddingService:
         record.embedding_model_signature = model_signature
         record.index_status = "pending"
         record.failure_reason = None
+        record.last_attempted_at = datetime.utcnow()
 
         try:
             vector = await self._embed_document_text(text_val, media_refs)
@@ -458,13 +520,26 @@ class EmbeddingService:
         *,
         query: str,
         top_k: int,
-        platform: Optional[str],
+        platforms: Optional[list[str]],
+        statuses: Optional[list[str]],
+        tags: Optional[list[str]],
+        author: Optional[str],
         date_from: Optional[datetime],
         date_to: Optional[datetime],
+        scope: str,
         session: AsyncSession,
     ) -> list[SemanticSearchHit]:
         started_at = time.perf_counter()
-        filters = self._build_content_filters(platform=platform, date_from=date_from, date_to=date_to)
+        filters = await self._build_content_filters(
+            session=session,
+            platforms=platforms,
+            statuses=statuses,
+            tags=tags,
+            author=author,
+            date_from=date_from,
+            date_to=date_to,
+            scope=scope,
+        )
         candidate_limit = max(50, top_k * 6)
 
         vector_ranked = []
@@ -645,27 +720,87 @@ class EmbeddingService:
         merged = sorted(scores.items(), key=lambda item: item[1], reverse=True)
         return merged[:top_k]
 
-    def _build_content_filters(
+    async def _build_content_filters(
         self,
         *,
-        platform: Optional[str],
+        session: AsyncSession,
+        platforms: Optional[list[str]],
+        statuses: Optional[list[str]],
+        tags: Optional[list[str]],
+        author: Optional[str],
         date_from: Optional[datetime],
         date_to: Optional[datetime],
+        scope: str,
     ) -> list:
-        filters = [
-            Content.status == ContentStatus.PARSE_SUCCESS,
-            or_(
-                Content.discovery_state.is_(None),
-                Content.discovery_state == DiscoveryState.PROMOTED,
-            ),
+        filters = []
+        if statuses:
+            filters.append(Content.status.in_([ContentStatus(status) for status in statuses]))
+        else:
+            filters.append(Content.status == ContentStatus.PARSE_SUCCESS)
+
+        normalized_scope = (scope or "library").strip().lower()
+        active_discovery_states = [
+            DiscoveryState.INGESTED,
+            DiscoveryState.SCORED,
+            DiscoveryState.VISIBLE,
         ]
-        if platform:
-            filters.append(Content.platform == Platform(platform))
+        if normalized_scope == "discovery":
+            filters.append(Content.discovery_state.in_(active_discovery_states))
+        elif normalized_scope == "all":
+            filters.append(
+                or_(
+                    Content.discovery_state.is_(None),
+                    Content.discovery_state == DiscoveryState.PROMOTED,
+                    Content.discovery_state.in_(active_discovery_states),
+                )
+            )
+        else:
+            filters.append(
+                or_(
+                    Content.discovery_state.is_(None),
+                    Content.discovery_state == DiscoveryState.PROMOTED,
+                )
+            )
+
+        if platforms:
+            filters.append(Content.platform.in_([Platform(platform) for platform in platforms]))
+        if author:
+            filters.append(Content.author_name.ilike(f"%{author.strip()}%"))
         if date_from is not None:
             filters.append(Content.created_at >= date_from)
         if date_to is not None:
             filters.append(Content.created_at <= date_to)
+        if tags:
+            tag_ids = await self._fetch_tagged_content_ids(session, tags)
+            if tag_ids:
+                filters.append(Content.id.in_(tag_ids))
+            else:
+                filters.append(text("0 = 1"))
         return filters
+
+    async def _fetch_tagged_content_ids(self, session: AsyncSession, tags: list[str]) -> list[int]:
+        normalized = [tag.strip() for tag in tags if isinstance(tag, str) and tag.strip()]
+        if not normalized:
+            return []
+        tag_subquery = text(
+            "SELECT DISTINCT c.id FROM contents c, json_each(c.tags) AS je "
+            "WHERE je.value IN :tags"
+        ).bindparams(bindparam("tags", expanding=True))
+        rows = await session.execute(tag_subquery, {"tags": normalized})
+        return [int(row[0]) for row in rows.all()]
+
+    async def _has_current_content_index_impl(self, content_id: int, session: AsyncSession) -> bool:
+        model_signature = await self._get_document_embedding_signature()
+        stmt = (
+            select(ContentEmbedding.id)
+            .where(
+                ContentEmbedding.content_id == content_id,
+                ContentEmbedding.embedding_model_signature == model_signature,
+                ContentEmbedding.index_status == "indexed",
+            )
+            .limit(1)
+        )
+        return (await session.execute(stmt)).scalar_one_or_none() is not None
 
     def _build_content_text(self, content: Content) -> str:
         tags = content.tags or []

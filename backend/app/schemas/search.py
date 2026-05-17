@@ -3,7 +3,7 @@
 """
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.base import OptionalUtcDatetime
 
@@ -17,6 +17,9 @@ class SemanticSearchItem(BaseModel):
 
     platform: str
     url: str
+    status: str
+    review_status: Optional[str] = None
+    discovery_state: Optional[str] = None
     title: Optional[str] = None
     summary: Optional[str] = None
     author_name: Optional[str] = None
@@ -31,6 +34,7 @@ class SemanticSearchItem(BaseModel):
 class SemanticSearchResponse(BaseModel):
     query: str
     top_k: int
+    scope: str = "library"
     results: List[SemanticSearchItem]
 
 
@@ -56,9 +60,25 @@ class SemanticIndexStatusItem(BaseModel):
     count: int
 
 
+class SemanticIndexFailureItem(BaseModel):
+    content_id: int
+    title: Optional[str] = None
+    chunk_index: int
+    chunk_title: Optional[str] = None
+    failure_reason: Optional[str] = None
+    retry_count: int = 0
+    last_attempted_at: OptionalUtcDatetime = None
+    updated_at: OptionalUtcDatetime = None
+
+
 class SemanticIndexStatusResponse(BaseModel):
     contents_total: int
     parse_success_total: int
     indexed_total: int
+    pending_total: int = 0
+    failed_total: int = 0
+    last_attempt_at: OptionalUtcDatetime = None
+    current_model_signature: Optional[str] = None
     status_counts: List[SemanticIndexStatusItem]
     model_distribution: List[dict]
+    recent_failures: List[SemanticIndexFailureItem] = Field(default_factory=list)

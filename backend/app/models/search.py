@@ -41,6 +41,7 @@ class ContentEmbedding(Base):
     index_status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
     failure_reason: Mapped[Optional[str]] = mapped_column(Text, default=None)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_attempted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
     last_indexed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
 
     indexed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow)

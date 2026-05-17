@@ -41,6 +41,7 @@ async def test_semantic_search_returns_ranked_results(client: AsyncClient, db_se
     result = next(r for r in data["results"] if r["content_id"] == item.id)
     assert result["match_source"] in ("fts", "vector", "hybrid")
     assert isinstance(result["score"], float)
+    assert result["status"] == "parse_success"
 
 
 @pytest.mark.asyncio
@@ -74,6 +75,7 @@ async def test_semantic_search_supports_platform_and_date_filters(client: AsyncC
         params={
             "q": "Rust",
             "platform": "zhihu",
+            "status": "parse_success",
             "date_from": (now - timedelta(days=1)).isoformat(),
             "top_k": 10,
         },
@@ -96,6 +98,16 @@ async def test_semantic_search_rejects_invalid_platform(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_semantic_search_rejects_invalid_status(client: AsyncClient):
+    resp = await client.get(
+        "/api/v1/search/semantic",
+        params={"q": "Rust", "status": "invalid-status"},
+    )
+    assert resp.status_code == 400
+    assert "Invalid status" in str(resp.json())
+
+
+@pytest.mark.asyncio
 async def test_semantic_index_status_and_reindex_dry_run(client: AsyncClient, db_session):
     content = Content(
         platform=Platform.BILIBILI,
@@ -113,7 +125,10 @@ async def test_semantic_index_status_and_reindex_dry_run(client: AsyncClient, db
 
     status = await client.get("/api/v1/search/semantic/index-status")
     assert status.status_code == 200
-    assert "status_counts" in status.json()
+    status_data = status.json()
+    assert "status_counts" in status_data
+    assert "recent_failures" in status_data
+    assert "current_model_signature" in status_data
 
     dry_run = await client.post(
         "/api/v1/search/semantic/reindex",
