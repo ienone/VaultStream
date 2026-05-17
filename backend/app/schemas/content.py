@@ -179,6 +179,7 @@ class ShareCard(BaseModel):
     id: int
     platform: Platform
     url: str
+    status: Optional[ContentStatus] = None
     clean_url: Optional[str] = None
     content_type: Optional[str] = None
     effective_layout_type: Optional[str] = None
@@ -192,6 +193,7 @@ class ShareCard(BaseModel):
     tags: List[str] = Field(default_factory=list)
     is_nsfw: bool = False
     review_status: Optional[ReviewStatus] = None
+    discovery_state: Optional[str] = None
     published_at: OptionalUtcDatetime = None
     created_at: OptionalUtcDatetime = None
     view_count: int = 0

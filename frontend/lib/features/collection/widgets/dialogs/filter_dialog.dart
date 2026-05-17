@@ -12,6 +12,7 @@ class FilterDialog extends ConsumerStatefulWidget {
   final List<String> availableTags;
   final String initialSearchMode;
   final int initialSemanticTopK;
+  final String initialSemanticScope;
 
   const FilterDialog({
     super.key,
@@ -23,6 +24,7 @@ class FilterDialog extends ConsumerStatefulWidget {
     this.availableTags = const [],
     this.initialSearchMode = 'keyword',
     this.initialSemanticTopK = 20,
+    this.initialSemanticScope = 'library',
   });
 
   @override
@@ -38,18 +40,38 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
   late Set<String> _selectedTags;
   late String _searchMode;
   late double _semanticTopK;
+  late String _semanticScope;
   List<String> _tagSuggestions = [];
 
-  final List<String> _platforms = ['bilibili', 'twitter', 'xiaohongshu', 'douyin', 'weibo', 'zhihu'];
-  final List<String> _statuses = ['unprocessed', 'processing', 'parse_success', 'parse_failed'];
+  final List<String> _platforms = [
+    'bilibili',
+    'twitter',
+    'xiaohongshu',
+    'douyin',
+    'weibo',
+    'zhihu',
+  ];
+  final List<String> _statuses = [
+    'unprocessed',
+    'processing',
+    'parse_success',
+    'parse_failed',
+  ];
 
   final Map<String, String> _platformLabels = {
-    'bilibili': 'Bilibili', 'twitter': 'Twitter/X', 'xiaohongshu': '小红书',
-    'douyin': '抖音', 'weibo': '微博', 'zhihu': '知乎',
+    'bilibili': 'Bilibili',
+    'twitter': 'Twitter/X',
+    'xiaohongshu': '小红书',
+    'douyin': '抖音',
+    'weibo': '微博',
+    'zhihu': '知乎',
   };
 
   final Map<String, String> _statusLabels = {
-    'unprocessed': '未处理', 'processing': '处理中', 'parse_success': '解析成功', 'parse_failed': '解析失败',
+    'unprocessed': '未处理',
+    'processing': '处理中',
+    'parse_success': '解析成功',
+    'parse_failed': '解析失败',
   };
 
   @override
@@ -61,8 +83,14 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
     _tagInputController = TextEditingController();
     _dateRange = widget.initialDateRange;
     _selectedTags = Set<String>.from(widget.initialTags);
-    _searchMode = widget.initialSearchMode == 'semantic' ? 'semantic' : 'keyword';
+    _searchMode = widget.initialSearchMode == 'semantic'
+        ? 'semantic'
+        : 'keyword';
     _semanticTopK = widget.initialSemanticTopK.toDouble().clamp(1.0, 100.0);
+    _semanticScope =
+        ['library', 'discovery', 'all'].contains(widget.initialSemanticScope)
+        ? widget.initialSemanticScope
+        : 'library';
   }
 
   @override
@@ -83,6 +111,7 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
       _tagSuggestions = [];
       _searchMode = 'keyword';
       _semanticTopK = 20;
+      _semanticScope = 'library';
     });
   }
 
@@ -92,7 +121,11 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
       return;
     }
     final suggestions = globalTags
-        .where((t) => t.toLowerCase().contains(value.toLowerCase()) && !_selectedTags.contains(t))
+        .where(
+          (t) =>
+              t.toLowerCase().contains(value.toLowerCase()) &&
+              !_selectedTags.contains(t),
+        )
         .take(10)
         .toList();
     setState(() => _tagSuggestions = suggestions);
@@ -110,9 +143,13 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
     final now = DateTime.now();
     final presetDays = [1, 7, 30];
     for (final days in presetDays) {
-      final presetStart = DateTime(now.year, now.month, now.day).subtract(Duration(days: days));
-      if (range.start.year == presetStart.year && 
-          range.start.month == presetStart.month && 
+      final presetStart = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(Duration(days: days));
+      if (range.start.year == presetStart.year &&
+          range.start.month == presetStart.month &&
           range.start.day == presetStart.day) {
         return true;
       }
@@ -123,15 +160,22 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
   Widget _buildSectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.only(top: 24, bottom: 12),
-      child: Text(title, style: Theme.of(context).textTheme.titleSmall?.copyWith(
-        fontWeight: FontWeight.bold,
-        color: Theme.of(context).colorScheme.primary,
-        letterSpacing: 0.5,
-      )),
+      child: Text(
+        title,
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.bold,
+          color: Theme.of(context).colorScheme.primary,
+          letterSpacing: 0.5,
+        ),
+      ),
     );
   }
 
-  Widget _buildChoiceChip(String label, bool isSelected, ValueChanged<bool> onSelected) {
+  Widget _buildChoiceChip(
+    String label,
+    bool isSelected,
+    ValueChanged<bool> onSelected,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
     return ChoiceChip(
       label: Text(label),
@@ -140,12 +184,16 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
       showCheckmark: false,
       selectedColor: colorScheme.primaryContainer,
       labelStyle: TextStyle(
-        color: isSelected ? colorScheme.onPrimaryContainer : colorScheme.onSurfaceVariant,
+        color: isSelected
+            ? colorScheme.onPrimaryContainer
+            : colorScheme.onSurfaceVariant,
         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
       ),
       shape: const StadiumBorder(),
       side: BorderSide(
-        color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.5),
+        color: isSelected
+            ? colorScheme.primary
+            : colorScheme.outlineVariant.withValues(alpha: 0.5),
         width: isSelected ? 1.5 : 1,
       ),
     );
@@ -177,16 +225,27 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
                       color: colorScheme.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Icon(Icons.tune_rounded, color: colorScheme.primary, size: 22),
+                    child: Icon(
+                      Icons.tune_rounded,
+                      color: colorScheme.primary,
+                      size: 22,
+                    ),
                   ),
                   const SizedBox(width: 16),
-                  Text('筛选收藏内容', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+                  Text(
+                    '筛选收藏内容',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const Spacer(),
                   IconButton.filledTonal(
                     onPressed: _resetAll,
                     icon: const Icon(Icons.refresh_rounded, size: 20),
                     tooltip: '重置所有',
-                    style: IconButton.styleFrom(foregroundColor: colorScheme.error),
+                    style: IconButton.styleFrom(
+                      foregroundColor: colorScheme.error,
+                    ),
                   ),
                 ],
               ),
@@ -201,22 +260,38 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
-                        children: _platforms.map((p) => _buildChoiceChip(
-                          _platformLabels[p] ?? p.toUpperCase(),
-                          _selectedPlatforms.contains(p),
-                          (selected) => setState(() => selected ? _selectedPlatforms.add(p) : _selectedPlatforms.remove(p)),
-                        )).toList(),
+                        children: _platforms
+                            .map(
+                              (p) => _buildChoiceChip(
+                                _platformLabels[p] ?? p.toUpperCase(),
+                                _selectedPlatforms.contains(p),
+                                (selected) => setState(
+                                  () => selected
+                                      ? _selectedPlatforms.add(p)
+                                      : _selectedPlatforms.remove(p),
+                                ),
+                              ),
+                            )
+                            .toList(),
                       ),
 
                       _buildSectionHeader('处理状态'),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
-                        children: _statuses.map((s) => _buildChoiceChip(
-                          _statusLabels[s] ?? s,
-                          _selectedStatuses.contains(s),
-                          (selected) => setState(() => selected ? _selectedStatuses.add(s) : _selectedStatuses.remove(s)),
-                        )).toList(),
+                        children: _statuses
+                            .map(
+                              (s) => _buildChoiceChip(
+                                _statusLabels[s] ?? s,
+                                _selectedStatuses.contains(s),
+                                (selected) => setState(
+                                  () => selected
+                                      ? _selectedStatuses.add(s)
+                                      : _selectedStatuses.remove(s),
+                                ),
+                              ),
+                            )
+                            .toList(),
                       ),
 
                       _buildSectionHeader('标签筛选'),
@@ -226,18 +301,32 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
                           child: Wrap(
                             spacing: 8,
                             runSpacing: 8,
-                            children: _selectedTags.map((tag) => InputChip(
-                              label: Text('#$tag'),
-                              onDeleted: () => setState(() => _selectedTags.remove(tag)),
-                              deleteIcon: Icon(Icons.close_rounded, size: 14, color: colorScheme.onPrimaryContainer),
-                              shape: const StadiumBorder(),
-                              backgroundColor: colorScheme.primaryContainer,
-                              labelStyle: TextStyle(
-                                color: colorScheme.onPrimaryContainer,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              side: BorderSide(color: colorScheme.primary, width: 1.5),
-                            )).toList(),
+                            children: _selectedTags
+                                .map(
+                                  (tag) => InputChip(
+                                    label: Text('#$tag'),
+                                    onDeleted: () => setState(
+                                      () => _selectedTags.remove(tag),
+                                    ),
+                                    deleteIcon: Icon(
+                                      Icons.close_rounded,
+                                      size: 14,
+                                      color: colorScheme.onPrimaryContainer,
+                                    ),
+                                    shape: const StadiumBorder(),
+                                    backgroundColor:
+                                        colorScheme.primaryContainer,
+                                    labelStyle: TextStyle(
+                                      color: colorScheme.onPrimaryContainer,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    side: BorderSide(
+                                      color: colorScheme.primary,
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                )
+                                .toList(),
                           ),
                         ),
                       _buildTextField(
@@ -246,15 +335,25 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
                         hint: '输入关键词搜索并添加...',
                         icon: Icons.tag_rounded,
                         onChanged: (v) => _onTagInputChanged(v, globalTags),
-                        suffixIcon: allTagsAsync.isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : null,
+                        suffixIcon: allTagsAsync.isLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : null,
                       ),
-                      if (_tagInputController.text.isNotEmpty && _tagSuggestions.isEmpty)
+                      if (_tagInputController.text.isNotEmpty &&
+                          _tagSuggestions.isEmpty)
                         Container(
                           margin: const EdgeInsets.only(top: 12),
                           width: double.infinity,
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                            color: colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.3),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Center(
@@ -270,19 +369,26 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                            color: colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.3),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Wrap(
                             spacing: 8,
                             runSpacing: 8,
-                            children: _tagSuggestions.map((tag) => ActionChip(
-                              label: Text(tag),
-                              onPressed: () => _addTag(tag),
-                              shape: const StadiumBorder(),
-                              backgroundColor: colorScheme.surface,
-                              side: BorderSide(color: colorScheme.outlineVariant),
-                            )).toList(),
+                            children: _tagSuggestions
+                                .map(
+                                  (tag) => ActionChip(
+                                    label: Text(tag),
+                                    onPressed: () => _addTag(tag),
+                                    shape: const StadiumBorder(),
+                                    backgroundColor: colorScheme.surface,
+                                    side: BorderSide(
+                                      color: colorScheme.outlineVariant,
+                                    ),
+                                  ),
+                                )
+                                .toList(),
                           ),
                         ),
 
@@ -299,23 +405,52 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          _buildChoiceChip('全部时间', _dateRange == null, (s) => setState(() => _dateRange = null)),
+                          _buildChoiceChip(
+                            '全部时间',
+                            _dateRange == null,
+                            (s) => setState(() => _dateRange = null),
+                          ),
                           _buildDatePresetChip('今天', 0),
                           _buildDatePresetChip('过去 7 天', 7),
                           _buildDatePresetChip('过去 30 天', 30),
                           ActionChip(
-                            label: Text(_dateRange != null && !_isPresetRange(_dateRange!)
-                                ? DateFormat('yyyy-MM-dd').format(_dateRange!.start)
-                                : '自定义日期'),
-                            avatar: const Icon(Icons.calendar_today_rounded, size: 16),
+                            label: Text(
+                              _dateRange != null && !_isPresetRange(_dateRange!)
+                                  ? DateFormat(
+                                      'yyyy-MM-dd',
+                                    ).format(_dateRange!.start)
+                                  : '自定义日期',
+                            ),
+                            avatar: const Icon(
+                              Icons.calendar_today_rounded,
+                              size: 16,
+                            ),
                             onPressed: _showExpressiveDatePicker,
                             shape: const StadiumBorder(),
-                            backgroundColor: (_dateRange != null && !_isPresetRange(_dateRange!)) ? colorScheme.primaryContainer : null,
+                            backgroundColor:
+                                (_dateRange != null &&
+                                    !_isPresetRange(_dateRange!))
+                                ? colorScheme.primaryContainer
+                                : null,
                             labelStyle: TextStyle(
-                              color: (_dateRange != null && !_isPresetRange(_dateRange!)) ? colorScheme.onPrimaryContainer : null,
-                              fontWeight: (_dateRange != null && !_isPresetRange(_dateRange!)) ? FontWeight.bold : null,
+                              color:
+                                  (_dateRange != null &&
+                                      !_isPresetRange(_dateRange!))
+                                  ? colorScheme.onPrimaryContainer
+                                  : null,
+                              fontWeight:
+                                  (_dateRange != null &&
+                                      !_isPresetRange(_dateRange!))
+                                  ? FontWeight.bold
+                                  : null,
                             ),
-                            side: BorderSide(color: (_dateRange != null && !_isPresetRange(_dateRange!)) ? colorScheme.primary : colorScheme.outlineVariant),
+                            side: BorderSide(
+                              color:
+                                  (_dateRange != null &&
+                                      !_isPresetRange(_dateRange!))
+                                  ? colorScheme.primary
+                                  : colorScheme.outlineVariant,
+                            ),
                           ),
                         ],
                       ),
@@ -326,27 +461,57 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          _buildChoiceChip(
-                            '关键词',
-                            _searchMode == 'keyword',
-                            (selected) {
-                              if (selected) {
-                                setState(() => _searchMode = 'keyword');
-                              }
-                            },
-                          ),
-                          _buildChoiceChip(
-                            '语义',
-                            _searchMode == 'semantic',
-                            (selected) {
-                              if (selected) {
-                                setState(() => _searchMode = 'semantic');
-                              }
-                            },
-                          ),
+                          _buildChoiceChip('关键词', _searchMode == 'keyword', (
+                            selected,
+                          ) {
+                            if (selected) {
+                              setState(() => _searchMode = 'keyword');
+                            }
+                          }),
+                          _buildChoiceChip('语义', _searchMode == 'semantic', (
+                            selected,
+                          ) {
+                            if (selected) {
+                              setState(() => _searchMode = 'semantic');
+                            }
+                          }),
                         ],
                       ),
                       if (_searchMode == 'semantic') ...[
+                        const SizedBox(height: 12),
+                        Text('检索范围', style: theme.textTheme.bodyMedium),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _buildChoiceChip(
+                              '收藏库',
+                              _semanticScope == 'library',
+                              (selected) {
+                                if (selected) {
+                                  setState(() => _semanticScope = 'library');
+                                }
+                              },
+                            ),
+                            _buildChoiceChip(
+                              '探索池',
+                              _semanticScope == 'discovery',
+                              (selected) {
+                                if (selected) {
+                                  setState(() => _semanticScope = 'discovery');
+                                }
+                              },
+                            ),
+                            _buildChoiceChip('全部', _semanticScope == 'all', (
+                              selected,
+                            ) {
+                              if (selected) {
+                                setState(() => _semanticScope = 'all');
+                              }
+                            }),
+                          ],
+                        ),
                         const SizedBox(height: 12),
                         Text(
                           '语义召回数量: ${_semanticTopK.round()}',
@@ -375,7 +540,9 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
                       onPressed: () => Navigator.of(context).pop(),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                       ),
                       child: const Text('取消'),
                     ),
@@ -388,16 +555,21 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
                         Navigator.of(context).pop({
                           'platforms': _selectedPlatforms.toList(),
                           'statuses': _selectedStatuses.toList(),
-                          'author': _authorController.text.trim().isEmpty ? null : _authorController.text.trim(),
+                          'author': _authorController.text.trim().isEmpty
+                              ? null
+                              : _authorController.text.trim(),
                           'dateRange': _dateRange,
                           'tags': _selectedTags.toList(),
                           'searchMode': _searchMode,
                           'semanticTopK': _semanticTopK.round(),
+                          'semanticScope': _semanticScope,
                         });
                       },
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                       ),
                       child: const Text('应用筛选条件'),
                     ),
@@ -442,19 +614,33 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
+        ),
       ),
     );
   }
 
   Widget _buildDatePresetChip(String label, int days) {
     final now = DateTime.now();
-    final start = DateTime(now.year, now.month, now.day).subtract(Duration(days: days));
+    final start = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: days));
     final range = DateTimeRange(start: start, end: now);
-    final isSelected = _dateRange != null && _isPresetRange(_dateRange!) && 
-                      _dateRange!.start.day == start.day && _dateRange!.duration.inDays == days;
-    
-    return _buildChoiceChip(label, isSelected, (s) => setState(() => _dateRange = s ? range : null));
+    final isSelected =
+        _dateRange != null &&
+        _isPresetRange(_dateRange!) &&
+        _dateRange!.start.day == start.day &&
+        _dateRange!.duration.inDays == days;
+
+    return _buildChoiceChip(
+      label,
+      isSelected,
+      (s) => setState(() => _dateRange = s ? range : null),
+    );
   }
 
   void _showExpressiveDatePicker() async {
@@ -468,10 +654,7 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
       builder: (context, child) {
         return Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 400,
-              maxHeight: 560,
-            ),
+            constraints: const BoxConstraints(maxWidth: 400, maxHeight: 560),
             child: Theme(
               data: Theme.of(context).copyWith(
                 colorScheme: colorScheme.copyWith(
@@ -497,25 +680,43 @@ class _FilterDialogState extends ConsumerState<FilterDialog> {
                   rangePickerShape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(28),
                   ),
-                  rangePickerHeaderBackgroundColor: colorScheme.primaryContainer,
-                  rangePickerHeaderForegroundColor: colorScheme.onPrimaryContainer,
+                  rangePickerHeaderBackgroundColor:
+                      colorScheme.primaryContainer,
+                  rangePickerHeaderForegroundColor:
+                      colorScheme.onPrimaryContainer,
                   dayStyle: TextStyle(color: colorScheme.onSurface),
                   yearStyle: TextStyle(color: colorScheme.onSurface),
                   rangePickerShadowColor: colorScheme.shadow,
                   rangePickerSurfaceTintColor: colorScheme.surfaceTint,
-                  rangeSelectionBackgroundColor: colorScheme.primary.withValues(alpha: 0.15),
-                  rangeSelectionOverlayColor: WidgetStateProperty.all(colorScheme.primary.withValues(alpha: 0.12)),
-                  dayOverlayColor: WidgetStateProperty.all(colorScheme.primary.withValues(alpha: 0.12)),
+                  rangeSelectionBackgroundColor: colorScheme.primary.withValues(
+                    alpha: 0.15,
+                  ),
+                  rangeSelectionOverlayColor: WidgetStateProperty.all(
+                    colorScheme.primary.withValues(alpha: 0.12),
+                  ),
+                  dayOverlayColor: WidgetStateProperty.all(
+                    colorScheme.primary.withValues(alpha: 0.12),
+                  ),
                   cancelButtonStyle: TextButton.styleFrom(
                     foregroundColor: colorScheme.onSurface,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                   ),
                   confirmButtonStyle: FilledButton.styleFrom(
                     backgroundColor: colorScheme.primary,
                     foregroundColor: colorScheme.onPrimary,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                   ),
                 ),
               ),
@@ -534,7 +735,8 @@ class _AnimatedDatePickerWrapper extends StatefulWidget {
   const _AnimatedDatePickerWrapper({required this.child});
 
   @override
-  State<_AnimatedDatePickerWrapper> createState() => _AnimatedDatePickerWrapperState();
+  State<_AnimatedDatePickerWrapper> createState() =>
+      _AnimatedDatePickerWrapperState();
 }
 
 class _AnimatedDatePickerWrapperState extends State<_AnimatedDatePickerWrapper>
@@ -571,10 +773,7 @@ class _AnimatedDatePickerWrapperState extends State<_AnimatedDatePickerWrapper>
   Widget build(BuildContext context) {
     return FadeTransition(
       opacity: _fadeAnimation,
-      child: ScaleTransition(
-        scale: _scaleAnimation,
-        child: widget.child,
-      ),
+      child: ScaleTransition(scale: _scaleAnimation, child: widget.child),
     );
   }
 }

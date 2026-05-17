@@ -11,6 +11,7 @@ abstract class ShareCard with _$ShareCard {
     required int id,
     required String platform,
     required String url,
+    String? status,
     @JsonKey(name: 'clean_url') String? cleanUrl,
     @JsonKey(name: 'content_type') String? contentType,
     @JsonKey(name: 'effective_layout_type') String? layoutType,
@@ -24,6 +25,11 @@ abstract class ShareCard with _$ShareCard {
     @Default([]) List<String> tags,
     @JsonKey(name: 'is_nsfw') @Default(false) bool isNsfw,
     @JsonKey(name: 'review_status') String? reviewStatus,
+    @JsonKey(name: 'discovery_state') String? discoveryState,
+    @JsonKey(name: 'semantic_score') double? semanticScore,
+    @JsonKey(name: 'semantic_match_source') String? semanticMatchSource,
+    @JsonKey(name: 'semantic_chunk_title') String? semanticChunkTitle,
+    @JsonKey(name: 'semantic_source_text') String? semanticSourceText,
     @JsonKey(name: 'published_at') DateTime? publishedAt,
     @JsonKey(name: 'created_at') DateTime? createdAt,
     @JsonKey(name: 'view_count') @Default(0) int viewCount,
@@ -34,6 +40,12 @@ abstract class ShareCard with _$ShareCard {
     // ShareCard 使用统一横版卡片展示
     return true; // Default to landscape
   }
+
+  bool get hasSemanticMatch =>
+      semanticScore != null ||
+      semanticMatchSource != null ||
+      semanticChunkTitle != null ||
+      semanticSourceText != null;
 
   factory ShareCard.fromJson(Map<String, dynamic> json) =>
       _$ShareCardFromJson(json);
@@ -76,7 +88,7 @@ abstract class ContentDetail with _$ContentDetail {
     @JsonKey(name: 'share_count') @Default(0) int shareCount,
     @JsonKey(name: 'comment_count') @Default(0) int commentCount,
     @JsonKey(name: 'extra_stats') @Default({}) Map<String, dynamic> extraStats,
-    
+
     // 结构化扩展组件
     @JsonKey(name: 'context_data') Map<String, dynamic>? contextData,
     @JsonKey(name: 'rich_payload') Map<String, dynamic>? richPayload,

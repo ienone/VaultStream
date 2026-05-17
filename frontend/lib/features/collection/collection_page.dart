@@ -13,7 +13,6 @@ import 'widgets/dialogs/batch_action_sheet.dart';
 import 'widgets/list/collection_grid.dart';
 import 'widgets/list/collection_error_view.dart';
 import 'widgets/list/collection_skeleton.dart';
-import '../../core/network/sse_service.dart';
 import '../../core/utils/toast.dart';
 
 class CollectionPage extends ConsumerStatefulWidget {
@@ -93,15 +92,6 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Listen to SSE events for real-time updates
-    ref.listen<AsyncValue<SseEvent>>(sseEventStreamProvider, (previous, next) {
-      next.whenData((event) {
-        if (event.type == 'content_updated') {
-          ref.invalidate(collectionProvider);
-        }
-      });
-    });
-
     final filterState = ref.watch(collectionFilterProvider);
     final collectionAsync = ref.watch(collectionProvider);
     final batchSelection = ref.watch(batchSelectionProvider);
@@ -232,6 +222,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
           ),
         IconButton(
           icon: const Icon(Icons.refresh_rounded),
+          tooltip: '刷新列表',
           onPressed: () => ref.invalidate(collectionProvider),
         ),
         OpenContainer<Map<String, dynamic>>(
@@ -241,14 +232,19 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
           closedElevation: 0,
           onClosed: (result) {
             if (result != null) {
-              ref.read(collectionFilterProvider.notifier).setFilters(
-                    platforms: (result['platforms'] as List<dynamic>?)?.cast<String>(),
-                    statuses: (result['statuses'] as List<dynamic>?)?.cast<String>(),
+              ref
+                  .read(collectionFilterProvider.notifier)
+                  .setFilters(
+                    platforms: (result['platforms'] as List<dynamic>?)
+                        ?.cast<String>(),
+                    statuses: (result['statuses'] as List<dynamic>?)
+                        ?.cast<String>(),
                     author: result['author'],
                     dateRange: result['dateRange'],
                     tags: (result['tags'] as List<dynamic>?)?.cast<String>(),
                     searchMode: result['searchMode'] as String?,
                     semanticTopK: result['semanticTopK'] as int?,
+                    semanticScope: result['semanticScope'] as String?,
                   );
             }
           },
@@ -260,6 +256,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
             initialTags: filterState.tags,
             initialSearchMode: filterState.searchMode,
             initialSemanticTopK: filterState.semanticTopK,
+            initialSemanticScope: filterState.semanticScope,
             availableTags: _getAvailableTags(),
           ),
           closedBuilder: (context, openContainer) => IconButton(
@@ -286,7 +283,6 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     }
     return availableTags.toList();
   }
-
 
   Widget _buildSearchAnchor(BuildContext context, ThemeData theme) {
     final historyAsync = ref.watch(searchHistoryProvider);
@@ -327,7 +323,6 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
       viewOnSubmitted: _performSearch,
     );
   }
-
 }
 
 class _AddContentFab extends StatelessWidget {

@@ -20,6 +20,7 @@ class AutomationTab extends ConsumerWidget {
     final discoverySettingsAsync = ref.watch(discoverySettingsStateProvider);
     final discoverySourcesAsync = ref.watch(discoverySourcesProvider);
     final favoritesSyncAsync = ref.watch(favoritesSyncStatusProvider);
+    final semanticStatusAsync = ref.watch(semanticIndexStatusProvider);
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -54,7 +55,7 @@ class AutomationTab extends ConsumerWidget {
           title: '大模型引擎 (LLM)',
           icon: Icons.psychology_rounded,
         ),
-        _buildLlmSettings(context, ref, settingsAsync),
+        _buildLlmSettings(context, ref, settingsAsync, semanticStatusAsync),
         const SizedBox(height: 40),
       ],
     );
@@ -640,6 +641,12 @@ class AutomationTab extends ConsumerWidget {
                     category: 'llm',
                   ),
             ),
+            ExpandableSettingTile(
+              title: '摘要模型 (Summary LLM)',
+              subtitle: _getSummarySubtitle(settings),
+              icon: Icons.auto_awesome_rounded,
+              expandedContent: _buildSummaryConfigEditor(context, ref),
+            ),
           ],
         );
       },
@@ -652,6 +659,7 @@ class AutomationTab extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     AsyncValue<List<SystemSetting>> settingsAsync,
+    AsyncValue<Map<String, dynamic>> semanticStatusAsync,
   ) {
     return settingsAsync.when(
       data: (settings) => SettingGroup(
@@ -672,7 +680,11 @@ class AutomationTab extends ConsumerWidget {
             title: 'Gemini Embedding',
             subtitle: _getEmbeddingSubtitle(settings),
             icon: Icons.hub_rounded,
-            expandedContent: _buildEmbeddingConfigEditor(context, ref),
+            expandedContent: _buildEmbeddingConfigEditor(
+              context,
+              ref,
+              semanticStatusAsync,
+            ),
           ),
         ],
       ),
@@ -753,6 +765,32 @@ class AutomationTab extends ConsumerWidget {
     final keyLabel = _isEnvConfigured(apiKey) ? '密钥已配置' : _maskKey(apiKey);
     if (model.isEmpty) return keyLabel;
     return '$model • $keyLabel';
+  }
+
+  String _getSummarySubtitle(List<SystemSetting> settings) {
+    final model =
+        settings
+                .firstWhere(
+                  (s) => s.key == 'summary_model',
+                  orElse: () => const SystemSetting(key: '', value: ''),
+                )
+                .value
+            as String? ??
+        '';
+    final apiKey =
+        settings
+                .firstWhere(
+                  (s) => s.key == 'summary_api_key',
+                  orElse: () => const SystemSetting(key: '', value: ''),
+                )
+                .value
+            as String? ??
+        '';
+
+    if (model.isEmpty && apiKey.isEmpty) return '未配置';
+    final keyLabel = _isEnvConfigured(apiKey) ? '密钥已配置' : _maskKey(apiKey);
+    final modelLabel = model.isEmpty ? '使用后端默认模型' : model;
+    return '$modelLabel • $keyLabel';
   }
 
   String _getEmbeddingSubtitle(List<SystemSetting> settings) {
@@ -904,7 +942,130 @@ class AutomationTab extends ConsumerWidget {
     );
   }
 
-  Widget _buildEmbeddingConfigEditor(BuildContext context, WidgetRef ref) {
+  Widget _buildSummaryConfigEditor(BuildContext context, WidgetRef ref) {
+    final settingsAsync = ref.watch(systemSettingsProvider);
+    return settingsAsync.when(
+      data: (settings) {
+        final apiKey =
+            settings
+                    .firstWhere(
+                      (s) => s.key == 'summary_api_key',
+                      orElse: () => const SystemSetting(key: '', value: ''),
+                    )
+                    .value
+                as String? ??
+            '';
+        final model =
+            settings
+                    .firstWhere(
+                      (s) => s.key == 'summary_model',
+                      orElse: () => const SystemSetting(
+                        key: '',
+                        value: 'gemini-3.1-flash-lite-preview',
+                      ),
+                    )
+                    .value
+                as String? ??
+            'gemini-3.1-flash-lite-preview';
+        final apiVersion =
+            settings
+                    .firstWhere(
+                      (s) => s.key == 'summary_api_version',
+                      orElse: () =>
+                          const SystemSetting(key: '', value: 'v1beta'),
+                    )
+                    .value
+                as String? ??
+            'v1beta';
+
+        final isKeyFromEnv = _isEnvConfigured(apiKey);
+        final keyController = TextEditingController(
+          text: isKeyFromEnv ? '' : apiKey,
+        );
+        final modelController = TextEditingController(text: model);
+        final versionController = TextEditingController(text: apiVersion);
+
+        return Column(
+          children: [
+            TextField(
+              controller: keyController,
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: 'Summary API Key',
+                hintText: isKeyFromEnv ? '已配置，输入新值可覆盖' : 'AIza...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: modelController,
+              decoration: InputDecoration(
+                labelText: 'Summary Model',
+                hintText: 'gemini-3.1-flash-lite-preview',
+                helperText: '仅用于摘要、标签和 RAG 切片生成',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: versionController,
+              decoration: InputDecoration(
+                labelText: 'Gemini API Version',
+                hintText: 'v1beta',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.tonal(
+                onPressed: () async {
+                  final notifier = ref.read(systemSettingsProvider.notifier);
+                  if (keyController.text.isNotEmpty) {
+                    await notifier.updateSetting(
+                      'summary_api_key',
+                      keyController.text,
+                      category: 'summary',
+                    );
+                  }
+                  await notifier.updateSetting(
+                    'summary_model',
+                    modelController.text.trim().isEmpty
+                        ? 'gemini-3.1-flash-lite-preview'
+                        : modelController.text.trim(),
+                    category: 'summary',
+                  );
+                  await notifier.updateSetting(
+                    'summary_api_version',
+                    versionController.text.trim().isEmpty
+                        ? 'v1beta'
+                        : versionController.text.trim(),
+                    category: 'summary',
+                  );
+                  if (context.mounted) showToast(context, '摘要模型配置已保存');
+                },
+                child: const Text('保存配置'),
+              ),
+            ),
+          ],
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (_, _) => const Text('加载失败'),
+    );
+  }
+
+  Widget _buildEmbeddingConfigEditor(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<Map<String, dynamic>> semanticStatusAsync,
+  ) {
     final settingsAsync = ref.watch(systemSettingsProvider);
     return settingsAsync.when(
       data: (settings) {
@@ -943,6 +1104,8 @@ class AutomationTab extends ConsumerWidget {
 
         return Column(
           children: [
+            _buildSemanticIndexStatusCard(context, ref, semanticStatusAsync),
+            const SizedBox(height: 12),
             TextField(
               controller: keyController,
               obscureText: true,
@@ -1014,6 +1177,143 @@ class AutomationTab extends ConsumerWidget {
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (_, _) => const Text('加载失败'),
+    );
+  }
+
+  Widget _buildSemanticIndexStatusCard(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<Map<String, dynamic>> statusAsync,
+  ) {
+    final theme = Theme.of(context);
+    return statusAsync.when(
+      data: (status) {
+        final counts = <String, int>{
+          for (final item in (status['status_counts'] as List<dynamic>? ?? []))
+            if (item is Map)
+              item['status']?.toString() ?? 'unknown':
+                  (item['count'] as num?)?.toInt() ?? 0,
+        };
+        final indexed = (status['indexed_total'] as num?)?.toInt() ?? 0;
+        final parseSuccess =
+            (status['parse_success_total'] as num?)?.toInt() ?? 0;
+        final pending =
+            (status['pending_total'] as num?)?.toInt() ??
+            (counts['pending'] ?? 0);
+        final failed =
+            (status['failed_total'] as num?)?.toInt() ??
+            (counts['failed'] ?? 0);
+        final lastAttempt = status['last_attempt_at']?.toString();
+        final failures = (status['recent_failures'] as List<dynamic>? ?? [])
+            .whereType<Map>();
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.45,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.monitor_heart_outlined, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('RAG 索引状态', style: theme.textTheme.titleSmall),
+                  ),
+                  IconButton(
+                    tooltip: '刷新索引状态',
+                    onPressed: () =>
+                        ref.invalidate(semanticIndexStatusProvider),
+                    icon: const Icon(Icons.refresh_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _StatusPill(label: '可检索', value: '$indexed/$parseSuccess'),
+                  _StatusPill(label: '等待', value: '$pending'),
+                  _StatusPill(label: '失败', value: '$failed'),
+                ],
+              ),
+              if (lastAttempt != null && lastAttempt.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text('最近尝试: $lastAttempt', style: theme.textTheme.bodySmall),
+              ],
+              if (failures.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                ...failures.take(3).map((item) {
+                  final title =
+                      item['title']?.toString() ?? '内容 ${item['content_id']}';
+                  final reason = item['failure_reason']?.toString() ?? '未知失败';
+                  final retry = (item['retry_count'] as num?)?.toInt() ?? 0;
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      '$title · 重试 $retry · $reason',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
+                    ),
+                  );
+                }),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      await ref
+                          .read(apiClientProvider)
+                          .post(
+                            '/search/semantic/reindex',
+                            data: {'scope': 'failed', 'limit': 100},
+                          );
+                      ref.invalidate(semanticIndexStatusProvider);
+                      if (context.mounted) showToast(context, '已调度失败索引重试');
+                    },
+                    icon: const Icon(Icons.replay_rounded),
+                    label: const Text('重试失败项'),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+      loading: () => const LinearProgressIndicator(minHeight: 2),
+      error: (error, _) => Text('RAG 状态加载失败: $error'),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Text('$label $value', style: theme.textTheme.labelMedium),
     );
   }
 }

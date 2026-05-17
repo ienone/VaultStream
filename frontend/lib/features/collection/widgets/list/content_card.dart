@@ -251,6 +251,12 @@ class _ContentCardInternalState extends State<_ContentCardInternal> {
                                       ),
                                     ),
 
+                                    if (content.hasSemanticMatch &&
+                                        !widget.isTinyCard) ...[
+                                      const SizedBox(height: 8),
+                                      _SemanticMatchBadge(content: content),
+                                    ],
+
                                     const SizedBox(height: 8),
 
                                     _CardFooter(
@@ -457,12 +463,74 @@ class _CardContentSnippet extends StatelessWidget {
           fontWeight: FontWeight.w800,
           height: 1.25,
           color: colorScheme.onSurface,
-          letterSpacing: -0.4,
+          letterSpacing: 0,
         ),
         maxLines: isTinyCard ? 2 : 3,
         overflow: TextOverflow.ellipsis,
       );
     }
+  }
+}
+
+class _SemanticMatchBadge extends StatelessWidget {
+  final ShareCard content;
+
+  const _SemanticMatchBadge({required this.content});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final score = content.semanticScore;
+    final source = switch (content.semanticMatchSource) {
+      'hybrid' => '混合命中',
+      'vector' => '语义命中',
+      'fts' => '关键词命中',
+      _ => '检索命中',
+    };
+    final chunk = content.semanticChunkTitle?.trim();
+    final tooltip = [
+      if (chunk != null && chunk.isNotEmpty) chunk,
+      if (content.semanticSourceText != null &&
+          content.semanticSourceText!.trim().isNotEmpty)
+        content.semanticSourceText!.trim(),
+    ].join('\n\n');
+
+    return Tooltip(
+      message: tooltip.isEmpty ? source : tooltip,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: colorScheme.secondaryContainer.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.psychology_alt_rounded,
+              size: 14,
+              color: colorScheme.onSecondaryContainer,
+            ),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                score == null
+                    ? source
+                    : '$source ${score.toStringAsFixed(2)}'
+                          '${chunk == null || chunk.isEmpty ? '' : ' • $chunk'}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: colorScheme.onSecondaryContainer,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

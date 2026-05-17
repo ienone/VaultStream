@@ -1,3 +1,4 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/network/api_client.dart';
 import '../models/system_setting.dart';
@@ -34,3 +35,11 @@ class SystemSettings extends _$SystemSettings {
     ref.invalidateSelf();
   }
 }
+
+final semanticIndexStatusProvider =
+    FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+      final response = await ref
+          .read(apiClientProvider)
+          .get('/search/semantic/index-status');
+      return Map<String, dynamic>.from(response.data as Map);
+    });

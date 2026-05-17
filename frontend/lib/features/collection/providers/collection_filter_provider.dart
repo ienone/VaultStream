@@ -13,6 +13,7 @@ class CollectionFilterState {
   final List<String> tags;
   final String searchMode; // keyword | semantic
   final int semanticTopK;
+  final String semanticScope; // library | discovery | all
 
   const CollectionFilterState({
     this.platforms = const [],
@@ -23,6 +24,7 @@ class CollectionFilterState {
     this.tags = const [],
     this.searchMode = 'keyword',
     this.semanticTopK = 20,
+    this.semanticScope = 'library',
   });
 
   CollectionFilterState copyWith({
@@ -34,6 +36,7 @@ class CollectionFilterState {
     List<String>? tags,
     String? searchMode,
     int? semanticTopK,
+    String? semanticScope,
     bool clearPlatforms = false,
     bool clearStatuses = false,
     bool clearAuthor = false,
@@ -49,6 +52,7 @@ class CollectionFilterState {
       tags: clearTags ? const [] : (tags ?? this.tags),
       searchMode: searchMode ?? this.searchMode,
       semanticTopK: semanticTopK ?? this.semanticTopK,
+      semanticScope: semanticScope ?? this.semanticScope,
     );
   }
 
@@ -78,6 +82,7 @@ class CollectionFilter extends _$CollectionFilter {
     List<String>? tags,
     String? searchMode,
     int? semanticTopK,
+    String? semanticScope,
   }) {
     state = state.copyWith(
       platforms: platforms,
@@ -87,6 +92,7 @@ class CollectionFilter extends _$CollectionFilter {
       tags: tags,
       searchMode: searchMode,
       semanticTopK: semanticTopK,
+      semanticScope: semanticScope,
       clearPlatforms: platforms == null || platforms.isEmpty,
       clearStatuses: statuses == null || statuses.isEmpty,
       clearAuthor: author == null,
@@ -117,5 +123,10 @@ class CollectionFilter extends _$CollectionFilter {
   void setSemanticTopK(int topK) {
     final clamped = topK.clamp(1, 100);
     state = state.copyWith(semanticTopK: clamped);
+  }
+
+  void setSemanticScope(String scope) {
+    if (scope != 'library' && scope != 'discovery' && scope != 'all') return;
+    state = state.copyWith(semanticScope: scope);
   }
 }
