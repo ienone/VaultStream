@@ -1,0 +1,303 @@
+{
+  "ok": 1,
+  "data": {
+    "visible": {
+      "type": 0,
+      "list_id": 0
+    },
+    "created_at": "Tue Mar 03 14:41:32 +0800 2026",
+    "id": "5272393762474811",
+    "mid": "5272393762474811",
+    "edit_count": 1,
+    "can_edit": false,
+    "edit_at": "Tue Mar 03 14:41:41 +0800 2026",
+    "text": "<a  href=\"https://m.weibo.cn/p/index?extparam=%E6%96%B0%E4%B8%96%E7%BA%AA%E7%A6%8F%E9%9F%B3%E6%88%98%E5%A3%AB&containerid=100808db44575f7f01fb35c07cd85c717eb4f4&launchid=10000360-page_H5\" data-hide=\"\"><span class='url-icon'><img style='width: 1rem;height: 1rem' src='https://n.sinaimg.cn/photo/5213b46e/20180926/timeline_card_small_super_default.png'></span><span class=\"surl-text\">新世纪福音战士</span></a> <br />本人担任「翻译协力」的<br />EVANGELION官方授权唯一简体中文版<br />《新世纪福音战士新剧场版：终 项目记录》正式上市！<br /><br />● 随书附赠：“项目工作手册”笔记本<br />● 官方监修内外双封再现原版经典装帧<br />● 完整无删减348页超大容量，33万字海量信息<br /><br />《新世纪福音战士新剧场版：终》到底是如何制作出来的？又是如何以项目的方式进行的？<br />这本书会给你答案。<br /><br /><a  href=\"https://m.weibo.cn/search?containerid=231522type%3D1%26t%3D10%26q%3D%23%E6%96%B0%E4%B8%96%E7%BA%AA%E7%A6%8F%E9%9F%B3%E6%88%98%E5%A3%AB%23&isnewpage=1&launchid=10000360-page_H5\" data-hide=\"\"><span class=\"surl-text\">#新世纪福音战士#</span></a>",
+    "textLength": 364,
+    "source": "新世纪福音战士超话",
+    "favorited": false,
+    "pic_ids": [
+      "684175d9gy1iatqyh43kgj215o1jk7pe",
+      "684175d9gy1iatqywkhj5j215o1jkh5a",
+      "684175d9gy1iatqywctsoj215o1jk4gv",
+      "684175d9gy1iatqyvrdj0j215o1jk7jd",
+      "684175d9gy1iatqywkauaj215o1jk7qb",
+      "684175d9gy1iatqywh4kcj215o1jk4lx"
+    ],
+    "pic_focus_point": [
+      {
+        "focus_point": {
+          "left": 0,
+          "top": 0.0721542,
+          "width": 0.9999999,
+          "height": 0.75
+        },
+        "pic_id": "684175d9gy1iatqywh4kcj215o1jk4lx"
+      },
+      {
+        "focus_point": {
+          "left": 0,
+          "top": 0.036539603,
+          "width": 0.9999999,
+          "height": 0.75
+        },
+        "pic_id": "684175d9gy1iatqywkauaj215o1jk7qb"
+      },
+      {
+        "focus_point": {
+          "left": 0,
+          "top": 0.031178152,
+          "width": 0.9999999,
+          "height": 0.75
+        },
+        "pic_id": "684175d9gy1iatqyvrdj0j215o1jk7jd"
+      },
+      {
+        "focus_point": {
+          "left": 0.016550168,
+          "top": 0.14764036,
+          "width": 0.98344976,
+          "height": 0.7375874
+        },
+        "pic_id": "684175d9gy1iatqywctsoj215o1jk4gv"
+      },
+      {
+        "focus_point": {
+          "left": 0.04559462,
+          "top": 0.28681752,
+          "width": 0.95091,
+          "height": 0.7131824
+        },
+        "pic_id": "684175d9gy1iatqywkhj5j215o1jkh5a"
+      },
+      {
+        "focus_point": {
+          "left": 0.04914769,
+          "top": 0.14854066,
+          "width": 0.9488701,
+          "height": 0.7116526
+        },
+        "pic_id": "684175d9gy1iatqyh43kgj215o1jk7pe"
+      }
+    ],
+    "thumbnail_pic": "https://wx3.sinaimg.cn/thumbnail/684175d9gy1iatqyh43kgj215o1jk7pe.jpg",
+    "bmiddle_pic": "http://wx3.sinaimg.cn/bmiddle/684175d9gy1iatqyh43kgj215o1jk7pe.jpg",
+    "original_pic": "https://wx3.sinaimg.cn/large/684175d9gy1iatqyh43kgj215o1jk7pe.jpg",
+    "is_paid": false,
+    "mblog_vip_type": 0,
+    "user": {
+      "id": 1749120473,
+      "screen_name": "洗手见天使_紫鹰",
+      "profile_image_url": "https://tva4.sinaimg.cn/crop.0.0.180.180.180/684175d9jw1e8qgp5bmzyj2050050aa8.jpg?KID=imgbed,tva&Expires=1772707942&ssig=%2F4MUiPDPcn",
+      "profile_url": "https://m.weibo.cn/u/1749120473?launchid=10000360-page_H5",
+      "close_blue_v": false,
+      "description": "总结并刊载EVA的最新情报 EVA官方项目书翻译协力【合作联系】ayakawa@evangelion.hk",
+      "follow_me": false,
+      "following": false,
+      "follow_count": 175,
+      "followers_count": "5.4万",
+      "cover_image_phone": "https://wx3.sinaimg.cn/crop.0.0.640.640.640/684175d9gy1hgrwa7h033j20e80e8jso.jpg",
+      "avatar_hd": "https://ww4.sinaimg.cn/orj480/684175d9jw1e8qgp5bmzyj2050050aa8.jpg",
+      "badge": {
+        "bind_taobao": 1,
+        "unread_pool": 1,
+        "unread_pool_ext": 1,
+        "dzwbqlx_2016": 1,
+        "user_name_certificate": 1,
+        "pc_new": 7,
+        "weibozhiyebobao_2021": 1,
+        "user_identity_auth": 1
+      },
+      "statuses_count": 7810,
+      "verified": true,
+      "verified_type": 0,
+      "gender": "m",
+      "mbtype": 12,
+      "svip": 1,
+      "urank": 40,
+      "mbrank": 1,
+      "followers_count_str": "5.4万",
+      "verified_type_ext": 2,
+      "verified_reason": "动漫博主 微博原创视频博主",
+      "like": false,
+      "like_me": false,
+      "special_follow": false,
+      "user_token": "a0.MTg1ZGEwZWU0OWVhNGQyY_b3x-k9th-5H7R9OBFFb8oOPHDB0HRtQAdSt7Vo3-cg"
+    },
+    "reposts_count": 15,
+    "comments_count": 6,
+    "reprint_cmt_count": 0,
+    "attitudes_count": 34,
+    "mixed_count": 0,
+    "pending_approval_count": 0,
+    "isLongText": true,
+    "show_mlevel": 0,
+    "topic_id": "1022:100808db44575f7f01fb35c07cd85c717eb4f4",
+    "sync_mblog": true,
+    "is_imported_topic": true,
+    "darwin_tags": [],
+    "ad_marked": false,
+    "mblogtype": 0,
+    "item_category": "status",
+    "rid": "0_0_0_5059528795326558334_0_0_0",
+    "number_display_strategy": {
+      "apply_scenario_flag": 19,
+      "display_text_min_number": 1000000,
+      "display_text": "100万+"
+    },
+    "comment_guide_ext": "guide_type:-1|source:1",
+    "content_auth": 0,
+    "is_show_mixed": false,
+    "safe_tags": 21474838528,
+    "comment_manage_info": {
+      "comment_permission_type": -1,
+      "approval_comment_type": 0,
+      "comment_sort_type": 0
+    },
+    "pic_num": 6,
+    "jump_type": 1,
+    "mlevel": 0,
+    "region_name": "发布于 法国",
+    "region_opt": 1,
+    "detail_bottom_bar": 0,
+    "page_info": {
+      "type": "topic",
+      "object_type": 0,
+      "page_pic": {
+        "url": "https://wx3.sinaimg.cn/thumbnail/0068LY2fgy1futit64ml6j30t60t6k0y.jpg"
+      },
+      "page_url": "https://m.weibo.cn/p/index?extparam=%E6%96%B0%E4%B8%96%E7%BA%AA%E7%A6%8F%E9%9F%B3%E6%88%98%E5%A3%AB&containerid=100808db44575f7f01fb35c07cd85c717eb4f4&launchid=10000360-page_H5",
+      "page_title": "【超话】新世纪福音战士",
+      "content1": "历史的悲剧性，未来的未知性，现实的矛盾性，EVA是历史的产物，未来的影像，现实的开拓者。透露人性，成长，以及情感。",
+      "content2": "243763人关注"
+    },
+    "pics": [
+      {
+        "pid": "684175d9gy1iatqyh43kgj215o1jk7pe",
+        "url": "https://wx3.sinaimg.cn/orj360/684175d9gy1iatqyh43kgj215o1jk7pe.jpg",
+        "size": "orj360",
+        "geo": {
+          "width": 360,
+          "height": 480,
+          "croped": false
+        },
+        "large": {
+          "size": "large",
+          "url": "https://wx3.sinaimg.cn/mw2000/684175d9gy1iatqyh43kgj215o1jk7pe.jpg",
+          "geo": {
+            "width": "1500",
+            "height": "2000",
+            "croped": false
+          }
+        }
+      },
+      {
+        "pid": "684175d9gy1iatqywkhj5j215o1jkh5a",
+        "url": "https://wx4.sinaimg.cn/orj360/684175d9gy1iatqywkhj5j215o1jkh5a.jpg",
+        "size": "orj360",
+        "geo": {
+          "width": 360,
+          "height": 480,
+          "croped": false
+        },
+        "large": {
+          "size": "large",
+          "url": "https://wx4.sinaimg.cn/mw2000/684175d9gy1iatqywkhj5j215o1jkh5a.jpg",
+          "geo": {
+            "width": "1500",
+            "height": "2000",
+            "croped": false
+          }
+        }
+      },
+      {
+        "pid": "684175d9gy1iatqywctsoj215o1jk4gv",
+        "url": "https://wx4.sinaimg.cn/orj360/684175d9gy1iatqywctsoj215o1jk4gv.jpg",
+        "size": "orj360",
+        "geo": {
+          "width": 360,
+          "height": 480,
+          "croped": false
+        },
+        "large": {
+          "size": "large",
+          "url": "https://wx4.sinaimg.cn/mw2000/684175d9gy1iatqywctsoj215o1jk4gv.jpg",
+          "geo": {
+            "width": "1500",
+            "height": "2000",
+            "croped": false
+          }
+        }
+      },
+      {
+        "pid": "684175d9gy1iatqyvrdj0j215o1jk7jd",
+        "url": "https://wx3.sinaimg.cn/orj360/684175d9gy1iatqyvrdj0j215o1jk7jd.jpg",
+        "size": "orj360",
+        "geo": {
+          "width": 360,
+          "height": 480,
+          "croped": false
+        },
+        "large": {
+          "size": "large",
+          "url": "https://wx3.sinaimg.cn/mw2000/684175d9gy1iatqyvrdj0j215o1jk7jd.jpg",
+          "geo": {
+            "width": "1500",
+            "height": "2000",
+            "croped": false
+          }
+        }
+      },
+      {
+        "pid": "684175d9gy1iatqywkauaj215o1jk7qb",
+        "url": "https://wx2.sinaimg.cn/orj360/684175d9gy1iatqywkauaj215o1jk7qb.jpg",
+        "size": "orj360",
+        "geo": {
+          "width": 360,
+          "height": 480,
+          "croped": false
+        },
+        "large": {
+          "size": "large",
+          "url": "https://wx2.sinaimg.cn/mw2000/684175d9gy1iatqywkauaj215o1jk7qb.jpg",
+          "geo": {
+            "width": "1500",
+            "height": "2000",
+            "croped": false
+          }
+        }
+      },
+      {
+        "pid": "684175d9gy1iatqywh4kcj215o1jk4lx",
+        "url": "https://wx3.sinaimg.cn/orj360/684175d9gy1iatqywh4kcj215o1jk4lx.jpg",
+        "size": "orj360",
+        "geo": {
+          "width": 360,
+          "height": 480,
+          "croped": false
+        },
+        "large": {
+          "size": "large",
+          "url": "https://wx3.sinaimg.cn/mw2000/684175d9gy1iatqywh4kcj215o1jk4lx.jpg",
+          "geo": {
+            "width": "1500",
+            "height": "2000",
+            "croped": false
+          }
+        }
+      }
+    ],
+    "bid": "Quni8anOj",
+    "buttons": [
+      {
+        "type": "follow",
+        "name": "关注",
+        "sub_type": 0,
+        "params": {
+          "uid": 1749120473
+        }
+      }
+    ],
+    "status_title": "新世纪福音战士",
+    "ok": 1
+  }
+}

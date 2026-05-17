@@ -8,6 +8,7 @@ pytest-httpx
 respx
 responses
 python-dotenv
+packaging
 pip-audit
 bandit
 vulture

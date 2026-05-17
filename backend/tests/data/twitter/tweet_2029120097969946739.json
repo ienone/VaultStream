@@ -1,0 +1,126 @@
+{
+  "code": 200,
+  "message": "OK",
+  "tweet": {
+    "url": "https://x.com/nbuna_staff/status/2029120097969946739",
+    "id": "2029120097969946739",
+    "text": "ヨルシカ 新曲「千鳥」MVをYoutuebチャンネルに公開しました。\n\nhttps://youtu.be/t75qlQPXJGw\n\n本作のディレクションは森江康太（@kohta0130）氏です。\n是非ご覧ください。\n\n#ヨルシカ_千鳥\n#ヨルシカ_二人称",
+    "raw_text": {
+      "text": "ヨルシカ 新曲「千鳥」MVをYoutuebチャンネルに公開しました。\n\nhttps://t.co/FIShriAPKJ\n\n本作のディレクションは森江康太（@kohta0130）氏です。\n是非ご覧ください。\n\n#ヨルシカ_千鳥\n#ヨルシカ_二人称 https://t.co/jZnpFTwV3P",
+      "facets": [
+        {
+          "type": "url",
+          "indices": [
+            36,
+            59
+          ],
+          "original": "https://t.co/FIShriAPKJ",
+          "replacement": "https://youtu.be/t75qlQPXJGw",
+          "display": "youtu.be/t75qlQPXJGw"
+        },
+        {
+          "type": "mention",
+          "indices": [
+            77,
+            87
+          ],
+          "original": "kohta0130",
+          "id": "16022684"
+        },
+        {
+          "type": "hashtag",
+          "indices": [
+            104,
+            112
+          ],
+          "original": "ヨルシカ_千鳥"
+        },
+        {
+          "type": "hashtag",
+          "indices": [
+            113,
+            122
+          ],
+          "original": "ヨルシカ_二人称"
+        },
+        {
+          "type": "media",
+          "indices": [
+            123,
+            146
+          ],
+          "id": "2029119510691889153",
+          "display": "pic.x.com/jZnpFTwV3P",
+          "original": "https://t.co/jZnpFTwV3P",
+          "replacement": "https://x.com/nbuna_staff/status/2029120097969946739/photo/1"
+        }
+      ]
+    },
+    "author": {
+      "id": "738199700914872320",
+      "name": "ヨルシカ（n-buna、suis） / Official",
+      "screen_name": "nbuna_staff",
+      "avatar_url": "https://pbs.twimg.com/profile_images/1450477923463569414/c34Nn7Xo_200x200.jpg",
+      "banner_url": "https://pbs.twimg.com/profile_banners/738199700914872320/1764217057",
+      "description": "ヨルシカのオフィシャル アカウントです。 （スタッフがつぶやいてます） メンバー：n-buna（ナブナ） [Gt&Composer] / suis（スイ）[Vocal]",
+      "location": "",
+      "url": "https://x.com/nbuna_staff",
+      "followers": 721503,
+      "following": 6,
+      "joined": "Thu Jun 02 02:44:58 +0000 2016",
+      "likes": 1147,
+      "media_count": 944,
+      "protected": false,
+      "website": {
+        "url": "http://yorushika.com/",
+        "display_url": "yorushika.com"
+      },
+      "tweets": 5211,
+      "avatar_color": null
+    },
+    "replies": 5,
+    "retweets": 332,
+    "likes": 960,
+    "bookmarks": 18,
+    "created_at": "Wed Mar 04 09:01:45 +0000 2026",
+    "created_timestamp": 1772614905,
+    "possibly_sensitive": false,
+    "views": 6481,
+    "is_note_tweet": false,
+    "community_note": null,
+    "lang": "ja",
+    "replying_to": null,
+    "replying_to_status": null,
+    "media": {
+      "all": [
+        {
+          "type": "photo",
+          "id": "2029119510691889153",
+          "url": "https://pbs.twimg.com/media/HCjhcbmawAEqvWO.jpg?name=orig",
+          "width": 2862,
+          "height": 1600
+        }
+      ],
+      "photos": [
+        {
+          "type": "photo",
+          "id": "2029119510691889153",
+          "url": "https://pbs.twimg.com/media/HCjhcbmawAEqvWO.jpg?name=orig",
+          "width": 2862,
+          "height": 1600
+        }
+      ],
+      "external": {
+        "type": "video",
+        "url": "https://www.youtube.com/embed/t75qlQPXJGw",
+        "thumbnail_url": "https://img.youtube.com/vi/t75qlQPXJGw/maxresdefault.jpg",
+        "width": 1280,
+        "height": 720
+      }
+    },
+    "source": "Twitter Web App",
+    "twitter_card": "player",
+    "color": null,
+    "provider": "twitter"
+  }
+}

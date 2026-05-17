@@ -16,6 +16,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = REPO_ROOT / "backend"
 LOCAL_MODULES = {"app", "tests", "scripts"}
 STDLIB_MODULES = set(getattr(sys, "stdlib_module_names", set()))
+CI_SCRIPT_PATHS = [
+    REPO_ROOT / "scripts" / "check_backend_requirements.py",
+    REPO_ROOT / "scripts" / "check_database_schema.py",
+    REPO_ROOT / "scripts" / "check_openapi_docs.py",
+]
 
 PACKAGE_ALIASES = {
     "beautifulsoup4": {"bs4"},
@@ -78,8 +83,19 @@ def _declared_top_modules(requirements: set[str]) -> set[str]:
 
 
 def _scan_imports(root: Path) -> dict[str, set[str]]:
+    return _scan_imports_from_paths([root])
+
+
+def _scan_imports_from_paths(paths: list[Path]) -> dict[str, set[str]]:
     imports: dict[str, set[str]] = defaultdict(set)
-    for path in sorted(root.rglob("*.py")):
+    files: list[Path] = []
+    for path in paths:
+        if path.is_file():
+            files.append(path)
+        else:
+            files.extend(path.rglob("*.py"))
+
+    for path in sorted(files):
         relative = path.relative_to(REPO_ROOT)
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(relative))
         for node in ast.walk(tree):
@@ -136,6 +152,7 @@ def main() -> int:
 
     missing_runtime = _missing_imports(_scan_imports(BACKEND_DIR / "app"), runtime_modules)
     missing_tests = _missing_imports(_scan_imports(BACKEND_DIR / "tests"), dev_modules)
+    missing_ci_scripts = _missing_imports(_scan_imports_from_paths(CI_SCRIPT_PATHS), dev_modules)
 
     missing_fixtures: dict[str, set[str]] = {}
     for fixture, files in _scan_plugin_fixtures(BACKEND_DIR / "tests").items():
@@ -143,12 +160,13 @@ def main() -> int:
         if required_distribution not in dev_requirements:
             missing_fixtures[f"{fixture} -> {required_distribution}"] = files
 
-    if not (missing_runtime or missing_tests or missing_fixtures):
+    if not (missing_runtime or missing_tests or missing_ci_scripts or missing_fixtures):
         print("Backend requirements check passed.")
         return 0
 
     _print_missing("Runtime imports missing from backend/requirements.txt:", missing_runtime)
     _print_missing("Test imports missing from backend/requirements-dev.txt:", missing_tests)
+    _print_missing("CI script imports missing from backend/requirements-dev.txt:", missing_ci_scripts)
     _print_missing("Pytest plugin fixtures missing from backend/requirements-dev.txt:", missing_fixtures)
     return 1
 

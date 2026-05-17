@@ -1,0 +1,416 @@
+{
+  "code": 0,
+  "message": "0",
+  "ttl": 1,
+  "data": {
+    "item": {
+      "basic": {
+        "comment_id_str": "46469993",
+        "comment_type": 12,
+        "jump_url": "//www.bilibili.com/opus/1175958090007183363",
+        "like_icon": {
+          "action_url": "",
+          "end_url": "",
+          "id": 0,
+          "start_url": ""
+        },
+        "rid_str": "46469993"
+      },
+      "id_str": "1175958090007183363",
+      "modules": {
+        "module_author": {
+          "avatar": {
+            "container_size": {
+              "height": 1.35,
+              "width": 1.35
+            },
+            "fallback_layers": {
+              "is_critical_group": true,
+              "layers": [
+                {
+                  "general_spec": {
+                    "pos_spec": {
+                      "axis_x": 0.675,
+                      "axis_y": 0.675,
+                      "coordinate_pos": 2
+                    },
+                    "render_spec": {
+                      "opacity": 1
+                    },
+                    "size_spec": {
+                      "height": 1,
+                      "width": 1
+                    }
+                  },
+                  "layer_config": {
+                    "is_critical": true,
+                    "tags": {
+                      "AVATAR_LAYER": {},
+                      "GENERAL_CFG": {
+                        "config_type": 1,
+                        "general_config": {
+                          "web_css_style": {
+                            "borderRadius": "50%"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "resource": {
+                    "res_image": {
+                      "image_src": {
+                        "placeholder": 6,
+                        "remote": {
+                          "bfs_style": "widget-layer-avatar",
+                          "url": "https://i0.hdslb.com/bfs/face/cbaecbd92a9d6f1885cedc0e2c41d5e44e56583d.jpg"
+                        },
+                        "src_type": 1
+                      }
+                    },
+                    "res_type": 3
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "mid": "1878222"
+          },
+          "face": "https://i0.hdslb.com/bfs/face/cbaecbd92a9d6f1885cedc0e2c41d5e44e56583d.jpg",
+          "face_nft": false,
+          "following": null,
+          "jump_url": "//space.bilibili.com/1878222/dynamic",
+          "label": "",
+          "mid": 1878222,
+          "name": "suis家的手账本",
+          "official_verify": {
+            "desc": "",
+            "type": -1
+          },
+          "pendant": {
+            "expire": 0,
+            "image": "",
+            "image_enhance": "",
+            "image_enhance_frame": "",
+            "n_pid": 0,
+            "name": "",
+            "pid": 0
+          },
+          "pub_action": "投稿了文章",
+          "pub_location_text": "",
+          "pub_time": "2026年03月04日 23:17",
+          "pub_ts": 1772637479,
+          "type": "AUTHOR_TYPE_NORMAL",
+          "vip": {
+            "avatar_subscript": 0,
+            "avatar_subscript_url": "",
+            "due_date": 1691251200000,
+            "label": {
+              "bg_color": "",
+              "bg_style": 0,
+              "border_color": "",
+              "img_label_uri_hans": "",
+              "img_label_uri_hans_static": "https://i0.hdslb.com/bfs/vip/d7b702ef65a976b20ed854cbd04cb9e27341bb79.png",
+              "img_label_uri_hant": "",
+              "img_label_uri_hant_static": "https://i0.hdslb.com/bfs/activity-plat/static/20220614/e369244d0b14644f5e1a06431e22a4d5/KJunwh19T5.png",
+              "label_theme": "",
+              "path": "",
+              "text": "",
+              "text_color": "",
+              "use_img_label": true
+            },
+            "nickname_color": "",
+            "status": 0,
+            "theme_type": 0,
+            "type": 1
+          }
+        },
+        "module_dynamic": {
+          "additional": null,
+          "desc": null,
+          "major": {
+            "opus": {
+              "fold_action": [
+                "全文"
+              ],
+              "jump_url": "//www.bilibili.com/opus/1175958090007183363",
+              "pics": [
+                {
+                  "aigc": null,
+                  "height": 400,
+                  "live_url": null,
+                  "size": 212.5546875,
+                  "url": "http://i0.hdslb.com/bfs/new_dyn/4369954af5bc175a3383c9cdadbcbe6a1878222.png",
+                  "width": 712
+                }
+              ],
+              "summary": {
+                "has_more": true,
+                "paragraphs": [
+                  {
+                    "align": 0,
+                    "format": {
+                      "align": 0,
+                      "indent": null
+                    },
+                    "para_type": 1,
+                    "text": {
+                      "nodes": [
+                        {
+                          "type": "TEXT_NODE_TYPE_WORD",
+                          "word": {
+                            "bg_style": {
+                              "color": {}
+                            },
+                            "color": null,
+                            "font_level": "regular",
+                            "style": {},
+                            "words": "原文地址：https://natalie.mu/music/pp/yorushika05/page/3"
+                          }
+                        },
+                        {
+                          "type": "TEXT_NODE_TYPE_WORD",
+                          "word": {
+                            "color": null,
+                            "font_size": 17,
+                            "style": {},
+                            "words": "\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "align": 0,
+                    "format": {
+                      "align": 0,
+                      "indent": null
+                    },
+                    "para_type": 1,
+                    "text": {
+                      "nodes": [
+                        {
+                          "type": "TEXT_NODE_TYPE_WORD",
+                          "word": {
+                            "bg_style": {
+                              "color": {}
+                            },
+                            "color": null,
+                            "font_level": "regular",
+                            "style": {},
+                            "words": "翻译：本人"
+                          }
+                        },
+                        {
+                          "type": "TEXT_NODE_TYPE_WORD",
+                          "word": {
+                            "color": null,
+                            "font_size": 17,
+                            "style": {},
+                            "words": "\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "align": 0,
+                    "format": {
+                      "align": 0,
+                      "indent": null
+                    },
+                    "para_type": 1,
+                    "text": {
+                      "nodes": [
+                        {
+                          "type": "TEXT_NODE_TYPE_WORD",
+                          "word": {
+                            "bg_style": {
+                              "color": {}
+                            },
+                            "color": null,
+                            "font_level": "regular",
+                            "style": {},
+                            "words": "个人单独完成的翻译，或有错漏仅供参考。"
+                          }
+                        },
+                        {
+                          "type": "TEXT_NODE_TYPE_WORD",
+                          "word": {
+                            "color": null,
+                            "font_size": 17,
+                            "style": {},
+                            "words": "\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "align": 0,
+                    "format": {
+                      "align": 0,
+                      "indent": null
+                    },
+                    "para_type": 1,
+                    "text": {
+                      "nodes": [
+                        {
+                          "type": "TEXT_NODE_TYPE_WORD",
+                          "word": {
+                            "bg_style": {
+                              "color": {}
+                            },
+                            "color": null,
+                            "font_level": "regular",
+                            "style": {},
+                            "words": "禁止转载 。 "
+                          }
+                        },
+                        {
+                          "type": "TEXT_NODE_TYPE_WORD",
+                          "word": {
+                            "color": null,
+                            "font_size": 17,
+                            "style": {},
+                            "words": "\n"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "align": 0,
+                    "format": {
+                      "align": 0,
+                      "indent": null
+                    },
+                    "para_type": 1,
+                    "text": {
+                      "nodes": [
+                        {
+                          "type": "TEXT_NODE_TYPE_WORD",
+                          "word": {
+                            "bg_style": {
+                              "color": {}
+                            },
+                            "color": null,
+                            "font_level": "regular",
+                            "style": {
+                              "strikethrough": true
+                            },
+                            "words": "前面还有n-buna的访谈，..."
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "rich_text_nodes": [
+                  {
+                    "orig_text": "原文地址：https://natalie.mu/music/pp/yorushika05/page/3",
+                    "text": "原文地址：https://natalie.mu/music/pp/yorushika05/page/3",
+                    "type": "RICH_TEXT_NODE_TYPE_TEXT"
+                  },
+                  {
+                    "orig_text": "\n",
+                    "text": "\n",
+                    "type": "RICH_TEXT_NODE_TYPE_TEXT"
+                  },
+                  {
+                    "orig_text": "翻译：本人",
+                    "text": "翻译：本人",
+                    "type": "RICH_TEXT_NODE_TYPE_TEXT"
+                  },
+                  {
+                    "orig_text": "\n",
+                    "text": "\n",
+                    "type": "RICH_TEXT_NODE_TYPE_TEXT"
+                  },
+                  {
+                    "orig_text": "个人单独完成的翻译，或有错漏仅供参考。",
+                    "text": "个人单独完成的翻译，或有错漏仅供参考。",
+                    "type": "RICH_TEXT_NODE_TYPE_TEXT"
+                  },
+                  {
+                    "orig_text": "\n",
+                    "text": "\n",
+                    "type": "RICH_TEXT_NODE_TYPE_TEXT"
+                  },
+                  {
+                    "orig_text": "禁止转载 。 ",
+                    "text": "禁止转载 。 ",
+                    "type": "RICH_TEXT_NODE_TYPE_TEXT"
+                  },
+                  {
+                    "orig_text": "\n",
+                    "text": "\n",
+                    "type": "RICH_TEXT_NODE_TYPE_TEXT"
+                  },
+                  {
+                    "orig_text": "前面还有n-buna的访谈，但是我烤不过来了！",
+                    "text": "前面还有n-buna的访谈，但是我烤不过来了！",
+                    "type": "RICH_TEXT_NODE_TYPE_TEXT"
+                  },
+                  {
+                    "orig_text": "\n",
+                    "text": "\n",
+                    "type": "RICH_TEXT_NODE_TYPE_TEXT"
+                  },
+                  {
+                    "orig_text": "suis的三年",
+                    "text": "suis的三年",
+                    "type": "RICH_TEXT_NODE_TYPE_TEXT"
+                  },
+                  {
+                    "orig_text": "\n",
+                    "text": "\n",
+                    "type": "RICH_TEXT_NODE_TYPE_TEXT"
+                  },
+                  {
+                    "orig_text": "──ヨルシカ自「幻燈」以来，已经约三年没有发布专辑了。这三年间，你们举办了「ヨルシカ LIVE TOUR 2023『月と猫のダンス』」「LIVE TOUR 2024『前世』」「LIVE TOUR『盗作 再演』」，同时也一直在发行单曲。对你来说，这三年是怎样的时期呢？",
+                    "text": "──ヨルシカ自「幻燈」以来，已经约三年没有发布专辑了。这三年间，你们举办了「ヨルシカ LIVE TOUR 2023『月と猫のダンス』」「LIVE TOUR 2024『前世』」「LIVE TOUR『盗作 再演』」，同时也一直在发行单曲。对你来说，这三年是怎样的时期呢？",
+                    "type": "RICH_TEXT_NODE_TYPE_TEXT"
+                  },
+                  {
+                    "orig_text": "\n",
+                    "text": "\n",
+                    "type": "RICH_TEXT_NODE_TYPE_TEXT"
+                  }
+                ],
+                "text": "原文地址：https://natalie.mu/music/pp/yorushika05/page/3\n翻译：本人\n个人单独完成的翻译，或有错漏仅供参考。\n禁止转载 。 \n前面还有n-buna的访谈，但是我烤不过来了！\nsuis的三年\n──ヨルシカ自「幻燈」以来，已经约三年没有发布专辑了。这三年间，你们举办了「ヨルシカ LIVE TOUR 2023『月と猫のダンス』」「LIVE TOUR 2024『前世』」「LIVE TOUR『盗作 再演』」，同时也一直在发行单曲。对你来说，这三年是怎样的时期呢？\n..."
+              },
+              "title": "【Suis访谈】suis眼中的「二人称」与「n-buna」（2026.3）"
+            },
+            "type": "MAJOR_TYPE_OPUS"
+          },
+          "topic": null
+        },
+        "module_more": {
+          "three_point_items": [
+            {
+              "label": "举报",
+              "type": "THREE_POINT_REPORT"
+            }
+          ]
+        },
+        "module_stat": {
+          "comment": {
+            "count": 19,
+            "forbidden": false
+          },
+          "forward": {
+            "count": 19,
+            "forbidden": false
+          },
+          "like": {
+            "count": 325,
+            "forbidden": false,
+            "status": false
+          }
+        }
+      },
+      "type": "DYNAMIC_TYPE_ARTICLE",
+      "visible": true
+    }
+  }
+}

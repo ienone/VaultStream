@@ -1,0 +1,2779 @@
+{
+  "initialState": {
+    "common": {
+      "ask": {},
+      "cities": {
+        "cityData": []
+      }
+    },
+    "loading": {
+      "global": {
+        "count": 0
+      },
+      "local": {
+        "question/get/": false,
+        "question/getAnswers/2011804582406267252": false
+      }
+    },
+    "entities": {
+      "users": {
+        "664b4a115baa6235d18be0a0fc1f17a4": {
+          "uid": 1518290598079082500,
+          "userType": "people",
+          "id": "664b4a115baa6235d18be0a0fc1f17a4"
+        }
+      },
+      "questions": {
+        "2011804582406267252": {
+          "type": "question",
+          "title": "《Rubbish》期刊正式登陆知乎——你有哪些适合发表在《Rubbish》的研究或发现？",
+          "questionType": "normal",
+          "created": 1772431589,
+          "updatedTime": 1772431930,
+          "url": "https://www.zhihu.com/api/v4/questions/2011804582406267252",
+          "isMuted": false,
+          "isVisible": true,
+          "isNormal": true,
+          "isEditable": true,
+          "adminClosedComment": false,
+          "hasPublishingDraft": false,
+          "answerCount": 27,
+          "visitCount": 87344,
+          "commentCount": 0,
+          "followerCount": 250,
+          "collapsedAnswerCount": 0,
+          "excerpt": "Rubbish出版集团正式登录知乎啦！RP出版集团旨在面向公众做无厘头科研，在帮助科研人轻松解压的同时为大家提供帮助和乐趣。如果你是科研人员，你或许会有失败的实验，有趣但是不太严谨的idea，天马行空的脑洞虚拟研究...如果你是爱好生活的人，或许你对日常有独特的见解，对八卦有不凡的嗅觉，对热点事件有浓厚的兴趣...这些或许都是可以被发表的内容。 每个人都有三分钟热度，每个人也都可以做三分钟的科研，即便无厘头，…",
+          "commentPermission": "all",
+          "detail": "<p><i>Rubbish</i>出版集团正式登录知乎啦！RP出版集团旨在面向公众做无厘头科研，在帮助科研人轻松解压的同时为大家提供帮助和乐趣。</p><p>如果你是科研人员，你或许会有失败的实验，有趣但是不太严谨的idea，天马行空的脑洞虚拟研究......如果你是爱好生活的人，或许你对日常有独特的见解，对八卦有不凡的嗅觉，对热点事件有浓厚的兴趣......这些或许都是可以被发表的内容。</p><p>每个人都有三分钟热度，每个人也都可以做三分钟的科研，即便无厘头，也总有人能看到其中的闪光点。<b>论文的意义来源，在于阅读它的人，欢迎大家向我们提问或投稿！下一个高倍引学者，就是平凡生活里闪光的你！</b></p><p><b>投稿链接：</b></p><a data-draft-node=\"block\" data-draft-type=\"link-card\" href=\"https://link.zhihu.com/?target=https%3A//mts-rubbish.github.io/\" data-draft-title=\"\" data-draft-cover=\"\" class=\" wrap external\" target=\"_blank\" rel=\"nofollow noreferrer\">The Journal of Discarded Brilliance</a><a data-draft-node=\"block\" data-draft-type=\"link-card\" href=\"https://link.zhihu.com/?target=https%3A//365.kdocs.cn/l/cbn49QEWZccZ\" data-draft-title=\"\" data-draft-cover=\"\" class=\" external\" target=\"_blank\" rel=\"nofollow noreferrer\"><span class=\"invisible\">https://</span><span class=\"visible\">365.kdocs.cn/l/cbn49QEW</span><span class=\"invisible\">ZccZ</span><span class=\"ellipsis\"></span></a><p><b>也欢迎大家关注我们的公众号：Rubbish Publishing进行投稿！</b></p>",
+          "editableDetail": "<p><i>Rubbish</i>出版集团正式登录知乎啦！RP出版集团旨在面向公众做无厘头科研，在帮助科研人轻松解压的同时为大家提供帮助和乐趣。</p><p>如果你是科研人员，你或许会有失败的实验，有趣但是不太严谨的idea，天马行空的脑洞虚拟研究......如果你是爱好生活的人，或许你对日常有独特的见解，对八卦有不凡的嗅觉，对热点事件有浓厚的兴趣......这些或许都是可以被发表的内容。</p><p>每个人都有三分钟热度，每个人也都可以做三分钟的科研，即便无厘头，也总有人能看到其中的闪光点。<b>论文的意义来源，在于阅读它的人，欢迎大家向我们提问或投稿！下一个高倍引学者，就是平凡生活里闪光的你！</b></p><p><b>投稿链接：</b></p><a data-draft-node=\"block\" data-draft-type=\"link-card\" href=\"https://mts-rubbish.github.io/\" data-draft-title=\"\" data-draft-cover=\"\">The Journal of Discarded Brilliance</a><a data-draft-node=\"block\" data-draft-type=\"link-card\" href=\"https://365.kdocs.cn/l/cbn49QEWZccZ\" data-draft-title=\"\" data-draft-cover=\"\">https://365.kdocs.cn/l/cbn49QEWZccZ</a><p><b>也欢迎大家关注我们的公众号：Rubbish Publishing进行投稿！</b></p>",
+          "status": {
+            "isLocked": false,
+            "isClose": false,
+            "isEvaluate": false,
+            "isSuggest": false
+          },
+          "topics": [
+            {
+              "id": "19629509",
+              "type": "topic",
+              "url": "https://www.zhihu.com/api/v4/topics/19629509",
+              "name": "学术期刊",
+              "avatarUrl": "",
+              "topicType": "NORMAL"
+            },
+            {
+              "id": "2009999133964985845",
+              "type": "topic",
+              "url": "https://www.zhihu.com/api/v4/topics/2009999133964985845",
+              "name": "底刊",
+              "avatarUrl": "https://pic1.zhimg.com/v2-6105e4725f591a2e79ddb98a1cdcafb4_qhd.jpg?source=57bbeac9",
+              "topicType": "NORMAL"
+            }
+          ],
+          "author": {
+            "id": "04d290c74a60ab99814650b9f228f984",
+            "urlToken": "jerry-71-44",
+            "name": "Rubbish Pub",
+            "avatarUrl": "https://pic1.zhimg.com/v2-2e3922d0ca4f7276fbd5ac7f633c0af1_l.jpg?source=1def8aca",
+            "avatarUrlTemplate": "https://picx.zhimg.com/v2-2e3922d0ca4f7276fbd5ac7f633c0af1.jpg?source=1def8aca",
+            "isOrg": false,
+            "type": "people",
+            "url": "https://www.zhihu.com/api/v4/people/04d290c74a60ab99814650b9f228f984",
+            "userType": "people",
+            "headline": "生命久如暗室  不妨碍我们明写春诗",
+            "badge": [],
+            "badgeV2": {
+              "title": "",
+              "mergedBadges": [],
+              "detailBadges": [],
+              "icon": "",
+              "nightIcon": ""
+            },
+            "gender": 1,
+            "isAdvertiser": false,
+            "isPrivacy": false
+          },
+          "canComment": {
+            "status": true,
+            "reason": ""
+          },
+          "thumbnailInfo": {
+            "count": 0,
+            "type": "thumbnail_info",
+            "thumbnails": []
+          },
+          "reviewInfo": {
+            "type": "",
+            "tips": "",
+            "editTips": "",
+            "isReviewing": false,
+            "editIsReviewing": false
+          },
+          "relatedCards": [],
+          "muteInfo": {
+            "type": ""
+          },
+          "showAuthor": false,
+          "isLabeled": true,
+          "isBannered": false,
+          "showEncourageAuthor": false,
+          "voteupCount": 24,
+          "canVote": true,
+          "reactionInstruction": {},
+          "invisibleAuthor": false,
+          "answerCountDescription": "全部内容 27",
+          "relationship": {
+            "isAuthor": false,
+            "isFollowing": true,
+            "isAnonymous": false,
+            "canLock": false,
+            "canStickAnswers": false,
+            "canCollapseAnswers": false,
+            "voting": 0
+          },
+          "id": "2011804582406267252"
+        }
+      },
+      "answers": {
+        "2011882673929466505": {
+          "adminClosedComment": false,
+          "allowSegmentInteraction": 1,
+          "annotationAction": null,
+          "answerType": "normal",
+          "attachedInfo": "ogEYCAQQAxiJ5dDqnpTp9Rsg9MLQnr2z1/UbkgIuCgk3NzE0MjAxODESEzIwMTE4ODI2NzM5Mjk0NjY1MDUYBCIKSU1BR0VfVEVYVA==",
+          "author": {
+            "avatarUrl": "https://pic1.zhimg.com/v2-c4e076776b0834a7ca85c68c3bac6858_l.jpg?source=1def8aca",
+            "avatarUrlTemplate": "https://picx.zhimg.com/v2-c4e076776b0834a7ca85c68c3bac6858.jpg?source=1def8aca",
+            "badge": [
+              {
+                "description": "生命科学科普作家",
+                "topics": [],
+                "type": "identity"
+              },
+              {
+                "description": "优秀答主",
+                "topics": [
+                  {
+                    "avatarUrl": "https://pic1.zhimg.com/v2-fd942865774a50cc4e9cff81e6550e00_qhd.jpg?source=57bbeac9",
+                    "id": "19575492",
+                    "name": "生物学",
+                    "topicType": "NORMAL",
+                    "type": "topic",
+                    "url": "https://www.zhihu.com/api/v4/topics/19575492"
+                  },
+                  {
+                    "avatarUrl": "v2-ba603fa6e3ca820e536f8298a512f40c.jpg",
+                    "id": "19618352",
+                    "name": "动物学",
+                    "topicType": "NORMAL",
+                    "type": "topic",
+                    "url": "https://www.zhihu.com/api/v4/topics/19618352"
+                  }
+                ],
+                "type": "best_answerer"
+              }
+            ],
+            "badgeV2": {
+              "detailBadges": [
+                {
+                  "description": "新知答主",
+                  "detailType": "zhihu_yearly_answerer",
+                  "icon": "https://pic1.zhimg.com/v2-4a07bc69c4bb04444721f35b32125c75_l.png?source=32738c0c",
+                  "nightIcon": "https://pic1.zhimg.com/v2-4a07bc69c4bb04444721f35b32125c75_l.png?source=32738c0c",
+                  "sources": [
+                    {
+                      "avatarPath": "",
+                      "avatarUrl": "",
+                      "description": "",
+                      "id": "2021",
+                      "name": "",
+                      "priority": 2021,
+                      "token": "",
+                      "type": "year",
+                      "url": ""
+                    }
+                  ],
+                  "title": "年度新知答主",
+                  "type": "reward",
+                  "url": "https://www.zhihu.com/question/510340037"
+                },
+                {
+                  "description": "动物学等 3 个话题下的优秀答主",
+                  "detailType": "best_answerer",
+                  "icon": "https://picx.zhimg.com/v2-4a07bc69c4bb04444721f35b32125c75_l.png?source=32738c0c",
+                  "nightIcon": "https://picx.zhimg.com/v2-4a07bc69c4bb04444721f35b32125c75_l.png?source=32738c0c",
+                  "sources": [
+                    {
+                      "avatarPath": "v2-ba603fa6e3ca820e536f8298a512f40c",
+                      "avatarUrl": "https://picx.zhimg.com/v2-ba603fa6e3ca820e536f8298a512f40c_720w.jpg?source=32738c0c",
+                      "description": "",
+                      "id": "19618352",
+                      "name": "动物学",
+                      "priority": 0,
+                      "token": "19618352",
+                      "type": "topic",
+                      "url": "https://www.zhihu.com/topic/19618352"
+                    },
+                    {
+                      "avatarPath": "v2-e0e3f57da8dc5b0c706300d18714c4ae",
+                      "avatarUrl": "https://pic1.zhimg.com/v2-e0e3f57da8dc5b0c706300d18714c4ae_720w.jpg?source=32738c0c",
+                      "description": "",
+                      "id": "19551585",
+                      "name": "科普",
+                      "priority": 0,
+                      "token": "19551585",
+                      "type": "topic",
+                      "url": "https://www.zhihu.com/topic/19551585"
+                    },
+                    {
+                      "avatarPath": "v2-fd942865774a50cc4e9cff81e6550e00",
+                      "avatarUrl": "https://picx.zhimg.com/v2-fd942865774a50cc4e9cff81e6550e00_720w.jpg?source=32738c0c",
+                      "description": "",
+                      "id": "19575492",
+                      "name": "生物学",
+                      "priority": 0,
+                      "token": "19575492",
+                      "type": "topic",
+                      "url": "https://www.zhihu.com/topic/19575492"
+                    }
+                  ],
+                  "title": "优秀答主",
+                  "type": "best",
+                  "url": "https://www.zhihu.com/question/48509984"
+                },
+                {
+                  "description": "知势榜科学工程领域影响力榜答主",
+                  "detailType": "super_activity",
+                  "icon": "https://pic1.zhimg.com/v2-4a07bc69c4bb04444721f35b32125c75_l.png?source=32738c0c",
+                  "nightIcon": "https://pica.zhimg.com/v2-4a07bc69c4bb04444721f35b32125c75_l.png?source=32738c0c",
+                  "sources": [
+                    {
+                      "avatarPath": "",
+                      "avatarUrl": "",
+                      "description": "",
+                      "id": "27",
+                      "name": "知势榜8月",
+                      "priority": 27,
+                      "token": "",
+                      "type": "content_potential_category",
+                      "url": ""
+                    }
+                  ],
+                  "title": "社区成就",
+                  "type": "reward",
+                  "url": ""
+                },
+                {
+                  "description": "生命科学科普作家",
+                  "detailType": "identity_people",
+                  "icon": "https://picx.zhimg.com/v2-2ddc5cc683982648f6f123616fb4ec09_l.png?source=32738c0c",
+                  "nightIcon": "https://pic1.zhimg.com/v2-2ddc5cc683982648f6f123616fb4ec09_l.png?source=32738c0c",
+                  "sources": [],
+                  "title": "已认证的个人",
+                  "type": "identity",
+                  "url": "https://zhuanlan.zhihu.com/p/96956163"
+                }
+              ],
+              "icon": "https://picx.zhimg.com/v2-27bfcba90e66db79ce8768ab807e017e_l.png?source=32738c0c",
+              "mergedBadges": [
+                {
+                  "description": "新知答主",
+                  "detailType": "best",
+                  "icon": "",
+                  "nightIcon": "",
+                  "sources": [],
+                  "title": "年度新知答主",
+                  "type": "best",
+                  "url": "https://www.zhihu.com/question/510340037"
+                },
+                {
+                  "description": "生命科学科普作家",
+                  "detailType": "identity_people",
+                  "icon": "",
+                  "nightIcon": "",
+                  "sources": [],
+                  "title": "认证",
+                  "type": "identity",
+                  "url": "https://zhuanlan.zhihu.com/p/96956163"
+                }
+              ],
+              "nightIcon": "https://picx.zhimg.com/v2-27bfcba90e66db79ce8768ab807e017e_l.png?source=32738c0c",
+              "title": "新知答主"
+            },
+            "exposedMedal": {
+              "avatarUrl": "https://picx.zhimg.com/v2-3ad258a44c626e00b0a724da4760296a_l.png?source=1def8aca",
+              "description": "2021 年度新知答主获得者",
+              "medalAvatarFrame": "",
+              "medalId": "1457085295925202945",
+              "medalName": "2021 年度新知答主",
+              "miniAvatarUrl": "https://pica.zhimg.com/v2-3ad258a44c626e00b0a724da4760296a_r.png?source=1def8aca"
+            },
+            "followerCount": 367761,
+            "gender": 1,
+            "headline": "先让一部分知识有趣起来",
+            "id": "577fdad0935b610611c5f326577cf993",
+            "isAdvertiser": false,
+            "isFollowed": false,
+            "isFollowing": false,
+            "isOrg": false,
+            "isPrivacy": false,
+            "kvipInfo": {
+              "isVip": true,
+              "targetUrl": "https://www.zhihu.com/kvip/purchase",
+              "vipIcon": {
+                "nightModeUrl": "https://pic1.zhimg.com/v2-57fe7feb4813331d5eca02ef731e12c9.jpg?source=88ceefae",
+                "url": "https://picx.zhimg.com/v2-57fe7feb4813331d5eca02ef731e12c9.jpg?source=88ceefae"
+              }
+            },
+            "name": "瞻云",
+            "type": "people",
+            "url": "https://www.zhihu.com/api/v4/people/577fdad0935b610611c5f326577cf993",
+            "urlToken": "zhan-yun-2020",
+            "userType": "people",
+            "vipInfo": {
+              "isVip": true,
+              "vipIcon": {
+                "nightModeUrl": "https://pic1.zhimg.com/v2-c9686ff064ea3579730756ac6c289978.jpg?source=88ceefae",
+                "url": "https://picx.zhimg.com/v2-4812630bc27d642f7cafcd6cdeca3d7a.jpg?source=88ceefae"
+              }
+            }
+          },
+          "businessType": "normal",
+          "canComment": {
+            "reason": "",
+            "status": true
+          },
+          "collapseReason": "",
+          "collapsedBy": "nobody",
+          "commentCount": 23,
+          "commentPermission": "all",
+          "content": "<p></p><p data-pid=\"toNUsIIi\">我也提供一篇吧。</p><h2>《美人鱼——生物学可行性报告》</h2><figure data-size=\"normal\"><noscript><img src=\"https://pic1.zhimg.com/50/v2-8c70bc73624bee5d3fb6e13ef3cee5e2_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"720\" data-rawheight=\"540\" data-original-token=\"v2-8c70bc73624bee5d3fb6e13ef3cee5e2\" class=\"origin_image zh-lightbox-thumb\" width=\"720\" data-original=\"https://pica.zhimg.com/v2-8c70bc73624bee5d3fb6e13ef3cee5e2_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;720&#39; height=&#39;540&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"720\" data-rawheight=\"540\" data-original-token=\"v2-8c70bc73624bee5d3fb6e13ef3cee5e2\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"720\" data-original=\"https://pica.zhimg.com/v2-8c70bc73624bee5d3fb6e13ef3cee5e2_r.jpg?source=1def8aca\" data-actualsrc=\"https://pic1.zhimg.com/50/v2-8c70bc73624bee5d3fb6e13ef3cee5e2_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"zSTq8nYC\"><br/>1870年代，一位叫做布莱克的美国外科医生，不仅提出过「<b>如果美人鱼、牛头怪是人类祖先该怎么办？</b>」的奇怪问题。</p><p data-pid=\"dRHoyDmu\">还画了一本关于神话动物的解剖手册。</p><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-6ded1e488dc3078abd8e158e2fd0b49e_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"859\" data-rawheight=\"1094\" data-original-token=\"v2-6ded1e488dc3078abd8e158e2fd0b49e\" class=\"origin_image zh-lightbox-thumb\" width=\"859\" data-original=\"https://pic1.zhimg.com/v2-6ded1e488dc3078abd8e158e2fd0b49e_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;859&#39; height=&#39;1094&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"859\" data-rawheight=\"1094\" data-original-token=\"v2-6ded1e488dc3078abd8e158e2fd0b49e\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"859\" data-original=\"https://pic1.zhimg.com/v2-6ded1e488dc3078abd8e158e2fd0b49e_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-6ded1e488dc3078abd8e158e2fd0b49e_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"37qQ2QyP\">这些手册，最终和他带有神秘色彩的虚构自传一起出版，命名为：</p><p data-pid=\"m4bXItN9\">《复活主义者（掘墓者）：斯宾塞·布莱克博士的失落作品The Resurrectionist：The Lost Work of Dr. Spencer Black》<sup data-text=\"Hudspeth, E. B. The Resurrectionist: The Lost Work of Dr. Spencer Black. Quirk Books, 2013.\" data-url=\"\" data-draft-node=\"inline\" data-draft-type=\"reference\" data-numero=\"1\">[1]</sup>。</p><figure data-size=\"normal\"><noscript><img src=\"https://pic1.zhimg.com/50/v2-a52842863096893f9050de69732009ad_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"1700\" data-rawheight=\"2200\" data-original-token=\"v2-a52842863096893f9050de69732009ad\" class=\"origin_image zh-lightbox-thumb\" width=\"1700\" data-original=\"https://picx.zhimg.com/v2-a52842863096893f9050de69732009ad_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;1700&#39; height=&#39;2200&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"1700\" data-rawheight=\"2200\" data-original-token=\"v2-a52842863096893f9050de69732009ad\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"1700\" data-original=\"https://picx.zhimg.com/v2-a52842863096893f9050de69732009ad_r.jpg?source=1def8aca\" data-actualsrc=\"https://pic1.zhimg.com/50/v2-a52842863096893f9050de69732009ad_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"9eeOWhtY\">这是布莱克笔下的美人鱼生理结构：</p><p data-pid=\"Oq8A6MWA\">这些美人鱼展现出发达的腰腹肌肉，体态和鱼鳍都呈现出对流体力学的适应。</p><p data-pid=\"_Q6b__X0\">这些假设可谓是相当大胆，但又不乏严谨细腻。</p><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-e5033da9e4577f9fcfefa6695fb4b4e2_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"847\" data-rawheight=\"1186\" data-original-token=\"v2-e5033da9e4577f9fcfefa6695fb4b4e2\" class=\"origin_image zh-lightbox-thumb\" width=\"847\" data-original=\"https://pic1.zhimg.com/v2-e5033da9e4577f9fcfefa6695fb4b4e2_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;847&#39; height=&#39;1186&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"847\" data-rawheight=\"1186\" data-original-token=\"v2-e5033da9e4577f9fcfefa6695fb4b4e2\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"847\" data-original=\"https://pic1.zhimg.com/v2-e5033da9e4577f9fcfefa6695fb4b4e2_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-e5033da9e4577f9fcfefa6695fb4b4e2_720w.jpg?source=1def8aca\"/></figure><figure data-size=\"normal\"><noscript><img src=\"https://pic1.zhimg.com/50/v2-7f4b952e8ce84ed0abc0ca0e6fc8b487_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"847\" data-rawheight=\"1186\" data-original-token=\"v2-7f4b952e8ce84ed0abc0ca0e6fc8b487\" class=\"origin_image zh-lightbox-thumb\" width=\"847\" data-original=\"https://picx.zhimg.com/v2-7f4b952e8ce84ed0abc0ca0e6fc8b487_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;847&#39; height=&#39;1186&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"847\" data-rawheight=\"1186\" data-original-token=\"v2-7f4b952e8ce84ed0abc0ca0e6fc8b487\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"847\" data-original=\"https://picx.zhimg.com/v2-7f4b952e8ce84ed0abc0ca0e6fc8b487_r.jpg?source=1def8aca\" data-actualsrc=\"https://pic1.zhimg.com/50/v2-7f4b952e8ce84ed0abc0ca0e6fc8b487_720w.jpg?source=1def8aca\"/></figure><figure data-size=\"normal\"><noscript><img src=\"https://pic1.zhimg.com/50/v2-26dc027a3d2baeade4dad579a5155599_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"847\" data-rawheight=\"1186\" data-original-token=\"v2-26dc027a3d2baeade4dad579a5155599\" class=\"origin_image zh-lightbox-thumb\" width=\"847\" data-original=\"https://picx.zhimg.com/v2-26dc027a3d2baeade4dad579a5155599_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;847&#39; height=&#39;1186&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"847\" data-rawheight=\"1186\" data-original-token=\"v2-26dc027a3d2baeade4dad579a5155599\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"847\" data-original=\"https://picx.zhimg.com/v2-26dc027a3d2baeade4dad579a5155599_r.jpg?source=1def8aca\" data-actualsrc=\"https://pic1.zhimg.com/50/v2-26dc027a3d2baeade4dad579a5155599_720w.jpg?source=1def8aca\"/></figure><figure data-size=\"normal\"><noscript><img src=\"https://pica.zhimg.com/50/v2-721856c865d3cb1b545f26e9cd830527_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"846\" data-rawheight=\"1186\" data-original-token=\"v2-721856c865d3cb1b545f26e9cd830527\" class=\"origin_image zh-lightbox-thumb\" width=\"846\" data-original=\"https://picx.zhimg.com/v2-721856c865d3cb1b545f26e9cd830527_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;846&#39; height=&#39;1186&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"846\" data-rawheight=\"1186\" data-original-token=\"v2-721856c865d3cb1b545f26e9cd830527\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"846\" data-original=\"https://picx.zhimg.com/v2-721856c865d3cb1b545f26e9cd830527_r.jpg?source=1def8aca\" data-actualsrc=\"https://pica.zhimg.com/50/v2-721856c865d3cb1b545f26e9cd830527_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"Xe2RO9T9\">布莱克生活的年代，达尔文的《物种起源》才刚刚发表十多年，他大概率受了一定影响。</p><p data-pid=\"Ag6lH1Nn\">他的这些手册涉及到一定的演化原理，但并不多。</p><p data-pid=\"f4vA_TxW\">很明显啊，这些美人鱼的骨骼结构是由哺乳动物和鱼类拼凑起来的。</p><figure data-size=\"normal\"><noscript><img src=\"https://pica.zhimg.com/50/v2-266c8b08d1a915fcc346577570ff3171_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"847\" data-rawheight=\"1186\" data-original-token=\"v2-266c8b08d1a915fcc346577570ff3171\" class=\"origin_image zh-lightbox-thumb\" width=\"847\" data-original=\"https://picx.zhimg.com/v2-266c8b08d1a915fcc346577570ff3171_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;847&#39; height=&#39;1186&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"847\" data-rawheight=\"1186\" data-original-token=\"v2-266c8b08d1a915fcc346577570ff3171\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"847\" data-original=\"https://picx.zhimg.com/v2-266c8b08d1a915fcc346577570ff3171_r.jpg?source=1def8aca\" data-actualsrc=\"https://pica.zhimg.com/50/v2-266c8b08d1a915fcc346577570ff3171_720w.jpg?source=1def8aca\"/></figure><h3>我们今天就来严谨的讨论一下，如果美人鱼真的存在，它们会如何进化而来。</h3><p data-pid=\"hiI_e1hg\">首先我们需要解决，鱼和哺乳动物生理结构矛盾的问题。</p><p data-pid=\"z5BgUA-a\">鱼类起源于5亿年前，以昆明鱼为代表<sup data-text=\"Xian-Guang, Hou, et al. &#34;New evidence on the anatomy and phylogeny of the earliest vertebrates.&#34; Proceedings of the Royal Society of London. Series B: Biological Sciences 269.1503 (2002): 1865-1869.\" data-url=\"\" data-draft-node=\"inline\" data-draft-type=\"reference\" data-numero=\"2\">[2]</sup>。</p><p data-pid=\"AoDK2xFV\">真兽类哺物动物起源于1.6亿年前，以中华侏罗兽为代表<sup data-text=\"Luo, Zhe-Xi, et al. &#34;A Jurassic eutherian mammal and divergence of marsupials and placentals.&#34; Nature 476.7361 (2011): 442-445.\" data-url=\"\" data-draft-node=\"inline\" data-draft-type=\"reference\" data-numero=\"3\">[3]</sup>，中间足足有着3.4亿年的亲缘差距。</p><p data-pid=\"mElfMvbK\">再加上，水生和陆生的迥异环境，鱼类和哺乳动物的生理结构啊、骨骼系统啊，都有着巨大的差异。</p><p data-pid=\"0jl9oI-h\">要存在美人鱼，那就需要走两条单独的演化路线：</p><p data-pid=\"ThJAWOhp\"><b>要么是鱼类路线。</b></p><p data-pid=\"hYGBx-1N\"><b>要么是哺乳动物路线。</b></p><p data-pid=\"SR6aZB6R\">现代人所想象的美人鱼的样子，基本上也是这两种路线。</p><p data-pid=\"y73RtjQS\">当然，还有离谱的这种路线——真鱼头下半身：</p><figure data-size=\"normal\"><noscript><img src=\"https://pica.zhimg.com/50/v2-94b74a8172a68034a97ffb56da8ab1c0_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"660\" data-rawheight=\"1041\" data-original-token=\"v2-94b74a8172a68034a97ffb56da8ab1c0\" class=\"origin_image zh-lightbox-thumb\" width=\"660\" data-original=\"https://picx.zhimg.com/v2-94b74a8172a68034a97ffb56da8ab1c0_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;660&#39; height=&#39;1041&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"660\" data-rawheight=\"1041\" data-original-token=\"v2-94b74a8172a68034a97ffb56da8ab1c0\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"660\" data-original=\"https://picx.zhimg.com/v2-94b74a8172a68034a97ffb56da8ab1c0_r.jpg?source=1def8aca\" data-actualsrc=\"https://pica.zhimg.com/50/v2-94b74a8172a68034a97ffb56da8ab1c0_720w.jpg?source=1def8aca\"/></figure><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-085f88b6e501ba2d98164d02aa01a634_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"600\" data-rawheight=\"387\" data-original-token=\"v2-085f88b6e501ba2d98164d02aa01a634\" class=\"origin_image zh-lightbox-thumb\" width=\"600\" data-original=\"https://pica.zhimg.com/v2-085f88b6e501ba2d98164d02aa01a634_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;600&#39; height=&#39;387&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"600\" data-rawheight=\"387\" data-original-token=\"v2-085f88b6e501ba2d98164d02aa01a634\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"600\" data-original=\"https://pica.zhimg.com/v2-085f88b6e501ba2d98164d02aa01a634_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-085f88b6e501ba2d98164d02aa01a634_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"JSruIx6e\">以及这种路线，人身鱼头：</p><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-bf454a5ca866b23894b3fd99d33b53d7_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"1840\" data-rawheight=\"1150\" data-original-token=\"v2-bf454a5ca866b23894b3fd99d33b53d7\" class=\"origin_image zh-lightbox-thumb\" width=\"1840\" data-original=\"https://pica.zhimg.com/v2-bf454a5ca866b23894b3fd99d33b53d7_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;1840&#39; height=&#39;1150&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"1840\" data-rawheight=\"1150\" data-original-token=\"v2-bf454a5ca866b23894b3fd99d33b53d7\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"1840\" data-original=\"https://pica.zhimg.com/v2-bf454a5ca866b23894b3fd99d33b53d7_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-bf454a5ca866b23894b3fd99d33b53d7_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"VDVrOZCH\">大有一种现代主义山海经的感觉。</p><p data-pid=\"TstPFWGZ\">不过，这两种一般称为鱼人，而不是美人鱼。</p><p data-pid=\"iaRNOlsI\">不同的演化路线，也就决定了美人鱼有着不同的下半身。<br/></p><p data-pid=\"3Vp-Uc6n\"><b>美人鱼的身体构造，究竟是什么样？</b></p><p data-pid=\"DIv7CnDF\">我们先来看第一种情况，如果美人鱼的下半身是鱼的身体，也即鱼型美人鱼。</p><figure data-size=\"normal\"><noscript><img src=\"https://pic1.zhimg.com/50/v2-4236e4840c9d5af5e0a56477d6bacb37_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"800\" data-rawheight=\"1063\" data-original-token=\"v2-4236e4840c9d5af5e0a56477d6bacb37\" class=\"origin_image zh-lightbox-thumb\" width=\"800\" data-original=\"https://picx.zhimg.com/v2-4236e4840c9d5af5e0a56477d6bacb37_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;800&#39; height=&#39;1063&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"800\" data-rawheight=\"1063\" data-original-token=\"v2-4236e4840c9d5af5e0a56477d6bacb37\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"800\" data-original=\"https://picx.zhimg.com/v2-4236e4840c9d5af5e0a56477d6bacb37_r.jpg?source=1def8aca\" data-actualsrc=\"https://pic1.zhimg.com/50/v2-4236e4840c9d5af5e0a56477d6bacb37_720w.jpg?source=1def8aca\"/></figure><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-c64f7834585883bbece85ff92aac52f3_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"2357\" data-rawheight=\"3000\" data-original-token=\"v2-c64f7834585883bbece85ff92aac52f3\" class=\"origin_image zh-lightbox-thumb\" width=\"2357\" data-original=\"https://pic1.zhimg.com/v2-c64f7834585883bbece85ff92aac52f3_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;2357&#39; height=&#39;3000&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"2357\" data-rawheight=\"3000\" data-original-token=\"v2-c64f7834585883bbece85ff92aac52f3\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"2357\" data-original=\"https://pic1.zhimg.com/v2-c64f7834585883bbece85ff92aac52f3_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-c64f7834585883bbece85ff92aac52f3_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"3MHYqFg6\">法国生物学科普作家帕纳菲厄（让-巴普蒂斯特·德·帕纳菲厄）等人<sup data-text=\"法 帕纳菲厄 Panafieu, Jean-Baptiste de.博物学家的神秘动物图鉴:新版[M].四川科学技术出版社,2020.\" data-url=\"\" data-draft-node=\"inline\" data-draft-type=\"reference\" data-numero=\"4\">[4]</sup>，绘制的《博物学家的神秘动物图鉴》，里面的美人鱼便是鱼型美人鱼，它们通过鱼鳃进行呼吸，肺的位置，为一种特殊的发声器官。</p><figure data-size=\"normal\"><noscript><img src=\"https://pica.zhimg.com/50/v2-49483343cf9d8f2b085645720d749961_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"2172\" data-rawheight=\"3240\" data-original-token=\"v2-49483343cf9d8f2b085645720d749961\" class=\"origin_image zh-lightbox-thumb\" width=\"2172\" data-original=\"https://picx.zhimg.com/v2-49483343cf9d8f2b085645720d749961_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;2172&#39; height=&#39;3240&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"2172\" data-rawheight=\"3240\" data-original-token=\"v2-49483343cf9d8f2b085645720d749961\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"2172\" data-original=\"https://picx.zhimg.com/v2-49483343cf9d8f2b085645720d749961_r.jpg?source=1def8aca\" data-actualsrc=\"https://pica.zhimg.com/50/v2-49483343cf9d8f2b085645720d749961_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"axMwBxvd\">雄性美人鱼被称为特里通，由于是雌性狩猎，因此雄性十分罕见。雌性往往通过优美的歌喉吸引水手，然后进行猎杀。</p><p data-pid=\"mVAPdf7E\">由于是鱼型下半身，很明显这类美人鱼的肠道、尿道，以及生殖道是一体的，一起组成了泄殖腔，它们很有可能通过体外受精繁殖。</p><p data-pid=\"-1sYJpzF\">当然，这也并不绝对，因为一些鱼类同样会交配，进行体内受精。</p><p data-pid=\"6C8FON8i\">4.3亿年前的古老盾皮鱼中，就有一部分鱼类演化出了交配行为。</p><p data-pid=\"FpHNTL8X\">例如，胴甲鱼目的小肢鱼<sup data-text=\"Jun-Qing, W. A. N. G., and Z. H. A. N. G. Guo-Rui. &#34;New material of Microbrachius from Lower Devonian of Qujing, Yunnan, China.&#34; Vertebrata PalAsiatica 37.03 (1999): 200.\" data-url=\"\" data-draft-node=\"inline\" data-draft-type=\"reference\" data-numero=\"5\">[5]</sup><sup data-text=\"Cressey, Daniel. &#34;Fossils rewrite history of penetrative sex.&#34;\" data-url=\"\" data-draft-node=\"inline\" data-draft-type=\"reference\" data-numero=\"6\">[6]</sup>，便是最早进行体内受精的鱼类之一。雄性小肢鱼腹部，长着一对与腹鳍同源的生殖器。当与雌性进行交配时，精液会顺着生殖器（上）的沟槽进入体内。</p><figure data-size=\"normal\"><noscript><img src=\"https://pic1.zhimg.com/50/v2-a6de19d96c26a32997037a6d37300f0d_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"970\" data-rawheight=\"1070\" data-original-token=\"v2-a6de19d96c26a32997037a6d37300f0d\" class=\"origin_image zh-lightbox-thumb\" width=\"970\" data-original=\"https://picx.zhimg.com/v2-a6de19d96c26a32997037a6d37300f0d_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;970&#39; height=&#39;1070&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"970\" data-rawheight=\"1070\" data-original-token=\"v2-a6de19d96c26a32997037a6d37300f0d\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"970\" data-original=\"https://picx.zhimg.com/v2-a6de19d96c26a32997037a6d37300f0d_r.jpg?source=1def8aca\" data-actualsrc=\"https://pic1.zhimg.com/50/v2-a6de19d96c26a32997037a6d37300f0d_720w.jpg?source=1def8aca\"/></figure><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-20ba486fb82a43ae550add8fc9d28288_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"970\" data-rawheight=\"1073\" data-original-token=\"v2-20ba486fb82a43ae550add8fc9d28288\" class=\"origin_image zh-lightbox-thumb\" width=\"970\" data-original=\"https://picx.zhimg.com/v2-20ba486fb82a43ae550add8fc9d28288_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;970&#39; height=&#39;1073&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"970\" data-rawheight=\"1073\" data-original-token=\"v2-20ba486fb82a43ae550add8fc9d28288\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"970\" data-original=\"https://picx.zhimg.com/v2-20ba486fb82a43ae550add8fc9d28288_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-20ba486fb82a43ae550add8fc9d28288_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"YpviZ3Kd\">一些盾皮鱼甚至还发展出了卵胎生，不仅幼鱼在体内孵化，甚至还和某些鲨鱼一样，有了接近哺乳动物的脐带和卵黄囊。</p><p data-pid=\"1cFMFPbR\">大约在4.2亿年前，盾皮鱼就分别演化出了软骨鱼和硬骨鱼，鲨鱼、鳐鱼为首的软骨鱼继承了交配行为、体内受精，还有部分继承了卵胎生。</p><p data-pid=\"NthlghJ6\">硬骨鱼这一支反而没有继承这样的繁殖方式。它们演化出体内受精，都是两栖动物后期才出现的。</p><p data-pid=\"I1dELhZM\">因此拥有交配行为的鱼型美人鱼，下半身可能更加接近鲨鱼的形态。</p><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-fd26b3153d87fe438edb9847d01e8950_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"703\" data-rawheight=\"499\" data-original-token=\"v2-fd26b3153d87fe438edb9847d01e8950\" class=\"origin_image zh-lightbox-thumb\" width=\"703\" data-original=\"https://pic1.zhimg.com/v2-fd26b3153d87fe438edb9847d01e8950_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;703&#39; height=&#39;499&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"703\" data-rawheight=\"499\" data-original-token=\"v2-fd26b3153d87fe438edb9847d01e8950\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"703\" data-original=\"https://pic1.zhimg.com/v2-fd26b3153d87fe438edb9847d01e8950_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-fd26b3153d87fe438edb9847d01e8950_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"RAKkuaoj\">考虑到有一种说法认为美人鱼无法上岸，或者上岸后会变成泡沫。这或许印证了它们的鲨鱼形态，毕竟软骨的强度大大低于硬骨，它们上岸后，很有可能因为身体挤压内脏而身亡。</p><p data-pid=\"tLznYTZU\">当然，如果它们是能够上岸的话，不排除它们的软骨像硬骨鱼那样，经历了骨化过程，变成了硬骨。</p><p data-pid=\"BWYz0DfH\">接下来我们来看看第二种情况，哺物动物下半身的美人鱼，也即哺乳型美人鱼。</p><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-06dda0f70df69c8e1bbae740a5d2be9f_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"544\" data-rawheight=\"720\" data-original-token=\"v2-06dda0f70df69c8e1bbae740a5d2be9f\" class=\"origin_image zh-lightbox-thumb\" width=\"544\" data-original=\"https://pica.zhimg.com/v2-06dda0f70df69c8e1bbae740a5d2be9f_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;544&#39; height=&#39;720&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"544\" data-rawheight=\"720\" data-original-token=\"v2-06dda0f70df69c8e1bbae740a5d2be9f\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"544\" data-original=\"https://pica.zhimg.com/v2-06dda0f70df69c8e1bbae740a5d2be9f_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-06dda0f70df69c8e1bbae740a5d2be9f_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"BtkcYYvz\">现代人一般认为儒艮和海牛是美人鱼的原型，越来越多的人认为美人鱼是哺乳动物，有着鲸型下半身。这样的形象在很多插画、游戏，影视作品中越来越常见。</p><figure data-size=\"normal\"><noscript><img src=\"https://pic1.zhimg.com/50/v2-dcd8ad696e0c20413fd898d876c9f573_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"480\" data-rawheight=\"480\" data-original-token=\"v2-dcd8ad696e0c20413fd898d876c9f573\" class=\"origin_image zh-lightbox-thumb\" width=\"480\" data-original=\"https://picx.zhimg.com/v2-dcd8ad696e0c20413fd898d876c9f573_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;480&#39; height=&#39;480&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"480\" data-rawheight=\"480\" data-original-token=\"v2-dcd8ad696e0c20413fd898d876c9f573\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"480\" data-original=\"https://picx.zhimg.com/v2-dcd8ad696e0c20413fd898d876c9f573_r.jpg?source=1def8aca\" data-actualsrc=\"https://pic1.zhimg.com/50/v2-dcd8ad696e0c20413fd898d876c9f573_720w.jpg?source=1def8aca\"/></figure><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-fc66d26aef2005d8c8efa515852a78d1_720w.gif?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"625\" data-rawheight=\"400\" data-original-token=\"v2-fc66d26aef2005d8c8efa515852a78d1\" data-thumbnail=\"https://picx.zhimg.com/50/v2-fc66d26aef2005d8c8efa515852a78d1_720w.jpg?source=1def8aca\" class=\"origin_image zh-lightbox-thumb\" width=\"625\" data-original=\"https://picx.zhimg.com/v2-fc66d26aef2005d8c8efa515852a78d1_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;625&#39; height=&#39;400&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"625\" data-rawheight=\"400\" data-original-token=\"v2-fc66d26aef2005d8c8efa515852a78d1\" data-thumbnail=\"https://picx.zhimg.com/50/v2-fc66d26aef2005d8c8efa515852a78d1_720w.jpg?source=1def8aca\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"625\" data-original=\"https://picx.zhimg.com/v2-fc66d26aef2005d8c8efa515852a78d1_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-fc66d26aef2005d8c8efa515852a78d1_720w.gif?source=1def8aca\"/></figure><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-cfab4a1631b7fabf35a21b8a4d98883d_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"640\" data-rawheight=\"899\" data-original-token=\"v2-cfab4a1631b7fabf35a21b8a4d98883d\" class=\"origin_image zh-lightbox-thumb\" width=\"640\" data-original=\"https://picx.zhimg.com/v2-cfab4a1631b7fabf35a21b8a4d98883d_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;640&#39; height=&#39;899&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"640\" data-rawheight=\"899\" data-original-token=\"v2-cfab4a1631b7fabf35a21b8a4d98883d\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"640\" data-original=\"https://picx.zhimg.com/v2-cfab4a1631b7fabf35a21b8a4d98883d_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-cfab4a1631b7fabf35a21b8a4d98883d_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"sZsNehNu\">恐龙灭绝后，虽然真兽类哺乳动物都发展出了外生殖器，但鲸类这一支为了适应海洋生活，生殖器官再次收纳进入了腹部，演化出了专门的生殖裂。因此美人鱼光滑下半身，是非常合理的生理特征。</p><figure data-size=\"normal\"><noscript><img src=\"https://pic1.zhimg.com/50/v2-13246ca88acaeba6043089262088a80f_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"639\" data-rawheight=\"906\" data-original-token=\"v2-13246ca88acaeba6043089262088a80f\" class=\"origin_image zh-lightbox-thumb\" width=\"639\" data-original=\"https://pic1.zhimg.com/v2-13246ca88acaeba6043089262088a80f_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;639&#39; height=&#39;906&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"639\" data-rawheight=\"906\" data-original-token=\"v2-13246ca88acaeba6043089262088a80f\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"639\" data-original=\"https://pic1.zhimg.com/v2-13246ca88acaeba6043089262088a80f_r.jpg?source=1def8aca\" data-actualsrc=\"https://pic1.zhimg.com/50/v2-13246ca88acaeba6043089262088a80f_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"NhtolGWl\">除此之外，它们与鱼型美人鱼最大的区别，还在于尾巴的区别。</p><p data-pid=\"Xy2Ct-A1\">鱼型美人鱼的尾巴是左右摆动的，哺乳型美人鱼的尾巴是上下摆动的。之所以有这样的区别，秘密就在我们的脊椎上。</p><p data-pid=\"h-QmbXbO\">这是鱼类的骨骼，整体呈现梭形，它们的脊椎连接紧密，而且还有脊索存在，因此摆动的幅度并不大。还有它们的骨骼和这个鱼翅的上下分布，也决定了它们得脊椎是左右摆动的方向<sup data-text=\"Jones, Katrina E., et al. &#34;Adaptive landscapes challenge the “lateral-to-sagittal”paradigmfor mammalian vertebral evolution.&#34; Current Biology 31.9 (2021): 1883-1892.\" data-url=\"\" data-draft-node=\"inline\" data-draft-type=\"reference\" data-numero=\"7\">[7]</sup>。</p><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-060ef05f6070b913924b02f3fc0675e6_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"850\" data-rawheight=\"856\" data-original-token=\"v2-060ef05f6070b913924b02f3fc0675e6\" class=\"origin_image zh-lightbox-thumb\" width=\"850\" data-original=\"https://pica.zhimg.com/v2-060ef05f6070b913924b02f3fc0675e6_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;850&#39; height=&#39;856&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"850\" data-rawheight=\"856\" data-original-token=\"v2-060ef05f6070b913924b02f3fc0675e6\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"850\" data-original=\"https://pica.zhimg.com/v2-060ef05f6070b913924b02f3fc0675e6_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-060ef05f6070b913924b02f3fc0675e6_720w.jpg?source=1def8aca\"/></figure><figure data-size=\"normal\"><noscript><img src=\"https://pica.zhimg.com/50/v2-1126d0cfb707f94b889539038e43fa82_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"850\" data-rawheight=\"892\" data-original-token=\"v2-1126d0cfb707f94b889539038e43fa82\" class=\"origin_image zh-lightbox-thumb\" width=\"850\" data-original=\"https://pic1.zhimg.com/v2-1126d0cfb707f94b889539038e43fa82_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;850&#39; height=&#39;892&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"850\" data-rawheight=\"892\" data-original-token=\"v2-1126d0cfb707f94b889539038e43fa82\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"850\" data-original=\"https://pic1.zhimg.com/v2-1126d0cfb707f94b889539038e43fa82_r.jpg?source=1def8aca\" data-actualsrc=\"https://pica.zhimg.com/50/v2-1126d0cfb707f94b889539038e43fa82_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"WDkdhmNI\">鱼类登陆演化为陆生四足动物后，一开始都是左右摆动，时至今天，爬行动物基本上都是左右摆动脊椎的，而且随着脊索的消失，脊椎连接的改变，左右变动的幅度变得越来越大。</p><p data-pid=\"oxgmdotU\">但这样的运动方式，进行快速运动时都会面临一个非常尴尬的问题<sup data-text=\"Bian, Xue, et al. &#34;Simulations with Australian dragon lizards suggest movement-based signal effectiveness is dependenton display structure and environmental conditions.&#34; Scientific Reports 11.1 (2021): 6383.\" data-url=\"\" data-draft-node=\"inline\" data-draft-type=\"reference\" data-numero=\"8\">[8]</sup>。</p><p data-pid=\"T2Jq814c\">由于它们没有膈肌，是通过胸腔周围的肌肉压缩肺部来进行呼吸的。</p><p data-pid=\"D6paW_wh\">因此高速奔跑时，肌肉快速挤压肺部，会使得它们无法正常呼吸。所以它们总是憋气奔跑，跑一段时间再停下来换气。</p><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-43ac4b7ceeb658c9c64efb14444e6f1e_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"1707\" data-rawheight=\"909\" data-original-token=\"v2-43ac4b7ceeb658c9c64efb14444e6f1e\" class=\"origin_image zh-lightbox-thumb\" width=\"1707\" data-original=\"https://pica.zhimg.com/v2-43ac4b7ceeb658c9c64efb14444e6f1e_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;1707&#39; height=&#39;909&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"1707\" data-rawheight=\"909\" data-original-token=\"v2-43ac4b7ceeb658c9c64efb14444e6f1e\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"1707\" data-original=\"https://pica.zhimg.com/v2-43ac4b7ceeb658c9c64efb14444e6f1e_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-43ac4b7ceeb658c9c64efb14444e6f1e_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"n3h-NcS_\">后来随着四肢演化得越来越强壮，开始朝着腹部集中，然后开始抬起了身体。哺乳动物这一支也发展出了膈肌，恐龙演化出了双呼吸。</p><p data-pid=\"Vz8PAXNw\">呼吸和运动方式改变了，它们就可以一边奔跑，一边自由呼吸啦。</p><figure data-size=\"normal\"><noscript><img src=\"https://pica.zhimg.com/50/v2-f71eadb01a115216aea5147f606885bd_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"501\" data-rawheight=\"438\" data-original-token=\"v2-f71eadb01a115216aea5147f606885bd\" class=\"origin_image zh-lightbox-thumb\" width=\"501\" data-original=\"https://picx.zhimg.com/v2-f71eadb01a115216aea5147f606885bd_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;501&#39; height=&#39;438&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"501\" data-rawheight=\"438\" data-original-token=\"v2-f71eadb01a115216aea5147f606885bd\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"501\" data-original=\"https://picx.zhimg.com/v2-f71eadb01a115216aea5147f606885bd_r.jpg?source=1def8aca\" data-actualsrc=\"https://pica.zhimg.com/50/v2-f71eadb01a115216aea5147f606885bd_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"BoJf0za-\">然后随着身体抬高，早期四足动物那样左右摆动的运动方式，就严重影响了奔跑速度，变成了不利于生存的特征。因此经过不断淘汰，被环境筛选出来的后代，脊椎左右摆动的幅度就退化了，恐龙和哺乳动物都演化出了可以大幅度上下摆动的脊椎。</p><p data-pid=\"GeHNt2xG\">脊椎对步态的适应，是一种生物力学的优化。不仅可以让它们在奔跑的时候身体保持姿势稳定，减少额外的体能消耗。脊椎还可以如同弹簧一样，储能和释能，提高体能的利用效率。</p><figure data-size=\"normal\"><noscript><img src=\"https://pic1.zhimg.com/50/v2-bff2519c075be71e28fe9848ecccab79_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"512\" data-rawheight=\"288\" data-original-token=\"v2-bff2519c075be71e28fe9848ecccab79\" class=\"origin_image zh-lightbox-thumb\" width=\"512\" data-original=\"https://picx.zhimg.com/v2-bff2519c075be71e28fe9848ecccab79_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;512&#39; height=&#39;288&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"512\" data-rawheight=\"288\" data-original-token=\"v2-bff2519c075be71e28fe9848ecccab79\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"512\" data-original=\"https://picx.zhimg.com/v2-bff2519c075be71e28fe9848ecccab79_r.jpg?source=1def8aca\" data-actualsrc=\"https://pic1.zhimg.com/50/v2-bff2519c075be71e28fe9848ecccab79_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"Mrd-UcvV\">正是这个原因，因此无论鲸类还是海狮、海牛、企鹅，即便重返海洋后，游泳时的脊椎都是上下摆动的。</p><p data-pid=\"4n2MytfK\">所以，哺乳型美人鱼的尾巴自然是应该上下摆动的，它们下半身有着发达的肌肉，大大的尾鳍中，也像鲸一样没有骨骼。</p><p data-pid=\"zEgAm02A\">从这个角度来看，布莱克的画作还是有着一定科学性的。<br/></p><p data-pid=\"-rpycOe3\"><b>那这两种类型的美人鱼，是如何演化而来的？</b></p><p data-pid=\"9y-Vkhz2\">还是先来看第一种，鱼型美人鱼。</p><p data-pid=\"zH2nnLAM\">如果美人鱼是鱼演化出来的，也就意味着，拥有人形上半身的它们，不可能是从海底演化出来的。这种高阻力的上半身，与流体力是学相悖的，和演化压力是相反的。而它们的下半身保持鱼的形态，那就说明它们是无法离开水源的。</p><p data-pid=\"APrEvt5f\">它们的下半身保持高度的流体力学适应，这样我们就可以下一个这样的结论，这一支美人鱼的祖先，最接近的形态是这样的：</p><figure data-size=\"normal\"><noscript><img src=\"https://pic1.zhimg.com/50/v2-3e4560625db7cab6f90a206f9a096cf6_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"640\" data-rawheight=\"357\" data-original-token=\"v2-3e4560625db7cab6f90a206f9a096cf6\" class=\"origin_image zh-lightbox-thumb\" width=\"640\" data-original=\"https://pic1.zhimg.com/v2-3e4560625db7cab6f90a206f9a096cf6_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;640&#39; height=&#39;357&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"640\" data-rawheight=\"357\" data-original-token=\"v2-3e4560625db7cab6f90a206f9a096cf6\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"640\" data-original=\"https://pic1.zhimg.com/v2-3e4560625db7cab6f90a206f9a096cf6_r.jpg?source=1def8aca\" data-actualsrc=\"https://pic1.zhimg.com/50/v2-3e4560625db7cab6f90a206f9a096cf6_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"tWcjjroz\">这是正在登陆的提塔利克鱼，生活在3.75亿年前，处于鱼类和（早期）四足类动物之间的过渡类群<sup data-text=\"Lemberg, Justin B., Edward B. Daeschler, and Neil H. Shubin. &#34;The feeding system of Tiktaalik roseae: an intermediate between suction feeding and biting.&#34; Proceedings of the National Academy of Sciences 118.7 (2021): e2016421118.\" data-url=\"\" data-draft-node=\"inline\" data-draft-type=\"reference\" data-numero=\"9\">[9]</sup>。</p><p data-pid=\"MuLi1DeT\">它们已经演化出了肺和内鼻孔，我们可以想象，有这样一支提塔利克鱼：</p><p data-pid=\"XJf6f5Mx\">它们没有赶上3.6亿年前的上岸机会，一直等到大量肉鳍鱼登陆成功后，它们都没有成功。因此被根齿鱼等巨型肉鳍鱼，以及大型两栖动物夹在了生态位中间，重新下海也不是，继续登陆也不是。</p><figure data-size=\"normal\"><noscript><img src=\"https://pic1.zhimg.com/50/v2-76cb21f0dfdab3e5f62910964cb13606_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"720\" data-rawheight=\"576\" data-original-token=\"v2-76cb21f0dfdab3e5f62910964cb13606\" class=\"origin_image zh-lightbox-thumb\" width=\"720\" data-original=\"https://pic1.zhimg.com/v2-76cb21f0dfdab3e5f62910964cb13606_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;720&#39; height=&#39;576&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"720\" data-rawheight=\"576\" data-original-token=\"v2-76cb21f0dfdab3e5f62910964cb13606\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"720\" data-original=\"https://pic1.zhimg.com/v2-76cb21f0dfdab3e5f62910964cb13606_r.jpg?source=1def8aca\" data-actualsrc=\"https://pic1.zhimg.com/50/v2-76cb21f0dfdab3e5f62910964cb13606_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"OuEUnG8F\">因为生活所迫，它们不得不在这个特殊的生态位上持续演化。</p><p data-pid=\"dqGPW2DI\">一方面，它们的下身强化了游泳能力，再次发展成为鱼型形态。上半身则朝着陆生动物方向形态发展。强有力的尾巴在浅滩提供动力，四肢用来支撑身体。</p><p data-pid=\"d6aVUX0Z\">它们朝美人鱼方向演化的过度形态，可能非常接近于鳄鱼。</p><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-322136c0162727fe17c95a000571054b_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"640\" data-rawheight=\"482\" data-original-token=\"v2-322136c0162727fe17c95a000571054b\" class=\"origin_image zh-lightbox-thumb\" width=\"640\" data-original=\"https://picx.zhimg.com/v2-322136c0162727fe17c95a000571054b_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;640&#39; height=&#39;482&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"640\" data-rawheight=\"482\" data-original-token=\"v2-322136c0162727fe17c95a000571054b\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"640\" data-original=\"https://picx.zhimg.com/v2-322136c0162727fe17c95a000571054b_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-322136c0162727fe17c95a000571054b_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"ZV6Iuuwp\">因为环境和食物的变化，它们中的一支可能朝着抓握的方向发展，从而发展出发达的上肢。上肢和身体肌肉异常发达后，随着下肢作用降低，那就可能退化掉了。</p><p data-pid=\"fdTsjWfX\">不过，这种美人鱼的最终形态可能是这个样子：</p><figure data-size=\"normal\"><noscript><img src=\"https://pic1.zhimg.com/50/v2-685469283671336fba6efa169c34e528_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"1092\" data-rawheight=\"700\" data-original-token=\"v2-685469283671336fba6efa169c34e528\" class=\"origin_image zh-lightbox-thumb\" width=\"1092\" data-original=\"https://picx.zhimg.com/v2-685469283671336fba6efa169c34e528_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;1092&#39; height=&#39;700&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"1092\" data-rawheight=\"700\" data-original-token=\"v2-685469283671336fba6efa169c34e528\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"1092\" data-original=\"https://picx.zhimg.com/v2-685469283671336fba6efa169c34e528_r.jpg?source=1def8aca\" data-actualsrc=\"https://pic1.zhimg.com/50/v2-685469283671336fba6efa169c34e528_720w.jpg?source=1def8aca\"/></figure><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-7cd9c882472af28790464e321d6d7910_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"5277\" data-rawheight=\"3150\" data-original-token=\"v2-7cd9c882472af28790464e321d6d7910\" class=\"origin_image zh-lightbox-thumb\" width=\"5277\" data-original=\"https://pica.zhimg.com/v2-7cd9c882472af28790464e321d6d7910_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;5277&#39; height=&#39;3150&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"5277\" data-rawheight=\"3150\" data-original-token=\"v2-7cd9c882472af28790464e321d6d7910\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"5277\" data-original=\"https://pica.zhimg.com/v2-7cd9c882472af28790464e321d6d7910_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-7cd9c882472af28790464e321d6d7910_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"SYMLRFmJ\">很难演化出符合人类审美的形象。</p><p data-pid=\"J6xeO2kb\">网上流传的大量“真实”美人鱼的恐怖形象，或许可以认为，是这种美人鱼的同科动物。</p><p data-pid=\"oB3sgV6O\">第二种，哺乳型美人鱼。</p><p data-pid=\"ZQl1a1JJ\">这种美人鱼的演化时间，不可能太早也不可能太晚。</p><p data-pid=\"fBmmSg7D\">6500万年前，天降神罚，恐龙王朝覆灭，同时消失的还有大量海爬巨兽。海洋留下大量的生态位真空，正等待未来海洋霸主的到来。</p><p data-pid=\"55wmgISZ\">4000万年前鲸类的祖先劳氏兽开始水陆两栖，一支演化出了今天的河马，一支演化出巴基鲸，巴基鲸通过500万年的时间就演化出了完全适应水生环境的龙王鲸。从此，鲸成功晋升为全新的海洋霸主<sup data-text=\"Geisler, Jonathan H., and Jessica M. Theodor. &#34;Hippopotamus and whale phylogeny.&#34; Nature 458.7236 (2009): E1-E4.\" data-url=\"\" data-draft-node=\"inline\" data-draft-type=\"reference\" data-numero=\"10\">[10]</sup>。</p><figure data-size=\"normal\"><noscript><img src=\"https://pica.zhimg.com/50/v2-b82663c56cf44258fbec8e7a1c174dae_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"792\" data-rawheight=\"295\" data-original-token=\"v2-b82663c56cf44258fbec8e7a1c174dae\" class=\"origin_image zh-lightbox-thumb\" width=\"792\" data-original=\"https://picx.zhimg.com/v2-b82663c56cf44258fbec8e7a1c174dae_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;792&#39; height=&#39;295&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"792\" data-rawheight=\"295\" data-original-token=\"v2-b82663c56cf44258fbec8e7a1c174dae\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"792\" data-original=\"https://picx.zhimg.com/v2-b82663c56cf44258fbec8e7a1c174dae_r.jpg?source=1def8aca\" data-actualsrc=\"https://pica.zhimg.com/50/v2-b82663c56cf44258fbec8e7a1c174dae_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"aLScizJF\">如果美人鱼祖先下海过早的话，由于生态位真空，会趋同演化成另外一种“鲸”。而且早期哺乳动物的抓握能力还不够强，过早下海也很难演化出人型双手。</p><p data-pid=\"VSORfdEu\">当然，过晚登陆也不行。虽然鲸的演化速度相当惊人，500万年的时间就演化出了龙王鲸，但是龙王鲸它还还保留了后肢啊<sup data-text=\"Gingerich, Philip D., B. Holly Smith, and Elwyn L. Simons. &#34;Hind limbs of Eocene Basilosaurus:evidence of feet in whales.&#34;Science 249.4965 (1990): 154-157.\" data-url=\"\" data-draft-node=\"inline\" data-draft-type=\"reference\" data-numero=\"11\">[11]</sup>。</p><p data-pid=\"RR4PP2OG\">关于人类演化，有个古老的学说——海（水）猿说<sup data-text=\"Langdon, John H. &#34;Umbrella hypotheses and parsimony in human evolution: a critique of the Aquatic Ape Hypothesis.&#34; Journal of Human Evolution 33.4 (1997): 479-494.\" data-url=\"\" data-draft-node=\"inline\" data-draft-type=\"reference\" data-numero=\"12\">[12]</sup>。</p><p data-pid=\"iqOnKPBX\">海（水）猿说认为，400万年前，人类进入海洋生活，所以才演化出皮肤的裸露。这个说法，后来也逐渐被用来为美人鱼的演化背书，认为其中一支海（水）猿没有上岸，演化成了今天的美人鱼。</p><p data-pid=\"a02nZUhG\">且不说海（水）猿说没有任何依据，400万年也不足以让美人鱼演化出完全的鲸型下身。</p><p data-pid=\"XLsJf2dA\">考虑到美人鱼面孔和人类几乎一样，它们的祖先也不能和人类，有太大的亲缘差距。</p><p data-pid=\"NAFiinp7\">由此我们可以推断啊，美人鱼祖先最理想的下海时间是，2000万~3000万年前，与猴科和人猿总科有着共同祖先，属于旧世界猴，简鼻亚目，拥有三色视觉，已经拥有对生的大拇指。</p><p data-pid=\"X7RGdUlK\">埃及猿可能接近它们下海时的形态<sup data-text=\"Simons, Elwyn L. &#34;New faces of Aegyptopithecus from the Oligocene of Egypt.&#34; Journal of Human Evolution 16.3 (1987): 273-289.\" data-url=\"\" data-draft-node=\"inline\" data-draft-type=\"reference\" data-numero=\"13\">[13]</sup>。</p><figure data-size=\"normal\"><noscript><img src=\"https://pic1.zhimg.com/50/v2-3044a37e8ff393182a53fded97d71aa8_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"600\" data-rawheight=\"379\" data-original-token=\"v2-3044a37e8ff393182a53fded97d71aa8\" class=\"origin_image zh-lightbox-thumb\" width=\"600\" data-original=\"https://picx.zhimg.com/v2-3044a37e8ff393182a53fded97d71aa8_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;600&#39; height=&#39;379&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"600\" data-rawheight=\"379\" data-original-token=\"v2-3044a37e8ff393182a53fded97d71aa8\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"600\" data-original=\"https://picx.zhimg.com/v2-3044a37e8ff393182a53fded97d71aa8_r.jpg?source=1def8aca\" data-actualsrc=\"https://pic1.zhimg.com/50/v2-3044a37e8ff393182a53fded97d71aa8_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"MMhik2cu\">不过，一开始它们是海树两栖的杂食动物。它们会进入海岸的树林摘水果，也会下海捕鱼。因此它们的攀爬能力得到保留，下半身则逐渐适应水环境而发生了变化。</p><p data-pid=\"PaKYrJDO\">随着下肢退化，它们上肢的抓握和攀爬能力反而增强，与类人猿发生了趋同演化，同样演化出了更长的大拇指，不仅双手的抓握能力进一步增加，灵活度也大大增加。</p><p data-pid=\"zI4fose9\">随着全球变冷，海洋（森林）退化，它们不得不完全进入海洋生态位。体型不大的它们，没有锋利牙齿，不得不团结族群，成为了群居动物，它们制造标枪在浅海狩猎。双手需求的增加，使得它们的双手朝着更加灵活的方向继续发展。</p><p data-pid=\"tOY3d7bp\">双手发展那就刺激了大脑进步，使它们演化成了高智力的动物。不过整个过程很漫长，大约经过1000多万年的完全水栖，它们最终退化下肢，演化出了完全的鲸型下半身。</p><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-c607fbda6c5319e430c7dbc111fd2f12_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"648\" data-rawheight=\"350\" data-original-token=\"v2-c607fbda6c5319e430c7dbc111fd2f12\" class=\"origin_image zh-lightbox-thumb\" width=\"648\" data-original=\"https://pica.zhimg.com/v2-c607fbda6c5319e430c7dbc111fd2f12_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;648&#39; height=&#39;350&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"648\" data-rawheight=\"350\" data-original-token=\"v2-c607fbda6c5319e430c7dbc111fd2f12\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"648\" data-original=\"https://pica.zhimg.com/v2-c607fbda6c5319e430c7dbc111fd2f12_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-c607fbda6c5319e430c7dbc111fd2f12_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"yS1L-ogf\">在一些传说中，美人鱼是拥有鳞片的。</p><p data-pid=\"5sINsRw6\">可以认为这些鳞片是类似于穿山甲，来源于角质层的鳞片（角质鳞），和起源于真皮层的鱼鳞（骨质鳞）是完全不同的<sup data-text=\"Ahamed, Mohammad Kaiser, Hongxu Wang, and Paul J. Hazell. &#34;From biology to biomimicry: Using nature to build better structures–A review.&#34; Construction and Building  Materials 320 (2022): 126195.\" data-url=\"\" data-draft-node=\"inline\" data-draft-type=\"reference\" data-numero=\"14\">[14]</sup>。</p><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-eb0f0fc7e7ec347d522a5659be506f51_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"563\" data-rawheight=\"380\" data-original-token=\"v2-eb0f0fc7e7ec347d522a5659be506f51\" class=\"origin_image zh-lightbox-thumb\" width=\"563\" data-original=\"https://picx.zhimg.com/v2-eb0f0fc7e7ec347d522a5659be506f51_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;563&#39; height=&#39;380&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"563\" data-rawheight=\"380\" data-original-token=\"v2-eb0f0fc7e7ec347d522a5659be506f51\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"563\" data-original=\"https://picx.zhimg.com/v2-eb0f0fc7e7ec347d522a5659be506f51_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-eb0f0fc7e7ec347d522a5659be506f51_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"sySX1iVb\">它们之所以演化出鳞片可能和残酷的种内竞争有关。种内竞争也导致一支美人鱼进入了深海，演化成了深海动物，一支则在海岸边缘与人类发生了一场特殊的趋同演化。</p><p data-pid=\"Dp2U4H_p\">在古猿演化成人的过程中，这些美人鱼专性掠食古猿为生，通过声音或形象吸引古猿。经过数百万年的演化，它们的形象和声音最终和人类几乎一模一样，有了非常吸引人类的特征，尤其是异性。</p><p data-pid=\"KmUOFKko\">为了生存，它们也和抹香鲸之类的鲸鱼一样，掌握了深潜能力，主要在深夜时来到浅海狩猎。或许正是因为它们的食性过于特化，因此它们成为了稀缺物种，最终濒危或灭绝。</p><p data-pid=\"URksv_so\">而深海的那一支，则可能在高海洋压力的环境中，演化成一群恐怖生物。</p><p data-pid=\"MtJ7q_Gy\">虽然地球上并不存在美人鱼，但或许在某个外星文明中，它们是可能真实存在的。</p>",
+          "contentMark": {},
+          "contentNeedTruncated": false,
+          "createdTime": 1772450208,
+          "decorativeLabels": [],
+          "editableContent": "",
+          "endorsements": [
+            {
+              "actionUrl": "https://www.zhihu.com/topic/2009999133964985845",
+              "backgroundColor": {
+                "alpha": 0.1,
+                "group": "GYL02A"
+              },
+              "elements": [
+                {
+                  "height": 16,
+                  "imageColor": {
+                    "alpha": 1,
+                    "group": "GYL02A"
+                  },
+                  "imageKey": "zhicon_icon_24_chat_bubble_hash_fill",
+                  "type": "IMAGE",
+                  "width": 16
+                },
+                {
+                  "content": "话题收录",
+                  "fontColor": {
+                    "alpha": 1,
+                    "group": "GYL02A"
+                  },
+                  "fontSize": 13,
+                  "isBold": true,
+                  "maxLine": 1,
+                  "type": "TEXT"
+                },
+                {
+                  "content": "底刊",
+                  "fontColor": {
+                    "alpha": 1,
+                    "group": "GYL02A"
+                  },
+                  "fontSize": 13,
+                  "isBold": false,
+                  "maxLine": 1,
+                  "type": "TEXT"
+                },
+                {
+                  "height": 12,
+                  "imageColor": {
+                    "alpha": 1,
+                    "group": "GYL02A"
+                  },
+                  "imageKey": "zhicon_icon_16_arrow_right",
+                  "type": "IMAGE",
+                  "width": 12
+                }
+              ],
+              "subElements": [],
+              "subElementsType": "DESCRIPTION",
+              "za": {
+                "blockText": "topic",
+                "text": "",
+                "type": "text"
+              }
+            }
+          ],
+          "excerpt": "我也提供一篇吧。 《美人鱼——生物学可行性报告》 [图片] 1870年代，一位叫做布莱克的美国外科医生，不仅提出过「如果美人鱼、牛头怪是人类祖先该怎么办？」的奇怪问题。还画了一本关于神话动物的解剖手册。 [图片] 这些手册，最终和他带有神秘色彩的虚构自传一起出版，命名为： 《复活主义者（掘墓者）：斯宾塞·布莱克博士的失落作品The Resurrectionist：The Lost Work of Dr. Spencer Black》 [1]。 [图片] 这是布莱克笔下的美人鱼生理结构： 这些…",
+          "extras": "",
+          "favlistsCount": 180,
+          "forceLoginWhenClickReadMore": false,
+          "hasPublishingDraft": false,
+          "id": "2011882673929466505",
+          "isCollapsed": false,
+          "isContainAiContent": false,
+          "isCopyable": false,
+          "isJumpNative": false,
+          "isMine": false,
+          "isNavigator": false,
+          "isNormal": true,
+          "isSticky": false,
+          "isVisible": true,
+          "matrixTips": "409 赞同 · 180 收藏 · 23 评论",
+          "navigatorVote": false,
+          "question": {
+            "created": 1772431589,
+            "id": "2011804582406267252",
+            "questionType": "normal",
+            "relationship": null,
+            "title": "《Rubbish》期刊正式登陆知乎——你有哪些适合发表在《Rubbish》的研究或发现？",
+            "type": "question",
+            "updatedTime": 1772431930,
+            "url": "https://www.zhihu.com/api/v4/questions/2011804582406267252"
+          },
+          "reaction": {
+            "relation": {
+              "faved": false,
+              "liked": false
+            },
+            "statistics": {
+              "downVoteCount": 1,
+              "favorites": 180,
+              "likeCount": 18
+            }
+          },
+          "reactionInstruction": {},
+          "relationship": {
+            "isAuthor": false,
+            "isAuthorized": false,
+            "isFavorited": false,
+            "isNothelp": false,
+            "isThanked": false,
+            "upvotedFollowees": [],
+            "voting": 0
+          },
+          "relevantInfo": {
+            "isRelevant": false,
+            "relevantText": "",
+            "relevantType": ""
+          },
+          "reshipmentSettings": "disallowed",
+          "rewardInfo": {
+            "canOpenReward": false,
+            "isRewardable": false,
+            "rewardMemberCount": 0,
+            "rewardTotalMoney": 0,
+            "tagline": ""
+          },
+          "settings": {
+            "tableOfContents": {
+              "enabled": false
+            }
+          },
+          "stickyInfo": "",
+          "suggestEdit": {
+            "reason": "",
+            "status": false,
+            "tip": "",
+            "title": "",
+            "unnormalDetails": {
+              "description": "",
+              "note": "",
+              "reason": "",
+              "reasonId": 0,
+              "status": ""
+            },
+            "url": ""
+          },
+          "thanksCount": 18,
+          "thumbnailInfo": {
+            "count": 3,
+            "thumbnails": [
+              {
+                "height": 540,
+                "token": "v2-8c70bc73624bee5d3fb6e13ef3cee5e2",
+                "type": "image",
+                "url": "https://picx.zhimg.com/80/v2-8c70bc73624bee5d3fb6e13ef3cee5e2_720w.jpg?source=1def8aca",
+                "width": 720
+              },
+              {
+                "height": 1094,
+                "token": "v2-6ded1e488dc3078abd8e158e2fd0b49e",
+                "type": "image",
+                "url": "https://picx.zhimg.com/80/v2-6ded1e488dc3078abd8e158e2fd0b49e_720w.jpg?source=1def8aca",
+                "width": 859
+              },
+              {
+                "height": 2200,
+                "token": "v2-a52842863096893f9050de69732009ad",
+                "type": "image",
+                "url": "https://picx.zhimg.com/80/v2-a52842863096893f9050de69732009ad_720w.jpg?source=1def8aca",
+                "width": 1700
+              }
+            ],
+            "type": "thumbnail_info"
+          },
+          "type": "answer",
+          "updatedTime": 1772450208,
+          "url": "https://www.zhihu.com/api/v4/answers/2011882673929466505",
+          "visibleOnlyToAuthor": false,
+          "voteNextStep": "vote",
+          "voteupCount": 409
+        },
+        "2011955167772312821": {
+          "adminClosedComment": false,
+          "allowSegmentInteraction": 1,
+          "annotationAction": null,
+          "answerType": "normal",
+          "attachedInfo": "ogEYCAQQAxj1idK4i9L59Rsg9MLQnr2z1/UbkgIuCgk3NzE0NTAyOTgSEzIwMTE5NTUxNjc3NzIzMTI4MjEYBCIKSU1BR0VfVEVYVA==",
+          "author": {
+            "avatarUrl": "https://picx.zhimg.com/v2-9e39cef99abc3598c86b7561eb11e37f_l.jpg?source=1def8aca",
+            "avatarUrlTemplate": "https://picx.zhimg.com/v2-9e39cef99abc3598c86b7561eb11e37f.jpg?source=1def8aca",
+            "badge": [],
+            "badgeV2": {
+              "detailBadges": [],
+              "icon": "",
+              "mergedBadges": [],
+              "nightIcon": "",
+              "title": ""
+            },
+            "exposedMedal": {
+              "avatarUrl": "",
+              "description": "",
+              "medalId": "0",
+              "medalName": ""
+            },
+            "followerCount": 59810,
+            "gender": 0,
+            "headline": "幸好没有腐烂在冬天。",
+            "id": "bf5aae3802c396b90f3354b9778a59f5",
+            "isAdvertiser": false,
+            "isFollowed": false,
+            "isFollowing": false,
+            "isOrg": false,
+            "isPrivacy": true,
+            "kvipInfo": {
+              "isVip": true,
+              "targetUrl": "https://www.zhihu.com/kvip/purchase",
+              "vipIcon": {
+                "nightModeUrl": "https://picx.zhimg.com/v2-57fe7feb4813331d5eca02ef731e12c9.jpg?source=88ceefae",
+                "url": "https://pica.zhimg.com/v2-57fe7feb4813331d5eca02ef731e12c9.jpg?source=88ceefae"
+              }
+            },
+            "name": "柯烟",
+            "type": "people",
+            "url": "https://www.zhihu.com/api/v4/people/bf5aae3802c396b90f3354b9778a59f5",
+            "urlToken": "wan-mu-yu",
+            "userType": "people",
+            "vipInfo": {
+              "isVip": true,
+              "vipIcon": {
+                "nightModeUrl": "https://picx.zhimg.com/v2-c9686ff064ea3579730756ac6c289978.jpg?source=88ceefae",
+                "url": "https://picx.zhimg.com/v2-4812630bc27d642f7cafcd6cdeca3d7a.jpg?source=88ceefae"
+              }
+            }
+          },
+          "businessType": "normal",
+          "canComment": {
+            "reason": "",
+            "status": true
+          },
+          "collapseReason": "",
+          "collapsedBy": "nobody",
+          "commentCount": 15,
+          "commentPermission": "follower_n_days",
+          "content": "<p data-pid=\"2YfBjifp\">《先死为敬：博士生为什么认为自己是废物？》</p><p data-pid=\"w5efCtXl\"><b>摘要：</b>在当代学术体系的规训下，“博士生认为自己是废物”已演变为一种显著的群体性心态。本文以“创建底刊-发表底刊”为切入点，探讨高知青年群体在学术生产过程中的主体性坍塌与自我救赎。首先，本文引入大卫·格雷伯（David Graeber）的“狗屁工作”理论，分析学术评价体系中过度行政化、指标化所导致的劳动异化。其次，从后现代主义视角出发，本文认为发表底刊并非单纯的消极逃避，而是一种防御性的主体性策略。通过预设“论文是rubbish”的姿态，个体得以解构绩优主义（Meritocracy）的宏大叙事，从而在心理层面获得对抗绩效压力的豁免权。最后，<b>本文引入情感社会学视角，揭示了“底刊发表”背后深层的情感动员机制。</b> 研究指出，在“顶刊”准入权被高度垄断与异化的背景下，博士生群体长期处于由焦虑、羞耻与无力感构成的“情感陷阱”中。通过创建和参与“底刊”，个体将原本私密且具有破坏性的“废物感”转化为一种公开的、具有共鸣性的<b>集体情感表征（Emotional Representation）</b>。这种“底刊反抗”本质上是弱者通过叙事主权的回收，将学术异化带来的情感创伤转化为一种黑色幽默式的社群认同，从而实现对学术权力逻辑的微观解构。</p><p data-pid=\"Uag2_zay\"><b>导论</b></p><p data-pid=\"QDiF5drt\">我的人生完蛋了。</p><p data-pid=\"sMVa8G5K\">之前学术界追求顶刊的时候，我的研究就上不了台面，只能守着冷门议题，各种蹭热点，跟传销一样宣传自己的博士论文。</p><p data-pid=\"hMhCXyjq\">病情最严重的时候，我跟朋友打永劫无间都要扯几句福柯，“后现代主义的意思是，一切价值都需要被重新定义……好振！这种价值丧失并不意味着原来的价值，比如正义/自由完全失去意义，而是它无法具有原来的社群凝聚力……兄弟帮我拆一下！好杀！牛逼！……于是人们被迫退回启蒙运动之前，回到宗教的怀抱……我草，有两队，我开大了！”</p><p data-pid=\"6wl1tAka\">后来，我的场伤从一万变成七千，从七千变成五千，kd从0.85变成0.2，而且还总有刁民想骗我去刀房挨打，这个状况才有所好转。</p><p data-pid=\"IKb7sWa1\">结果现在大家又开始卷底刊了。跟大多数底刊相比，我的研究又太正经了，起手就是文化社会学，接着就是群体表征，然后转入结构性，最后落在不可反抗的结构与持续抗争的个体……最要命的是，我根本不愿意承认我的研究是rubbish。</p><p data-pid=\"Q7ziWgiU\">你懂吗，我可以是rubbish，但我的论文不是。</p><p data-pid=\"oSl6FVp6\"><b>文献综述</b></p><p data-pid=\"1vrgjkwa\">每次开学前我都想自杀。</p><p data-pid=\"E1Ed8aFb\">这大概是因为，我发现电脑用来打游戏会很舒服。我其实根本不会玩永劫无间，我的队友控住敌人后我也只会对着他蓄力，打出了0点伤害，主要起到一个氛围灯的作用。即使这样，跟朋友打永劫无间也很快乐。每次躺在地上的时候，我就在想，好耶，死了，可以趴在朋友身上观看他们怎么操作了。从那个时候我就意识到，我可能有当鬼的天赋。</p><p data-pid=\"803K0IT6\">我的朋友跟我说，一个人不能把自己的意义感寄托在工作上。他说，我不会跟我的同行一样悄无声息地死去。因为我不是一个出色的施特劳斯主义者，我的学术信仰并不纯粹，而且我还有希望我活下去的恋人和朋友。他说得对，但是这个世界上不仅存在一种正确。</p><p data-pid=\"81rtRnsF\">论文是我的舍利子。我相信它存在，我希望它存在。因为只有这样，我才能说服自己，我的思考有价值，我的人生有意义。</p><p data-pid=\"ImnGhl3e\">发顶刊是我少女时代的英雄主义。</p><p data-pid=\"iKxLyHHy\">但我已经不是少女了。</p><p data-pid=\"CfMpsmJY\"><b>研究设计</b></p><p data-pid=\"1swCllI5\">死不可怕，死是凉爽的夏夜，可供人无忧的安眠。如果一个人真的死了，他的朋友就会变成哀兵，而哀兵必胜。</p><p data-pid=\"6fISx8Y0\">唯一的问题就是，谁要当那个活下来的哀兵？</p><p data-pid=\"KkhZpuXQ\">希望一个人能在鲜花和掌声中为不怎么熟悉的同行感到哀伤，就如同指望我导师理解我投个普通c刊也会被拒。</p><p data-pid=\"rBCa5QrU\">因此，本研究的核心在于：当“共情”在纵向权力结构中失效时，底刊是如何通过一种“审丑”或“自毁”的仪式，建立起一种横向的情感连接？</p><p data-pid=\"6QAAWWhj\"><b>实证结果</b></p><p data-pid=\"wf2EhSz9\">自杀尚未成功，同志仍需努力。</p><p data-pid=\"px2v6wdF\"><b>结论</b></p><p data-pid=\"LFFvKGI9\"><b>真觉着自己是废物的人是不可能发rubbish的。</b></p><p></p>",
+          "contentMark": {},
+          "contentNeedTruncated": false,
+          "createdTime": 1772467492,
+          "decorativeLabels": [],
+          "editableContent": "",
+          "excerpt": "《先死为敬：博士生为什么认为自己是废物？》 摘要：在当代学术体系的规训下，“博士生认为自己是废物”已演变为一种显著的群体性心态。本文以“创建底刊-发表底刊”为切入点，探讨高知青年群体在学术生产过程中的主体性坍塌与自我救赎。首先，本文引入大卫·格雷伯（David Graeber）的“狗屁工作”理论，分析学术评价体系中过度行政化、指标化所导致的劳动异化。其次，从后现代主义视角出发，本文认为发表底刊并非单纯的消极逃…",
+          "extras": "",
+          "favlistsCount": 83,
+          "forceLoginWhenClickReadMore": false,
+          "hasPublishingDraft": false,
+          "id": "2011955167772312821",
+          "isCollapsed": false,
+          "isContainAiContent": false,
+          "isCopyable": true,
+          "isJumpNative": false,
+          "isMine": false,
+          "isNavigator": false,
+          "isNormal": true,
+          "isSticky": false,
+          "isVisible": true,
+          "matrixTips": "324 赞同 · 83 收藏 · 15 评论",
+          "navigatorVote": false,
+          "question": {
+            "created": 1772431589,
+            "id": "2011804582406267252",
+            "questionType": "normal",
+            "relationship": null,
+            "title": "《Rubbish》期刊正式登陆知乎——你有哪些适合发表在《Rubbish》的研究或发现？",
+            "type": "question",
+            "updatedTime": 1772431930,
+            "url": "https://www.zhihu.com/api/v4/questions/2011804582406267252"
+          },
+          "reaction": {
+            "relation": {
+              "faved": false,
+              "liked": false
+            },
+            "statistics": {
+              "downVoteCount": 0,
+              "favorites": 83,
+              "likeCount": 26
+            }
+          },
+          "reactionInstruction": {},
+          "relationship": {
+            "isAuthor": false,
+            "isAuthorized": false,
+            "isFavorited": false,
+            "isNothelp": false,
+            "isThanked": false,
+            "upvotedFollowees": [],
+            "voting": 0
+          },
+          "relevantInfo": {
+            "isRelevant": false,
+            "relevantText": "",
+            "relevantType": ""
+          },
+          "reshipmentSettings": "allowed",
+          "rewardInfo": {
+            "canOpenReward": false,
+            "isRewardable": true,
+            "rewardMemberCount": 0,
+            "rewardTotalMoney": 0,
+            "tagline": "真诚赞赏，手留余香"
+          },
+          "segmentInfos": [
+            {
+              "marks": [
+                {
+                  "endIndex": 48,
+                  "segInfo": {
+                    "commentCount": 0,
+                    "isLike": false,
+                    "isSpan": false,
+                    "likeCount": 14,
+                    "myCommentCount": 0,
+                    "segIds": [
+                      "2012148974920934325"
+                    ]
+                  },
+                  "startIndex": 0
+                }
+              ],
+              "pid": "1swCllI5",
+              "text": "死不可怕，死是凉爽的夏夜，可供人无忧的安眠。如果一个人真的死了，他的朋友就会变成哀兵，而哀兵必胜。"
+            }
+          ],
+          "settings": {
+            "tableOfContents": {
+              "enabled": false
+            }
+          },
+          "stickyInfo": "",
+          "suggestEdit": {
+            "reason": "",
+            "status": false,
+            "tip": "",
+            "title": "",
+            "unnormalDetails": {
+              "description": "",
+              "note": "",
+              "reason": "",
+              "reasonId": 0,
+              "status": ""
+            },
+            "url": ""
+          },
+          "thanksCount": 26,
+          "thumbnailInfo": {
+            "count": 0,
+            "thumbnails": [],
+            "type": "thumbnail_info"
+          },
+          "type": "answer",
+          "updatedTime": 1772467492,
+          "url": "https://www.zhihu.com/api/v4/answers/2011955167772312821",
+          "visibleOnlyToAuthor": false,
+          "voteNextStep": "vote",
+          "voteupCount": 324
+        },
+        "2011820462880088895": {
+          "adminClosedComment": false,
+          "allowSegmentInteraction": 1,
+          "annotationAction": null,
+          "answerType": "normal",
+          "attachedInfo": "ogEYCAQQAxi/xtHO1IHb9Rsg9MLQnr2z1/UbkgIuCgk3NzEzODY3NzESEzIwMTE4MjA0NjI4ODAwODg4OTUYBCIKSU1BR0VfVEVYVA==",
+          "author": {
+            "avatarUrl": "https://pic1.zhimg.com/v2-2af481d1db0ae0c504fb2411e1548f92_l.jpg?source=1def8aca",
+            "avatarUrlTemplate": "https://pic1.zhimg.com/v2-2af481d1db0ae0c504fb2411e1548f92.jpg?source=1def8aca",
+            "badge": [
+              {
+                "description": "优秀答主",
+                "topics": [
+                  {
+                    "avatarUrl": "https://picx.zhimg.com/v2-b6d13f0a636fbd9b9fc442e00f595cee_qhd.jpg?source=57bbeac9",
+                    "id": "19552214",
+                    "name": "科幻",
+                    "topicType": "NORMAL",
+                    "type": "topic",
+                    "url": "https://www.zhihu.com/api/v4/topics/19552214"
+                  },
+                  {
+                    "avatarUrl": "https://pica.zhimg.com/v2-e0e3f57da8dc5b0c706300d18714c4ae_qhd.jpg?source=57bbeac9",
+                    "id": "19551585",
+                    "name": "科普",
+                    "topicType": "NORMAL",
+                    "type": "topic",
+                    "url": "https://www.zhihu.com/api/v4/topics/19551585"
+                  },
+                  {
+                    "avatarUrl": "https://picx.zhimg.com/v2-ec2cc8677af5762ba2733163a1b7f081_qhd.jpg?source=57bbeac9",
+                    "id": "19559915",
+                    "name": "科幻电影",
+                    "topicType": "NORMAL",
+                    "type": "topic",
+                    "url": "https://www.zhihu.com/api/v4/topics/19559915"
+                  }
+                ],
+                "type": "best_answerer"
+              }
+            ],
+            "badgeV2": {
+              "detailBadges": [
+                {
+                  "description": "新知答主",
+                  "detailType": "zhihu_yearly_answerer",
+                  "icon": "https://picx.zhimg.com/v2-4a07bc69c4bb04444721f35b32125c75_l.png?source=32738c0c",
+                  "nightIcon": "https://picx.zhimg.com/v2-4a07bc69c4bb04444721f35b32125c75_l.png?source=32738c0c",
+                  "sources": [
+                    {
+                      "avatarPath": "",
+                      "avatarUrl": "",
+                      "description": "",
+                      "id": "2023",
+                      "name": "",
+                      "priority": 2023,
+                      "token": "",
+                      "type": "year",
+                      "url": ""
+                    }
+                  ],
+                  "title": "年度新知答主",
+                  "type": "reward",
+                  "url": "https://www.zhihu.com/question/510340037"
+                },
+                {
+                  "description": "科幻电影等 3 个话题下的优秀答主",
+                  "detailType": "best_answerer",
+                  "icon": "https://pic1.zhimg.com/v2-4a07bc69c4bb04444721f35b32125c75_l.png?source=32738c0c",
+                  "nightIcon": "https://picx.zhimg.com/v2-4a07bc69c4bb04444721f35b32125c75_l.png?source=32738c0c",
+                  "sources": [
+                    {
+                      "avatarPath": "v2-ec2cc8677af5762ba2733163a1b7f081",
+                      "avatarUrl": "https://picx.zhimg.com/v2-ec2cc8677af5762ba2733163a1b7f081_720w.jpg?source=32738c0c",
+                      "description": "",
+                      "id": "19559915",
+                      "name": "科幻电影",
+                      "priority": 0,
+                      "token": "19559915",
+                      "type": "topic",
+                      "url": "https://www.zhihu.com/topic/19559915"
+                    },
+                    {
+                      "avatarPath": "v2-e0e3f57da8dc5b0c706300d18714c4ae",
+                      "avatarUrl": "https://picx.zhimg.com/v2-e0e3f57da8dc5b0c706300d18714c4ae_720w.jpg?source=32738c0c",
+                      "description": "",
+                      "id": "19551585",
+                      "name": "科普",
+                      "priority": 0,
+                      "token": "19551585",
+                      "type": "topic",
+                      "url": "https://www.zhihu.com/topic/19551585"
+                    },
+                    {
+                      "avatarPath": "v2-b6d13f0a636fbd9b9fc442e00f595cee",
+                      "avatarUrl": "https://picx.zhimg.com/v2-b6d13f0a636fbd9b9fc442e00f595cee_720w.jpg?source=32738c0c",
+                      "description": "",
+                      "id": "19552214",
+                      "name": "科幻",
+                      "priority": 0,
+                      "token": "19552214",
+                      "type": "topic",
+                      "url": "https://www.zhihu.com/topic/19552214"
+                    }
+                  ],
+                  "title": "优秀答主",
+                  "type": "best",
+                  "url": "https://www.zhihu.com/question/48509984"
+                },
+                {
+                  "description": "知势榜科学工程领域影响力榜答主",
+                  "detailType": "super_activity",
+                  "icon": "https://pica.zhimg.com/v2-4a07bc69c4bb04444721f35b32125c75_l.png?source=32738c0c",
+                  "nightIcon": "https://pic1.zhimg.com/v2-4a07bc69c4bb04444721f35b32125c75_l.png?source=32738c0c",
+                  "sources": [
+                    {
+                      "avatarPath": "",
+                      "avatarUrl": "",
+                      "description": "",
+                      "id": "27",
+                      "name": "知势榜8月",
+                      "priority": 27,
+                      "token": "",
+                      "type": "content_potential_category",
+                      "url": ""
+                    }
+                  ],
+                  "title": "社区成就",
+                  "type": "reward",
+                  "url": ""
+                }
+              ],
+              "icon": "https://pica.zhimg.com/v2-4a07bc69c4bb04444721f35b32125c75_l.png?source=32738c0c",
+              "mergedBadges": [
+                {
+                  "description": "新知答主",
+                  "detailType": "best",
+                  "icon": "",
+                  "nightIcon": "",
+                  "sources": [],
+                  "title": "年度新知答主",
+                  "type": "best",
+                  "url": "https://www.zhihu.com/question/510340037"
+                }
+              ],
+              "nightIcon": "https://pic1.zhimg.com/v2-4a07bc69c4bb04444721f35b32125c75_l.png?source=32738c0c",
+              "title": "新知答主"
+            },
+            "exposedMedal": {
+              "avatarUrl": "https://pica.zhimg.com/v2-309445418976791bdf03435a1b622ab2_l.png?source=1def8aca",
+              "description": "参与「十万个回答给孩子」活动，创作数量和质量达标",
+              "medalAvatarFrame": "",
+              "medalId": "1454782493362286592",
+              "medalName": "好奇心答疑员",
+              "miniAvatarUrl": "https://picx.zhimg.com/v2-309445418976791bdf03435a1b622ab2_r.png?source=1def8aca"
+            },
+            "followerCount": 884794,
+            "gender": 0,
+            "headline": "衣沾不足惜，但使愿无违。",
+            "id": "eb67c87bde5ed3b991f942e7d4b81838",
+            "isAdvertiser": false,
+            "isFollowed": true,
+            "isFollowing": true,
+            "isOrg": false,
+            "isPrivacy": false,
+            "kvipInfo": {
+              "isVip": true,
+              "targetUrl": "https://www.zhihu.com/kvip/purchase",
+              "vipIcon": {
+                "nightModeUrl": "https://picx.zhimg.com/v2-57fe7feb4813331d5eca02ef731e12c9.jpg?source=88ceefae",
+                "url": "https://picx.zhimg.com/v2-57fe7feb4813331d5eca02ef731e12c9.jpg?source=88ceefae"
+              }
+            },
+            "name": "赵泠",
+            "type": "people",
+            "url": "https://www.zhihu.com/api/v4/people/eb67c87bde5ed3b991f942e7d4b81838",
+            "urlToken": "MarryMea",
+            "userType": "people",
+            "vipInfo": {
+              "isVip": true,
+              "vipIcon": {
+                "nightModeUrl": "https://picx.zhimg.com/v2-c9686ff064ea3579730756ac6c289978.jpg?source=88ceefae",
+                "url": "https://picx.zhimg.com/v2-4812630bc27d642f7cafcd6cdeca3d7a.jpg?source=88ceefae"
+              }
+            }
+          },
+          "businessType": "normal",
+          "canComment": {
+            "reason": "",
+            "status": true
+          },
+          "collapseReason": "",
+          "collapsedBy": "nobody",
+          "commentCount": 27,
+          "commentPermission": "followee",
+          "content": "<p data-pid=\"pgMu0RK1\">我在知乎有一篇愚人节特供文章《<span class=\"nolink\">东方龙形象中的血吸虫成分</span>》，看起来比较符合期刊 <i>Rubbish</i> 的调性。下面我回顾并增补该文章。</p><p class=\"ztext-empty-paragraph\"><br/></p><p data-pid=\"5zh4bt1L\"><b>警告：含有可能令人感到不安的图片与信息</b></p><p data-pid=\"QgdC3WKY\">血吸虫、绦虫等动物疑似为某些龙提供了形象参考，或者巧合地具有相似的形态特征。</p><p data-pid=\"OzBikAUK\">《说文解字》对“龙”字的释义为：鳞虫之长，能幽能明，能细能巨，能短能长，春分而登天，秋分而潜渊。东方龙是小虫、蛇、大鲵、蜥蜴、鳄鱼、江河、云、雷电、极光等的复合抽象。血吸虫作为凌驾于古人认知能力之上的小虫型病魔/瘟神，其形态对龙的模因造成的影响可能极为深刻。</p><p data-pid=\"DvaWVPbd\">自甲骨文以来，龙字带有二口类特征和身体有旁支的特征，这可能来自血吸虫：</p><figure data-size=\"normal\"><noscript><img src=\"https://pica.zhimg.com/50/v2-d1fcf8bdabe77a81b93ac52739e4c492_720w.jpg?source=1def8aca\" data-size=\"normal\" data-rawwidth=\"950\" data-rawheight=\"419\" data-original-token=\"v2-d1fcf8bdabe77a81b93ac52739e4c492\" class=\"origin_image zh-lightbox-thumb\" width=\"950\" data-original=\"https://pic1.zhimg.com/v2-d1fcf8bdabe77a81b93ac52739e4c492_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;950&#39; height=&#39;419&#39;&gt;&lt;/svg&gt;\" data-size=\"normal\" data-rawwidth=\"950\" data-rawheight=\"419\" data-original-token=\"v2-d1fcf8bdabe77a81b93ac52739e4c492\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"950\" data-original=\"https://pic1.zhimg.com/v2-d1fcf8bdabe77a81b93ac52739e4c492_r.jpg?source=1def8aca\" data-actualsrc=\"https://pica.zhimg.com/50/v2-d1fcf8bdabe77a81b93ac52739e4c492_720w.jpg?source=1def8aca\"/><figcaption>自甲骨文以来，龙的二口类特征与身体有旁支的特征，来自血吸虫</figcaption></figure><p data-pid=\"H1vFUcM3\">玉猪龙表现的无手足、体有分支的C状生物在自然界并不多见。血吸虫、涡虫是其中常为人目击的：</p><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-0a87ff1b0a27bca3cc213198664723d8_720w.jpg?source=1def8aca\" data-size=\"normal\" data-rawwidth=\"369\" data-rawheight=\"422\" data-original-token=\"v2-0a87ff1b0a27bca3cc213198664723d8\" class=\"content_image\" width=\"369\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;369&#39; height=&#39;422&#39;&gt;&lt;/svg&gt;\" data-size=\"normal\" data-rawwidth=\"369\" data-rawheight=\"422\" data-original-token=\"v2-0a87ff1b0a27bca3cc213198664723d8\" class=\"content_image lazy\" width=\"369\" data-actualsrc=\"https://picx.zhimg.com/50/v2-0a87ff1b0a27bca3cc213198664723d8_720w.jpg?source=1def8aca\"/><figcaption>玉猪龙表现的无手足、体有分支的C状生物在自然界并不多见。血吸虫、涡虫是其中常为人目击的</figcaption></figure><p data-pid=\"5xstKphT\">上古，龙的形象被设置在死者身上，无手足、面目模糊。神话传说多次出现人吐出龙、龙钻入人体的描述。从古至今都有人报告梦到吐出龙或被龙附身。这说明在人们的一贯印象里龙能侵入人体：</p><figure data-size=\"normal\"><noscript><img src=\"https://pic1.zhimg.com/50/v2-47d2a526c87a1dc0a944008da6e9fb47_720w.jpg?source=1def8aca\" data-size=\"normal\" data-rawwidth=\"699\" data-rawheight=\"676\" data-original-token=\"v2-47d2a526c87a1dc0a944008da6e9fb47\" class=\"origin_image zh-lightbox-thumb\" width=\"699\" data-original=\"https://pic1.zhimg.com/v2-47d2a526c87a1dc0a944008da6e9fb47_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;699&#39; height=&#39;676&#39;&gt;&lt;/svg&gt;\" data-size=\"normal\" data-rawwidth=\"699\" data-rawheight=\"676\" data-original-token=\"v2-47d2a526c87a1dc0a944008da6e9fb47\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"699\" data-original=\"https://pic1.zhimg.com/v2-47d2a526c87a1dc0a944008da6e9fb47_r.jpg?source=1def8aca\" data-actualsrc=\"https://pic1.zhimg.com/50/v2-47d2a526c87a1dc0a944008da6e9fb47_720w.jpg?source=1def8aca\"/><figcaption>上古，龙的形象被设置在死者身上，无手足、面目模糊。神话传说多次出现人吐出龙、龙钻入人体的描述。从古至今都有人报告梦到吐出龙或被龙附身。这说明在人们的一贯印象里龙能侵入人体。</figcaption></figure><p data-pid=\"ls7ixiU9\">两条无手足的躯体并列，不成形的头部，显著的血吸虫特征：</p><figure data-size=\"normal\"><noscript><img src=\"https://pica.zhimg.com/50/v2-97fcef8d2ffa29d5e08a92f27116d04d_720w.jpg?source=1def8aca\" data-size=\"normal\" data-rawwidth=\"688\" data-rawheight=\"569\" data-original-token=\"v2-97fcef8d2ffa29d5e08a92f27116d04d\" class=\"origin_image zh-lightbox-thumb\" width=\"688\" data-original=\"https://picx.zhimg.com/v2-97fcef8d2ffa29d5e08a92f27116d04d_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;688&#39; height=&#39;569&#39;&gt;&lt;/svg&gt;\" data-size=\"normal\" data-rawwidth=\"688\" data-rawheight=\"569\" data-original-token=\"v2-97fcef8d2ffa29d5e08a92f27116d04d\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"688\" data-original=\"https://picx.zhimg.com/v2-97fcef8d2ffa29d5e08a92f27116d04d_r.jpg?source=1def8aca\" data-actualsrc=\"https://pica.zhimg.com/50/v2-97fcef8d2ffa29d5e08a92f27116d04d_720w.jpg?source=1def8aca\"/><figcaption>两条无手足的躯体并列，不成形的头部，显著的血吸虫特征。</figcaption></figure><p data-pid=\"d8TA3YZR\">夏、商、周时期各种龙形象。双身并列、面目模糊、头部有超过一个凸起的血吸虫特征非常明显：</p><figure data-size=\"normal\"><noscript><img src=\"https://pic1.zhimg.com/50/v2-fe3b6247ab127e0da4bd88c6ededcd8b_720w.jpg?source=1def8aca\" data-size=\"normal\" data-rawwidth=\"689\" data-rawheight=\"585\" data-original-token=\"v2-fe3b6247ab127e0da4bd88c6ededcd8b\" class=\"origin_image zh-lightbox-thumb\" width=\"689\" data-original=\"https://picx.zhimg.com/v2-fe3b6247ab127e0da4bd88c6ededcd8b_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;689&#39; height=&#39;585&#39;&gt;&lt;/svg&gt;\" data-size=\"normal\" data-rawwidth=\"689\" data-rawheight=\"585\" data-original-token=\"v2-fe3b6247ab127e0da4bd88c6ededcd8b\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"689\" data-original=\"https://picx.zhimg.com/v2-fe3b6247ab127e0da4bd88c6ededcd8b_r.jpg?source=1def8aca\" data-actualsrc=\"https://pic1.zhimg.com/50/v2-fe3b6247ab127e0da4bd88c6ededcd8b_720w.jpg?source=1def8aca\"/><figcaption>夏、商、周时期各种龙形象。双身并列、面目模糊、头部有超过一个凸起的血吸虫特征非常明显。</figcaption></figure><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-eb22898cc1ea10844ebba0ffbebb288c_720w.jpg?source=1def8aca\" data-size=\"normal\" data-rawwidth=\"6000\" data-rawheight=\"3375\" data-original-token=\"v2-eb22898cc1ea10844ebba0ffbebb288c\" class=\"origin_image zh-lightbox-thumb\" width=\"6000\" data-original=\"https://pic1.zhimg.com/v2-eb22898cc1ea10844ebba0ffbebb288c_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;6000&#39; height=&#39;3375&#39;&gt;&lt;/svg&gt;\" data-size=\"normal\" data-rawwidth=\"6000\" data-rawheight=\"3375\" data-original-token=\"v2-eb22898cc1ea10844ebba0ffbebb288c\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"6000\" data-original=\"https://pic1.zhimg.com/v2-eb22898cc1ea10844ebba0ffbebb288c_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-eb22898cc1ea10844ebba0ffbebb288c_720w.jpg?source=1def8aca\"/><figcaption>龙辰辰</figcaption></figure><figure data-size=\"normal\"><noscript><img src=\"https://pic1.zhimg.com/50/v2-8a0a4bfdbc450fbff48d0057ee97d99c_720w.jpg?source=1def8aca\" data-size=\"normal\" data-rawwidth=\"850\" data-rawheight=\"766\" data-original-token=\"v2-8a0a4bfdbc450fbff48d0057ee97d99c\" class=\"origin_image zh-lightbox-thumb\" width=\"850\" data-original=\"https://pic1.zhimg.com/v2-8a0a4bfdbc450fbff48d0057ee97d99c_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;850&#39; height=&#39;766&#39;&gt;&lt;/svg&gt;\" data-size=\"normal\" data-rawwidth=\"850\" data-rawheight=\"766\" data-original-token=\"v2-8a0a4bfdbc450fbff48d0057ee97d99c\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"850\" data-original=\"https://pic1.zhimg.com/v2-8a0a4bfdbc450fbff48d0057ee97d99c_r.jpg?source=1def8aca\" data-actualsrc=\"https://pic1.zhimg.com/50/v2-8a0a4bfdbc450fbff48d0057ee97d99c_720w.jpg?source=1def8aca\"/><figcaption>http://dx.doi.org/10.5123/s2176-6223202100620</figcaption></figure><p data-pid=\"AMD9ozLD\">古人可以将龙形象的身体描绘得这样流畅华丽，如果龙的面目在设定上可以辨认，我们可以合理推测，古人不会倾向于将龙形象的面目做成现在这样。在人类文化中，无貌之神意味着什么，可想而知。</p><p data-pid=\"DWwz-O4M\">在古人眼中，血吸虫随水而来，凭依于人畜，无论人怎样挣扎也无法消灭，形态与蛇、江河、风雨雷电、北极光等相似，是超自然的存在。</p><p class=\"ztext-empty-paragraph\"><br/></p><p data-pid=\"3SI5PRpd\">古人传说龙性本淫，龙生九子，子子不同。这想要表现的可能是如下现实：</p><p data-pid=\"fNzmRdUv\">1.在各种动物体内，人们都发现过形态各异的寄生虫。</p><p data-pid=\"p1wBuCXy\">2.血吸虫雌雄相抱。</p><p data-pid=\"yPW93gou\">3.血吸虫能钻入人畜生殖系统造成严重疾病。</p><p class=\"ztext-empty-paragraph\"><br/></p><p data-pid=\"4GwGzf9F\">Q.血吸虫是鳞虫吗？</p><p data-pid=\"Ctv0lC6y\">A.</p><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-82f088a8096b5fdd2af30d595881fb3c_720w.jpg?source=1def8aca\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"600\" data-rawheight=\"338\" data-original-token=\"v2-82f088a8096b5fdd2af30d595881fb3c\" class=\"origin_image zh-lightbox-thumb\" width=\"600\" data-original=\"https://pic1.zhimg.com/v2-82f088a8096b5fdd2af30d595881fb3c_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;600&#39; height=&#39;338&#39;&gt;&lt;/svg&gt;\" data-caption=\"\" data-size=\"normal\" data-rawwidth=\"600\" data-rawheight=\"338\" data-original-token=\"v2-82f088a8096b5fdd2af30d595881fb3c\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"600\" data-original=\"https://pic1.zhimg.com/v2-82f088a8096b5fdd2af30d595881fb3c_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-82f088a8096b5fdd2af30d595881fb3c_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"nbIhmqoS\">血吸虫是鳞虫。</p><ul><li data-pid=\"uDHvjWze\">上图中雄性血吸虫凹凸不平的体表长有许多皮棘，每个皮棘的直径在 1 微米到 5 微米。</li><li data-pid=\"sR1Ds1-6\">人眼难以辨认血吸虫的体表细节，但是，人手指上的触觉感受器是纳米机械，帕西尼氏小体可以检测皮肤划过物体时物体表面的微观凹凸带来的振动，一些受试者可以摸出约 10 纳米的凹凸<sup data-text=\"Skedung, L., Arvidsson, M., Chung, J. et al. Feeling Small: Exploring the Tactile Perception Limits. Sci Rep 3, 2617 (2013). https://doi.org/10.1038/srep02617\" data-url=\"\" data-draft-node=\"inline\" data-draft-type=\"reference\" data-numero=\"1\">[1]</sup>。古人可以通过抚摸得知血吸虫具有粗糙的体表、是鳞虫。</li></ul><p data-pid=\"h9rGt2HW\"><b>注意：这篇文章的一些内容可能值得怀疑。</b></p>",
+          "contentMark": {},
+          "contentNeedTruncated": false,
+          "createdTime": 1772435376,
+          "decorativeLabels": [],
+          "editableContent": "",
+          "endorsements": [
+            {
+              "actionUrl": "https://www.zhihu.com/people/04d290c74a60ab99814650b9f228f984",
+              "backgroundColor": {
+                "alpha": 0.1,
+                "group": "GBL01A"
+              },
+              "elements": [
+                {
+                  "height": 16,
+                  "imageColor": {
+                    "alpha": 1,
+                    "group": "GBL07A"
+                  },
+                  "imageKey": "zhicon_icon_24_crab_fill",
+                  "type": "IMAGE",
+                  "width": 16
+                },
+                {
+                  "content": "谢邀 @Rubbish Pub",
+                  "fontColor": {
+                    "alpha": 1,
+                    "group": "GBL07A"
+                  },
+                  "fontSize": 13,
+                  "isBold": true,
+                  "maxLine": 1,
+                  "type": "TEXT"
+                }
+              ],
+              "subElements": [],
+              "subElementsType": "DESCRIPTION",
+              "za": {
+                "blockText": "ThanksForInvitingLabel",
+                "text": "",
+                "type": "text"
+              }
+            },
+            {
+              "actionUrl": "https://www.zhihu.com/topic/2009999133964985845",
+              "backgroundColor": {
+                "alpha": 0.1,
+                "group": "GYL02A"
+              },
+              "elements": [
+                {
+                  "height": 16,
+                  "imageColor": {
+                    "alpha": 1,
+                    "group": "GYL02A"
+                  },
+                  "imageKey": "zhicon_icon_24_chat_bubble_hash_fill",
+                  "type": "IMAGE",
+                  "width": 16
+                },
+                {
+                  "content": "话题收录",
+                  "fontColor": {
+                    "alpha": 1,
+                    "group": "GYL02A"
+                  },
+                  "fontSize": 13,
+                  "isBold": true,
+                  "maxLine": 1,
+                  "type": "TEXT"
+                },
+                {
+                  "content": "底刊",
+                  "fontColor": {
+                    "alpha": 1,
+                    "group": "GYL02A"
+                  },
+                  "fontSize": 13,
+                  "isBold": false,
+                  "maxLine": 1,
+                  "type": "TEXT"
+                },
+                {
+                  "height": 12,
+                  "imageColor": {
+                    "alpha": 1,
+                    "group": "GYL02A"
+                  },
+                  "imageKey": "zhicon_icon_16_arrow_right",
+                  "type": "IMAGE",
+                  "width": 12
+                }
+              ],
+              "subElements": [],
+              "subElementsType": "DESCRIPTION",
+              "za": {
+                "blockText": "topic",
+                "text": "",
+                "type": "text"
+              }
+            }
+          ],
+          "excerpt": "我在知乎有一篇愚人节特供文章《 东方龙形象中的血吸虫成分》，看起来比较符合期刊 Rubbish 的调性。下面我回顾并增补该文章。 警告：含有可能令人感到不安的图片与信息血吸虫、绦虫等动物疑似为某些龙提供了形象参考，或者巧合地具有相似的形态特征。 《说文解字》对“龙”字的释义为：鳞虫之长，能幽能明，能细能巨，能短能长，春分而登天，秋分而潜渊。东方龙是小虫、蛇、大鲵、蜥蜴、鳄鱼、江河、云、雷电、极光等的复合抽象…",
+          "extras": "",
+          "favlistsCount": 142,
+          "forceLoginWhenClickReadMore": false,
+          "hasPublishingDraft": false,
+          "id": "2011820462880088895",
+          "isCollapsed": false,
+          "isContainAiContent": false,
+          "isCopyable": true,
+          "isJumpNative": false,
+          "isMine": false,
+          "isNavigator": false,
+          "isNormal": true,
+          "isSticky": false,
+          "isVisible": true,
+          "matrixTips": "557 赞同 · 142 收藏 · 27 评论",
+          "navigatorVote": false,
+          "question": {
+            "created": 1772431589,
+            "id": "2011804582406267252",
+            "questionType": "normal",
+            "relationship": null,
+            "title": "《Rubbish》期刊正式登陆知乎——你有哪些适合发表在《Rubbish》的研究或发现？",
+            "type": "question",
+            "updatedTime": 1772431930,
+            "url": "https://www.zhihu.com/api/v4/questions/2011804582406267252"
+          },
+          "reaction": {
+            "relation": {
+              "faved": false,
+              "liked": false
+            },
+            "statistics": {
+              "downVoteCount": 17,
+              "favorites": 141,
+              "likeCount": 14
+            }
+          },
+          "reactionInstruction": {},
+          "relationship": {
+            "isAuthor": false,
+            "isAuthorized": false,
+            "isFavorited": false,
+            "isNothelp": false,
+            "isThanked": false,
+            "upvotedFollowees": [],
+            "voting": 0
+          },
+          "relevantInfo": {
+            "isRelevant": false,
+            "relevantText": "",
+            "relevantType": ""
+          },
+          "reshipmentSettings": "allowed",
+          "rewardInfo": {
+            "canOpenReward": false,
+            "isRewardable": true,
+            "rewardMemberCount": 0,
+            "rewardTotalMoney": 0,
+            "tagline": "真诚赞赏，手留余香"
+          },
+          "settings": {
+            "tableOfContents": {
+              "enabled": false
+            }
+          },
+          "stickyInfo": "",
+          "suggestEdit": {
+            "reason": "",
+            "status": false,
+            "tip": "",
+            "title": "",
+            "unnormalDetails": {
+              "description": "",
+              "note": "",
+              "reason": "",
+              "reasonId": 0,
+              "status": ""
+            },
+            "url": ""
+          },
+          "thanksCount": 14,
+          "thumbnailInfo": {
+            "count": 3,
+            "thumbnails": [
+              {
+                "height": 419,
+                "token": "v2-d1fcf8bdabe77a81b93ac52739e4c492",
+                "type": "image",
+                "url": "https://picx.zhimg.com/80/v2-d1fcf8bdabe77a81b93ac52739e4c492_720w.jpg?source=1def8aca",
+                "width": 950
+              },
+              {
+                "height": 422,
+                "token": "v2-0a87ff1b0a27bca3cc213198664723d8",
+                "type": "image",
+                "url": "https://picx.zhimg.com/80/v2-0a87ff1b0a27bca3cc213198664723d8_720w.jpg?source=1def8aca",
+                "width": 369
+              },
+              {
+                "height": 676,
+                "token": "v2-47d2a526c87a1dc0a944008da6e9fb47",
+                "type": "image",
+                "url": "https://picx.zhimg.com/80/v2-47d2a526c87a1dc0a944008da6e9fb47_720w.jpg?source=1def8aca",
+                "width": 699
+              }
+            ],
+            "type": "thumbnail_info"
+          },
+          "type": "answer",
+          "updatedTime": 1772436071,
+          "url": "https://www.zhihu.com/api/v4/answers/2011820462880088895",
+          "visibleOnlyToAuthor": false,
+          "voteNextStep": "vote",
+          "voteupCount": 557
+        },
+        "2011949035876009749": {
+          "adminClosedComment": false,
+          "allowSegmentInteraction": 1,
+          "annotationAction": null,
+          "answerType": "normal",
+          "attachedInfo": "ogEYCAQQAxiVjtGs0J/49Rsg9MLQnr2z1/UbkgIuCgk3NzE0NDgwMDYSEzIwMTE5NDkwMzU4NzYwMDk3NDkYBCIKSU1BR0VfVEVYVA==",
+          "author": {
+            "avatarUrl": "https://pica.zhimg.com/v2-e13c9904f8da7c0d88bda59c166a3d69_l.jpg?source=1def8aca",
+            "avatarUrlTemplate": "https://pic1.zhimg.com/v2-e13c9904f8da7c0d88bda59c166a3d69.jpg?source=1def8aca",
+            "badge": [],
+            "badgeV2": {
+              "detailBadges": [],
+              "icon": "",
+              "mergedBadges": [],
+              "nightIcon": "",
+              "title": ""
+            },
+            "exposedMedal": {
+              "avatarUrl": "https://pic1.zhimg.com/v2-6da117205088242db9cd82e48b28640d_l.png?source=1def8aca",
+              "description": "被 1000 个人关注",
+              "medalAvatarFrame": "",
+              "medalId": "972477022068568064",
+              "medalName": "备受瞩目",
+              "miniAvatarUrl": "https://pic1.zhimg.com/v2-6da117205088242db9cd82e48b28640d_r.png?source=1def8aca"
+            },
+            "followerCount": 2019,
+            "gender": 0,
+            "headline": "会一点语言学的小猫娘",
+            "id": "6c633a795ce051a7bee706ecb67dfbea",
+            "isAdvertiser": false,
+            "isFollowed": false,
+            "isFollowing": false,
+            "isOrg": false,
+            "isPrivacy": false,
+            "name": "一心玲奈",
+            "type": "people",
+            "url": "https://www.zhihu.com/api/v4/people/6c633a795ce051a7bee706ecb67dfbea",
+            "urlToken": "akane-71-26",
+            "userType": "people"
+          },
+          "businessType": "normal",
+          "canComment": {
+            "reason": "",
+            "status": true
+          },
+          "collapseReason": "",
+          "collapsedBy": "nobody",
+          "commentCount": 7,
+          "commentPermission": "all",
+          "content": "<p data-pid=\"7V9TCm8L\">之前写过一篇伪·女仆词源考证，一直苦于知乎没有倾倒rubbish的地方，现在终于可以投稿了（喜）</p><p data-pid=\"eN1P3haE\">（全文以随笔形式给出，防止学术过端）</p><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-bc4fdadcc52369176c7dd419da5b88e7_720w.jpg?source=1def8aca\" data-rawwidth=\"1260\" data-rawheight=\"2521\" data-size=\"normal\" data-original-token=\"v2-bc4fdadcc52369176c7dd419da5b88e7\" class=\"origin_image zh-lightbox-thumb\" width=\"1260\" data-original=\"https://picx.zhimg.com/v2-bc4fdadcc52369176c7dd419da5b88e7_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;1260&#39; height=&#39;2521&#39;&gt;&lt;/svg&gt;\" data-rawwidth=\"1260\" data-rawheight=\"2521\" data-size=\"normal\" data-original-token=\"v2-bc4fdadcc52369176c7dd419da5b88e7\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"1260\" data-original=\"https://picx.zhimg.com/v2-bc4fdadcc52369176c7dd419da5b88e7_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-bc4fdadcc52369176c7dd419da5b88e7_720w.jpg?source=1def8aca\"/></figure><blockquote data-pid=\"QUYTmEga\">メイド（meido/meito，汉字：女愛，汉语：女仆）<br/>词源：来自词根め+いと。め与メス同源，是表示女性的词根，与お/オス对立。参见：姪（めい）/甥（おい）。いと来自近畿方言中表示「女儿」「小孩子」的词，同样的说法还有「いとさん」、「いとしい人」（受人喜爱之人）。<br/>其词义加起来便是「女性的、受人怜爱的孩子」即「少女」之意。其他带有お-词根的单词与带有め-词根版本的对立一样。「めいと」也有其男性版本，即「おいと」，该词的现代版本是「おっと」（夫）^[1]。<br/>至于词尾浊化，来自上古日语的一个不规则音变，目前学界暂无形成定论（笔者认可「音调变化说」），但是例子很多，参见：うぐ【穿ぐ】（上代は「うく」）しづ【倭文】（上代は「しつ」）みつぎ【御調】（古くは「みつき」）しのぶ【偲ぶ】（上代は「しのふ」）。（注意，这种尾音节浊化并非日语中常见的「連濁」，因为并非是第二词根的首音节浊化）<br/>有趣的是，西方语言中的maid一词在中世纪的含义（mayde/maide，与maiden同源）同样是「少女」的意思。<br/>（[1] 关于「おいと」的音变，来自于广义的促音变，可描述为-CV.C&gt; -Q.C。其中那个元音“V”最可能是u，或者i。例：啜りて &gt; すすって、賄ひて &gt; まかなって<br/>、保ちて &gt; たもって、ぬすひと &gt; ぬすっと（盗人））</blockquote>",
+          "contentMark": {},
+          "contentNeedTruncated": false,
+          "createdTime": 1772466030,
+          "decorativeLabels": [],
+          "editableContent": "",
+          "excerpt": "之前写过一篇伪·女仆词源考证，一直苦于知乎没有倾倒rubbish的地方，现在终于可以投稿了（喜） （全文以随笔形式给出，防止学术过端） [图片] メイド（meido/meito，汉字：女愛，汉语：女仆） 词源：来自词根め+いと。め与メス同源，是表示女性的词根，与お/オス对立。参见：姪（めい）/甥（おい）。いと来自近畿方言中表示「女儿」「小孩子」的词，同样的说法还有「いとさん」、「いとしい人」（受人喜爱之人）。 其词义加起来便是「…",
+          "extras": "",
+          "favlistsCount": 11,
+          "forceLoginWhenClickReadMore": false,
+          "hasPublishingDraft": false,
+          "id": "2011949035876009749",
+          "isCollapsed": false,
+          "isContainAiContent": false,
+          "isCopyable": true,
+          "isJumpNative": false,
+          "isMine": false,
+          "isNavigator": false,
+          "isNormal": true,
+          "isSticky": false,
+          "isVisible": true,
+          "matrixTips": "73 赞同 · 11 收藏 · 7 评论",
+          "navigatorVote": false,
+          "question": {
+            "created": 1772431589,
+            "id": "2011804582406267252",
+            "questionType": "normal",
+            "relationship": null,
+            "title": "《Rubbish》期刊正式登陆知乎——你有哪些适合发表在《Rubbish》的研究或发现？",
+            "type": "question",
+            "updatedTime": 1772431930,
+            "url": "https://www.zhihu.com/api/v4/questions/2011804582406267252"
+          },
+          "reaction": {
+            "relation": {
+              "faved": false,
+              "liked": false
+            },
+            "statistics": {
+              "downVoteCount": 1,
+              "favorites": 11,
+              "likeCount": 5
+            }
+          },
+          "reactionInstruction": {},
+          "relationship": {
+            "isAuthor": false,
+            "isAuthorized": false,
+            "isFavorited": false,
+            "isNothelp": false,
+            "isThanked": false,
+            "upvotedFollowees": [],
+            "voting": 0
+          },
+          "relevantInfo": {
+            "isRelevant": false,
+            "relevantText": "",
+            "relevantType": ""
+          },
+          "reshipmentSettings": "allowed",
+          "rewardInfo": {
+            "canOpenReward": false,
+            "isRewardable": false,
+            "rewardMemberCount": 0,
+            "rewardTotalMoney": 0,
+            "tagline": ""
+          },
+          "stickyInfo": "",
+          "suggestEdit": {
+            "reason": "",
+            "status": false,
+            "tip": "",
+            "title": "",
+            "unnormalDetails": {
+              "description": "",
+              "note": "",
+              "reason": "",
+              "reasonId": 0,
+              "status": ""
+            },
+            "url": ""
+          },
+          "thanksCount": 5,
+          "thumbnailInfo": {
+            "count": 1,
+            "thumbnails": [
+              {
+                "height": 2521,
+                "token": "v2-bc4fdadcc52369176c7dd419da5b88e7",
+                "type": "image",
+                "url": "https://pica.zhimg.com/80/v2-bc4fdadcc52369176c7dd419da5b88e7_720w.jpg?source=1def8aca",
+                "width": 1260
+              }
+            ],
+            "type": "thumbnail_info"
+          },
+          "type": "answer",
+          "updatedTime": 1772466344,
+          "url": "https://www.zhihu.com/api/v4/answers/2011949035876009749",
+          "visibleOnlyToAuthor": false,
+          "voteNextStep": "vote",
+          "voteupCount": 73
+        },
+        "2012096461416969415": {
+          "adminClosedComment": false,
+          "allowSegmentInteraction": 1,
+          "annotationAction": null,
+          "answerType": "normal",
+          "attachedInfo": "ogEYCAQQAxjH6dCko+KZ9hsg9MLQnr2z1/UbkgIuCgk3NzE0NzgxOTESEzIwMTIwOTY0NjE0MTY5Njk0MTUYBCIKSU1BR0VfVEVYVA==",
+          "author": {
+            "avatarUrl": "https://pic1.zhimg.com/v2-2e3922d0ca4f7276fbd5ac7f633c0af1_l.jpg?source=1def8aca",
+            "avatarUrlTemplate": "https://picx.zhimg.com/v2-2e3922d0ca4f7276fbd5ac7f633c0af1.jpg?source=1def8aca",
+            "badge": [],
+            "badgeV2": {
+              "detailBadges": [],
+              "icon": "",
+              "mergedBadges": [],
+              "nightIcon": "",
+              "title": ""
+            },
+            "exposedMedal": {
+              "avatarUrl": "https://pic1.zhimg.com/v2-741e825b73d5b1de4818897fa0f2a605_l.png?source=1def8aca",
+              "description": "参与「2024 年度盘点」活动即可获得",
+              "medalAvatarFrame": "",
+              "medalId": "1852017938049200128",
+              "medalName": "我的知乎 2024",
+              "miniAvatarUrl": "https://pic1.zhimg.com/v2-741e825b73d5b1de4818897fa0f2a605_r.png?source=1def8aca"
+            },
+            "followerCount": 1189,
+            "gender": 1,
+            "headline": "生命久如暗室  不妨碍我们明写春诗",
+            "id": "04d290c74a60ab99814650b9f228f984",
+            "isAdvertiser": false,
+            "isFollowed": false,
+            "isFollowing": false,
+            "isOrg": false,
+            "isPrivacy": false,
+            "name": "Rubbish Pub",
+            "type": "people",
+            "url": "https://www.zhihu.com/api/v4/people/04d290c74a60ab99814650b9f228f984",
+            "urlToken": "jerry-71-44",
+            "userType": "people"
+          },
+          "businessType": "normal",
+          "canComment": {
+            "reason": "",
+            "status": true
+          },
+          "collapseReason": "",
+          "collapsedBy": "nobody",
+          "commentCount": 4,
+          "commentPermission": "all",
+          "content": "<p data-pid=\"WNk6N0Lw\">       在生命科学研究的日常中，聚丙烯酰胺凝胶电泳是一项再常规不过的技术。每一天，无数块凝胶在实验室的玻璃板间聚合、电泳、染色、脱色，最终或被拍照留存，或被作为生物废物悄然弃置。它们承载着科研工作者对清晰条带的热切期待，也默默见证了无数个“本该出带却未出带”的平凡瞬间。</p><p data-pid=\"U6N8iS0o\">        近期，来自SJFWU的LLDD Lab研究团队在国际顶级期刊<b>Rubbish</b>上（最新Stupid Conclusion Index影响因子-49.0分）记录了一次意外的跑胶结果，一场科学与浪漫邂逅呈现出的千里江山图。</p><figure data-size=\"normal\"><noscript><img src=\"https://pica.zhimg.com/50/v2-5407dcd930ce872383419e62a69f8229_720w.jpg?source=1def8aca\" data-rawwidth=\"1179\" data-rawheight=\"1643\" data-size=\"normal\" data-original-token=\"v2-dacfad649384b7597e1bb5012813e9e6\" class=\"origin_image zh-lightbox-thumb\" width=\"1179\" data-original=\"https://picx.zhimg.com/v2-5407dcd930ce872383419e62a69f8229_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;1179&#39; height=&#39;1643&#39;&gt;&lt;/svg&gt;\" data-rawwidth=\"1179\" data-rawheight=\"1643\" data-size=\"normal\" data-original-token=\"v2-dacfad649384b7597e1bb5012813e9e6\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"1179\" data-original=\"https://picx.zhimg.com/v2-5407dcd930ce872383419e62a69f8229_r.jpg?source=1def8aca\" data-actualsrc=\"https://pica.zhimg.com/50/v2-5407dcd930ce872383419e62a69f8229_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"96uSpyt3\">       本文详细的介绍了本次实验的过程，通过凝胶的聚合，样品的制备，电泳得到了这样一次完美的艺术跑胶结果。在形貌表征上运用了裸眼3D原位表征的技术，成功观察到了这样一幅千里江山图。</p><figure data-size=\"normal\"><noscript><img src=\"https://pica.zhimg.com/50/v2-c324127fbdb384120051d5719b4024a3_720w.jpg?source=1def8aca\" data-rawwidth=\"1179\" data-rawheight=\"1671\" data-size=\"normal\" data-original-token=\"v2-9097e46686d183d3a0ac4a4749b453c3\" class=\"origin_image zh-lightbox-thumb\" width=\"1179\" data-original=\"https://pica.zhimg.com/v2-c324127fbdb384120051d5719b4024a3_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;1179&#39; height=&#39;1671&#39;&gt;&lt;/svg&gt;\" data-rawwidth=\"1179\" data-rawheight=\"1671\" data-size=\"normal\" data-original-token=\"v2-9097e46686d183d3a0ac4a4749b453c3\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"1179\" data-original=\"https://pica.zhimg.com/v2-c324127fbdb384120051d5719b4024a3_r.jpg?source=1def8aca\" data-actualsrc=\"https://pica.zhimg.com/50/v2-c324127fbdb384120051d5719b4024a3_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"U9OqNdpM\">       将凝胶置于白色背景板上，于日光灯下以裸眼3D原位表征观察，可见一幅完整的青绿山水画卷。画面整体呈蓝青色系，色彩过渡自然，层次分明。无需任何成像设备的辅助，裸眼即可清晰辨识画中的山川走势与气韵流动。</p><figure data-size=\"normal\"><noscript><img src=\"https://picx.zhimg.com/50/v2-16fc7a74d5cf59ded55e9dd638e29077_720w.jpg?source=1def8aca\" data-rawwidth=\"1176\" data-rawheight=\"1708\" data-size=\"normal\" data-original-token=\"v2-74dbff8ced596238b1347896c1655bc0\" class=\"origin_image zh-lightbox-thumb\" width=\"1176\" data-original=\"https://picx.zhimg.com/v2-16fc7a74d5cf59ded55e9dd638e29077_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;1176&#39; height=&#39;1708&#39;&gt;&lt;/svg&gt;\" data-rawwidth=\"1176\" data-rawheight=\"1708\" data-size=\"normal\" data-original-token=\"v2-74dbff8ced596238b1347896c1655bc0\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"1176\" data-original=\"https://picx.zhimg.com/v2-16fc7a74d5cf59ded55e9dd638e29077_r.jpg?source=1def8aca\" data-actualsrc=\"https://picx.zhimg.com/50/v2-16fc7a74d5cf59ded55e9dd638e29077_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"Y3VA1L4L\">        值得注意的是，此前来自WB大学科研狗实验室的研究者曾报道过一例类似的偶然发现一其Western Blot结果，意外呈现出熊猫图案，首次揭示了蛋白电泳过程中可能蕴含的偶然性与艺术。如果说熊猫图案的发现代表了“具象偶得”的起点，那么本研究所呈现的《千里江山图》则更进一步，在构图层次、色彩过渡与意境营造等方面展现出更为丰富的艺术内涵，实现了从“像某种物体”到“像一幅传世名画”的美学跃迁。这一发现虽出于偶然，却引发了一系列值得深入探讨的科学与美学问题。</p><p data-pid=\"PRxWc62Q\">        作者在文中同样讨论了“千里江山”图景的形成机理：首先，凝胶聚合的不均匀性可能是“山峦起伏”的结构基础。过硫酸铵(APS)的新鲜程度直接影响凝胶聚合速率。当APS活性略有不足时，凝胶自上而下聚合速率不一，导致孔径呈现梯度变化。这一变化在电泳过程中被进一步放大一-蛋白在孔径不均的介质中迁移速率各异，从而形成错落有致的“峰谷”分布。</p><figure data-size=\"normal\"><noscript><img src=\"https://pica.zhimg.com/50/v2-95c5c08a946604cb8abc5e1ee7593022_720w.jpg?source=1def8aca\" data-rawwidth=\"1179\" data-rawheight=\"1668\" data-size=\"normal\" data-original-token=\"v2-2ce28067616da9f09410a483d348a122\" class=\"origin_image zh-lightbox-thumb\" width=\"1179\" data-original=\"https://picx.zhimg.com/v2-95c5c08a946604cb8abc5e1ee7593022_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;1179&#39; height=&#39;1668&#39;&gt;&lt;/svg&gt;\" data-rawwidth=\"1179\" data-rawheight=\"1668\" data-size=\"normal\" data-original-token=\"v2-2ce28067616da9f09410a483d348a122\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"1179\" data-original=\"https://picx.zhimg.com/v2-95c5c08a946604cb8abc5e1ee7593022_r.jpg?source=1def8aca\" data-actualsrc=\"https://pica.zhimg.com/50/v2-95c5c08a946604cb8abc5e1ee7593022_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"4PVpbCgo\">        其次，样品蛋白的多样性是“画面层次”的物质保障。本研究所用细胞裂解液包含数千种不同分子量、不同等电点的蛋白质。这些蛋白在电场作用下各奔前程，有的集中成“峰&#34;，有的弥散成“雾”，有的拖尾成“水”，共同构建了画面的丰富层次。</p><figure data-size=\"normal\"><noscript><img src=\"https://pic1.zhimg.com/50/v2-24e82b462c5f33915eb9d58a05d529d7_720w.jpg?source=1def8aca\" data-rawwidth=\"1179\" data-rawheight=\"522\" data-size=\"normal\" data-original-token=\"v2-e212c745f9fea7b76f463d325ce91b80\" class=\"origin_image zh-lightbox-thumb\" width=\"1179\" data-original=\"https://pic1.zhimg.com/v2-24e82b462c5f33915eb9d58a05d529d7_r.jpg?source=1def8aca\"/></noscript><img src=\"data:image/svg+xml;utf8,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; width=&#39;1179&#39; height=&#39;522&#39;&gt;&lt;/svg&gt;\" data-rawwidth=\"1179\" data-rawheight=\"522\" data-size=\"normal\" data-original-token=\"v2-e212c745f9fea7b76f463d325ce91b80\" class=\"origin_image zh-lightbox-thumb lazy\" width=\"1179\" data-original=\"https://pic1.zhimg.com/v2-24e82b462c5f33915eb9d58a05d529d7_r.jpg?source=1def8aca\" data-actualsrc=\"https://pic1.zhimg.com/50/v2-24e82b462c5f33915eb9d58a05d529d7_720w.jpg?source=1def8aca\"/></figure><p data-pid=\"QJ33lwOA\">        再次，考马斯亮蓝染色的浓度依赖性决定了“青绿渐变”的色彩效果。蛋白浓度高的区域结合染料多，呈现深青;浓度低的区域结合染料少，呈现浅蓝;无蛋白区域则为透明。这种由蛋白浓度梯度驱动的天然配色，恰与中国传统青绿山水“浓墨重彩、淡彩轻岚”的设色理念不谋而合。</p><p data-pid=\"QL5qvk9o\">        文章的最后，作者同样提及了科学与美学在本研究中的理论思考，同时总结与展望了本项研究。</p><p data-pid=\"3cKexEPb\">        小飞虫完成本研究的全部实验操作，丁桂儿负责本文的构思与撰写，过硫酸铵为艺术效果的呈现提供了关键的物质基础，裸眼3D原位表征作为本研究唯一的成像设备完成了观察任务，丁桂儿的手机为本研究留下了唯一的影像记录。最后，谨以此文致敬每一位在实验室里熬过夜的科研人。</p><p data-pid=\"5vBa74Vm\">注意：<b>本项研究不支持复现，文章本天成，妙手偶得之。截至目前，LLDD Lab团队同样已尝试十余次“复刻”本作品，但可惜均未成功。</b></p><p></p>",
+          "contentMark": {},
+          "contentNeedTruncated": false,
+          "createdTime": 1772501179,
+          "decorativeLabels": [],
+          "editableContent": "",
+          "excerpt": "在生命科学研究的日常中，聚丙烯酰胺凝胶电泳是一项再常规不过的技术。每一天，无数块凝胶在实验室的玻璃板间聚合、电泳、染色、脱色，最终或被拍照留存，或被作为生物废物悄然弃置。它们承载着科研工作者对清晰条带的热切期待，也默默见证了无数个“本该出带却未出带”的平凡瞬间。 近期，来自SJFWU的LLDD Lab研究团队在国际顶级期刊 Rubbish上（最新Stupid Conclusion Index影响因子-49.0分）记录了一次意外的跑胶结果，一场科…",
+          "extras": "",
+          "favlistsCount": 9,
+          "forceLoginWhenClickReadMore": false,
+          "hasPublishingDraft": false,
+          "id": "2012096461416969415",
+          "isCollapsed": false,
+          "isContainAiContent": false,
+          "isCopyable": true,
+          "isJumpNative": false,
+          "isMine": false,
+          "isNavigator": false,
+          "isNormal": true,
+          "isSticky": false,
+          "isVisible": true,
+          "matrixTips": "78 赞同 · 9 收藏 · 4 评论",
+          "navigatorVote": false,
+          "question": {
+            "created": 1772431589,
+            "id": "2011804582406267252",
+            "questionType": "normal",
+            "relationship": null,
+            "title": "《Rubbish》期刊正式登陆知乎——你有哪些适合发表在《Rubbish》的研究或发现？",
+            "type": "question",
+            "updatedTime": 1772431930,
+            "url": "https://www.zhihu.com/api/v4/questions/2011804582406267252"
+          },
+          "reaction": {
+            "relation": {
+              "faved": false,
+              "liked": false
+            },
+            "statistics": {
+              "downVoteCount": 1,
+              "favorites": 9,
+              "likeCount": 4
+            }
+          },
+          "reactionInstruction": {},
+          "relationship": {
+            "isAuthor": false,
+            "isAuthorized": false,
+            "isFavorited": false,
+            "isNothelp": false,
+            "isThanked": false,
+            "upvotedFollowees": [],
+            "voting": 0
+          },
+          "relevantInfo": {
+            "isRelevant": false,
+            "relevantText": "",
+            "relevantType": ""
+          },
+          "reshipmentSettings": "allowed",
+          "rewardInfo": {
+            "canOpenReward": false,
+            "isRewardable": false,
+            "rewardMemberCount": 0,
+            "rewardTotalMoney": 0,
+            "tagline": ""
+          },
+          "stickyInfo": "",
+          "suggestEdit": {
+            "reason": "",
+            "status": false,
+            "tip": "",
+            "title": "",
+            "unnormalDetails": {
+              "description": "",
+              "note": "",
+              "reason": "",
+              "reasonId": 0,
+              "status": ""
+            },
+            "url": ""
+          },
+          "thanksCount": 4,
+          "thumbnailInfo": {
+            "count": 3,
+            "thumbnails": [
+              {
+                "height": 1643,
+                "token": "v2-dacfad649384b7597e1bb5012813e9e6",
+                "type": "image",
+                "url": "https://picx.zhimg.com/80/v2-dacfad649384b7597e1bb5012813e9e6_720w.jpg?source=1def8aca",
+                "width": 1179
+              },
+              {
+                "height": 1671,
+                "token": "v2-9097e46686d183d3a0ac4a4749b453c3",
+                "type": "image",
+                "url": "https://picx.zhimg.com/80/v2-9097e46686d183d3a0ac4a4749b453c3_720w.jpg?source=1def8aca",
+                "width": 1179
+              },
+              {
+                "height": 1708,
+                "token": "v2-74dbff8ced596238b1347896c1655bc0",
+                "type": "image",
+                "url": "https://pic1.zhimg.com/80/v2-74dbff8ced596238b1347896c1655bc0_720w.jpg?source=1def8aca",
+                "width": 1176
+              }
+            ],
+            "type": "thumbnail_info"
+          },
+          "type": "answer",
+          "updatedTime": 1772501179,
+          "url": "https://www.zhihu.com/api/v4/answers/2012096461416969415",
+          "visibleOnlyToAuthor": false,
+          "voteNextStep": "vote",
+          "voteupCount": 78
+        }
+      },
+      "articles": {},
+      "columns": {},
+      "topics": {},
+      "roundtables": {},
+      "favlists": {},
+      "comments": {},
+      "notifications": {},
+      "ebooks": {},
+      "activities": {},
+      "feeds": {},
+      "pins": {},
+      "promotions": {},
+      "drafts": {},
+      "chats": {},
+      "posts": {},
+      "zvideos": {},
+      "eduCourses": {},
+      "lineComments": {}
+    },
+    "currentUser": "664b4a115baa6235d18be0a0fc1f17a4",
+    "account": {
+      "unlockTicketStatus": false,
+      "unlockTicket": null,
+      "challenge": [],
+      "errorStatus": false,
+      "message": "",
+      "isFetching": false,
+      "accountInfo": {},
+      "urlToken": {
+        "loading": false
+      },
+      "cardUserInfo": {
+        "vipInfo": {}
+      },
+      "handleWidget": {},
+      "widgetList": [],
+      "userWidgetId": ""
+    },
+    "settings": {
+      "socialBind": null,
+      "inboxMsg": null,
+      "notification": {},
+      "email": {},
+      "privacyFlag": null,
+      "blockedUsers": {
+        "isFetching": false,
+        "paging": {
+          "pageNo": 1,
+          "pageSize": 6
+        },
+        "data": []
+      },
+      "blockedFollowees": {
+        "isFetching": false,
+        "paging": {
+          "pageNo": 1,
+          "pageSize": 6
+        },
+        "data": []
+      },
+      "ignoredTopics": {
+        "isFetching": false,
+        "paging": {
+          "pageNo": 1,
+          "pageSize": 6
+        },
+        "data": []
+      },
+      "restrictedTopics": null,
+      "laboratory": {}
+    },
+    "notification": {},
+    "people": {
+      "profileStatus": {},
+      "activitiesByUser": {},
+      "answersByUser": {},
+      "answersSortByVotesByUser": {},
+      "answersIncludedByUser": {},
+      "votedAnswersByUser": {},
+      "thankedAnswersByUser": {},
+      "voteAnswersByUser": {},
+      "thankAnswersByUser": {},
+      "topicAnswersByUser": {},
+      "zvideosByUser": {},
+      "articlesByUser": {},
+      "articlesSortByVotesByUser": {},
+      "articlesIncludedByUser": {},
+      "pinsByUser": {},
+      "questionsByUser": {},
+      "commercialQuestionsByUser": {},
+      "favlistsByUser": {},
+      "followingByUser": {},
+      "followersByUser": {},
+      "mutualsByUser": {},
+      "followingColumnsByUser": {},
+      "followingQuestionsByUser": {},
+      "followingFavlistsByUser": {},
+      "followingTopicsByUser": {},
+      "publicationsByUser": {},
+      "columnsByUser": {},
+      "allFavlistsByUser": {},
+      "brands": null,
+      "creationsByUser": {},
+      "creationsSortByVotesByUser": {},
+      "creationsFeed": {},
+      "lineCommentsByUser": {},
+      "infinity": {},
+      "batchUsers": {},
+      "profileInfinity": null
+    },
+    "env": {
+      "abV2": {
+        "config": {
+          "paramMap": {
+            "wm_pc_interact": {
+              "value": "1",
+              "abId": "rl-pc_interact_co0-1"
+            },
+            "wm_pc_hot": {
+              "value": "0",
+              "abId": "pc_hot_comment2-0"
+            },
+            "nm_gift_button": {
+              "value": "PC0",
+              "abId": "gif_button_PC-0"
+            },
+            "ws_column_square": {
+              "value": "1",
+              "abId": "rl-column_square_pc-1"
+            },
+            "ws_PC_AI_Panel": {
+              "value": "1",
+              "abId": "rl-PC_AI_Panel-1"
+            }
+          },
+          "abMap": {
+            "rl-pc_interact_co0-1": {
+              "abId": "rl-pc_interact_co0-1",
+              "layerId": "rl-pc_interact_co0",
+              "diversionType": 2
+            },
+            "pc_hot_comment2-0": {
+              "abId": "pc_hot_comment2-0",
+              "layerId": "wenda_web_member_domain_layer3",
+              "diversionType": 2
+            },
+            "gif_button_PC-0": {
+              "abId": "gif_button_PC-0",
+              "layerId": "creation_product_member_web_domain_layer3",
+              "diversionType": 2
+            },
+            "rl-column_square_pc-1": {
+              "abId": "rl-column_square_pc-1",
+              "layerId": "rl-column_square_pc"
+            },
+            "rl-PC_AI_Panel-1": {
+              "abId": "rl-PC_AI_Panel-1",
+              "layerId": "rl-PC_AI_Panel"
+            }
+          }
+        },
+        "triggers": {}
+      },
+      "userAgent": {
+        "Edge": false,
+        "IE": false,
+        "Wechat": false,
+        "Weibo": false,
+        "QQ": false,
+        "MQQBrowser": false,
+        "Qzone": false,
+        "Mobile": false,
+        "Android": false,
+        "HarmonyOS": false,
+        "iOS": false,
+        "isAppleDevice": false,
+        "Zhihu": false,
+        "ZhihuHybrid": false,
+        "isBot": false,
+        "Tablet": false,
+        "UC": false,
+        "Quark": false,
+        "Sogou": false,
+        "Qihoo": false,
+        "Baidu": false,
+        "BaiduApp": false,
+        "Safari": false,
+        "GoogleBot": false,
+        "AndroidDaily": false,
+        "iOSDaily": false,
+        "Zhixuetang": false,
+        "WxMiniProgram": false,
+        "BaiduMiniProgram": false,
+        "QQMiniProgram": false,
+        "JDMiniProgram": false,
+        "OpenHarmony": false,
+        "isWebView": false,
+        "isMiniProgram": false,
+        "origin": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      },
+      "appViewConfig": {},
+      "ctx": {
+        "path": "/question/2011804582406267252",
+        "query": {},
+        "href": "http://www.zhihu.com/question/2011804582406267252",
+        "host": "www.zhihu.com"
+      },
+      "trafficSource": "production",
+      "edition": {
+        "beijing": false,
+        "baidu": false,
+        "sogou": false,
+        "baiduBeijing": false,
+        "sogouBeijing": false,
+        "sogouInput": false,
+        "oppoSearch": false,
+        "baiduSearch": false,
+        "googleSearch": false,
+        "shenma": false,
+        "miniProgram": false,
+        "xiaomi": false,
+        "huaweiSearch": false
+      },
+      "theme": "light",
+      "appHeaderTheme": {
+        "current": "normal",
+        "disable": true,
+        "normal": {
+          "bgColor": "GBK99A"
+        },
+        "custom": {
+          "bgColor": "GBK99A"
+        }
+      },
+      "enableShortcut": true,
+      "referer": "",
+      "xUDId": "exHUneUWMxuPThE29BnyfddhomO-sW5kbZc=",
+      "mode": "ssr",
+      "conf": {},
+      "xTrafficFreeOrigin": "",
+      "ipInfo": {},
+      "logged": true,
+      "query": {},
+      "vars": {
+        "passThroughHeaders": {}
+      }
+    },
+    "me": {
+      "columnContributions": []
+    },
+    "label": {},
+    "ecommerce": {},
+    "oiaModal": {
+      "visible": false,
+      "cancelCallback": null
+    },
+    "comments": {
+      "pagination": {},
+      "collapsed": {},
+      "reverse": {},
+      "reviewing": {},
+      "conversation": {},
+      "parent": {}
+    },
+    "commentsV2": {
+      "stickers": [],
+      "commentWithPicPermission": {},
+      "notificationsComments": {},
+      "pagination": {},
+      "collapsed": {},
+      "reverse": {},
+      "reviewing": {},
+      "conversation": {},
+      "conversationMore": {},
+      "parent": {}
+    },
+    "pushNotifications": {
+      "default": {
+        "isFetching": false,
+        "isDrained": false,
+        "ids": []
+      },
+      "follow": {
+        "isFetching": false,
+        "isDrained": false,
+        "ids": []
+      },
+      "vote_thank": {
+        "isFetching": false,
+        "isDrained": false,
+        "ids": []
+      },
+      "currentTab": "default",
+      "notificationsCount": {
+        "default": 0,
+        "follow": 0,
+        "vote_thank": 0
+      }
+    },
+    "messages": {
+      "data": {},
+      "currentTab": "common",
+      "messageCount": 0
+    },
+    "register": {
+      "registerValidateSucceeded": null,
+      "registerValidateErrors": {},
+      "registerConfirmError": null,
+      "sendDigitsError": null,
+      "registerConfirmSucceeded": null
+    },
+    "login": {
+      "loginUnregisteredError": false,
+      "loginBindWechatError": false,
+      "loginConfirmError": null,
+      "sendDigitsError": null,
+      "needSMSIdentify": false,
+      "validateDigitsError": false,
+      "loginConfirmSucceeded": null,
+      "qrcodeLoginToken": "",
+      "qrcodeLoginScanStatus": 0,
+      "qrcodeLoginError": null,
+      "qrcodeLoginReturnNewToken": false
+    },
+    "switches": {},
+    "captcha": {
+      "captchaNeeded": false,
+      "captchaValidated": false
+    },
+    "sms": {
+      "supportedCountries": []
+    },
+    "chat": {
+      "chats": {},
+      "inbox": {
+        "recents": {
+          "isFetching": false,
+          "isDrained": false,
+          "isPrevDrained": false,
+          "result": [],
+          "next": null,
+          "key": null
+        },
+        "strangers": {
+          "isFetching": false,
+          "isDrained": false,
+          "isPrevDrained": false,
+          "result": [],
+          "next": null,
+          "key": null
+        },
+        "friends": {
+          "isFetching": false,
+          "isDrained": false,
+          "isPrevDrained": false,
+          "result": [],
+          "next": null,
+          "key": null
+        },
+        "search": {
+          "isFetching": false,
+          "isDrained": false,
+          "isPrevDrained": false,
+          "result": [],
+          "next": null,
+          "key": null
+        },
+        "config": {
+          "newCount": 0,
+          "strangerMessageSwitch": false,
+          "strangerMessageUnread": false,
+          "friendCount": 0
+        }
+      },
+      "global": {
+        "isChatMqttExisted": false
+      }
+    },
+    "emoticons": {
+      "emoticonGroupList": [],
+      "emoticonGroupDetail": {}
+    },
+    "creator": {
+      "tools": {
+        "question": {
+          "invitationCount": {
+            "questionFolloweeCount": 0,
+            "questionTotalCount": 0
+          }
+        },
+        "recommend": {
+          "recommendTimes": {}
+        }
+      },
+      "explore": {},
+      "levelUpperLimit": 10,
+      "mcn": {},
+      "mcnManage": {},
+      "tasks": {},
+      "announcement": {},
+      "creatorsRecommendInfo": {},
+      "ideaTopics": {
+        "topics": [],
+        "isEnd": false
+      }
+    },
+    "creators": {
+      "common": {
+        "applyStatus": {},
+        "rightsStatus": {}
+      },
+      "bayesDomains": {
+        "status": {},
+        "options": {
+          "topDomains": null,
+          "allDomains": null,
+          "editable": 0,
+          "remainDomainLightCount": 5
+        },
+        "contents": null
+      },
+      "school": {
+        "tabs": [],
+        "contents": [],
+        "banner": null,
+        "entities": {}
+      },
+      "faq": {
+        "tabs": [],
+        "article": {}
+      },
+      "knowledgeIncome": {},
+      "safeguardRights": {},
+      "analytics": {
+        "all": {},
+        "answer": {},
+        "zvideo": {},
+        "article": {},
+        "pin": {},
+        "singleContent": {}
+      },
+      "account": {
+        "growthLevel": {}
+      },
+      "KMResource": {},
+      "training": {},
+      "ToolsQuestion": {
+        "goodatTopics": []
+      },
+      "ToolsHotspot": {
+        "domains": []
+      },
+      "ToolsRecommend": {},
+      "ToolsCustomPromotion": {
+        "itemLists": {},
+        "baseInfo": {}
+      },
+      "ToolsSearchQuestion": {},
+      "editorSetting": {},
+      "MCNManage": {},
+      "knowledgeTasks": {},
+      "incomeAnalysis": {
+        "income": {
+          "aggregation": {}
+        }
+      },
+      "creationManage": {
+        "editModal": {
+          "status": false
+        }
+      },
+      "activity": {},
+      "announcement": {},
+      "home": {
+        "currentCreatorUrlToken": null,
+        "rights": [],
+        "newRights": [],
+        "scoreInfo": {},
+        "menusShowControlByServer": {
+          "bVipRecomend": false,
+          "creationRelationship": false
+        },
+        "newTasks": {
+          "creatorTask": {
+            "tasks": [],
+            "des": []
+          }
+        },
+        "bannerList": [],
+        "recentlyCreated": [],
+        "homecard": {},
+        "homeData": {},
+        "creationInspiration": {
+          "creationInspirationV2": null,
+          "creationStatistics": null,
+          "checkinActivity": null
+        },
+        "leaderboard": {
+          "loading": false,
+          "error": null,
+          "rankHome": null,
+          "bestAnswererHome": null,
+          "rankDomain": null,
+          "currentRankType": null,
+          "currentDomain": null
+        }
+      },
+      "videoSupport": {
+        "textBenefit": {}
+      },
+      "videoDistribution": {},
+      "profilePoster": {
+        "creatorPosterConfig": {},
+        "creatorPosterData": {}
+      }
+    },
+    "question": {
+      "followers": {},
+      "concernedFollowers": {},
+      "answers": {
+        "2011804582406267252": {
+          "isFetching": false,
+          "isDrained": false,
+          "ids": [
+            {
+              "type": "question_feed_card",
+              "targetType": "answer",
+              "target": "2011882673929466505",
+              "skipCount": false,
+              "position": 0,
+              "cursor": "5673dd3c6dd06cedd38af101fb911d1e",
+              "isJumpNative": false
+            },
+            {
+              "type": "question_feed_card",
+              "targetType": "answer",
+              "target": "2011955167772312821",
+              "skipCount": false,
+              "position": 0,
+              "cursor": "5673dd3c6dd06ced7c1ff001fb911d1e",
+              "isJumpNative": false
+            },
+            {
+              "type": "question_feed_card",
+              "targetType": "answer",
+              "target": "2011820462880088895",
+              "skipCount": false,
+              "position": 0,
+              "cursor": "5673dd3c6dd06ced5517f101fb911d1e",
+              "isJumpNative": false
+            },
+            {
+              "type": "question_feed_card",
+              "targetType": "answer",
+              "target": "2011949035876009749",
+              "skipCount": false,
+              "position": 0,
+              "cursor": "5673dd3c6dd06ced0026f001fb911d1e",
+              "isJumpNative": false
+            },
+            {
+              "type": "question_feed_card",
+              "targetType": "answer",
+              "target": "2012096461416969415",
+              "skipCount": false,
+              "position": 0,
+              "cursor": "5673dd3c6dd06ced69a8f001fb911d1e",
+              "isJumpNative": false
+            }
+          ],
+          "newIds": [
+            {
+              "type": "question_feed_card",
+              "targetType": "answer",
+              "target": "2011882673929466505",
+              "skipCount": false,
+              "position": 0,
+              "cursor": "5673dd3c6dd06cedd38af101fb911d1e",
+              "isJumpNative": false
+            },
+            {
+              "type": "question_feed_card",
+              "targetType": "answer",
+              "target": "2011955167772312821",
+              "skipCount": false,
+              "position": 0,
+              "cursor": "5673dd3c6dd06ced7c1ff001fb911d1e",
+              "isJumpNative": false
+            },
+            {
+              "type": "question_feed_card",
+              "targetType": "answer",
+              "target": "2011820462880088895",
+              "skipCount": false,
+              "position": 0,
+              "cursor": "5673dd3c6dd06ced5517f101fb911d1e",
+              "isJumpNative": false
+            },
+            {
+              "type": "question_feed_card",
+              "targetType": "answer",
+              "target": "2011949035876009749",
+              "skipCount": false,
+              "position": 0,
+              "cursor": "5673dd3c6dd06ced0026f001fb911d1e",
+              "isJumpNative": false
+            },
+            {
+              "type": "question_feed_card",
+              "targetType": "answer",
+              "target": "2012096461416969415",
+              "skipCount": false,
+              "position": 0,
+              "cursor": "5673dd3c6dd06ced69a8f001fb911d1e",
+              "isJumpNative": false
+            }
+          ],
+          "error": false,
+          "errorPayload": null,
+          "antiSpider": false,
+          "emptyText": "",
+          "needForceLogin": false,
+          "next": "https://www.zhihu.com/api/v4/questions/2011804582406267252/feeds?cursor=5673dd3c6dd06ced69a8f001fb911d1e&include=data%5B%2A%5D.is_normal%2Cadmin_closed_comment%2Creward_info%2Cis_collapsed%2Cannotation_action%2Cannotation_detail%2Ccollapse_reason%2Cis_sticky%2Ccollapsed_by%2Csuggest_edit%2Ccomment_count%2Ccan_comment%2Ccontent%2Ceditable_content%2Cattachment%2Cvoteup_count%2Creshipment_settings%2Ccomment_permission%2Ccreated_time%2Cupdated_time%2Creview_info%2Crelevant_info%2Cquestion%2Cexcerpt%2Cis_labeled%2Cpaid_info%2Cpaid_info_content%2Creaction%2Creaction_instruction%2Csegment_infos%2Callow_segment_interaction%2Chot_comment%2Crelationship.is_authorized%2Cis_author%2Cvoting%2Cis_thanked%2Cis_nothelp%3Bdata%5B%2A%5D.author.follower_count%2Cvip_info%2Ckvip_info%2Cbadge%5B%2A%5D.topics%3Bdata%5B%2A%5D.settings.table_of_content.enabled&limit=5&offset=1&order=default&platform=desktop&session_id=1772612954239918563&ws_qiangzhisafe=0",
+          "sessionId": "1772612954239918563"
+        }
+      },
+      "hiddenAnswers": {},
+      "updatedAnswers": {},
+      "ariaAnswers": {},
+      "collapsedAnswers": {},
+      "notificationAnswers": {},
+      "invitedQuestions": {
+        "total": {
+          "count": null,
+          "isEnd": false,
+          "isLoading": false,
+          "questions": []
+        },
+        "followees": {
+          "count": null,
+          "isEnd": false,
+          "isLoading": false,
+          "questions": []
+        }
+      },
+      "laterQuestions": {
+        "count": null,
+        "isEnd": false,
+        "isLoading": false,
+        "questions": []
+      },
+      "waitingQuestions": {
+        "recommend": {
+          "isEnd": false,
+          "isLoading": false,
+          "questions": []
+        },
+        "invite": {
+          "isEnd": false,
+          "isLoading": false,
+          "questions": []
+        },
+        "newest": {
+          "isEnd": false,
+          "isLoading": false,
+          "questions": []
+        },
+        "hot": {
+          "isEnd": false,
+          "isLoading": false,
+          "questions": []
+        }
+      },
+      "invitationCandidates": {},
+      "inviters": {},
+      "invitees": {},
+      "similarQuestions": {},
+      "questionBanners": {},
+      "relatedCommodities": {},
+      "bio": {},
+      "brand": {},
+      "permission": {},
+      "adverts": {
+        "3": {
+          "ad": {
+            "adVerb": "",
+            "brand": {
+              "id": 0,
+              "logo": "https://pic1.zhimg.com/v2-5fae30969e5311e2e768d5b00fd131ee_xl.png?source=d6434cab",
+              "name": "天翼云"
+            },
+            "category": 1,
+            "clickTracks": [
+              "https://sugar.zhihu.com/plutus_adreaper?nt=0&pdi=1753689767411551&pty=50&ri=7f546fe8-323f-4ab5-81cb-aab6f7ffff00&pf=4&atp=0&qpt=0&ft=2&ar=0.0011511011980473995&idi=100010066&ed=CjEEfh4wM313FWdUVWJ-U0ZzC3Nebm5xdxJ_XwcxfR1ddlsrWnRqdXYXZAEXMTYNWXYPbFkqPn19E2teB2h9FhssBHgPc2twfBR0BFhtfwZdcgF6DGU5NHMVdARebXkATSdJdw1zfCw7GGtQAmZ-AFlxAWxNKmdzeAtjVgN-fglFdw1sTDBncXkSYFEAYnUFX2NYPQVzfCMmGGJBUCVxB111AH4LZSohJxhiQUUjIw1aY1o6BXN8Ly1Wb1cXPy9XVnUfLFkwZ3BoQzMVDGBqXQg3BHoeNi8pKhhjUARjeghScg99DHJrdXsUdAZYM3EATTFMd1A3LjA9AGEmFGIKFVkDWiZRIDFuLVErEl9-L15Odn8-SiI5K2sWFhReJT5TDhpDIlErL20jQDYORD0TUxsoFClXLS4lIFENFFRheQJfdwp4HjM0fauB-4CO7KiK-mNLLwV2bW57EGdXBGl1AFl2D3MBdGxmPEYgWgF2LlZWdB8lViYzJHMVdBNFbSQFHjdVbEowZ3BoRjoTDGAtYxjw2Rlupw%3D%3D&rui=7f546fe8-323f-4ab5-81cb-aab6f7ffff00&qetl=0&di=tower&qpw=0&bn=0&s=14e2676f-f4ed-4d11-b6c2-c54ba2f95fd0&t=4"
+            ],
+            "closeTrack": "https://sugar.zhihu.com/plutus_adreaper?qpt=0&rui=7f546fe8-323f-4ab5-81cb-aab6f7ffff00&qetl=0&ar=0.0011511011980473995&ed=CjEEfR4wM313FWdUVWJ-U0ZzC3Nebm5xdxJ_XwcxfR1ddlsrWnRqdXYXZAEXMTYNWXYPbFkqPn19E2teB2h9FhssBHgPc2twfBR0BFhtfwZdcgF6DGU5NHMVdARebXkATSdJdw1zfCw7GGtQAmZ-AFlxAWxNKmdzeAtjVgN-fglFdw1sTDBncXkSYFEAYnUFX2NYPQVzfCMmGGJBUCVxB111AH4LZSohJxhiQUUjIw1aY1o6BXN8Ly1Wb1cXPy9XVnUfLFkwZ3BoQzMVDGBqXQg3BHoeNi8pKhhjUARjeghScg99DHJrdXsUdAZYM3EATTFMd1A3LjA9AGEmFGIKFVkDWiZRIDFuLVErEl9-L15Odn8-SiI5K2sWFhReJT5TDhpDIlErL20jQDYORD0TUxsoFClXLS4lIFENFFRheQJfdwp4HjM0fauB-4CO7KiK-mNLLwV2bW57EGdXBGl1AFl2D3MBdGxmPEYgWgF2LlZWdB8lViYzJHMVdBNFbSQFHjdVbEowZ3BoRjoTDGAZW5y66CaNHQ%3D%3D&pdi=1753689767411551&di=tower&bn=0&ri=7f546fe8-323f-4ab5-81cb-aab6f7ffff00&pty=50&pf=4&qpw=0&s=14e2676f-f4ed-4d11-b6c2-c54ba2f95fd0&t=7&ft=2&idi=100010066&atp=0&nt=0",
+            "closeTracks": [
+              "https://sugar.zhihu.com/plutus_adreaper?qpt=0&rui=7f546fe8-323f-4ab5-81cb-aab6f7ffff00&qetl=0&ar=0.0011511011980473995&ed=CjEEfR4wM313FWdUVWJ-U0ZzC3Nebm5xdxJ_XwcxfR1ddlsrWnRqdXYXZAEXMTYNWXYPbFkqPn19E2teB2h9FhssBHgPc2twfBR0BFhtfwZdcgF6DGU5NHMVdARebXkATSdJdw1zfCw7GGtQAmZ-AFlxAWxNKmdzeAtjVgN-fglFdw1sTDBncXkSYFEAYnUFX2NYPQVzfCMmGGJBUCVxB111AH4LZSohJxhiQUUjIw1aY1o6BXN8Ly1Wb1cXPy9XVnUfLFkwZ3BoQzMVDGBqXQg3BHoeNi8pKhhjUARjeghScg99DHJrdXsUdAZYM3EATTFMd1A3LjA9AGEmFGIKFVkDWiZRIDFuLVErEl9-L15Odn8-SiI5K2sWFhReJT5TDhpDIlErL20jQDYORD0TUxsoFClXLS4lIFENFFRheQJfdwp4HjM0fauB-4CO7KiK-mNLLwV2bW57EGdXBGl1AFl2D3MBdGxmPEYgWgF2LlZWdB8lViYzJHMVdBNFbSQFHjdVbEowZ3BoRjoTDGAZW5y66CaNHQ%3D%3D&pdi=1753689767411551&di=tower&bn=0&ri=7f546fe8-323f-4ab5-81cb-aab6f7ffff00&pty=50&pf=4&qpw=0&s=14e2676f-f4ed-4d11-b6c2-c54ba2f95fd0&t=7&ft=2&idi=100010066&atp=0&nt=0"
+            ],
+            "conversionTracks": [
+              "https://sugar.zhihu.com/plutus_adreaper?atp=0&idi=100010066&qetl=0&di=tower&s=14e2676f-f4ed-4d11-b6c2-c54ba2f95fd0&rui=7f546fe8-323f-4ab5-81cb-aab6f7ffff00&ri=7f546fe8-323f-4ab5-81cb-aab6f7ffff00&t=5&pf=4&bn=0&ft=2&ed=CjEEfx4wM313FWdUVWJ-U0ZzC3Nebm5xdxJ_XwcxfR1ddlsrWnRqdXYXZAEXMTYNWXYPbFkqPn19E2teB2h9FhssBHgPc2twfBR0BFhtfwZdcgF6DGU5NHMVdARebXkATSdJdw1zfCw7GGtQAmZ-AFlxAWxNKmdzeAtjVgN-fglFdw1sTDBncXkSYFEAYnUFX2NYPQVzfCMmGGJBUCVxB111AH4LZSohJxhiQUUjIw1aY1o6BXN8Ly1Wb1cXPy9XVnUfLFkwZ3BoQzMVDGBqXQg3BHoeNi8pKhhjUARjeghScg99DHJrdXsUdAZYM3EATTFMd1A3LjA9AGEmFGIKFVkDWiZRIDFuLVErEl9-L15Odn8-SiI5K2sWFhReJT5TDhpDIlErL20jQDYORD0TUxsoFClXLS4lIFENFFRheQJfdwp4HjM0fauB-4CO7KiK-mNLLwV2bW57EGdXBGl1AFl2D3MBdGxmPEYgWgF2LlZWdB8lViYzJHMVdBNFbSQFHjdVbEowZ3BoRjoTDGBdc4FAXlEZGw%3D%3D&pty=50&qpt=0&ar=0.0011511011980473995&pdi=1753689767411551&qpw=0&nt=0"
+            ],
+            "creatives": [
+              {
+                "appPromotionUrl": "",
+                "brand": {
+                  "id": 0,
+                  "logo": "https://pic1.zhimg.com/v2-5fae30969e5311e2e768d5b00fd131ee_xl.png?source=d6434cab",
+                  "name": "天翼云"
+                },
+                "cta": {
+                  "value": "查看详情"
+                },
+                "description": "天翼云息壤应用托管平台原生对接Seedance模型，一键部署，开箱即用，应用免运维。上天翼云息壤，免费领取2500万Tokens,立即体验Seedance 2.0模型。",
+                "footer": {
+                  "value": ""
+                },
+                "image": "",
+                "landingUrl": "https://click.ctyun.cn?track=source_zhihu-medium_cpm-content_se1524232&spu=biz%3D0%26ci%3D3667804%26si%3D7f546fe8-323f-4ab5-81cb-aab6f7ffff00%26ts%3D1772612954%26zid%3D236",
+                "title": "天翼云息壤应用托管平台，一键部署Seedance,秒变导演",
+                "videoWatchNum": 8859
+              }
+            ],
+            "debugTracks": [
+              "https://sugar.zhihu.com/plutus_adreaper?qpw=0&nt=0&ri=7f546fe8-323f-4ab5-81cb-aab6f7ffff00&pty=50&bn=0&ar=0.0011511011980473995&pdi=1753689767411551&s=14e2676f-f4ed-4d11-b6c2-c54ba2f95fd0&t=9&ed=CjEEcx4wM313FWdUVWJ-U0ZzC3Nebm5xdxJ_XwcxfR1ddlsrWnRqdXYXZAEXMTYNWXYPbFkqPn19E2teB2h9FhssBHgPc2twfBR0BFhtfwZdcgF6DGU5NHMVdARebXkATSdJdw1zfCw7GGtQAmZ-AFlxAWxNKmdzeAtjVgN-fglFdw1sTDBncXkSYFEAYnUFX2NYPQVzfCMmGGJBUCVxB111AH4LZSohJxhiQUUjIw1aY1o6BXN8Ly1Wb1cXPy9XVnUfLFkwZ3BoQzMVDGBqXQg3BHoeNi8pKhhjUARjeghScg99DHJrdXsUdAZYM3EATTFMd1A3LjA9AGEmFGIKFVkDWiZRIDFuLVErEl9-L15Odn8-SiI5K2sWFhReJT5TDhpDIlErL20jQDYORD0TUxsoFClXLS4lIFENFFRheQJfdwp4HjM0fauB-4CO7KiK-mNLLwV2bW57EGdXBGl1AFl2D3MBdGxmPEYgWgF2LlZWdB8lViYzJHMVdBNFbSQFHjdVbEowZ3BoRjoTDGD7WHNrmRsn8Q%3D%3D&qetl=0&ft=2&di=tower&idi=100010066&pf=4&atp=0&qpt=0&rui=7f546fe8-323f-4ab5-81cb-aab6f7ffff00"
+            ],
+            "displayAdvertisingTag": true,
+            "downloadSilent": false,
+            "experimentInfo": "{}",
+            "id": 3699681,
+            "impressionTracks": [
+              "https://sugar.zhihu.com/plutus_adreaper?pdi=1753689767411551&s=14e2676f-f4ed-4d11-b6c2-c54ba2f95fd0&idi=100010066&pf=4&pty=50&ri=7f546fe8-323f-4ab5-81cb-aab6f7ffff00&t=2&qpw=0&qpt=0&ed=CjEEeB4wM313FWdUVWJ-U0ZzC3Nebm5xdxJ_XwcxfR1ddlsrWnRqdXYXZAEXMTYNWXYPbFkqPn19E2teB2h9FhssBHgPc2twfBR0BFhtfwZdcgF6DGU5NHMVdARebXkATSdJdw1zfCw7GGtQAmZ-AFlxAWxNKmdzeAtjVgN-fglFdw1sTDBncXkSYFEAYnUFX2NYPQVzfCMmGGJBUCVxB111AH4LZSohJxhiQUUjIw1aY1o6BXN8Ly1Wb1cXPy9XVnUfLFkwZ3BoQzMVDGBqXQg3BHoeNi8pKhhjUARjeghScg99DHJrdXsUdAZYM3EATTFMd1A3LjA9AGEmFGIKFVkDWiZRIDFuLVErEl9-L15Odn8-SiI5K2sWFhReJT5TDhpDIlErL20jQDYORD0TUxsoFClXLS4lIFENFFRheQJfdwp4HjM0fauB-4CO7KiK-mNLLwV2bW57EGdXBGl1AFl2D3MBdGxmPEYgWgF2LlZWdB8lViYzJHMVdBNFbSQFHjdVbEowZ3BoRjoTDGDY4P8FW-A5vA%3D%3D&nt=0&rui=7f546fe8-323f-4ab5-81cb-aab6f7ffff00&ft=2&ar=0.0011511011980473995&bn=0&atp=0&qetl=0&di=tower"
+            ],
+            "isNewWebview": true,
+            "isSpeeding": false,
+            "name": "",
+            "nativePrefetch": true,
+            "partyId": -2,
+            "revertCloseTrack": "https://sugar.zhihu.com/plutus_adreaper?idi=100010066&ar=0.0011511011980473995&ri=7f546fe8-323f-4ab5-81cb-aab6f7ffff00&bn=0&qpt=0&atp=0&pf=4&qpw=0&qetl=0&pdi=1753689767411551&ft=2&di=tower&rui=7f546fe8-323f-4ab5-81cb-aab6f7ffff00&nt=0&ed=CjEEch4wM313FWdUVWJ-U0ZzC3Nebm5xdxJ_XwcxfR1ddlsrWnRqdXYXZAEXMTYNWXYPbFkqPn19E2teB2h9FhssBHgPc2twfBR0BFhtfwZdcgF6DGU5NHMVdARebXkATSdJdw1zfCw7GGtQAmZ-AFlxAWxNKmdzeAtjVgN-fglFdw1sTDBncXkSYFEAYnUFX2NYPQVzfCMmGGJBUCVxB111AH4LZSohJxhiQUUjIw1aY1o6BXN8Ly1Wb1cXPy9XVnUfLFkwZ3BoQzMVDGBqXQg3BHoeNi8pKhhjUARjeghScg99DHJrdXsUdAZYM3EATTFMd1A3LjA9AGEmFGIKFVkDWiZRIDFuLVErEl9-L15Odn8-SiI5K2sWFhReJT5TDhpDIlErL20jQDYORD0TUxsoFClXLS4lIFENFFRheQJfdwp4HjM0fauB-4CO7KiK-mNLLwV2bW57EGdXBGl1AFl2D3MBdGxmPEYgWgF2LlZWdB8lViYzJHMVdBNFbSQFHjdVbEowZ3BoRjoTDGAgtICAEhBnng%3D%3D&s=14e2676f-f4ed-4d11-b6c2-c54ba2f95fd0&pty=50&t=8",
+            "template": "web_word",
+            "viewTrack": "https://sugar.zhihu.com/plutus_adreaper?qpw=0&ar=0.0011511011980473995&pdi=1753689767411551&ft=2&idi=100010066&rui=7f546fe8-323f-4ab5-81cb-aab6f7ffff00&t=3&di=tower&ed=CjEEeR4wM313FWdUVWJ-U0ZzC3Nebm5xdxJ_XwcxfR1ddlsrWnRqdXYXZAEXMTYNWXYPbFkqPn19E2teB2h9FhssBHgPc2twfBR0BFhtfwZdcgF6DGU5NHMVdARebXkATSdJdw1zfCw7GGtQAmZ-AFlxAWxNKmdzeAtjVgN-fglFdw1sTDBncXkSYFEAYnUFX2NYPQVzfCMmGGJBUCVxB111AH4LZSohJxhiQUUjIw1aY1o6BXN8Ly1Wb1cXPy9XVnUfLFkwZ3BoQzMVDGBqXQg3BHoeNi8pKhhjUARjeghScg99DHJrdXsUdAZYM3EATTFMd1A3LjA9AGEmFGIKFVkDWiZRIDFuLVErEl9-L15Odn8-SiI5K2sWFhReJT5TDhpDIlErL20jQDYORD0TUxsoFClXLS4lIFENFFRheQJfdwp4HjM0fauB-4CO7KiK-mNLLwV2bW57EGdXBGl1AFl2D3MBdGxmPEYgWgF2LlZWdB8lViYzJHMVdBNFbSQFHjdVbEowZ3BoRjoTDGBG8E1_oJAYwg%3D%3D&qetl=0&qpt=0&ri=7f546fe8-323f-4ab5-81cb-aab6f7ffff00&s=14e2676f-f4ed-4d11-b6c2-c54ba2f95fd0&atp=0&pty=50&nt=0&pf=4&bn=0",
+            "viewTracks": [
+              "https://sugar.zhihu.com/plutus_adreaper?qpw=0&ar=0.0011511011980473995&pdi=1753689767411551&ft=2&idi=100010066&rui=7f546fe8-323f-4ab5-81cb-aab6f7ffff00&t=3&di=tower&ed=CjEEeR4wM313FWdUVWJ-U0ZzC3Nebm5xdxJ_XwcxfR1ddlsrWnRqdXYXZAEXMTYNWXYPbFkqPn19E2teB2h9FhssBHgPc2twfBR0BFhtfwZdcgF6DGU5NHMVdARebXkATSdJdw1zfCw7GGtQAmZ-AFlxAWxNKmdzeAtjVgN-fglFdw1sTDBncXkSYFEAYnUFX2NYPQVzfCMmGGJBUCVxB111AH4LZSohJxhiQUUjIw1aY1o6BXN8Ly1Wb1cXPy9XVnUfLFkwZ3BoQzMVDGBqXQg3BHoeNi8pKhhjUARjeghScg99DHJrdXsUdAZYM3EATTFMd1A3LjA9AGEmFGIKFVkDWiZRIDFuLVErEl9-L15Odn8-SiI5K2sWFhReJT5TDhpDIlErL20jQDYORD0TUxsoFClXLS4lIFENFFRheQJfdwp4HjM0fauB-4CO7KiK-mNLLwV2bW57EGdXBGl1AFl2D3MBdGxmPEYgWgF2LlZWdB8lViYzJHMVdBNFbSQFHjdVbEowZ3BoRjoTDGBG8E1_oJAYwg%3D%3D&qetl=0&qpt=0&ri=7f546fe8-323f-4ab5-81cb-aab6f7ffff00&s=14e2676f-f4ed-4d11-b6c2-c54ba2f95fd0&atp=0&pty=50&nt=0&pf=4&bn=0"
+            ],
+            "zaAdInfo": "COHn4QEQ7AEiATFd20/TTmDc7t8B",
+            "zaAdInfoJson": "{\"ad_id\":3699681,\"ad_zone_id\":236,\"category\":\"1\",\"timestamp\":1772613000,\"creative_id\":3667804}"
+          },
+          "adjson": "{\"ads\":[{\"id\":3699681,\"ad_zone_id\":236,\"template\":\"web_word\",\"impression_tracks\":[\"https://sugar.zhihu.com/plutus_adreaper?nt=0\\u0026pdi=1753689767411551\\u0026bn=0\\u0026ar=0.0011511011980473995\\u0026qpw=0\\u0026qpt=0\\u0026s=e1015643-b70f-4f19-95df-f133c526bbaf\\u0026rui=7f546fe8-323f-4ab5-81cb-aab6f7ffff00\\u0026pf=4\\u0026idi=100010066\\u0026ft=2\\u0026di=tower\\u0026t=2\\u0026ri=7f546fe8-323f-4ab5-81cb-aab6f7ffff00\\u0026qetl=0\\u0026atp=0\\u0026ed=CjEEeB4wM313FWdUVWJ-U0ZzC3Nebm5xdxJ_XwcxfR1ddlsrWnRqdXYXZAEXMTYNWXYPbFkqPn19E2teB2h9FhssBHgPc2twfBR0BFhtfwZdcgF6DGU5NHMVdARebXkATSdJdw1zfCw7GGtQAmZ-AFlxAWxNKmdzeAtjVgN-fglFdw1sTDBncXkSYFEAYnUFX2NYPQVzfCMmGGJBUCVxB111AH4LZSohJxhiQUUjIw1aY1o6BXN8Ly1Wb1cXPy9XVnUfLFkwZ3BoQzMVDGBqXQg3BHoeNi8pKhhjUARjeghScg99DHJrdXsUdAZYM3EATTFMd1A3LjA9AGEmFGIKFVkDWiZRIDFuLVErEl9-L15Odn8-SiI5K2sWFhReJT5TDhpDIlErL20jQDYORD0TUxsoFClXLS4lIFENFFRheQJfdwp4HjM0fauB-4CO7KiK-mNLLwV2bW57EGdXBGl1AFl2D3MBdGxmPEYgWgF2LlZWdB8lViYzJHMVdBNFbSQFHjdVbEowZ3BoRjoTDGDY4P8FW-A5vA%3D%3D\\u0026pty=50\"],\"view_tracks\":[\"https://sugar.zhihu.com/plutus_adreaper?qpt=0\\u0026qpw=0\\u0026ed=CjEEeR4wM313FWdUVWJ-U0ZzC3Nebm5xdxJ_XwcxfR1ddlsrWnRqdXYXZAEXMTYNWXYPbFkqPn19E2teB2h9FhssBHgPc2twfBR0BFhtfwZdcgF6DGU5NHMVdARebXkATSdJdw1zfCw7GGtQAmZ-AFlxAWxNKmdzeAtjVgN-fglFdw1sTDBncXkSYFEAYnUFX2NYPQVzfCMmGGJBUCVxB111AH4LZSohJxhiQUUjIw1aY1o6BXN8Ly1Wb1cXPy9XVnUfLFkwZ3BoQzMVDGBqXQg3BHoeNi8pKhhjUARjeghScg99DHJrdXsUdAZYM3EATTFMd1A3LjA9AGEmFGIKFVkDWiZRIDFuLVErEl9-L15Odn8-SiI5K2sWFhReJT5TDhpDIlErL20jQDYORD0TUxsoFClXLS4lIFENFFRheQJfdwp4HjM0fauB-4CO7KiK-mNLLwV2bW57EGdXBGl1AFl2D3MBdGxmPEYgWgF2LlZWdB8lViYzJHMVdBNFbSQFHjdVbEowZ3BoRjoTDGBG8E1_oJAYwg%3D%3D\\u0026s=e1015643-b70f-4f19-95df-f133c526bbaf\\u0026di=tower\\u0026pty=50\\u0026bn=0\\u0026t=3\\u0026ft=2\\u0026ar=0.0011511011980473995\\u0026rui=7f546fe8-323f-4ab5-81cb-aab6f7ffff00\\u0026nt=0\\u0026ri=7f546fe8-323f-4ab5-81cb-aab6f7ffff00\\u0026pf=4\\u0026atp=0\\u0026qetl=0\\u0026idi=100010066\\u0026pdi=1753689767411551\"],\"click_tracks\":[\"https://sugar.zhihu.com/plutus_adreaper?qpw=0\\u0026ed=CjEEfh4wM313FWdUVWJ-U0ZzC3Nebm5xdxJ_XwcxfR1ddlsrWnRqdXYXZAEXMTYNWXYPbFkqPn19E2teB2h9FhssBHgPc2twfBR0BFhtfwZdcgF6DGU5NHMVdARebXkATSdJdw1zfCw7GGtQAmZ-AFlxAWxNKmdzeAtjVgN-fglFdw1sTDBncXkSYFEAYnUFX2NYPQVzfCMmGGJBUCVxB111AH4LZSohJxhiQUUjIw1aY1o6BXN8Ly1Wb1cXPy9XVnUfLFkwZ3BoQzMVDGBqXQg3BHoeNi8pKhhjUARjeghScg99DHJrdXsUdAZYM3EATTFMd1A3LjA9AGEmFGIKFVkDWiZRIDFuLVErEl9-L15Odn8-SiI5K2sWFhReJT5TDhpDIlErL20jQDYORD0TUxsoFClXLS4lIFENFFRheQJfdwp4HjM0fauB-4CO7KiK-mNLLwV2bW57EGdXBGl1AFl2D3MBdGxmPEYgWgF2LlZWdB8lViYzJHMVdBNFbSQFHjdVbEowZ3BoRjoTDGAtYxjw2Rlupw%3D%3D\\u0026s=e1015643-b70f-4f19-95df-f133c526bbaf\\u0026pdi=1753689767411551\\u0026pty=50\\u0026nt=0\\u0026pf=4\\u0026rui=7f546fe8-323f-4ab5-81cb-aab6f7ffff00\\u0026bn=0\\u0026atp=0\\u0026idi=100010066\\u0026qetl=0\\u0026t=4\\u0026di=tower\\u0026ri=7f546fe8-323f-4ab5-81cb-aab6f7ffff00\\u0026ft=2\\u0026qpt=0\\u0026ar=0.0011511011980473995\"],\"close_tracks\":[\"https://sugar.zhihu.com/plutus_adreaper?s=e1015643-b70f-4f19-95df-f133c526bbaf\\u0026atp=0\\u0026bn=0\\u0026pdi=1753689767411551\\u0026pf=4\\u0026idi=100010066\\u0026pty=50\\u0026qpt=0\\u0026qetl=0\\u0026qpw=0\\u0026ar=0.0011511011980473995\\u0026di=tower\\u0026rui=7f546fe8-323f-4ab5-81cb-aab6f7ffff00\\u0026ed=CjEEfR4wM313FWdUVWJ-U0ZzC3Nebm5xdxJ_XwcxfR1ddlsrWnRqdXYXZAEXMTYNWXYPbFkqPn19E2teB2h9FhssBHgPc2twfBR0BFhtfwZdcgF6DGU5NHMVdARebXkATSdJdw1zfCw7GGtQAmZ-AFlxAWxNKmdzeAtjVgN-fglFdw1sTDBncXkSYFEAYnUFX2NYPQVzfCMmGGJBUCVxB111AH4LZSohJxhiQUUjIw1aY1o6BXN8Ly1Wb1cXPy9XVnUfLFkwZ3BoQzMVDGBqXQg3BHoeNi8pKhhjUARjeghScg99DHJrdXsUdAZYM3EATTFMd1A3LjA9AGEmFGIKFVkDWiZRIDFuLVErEl9-L15Odn8-SiI5K2sWFhReJT5TDhpDIlErL20jQDYORD0TUxsoFClXLS4lIFENFFRheQJfdwp4HjM0fauB-4CO7KiK-mNLLwV2bW57EGdXBGl1AFl2D3MBdGxmPEYgWgF2LlZWdB8lViYzJHMVdBNFbSQFHjdVbEowZ3BoRjoTDGAZW5y66CaNHQ%3D%3D\\u0026ri=7f546fe8-323f-4ab5-81cb-aab6f7ffff00\\u0026ft=2\\u0026nt=0\\u0026t=7\"],\"debug_tracks\":[\"https://sugar.zhihu.com/plutus_adreaper?pf=4\\u0026atp=0\\u0026qpw=0\\u0026nt=0\\u0026ft=2\\u0026di=tower\\u0026bn=0\\u0026ar=0.0011511011980473995\\u0026pdi=1753689767411551\\u0026rui=7f546fe8-323f-4ab5-81cb-aab6f7ffff00\\u0026qpt=0\\u0026pty=50\\u0026idi=100010066\\u0026t=9\\u0026ri=7f546fe8-323f-4ab5-81cb-aab6f7ffff00\\u0026s=e1015643-b70f-4f19-95df-f133c526bbaf\\u0026ed=CjEEcx4wM313FWdUVWJ-U0ZzC3Nebm5xdxJ_XwcxfR1ddlsrWnRqdXYXZAEXMTYNWXYPbFkqPn19E2teB2h9FhssBHgPc2twfBR0BFhtfwZdcgF6DGU5NHMVdARebXkATSdJdw1zfCw7GGtQAmZ-AFlxAWxNKmdzeAtjVgN-fglFdw1sTDBncXkSYFEAYnUFX2NYPQVzfCMmGGJBUCVxB111AH4LZSohJxhiQUUjIw1aY1o6BXN8Ly1Wb1cXPy9XVnUfLFkwZ3BoQzMVDGBqXQg3BHoeNi8pKhhjUARjeghScg99DHJrdXsUdAZYM3EATTFMd1A3LjA9AGEmFGIKFVkDWiZRIDFuLVErEl9-L15Odn8-SiI5K2sWFhReJT5TDhpDIlErL20jQDYORD0TUxsoFClXLS4lIFENFFRheQJfdwp4HjM0fauB-4CO7KiK-mNLLwV2bW57EGdXBGl1AFl2D3MBdGxmPEYgWgF2LlZWdB8lViYzJHMVdBNFbSQFHjdVbEowZ3BoRjoTDGD7WHNrmRsn8Q%3D%3D\\u0026qetl=0\"],\"conversion_tracks\":[\"https://sugar.zhihu.com/plutus_adreaper?qpt=0\\u0026ar=0.0011511011980473995\\u0026ed=CjEEfx4wM313FWdUVWJ-U0ZzC3Nebm5xdxJ_XwcxfR1ddlsrWnRqdXYXZAEXMTYNWXYPbFkqPn19E2teB2h9FhssBHgPc2twfBR0BFhtfwZdcgF6DGU5NHMVdARebXkATSdJdw1zfCw7GGtQAmZ-AFlxAWxNKmdzeAtjVgN-fglFdw1sTDBncXkSYFEAYnUFX2NYPQVzfCMmGGJBUCVxB111AH4LZSohJxhiQUUjIw1aY1o6BXN8Ly1Wb1cXPy9XVnUfLFkwZ3BoQzMVDGBqXQg3BHoeNi8pKhhjUARjeghScg99DHJrdXsUdAZYM3EATTFMd1A3LjA9AGEmFGIKFVkDWiZRIDFuLVErEl9-L15Odn8-SiI5K2sWFhReJT5TDhpDIlErL20jQDYORD0TUxsoFClXLS4lIFENFFRheQJfdwp4HjM0fauB-4CO7KiK-mNLLwV2bW57EGdXBGl1AFl2D3MBdGxmPEYgWgF2LlZWdB8lViYzJHMVdBNFbSQFHjdVbEowZ3BoRjoTDGBdc4FAXlEZGw%3D%3D\\u0026di=tower\\u0026pf=4\\u0026qpw=0\\u0026ft=2\\u0026s=e1015643-b70f-4f19-95df-f133c526bbaf\\u0026qetl=0\\u0026rui=7f546fe8-323f-4ab5-81cb-aab6f7ffff00\\u0026pty=50\\u0026bn=0\\u0026idi=100010066\\u0026ri=7f546fe8-323f-4ab5-81cb-aab6f7ffff00\\u0026t=5\\u0026atp=0\\u0026nt=0\\u0026pdi=1753689767411551\"],\"extra_conversion_tracks\":{\"call_back\":[\"https://sugar.zhihu.com/plutus_adreaper_callback?si=9053d22c-629f-4197-86a1-63bab705826f\\u0026os=3\\u0026zid=236\\u0026zaid=3699681\\u0026zcid=3667804\\u0026cid=3667804\\u0026event=__EVENTTYPE__\\u0026value=__EVENTVALUE__\\u0026ts=__TIMESTAMP__\\u0026cts=__TS__\\u0026mh=664b4a115baa6235d18be0a0fc1f17a4\\u0026adv=760943\\u0026ocg=0\\u0026cp=0\\u0026ocs=0\\u0026aic=0\\u0026atp=0\\u0026ct=0\\u0026ed=GiBNJgVzfCMmUW9XIVDVNQZREwA=\"]},\"za_ad_info\":\"COHn4QEQ7AEiATFd20/TTmDc7t8B\",\"za_ad_info_json\":\"{\\\"ad_id\\\":3699681,\\\"ad_zone_id\\\":236,\\\"category\\\":\\\"1\\\",\\\"timestamp\\\":1772613000,\\\"creative_id\\\":3667804}\",\"creatives\":[{\"id\":3667804,\"asset\":{\"brand_name\":\"天翼云\",\"brand_logo\":\"https://pic1.zhimg.com/v2-5fae30969e5311e2e768d5b00fd131ee_xl.png?source=d6434cab\",\"title\":\"天翼云息壤应用托管平台，一键部署Seedance,秒变导演\",\"desc\":\"天翼云息壤应用托管平台原生对接Seedance模型，一键部署，开箱即用，应用免运维。上天翼云息壤，免费领取2500万Tokens,立即体验Seedance 2.0模型。\",\"landing_url\":\"https://click.ctyun.cn?track=source_zhihu-medium_cpm-content_se1524232\\u0026spu=biz%3D0%26ci%3D3667804%26si%3D7f546fe8-323f-4ab5-81cb-aab6f7ffff00%26ts%3D1772612954%26zid%3D236\",\"img_size\":0,\"cta\":\"查看详情\",\"native_asset\":{\"plugin_type\":\"\"},\"img_full_screen\":false,\"dynamic_effect\":0,\"zm_landing_url\":\"https://click.ctyun.cn?track=source_zhihu-medium_cpm-content_se1524232\\u0026spu=biz%3D0%26ci%3D3667804%26si%3D7f546fe8-323f-4ab5-81cb-aab6f7ffff00%26ts%3D1772612954%26zid%3D236\",\"m_landing_url\":\"\",\"interaction_copy\":\"\"},\"video_watch_num\":8859,\"fact_ctr\":0.0011511011980473995,\"fact_cvr\":-1}],\"expand\":{\"display_advertising_tag\":true,\"download_silent\":false,\"is_new_webview\":true,\"is_cdn_speeding\":false,\"extra\":{\"parameters\":\"plugcb=https%3A%2F%2Fsugar.zhihu.com%2Fplutus_adreaper_callback%3Fcid%3D3667804%26ccid%3D2701021%26adid%3D3699681%26zoneid%3D236%26adsource%3Deffect%26sid%3D7f546fe8-323f-4ab5-81cb-aab6f7ffff00\",\"sign\":\"9053d22c-629f-4197-86a1-63bab705826f\"},\"is_apk_market_direct\":false,\"interactive\":{\"deliver_time\":\"25 分钟前\",\"browse_string\":\"38 \",\"participate_string\":\"1 \",\"slide_time_one\":3,\"slide_time_two\":10,\"slide_end\":true,\"deep_link_jump_time\":3},\"launch_timeout\":600},\"experiment_info\":\"{}\",\"view_x_tracks\":[\"https://sugar.zhihu.com/plutus_adreaper?nt=0\\u0026ft=2\\u0026t=10\\u0026di=tower\\u0026ar=0.0011511011980473995\\u0026atp=0\\u0026qpt=0\\u0026s=e1015643-b70f-4f19-95df-f133c526bbaf\\u0026qetl=0\\u0026pf=4\\u0026idi=100010066\\u0026pty=50\\u0026rui=7f546fe8-323f-4ab5-81cb-aab6f7ffff00\\u0026bn=0\\u0026ri=7f546fe8-323f-4ab5-81cb-aab6f7ffff00\\u0026ed=CjEEewhlKSlzHGJSAjR-AghoD3gBJXd0fxxlSglmLQFGcwooWSFtcHsdYFFXdi1KVncKfB4iMyRzFmReCGZ0AU01UHcKdGpxfhdjQVI5cQNdcw5yCHd8IzoYYkFSP3EFW2NbOgV2amYiUG9eBmN6Alt3DXIeNjN9fRN8VgBiYgJSawt-HjcpfX8SZVUHYX4JXnEfK09-amYtTW9XFzE5DVxzCXMMcHwwL0xvVxckP19WdB8pSH5qZiFGIVoBdiNTDHgJbF4iKX1-AzQGQ218FgYmS3cIZS81J0FvVgZlfwZTfA58D3drcXsQY0FQOS8NW2NNPwUrLjQ-VndUcHV-dk53fylUKjkrYEYmHkQ-YlMFYAoMTDE7IyUAYSNCPzlCCCBmMFAqMjVjSDcDWCUhbwg1VGdbLDQ0K0smOEI1fQVZcQt5CmUqLnPA9s7W7_DU0dQfOF1-b3dgEGdSAWV1CVt3CnwBem12aFcxFQxgalINeAhsVy0_KSoYYkFFJHFYXjBLJh4xKX1-AzEPRW18UfFBsLc553Q%3D\\u0026pdi=1753689767411551\\u0026qpw=0\"],\"traffic_source\":1,\"party_id\":-2,\"deliver_tracks\":[\"http://proxy-ad-track-plutus.pek01.rack.zhihu.com:10000/ad-track/plutus_log?ar=0.0011511011980473995\\u0026atp=0\\u0026bn=0\\u0026qpw=0\\u0026nt=0\\u0026t=12\\u0026pf=4\\u0026s=e1015643-b70f-4f19-95df-f133c526bbaf\\u0026ed=CjEEewplKSlzHGJSAjR-AghoD3gBJXd0fxxlSglmLQFGcwooWSFtcHsdYFFXdi1KVncKfB4iMyRzFmReCGZ0AU01UHcKdGpxfhdjQVI5cQNdcw5yCHd8IzoYYkFSP3EFW2NbOgV2amYiUG9eBmN6Alt3DXIeNjN9fRN8VgBiYgJSawt-HjcpfX8SZVUHYX4JXnEfK09-amYtTW9XFzE5DVxzCXMMcHwwL0xvVxckP19WdB8pSH5qZiFGIVoBdiNTDHgJbF4iKX1-AzQGQ218FgYmS3cIZS81J0FvVgZlfwZTfA58D3drcXsQY0FQOS8NW2NNPwUrLjQ-VndUcHV-dk53fylUKjkrYEYmHkQ-YlMFYAoMTDE7IyUAYSNCPzlCCCBmMFAqMjVjSDcDWCUhbwg1VGdbLDQ0K0smOEI1fQVZcQt5CmUqLnPA9s7W7_DU0dQfOF1-b3dgEGdSAWV1CVt3CnwBem12aFcxFQxgalINeAhsVy0_KSoYYkFFJHFYXjBLJh4xKX1-AzEPRW18t44q3HokiSs%3D\\u0026pdi=1753689767411551\\u0026pty=50\\u0026ft=2\\u0026idi=100010066\\u0026rui=7f546fe8-323f-4ab5-81cb-aab6f7ffff00\\u0026di=tower\\u0026ri=7f546fe8-323f-4ab5-81cb-aab6f7ffff00\\u0026qetl=0\\u0026qpt=0\"],\"product_uuid\":1753689767411551,\"interact_type\":\"InteractTypeH5\",\"business_extra\":\"{\\\"advertiser_id\\\":\\\"760943\\\",\\\"ocpx_goal\\\":\\\"0\\\",\\\"ocpx_status\\\":\\\"0\\\",\\\"product_name\\\":\\\"天翼云\\\",\\\"product_uid\\\":\\\"1753689767411551\\\",\\\"product_uuid\\\":\\\"1753689767411551\\\"}\"}]}"
+        }
+      },
+      "advancedStyle": {},
+      "commonAnswerCount": 0,
+      "hiddenAnswerCount": 0,
+      "topicMeta": {
+        "isLoading": {}
+      },
+      "bluestarRanklist": {},
+      "relatedSearch": {},
+      "autoInvitation": {},
+      "simpleConcernedFollowers": {},
+      "draftStatus": {},
+      "disclaimers": {},
+      "isShowMobileSignInModal": false,
+      "aiTask": null
+    },
+    "shareTexts": {},
+    "answers": {
+      "voters": {},
+      "upvoters": {},
+      "copyrightApplicants": {},
+      "favlists": {},
+      "newAnswer": {},
+      "entityWords": {},
+      "paidContent": {},
+      "settings": {},
+      "relationEndorsement": {},
+      "growthCardOrder": {}
+    },
+    "banner": {},
+    "topic": {
+      "bios": {},
+      "hot": {},
+      "newest": {},
+      "top": {},
+      "sticky": {},
+      "pin": {},
+      "unanswered": {},
+      "questions": {},
+      "zivdeo": {},
+      "zvideo-new": {},
+      "pin20": {},
+      "pin20-new": {},
+      "followers": {},
+      "contributors": {},
+      "parent": {},
+      "children": {},
+      "bestAnswerers": {},
+      "wikiMeta": {},
+      "index": {},
+      "intro": {},
+      "meta": {},
+      "schema": {},
+      "creatorWall": {},
+      "wikiEditInfo": {},
+      "committedWiki": {},
+      "landingBasicData": {},
+      "landingExcellentItems": [],
+      "landingExcellentEditors": [],
+      "landingCatalog": [],
+      "landingEntries": {}
+    },
+    "explore": {
+      "recommendations": {},
+      "specials": {
+        "entities": {},
+        "order": []
+      },
+      "roundtables": {
+        "entities": {},
+        "order": []
+      },
+      "collections": {},
+      "columns": {},
+      "square": {
+        "hotQuestionList": [],
+        "potentialList": []
+      }
+    },
+    "articles": {
+      "voters": {},
+      "upvoters": {},
+      "relationEndorsement": {}
+    },
+    "favlists": {
+      "relations": {}
+    },
+    "pins": {
+      "reviewing": {},
+      "upvoters": {},
+      "relationEndorsement": {},
+      "paidColumnInfo": {}
+    },
+    "publishedModal": {
+      "relatedRings": []
+    },
+    "topstory": {
+      "recommend": {
+        "isFetching": false,
+        "isDrained": false,
+        "afterId": 0,
+        "items": [],
+        "next": null
+      },
+      "follow": {
+        "isFetching": false,
+        "isDrained": false,
+        "afterId": 0,
+        "items": [],
+        "next": null
+      },
+      "followWonderful": {
+        "isFetching": false,
+        "isDrained": false,
+        "afterId": 0,
+        "items": [],
+        "next": null
+      },
+      "sidebar": null,
+      "announcement": {},
+      "hotList": [],
+      "hotListHeadZone": [],
+      "guestFeeds": {
+        "isFetching": false,
+        "isDrained": false,
+        "afterId": 0,
+        "items": [],
+        "next": null
+      },
+      "followExtra": {
+        "isNewUser": null,
+        "isFetched": false,
+        "followCount": 0,
+        "followers": []
+      },
+      "hotDaily": {
+        "data": [],
+        "paging": {}
+      },
+      "hotHighlight": {
+        "isFetching": false,
+        "isDrained": false,
+        "data": [],
+        "paging": {}
+      },
+      "banner": {},
+      "commercialBanner": {
+        "show": false,
+        "banner": {},
+        "trackData": {}
+      },
+      "video": {
+        "items": [],
+        "next": null,
+        "isLoading": false,
+        "isDrained": false
+      },
+      "ringTab": {
+        "headerData": null,
+        "feedLoading": false,
+        "feedError": false,
+        "feedPaging": {},
+        "feedList": []
+      }
+    },
+    "upload": {},
+    "video": {
+      "data": {},
+      "shareVideoDetail": {},
+      "last": {}
+    },
+    "zvideos": {
+      "campaignVideoList": {},
+      "campaigns": {},
+      "tagoreCategory": [],
+      "recommendations": {},
+      "insertable": {},
+      "recruit": {
+        "form": {
+          "platform": "",
+          "nickname": "",
+          "followerCount": "",
+          "domain": "",
+          "contact": ""
+        },
+        "submited": false,
+        "ranking": []
+      },
+      "qyActivityData": {},
+      "talkActivityData": {},
+      "party2022ActivityData": {},
+      "batchVideos": {},
+      "creationReferences": {},
+      "zvideoCollection": {},
+      "zvideoGrant": {},
+      "collectData": {
+        "isFetching": false,
+        "list": []
+      },
+      "videoSource": {
+        "isLoaded": false
+      },
+      "paidColumnInfo": {}
+    },
+    "guide": {
+      "guide": {
+        "isFetching": false,
+        "isShowGuide": false
+      }
+    },
+    "reward": {
+      "answer": {},
+      "article": {},
+      "question": {}
+    },
+    "search": {
+      "recommendSearch": [],
+      "topSearch": {},
+      "searchValue": {},
+      "suggestSearch": {},
+      "attachedInfo": {
+        "generalByQuery": {}
+      },
+      "nextOffset": {
+        "generalByQuery": {}
+      },
+      "topicReview": {},
+      "sidebar": {},
+      "calendar": {},
+      "scores": null,
+      "majors": {},
+      "university": {},
+      "generalByQuery": {},
+      "generalByQueryInADay": {},
+      "generalByQueryInAWeek": {},
+      "generalByQueryInThreeMonths": {},
+      "peopleByQuery": {},
+      "topicByQuery": {},
+      "zvideoByQuery": {},
+      "scholarByQuery": {},
+      "columnByQuery": {},
+      "liveByQuery": {},
+      "albumByQuery": {},
+      "eBookByQuery": {},
+      "kmGeneralByQuery": {},
+      "kmCourseByQuery": {},
+      "favlistByQuery": {},
+      "ringByQuery": {},
+      "customFilter": {
+        "requestFinished": false,
+        "keys": [],
+        "tags": []
+      },
+      "zhidaRelatedQuestions": {
+        "isLoading": false,
+        "data": [],
+        "showZhidaRelatedQuestionsCard": false
+      }
+    },
+    "creatorSalt": {
+      "recommendQuestionList": [],
+      "bannerList": [],
+      "claimBannerList": [],
+      "sites": [],
+      "domains": {},
+      "hasRecored": false,
+      "hasClaim": false,
+      "hasContributedList": [],
+      "notContributedList": [],
+      "contributesTotal": null,
+      "previewPageTitle": "",
+      "previewPageContent": "",
+      "restContributionNumber": "-"
+    },
+    "publicEditPermission": {},
+    "readStatus": {},
+    "draftHistory": {
+      "history": {},
+      "drafts": {}
+    },
+    "notifications": {
+      "recent": {
+        "isFetching": false,
+        "isDrained": false,
+        "isPrevDrained": false,
+        "result": [],
+        "next": null,
+        "key": null
+      },
+      "history": {
+        "isFetching": false,
+        "isDrained": false,
+        "isPrevDrained": false,
+        "result": [],
+        "next": null,
+        "key": null
+      },
+      "notificationActors": {
+        "isFetching": false,
+        "isDrained": false,
+        "isPrevDrained": false,
+        "result": [],
+        "next": null,
+        "key": null
+      },
+      "recentNotificationEntry": "all"
+    },
+    "specials": {
+      "entities": {},
+      "all": {
+        "data": [],
+        "paging": {},
+        "isLoading": false
+      }
+    },
+    "collections": {
+      "hot": {
+        "data": [],
+        "paging": {},
+        "isLoading": false,
+        "errorPayload": null
+      },
+      "collectionFeeds": {}
+    },
+    "userProfit": {
+      "permission": {
+        "permissionStatus": {
+          "zhiZixuan": 0,
+          "recommend": -1,
+          "task": 0,
+          "plugin": 0,
+          "infinity": 0
+        },
+        "visible": false
+      },
+      "linkCardLimit": 0
+    },
+    "mcn": {
+      "bindInfo": {},
+      "memberCategoryList": [],
+      "producerList": [],
+      "categoryList": [],
+      "lists": {},
+      "banners": {},
+      "protocolStatus": {
+        "isAgreedNew": true,
+        "isAgreedOld": true
+      },
+      "probationCountdownDays": 0
+    },
+    "mcnActivity": {
+      "household": {
+        "products": {},
+        "rankList": {
+          "total": {},
+          "yesterday": {}
+        }
+      }
+    },
+    "brand": {
+      "contentPlugin": {}
+    },
+    "host": {
+      "roundtable": {
+        "subjects": {},
+        "applications": {
+          "total": 0
+        },
+        "online": {
+          "total": 0
+        },
+        "applies": {},
+        "details": {},
+        "includedResource": {},
+        "hotQuestions": {},
+        "warmupContents": {},
+        "batchInclude": {}
+      },
+      "special": {
+        "applications": {
+          "total": 0,
+          "pages": {},
+          "entities": {}
+        },
+        "censorHistory": {},
+        "drafts": {}
+      }
+    },
+    "campaign": {
+      "single": {},
+      "list": {},
+      "videoMakerAcq": {},
+      "vote": {},
+      "cardCollecting": {
+        "message": null,
+        "profile": {
+          "balance": "0",
+          "chance": 0,
+          "coinNum": 0,
+          "gatherClose": false,
+          "isGotMagicCard": false,
+          "isPay": false,
+          "partitionStart": false,
+          "totalDone": 0,
+          "withdrawStart": false
+        },
+        "sharePoster": {
+          "share": "",
+          "sendCard": "",
+          "invite": ""
+        },
+        "shareLink": null,
+        "shareIntention": "share",
+        "shareKey": null,
+        "shareCardId": null,
+        "inviterInfo": null,
+        "giverInfo": null,
+        "prize": null,
+        "receivedCard": null,
+        "newCoinCount": null,
+        "newCardList": [],
+        "newUserCardCount": 1,
+        "taskList": [],
+        "prizeList": null,
+        "cardList": null,
+        "panel": {
+          "showTaskPanel": false,
+          "showRewardPanel": false
+        },
+        "modal": {
+          "showWelcomeModal": false,
+          "showFusionModal": false,
+          "showFusionPromptModal": false,
+          "showShareModal": false,
+          "showBackModal": false
+        }
+      },
+      "zhiboPandian2020": null,
+      "boarding": {},
+      "searchGaokaoSubPage": {},
+      "searchHealth": {}
+    },
+    "knowledgePlan": {
+      "lists": {},
+      "allCreationRankList": {},
+      "featuredQuestions": {}
+    },
+    "wallE": {
+      "protectHistory": {
+        "total": 0,
+        "pages": {},
+        "entities": {}
+      }
+    },
+    "roundtables": {
+      "hotQuestions": {},
+      "warmupContents": {},
+      "hotDiscussions": {},
+      "selectedContents": {},
+      "roundtables": {}
+    },
+    "helpCenter": {
+      "entities": {
+        "question": {},
+        "category": {}
+      },
+      "categories": [],
+      "commonQuestions": [],
+      "relatedQuestions": {},
+      "faqTypes": []
+    },
+    "republish": {},
+    "commercialReport": {
+      "commercialTypes": []
+    },
+    "creatorMCN": {
+      "mcn": {},
+      "mcnStatistics": {},
+      "mcnRight": {
+        "bind": false,
+        "coupon": false
+      },
+      "isNoAuth": false,
+      "creatorManageData": [],
+      "creatorManageDataTotal": 1,
+      "mcnDomains": [],
+      "bill": {
+        "list": {},
+        "detail": {}
+      },
+      "healthScore": {
+        "healthScore": "0",
+        "updateTime": "",
+        "evaluate": ""
+      },
+      "healthScoreRecordInfo": {},
+      "beforeDownloadCheckResult": {},
+      "beforePromotionData": [],
+      "afterPromotionData": []
+    },
+    "commentManage": {
+      "commentList": {
+        "ids": [],
+        "entities": {},
+        "nextOffset": 0,
+        "urlToken": ""
+      },
+      "subCommentList": {
+        "ids": [],
+        "entities": {},
+        "paging": {
+          "next": "",
+          "isEnd": false
+        }
+      }
+    },
+    "commentPermission": {},
+    "creatorRightStatus": {
+      "list": []
+    },
+    "zhiPlus": {
+      "permissionStatus": 9999
+    },
+    "streaming": {},
+    "creationRanking": {},
+    "eduSections": {
+      "eduSectionState": {}
+    },
+    "adPromotion": {
+      "answer": {},
+      "article": {}
+    },
+    "editVideo": {
+      "editVideoEnabled": false,
+      "isZvideoUser": false
+    },
+    "zhidaEntry": {
+      "sidebar": {
+        "answer": {},
+        "question": {}
+      },
+      "answerBottom": {}
+    },
+    "guideZhidaCard": {
+      "cardStatus": {
+        "isShowGuideZhidaCard": false,
+        "guideZhidaCardInView": false,
+        "isClickedBeforeAbIndex": false,
+        "isManualClose": false,
+        "clickedPosition": -1
+      }
+    },
+    "hotSpot": {},
+    "contentColumnCard": {},
+    "rings": {
+      "rankList": {},
+      "membersList": {},
+      "membersListPaging": {},
+      "inviteDetails": {},
+      "inviteDetailsErrors": {},
+      "moreRings": {},
+      "moreRingsPaging": {},
+      "banners": {}
+    },
+    "menuIgnoreSet": {}
+  },
+  "subAppName": "main",
+  "spanName": "QuestionPage",
+  "canaryConfig": {
+    "test_canary": "0",
+    "use_new_player": "0",
+    "player_vendor": "0",
+    "use_hevc": "1",
+    "upload_use_signature": "1",
+    "use_backdrop_blur": "1",
+    "article_title_imagex": "1",
+    "play_station": "1",
+    "use_cached_supported_countries": "1",
+    "segment_interaction": "1",
+    "creation_center_v2": "1"
+  }
+}

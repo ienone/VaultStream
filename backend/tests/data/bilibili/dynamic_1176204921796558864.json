@@ -1,0 +1,241 @@
+{
+  "code": 0,
+  "message": "0",
+  "ttl": 1,
+  "data": {
+    "item": {
+      "basic": {
+        "comment_id_str": "387022164",
+        "comment_type": 11,
+        "jump_url": "//www.bilibili.com/opus/1176204921796558864",
+        "like_icon": {
+          "action_url": "",
+          "end_url": "",
+          "id": 0,
+          "start_url": ""
+        },
+        "rid_str": "387022164"
+      },
+      "id_str": "1176204921796558864",
+      "modules": {
+        "module_author": {
+          "avatar": {
+            "container_size": {
+              "height": 1.35,
+              "width": 1.35
+            },
+            "fallback_layers": {
+              "is_critical_group": true,
+              "layers": [
+                {
+                  "general_spec": {
+                    "pos_spec": {
+                      "axis_x": 0.675,
+                      "axis_y": 0.675,
+                      "coordinate_pos": 2
+                    },
+                    "render_spec": {
+                      "opacity": 1
+                    },
+                    "size_spec": {
+                      "height": 1,
+                      "width": 1
+                    }
+                  },
+                  "layer_config": {
+                    "is_critical": true,
+                    "tags": {
+                      "AVATAR_LAYER": {},
+                      "GENERAL_CFG": {
+                        "config_type": 1,
+                        "general_config": {
+                          "web_css_style": {
+                            "borderRadius": "50%"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "resource": {
+                    "res_image": {
+                      "image_src": {
+                        "placeholder": 6,
+                        "remote": {
+                          "bfs_style": "widget-layer-avatar",
+                          "url": "https://i0.hdslb.com/bfs/face/af2b48c01008091531791e7b49f6139ab9e0c649.jpg"
+                        },
+                        "src_type": 1
+                      }
+                    },
+                    "res_type": 3
+                  },
+                  "visible": true
+                },
+                {
+                  "general_spec": {
+                    "pos_spec": {
+                      "axis_x": 0.8000000000000002,
+                      "axis_y": 0.8000000000000002,
+                      "coordinate_pos": 1
+                    },
+                    "render_spec": {
+                      "opacity": 1
+                    },
+                    "size_spec": {
+                      "height": 0.41666666666666663,
+                      "width": 0.41666666666666663
+                    }
+                  },
+                  "layer_config": {
+                    "tags": {
+                      "GENERAL_CFG": {
+                        "config_type": 1,
+                        "general_config": {
+                          "web_css_style": {
+                            "background-color": "rgb(255,255,255)",
+                            "border": "2px solid rgba(255,255,255,1)",
+                            "borderRadius": "50%",
+                            "boxSizing": "border-box"
+                          }
+                        }
+                      },
+                      "ICON_LAYER": {}
+                    }
+                  },
+                  "resource": {
+                    "res_image": {
+                      "image_src": {
+                        "local": 3,
+                        "src_type": 2
+                      }
+                    },
+                    "res_type": 3
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "mid": "1010101551"
+          },
+          "face": "https://i0.hdslb.com/bfs/face/af2b48c01008091531791e7b49f6139ab9e0c649.jpg",
+          "face_nft": false,
+          "following": null,
+          "jump_url": "//space.bilibili.com/1010101551/dynamic",
+          "label": "",
+          "mid": 1010101551,
+          "name": "赤石神殿",
+          "official_verify": {
+            "desc": "",
+            "type": 0
+          },
+          "pendant": {
+            "expire": 0,
+            "image": "",
+            "image_enhance": "",
+            "image_enhance_frame": "",
+            "n_pid": 0,
+            "name": "",
+            "pid": 0
+          },
+          "pub_action": "",
+          "pub_location_text": "",
+          "pub_time": "2026年03月05日 15:15",
+          "pub_ts": 1772694949,
+          "type": "AUTHOR_TYPE_NORMAL",
+          "vip": {
+            "avatar_subscript": 0,
+            "avatar_subscript_url": "",
+            "due_date": 1753027200000,
+            "label": {
+              "bg_color": "",
+              "bg_style": 0,
+              "border_color": "",
+              "img_label_uri_hans": "",
+              "img_label_uri_hans_static": "https://i0.hdslb.com/bfs/vip/d7b702ef65a976b20ed854cbd04cb9e27341bb79.png",
+              "img_label_uri_hant": "",
+              "img_label_uri_hant_static": "https://i0.hdslb.com/bfs/activity-plat/static/20220614/e369244d0b14644f5e1a06431e22a4d5/KJunwh19T5.png",
+              "label_theme": "",
+              "path": "",
+              "text": "",
+              "text_color": "",
+              "use_img_label": true
+            },
+            "nickname_color": "",
+            "status": 0,
+            "theme_type": 0,
+            "type": 1
+          }
+        },
+        "module_dynamic": {
+          "additional": null,
+          "desc": null,
+          "major": {
+            "opus": {
+              "fold_action": [
+                "展开",
+                "收起"
+              ],
+              "jump_url": "//www.bilibili.com/opus/1176204921796558864",
+              "pics": [
+                {
+                  "aigc": null,
+                  "height": 1323,
+                  "live_url": null,
+                  "size": 282.0899963378906,
+                  "url": "http://i0.hdslb.com/bfs/new_dyn/50023119bdfa3352792be4e3bc51bceb1010101551.jpg",
+                  "width": 1080
+                },
+                {
+                  "aigc": null,
+                  "height": 1097,
+                  "live_url": null,
+                  "size": 358.6099853515625,
+                  "url": "http://i0.hdslb.com/bfs/new_dyn/b4063b5ea8338f0dd34676496daf6b831010101551.jpg",
+                  "width": 1080
+                }
+              ],
+              "summary": {
+                "rich_text_nodes": [
+                  {
+                    "orig_text": "某权威媒体于14:48发布新闻，伊朗高官声称未封锁霍尔木兹海峡，导致尾盘跳水。必须调查它操纵股市的行为! 我已经拉黑它的B站账号! 老子拼了，绝不减仓，就当GUO军，大不了成为第二个牛顿!",
+                    "text": "某权威媒体于14:48发布新闻，伊朗高官声称未封锁霍尔木兹海峡，导致尾盘跳水。必须调查它操纵股市的行为! 我已经拉黑它的B站账号! 老子拼了，绝不减仓，就当GUO军，大不了成为第二个牛顿!",
+                    "type": "RICH_TEXT_NODE_TYPE_TEXT"
+                  }
+                ],
+                "text": "某权威媒体于14:48发布新闻，伊朗高官声称未封锁霍尔木兹海峡，导致尾盘跳水。必须调查它操纵股市的行为! 我已经拉黑它的B站账号! 老子拼了，绝不减仓，就当GUO军，大不了成为第二个牛顿!"
+              },
+              "title": "某权威媒体14:48发新闻砸尾盘!"
+            },
+            "type": "MAJOR_TYPE_OPUS"
+          },
+          "topic": null
+        },
+        "module_more": {
+          "three_point_items": [
+            {
+              "label": "举报",
+              "type": "THREE_POINT_REPORT"
+            }
+          ]
+        },
+        "module_stat": {
+          "comment": {
+            "count": 104,
+            "forbidden": false
+          },
+          "forward": {
+            "count": 2,
+            "forbidden": false
+          },
+          "like": {
+            "count": 307,
+            "forbidden": false,
+            "status": false
+          }
+        }
+      },
+      "type": "DYNAMIC_TYPE_DRAW",
+      "visible": true
+    }
+  }
+}
