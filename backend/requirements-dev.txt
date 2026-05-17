@@ -4,8 +4,10 @@ pytest
 pytest-asyncio
 pytest-cov
 pytest-env
+pytest-httpx
 respx
 responses
+python-dotenv
 pip-audit
 bandit
 vulture

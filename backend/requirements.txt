@@ -1,5 +1,6 @@
 # FastAPI and async support
 fastapi
+starlette
 uvicorn[standard]
 pydantic
 pydantic-settings
@@ -42,7 +43,9 @@ feedparser
 
 # Crawler and discovery layer
 google-genai
+numpy
 playwright
+langchain-core
 langchain-openai
 langgraph
 openai
