@@ -51,13 +51,13 @@ class DiscoveryItems extends _$DiscoveryItems {
         'size': size,
         'sort': sortBy,
         'order': sortOrder,
-        if (state != null) 'state': state,
+        'state': ?state,
         if (showAll && state == null) 'show_all': true,
-        if (sourceName != null) 'source_name': sourceName,
-        if (scoreMin != null) 'score_min': scoreMin,
-        if (scoreMax != null) 'score_max': scoreMax,
+        'source_name': ?sourceName,
+        'score_min': ?scoreMin,
+        'score_max': ?scoreMax,
         if (tags case final tags? when tags.isNotEmpty) 'tag': tags.join(','),
-        if (query != null) 'q': query,
+        'q': ?query,
       },
     );
 
@@ -65,7 +65,10 @@ class DiscoveryItems extends _$DiscoveryItems {
   }
 
   Future<void> fetchMore() async {
-    if (_isFetchingMore || state.isLoading || state.isRefreshing || state.isReloading) {
+    if (_isFetchingMore ||
+        state.isLoading ||
+        state.isRefreshing ||
+        state.isReloading) {
       return;
     }
 

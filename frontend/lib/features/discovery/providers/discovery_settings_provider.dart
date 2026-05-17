@@ -22,9 +22,9 @@ class DiscoverySettingsState extends _$DiscoverySettingsState {
     final response = await dio.patch(
       '/discovery/settings',
       data: {
-        if (interestProfile != null) 'interest_profile': interestProfile,
-        if (scoreThreshold != null) 'score_threshold': scoreThreshold,
-        if (retentionDays != null) 'retention_days': retentionDays,
+        'interest_profile': ?interestProfile,
+        'score_threshold': ?scoreThreshold,
+        'retention_days': ?retentionDays,
       },
     );
     state = AsyncData(DiscoverySettings.fromJson(response.data));

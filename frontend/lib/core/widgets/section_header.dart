@@ -43,7 +43,8 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final resolvedStyle = textStyle ??
+    final resolvedStyle =
+        textStyle ??
         theme.textTheme.titleMedium?.copyWith(
           fontWeight: FontWeight.bold,
           color: theme.colorScheme.onSurface,
@@ -57,10 +58,8 @@ class SectionHeader extends StatelessWidget {
             Icon(icon, size: 20, color: theme.colorScheme.primary),
             const SizedBox(width: 12),
           ],
-          Expanded(
-            child: Text(title, style: resolvedStyle),
-          ),
-          if (action != null) action!,
+          Expanded(child: Text(title, style: resolvedStyle)),
+          ?action,
         ],
       ),
     );

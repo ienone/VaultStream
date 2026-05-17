@@ -40,7 +40,8 @@ class SseEvent {
   final Map<String, dynamic> data;
   final DateTime timestamp;
 
-  SseEvent({required this.type, required this.data}) : timestamp = DateTime.now();
+  SseEvent({required this.type, required this.data})
+    : timestamp = DateTime.now();
 
   @override
   String toString() => 'SseEvent($type, $data)';
@@ -107,7 +108,8 @@ class SseService extends _$SseService {
   Stream<SseEvent> build() {
     // 监听配置变化：token / baseUrl 更新时重置并立即重连
     ref.listen(localSettingsProvider, (previous, next) {
-      if (previous?.apiToken != next.apiToken || previous?.baseUrl != next.baseUrl) {
+      if (previous?.apiToken != next.apiToken ||
+          previous?.baseUrl != next.baseUrl) {
         debugPrint('[SSE] 配置变化，重置重连计数并重新连接');
         _reconnectAttempts = 0;
         _connect();
@@ -178,7 +180,7 @@ class SseService extends _$SseService {
       'Accept': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'X-API-Token': apiToken,
-      if (_lastEventId != null) 'Last-Event-ID': _lastEventId!,
+      'Last-Event-ID': ?_lastEventId,
     };
 
     final client = http.Client();
@@ -320,14 +322,20 @@ class SseService extends _$SseService {
     // 2^(n-1) 指数增长，上限 maxRetryDelay
     final base = _SseConfig.initialRetryDelay.inMilliseconds;
     final factor = 1 << (_reconnectAttempts - 1).clamp(0, 6); // 最大 2^6=64x
-    final ms = (base * factor).clamp(0, _SseConfig.maxRetryDelay.inMilliseconds);
+    final ms = (base * factor).clamp(
+      0,
+      _SseConfig.maxRetryDelay.inMilliseconds,
+    );
     final delay = Duration(milliseconds: ms);
 
     debugPrint('[SSE] 将在 ${delay.inSeconds}s 后重连（第 $_reconnectAttempts 次）');
     _scheduleReconnect(delay: delay, countAsError: true);
   }
 
-  void _scheduleReconnect({required Duration delay, required bool countAsError}) {
+  void _scheduleReconnect({
+    required Duration delay,
+    required bool countAsError,
+  }) {
     if (_disposed) return;
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(delay, _connect);

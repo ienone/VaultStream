@@ -5,7 +5,6 @@ import '../../../../core/utils/toast.dart';
 // SectionHeader 已迁移至 core/widgets，此处重新导出保持向后兼容。
 export '../../../../core/widgets/section_header.dart' show SectionHeader;
 
-
 class SettingGroup extends StatelessWidget {
   final List<Widget> children;
 
@@ -121,7 +120,7 @@ class SettingTile extends StatelessWidget {
                   ],
                 ),
               ),
-              if (trailing != null) trailing!,
+              ?trailing,
               if (trailing == null && showArrow)
                 Icon(
                   Icons.chevron_right_rounded,

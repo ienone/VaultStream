@@ -128,10 +128,7 @@ class _AgentPageState extends ConsumerState<AgentPage> {
     final local = ref.read(localSettingsProvider);
     final uri = Uri.parse(local.baseUrl).replace(
       path: '${Uri.parse(local.baseUrl).path}/agent/sse',
-      queryParameters: {
-        'message': text,
-        if (_sessionId != null) 'session_id': _sessionId!,
-      },
+      queryParameters: {'message': text, 'session_id': ?_sessionId},
     );
 
     final client = http.Client();

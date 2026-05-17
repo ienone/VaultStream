@@ -5,6 +5,7 @@ pytest-asyncio
 pytest-cov
 pytest-env
 respx
+responses
 pip-audit
 bandit
 vulture

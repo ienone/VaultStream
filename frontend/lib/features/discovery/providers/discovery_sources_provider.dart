@@ -18,29 +18,36 @@ class DiscoverySources extends _$DiscoverySources {
 
   Future<void> createSource(DiscoverySource source) async {
     final dio = ref.read(apiClientProvider);
-    await dio.post('/discovery/sources', data: {
-      'kind': source.kind,
-      'name': source.name,
-      'enabled': source.enabled,
-      'config': source.config,
-      'sync_interval_minutes': source.syncIntervalMinutes,
-    });
+    await dio.post(
+      '/discovery/sources',
+      data: {
+        'kind': source.kind,
+        'name': source.name,
+        'enabled': source.enabled,
+        'config': source.config,
+        'sync_interval_minutes': source.syncIntervalMinutes,
+      },
+    );
     ref.invalidateSelf();
   }
 
-  Future<void> updateSource(int id, {
+  Future<void> updateSource(
+    int id, {
     String? name,
     bool? enabled,
     Map<String, dynamic>? config,
     int? syncIntervalMinutes,
   }) async {
     final dio = ref.read(apiClientProvider);
-    await dio.put('/discovery/sources/$id', data: {
-      if (name != null) 'name': name,
-      if (enabled != null) 'enabled': enabled,
-      if (config != null) 'config': config,
-      if (syncIntervalMinutes != null) 'sync_interval_minutes': syncIntervalMinutes,
-    });
+    await dio.put(
+      '/discovery/sources/$id',
+      data: {
+        'name': ?name,
+        'enabled': ?enabled,
+        'config': ?config,
+        'sync_interval_minutes': ?syncIntervalMinutes,
+      },
+    );
     ref.invalidateSelf();
   }
 

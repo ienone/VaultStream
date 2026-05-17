@@ -259,9 +259,7 @@ Future<Map<String, int>> queueStats(Ref ref, int? ruleId) async {
   final dio = ref.watch(apiClientProvider);
   final response = await dio.get(
     '/distribution-queue/stats',
-    queryParameters: {
-      if (ruleId != null) 'rule_id': ruleId,
-    },
+    queryParameters: {'rule_id': ?ruleId},
   );
   final data = Map<String, dynamic>.from(response.data as Map);
 
