@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'design_tokens.dart';
 
@@ -127,7 +128,9 @@ class AppTheme {
         foregroundColor: scheme.onPrimaryContainer,
         elevation: 2,
         hoverElevation: 6,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+        ),
       ),
 
       // Input Decoration (Textfields)
@@ -152,7 +155,9 @@ class AppTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: scheme.surfaceContainerHigh,
         elevation: 6,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xxxl)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.xxxl),
+        ),
         titleTextStyle: textTheme.headlineSmall,
       ),
 
@@ -160,7 +165,9 @@ class AppTheme {
       menuTheme: MenuThemeData(
         style: MenuStyle(
           shape: WidgetStateProperty.all(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.xl),
+            ),
           ),
           elevation: WidgetStateProperty.all(8),
           backgroundColor: WidgetStateProperty.all(
@@ -173,7 +180,9 @@ class AppTheme {
         ),
       ),
       popupMenuTheme: PopupMenuThemeData(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+        ),
         elevation: 8,
         surfaceTintColor: scheme.surfaceTint,
         color: scheme.surfaceContainerHighest,
@@ -184,7 +193,9 @@ class AppTheme {
         textStyle: textTheme.bodyLarge,
         menuStyle: MenuStyle(
           shape: WidgetStateProperty.all(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.xl),
+            ),
           ),
           elevation: WidgetStateProperty.all(8),
         ),
@@ -233,14 +244,19 @@ class AppTheme {
 
       // Expressive Chips
       chipTheme: ChipThemeData(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+        ),
         side: BorderSide.none,
         backgroundColor: scheme.surfaceContainerLow,
         selectedColor: scheme.primaryContainer,
         labelStyle: textTheme.labelMedium?.copyWith(
           fontWeight: FontWeight.bold,
         ),
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xs,
+        ),
       ),
 
       // Transitions - Using built-in physics

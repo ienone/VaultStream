@@ -96,6 +96,7 @@ class CollectionGrid extends StatelessWidget {
                                       : '';
                                   context.push(
                                     '/collection/${item.id}$colorParam',
+                                    extra: item,
                                   );
                                 },
                         ),

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../features/collection/collection_page.dart';
 import '../features/collection/content_detail_page.dart';
+import '../features/collection/models/content.dart';
 import '../features/dashboard/dashboard_page.dart';
 import '../features/discovery/discovery_page.dart';
 import '../features/review/review_page.dart';
@@ -115,11 +116,15 @@ GoRouter goRouter(Ref ref) {
                     pageBuilder: (context, state) {
                       final id = int.parse(state.pathParameters['id']!);
                       final color = state.uri.queryParameters['color'];
+                      final preview = state.extra is ShareCard
+                          ? state.extra as ShareCard
+                          : null;
                       return CustomTransitionPage(
                         key: state.pageKey,
                         child: ContentDetailPage(
                           contentId: id,
                           initialColor: color,
+                          preview: preview,
                         ),
                         transitionDuration: AppMotion.routeTransition,
                         reverseTransitionDuration: AppMotion.routeTransition,
@@ -129,15 +134,12 @@ GoRouter goRouter(Ref ref) {
                                 parent: animation,
                                 curve: AppMotion.standardCurve,
                               );
-                              return SlideTransition(
-                                position: Tween<Offset>(
-                                  begin: const Offset(0, 0.02),
-                                  end: Offset.zero,
+                              return FadeTransition(
+                                opacity: Tween<double>(
+                                  begin: 0.96,
+                                  end: 1,
                                 ).animate(curved),
-                                child: FadeTransition(
-                                  opacity: curved,
-                                  child: child,
-                                ),
+                                child: child,
                               );
                             },
                       );

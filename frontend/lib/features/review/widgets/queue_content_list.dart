@@ -145,7 +145,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                 _isSelectionMode ? 120 : 24,
               ),
               itemCount: _localItems.length,
-              onReorder: _onReorder,
+              onReorderItem: _onReorderItem,
               buildDefaultDragHandles: false,
               proxyDecorator: (child, index, animation) {
                 return AnimatedBuilder(
@@ -227,8 +227,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
     );
   }
 
-  void _onReorder(int oldIndex, int newIndex) async {
-    if (newIndex > oldIndex) newIndex -= 1;
+  void _onReorderItem(int oldIndex, int newIndex) async {
     if (oldIndex == newIndex) return;
 
     final movedItem = _localItems[oldIndex];

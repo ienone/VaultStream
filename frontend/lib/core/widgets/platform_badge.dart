@@ -12,43 +12,43 @@ class PlatformBadge extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     Color color;
-    IconData icon;
+    Widget icon;
     String label = platform.toUpperCase();
 
     switch (platform.toLowerCase()) {
       case 'twitter':
       case 'x':
         color = isDark ? Colors.white : Colors.black;
-        icon = FontAwesomeIcons.xTwitter;
+        icon = FaIcon(FontAwesomeIcons.xTwitter, size: 10);
         label = 'X';
         break;
       case 'bilibili':
         color = const Color(0xFFFB7299);
-        icon = FontAwesomeIcons.bilibili;
+        icon = FaIcon(FontAwesomeIcons.bilibili, size: 10);
         break;
       case 'xiaohongshu':
         color = const Color(0xFFFF2442);
-        icon = Icons.book;
+        icon = const Icon(Icons.book, size: 10);
         label = '小红书';
         break;
       case 'weibo':
         color = const Color(0xFFE6162D);
-        icon = FontAwesomeIcons.weibo;
+        icon = FaIcon(FontAwesomeIcons.weibo, size: 10);
         label = '微博';
         break;
       case 'zhihu':
         color = const Color(0xFF0084FF);
-        icon = FontAwesomeIcons.zhihu;
+        icon = FaIcon(FontAwesomeIcons.zhihu, size: 10);
         label = '知乎';
         break;
       case 'ku_an':
         color = const Color(0xFF1E88E5);
-        icon = Icons.android;
+        icon = const Icon(Icons.android, size: 10);
         label = '酷安';
         break;
       default:
         color = theme.colorScheme.secondary;
-        icon = Icons.link;
+        icon = const Icon(Icons.link, size: 10);
     }
 
     return Container(
@@ -61,7 +61,10 @@ class PlatformBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          FaIcon(icon, size: 10, color: color),
+          IconTheme(
+            data: IconThemeData(color: color, size: 10),
+            child: icon,
+          ),
           const SizedBox(width: 4),
           Text(
             label,

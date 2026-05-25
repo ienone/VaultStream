@@ -15,6 +15,7 @@ import 'widgets/detail/layout/gallery_landscape_layout.dart';
 import 'widgets/detail/layout/portrait_layout.dart';
 import 'widgets/detail/layout/video_landscape_layout.dart';
 import 'widgets/detail/layout/user_profile_layout.dart';
+import 'widgets/list/collection_card_preview.dart';
 import 'widgets/dialogs/edit_content_dialog.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/design_tokens.dart';
@@ -25,11 +26,13 @@ import 'widgets/detail/gallery/gallery_navigation.dart';
 class ContentDetailPage extends ConsumerStatefulWidget {
   final int contentId;
   final String? initialColor;
+  final ShareCard? preview;
 
   const ContentDetailPage({
     super.key,
     required this.contentId,
     this.initialColor,
+    this.preview,
   });
 
   @override
@@ -162,7 +165,8 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             children: [
               Positioned.fill(
                 child: Hero(
-                  tag: 'card-bg-${widget.contentId}',
+                  tag: collectionCardHeroTag(widget.contentId),
+                  transitionOnUserGestures: true,
                   child: Material(
                     color: colorScheme.surface,
                     child: const SizedBox.expand(),
@@ -270,6 +274,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   Widget _buildLoadingState(ThemeData theme) {
     final customTheme = _getCustomTheme(null, theme.brightness);
     final colorScheme = customTheme.colorScheme;
+    final preview = widget.preview;
     return Theme(
       data: customTheme,
       child: Scaffold(
@@ -279,7 +284,25 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           backgroundColor: colorScheme.surface.withValues(alpha: 0.8),
           elevation: 0,
         ),
-        body: const Center(child: CircularProgressIndicator()),
+        body: preview == null
+            ? const Center(child: CircularProgressIndicator())
+            : Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 360),
+                  child: AspectRatio(
+                    aspectRatio: 0.92,
+                    child: Hero(
+                      tag: collectionCardHeroTag(preview.id),
+                      transitionOnUserGestures: true,
+                      child: CollectionCardPreview(
+                        content: preview,
+                        isTinyCardOverride: false,
+                        mode: CollectionCardPreviewMode.detailLoading,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
       ),
     );
   }
