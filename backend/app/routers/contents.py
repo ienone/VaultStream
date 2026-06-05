@@ -90,6 +90,23 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
         )
     ).all()
     embedding_counts = _status_counts(embedding_rows)
+    embedding_failures = (
+        await db.execute(
+            select(
+                ContentEmbedding.id,
+                ContentEmbedding.chunk_index,
+                ContentEmbedding.failure_reason,
+                ContentEmbedding.retry_count,
+                ContentEmbedding.last_attempted_at,
+            )
+            .where(
+                ContentEmbedding.content_id == content.id,
+                ContentEmbedding.index_status == "failed",
+            )
+            .order_by(ContentEmbedding.updated_at.desc())
+            .limit(5)
+        )
+    ).all()
     if embedding_counts.get("indexed", 0) > 0:
         embedding_status = "success"
         embedding_message = f"{embedding_counts['indexed']} 个分块已进入语义索引"
@@ -114,6 +131,28 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
         )
     ).all()
     queue_counts = _status_counts(queue_rows)
+    failed_queue_items = (
+        await db.execute(
+            select(
+                ContentQueueItem.id,
+                ContentQueueItem.rule_id,
+                ContentQueueItem.bot_chat_id,
+                ContentQueueItem.target_platform,
+                ContentQueueItem.target_id,
+                ContentQueueItem.attempt_count,
+                ContentQueueItem.max_attempts,
+                ContentQueueItem.last_error,
+                ContentQueueItem.last_error_type,
+                ContentQueueItem.last_error_at,
+            )
+            .where(
+                ContentQueueItem.content_id == content.id,
+                ContentQueueItem.status == QueueItemStatus.FAILED,
+            )
+            .order_by(ContentQueueItem.updated_at.desc())
+            .limit(5)
+        )
+    ).all()
     pushed_records = int(
         (
             await db.execute(
@@ -158,7 +197,21 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
                 "label": "语义索引",
                 "status": embedding_status,
                 "message": embedding_message,
-                "details": {"counts": embedding_counts},
+                "details": {
+                    "counts": embedding_counts,
+                    "failures": [
+                        {
+                            "id": row.id,
+                            "chunk_index": row.chunk_index,
+                            "failure_reason": row.failure_reason,
+                            "retry_count": row.retry_count,
+                            "last_attempted_at": row.last_attempted_at.isoformat()
+                            if row.last_attempted_at
+                            else None,
+                        }
+                        for row in embedding_failures
+                    ],
+                },
             },
             {
                 "key": "distribution",
@@ -168,6 +221,23 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
                 "details": {
                     "queue_counts": queue_counts,
                     "pushed_records": pushed_records,
+                    "failures": [
+                        {
+                            "id": row.id,
+                            "rule_id": row.rule_id,
+                            "bot_chat_id": row.bot_chat_id,
+                            "target_platform": row.target_platform,
+                            "target_id": row.target_id,
+                            "attempt_count": row.attempt_count,
+                            "max_attempts": row.max_attempts,
+                            "last_error": row.last_error,
+                            "last_error_type": row.last_error_type,
+                            "last_error_at": row.last_error_at.isoformat()
+                            if row.last_error_at
+                            else None,
+                        }
+                        for row in failed_queue_items
+                    ],
                 },
             },
         ],

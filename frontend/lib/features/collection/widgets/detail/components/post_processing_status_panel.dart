@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../../core/network/api_client.dart';
+import '../../../../../core/utils/toast.dart';
 import '../../../providers/collection_provider.dart';
 
 class PostProcessingStatusPanel extends ConsumerWidget {
@@ -35,12 +37,13 @@ class PostProcessingStatusPanel extends ConsumerWidget {
             children: [
               Text(
                 '处理状态',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 10),
-              for (final stage in stages) _StageRow(stage: stage),
+              for (final stage in stages)
+                _StageRow(contentId: contentId, stage: stage),
             ],
           ),
         );
@@ -89,52 +92,235 @@ class PostProcessingStatusPanel extends ConsumerWidget {
   }
 }
 
-class _StageRow extends StatelessWidget {
+class _StageRow extends ConsumerWidget {
+  final int contentId;
   final Map<String, dynamic> stage;
 
-  const _StageRow({required this.stage});
+  const _StageRow({required this.contentId, required this.stage});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final status = stage['status']?.toString() ?? 'unknown';
     final color = _statusColor(context, status);
     final label = stage['label']?.toString() ?? stage['key']?.toString() ?? '';
     final message = stage['message']?.toString() ?? '';
+    final failures = _extractFailures(stage);
+    final action = _stageAction(stage, status);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
         children: [
-          Icon(_statusIcon(status), size: 18, color: color),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(_statusIcon(status), size: 18, color: color),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
-                ),
-                if (message.isNotEmpty)
-                  Text(
-                    message,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    ),
+                    if (message.isNotEmpty)
+                      Text(
+                        message,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            _statusLabel(status),
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      ),
+                    if (failures.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          _failureSummary(failures),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _statusLabel(status),
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
                   color: color,
                   fontWeight: FontWeight.w700,
                 ),
+              ),
+            ],
+          ),
+          if (action != null || failures.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 28, top: 6),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (action != null)
+                    FilledButton.tonalIcon(
+                      onPressed: () => _runAction(context, ref, action),
+                      icon: Icon(action.icon, size: 16),
+                      label: Text(action.label),
+                    ),
+                  if (failures.isNotEmpty)
+                    TextButton.icon(
+                      onPressed: () => _showFailureDetails(context, failures),
+                      icon: const Icon(Icons.receipt_long_rounded, size: 16),
+                      label: const Text('失败详情'),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> _extractFailures(Map<String, dynamic> stage) {
+    final details = stage['details'];
+    if (details is! Map) return const [];
+    final failures = details['failures'];
+    if (failures is! List) return const [];
+    return failures
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  String _failureSummary(List<Map<String, dynamic>> failures) {
+    final first = failures.first;
+    final text =
+        first['last_error'] ??
+        first['failure_reason'] ??
+        first['last_error_type'] ??
+        '未知错误';
+    final suffix = failures.length > 1 ? ' 等 ${failures.length} 项' : '';
+    return '$text$suffix';
+  }
+
+  _StageAction? _stageAction(Map<String, dynamic> stage, String status) {
+    final key = stage['key']?.toString();
+    if (key == 'summary' &&
+        !{'success', 'waiting_parse', 'disabled'}.contains(status)) {
+      return const _StageAction(
+        label: '生成摘要',
+        icon: Icons.auto_awesome_rounded,
+        kind: _StageActionKind.summary,
+      );
+    }
+    if (key == 'semantic_index' && {'failed', 'not_indexed'}.contains(status)) {
+      return const _StageAction(
+        label: '重建索引',
+        icon: Icons.hub_rounded,
+        kind: _StageActionKind.semanticIndex,
+      );
+    }
+    if (key == 'distribution' && {'failed', 'not_matched'}.contains(status)) {
+      return _StageAction(
+        label: status == 'failed' ? '重试分发' : '重新匹配',
+        icon: Icons.outbox_rounded,
+        kind: _StageActionKind.distribution,
+      );
+    }
+    return null;
+  }
+
+  Future<void> _runAction(
+    BuildContext context,
+    WidgetRef ref,
+    _StageAction action,
+  ) async {
+    final dio = ref.read(apiClientProvider);
+    try {
+      String successMessage;
+      switch (action.kind) {
+        case _StageActionKind.summary:
+          await dio.post('/contents/$contentId/generate-summary?force=true');
+          ref.invalidate(contentDetailProvider(contentId));
+          successMessage = '已开始生成摘要';
+          break;
+        case _StageActionKind.semanticIndex:
+          await dio.post(
+            '/search/semantic/reindex',
+            data: {
+              'scope': 'single',
+              'content_id': contentId,
+              'dry_run': false,
+            },
+          );
+          successMessage = '已调度语义索引重建';
+          break;
+        case _StageActionKind.distribution:
+          final failures = _extractFailures(stage);
+          if (failures.isNotEmpty) {
+            for (final failure in failures) {
+              final id = failure['id'];
+              if (id == null) continue;
+              await dio.post(
+                '/distribution-queue/items/$id/retry',
+                data: {'reset_attempts': true},
+              );
+            }
+            successMessage = '已重试失败分发项';
+          } else {
+            await dio.post(
+              '/distribution-queue/enqueue/$contentId',
+              data: {'force': true},
+            );
+            successMessage = '已重新匹配分发规则';
+          }
+          break;
+      }
+      ref.invalidate(contentProcessingStatusProvider(contentId));
+      if (context.mounted) {
+        Toast.show(context, successMessage);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Toast.show(
+          context,
+          formatApiErrorMessage(e, fallbackMessage: '${action.label}失败'),
+          isError: true,
+        );
+      }
+    }
+  }
+
+  void _showFailureDetails(
+    BuildContext context,
+    List<Map<String, dynamic>> failures,
+  ) {
+    final detailsText = failures
+        .map(
+          (item) => item.entries
+              .where((entry) => entry.value != null)
+              .map((entry) => '${entry.key}: ${entry.value}')
+              .join('\n'),
+        )
+        .join('\n\n');
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('失败详情'),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(child: SelectableText(detailsText)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('关闭'),
           ),
         ],
       ),
@@ -210,4 +396,18 @@ class _StageRow extends StatelessWidget {
         return status;
     }
   }
+}
+
+enum _StageActionKind { summary, semanticIndex, distribution }
+
+class _StageAction {
+  const _StageAction({
+    required this.label,
+    required this.icon,
+    required this.kind,
+  });
+
+  final String label;
+  final IconData icon;
+  final _StageActionKind kind;
 }
