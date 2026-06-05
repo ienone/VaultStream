@@ -28,14 +28,17 @@ abstract class BotChat with _$BotChat {
     @JsonKey(name: 'last_sync_at') DateTime? lastSyncAt,
     @JsonKey(name: 'sync_error') String? syncError,
     @JsonKey(name: 'applied_rule_ids') @Default([]) List<int> appliedRuleIds,
-    @JsonKey(name: 'applied_rule_names') @Default([]) List<String> appliedRuleNames,
+    @JsonKey(name: 'applied_rule_names')
+    @Default([])
+    List<String> appliedRuleNames,
     @JsonKey(name: 'applied_rule_count') @Default(0) int appliedRuleCount,
     @JsonKey(name: 'created_at') required DateTime createdAt,
     @JsonKey(name: 'updated_at') required DateTime updatedAt,
   }) = _BotChat;
 
   bool get isChannel => chatType == 'channel';
-  bool get isGroup => chatType == 'group' || chatType == 'supergroup' || chatType == 'qq_group';
+  bool get isGroup =>
+      chatType == 'group' || chatType == 'supergroup' || chatType == 'qq_group';
   bool get isQQ => chatType == 'qq_group' || chatType == 'qq_private';
   bool get isTelegram => !isQQ;
 
@@ -111,7 +114,9 @@ abstract class BotStatus with _$BotStatus {
     @JsonKey(name: 'napcat_status') String? napcatStatus,
     @JsonKey(name: 'parse_stats') ParseStats? parseStats,
     @JsonKey(name: 'distribution_stats') DistributionStats? distributionStats,
-    @JsonKey(name: 'rule_breakdown') @Default({}) Map<String, DistributionStats> ruleBreakdown,
+    @JsonKey(name: 'rule_breakdown')
+    @Default({})
+    Map<String, DistributionStats> ruleBreakdown,
   }) = _BotStatus;
 
   bool get isNapcatOnline => napcatStatus == 'online';
@@ -192,6 +197,7 @@ abstract class BotSyncResult with _$BotSyncResult {
     required int updated,
     required int failed,
     required int inaccessible,
+    @JsonKey(name: 'run_id') String? runId,
     @Default([]) List<Map<String, dynamic>> details,
   }) = _BotSyncResult;
 

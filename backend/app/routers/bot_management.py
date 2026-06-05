@@ -33,6 +33,11 @@ from app.schemas import (
 )
 from app.schemas.common import QueueStats, DistributionStatusStats
 from app.services.bot_config_runtime import get_primary_bot_config
+from app.services.background_task_state import (
+    record_task_run_error,
+    record_task_run_started,
+    record_task_run_success,
+)
 
 router = APIRouter()
 
@@ -595,27 +600,70 @@ async def sync_bot_chats(
     """
     from app.services.telegram_sync import refresh_telegram_chats
 
+    chat_id = request.chat_id if request else None
+    run = await record_task_run_started(
+        "bot_chats_sync",
+        trigger="manual",
+        chat_id=chat_id,
+        scope=chat_id or "all",
+    )
+
     cfg = await get_primary_bot_config(db, BotConfigPlatform.TELEGRAM, enabled_only=True)
     if not cfg or not cfg.bot_token:
         logger.warning("跳过群组同步：未找到可用的主 Telegram BotConfig")
-        return BotSyncResult(total=0, updated=0, failed=0, inaccessible=0, details=[])
+        await record_task_run_success(
+            "bot_chats_sync",
+            run["run_id"],
+            total=0,
+            updated=0,
+            failed=0,
+            inaccessible=0,
+            details=[],
+            message="No enabled primary Telegram bot config",
+        )
+        return BotSyncResult(
+            total=0,
+            updated=0,
+            failed=0,
+            inaccessible=0,
+            run_id=run["run_id"],
+            details=[],
+        )
 
     try:
         result = await refresh_telegram_chats(
             db,
             bot_config=cfg,
-            chat_id_filter=(request.chat_id if request else None),
-            enabled_only=(not (request and request.chat_id)),
+            chat_id_filter=chat_id,
+            enabled_only=not chat_id,
             fetch_permissions=True,
         )
     except ValueError as e:
+        await record_task_run_error(
+            "bot_chats_sync",
+            run["run_id"],
+            e,
+            trigger="manual",
+            chat_id=chat_id,
+            scope=chat_id or "all",
+        )
         raise HTTPException(status_code=400, detail=str(e))
 
+    await record_task_run_success(
+        "bot_chats_sync",
+        run["run_id"],
+        total=result["total"],
+        updated=result["updated"],
+        failed=result["failed"],
+        inaccessible=result.get("inaccessible", 0),
+        details=result["details"],
+    )
     return BotSyncResult(
         total=result["total"],
         updated=result["updated"],
         failed=result["failed"],
         inaccessible=result.get("inaccessible", 0),
+        run_id=run["run_id"],
         details=result["details"],
     )
 

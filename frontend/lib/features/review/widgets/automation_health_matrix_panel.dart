@@ -681,9 +681,20 @@ Future<void> _syncPushTarget(
   BotChat chat,
 ) async {
   try {
-    await ref.read(botChatsProvider.notifier).syncChats(chatId: chat.chatId);
+    final result = await ref
+        .read(botChatsProvider.notifier)
+        .syncChats(chatId: chat.chatId);
     if (context.mounted) {
-      Toast.show(context, '已刷新 ${chat.displayName}');
+      Toast.show(
+        context,
+        '已刷新 ${chat.displayName}',
+        action: result.runId == null || result.runId!.isEmpty
+            ? null
+            : SnackBarAction(
+                label: '查看日志',
+                onPressed: () => context.go('/home?run=${result.runId}'),
+              ),
+      );
     }
   } catch (e) {
     if (context.mounted) {

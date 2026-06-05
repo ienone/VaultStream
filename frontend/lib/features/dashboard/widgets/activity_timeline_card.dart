@@ -416,6 +416,7 @@ String _taskLabel(String task) {
     'content_embedding' => '语义索引',
     'content_reparse' => '重新解析',
     'content_summary' => '摘要生成',
+    'bot_chats_sync' => '推送目标刷新',
     'distribution_push' => '内容推送',
     'distribution_schedule' => '分发排期',
     'distribution_worker_poll' => '分发轮询',

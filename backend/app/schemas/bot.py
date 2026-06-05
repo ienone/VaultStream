@@ -199,6 +199,7 @@ class BotSyncResult(BaseModel):
     updated: int
     failed: int
     inaccessible: int
+    run_id: Optional[str] = None
     details: List[Dict] = Field(default_factory=list)
 
 

@@ -594,6 +594,7 @@ async def _build_background_failure_details(
     ]
     recent_task_runs: list[dict[str, Any]] = []
     for task_name in (
+        "bot_chats_sync",
         "content_parse",
         "content_reparse",
         "content_embedding",

@@ -104,6 +104,24 @@ class MockDio extends Mock implements Dio {
         ),
       );
     }
+    if (path == '/bot/chats/sync') {
+      return Future.value(
+        Response(
+          requestOptions: RequestOptions(path: path),
+          data:
+              {
+                    'total': 1,
+                    'updated': 1,
+                    'failed': 0,
+                    'inaccessible': 0,
+                    'run_id': 'bot-sync-run',
+                    'details': <Map<String, dynamic>>[],
+                  }
+                  as T,
+          statusCode: 200,
+        ),
+      );
+    }
     if (path == '/platform-health/parse-test') {
       return Future.value(
         Response(
@@ -560,6 +578,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('测试消息已发送'), findsOneWidget);
+      expect(find.text('查看日志'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('刷新推送目标'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('已刷新 Push Channel'), findsOneWidget);
       expect(find.text('查看日志'), findsOneWidget);
 
       await tester.tap(find.byTooltip('测试解析'));

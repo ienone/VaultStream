@@ -93,6 +93,15 @@ class TestBotManagementExtraAPI:
         if resp.status_code == 200:
             data = resp.json()
             assert "total" in data
+            assert data["run_id"]
+            diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
+            latest = next(
+                run
+                for run in diagnostics.json()["recent_task_runs"]
+                if run["run_id"] == data["run_id"]
+            )
+            assert latest["task"] == "bot_chats_sync"
+            assert latest["status"] == "success"
 
     @pytest.mark.asyncio
     async def test_bot_heartbeat(self, client: AsyncClient):

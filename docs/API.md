@@ -379,6 +379,8 @@ eventSource.addEventListener('queue_updated', (e) => {
 - `GET /api/v1/bot/status`
 - `GET /api/v1/bot/runtime`
 
+`POST /api/v1/bot/chats/sync` 会刷新 Telegram BotChat 元信息，支持可选 `chat_id` 只刷新单个目标。接口返回 `run_id`、`total/updated/failed/inaccessible` 和详情，并写入 `recent_task_runs` 的 `bot_chats_sync` 记录。健康矩阵的推送目标刷新会使用该 `run_id` 跳转到动态页日志。
+
 `GET /api/v1/bot/status` 返回统一状态口径：
 - `parse_stats`: `unprocessed` / `processing` / `parse_success` / `parse_failed`
 - `distribution_stats`: `will_push` / `filtered` / `pushed`
@@ -428,7 +430,7 @@ QQ 配置支持字段：`napcat_http_url`、`napcat_ws_url`、`napcat_access_tok
 
 `GET /api/v1/background-tasks/diagnostics` 额外返回：
 
-- `recent_task_runs`: 最近后台任务运行记录。当前覆盖 `ai_connectivity_test`、`content_parse`、`content_embedding`、`content_reparse`、`content_summary`、`discovery_patrol`、`discovery_source_test`、`discovery_sync`、`distribution_push`、`distribution_schedule`、`distribution_target_test`、`distribution_target_send_test`、`distribution_worker_poll`、`favorites_sync`、`platform_parse_test` 和 `semantic_reindex`，包含 `run_id`、`task`、`status`、`started_at`、`finished_at`、`error`、`trigger` 以及任务特定元数据。
+- `recent_task_runs`: 最近后台任务运行记录。当前覆盖 `ai_connectivity_test`、`bot_chats_sync`、`content_parse`、`content_embedding`、`content_reparse`、`content_summary`、`discovery_patrol`、`discovery_source_test`、`discovery_sync`、`distribution_push`、`distribution_schedule`、`distribution_target_test`、`distribution_target_send_test`、`distribution_worker_poll`、`favorites_sync`、`platform_parse_test` 和 `semantic_reindex`，包含 `run_id`、`task`、`status`、`started_at`、`finished_at`、`error`、`trigger` 以及任务特定元数据。
 - `failed_parse_tasks`、`failed_distribution_items`、`failed_discovery_sources`: 仍用于展示可恢复或需排查的失败对象。
 
 `favorites_sync` 运行记录的 `result` 会包含平台级 `fetched/imported/skipped/failed` 汇总；导入阶段发生单条失败时，平台结果还会返回最多 50 条 `failed_items` 诊断记录，并提供 `failed_items_total` 与 `failed_items_truncated`。单条失败字段包含 `url`、`title`、`item_id`、`error`、`error_code`，用于前端解释失败来源，也可作为单条失败重试输入。
