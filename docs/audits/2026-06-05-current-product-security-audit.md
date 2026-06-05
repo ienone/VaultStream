@@ -133,14 +133,14 @@ VaultStream 已经具备个人内容收集、解析、检索、发现、审核�
 
 ### 1. 分发队列存在操作粒度风险
 
-前端审核队列中有多处按 `contentId` 调用后端接口，例如移动状态、重排、立即推送和更新计划时间。后端这些 content-level 接口会查找同一内容的多个队列项并批量操作。
+前端审核队列主体已经改为使用 `queue_item_id` 级接口：移动状态、重排、立即推送、更新计划时间和批量排期均调用 `/distribution-queue/items/...` 或 `/distribution-queue/items/batch-*`。后端也保留了这些 item-level 接口，并有回归测试覆盖 item-scoped status/schedule/reorder/batch 行为。
 
-风险是：用户在某个规则或目标视图里操作一条内容时，可能影响该内容在其他分发目标上的队列项。用户预期通常是“只改当前这一条队列项”，而不是“改这个内容的所有队列项”。
+仍需注意的边界是：后端仍保留 `/distribution-queue/content/...` 这类 content-level 兼容/批量接口。它们适合明确的“对该内容所有目标生效”操作，不应被普通队列单项按钮默认使用。失败推送记录的重推入口虽然仍走 content path，但前端会带 `target_id`，后端只重排该目标并只删除该目标的去重记录；`backend/tests/test_api/test_distribution_queue_extra.py` 已覆盖该边界。
 
-建议：
+后续要求：
 
-- 前端默认使用 `queue_item_id` 级接口。
-- content-level 接口只用于明确的批量操作。
+- 继续保持前端默认使用 `queue_item_id` 级接口。
+- content-level 接口只用于明确的批量操作或带 `target_id` 的目标级重推。
 - UI 在批量操作前显示影响范围，例如“将影响 3 个目标中的 3 条队列项”。
 
 ### 2. 发现源支持边界需要持续保持清晰

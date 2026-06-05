@@ -224,6 +224,120 @@ class TestDistributionQueueExtraAPI:
         assert batch_repush_resp.json()["changed"] >= 1
 
     @pytest.mark.asyncio
+    async def test_content_repush_with_target_id_is_target_scoped(self, client: AsyncClient):
+        content_id, rule_id, _ = await self._setup_data(client)
+
+        suffix = datetime.now(timezone.utc).strftime("%H%M%S%f")
+        bot_resp = await client.post(
+            "/api/v1/bot-config",
+            json={
+                "platform": "telegram",
+                "name": f"repush-scope-bot-{suffix}",
+                "bot_token": f"123456:RETRY-{suffix}",
+                "enabled": True,
+                "is_primary": False,
+            },
+        )
+        assert bot_resp.status_code == 201
+
+        chat_resp = await client.post(
+            "/api/v1/bot/chats",
+            json={
+                "bot_config_id": bot_resp.json()["id"],
+                "chat_id": f"-200{suffix}",
+                "chat_type": "channel",
+                "title": f"Repush Scope Chat {suffix}",
+                "enabled": True,
+            },
+        )
+        assert chat_resp.status_code == 200
+
+        target_resp = await client.post(
+            f"/api/v1/distribution-rules/{rule_id}/targets",
+            json={"bot_chat_id": chat_resp.json()["id"], "enabled": True},
+        )
+        assert target_resp.status_code == 201
+        await client.post(f"/api/v1/distribution-queue/enqueue/{content_id}", json={"force": True})
+
+        items_resp = await client.get(f"/api/v1/distribution-queue/items?content_id={content_id}")
+        items = items_resp.json()["items"]
+        assert len(items) >= 2
+        target_ids = [item["target_id"] for item in items]
+        selected_target_id = target_ids[0]
+        untouched_target_id = next(target_id for target_id in target_ids if target_id != selected_target_id)
+        expected_remaining_target_ids = set(target_ids) - {selected_target_id}
+
+        from sqlalchemy import and_, delete, select
+        from app.core.db_adapter import AsyncSessionLocal
+        from app.core.time_utils import utcnow
+        from app.models import ContentQueueItem, PushedRecord, QueueItemStatus
+
+        async with AsyncSessionLocal() as session:
+            await session.execute(delete(PushedRecord).where(PushedRecord.content_id == content_id))
+            rows = (
+                await session.execute(
+                    select(ContentQueueItem).where(ContentQueueItem.content_id == content_id)
+                )
+            ).scalars().all()
+            for item in rows:
+                item.status = QueueItemStatus.FAILED
+                item.last_error = "failed before retry"
+                item.last_error_type = "push_failed"
+                item.last_error_at = utcnow()
+                session.add(
+                    PushedRecord(
+                        content_id=content_id,
+                        target_platform=item.target_platform,
+                        target_id=item.target_id,
+                        message_id=f"message-{item.target_id}",
+                        push_status="failed",
+                        error_message="failed before retry",
+                    )
+                )
+            await session.commit()
+
+        repush_resp = await client.post(
+            f"/api/v1/distribution-queue/content/{content_id}/repush-now",
+            params={"target_id": selected_target_id},
+        )
+        assert repush_resp.status_code == 200
+        assert repush_resp.json()["changed"] == 1
+        assert repush_resp.json()["deleted_records"] == 1
+
+        async with AsyncSessionLocal() as session:
+            selected = (
+                await session.execute(
+                    select(ContentQueueItem).where(
+                        and_(
+                            ContentQueueItem.content_id == content_id,
+                            ContentQueueItem.target_id == selected_target_id,
+                        )
+                    )
+                )
+            ).scalar_one()
+            untouched = (
+                await session.execute(
+                    select(ContentQueueItem).where(
+                        and_(
+                            ContentQueueItem.content_id == content_id,
+                            ContentQueueItem.target_id == untouched_target_id,
+                        )
+                    )
+                )
+            ).scalar_one()
+            remaining_records = (
+                await session.execute(
+                    select(PushedRecord).where(PushedRecord.content_id == content_id)
+                )
+            ).scalars().all()
+
+        assert selected.status == QueueItemStatus.SCHEDULED
+        assert selected.last_error is None
+        assert untouched.status == QueueItemStatus.FAILED
+        assert untouched.last_error == "failed before retry"
+        assert {record.target_id for record in remaining_records} == expected_remaining_target_ids
+
+    @pytest.mark.asyncio
     async def test_item_push_now(self, client: AsyncClient, monkeypatch):
         class FakeQueueWorker:
             async def process_item_now(self, item_id: int, worker_name: str = "api-manual"):
