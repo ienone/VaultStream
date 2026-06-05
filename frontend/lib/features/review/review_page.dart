@@ -18,6 +18,7 @@ import 'providers/bot_chats_provider.dart';
 import 'providers/queue_provider.dart';
 import 'widgets/pushed_record_tile.dart';
 import 'widgets/distribution_rule_dialog.dart';
+import 'widgets/favorites_sync_automation_panel.dart';
 import 'widgets/rule_config_panel.dart';
 import 'widgets/queue_content_list.dart';
 import 'widgets/rule_list_tile.dart';
@@ -41,7 +42,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _bindRealtimeEvents();
   }
 
@@ -106,13 +107,18 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
           unselectedLabelStyle: theme.textTheme.labelLarge,
           tabs: const [
             Tab(text: '分发队列'),
+            Tab(text: '收藏同步'),
             Tab(text: '推送历史'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [_buildQueueTab(), _buildHistoryTab()],
+        children: [
+          _buildQueueTab(),
+          const FavoritesSyncAutomationPanel(),
+          _buildHistoryTab(),
+        ],
       ),
     );
   }

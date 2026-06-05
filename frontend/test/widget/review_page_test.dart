@@ -9,6 +9,7 @@ import 'package:frontend/features/review/providers/bot_chats_provider.dart';
 import 'package:frontend/features/review/providers/distribution_rules_provider.dart';
 import 'package:frontend/features/review/providers/queue_provider.dart';
 import 'package:frontend/features/review/review_page.dart';
+import 'package:frontend/features/settings/providers/favorites_sync_provider.dart';
 import 'package:frontend/core/network/api_client.dart';
 import 'package:dio/dio.dart';
 import 'package:mockito/mockito.dart';
@@ -73,6 +74,9 @@ void main() {
             queueStatsProvider(
               null,
             ).overrideWith((ref) => Future.value({'will_push': 0})),
+            favoritesSyncStatusProvider.overrideWith(
+              (ref) async => _mockFavoritesStatus(),
+            ),
             botChatsProvider.overrideWith(() => MockBotChats(mockBotChats)),
             apiClientProvider.overrideWith((ref) => MockDio()),
           ],
@@ -83,6 +87,7 @@ void main() {
 
       expect(find.text('自动化'), findsOneWidget);
       expect(find.text('分发队列'), findsOneWidget);
+      expect(find.text('收藏同步'), findsOneWidget);
       expect(find.byType(TabBar), findsOneWidget);
     });
 
@@ -140,6 +145,9 @@ void main() {
             queueStatsProvider(
               null,
             ).overrideWith((ref) => Future.value({'will_push': 1})),
+            favoritesSyncStatusProvider.overrideWith(
+              (ref) async => _mockFavoritesStatus(),
+            ),
             botChatsProvider.overrideWith(() => MockBotChats(mockBotChats)),
             apiClientProvider.overrideWith((ref) => MockDio()),
           ],
@@ -156,7 +164,80 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Rule 1').last, findsOneWidget);
     });
+
+    testWidgets('ReviewPage exposes favorites sync automation tab', (
+      WidgetTester tester,
+    ) async {
+      final mockDistributionRules = <DistributionRule>[];
+      final mockQueueItems = <QueueItem>[];
+      final mockBotChats = <BotChat>[];
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            distributionRulesProvider.overrideWith(
+              () => MockDistributionRules(mockDistributionRules),
+            ),
+            contentQueueProvider.overrideWith(
+              () => MockContentQueue(mockQueueItems),
+            ),
+            queueStatsProvider(
+              null,
+            ).overrideWith((ref) => Future.value({'will_push': 0})),
+            favoritesSyncStatusProvider.overrideWith(
+              (ref) async => _mockFavoritesStatus(),
+            ),
+            botChatsProvider.overrideWith(() => MockBotChats(mockBotChats)),
+            apiClientProvider.overrideWith((ref) => MockDio()),
+          ],
+          child: const MaterialApp(home: ReviewPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('收藏同步'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('收藏同步总览'), findsOneWidget);
+      expect(find.text('同步全部'), findsOneWidget);
+      expect(find.text('预览同步'), findsWidgets);
+      expect(find.text('知乎'), findsOneWidget);
+      expect(find.textContaining('abcdef12'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
+    });
   });
+}
+
+FavoritesSyncStatus _mockFavoritesStatus() {
+  return const FavoritesSyncStatus(
+    running: true,
+    intervalMinutes: 360,
+    maxItems: 50,
+    enabledPlatforms: ['zhihu'],
+    lastSyncAt: '2026-06-05T12:00:00Z',
+    recentRuns: [
+      {
+        'run_id': 'abcdef123456',
+        'status': 'error',
+        'scope': 'zhihu',
+        'trigger': 'manual',
+        'started_at': '2026-06-05T11:00:00Z',
+        'error': 'cookie expired',
+      },
+    ],
+    platforms: [
+      FavoritesPlatformStatus(
+        platform: 'zhihu',
+        enabled: true,
+        available: true,
+        authenticated: false,
+        ratePerMinute: 5,
+        lastResult: null,
+        error: 'cookie expired',
+        statusError: null,
+      ),
+    ],
+  );
 }
 
 class MockDistributionRules extends DistributionRules {
