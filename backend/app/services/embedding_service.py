@@ -164,6 +164,17 @@ class EmbeddingService:
         async with AsyncSessionLocal() as local_session:
             return await self._get_index_status_impl(local_session)
 
+    async def retry_embedding(
+        self,
+        embedding_id: int,
+        *,
+        session: Optional[AsyncSession] = None,
+    ) -> dict:
+        if session is not None:
+            return await self._retry_embedding_impl(embedding_id, session, own_session=False)
+        async with AsyncSessionLocal() as local_session:
+            return await self._retry_embedding_impl(embedding_id, local_session, own_session=True)
+
     async def has_current_content_index(
         self,
         content_id: int,
@@ -390,6 +401,55 @@ class EmbeddingService:
             "status_counts": status_counts,
             "model_distribution": model_distribution,
             "recent_failures": recent_failures,
+        }
+
+    async def _retry_embedding_impl(
+        self,
+        embedding_id: int,
+        session: AsyncSession,
+        *,
+        own_session: bool,
+    ) -> dict:
+        embedding = await session.get(ContentEmbedding, embedding_id)
+        if embedding is None:
+            raise ValueError("embedding not found")
+
+        content = await session.get(Content, embedding.content_id)
+        if content is None or content.status != ContentStatus.PARSE_SUCCESS:
+            raise ValueError("content is not ready for semantic indexing")
+
+        units = {
+            chunk_index: (text_part, media_refs, title)
+            for chunk_index, text_part, media_refs, title in self._content_embedding_units(content)
+        }
+        unit = units.get(embedding.chunk_index)
+        if unit is None:
+            raise ValueError("semantic unit no longer exists")
+
+        text_part, media_refs, title = unit
+        await self._upsert_embedding(
+            session,
+            content.id,
+            embedding.chunk_index,
+            title,
+            text_part,
+            media_refs,
+        )
+        await session.flush()
+        await session.refresh(embedding)
+        if own_session:
+            await session.commit()
+
+        return {
+            "embedding_id": embedding.id,
+            "content_id": embedding.content_id,
+            "chunk_index": embedding.chunk_index,
+            "chunk_title": embedding.chunk_title,
+            "index_status": embedding.index_status,
+            "failure_reason": embedding.failure_reason,
+            "retry_count": int(embedding.retry_count or 0),
+            "last_attempted_at": embedding.last_attempted_at,
+            "last_indexed_at": embedding.last_indexed_at,
         }
 
     async def _index_content_impl(

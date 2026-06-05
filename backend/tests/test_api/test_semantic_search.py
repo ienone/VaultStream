@@ -6,7 +6,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.core.time_utils import utcnow
-from app.models import Content, ContentStatus, Platform, ReviewStatus
+from app.models import Content, ContentEmbedding, ContentStatus, Platform, ReviewStatus
 from app.services.embedding_service import EmbeddingService
 
 
@@ -188,6 +188,83 @@ async def test_semantic_reindex_scheduled_returns_run_id_and_records_success(
     assert latest["task"] == "semantic_reindex"
     assert latest["status"] == "success"
     assert latest["scope"] == "failed"
+    assert latest["result"]["indexed"] == 1
+    assert latest["result"]["failed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_retry_semantic_embedding_records_run(
+    client: AsyncClient,
+    db_session,
+    monkeypatch,
+):
+    async def fake_signature(self):
+        return "gemini-embedding-2|dim=3|prefix=test|role=document"
+
+    async def fake_model(self):
+        return "gemini-embedding-2"
+
+    async def fake_embed_document_text(self, text_val, media_refs):
+        assert "retry me" in text_val
+        return [0.1, 0.2, 0.3]
+
+    monkeypatch.setattr(EmbeddingService, "_get_document_embedding_signature", fake_signature)
+    monkeypatch.setattr(EmbeddingService, "_get_embedding_model", fake_model)
+    monkeypatch.setattr(EmbeddingService, "_embed_document_text", fake_embed_document_text)
+
+    content = Content(
+        platform=Platform.RSS,
+        url="https://example.com/retry-embedding",
+        canonical_url="semantic://retry-embedding",
+        status=ContentStatus.PARSE_SUCCESS,
+        review_status=ReviewStatus.APPROVED,
+        title="Retry embedding",
+        rich_payload={
+            "chunks": [
+                {
+                    "title": "Chunk 0",
+                    "content": "retry me with semantic embedding",
+                    "media_refs": [],
+                }
+            ]
+        },
+        created_at=utcnow(),
+    )
+    db_session.add(content)
+    await db_session.flush()
+    embedding = ContentEmbedding(
+        content_id=content.id,
+        chunk_index=0,
+        chunk_title="Chunk 0",
+        source_text="retry me with semantic embedding",
+        embedding=[],
+        index_status="failed",
+        failure_reason="embedding api unavailable",
+        retry_count=1,
+    )
+    db_session.add(embedding)
+    await db_session.commit()
+    await db_session.refresh(embedding)
+
+    response = await client.post(f"/api/v1/search/semantic/embeddings/{embedding.id}/retry")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["run_id"]
+    assert data["embedding_id"] == embedding.id
+    assert data["index_status"] == "indexed"
+    assert data["failure_reason"] is None
+
+    await db_session.refresh(embedding)
+    assert embedding.index_status == "indexed"
+    assert embedding.embedding == [0.1, 0.2, 0.3]
+
+    diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
+    runs = diagnostics.json()["recent_task_runs"]
+    latest = next(run for run in runs if run["run_id"] == data["run_id"])
+    assert latest["task"] == "semantic_reindex"
+    assert latest["status"] == "success"
+    assert latest["scope"] == "embedding"
+    assert latest["embedding_id"] == embedding.id
     assert latest["result"]["indexed"] == 1
     assert latest["result"]["failed"] == 0
 

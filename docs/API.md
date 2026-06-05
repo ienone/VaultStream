@@ -432,6 +432,8 @@ QQ 配置支持字段：`napcat_http_url`、`napcat_ws_url`、`napcat_access_tok
 
 解析、发现或导入后的单条自动 Embedding 入库会产生 `content_embedding` 运行记录；它通常不由前端直接触发，但可在 `recent_task_runs` 中排查某条内容是否完成语义索引。
 
+`POST /api/v1/search/semantic/embeddings/{embedding_id}/retry` 会按单条 `content_embeddings` 记录重试对应语义分块，并返回 `run_id`；运行结果进入 `recent_task_runs` 的 `semantic_reindex` 记录，`scope=embedding`。若远端 embedding 调用仍失败，接口返回 `503`，同时记录失败 run。
+
 发现缓冲区的自动巡逻评分会产生 `discovery_patrol` 运行记录，记录候选数量、成功评分数量、失败数量与兴趣画像是否存在；它用于排查探索库内容为何未进入可见状态或评分后处理是否中断。
 
 `POST /api/v1/contents/{content_id}/patrol-score` 会为单条发现流内容手动触发巡逻评分并返回 `run_id`；运行结果进入 `recent_task_runs` 的 `discovery_patrol` 记录，`trigger=manual`，并记录 `content_id`、评分结果和失败数量。非发现流内容返回 `400`。

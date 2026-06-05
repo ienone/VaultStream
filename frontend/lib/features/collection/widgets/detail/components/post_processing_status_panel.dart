@@ -193,6 +193,15 @@ class _StageRow extends ConsumerWidget {
                       icon: const Icon(Icons.receipt_long_rounded, size: 16),
                       label: const Text('失败详情'),
                     ),
+                  if (_isSemanticStage)
+                    for (final failure in failures)
+                      if (failure['id'] != null)
+                        TextButton.icon(
+                          onPressed: () =>
+                              _retryEmbedding(context, ref, failure),
+                          icon: const Icon(Icons.replay_rounded, size: 16),
+                          label: Text(_retryEmbeddingLabel(failure)),
+                        ),
                 ],
               ),
             ),
@@ -265,6 +274,8 @@ class _StageRow extends ConsumerWidget {
     return null;
   }
 
+  bool get _isSemanticStage => stage['key']?.toString() == 'semantic_index';
+
   Future<void> _runAction(
     BuildContext context,
     WidgetRef ref,
@@ -324,21 +335,7 @@ class _StageRow extends ConsumerWidget {
       }
       ref.invalidate(contentProcessingStatusProvider(contentId));
       if (context.mounted) {
-        Toast.show(
-          context,
-          successMessage,
-          action: runId == null
-              ? null
-              : SnackBarAction(
-                  label: '查看日志',
-                  onPressed: () => context.go(
-                    Uri(
-                      path: '/home',
-                      queryParameters: {'run': runId},
-                    ).toString(),
-                  ),
-                ),
-        );
+        _showSuccessToast(context, successMessage, runId);
       }
     } catch (e) {
       if (context.mounted) {
@@ -349,6 +346,54 @@ class _StageRow extends ConsumerWidget {
         );
       }
     }
+  }
+
+  Future<void> _retryEmbedding(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> failure,
+  ) async {
+    final id = failure['id'];
+    if (id == null) return;
+
+    final dio = ref.read(apiClientProvider);
+    try {
+      final response = await dio.post('/search/semantic/embeddings/$id/retry');
+      final runId = _extractRunId(response.data);
+      ref.invalidate(contentProcessingStatusProvider(contentId));
+      ref.invalidate(contentDetailProvider(contentId));
+      if (context.mounted) {
+        _showSuccessToast(context, '已重试语义分块', runId);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Toast.show(
+          context,
+          formatApiErrorMessage(e, fallbackMessage: '重试语义分块失败'),
+          isError: true,
+        );
+      }
+    }
+  }
+
+  String _retryEmbeddingLabel(Map<String, dynamic> failure) {
+    final chunk = failure['chunk_index'];
+    return chunk == null ? '重试分块' : '重试分块 $chunk';
+  }
+
+  void _showSuccessToast(BuildContext context, String message, String? runId) {
+    Toast.show(
+      context,
+      message,
+      action: runId == null
+          ? null
+          : SnackBarAction(
+              label: '查看日志',
+              onPressed: () => context.go(
+                Uri(path: '/home', queryParameters: {'run': runId}).toString(),
+              ),
+            ),
+    );
   }
 
   String? _extractRunId(dynamic data) {

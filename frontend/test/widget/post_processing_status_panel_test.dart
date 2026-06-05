@@ -112,6 +112,7 @@ void main() {
     expect(find.text('生成摘要'), findsOneWidget);
     expect(find.text('重建索引'), findsOneWidget);
     expect(find.text('重试分发'), findsOneWidget);
+    expect(find.text('重试分块'), findsOneWidget);
     expect(find.text('触发评分'), findsOneWidget);
     expect(find.text('巡逻评分'), findsOneWidget);
     expect(find.text('未评分'), findsOneWidget);
@@ -170,6 +171,61 @@ void main() {
     await tester.pump();
 
     expect(dio.postPaths, contains('/contents/$contentId/patrol-score'));
+    expect(find.text('查看日志'), findsOneWidget);
+  });
+
+  testWidgets('PostProcessingStatusPanel can retry a failed semantic chunk', (
+    tester,
+  ) async {
+    const contentId = 12;
+    final dio = _RecordingDio();
+    final status = {
+      'content_id': contentId,
+      'stages': [
+        {
+          'key': 'semantic_index',
+          'label': '语义索引',
+          'status': 'failed',
+          'message': '语义索引生成失败',
+          'issues': ['embedding_api_key 未配置'],
+          'actions': ['配置 Embedding 密钥'],
+          'details': {
+            'failures': [
+              {
+                'id': 44,
+                'chunk_index': 2,
+                'failure_reason': 'embedding api unavailable',
+                'retry_count': 1,
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(dio),
+          contentProcessingStatusProvider(
+            contentId,
+          ).overrideWith((ref) async => status),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: PostProcessingStatusPanel(contentId: contentId),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('重试分块 2'));
+    await tester.pump();
+
+    expect(dio.postPaths, contains('/search/semantic/embeddings/44/retry'));
     expect(find.text('查看日志'), findsOneWidget);
   });
 }

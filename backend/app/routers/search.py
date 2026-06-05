@@ -218,3 +218,76 @@ async def semantic_reindex(
             else "reindex job scheduled with batch_size=8 and 0.2s inter-batch delay"
         ),
     )
+
+
+@router.post("/search/semantic/embeddings/{embedding_id}/retry")
+async def retry_semantic_embedding(
+    embedding_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    run = await record_task_run_started(
+        "semantic_reindex",
+        trigger="manual",
+        scope="embedding",
+        embedding_id=embedding_id,
+        candidate_count=1,
+    )
+    try:
+        result = await EmbeddingService().retry_embedding(embedding_id, session=db)
+        if result["index_status"] == "failed":
+            await db.commit()
+            error = result.get("failure_reason") or "embedding retry failed"
+            await record_task_run_error(
+                "semantic_reindex",
+                run["run_id"],
+                error,
+                trigger="manual",
+                scope="embedding",
+                embedding_id=embedding_id,
+                content_id=result["content_id"],
+                chunk_index=result["chunk_index"],
+                failed=1,
+            )
+            raise HTTPException(status_code=503, detail=error)
+
+        await db.commit()
+        await record_task_run_success(
+            "semantic_reindex",
+            run["run_id"],
+            trigger="manual",
+            scope="embedding",
+            embedding_id=embedding_id,
+            content_id=result["content_id"],
+            chunk_index=result["chunk_index"],
+            indexed=1,
+            failed=0,
+            index_status=result["index_status"],
+        )
+        return {"run_id": run["run_id"], **result}
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        await db.rollback()
+        await record_task_run_error(
+            "semantic_reindex",
+            run["run_id"],
+            exc,
+            trigger="manual",
+            scope="embedding",
+            embedding_id=embedding_id,
+            failed=1,
+        )
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        await db.rollback()
+        await record_task_run_error(
+            "semantic_reindex",
+            run["run_id"],
+            exc,
+            trigger="manual",
+            scope="embedding",
+            embedding_id=embedding_id,
+            failed=1,
+        )
+        raise HTTPException(status_code=500, detail=f"语义分块重试失败: {exc}")
