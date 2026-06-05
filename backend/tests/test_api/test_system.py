@@ -64,6 +64,19 @@ class _FakeFavoritesSyncTask:
         return {}
 
 
+class _HealthyFavoritesFetcher:
+    async def check_auth(self) -> bool:
+        return True
+
+
+class _FakePlatformHealthFavoritesSyncTask(_FakeFavoritesSyncTask):
+    def get_fetcher_cls(self, platform: str):
+        return _HealthyFavoritesFetcher
+
+    async def load_enabled_platforms(self) -> list[str]:
+        return ["zhihu"]
+
+
 class TestSystemAPI:
     """Test suite for system endpoints"""
     
@@ -185,6 +198,59 @@ class TestSystemAPI:
             assert latest["run_id"] == "api-test-retry-run"
             assert latest["retry_of"] == "failed-favorites-run"
             assert latest["trigger"] == "retry"
+        finally:
+            if previous is None:
+                app.state._state.pop("favorites_sync_task", None)
+            else:
+                app.state.favorites_sync_task = previous
+
+    @pytest.mark.asyncio
+    async def test_platform_health_aggregates_auth_and_favorites_sync(
+        self,
+        client: AsyncClient,
+        monkeypatch,
+    ):
+        previous = getattr(app.state, "favorites_sync_task", None)
+        app.state.favorites_sync_task = _FakePlatformHealthFavoritesSyncTask()
+        await record_task_run_started(
+            "favorites_sync",
+            run_id="platform-health-run",
+            scope="zhihu",
+            trigger="manual",
+        )
+        await record_task_run_success(
+            "favorites_sync",
+            "platform-health-run",
+            imported=2,
+            skipped=1,
+        )
+
+        async def _cookie_configured(platform: str) -> bool:
+            return platform == "zhihu"
+
+        async def _browser_auth_valid(platform: str) -> bool:
+            return platform == "zhihu"
+
+        monkeypatch.setattr(
+            "app.routers.system._is_any_platform_cookie_configured",
+            _cookie_configured,
+        )
+        monkeypatch.setattr(
+            "app.services.browser_auth_service.browser_auth_service.check_platform_status",
+            _browser_auth_valid,
+        )
+
+        try:
+            response = await client.get("/api/v1/platform-health")
+            assert response.status_code == 200
+            data = response.json()
+            zhihu = next(item for item in data["platforms"] if item["platform"] == "zhihu")
+            assert zhihu["health"] == "ok"
+            assert zhihu["auth"]["cookie_configured"] is True
+            assert zhihu["auth"]["browser_auth_valid"] is True
+            assert zhihu["favorites_sync"]["enabled"] is True
+            assert zhihu["favorites_sync"]["authenticated"] is True
+            assert zhihu["favorites_sync"]["last_run"]["run_id"] == "platform-health-run"
         finally:
             if previous is None:
                 app.state._state.pop("favorites_sync_task", None)

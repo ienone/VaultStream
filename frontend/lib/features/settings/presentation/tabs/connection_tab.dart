@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/providers/local_settings_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/platform_health_provider.dart';
 import '../../models/system_setting.dart';
 import '../widgets/setting_components.dart';
 import '../../../auth/presentation/widgets/interactive_login_dialog.dart';
@@ -15,6 +16,7 @@ class ConnectionTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final localSettings = ref.watch(localSettingsProvider);
     final settingsAsync = ref.watch(systemSettingsProvider);
+    final platformHealthAsync = ref.watch(platformHealthProvider);
     final colorScheme = Theme.of(context).colorScheme;
 
     return ListView(
@@ -58,6 +60,8 @@ class ConnectionTab extends ConsumerWidget {
         ),
         const SizedBox(height: 32),
         const SectionHeader(title: '链接与账号', icon: Icons.link_rounded),
+        _buildPlatformHealthSection(context, ref, platformHealthAsync),
+        const SizedBox(height: 12),
         _buildPlatformSettingsSection(context, ref, settingsAsync),
         const SizedBox(height: 32),
         const SectionHeader(title: '高级连接设置', icon: Icons.tune_rounded),
@@ -93,6 +97,129 @@ class ConnectionTab extends ConsumerWidget {
         const SizedBox(height: 40),
       ],
     );
+  }
+
+  Widget _buildPlatformHealthSection(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<PlatformHealthResponse> healthAsync,
+  ) {
+    return healthAsync.when(
+      data: (health) {
+        if (health.platforms.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return SettingGroup(
+          children: [
+            for (final platform in health.platforms)
+              SettingTile(
+                title: platform.label,
+                subtitle: _platformHealthSubtitle(platform),
+                icon: _platformHealthIcon(platform),
+                iconColor: _platformHealthColor(context, platform),
+                trailing: Text(
+                  _platformHealthLabel(platform.health),
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: _platformHealthColor(context, platform),
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                showArrow: false,
+              ),
+          ],
+        );
+      },
+      loading: () => const LoadingGroup(),
+      error: (error, _) => SettingGroup(
+        children: [
+          SettingTile(
+            title: '平台健康状态',
+            subtitle: '加载失败，点击重试',
+            icon: Icons.error_outline_rounded,
+            iconColor: Theme.of(context).colorScheme.error,
+            trailing: IconButton(
+              tooltip: '重试',
+              icon: const Icon(Icons.refresh_rounded),
+              onPressed: () => ref.invalidate(platformHealthProvider),
+            ),
+            showArrow: false,
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _platformHealthSubtitle(PlatformHealthStatus platform) {
+    final parts = <String>[];
+    if (platform.hasCookie) {
+      parts.add(platform.browserAuthValid == false ? '登录失效' : '已配置登录');
+    } else {
+      parts.add('未配置登录');
+    }
+    if (platform.favoritesSupported) {
+      if (platform.favoritesEnabled) {
+        parts.add(
+          platform.favoritesAuthenticated == false ? '同步认证失败' : '收藏同步已启用',
+        );
+      } else {
+        parts.add('收藏同步未启用');
+      }
+    }
+    final lastRun = platform.lastFavoritesRun;
+    if (lastRun != null) {
+      final status = lastRun['status']?.toString() ?? 'unknown';
+      parts.add('最近同步: ${_platformHealthLabel(status)}');
+    }
+    if (platform.issues.isNotEmpty) {
+      parts.add(platform.issues.first);
+    }
+    return parts.join(' · ');
+  }
+
+  String _platformHealthLabel(String status) {
+    switch (status) {
+      case 'ok':
+      case 'success':
+        return '正常';
+      case 'error':
+        return '异常';
+      case 'inactive':
+        return '未启用';
+      case 'running':
+        return '运行中';
+      default:
+        return status;
+    }
+  }
+
+  IconData _platformHealthIcon(PlatformHealthStatus platform) {
+    switch (platform.health) {
+      case 'ok':
+        return Icons.verified_user_rounded;
+      case 'error':
+        return Icons.report_gmailerrorred_rounded;
+      case 'inactive':
+        return Icons.account_circle_outlined;
+      default:
+        return Icons.info_outline_rounded;
+    }
+  }
+
+  Color? _platformHealthColor(
+    BuildContext context,
+    PlatformHealthStatus platform,
+  ) {
+    final colors = Theme.of(context).colorScheme;
+    switch (platform.health) {
+      case 'ok':
+        return colors.primary;
+      case 'error':
+        return colors.error;
+      case 'inactive':
+        return colors.outline;
+      default:
+        return null;
+    }
   }
 
   Widget _buildBaseUrlEditor(

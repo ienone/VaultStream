@@ -82,6 +82,44 @@ def _serialize_setting_for_response(setting: SystemSetting) -> dict:
     }
 
 
+def _platform_label(platform: str) -> str:
+    labels = {
+        "zhihu": "知乎",
+        "xiaohongshu": "小红书",
+        "twitter": "Twitter / X",
+        "weibo": "微博",
+        "bilibili": "Bilibili",
+    }
+    return labels.get(platform, platform)
+
+
+def _platform_cookie_keys(platform: str) -> list[str]:
+    if platform == "bilibili":
+        return ["bilibili_cookie", "bilibili_bili_jct"]
+    return [f"{platform}_cookie"]
+
+
+async def _is_any_platform_cookie_configured(platform: str) -> bool:
+    from app.services.settings_service import get_setting_value
+
+    for key in _platform_cookie_keys(platform):
+        value = await get_setting_value(key)
+        if isinstance(value, str) and value.strip():
+            return True
+    return False
+
+
+def _latest_favorites_run_for_platform(
+    runs: list[dict[str, Any]],
+    platform: str,
+) -> dict[str, Any] | None:
+    for run in runs:
+        scope = str(run.get("scope") or "all").strip().lower()
+        if scope == platform or scope == "all":
+            return run
+    return None
+
+
 async def _count_by_status(db: AsyncSession, model, status_column, enum_cls) -> dict[str, int]:
     rows = (
         await db.execute(
@@ -693,6 +731,140 @@ async def get_favorites_sync_status(
         "last_sync_at": last_sync_at,
         "recent_runs": await get_recent_task_runs("favorites_sync", limit=10),
         "platforms": platforms,
+    }
+
+
+@router.get("/platform-health")
+async def get_platform_health(
+    request: Request,
+    _: None = Depends(require_api_token),
+):
+    """Aggregate platform login, cookie and favorites-sync health in one API."""
+    from app.services.browser_auth_service import browser_auth_service
+    from app.services.settings_service import get_setting_value
+    from app.tasks.favorites_sync import FavoritesSyncTask
+
+    sync_task = getattr(request.app.state, "favorites_sync_task", None)
+    if sync_task is None:
+        sync_task = FavoritesSyncTask()
+
+    enabled_favorites = await sync_task.load_enabled_platforms()
+    recent_runs = await get_recent_task_runs("favorites_sync", limit=20)
+    supported_favorites = set(sync_task.get_supported_platforms())
+    browser_platforms = set(browser_auth_service.platforms.keys())
+    ordered = ["zhihu", "xiaohongshu", "twitter", "weibo", "bilibili"]
+    platforms = [
+        platform
+        for platform in ordered + sorted((supported_favorites | browser_platforms) - set(ordered))
+        if platform in supported_favorites or platform in browser_platforms or platform == "bilibili"
+    ]
+
+    items: list[dict[str, Any]] = []
+    for platform in platforms:
+        cookie_configured = await _is_any_platform_cookie_configured(platform)
+        browser_auth_supported = platform in browser_platforms
+        browser_auth_valid: bool | None = None
+        browser_auth_error: str | None = None
+        if browser_auth_supported and cookie_configured:
+            try:
+                browser_auth_valid = await browser_auth_service.check_platform_status(platform)
+            except Exception as e:
+                browser_auth_valid = False
+                browser_auth_error = str(e)
+                logger.warning("[platform health] browser auth check failed for {}: {}", platform, e)
+
+        favorites_supported = platform in supported_favorites
+        favorites_enabled = platform in enabled_favorites
+        favorites_authenticated: bool | None = None
+        favorites_available = favorites_supported
+        favorites_error: str | None = None
+        favorites_status_error: dict[str, Any] | None = None
+        favorites_last_result = await get_setting_value(f"favorites_sync_last_result_{platform}")
+
+        if favorites_supported and favorites_enabled:
+            fetcher_cls = sync_task.get_fetcher_cls(platform)
+            if fetcher_cls is not None:
+                try:
+                    favorites_authenticated = await fetcher_cls().check_auth()
+                except ImportError as e:
+                    favorites_available = False
+                    favorites_authenticated = False
+                    favorites_error = str(e)
+                    favorites_status_error = build_error_payload(
+                        message=str(e),
+                        code="dependency_missing",
+                        hint="依赖缺失，请检查后端运行环境",
+                        request_id=getattr(request.state, "request_id", None),
+                    )
+                except FavoritesFetchError as e:
+                    favorites_available = e.code != "cli_unavailable"
+                    favorites_authenticated = False
+                    favorites_error = e.message
+                    favorites_status_error = {
+                        "detail": e.message,
+                        **e.as_dict(),
+                        "request_id": getattr(request.state, "request_id", None),
+                    }
+                except Exception as e:
+                    favorites_available = False
+                    favorites_authenticated = False
+                    favorites_error = str(e)
+                    favorites_status_error = build_error_payload(
+                        message=str(e),
+                        code="auth_check_failed",
+                        hint="认证检查失败，请稍后重试",
+                        request_id=getattr(request.state, "request_id", None),
+                    )
+                    logger.warning("[platform health] favorites auth check failed for {}: {}", platform, e)
+
+        latest_favorites_run = _latest_favorites_run_for_platform(recent_runs, platform)
+        issues: list[str] = []
+        if browser_auth_supported and not cookie_configured:
+            issues.append("未配置登录 Cookie")
+        if browser_auth_valid is False:
+            issues.append("登录状态不可用")
+        if favorites_enabled and favorites_authenticated is False:
+            issues.append("收藏同步认证失败")
+        if latest_favorites_run and latest_favorites_run.get("status") == "error":
+            issues.append("最近收藏同步失败")
+
+        if issues:
+            health = "error"
+        elif favorites_enabled or cookie_configured:
+            health = "ok"
+        else:
+            health = "inactive"
+
+        items.append(
+            {
+                "platform": platform,
+                "label": _platform_label(platform),
+                "health": health,
+                "issues": issues,
+                "auth": {
+                    "cookie_configured": cookie_configured,
+                    "browser_auth_supported": browser_auth_supported,
+                    "browser_auth_valid": browser_auth_valid,
+                    "error": browser_auth_error,
+                },
+                "favorites_sync": {
+                    "supported": favorites_supported,
+                    "enabled": favorites_enabled,
+                    "available": favorites_available,
+                    "authenticated": favorites_authenticated,
+                    "last_result": favorites_last_result
+                    if isinstance(favorites_last_result, dict)
+                    else None,
+                    "last_run": latest_favorites_run,
+                    "error": favorites_error,
+                    "status_error": favorites_status_error,
+                },
+            }
+        )
+
+    return {
+        "platforms": items,
+        "recent_favorites_runs": recent_runs[:10],
     }
 
 
