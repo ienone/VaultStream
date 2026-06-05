@@ -424,7 +424,7 @@ QQ 配置支持字段：`napcat_http_url`、`napcat_ws_url`、`napcat_access_tok
 `GET /api/v1/health` 与 `GET /health` 返回同一结构，除 `db/queue/fts` 外还包含：
 
 - `checks.workers`: 解析 worker 与分发队列 worker 的配置数量。
-- `checks.providers`: text LLM、embedding、Bot 配置是否已配置。
+- `checks.providers`: summary、embedding、Agent chat 与 Bot 配置状态；AI 配置由 typed `ConfigService` 汇总，包含 summary 启用状态/model/api version、embedding model/dim/search limit、Agent chat model/base URL。
 - `checks.background_tasks`: 解析任务表、分发队列、Discovery 同步源的 pending/failed/retry 统计与最近成功时间。
 - `checks.background_tasks.task_states`: 后台任务持久化状态，包含 `last_started_at`、`last_success_at`、`last_error_at`、`last_error`、`run_count`、`error_count`。
 

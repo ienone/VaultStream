@@ -117,7 +117,8 @@ backend/app/
 │
 ├── services/            # 业务逻辑层 (大脑)
 │   ├── content_service.py       # 内容创建逻辑
-│   ├── settings_service.py      # 系统设置 (已接入 Repo)
+│   ├── config_service.py        # typed 动态配置与 AI provider 视图
+│   ├── settings_service.py      # 旧系统设置函数兼容门面
 │   ├── distribution/            # [REFACTOR] 分发引擎系统
 │   │   ├── engine.py            # 规则匹配核心
 │   │   └── scheduler.py         # 排期计算
@@ -864,7 +865,7 @@ GET /api/v1/health
 - `components`: `db` / `queue` / `fts` / `workers` / `providers`
 - `checks.database`: DB ping 与 FTS 表、trigger、索引行数
 - `checks.workers`: 解析 worker 与分发队列 worker 配置数
-- `checks.providers`: text LLM、embedding、Bot 配置状态
+- `checks.providers`: summary、embedding、Agent chat 与 Bot 配置状态，由 typed `ConfigService` 汇总
 - `checks.background_tasks`: 解析任务、分发队列、Discovery 同步的 pending/failed/retry 统计
 - `checks.background_tasks.task_states`: `system_settings` 中持久化的后台任务运行状态，记录 `last_started_at`、`last_success_at`、`last_error_at`、`last_error`、`run_count`、`error_count`
 

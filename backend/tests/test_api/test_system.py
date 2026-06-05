@@ -111,6 +111,16 @@ class TestSystemAPI:
         assert data["checks"]["database"]["schema"]["status"] == "ok"
         assert "background_tasks" in data["checks"]
         assert "task_states" in data["checks"]["background_tasks"]
+        assert "providers" in data["checks"]
+        providers = data["checks"]["providers"]
+        assert "summary" in providers
+        assert "embedding" in providers
+        assert "agent_chat" in providers
+        assert "enabled" in providers["summary"]
+        assert "api_version" in providers["summary"]
+        assert "output_dimensionality" in providers["embedding"]
+        assert "search_max_rows" in providers["embedding"]
+        assert "base_url" in providers["agent_chat"]
     
     @pytest.mark.asyncio
     async def test_api_root(self, client: AsyncClient):

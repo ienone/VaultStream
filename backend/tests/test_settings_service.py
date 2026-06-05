@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.models.base import Base
 from app.models.system import SystemSetting
+from app.services.config_service import ConfigService
 
 # In-memory engine shared across all tests in this module
 _engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -296,3 +297,98 @@ async def test_list_settings_values():
         filtered = await svc.list_settings_values(category="platform")
         assert len(filtered) == 1
         assert filtered[0]["key"] == "b"
+
+
+# ---------------------------------------------------------------------------
+# ConfigService typed views
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_config_service_ai_config_uses_typed_values():
+    async with _TestSessionLocal() as session:
+        session.add_all(
+            [
+                SystemSetting(
+                    key="enable_auto_summary",
+                    value="true",
+                    category="ai",
+                ),
+                SystemSetting(
+                    key="summary_api_key",
+                    value="summary-key",
+                    category="ai",
+                ),
+                SystemSetting(
+                    key="summary_model",
+                    value="summary-model",
+                    category="ai",
+                ),
+                SystemSetting(
+                    key="summary_api_version",
+                    value="v1",
+                    category="ai",
+                ),
+                SystemSetting(
+                    key="embedding_api_key",
+                    value="embedding-key",
+                    category="ai",
+                ),
+                SystemSetting(
+                    key="embedding_model",
+                    value="embedding-model",
+                    category="ai",
+                ),
+                SystemSetting(
+                    key="embedding_output_dimensionality",
+                    value="768",
+                    category="ai",
+                ),
+                SystemSetting(
+                    key="embedding_search_max_rows",
+                    value="2500",
+                    category="ai",
+                ),
+                SystemSetting(
+                    key="agent_chat_api_key",
+                    value="agent-key",
+                    category="ai",
+                ),
+                SystemSetting(
+                    key="agent_chat_model",
+                    value="agent-model",
+                    category="ai",
+                ),
+                SystemSetting(
+                    key="agent_chat_base_url",
+                    value="https://llm.example.test",
+                    category="ai",
+                ),
+            ]
+        )
+        await session.commit()
+
+    service = ConfigService(session_factory=_session_factory, cache={})
+    ai_config = await service.get_ai_config()
+
+    assert ai_config.summary.enabled is True
+    assert ai_config.summary.api_key == "summary-key"
+    assert ai_config.summary.model == "summary-model"
+    assert ai_config.summary.api_version == "v1"
+    assert ai_config.embedding.api_key == "embedding-key"
+    assert ai_config.embedding.model == "embedding-model"
+    assert ai_config.embedding.output_dimensionality == 768
+    assert ai_config.embedding.search_max_rows == 2500
+    assert ai_config.agent_chat.api_key == "agent-key"
+    assert ai_config.agent_chat.model == "agent-model"
+    assert ai_config.agent_chat.base_url == "https://llm.example.test"
+
+
+@pytest.mark.asyncio
+async def test_config_service_summary_config_uses_gemini_env_alias():
+    service = ConfigService(session_factory=_session_factory, cache={})
+
+    with patch.dict("os.environ", {"GEMINI_API_KEY": "gemini-env-key"}):
+        summary = await service.get_summary_ai_config()
+
+    assert summary.api_key == "gemini-env-key"

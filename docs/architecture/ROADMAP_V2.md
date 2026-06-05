@@ -21,8 +21,8 @@ The current product direction should be:
 
 Recent local checks are summarized in `docs/audits/2026-06-05-current-product-security-audit.md`. The latest recorded results there are:
 
-- Backend non-integration tests: 734 passed, 4 skipped, 16 deselected.
-- Backend `ResourceWarning` error gate: 734 passed, 4 skipped, 16 deselected.
+- Backend non-integration tests: 736 passed, 4 skipped, 16 deselected.
+- Backend `ResourceWarning` error gate: 736 passed, 4 skipped, 16 deselected.
 - Backend integration tests: 5 failed, 8 passed, 1 skipped, 2 xfailed.
 - Flutter analyze: no issues found.
 - Flutter test: 37 tests passed, with one existing non-fatal tap target warning.
@@ -41,7 +41,7 @@ Important current boundaries:
 
 Main backend risks:
 
-- Configuration is still split across `Settings`, DB settings, runtime mutation, and cache behavior.
+- `ConfigService` now owns typed dynamic setting access and AI provider diagnostics; many callers still use the compatibility `settings_service` functions and should be migrated gradually.
 - EventBus runtime state remains process-local; API diagnostics now read it through a public EventBus snapshot instead of route-level private field access.
 - Background tasks have health state but not a full failure/retry operations panel.
 - Several long task/adapter files still mix orchestration, parsing, media processing, and persistence.
@@ -75,8 +75,8 @@ Target: remove issues that make the current system feel unreliable.
 
 Target: reduce drift between settings, tasks, and user-facing behavior.
 
-- Introduce a typed `ConfigService` and migrate `settings_service` behind it.
-- Model AI config explicitly: summary provider/model/key, embedding provider/model/key/dim, Agent chat provider/model/key.
+- Continue migrating high-value callers from legacy `settings_service` helpers to typed `ConfigService` methods.
+- Extend explicit AI config modeling beyond health diagnostics: summary provider/model/key, embedding provider/model/key/dim, Agent chat provider/model/key.
 - Keep `DistributionService` as the single distribution business entrypoint and remove old wrapper logic in a breaking cleanup release.
 - Split `ContentParser` by responsibility: task orchestration, adapter parsing, archive media processing, post-ingest scheduling, and error/dead-letter handling.
 - Convert high-value dynamic contracts into typed DTOs where they cross frontend/backend boundaries.

@@ -705,42 +705,32 @@ async def _build_background_failure_details(
 
 
 async def _build_provider_diagnostics(db: AsyncSession) -> dict[str, Any]:
-    setting_rows = (
-        await db.execute(
-            select(SystemSetting.key, SystemSetting.value).where(
-                SystemSetting.key.in_(
-                    [
-                        "text_llm_api_key",
-                        "text_llm_model",
-                        "summary_api_key",
-                        "summary_model",
-                        "embedding_api_key",
-                        "embedding_model",
-                    ]
-                )
-            )
-        )
-    ).all()
-    stored = {key: value for key, value in setting_rows}
+    from app.services.config_service import ConfigService
 
     enabled_bot_count = (
         await db.execute(
             select(func.count()).select_from(BotConfig).where(BotConfig.enabled == True)  # noqa: E712
         )
     ).scalar() or 0
+    ai_config = await ConfigService().get_ai_config()
 
     return {
-        "text_llm": {
-            "configured": bool(stored.get("text_llm_api_key") or settings.text_llm_api_key),
-            "model": stored.get("text_llm_model") or settings.text_llm_model,
-        },
         "summary": {
-            "configured": bool(stored.get("summary_api_key") or settings.summary_api_key),
-            "model": stored.get("summary_model") or settings.summary_model,
+            "configured": bool(ai_config.summary.api_key),
+            "enabled": ai_config.summary.enabled,
+            "model": ai_config.summary.model,
+            "api_version": ai_config.summary.api_version,
         },
         "embedding": {
-            "configured": bool(stored.get("embedding_api_key") or settings.embedding_api_key),
-            "model": stored.get("embedding_model") or settings.embedding_model,
+            "configured": bool(ai_config.embedding.api_key),
+            "model": ai_config.embedding.model,
+            "output_dimensionality": ai_config.embedding.output_dimensionality,
+            "search_max_rows": ai_config.embedding.search_max_rows,
+        },
+        "agent_chat": {
+            "configured": bool(ai_config.agent_chat.api_key),
+            "model": ai_config.agent_chat.model,
+            "base_url": ai_config.agent_chat.base_url,
         },
         "bots": {
             "enabled_configs": int(enabled_bot_count),
