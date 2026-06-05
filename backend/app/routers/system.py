@@ -31,6 +31,7 @@ from app.models import (
 from app.schemas import (
     SystemSettingResponse, SystemSettingUpdate, DashboardStats, 
     QueueStats, TagStats, QueueOverviewStats, DistributionStatusStats,
+    FavoritesSyncItemRetryRequest,
     FavoritesSyncPreviewRequest, FavoritesSyncPreviewResponse,
     FavoritesSyncTriggerRequest, BackgroundTaskDiagnosticsResponse,
 )
@@ -1535,3 +1536,107 @@ async def retry_favorites_sync_run(
         )
     )
     return {"status": "accepted", "platform": "all", "run_id": run["run_id"], "retry_of": run_id}
+
+
+@router.post("/favorites-sync/items/retry")
+async def retry_favorites_sync_item(
+    body: FavoritesSyncItemRetryRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """Retry importing one failed favorites item without advancing sync cursor."""
+    from app.services.content_service import ContentService
+    from app.tasks.favorites_sync import FavoritesSyncTask
+
+    platform = body.platform.strip().lower()
+    url = body.url.strip()
+    if not url:
+        raise HTTPException(
+            status_code=400,
+            detail=build_error_payload(
+                message="Favorites item URL is required",
+                code="favorites_item_url_required",
+                hint="请从失败项中选择带 URL 的记录后重试",
+                request_id=getattr(request.state, "request_id", None),
+            ),
+        )
+    supported_platforms = FavoritesSyncTask.get_fetcher_registry().keys()
+    if platform not in supported_platforms:
+        raise HTTPException(
+            status_code=400,
+            detail=build_error_payload(
+                message=f"Unknown platform: {platform}",
+                code="unsupported_platform",
+                hint="仅支持 zhihu / xiaohongshu / twitter",
+                request_id=getattr(request.state, "request_id", None),
+            ),
+        )
+
+    run = await record_task_run_started(
+        "favorites_sync",
+        scope=platform,
+        trigger="item_retry",
+        platform=platform,
+        url=url,
+        title=body.title,
+        item_id=body.item_id,
+        source_run_id=body.source_run_id,
+    )
+    try:
+        content = await ContentService(db).create_share(
+            url=url,
+            tags=[],
+            source_name=f"favorites_sync:{platform}:retry",
+            note=body.title,
+            client_context={
+                "platform": platform,
+                "item_id": body.item_id,
+                "source_run_id": body.source_run_id,
+                "retry_run_id": run["run_id"],
+            },
+        )
+        await record_task_run_success(
+            "favorites_sync",
+            run["run_id"],
+            platform=platform,
+            url=url,
+            title=body.title,
+            item_id=body.item_id,
+            source_run_id=body.source_run_id,
+            content_id=content.id,
+            status="success",
+        )
+        return {
+            "status": "success",
+            "platform": platform,
+            "run_id": run["run_id"],
+            "content_id": content.id,
+            "source_run_id": body.source_run_id,
+        }
+    except Exception as e:
+        logger.bind(
+            event="favorites_item_retry_failed",
+            platform=platform,
+            item_url=url,
+            run_id=run["run_id"],
+        ).exception("Favorites item retry failed: {}", e)
+        await record_task_run_error(
+            "favorites_sync",
+            run["run_id"],
+            e,
+            platform=platform,
+            url=url,
+            title=body.title,
+            item_id=body.item_id,
+            source_run_id=body.source_run_id,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=build_error_payload(
+                message=f"Favorites item retry failed: {str(e)}",
+                code="favorites_item_retry_failed",
+                hint="请确认失败项 URL 仍可访问，或改用整个平台同步重试",
+                request_id=getattr(request.state, "request_id", None),
+            ),
+        ) from e

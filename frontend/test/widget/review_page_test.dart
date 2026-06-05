@@ -37,6 +37,21 @@ class MockDio extends Mock implements Dio {
         ),
       );
     }
+    if (path == '/favorites-sync/items/retry') {
+      return Future.value(
+        Response(
+          requestOptions: RequestOptions(path: path),
+          data:
+              {
+                    'status': 'success',
+                    'run_id': 'item-retry-run',
+                    'content_id': 123,
+                  }
+                  as T,
+          statusCode: 200,
+        ),
+      );
+    }
     if (path == '/targets/test') {
       return Future.value(
         Response(
@@ -314,6 +329,13 @@ void main() {
       expect(find.text('失败收藏'), findsOneWidget);
       expect(find.text('https://example.com/fail'), findsOneWidget);
       expect(find.text('导入失败'), findsOneWidget);
+      expect(find.text('重试此项'), findsOneWidget);
+
+      await tester.tap(find.text('重试此项'));
+      await tester.pump();
+
+      expect(find.textContaining('已重试失败项'), findsOneWidget);
+      expect(find.text('查看日志'), findsOneWidget);
     });
 
     testWidgets('ReviewPage preview dialog shows favorites candidates', (

@@ -116,7 +116,9 @@ WebSocket 接口同样只接受请求头中的 `X-API-Token` 或 `Authorization:
 | `GET` | `/api/v1/events/health` |
 | `GET` | `/api/v1/events/subscribe` |
 | `GET` | `/api/v1/favorites-sync/status` |
+| `POST` | `/api/v1/favorites-sync/items/retry` |
 | `POST` | `/api/v1/favorites-sync/preview` |
+| `POST` | `/api/v1/favorites-sync/runs/{run_id}/retry` |
 | `POST` | `/api/v1/favorites-sync/sync` |
 | `GET` | `/api/v1/health` |
 | `GET` | `/api/v1/init-status` |
@@ -428,7 +430,9 @@ QQ 配置支持字段：`napcat_http_url`、`napcat_ws_url`、`napcat_access_tok
 - `recent_task_runs`: 最近后台任务运行记录。当前覆盖 `ai_connectivity_test`、`content_parse`、`content_embedding`、`content_reparse`、`content_summary`、`discovery_patrol`、`discovery_source_test`、`discovery_sync`、`distribution_push`、`distribution_schedule`、`distribution_target_test`、`distribution_target_send_test`、`distribution_worker_poll`、`favorites_sync`、`platform_parse_test` 和 `semantic_reindex`，包含 `run_id`、`task`、`status`、`started_at`、`finished_at`、`error`、`trigger` 以及任务特定元数据。
 - `failed_parse_tasks`、`failed_distribution_items`、`failed_discovery_sources`: 仍用于展示可恢复或需排查的失败对象。
 
-`favorites_sync` 运行记录的 `result` 会包含平台级 `fetched/imported/skipped/failed` 汇总；导入阶段发生单条失败时，平台结果还会返回最多 50 条 `failed_items` 诊断记录，并提供 `failed_items_total` 与 `failed_items_truncated`。单条失败字段包含 `url`、`title`、`item_id`、`error`、`error_code`，用于前端解释失败来源。当前 `failed_items` 只用于诊断展示，还不是单条失败重试 API。
+`favorites_sync` 运行记录的 `result` 会包含平台级 `fetched/imported/skipped/failed` 汇总；导入阶段发生单条失败时，平台结果还会返回最多 50 条 `failed_items` 诊断记录，并提供 `failed_items_total` 与 `failed_items_truncated`。单条失败字段包含 `url`、`title`、`item_id`、`error`、`error_code`，用于前端解释失败来源，也可作为单条失败重试输入。
+
+`POST /api/v1/favorites-sync/items/retry` 会对单条失败收藏候选重新执行入库：请求包含 `platform`、`url`，可选 `title`、`item_id`、`source_run_id`。接口不重新拉取收藏夹、不推进平台同步 cursor；成功返回 `run_id` 与 `content_id`，并写入 `recent_task_runs` 的 `favorites_sync` 记录，`trigger=item_retry`。
 
 `POST /api/v1/discovery/sources/{source_id}/sync` 返回 `202 Accepted`，响应包含 `run_id`。若发现同步任务实例未运行，返回 `503 discovery_task_unavailable`；若来源类型尚未实现，返回 `400 source_kind_not_supported`。
 

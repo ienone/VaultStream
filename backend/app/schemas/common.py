@@ -162,6 +162,16 @@ class FavoritesSyncPreviewRequest(BaseModel):
     platform: Optional[str] = None
 
 
+class FavoritesSyncItemRetryRequest(BaseModel):
+    """Retry importing one failed favorites item."""
+
+    platform: str = Field(..., min_length=1)
+    url: str = Field(..., min_length=1)
+    title: Optional[str] = None
+    item_id: Optional[str] = None
+    source_run_id: Optional[str] = None
+
+
 class FavoritesSyncPlatformPreview(BaseModel):
     """Read-only preview of one platform favorites sync round."""
 

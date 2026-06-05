@@ -920,6 +920,52 @@ Future<void> _retryRun(
   }
 }
 
+Future<void> _retryFailedFavoriteItem(
+  BuildContext context,
+  WidgetRef ref, {
+  required String platform,
+  required String? sourceRunId,
+  required Map<String, dynamic> item,
+}) async {
+  final url = _mapString(item, 'url');
+  if (url == null || url.isEmpty) {
+    Toast.show(context, '失败项缺少 URL，无法重试', isError: true);
+    return;
+  }
+
+  try {
+    final retryRunId = await ref
+        .read(favoritesSyncActionsProvider)
+        .retryItem(
+          platform: platform,
+          url: url,
+          title: _mapString(item, 'title'),
+          itemId: _mapString(item, 'item_id'),
+          sourceRunId: sourceRunId,
+        );
+    if (context.mounted) {
+      Toast.show(
+        context,
+        '已重试失败项${retryRunId == null ? '' : ' #${_shortId(retryRunId)}'}',
+        action: retryRunId == null
+            ? null
+            : SnackBarAction(
+                label: '查看日志',
+                onPressed: () => context.go('/home?run=$retryRunId'),
+              ),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      Toast.show(
+        context,
+        formatApiErrorMessage(e, fallbackMessage: '重试失败项失败'),
+        isError: true,
+      );
+    }
+  }
+}
+
 void _showRunDetail(BuildContext context, Map<String, dynamic> run) {
   final runId = _runString(run, 'run_id');
   final status = _runString(run, 'status') ?? 'unknown';
@@ -1002,7 +1048,10 @@ class _RunDetailContent extends StatelessWidget {
           for (final result in platformResults)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: _PlatformRunResult(result: result),
+              child: _PlatformRunResult(
+                result: result,
+                sourceRunId: _runString(run, 'run_id'),
+              ),
             ),
         ] else if (run['result'] != null) ...[
           const SizedBox(height: 14),
@@ -1026,16 +1075,18 @@ class _RunDetailContent extends StatelessWidget {
   }
 }
 
-class _PlatformRunResult extends StatelessWidget {
-  const _PlatformRunResult({required this.result});
+class _PlatformRunResult extends ConsumerWidget {
+  const _PlatformRunResult({required this.result, required this.sourceRunId});
 
   final Map<String, dynamic> result;
+  final String? sourceRunId;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final status = _mapString(result, 'status') ?? 'unknown';
+    final platform = _mapString(result, 'platform') ?? 'unknown';
     final hasError = status == 'failed' || status == 'partial_success';
     final authRequired = result['auth_required'] == true;
     final retryable = result['retryable'] == true;
@@ -1080,7 +1131,7 @@ class _PlatformRunResult extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    _platformLabel(_mapString(result, 'platform') ?? 'unknown'),
+                    _platformLabel(platform),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -1139,7 +1190,16 @@ class _PlatformRunResult extends StatelessWidget {
               for (final item in displayedFailedItems)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 6),
-                  child: _FailedFavoriteItem(item: item),
+                  child: _FailedFavoriteItem(
+                    item: item,
+                    onRetry: () => _retryFailedFavoriteItem(
+                      context,
+                      ref,
+                      platform: platform,
+                      sourceRunId: sourceRunId,
+                      item: item,
+                    ),
+                  ),
                 ),
               if (failedItemsTruncated ||
                   totalFailedItems > displayedFailedItems.length)
@@ -1158,9 +1218,10 @@ class _PlatformRunResult extends StatelessWidget {
 }
 
 class _FailedFavoriteItem extends StatelessWidget {
-  const _FailedFavoriteItem({required this.item});
+  const _FailedFavoriteItem({required this.item, required this.onRetry});
 
   final Map<String, dynamic> item;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -1203,6 +1264,15 @@ class _FailedFavoriteItem extends StatelessWidget {
                 style: theme.textTheme.bodySmall?.copyWith(color: cs.error),
               ),
             ],
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: url == '-' ? null : onRetry,
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text('重试此项'),
+              ),
+            ),
           ],
         ),
       ),

@@ -2,6 +2,7 @@
 System API Tests - Health checks, system info, etc.
 """
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 from httpx import AsyncClient
@@ -203,6 +204,51 @@ class TestSystemAPI:
                 app.state._state.pop("favorites_sync_task", None)
             else:
                 app.state.favorites_sync_task = previous
+
+    @pytest.mark.asyncio
+    async def test_favorites_sync_retry_single_failed_item_records_run(
+        self,
+        client: AsyncClient,
+        monkeypatch,
+    ):
+        async def fake_create_share(self, **kwargs):
+            assert kwargs["url"] == "https://example.com/fail"
+            assert kwargs["source_name"] == "favorites_sync:zhihu:retry"
+            assert kwargs["client_context"]["source_run_id"] == "failed-run"
+            return SimpleNamespace(id=123)
+
+        monkeypatch.setattr(
+            "app.services.content_service.ContentService.create_share",
+            fake_create_share,
+        )
+
+        retry = await client.post(
+            "/api/v1/favorites-sync/items/retry",
+            json={
+                "platform": "zhihu",
+                "url": "https://example.com/fail",
+                "title": "失败收藏",
+                "item_id": "fav-1",
+                "source_run_id": "failed-run",
+            },
+        )
+        assert retry.status_code == 200
+        data = retry.json()
+        assert data["status"] == "success"
+        assert data["run_id"]
+        assert data["content_id"] == 123
+        assert data["source_run_id"] == "failed-run"
+
+        status = await client.get("/api/v1/favorites-sync/status")
+        latest = next(
+            run
+            for run in status.json()["recent_runs"]
+            if run["run_id"] == data["run_id"]
+        )
+        assert latest["trigger"] == "item_retry"
+        assert latest["scope"] == "zhihu"
+        assert latest["result"]["content_id"] == 123
+        assert latest["result"]["url"] == "https://example.com/fail"
 
     @pytest.mark.asyncio
     async def test_platform_health_aggregates_auth_and_favorites_sync(

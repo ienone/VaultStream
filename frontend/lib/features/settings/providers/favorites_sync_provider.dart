@@ -265,4 +265,31 @@ class FavoritesSyncActions {
     }
     return null;
   }
+
+  Future<String?> retryItem({
+    required String platform,
+    required String url,
+    String? title,
+    String? itemId,
+    String? sourceRunId,
+  }) async {
+    final dio = _ref.read(apiClientProvider);
+    final response = await dio.post(
+      '/favorites-sync/items/retry',
+      data: {
+        'platform': platform,
+        'url': url,
+        if (title != null && title.isNotEmpty) 'title': title,
+        if (itemId != null && itemId.isNotEmpty) 'item_id': itemId,
+        if (sourceRunId != null && sourceRunId.isNotEmpty)
+          'source_run_id': sourceRunId,
+      },
+    );
+    _ref.invalidate(favoritesSyncStatusProvider);
+    final data = response.data;
+    if (data is Map && data['run_id'] != null) {
+      return data['run_id'].toString();
+    }
+    return null;
+  }
 }
