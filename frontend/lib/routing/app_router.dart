@@ -110,7 +110,9 @@ GoRouter goRouter(Ref ref) {
             routes: [
               GoRoute(
                 path: '/home',
-                builder: (context, state) => const DashboardPage(),
+                builder: (context, state) => DashboardPage(
+                  highlightRunId: state.uri.queryParameters['run'],
+                ),
               ),
               GoRoute(
                 path: '/dashboard',

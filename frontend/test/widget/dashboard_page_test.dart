@@ -198,6 +198,83 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
   });
 
+  testWidgets('DashboardPage opens highlighted run detail from query state', (
+    WidgetTester tester,
+  ) async {
+    final mockStats = DashboardStats(
+      platformCounts: {'rss': 1},
+      dailyGrowth: [],
+      storageUsageBytes: 1024,
+    );
+    final mockQueue = QueueOverviewStats(
+      parse: QueueStats(
+        unprocessed: 0,
+        processing: 0,
+        parseSuccess: 1,
+        parseFailed: 0,
+        total: 1,
+      ),
+      distribution: DistributionStats(
+        willPush: 0,
+        filtered: 0,
+        pushed: 1,
+        total: 1,
+      ),
+    );
+    final mockHealth = SystemHealth(
+      status: 'ok',
+      queueSize: 0,
+      components: {'db': 'ok'},
+    );
+    final mockDiscovery = DiscoveryStats(
+      total: 1,
+      byState: {'visible': 1},
+      bySource: {'rss': 1},
+    );
+    final mockDiagnostics = BackgroundTaskDiagnostics.fromJson({
+      'summary': {},
+      'task_states': [],
+      'failed_parse_tasks': [],
+      'failed_distribution_items': [],
+      'failed_discovery_sources': [],
+      'recent_task_runs': [
+        {
+          'run_id': 'highlight-run-1',
+          'task': 'discovery_patrol',
+          'status': 'success',
+          'trigger': 'manual',
+          'result': {'content_id': 7, 'scored_count': 1},
+        },
+      ],
+    });
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          dashboardStatsProvider.overrideWith((ref) => Future.value(mockStats)),
+          queueStatsProvider.overrideWith((ref) => Future.value(mockQueue)),
+          systemHealthProvider.overrideWith((ref) => Future.value(mockHealth)),
+          discoveryStatsProvider.overrideWith(
+            (ref) => Future.value(mockDiscovery),
+          ),
+          backgroundTaskDiagnosticsProvider.overrideWith(
+            (ref) => Future.value(mockDiagnostics),
+          ),
+        ],
+        child: const MaterialApp(
+          home: DashboardPage(highlightRunId: 'highlight-run-1'),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('运行详情'), findsOneWidget);
+    expect(find.text('highlight-run-1'), findsOneWidget);
+    expect(find.text('AI 巡逻'), findsWidgets);
+    expect(find.textContaining('scored_count'), findsOneWidget);
+  });
+
   testWidgets('BackgroundDiagnosticsCard shows recent run details', (
     WidgetTester tester,
   ) async {

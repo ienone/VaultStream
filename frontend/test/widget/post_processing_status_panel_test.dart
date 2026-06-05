@@ -24,7 +24,7 @@ class _RecordingDio extends Mock implements Dio {
     return Response<T>(
       requestOptions: RequestOptions(path: path),
       statusCode: 200,
-      data: {'status': 'success'} as T,
+      data: {'status': 'success', 'run_id': 'run-patrol-1'} as T,
     );
   }
 }
@@ -170,5 +170,6 @@ void main() {
     await tester.pump();
 
     expect(dio.postPaths, contains('/contents/$contentId/patrol-score'));
+    expect(find.text('查看日志'), findsOneWidget);
   });
 }

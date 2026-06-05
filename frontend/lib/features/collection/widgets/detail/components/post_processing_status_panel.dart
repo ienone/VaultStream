@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../../core/network/api_client.dart';
 import '../../../../../core/utils/toast.dart';
@@ -272,14 +273,18 @@ class _StageRow extends ConsumerWidget {
     final dio = ref.read(apiClientProvider);
     try {
       String successMessage;
+      String? runId;
       switch (action.kind) {
         case _StageActionKind.summary:
-          await dio.post('/contents/$contentId/generate-summary?force=true');
+          final response = await dio.post(
+            '/contents/$contentId/generate-summary?force=true',
+          );
+          runId = _extractRunId(response.data);
           ref.invalidate(contentDetailProvider(contentId));
           successMessage = '已开始生成摘要';
           break;
         case _StageActionKind.semanticIndex:
-          await dio.post(
+          final response = await dio.post(
             '/search/semantic/reindex',
             data: {
               'scope': 'single',
@@ -287,6 +292,7 @@ class _StageRow extends ConsumerWidget {
               'dry_run': false,
             },
           );
+          runId = _extractRunId(response.data);
           successMessage = '已调度语义索引重建';
           break;
         case _StageActionKind.distribution:
@@ -310,14 +316,29 @@ class _StageRow extends ConsumerWidget {
           }
           break;
         case _StageActionKind.patrol:
-          await dio.post('/contents/$contentId/patrol-score');
+          final response = await dio.post('/contents/$contentId/patrol-score');
+          runId = _extractRunId(response.data);
           ref.invalidate(contentDetailProvider(contentId));
           successMessage = '已触发巡逻评分';
           break;
       }
       ref.invalidate(contentProcessingStatusProvider(contentId));
       if (context.mounted) {
-        Toast.show(context, successMessage);
+        Toast.show(
+          context,
+          successMessage,
+          action: runId == null
+              ? null
+              : SnackBarAction(
+                  label: '查看日志',
+                  onPressed: () => context.go(
+                    Uri(
+                      path: '/home',
+                      queryParameters: {'run': runId},
+                    ).toString(),
+                  ),
+                ),
+        );
       }
     } catch (e) {
       if (context.mounted) {
@@ -328,6 +349,12 @@ class _StageRow extends ConsumerWidget {
         );
       }
     }
+  }
+
+  String? _extractRunId(dynamic data) {
+    if (data is! Map) return null;
+    final value = data['run_id']?.toString().trim();
+    return value == null || value.isEmpty ? null : value;
   }
 
   void _showFailureDetails(

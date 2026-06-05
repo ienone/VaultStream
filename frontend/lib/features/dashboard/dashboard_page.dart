@@ -22,7 +22,9 @@ import 'widgets/discovery_overview_card.dart';
 import 'widgets/background_diagnostics_card.dart';
 
 class DashboardPage extends ConsumerWidget {
-  const DashboardPage({super.key});
+  const DashboardPage({super.key, this.highlightRunId});
+
+  final String? highlightRunId;
 
   void _navigateToDiscovery(
     BuildContext context,
@@ -142,6 +144,7 @@ class DashboardPage extends ConsumerWidget {
                     backgroundDiagnosticsAsync.when(
                       data: (d) => ActivityTimelineCard(
                         runs: d.recentTaskRuns,
+                        highlightRunId: highlightRunId,
                         onOpenTask: (run) => _openTaskRun(context, run),
                       ),
                       loading: () => const LoadingPlaceholder(height: 220),

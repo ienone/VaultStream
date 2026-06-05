@@ -4,21 +4,63 @@ import 'package:flutter/material.dart';
 
 import '../models/stats.dart';
 
-class ActivityTimelineCard extends StatelessWidget {
+class ActivityTimelineCard extends StatefulWidget {
   const ActivityTimelineCard({
     super.key,
     required this.runs,
     required this.onOpenTask,
+    this.highlightRunId,
   });
 
   final List<BackgroundTaskRun> runs;
   final void Function(BackgroundTaskRun run) onOpenTask;
+  final String? highlightRunId;
+
+  @override
+  State<ActivityTimelineCard> createState() => _ActivityTimelineCardState();
+}
+
+class _ActivityTimelineCardState extends State<ActivityTimelineCard> {
+  String? _openedRunId;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleHighlightedRun();
+  }
+
+  @override
+  void didUpdateWidget(covariant ActivityTimelineCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _scheduleHighlightedRun();
+  }
+
+  void _scheduleHighlightedRun() {
+    final runId = widget.highlightRunId;
+    if (runId == null || runId.isEmpty || runId == _openedRunId) return;
+
+    BackgroundTaskRun? match;
+    for (final run in widget.runs) {
+      if (run.runId == runId) {
+        match = run;
+        break;
+      }
+    }
+    if (match == null) return;
+
+    _openedRunId = runId;
+    final selectedRun = match;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _showRunDetails(context, selectedRun, onOpenTask: widget.onOpenTask);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final displayRuns = runs.take(8).toList(growable: false);
+    final displayRuns = widget.runs.take(8).toList(growable: false);
 
     return Card(
       elevation: 0,
@@ -68,7 +110,7 @@ class ActivityTimelineCard extends StatelessWidget {
                   onOpen: () => _showRunDetails(
                     context,
                     entry.$2,
-                    onOpenTask: onOpenTask,
+                    onOpenTask: widget.onOpenTask,
                   ),
                 ),
               ],
