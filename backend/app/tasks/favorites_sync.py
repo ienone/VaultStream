@@ -66,13 +66,18 @@ class FavoritesSyncTask:
     def is_running(self) -> bool:
         return bool(self._task and not self._task.done())
 
-    async def create_run(self, *, platform: str | None, trigger: str) -> dict:
+    async def create_run(
+        self,
+        *,
+        platform: str | None,
+        trigger: str,
+        retry_of: str | None = None,
+    ) -> dict:
         scope = (platform or "all").strip().lower()
-        return await record_task_run_started(
-            "favorites_sync",
-            scope=scope,
-            trigger=trigger,
-        )
+        metadata = {"scope": scope, "trigger": trigger}
+        if retry_of:
+            metadata["retry_of"] = retry_of
+        return await record_task_run_started("favorites_sync", **metadata)
 
     @staticmethod
     def _parse_enabled_platforms(raw_value: object) -> list[str]:

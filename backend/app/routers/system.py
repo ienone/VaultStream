@@ -724,3 +724,73 @@ async def trigger_favorites_sync(
         )
     )
     return {"status": "accepted", "platform": "all", "run_id": run["run_id"]}
+
+
+@router.post("/favorites-sync/runs/{run_id}/retry", status_code=202)
+async def retry_favorites_sync_run(
+    run_id: str,
+    request: Request,
+    _: None = Depends(require_api_token),
+):
+    """Retry a previous favorites sync run using its recorded scope."""
+    sync_task = getattr(request.app.state, "favorites_sync_task", None)
+    if sync_task is None:
+        raise HTTPException(
+            status_code=503,
+            detail=build_error_payload(
+                message="Favorites sync task is not running",
+                code="favorites_task_unavailable",
+                hint="璇风‘璁ゅ悗绔换鍔″凡鍚姩鍚庨噸璇?",
+                request_id=getattr(request.state, "request_id", None),
+            ),
+        )
+
+    recent_runs = await get_recent_task_runs("favorites_sync", limit=20)
+    source_run = next((run for run in recent_runs if run.get("run_id") == run_id), None)
+    if source_run is None:
+        raise HTTPException(
+            status_code=404,
+            detail=build_error_payload(
+                message=f"Favorites sync run not found: {run_id}",
+                code="favorites_sync_run_not_found",
+                hint="璇峰埛鏂板悓姝ョ姸鎬佸悗閲嶈瘯",
+                request_id=getattr(request.state, "request_id", None),
+            ),
+        )
+
+    scope = str(source_run.get("scope") or "all").strip().lower()
+    platform = None if scope == "all" else scope
+    if platform and platform not in sync_task.get_supported_platforms():
+        raise HTTPException(
+            status_code=400,
+            detail=build_error_payload(
+                message=f"Unsupported favorites sync scope: {scope}",
+                code="unsupported_platform",
+                hint="浠呮敮鎸?zhihu / xiaohongshu / twitter",
+                request_id=getattr(request.state, "request_id", None),
+            ),
+        )
+
+    run = await sync_task.create_run(platform=platform, trigger="retry", retry_of=run_id)
+    if platform:
+        asyncio.create_task(
+            sync_task.sync_platform_by_name(
+                platform,
+                run_id=run["run_id"],
+                trigger="retry",
+            )
+        )
+        return {
+            "status": "accepted",
+            "platform": platform,
+            "run_id": run["run_id"],
+            "retry_of": run_id,
+        }
+
+    asyncio.create_task(
+        sync_task.sync_all_platforms_once(
+            run_id=run["run_id"],
+            trigger="retry",
+        )
+    )
+    return {"status": "accepted", "platform": "all", "run_id": run["run_id"], "retry_of": run_id}

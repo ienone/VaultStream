@@ -7,7 +7,11 @@ import pytest
 from httpx import AsyncClient
 
 from app.main import app
-from app.services.background_task_state import record_task_run_started, record_task_run_success
+from app.services.background_task_state import (
+    record_task_run_error,
+    record_task_run_started,
+    record_task_run_success,
+)
 
 
 class _FakeFavoritesSyncTask:
@@ -26,12 +30,20 @@ class _FakeFavoritesSyncTask:
     async def load_enabled_platforms(self) -> list[str]:
         return []
 
-    async def create_run(self, *, platform: str | None, trigger: str) -> dict:
+    async def create_run(
+        self,
+        *,
+        platform: str | None,
+        trigger: str,
+        retry_of: str | None = None,
+    ) -> dict:
+        run_id = "api-test-retry-run" if trigger == "retry" else "api-test-run"
         return await record_task_run_started(
             "favorites_sync",
-            run_id="api-test-run",
+            run_id=run_id,
             scope=platform or "all",
             trigger=trigger,
+            **({"retry_of": retry_of} if retry_of else {}),
         )
 
     async def sync_platform_by_name(self, platform: str, *, run_id: str | None = None, trigger: str = "manual") -> dict:
@@ -137,6 +149,42 @@ class TestSystemAPI:
             assert runs
             assert runs[0]["run_id"] == "api-test-run"
             assert runs[0]["status"] in {"running", "success"}
+        finally:
+            if previous is None:
+                app.state._state.pop("favorites_sync_task", None)
+            else:
+                app.state.favorites_sync_task = previous
+
+    @pytest.mark.asyncio
+    async def test_favorites_sync_retry_run_uses_recorded_scope(self, client: AsyncClient):
+        previous = getattr(app.state, "favorites_sync_task", None)
+        app.state.favorites_sync_task = _FakeFavoritesSyncTask()
+        await record_task_run_started(
+            "favorites_sync",
+            run_id="failed-favorites-run",
+            scope="zhihu",
+            trigger="manual",
+        )
+        await record_task_run_error(
+            "favorites_sync",
+            "failed-favorites-run",
+            "auth failed",
+            platform="zhihu",
+        )
+        try:
+            retry = await client.post("/api/v1/favorites-sync/runs/failed-favorites-run/retry")
+            assert retry.status_code == 202
+            assert retry.json()["run_id"] == "api-test-retry-run"
+            assert retry.json()["retry_of"] == "failed-favorites-run"
+            assert retry.json()["platform"] == "zhihu"
+
+            await asyncio.sleep(0)
+
+            status = await client.get("/api/v1/favorites-sync/status")
+            latest = status.json()["recent_runs"][0]
+            assert latest["run_id"] == "api-test-retry-run"
+            assert latest["retry_of"] == "failed-favorites-run"
+            assert latest["trigger"] == "retry"
         finally:
             if previous is None:
                 app.state._state.pop("favorites_sync_task", None)
