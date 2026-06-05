@@ -249,13 +249,13 @@ class AgentService:
         emit_event = _event_collector(events, event_sink)
         emit_event({"type": "start", "session_id": session.id, "run_id": run.id})
         try:
-            llm = await LLMFactory.get_text_llm()
+            llm = await LLMFactory.get_agent_chat_llm()
             if llm is None:
                 raise AgentToolError(
                     error_code="agent_model_unavailable",
-                    message="Text LLM is not configured",
+                    message="Agent chat LLM is not configured",
                     retryable=True,
-                    suggested_fix="Configure text_llm_api_key, text_llm_model and text_llm_base_url/text_llm_api_base.",
+                    suggested_fix="Configure agent_chat_api_key/model/base_url or text_llm_api_key/model/base_url.",
                 )
 
             graph = create_react_agent(

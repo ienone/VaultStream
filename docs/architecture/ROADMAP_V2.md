@@ -37,7 +37,7 @@ Important current boundaries:
 - FavoritesSync imports through `ContentService.create_share`; new favorites enter the parse queue, and already parsed duplicates trigger `PostIngestService` with `favorites_sync:<platform>` source metadata.
 - Semantic search is exposed through `/search/semantic`, `/search/semantic/index-status`, and `/search/semantic/reindex`.
 - Distribution decisions are centered on `DistributionService`; legacy engine/scheduler modules should stay thin compatibility wrappers until removed.
-- Agent and GUI actions share a controlled tool/action surface. Dangerous writes require confirmation, and the internal API bridge is allowlist-only.
+- Agent and GUI actions share a controlled tool/action surface. Dangerous writes require confirmation, and the internal API bridge is allowlist-only. Agent chat now uses typed `agent_chat_*` config with `text_llm_*` compatibility fallback.
 
 Main backend risks:
 
@@ -76,7 +76,7 @@ Target: remove issues that make the current system feel unreliable.
 Target: reduce drift between settings, tasks, and user-facing behavior.
 
 - Continue migrating high-value callers from legacy `settings_service` helpers to typed `ConfigService` methods.
-- Extend explicit AI config modeling beyond health diagnostics: summary provider/model/key, embedding provider/model/key/dim, Agent chat provider/model/key.
+- Extend explicit AI config modeling beyond health diagnostics and Agent runtime: add provider fields and connectivity tests for summary, embedding, and Agent chat config.
 - Keep `DistributionService` as the single distribution business entrypoint and remove old wrapper logic in a breaking cleanup release.
 - Split `ContentParser` by responsibility: task orchestration, adapter parsing, archive media processing, post-ingest scheduling, and error/dead-letter handling.
 - Convert high-value dynamic contracts into typed DTOs where they cross frontend/backend boundaries.

@@ -6,6 +6,7 @@ from pydantic import Field, ConfigDict
 
 # LangChain 导入
 from langchain_openai import ChatOpenAI
+from app.services.config_service import ConfigService
 from app.services.settings_service import get_setting_value
 
 class ChatOpenAICompatible(ChatOpenAI):
@@ -77,6 +78,33 @@ class LLMFactory:
             )
         except Exception as e:
             logger.error(f"LLMFactory: Failed to initialize Text LLM - {e}")
+            return None
+
+    @staticmethod
+    async def get_agent_chat_llm() -> Optional[ChatOpenAICompatible]:
+        """
+        获取 Agent 对话模型。
+
+        优先使用 agent_chat_* 动态配置；未配置时兼容回退到 text_llm_*，
+        再由 get_text_llm() 保留旧的 vision fallback。
+        """
+        config = await ConfigService().get_agent_chat_config()
+
+        if not config.api_key:
+            logger.debug("LLMFactory: AGENT_CHAT_API_KEY not found, trying text LLM fallback.")
+            return await LLMFactory.get_text_llm()
+
+        logger.info(f"LLMFactory: Loading Agent Chat Model ({config.model}) from {config.base_url}")
+
+        try:
+            return ChatOpenAICompatible(
+                model=config.model,
+                api_key=config.api_key,
+                base_url=config.base_url,
+                temperature=0.2,
+            )
+        except Exception as e:
+            logger.error(f"LLMFactory: Failed to initialize Agent Chat LLM - {e}")
             return None
 
     @staticmethod
