@@ -41,6 +41,12 @@ from app.services.settings_service import get_setting_value
 from app.utils.url_utils import normalize_url_for_dedup
 from app.utils.datetime_utils import normalize_datetime_for_db
 
+SUPPORTED_DISCOVERY_SOURCE_KINDS = {
+    DiscoverySourceKind.RSS,
+    DiscoverySourceKind.TELEGRAM_CHANNEL,
+}
+SUPPORTED_DISCOVERY_SOURCE_KIND_VALUES = [kind.value for kind in SUPPORTED_DISCOVERY_SOURCE_KINDS]
+
 
 class DiscoverySyncTask:
     """发现源定时同步任务"""
@@ -78,7 +84,7 @@ class DiscoverySyncTask:
         async with AsyncSessionLocal() as db:
             stmt = select(DiscoverySource).where(
                 DiscoverySource.enabled == True,  # noqa: E712
-                DiscoverySource.kind.in_([k.value for k in DiscoverySourceKind]),
+                DiscoverySource.kind.in_(SUPPORTED_DISCOVERY_SOURCE_KIND_VALUES),
             )
             result = await db.execute(stmt)
             sources = result.scalars().all()
@@ -117,6 +123,16 @@ class DiscoverySyncTask:
         """Sync a single discovery source"""
         scraper = self._get_scraper(source)
         if not scraper:
+            source.last_error = f"Unsupported discovery source kind: {source.kind.value}"
+            source.last_sync_at = utcnow()
+            await db.commit()
+            await record_task_error(
+                "discovery_sync",
+                source.last_error,
+                source_id=source.id,
+                source_name=source.name,
+                source_kind=source.kind.value,
+            )
             return
 
         try:

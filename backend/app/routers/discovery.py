@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.events import event_bus
 from app.core.dependencies import require_api_token
+from app.core.api_errors import build_error_payload
 from app.core.time_utils import utcnow
 from app.models import Content, DiscoverySource, DiscoveryState, DiscoverySourceKind
 from app.schemas.discovery import (
@@ -29,7 +30,24 @@ _ALLOWED_SORT_FIELDS = {
     "published_at": Content.published_at,
     "ai_score": Content.ai_score,
 }
-_VALID_DISCOVERY_SOURCE_KINDS = [k.value for k in DiscoverySourceKind]
+_SUPPORTED_DISCOVERY_SOURCE_KINDS = {
+    DiscoverySourceKind.RSS,
+    DiscoverySourceKind.TELEGRAM_CHANNEL,
+}
+_SUPPORTED_DISCOVERY_SOURCE_KIND_VALUES = [k.value for k in _SUPPORTED_DISCOVERY_SOURCE_KINDS]
+
+
+def _raise_unsupported_source_kind(kind: DiscoverySourceKind, request: Request | None = None) -> None:
+    raise HTTPException(
+        status_code=400,
+        detail=build_error_payload(
+            message=f"Discovery source kind is not supported yet: {kind.value}",
+            code="source_kind_not_supported",
+            hint="当前发现源仅支持 RSS 和 Telegram Channel，其他来源仍在路线图中。",
+            request_id=getattr(getattr(request, "state", None), "request_id", None),
+            extra={"supported_kinds": sorted(_SUPPORTED_DISCOVERY_SOURCE_KIND_VALUES)},
+        ),
+    )
 
 
 def _parse_list_param(values: Optional[List[str]]) -> Optional[List[str]]:
@@ -236,8 +254,11 @@ async def list_sources(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
+    if kind and kind not in _SUPPORTED_DISCOVERY_SOURCE_KINDS:
+        _raise_unsupported_source_kind(kind)
+
     query = select(DiscoverySource).where(
-        DiscoverySource.kind.in_(_VALID_DISCOVERY_SOURCE_KINDS)
+        DiscoverySource.kind.in_(_SUPPORTED_DISCOVERY_SOURCE_KIND_VALUES)
     )
     if kind:
         query = query.where(DiscoverySource.kind == kind)
@@ -248,9 +269,13 @@ async def list_sources(
 @router.post("/discovery/sources", response_model=DiscoverySourceResponse, status_code=201)
 async def create_source(
     body: DiscoverySourceCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
+    if body.kind not in _SUPPORTED_DISCOVERY_SOURCE_KINDS:
+        _raise_unsupported_source_kind(body.kind, request)
+
     source = DiscoverySource(
         kind=body.kind,
         name=body.name,
@@ -273,7 +298,7 @@ async def get_source(
     result = await db.execute(
         select(DiscoverySource).where(
             DiscoverySource.id == source_id,
-            DiscoverySource.kind.in_(_VALID_DISCOVERY_SOURCE_KINDS),
+            DiscoverySource.kind.in_(_SUPPORTED_DISCOVERY_SOURCE_KIND_VALUES),
         )
     )
     source = result.scalar_one_or_none()
@@ -292,7 +317,7 @@ async def update_source(
     result = await db.execute(
         select(DiscoverySource).where(
             DiscoverySource.id == source_id,
-            DiscoverySource.kind.in_(_VALID_DISCOVERY_SOURCE_KINDS),
+            DiscoverySource.kind.in_(_SUPPORTED_DISCOVERY_SOURCE_KIND_VALUES),
         )
     )
     source = result.scalar_one_or_none()
@@ -316,7 +341,7 @@ async def delete_source(
     result = await db.execute(
         select(DiscoverySource).where(
             DiscoverySource.id == source_id,
-            DiscoverySource.kind.in_(_VALID_DISCOVERY_SOURCE_KINDS),
+            DiscoverySource.kind.in_(_SUPPORTED_DISCOVERY_SOURCE_KIND_VALUES),
         )
     )
     source = result.scalar_one_or_none()
@@ -338,7 +363,7 @@ async def trigger_sync(
     result = await db.execute(
         select(DiscoverySource).where(
             DiscoverySource.id == source_id,
-            DiscoverySource.kind.in_(_VALID_DISCOVERY_SOURCE_KINDS),
+            DiscoverySource.kind.in_(_SUPPORTED_DISCOVERY_SOURCE_KIND_VALUES),
         )
     )
     source = result.scalar_one_or_none()
