@@ -182,7 +182,12 @@ integration 失败主要集中在真实知乎/小红书内容解析和真实 LLM
 | 置信度 | high=3, medium=3 |
 | 验证方式 | 静态追踪和有限本地路径模拟 |
 
-当前复核结论：`backend/app/routers/media.py` 的本地媒体路径已经使用 `Path.resolve()` + `relative_to()` 校验真实祖先关系，并拒绝 absolute/rooted key；`backend/tests/test_api/test_media.py` 已覆盖 sibling-prefix 路径和正常存储根内路径。因此原扫描中的“公开媒体路由字符串前缀路径检查”不再作为待修项保留。当前仍需跟进 5 项。
+当前复核结论：
+
+- `backend/app/routers/media.py` 的本地媒体路径已经使用 `Path.resolve()` + `relative_to()` 校验真实祖先关系，并拒绝 absolute/rooted key；`backend/tests/test_api/test_media.py` 已覆盖 sibling-prefix 路径和正常存储根内路径。因此原扫描中的“公开媒体路由字符串前缀路径检查”不再作为待修项保留。
+- `backend/app/bot/permissions.py` 的 Telegram bot 权限已经在白名单为空时 fail closed，管理员仍可使用普通命令，黑名单优先级最高；`backend/tests/test_bot/test_permissions.py` 已覆盖这些边界。因此原扫描中的“Telegram bot 白名单默认允许所有用户”不再作为待修项保留。
+
+当前仍需跟进 4 项。
 
 ### S1. 归档媒体处理缺少 SSRF 控制
 
@@ -198,21 +203,14 @@ integration 失败主要集中在真实知乎/小红书内容解析和真实 LLM
 - 影响：图片代理会预解析 DNS 并拒绝私网地址，但实际 httpx 连接仍使用原始 hostname，没有绑定已校验 IP，理论上存在 DNS rebinding 或解析差异绕过。
 - 建议：连接时绑定或验证目标 IP；每次重定向后重新校验；禁止私网、link-local、reserved 目标。
 
-### S3. Telegram bot 白名单默认允许所有用户
-
-- 严重性：medium
-- 置信度：high
-- 影响：白名单为空时当前逻辑等价 allow-all。启用 bot 后，未列入黑名单的任意 Telegram 用户可能调用命令，甚至通过 `/ai` 进入 Agent 执行。
-- 建议：生产环境无白名单时 fail closed；如确需公开 bot，使用显式 `ALLOW_ALL_TELEGRAM_USERS=true`；启动时给出阻断或强警告。
-
-### S4. 通用分享解析可触发内部 URL 获取
+### S3. 通用分享解析可触发内部 URL 获取
 
 - 严重性：medium
 - 置信度：high
 - 影响：持有 API token 的客户端可以提交任意 URL，unknown host 会进入 universal adapter，`tiered_fetch` 使用 httpx/Playwright 直接获取，缺少统一 SSRF 策略。
 - 建议：通用解析和 Playwright navigation 也必须走 SSRF-safe fetcher/策略；对 localhost、RFC1918、metadata、redirect 加测试。
 
-### S5. 本地归档媒体可无鉴权访问
+### S4. 本地归档媒体可无鉴权访问
 
 - 严重性：low
 - 置信度：medium
