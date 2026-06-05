@@ -1,52 +1,64 @@
 import pytest
 
-from app.services.background_task_state import (
-    get_background_task_states,
-    get_recent_task_runs,
-    record_task_run_error,
-    record_task_run_started,
-    record_task_run_success,
-    record_task_error,
-    record_task_started,
-    record_task_success,
-)
+from app.services import background_task_state as state
+
+
+class _FakeConfigService:
+    def __init__(self) -> None:
+        self.values: dict[str, object] = {}
+        self.set_calls: list[dict[str, object]] = []
+
+    async def get_value_fresh(self, key: str, default=None):
+        return self.values.get(key, default)
+
+    async def set_value(self, key: str, value, *, category: str = "general", description=None):
+        self.values[key] = value
+        self.set_calls.append(
+            {
+                "key": key,
+                "value": value,
+                "category": category,
+                "description": description,
+            }
+        )
 
 
 @pytest.mark.asyncio
-async def test_background_task_state_records_lifecycle(db_session):
-    await record_task_started("unit_test_worker", worker="test")
-    await record_task_success("unit_test_worker", processed=2)
-    await record_task_error("unit_test_worker", RuntimeError("boom"), failed=1)
+async def test_background_task_state_uses_config_service(monkeypatch):
+    config = _FakeConfigService()
+    monkeypatch.setattr(state, "_config_service", lambda: config)
 
-    states = await get_background_task_states()
-    state = states["unit_test_worker"]
+    saved = await state.record_task_success("demo_task", indexed=True)
 
-    assert state["task"] == "unit_test_worker"
-    assert state["status"] == "error"
-    assert state["last_started_at"]
-    assert state["last_success_at"]
-    assert state["last_error_at"]
-    assert state["last_error"] == "boom"
-    assert state["run_count"] == 1
-    assert state["error_count"] == 1
-    assert state["processed"] == 2
-    assert state["failed"] == 1
+    key = "background_task_state:demo_task"
+    assert config.values[key] == saved
+    assert saved["task"] == "demo_task"
+    assert saved["status"] == "ok"
+    assert saved["run_count"] == 1
+    assert saved["indexed"] is True
+    assert config.set_calls[-1]["category"] == "background_tasks"
 
 
 @pytest.mark.asyncio
-async def test_background_task_run_records_lifecycle(db_session):
-    started = await record_task_run_started("unit_test_runs", scope="zhihu", trigger="manual")
-    run_id = started["run_id"]
+async def test_recent_task_runs_use_config_service(monkeypatch):
+    config = _FakeConfigService()
+    monkeypatch.setattr(state, "_config_service", lambda: config)
 
-    await record_task_run_success("unit_test_runs", run_id, imported=2)
-    await record_task_run_started("unit_test_runs", run_id="failed-run", scope="twitter")
-    await record_task_run_error("unit_test_runs", "failed-run", RuntimeError("boom"), failed=1)
+    started = await state.record_task_run_started(
+        "demo_runs",
+        run_id="run-1",
+        trigger="manual",
+    )
+    finished = await state.record_task_run_success(
+        "demo_runs",
+        "run-1",
+        indexed=2,
+    )
+    runs = await state.get_recent_task_runs("demo_runs")
 
-    runs = await get_recent_task_runs("unit_test_runs")
-
-    assert runs[0]["run_id"] == "failed-run"
-    assert runs[0]["status"] == "error"
-    assert runs[0]["error"] == "boom"
-    assert runs[1]["run_id"] == run_id
-    assert runs[1]["status"] == "success"
-    assert runs[1]["result"]["imported"] == 2
+    key = "background_task_runs:demo_runs"
+    assert runs == [finished]
+    assert config.values[key] == [finished]
+    assert started["trigger"] == "manual"
+    assert finished["status"] == "success"
+    assert finished["result"] == {"indexed": 2}

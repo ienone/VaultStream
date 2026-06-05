@@ -8,7 +8,7 @@ from sqlalchemy import select
 from app.core.db_adapter import AsyncSessionLocal
 from app.core.time_utils import utcnow
 from app.models import SystemSetting
-from app.services.settings_service import get_setting_value_fresh, set_setting_value
+from app.services.config_service import ConfigService
 
 _PREFIX = "background_task_state:"
 _RUNS_PREFIX = "background_task_runs:"
@@ -26,6 +26,10 @@ def _runs_key(task_name: str) -> str:
 
 def _now_iso() -> str:
     return utcnow().isoformat()
+
+
+def _config_service() -> ConfigService:
+    return ConfigService()
 
 
 async def record_task_started(task_name: str, **metrics: Any) -> dict[str, Any]:
@@ -157,12 +161,12 @@ async def get_recent_task_runs(task_name: str, limit: int = _MAX_RECENT_RUNS) ->
 
 
 async def _load_state(task_name: str) -> dict[str, Any]:
-    state = await get_setting_value_fresh(_setting_key(task_name), {})
+    state = await _config_service().get_value_fresh(_setting_key(task_name), {})
     return dict(state) if isinstance(state, dict) else {}
 
 
 async def _save_state(task_name: str, state: dict[str, Any]) -> dict[str, Any]:
-    await set_setting_value(
+    await _config_service().set_value(
         _setting_key(task_name),
         state,
         category=_CATEGORY,
@@ -172,7 +176,7 @@ async def _save_state(task_name: str, state: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _load_runs(task_name: str) -> list[dict[str, Any]]:
-    runs = await get_setting_value_fresh(_runs_key(task_name), [])
+    runs = await _config_service().get_value_fresh(_runs_key(task_name), [])
     if not isinstance(runs, list):
         return []
     return [dict(run) for run in runs if isinstance(run, dict)]
@@ -189,7 +193,7 @@ async def _upsert_run(task_name: str, run: dict[str, Any]) -> None:
     runs = await _load_runs(task_name)
     filtered = [item for item in runs if item.get("run_id") != run.get("run_id")]
     next_runs = [run, *filtered][:_MAX_RECENT_RUNS]
-    await set_setting_value(
+    await _config_service().set_value(
         _runs_key(task_name),
         next_runs,
         category=_CATEGORY,
