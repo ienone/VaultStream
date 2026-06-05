@@ -262,22 +262,43 @@ class _PlatformHealthList extends ConsumerWidget {
     return Column(
       children: [
         for (final platform in platforms.take(6))
-          _HealthRow(
-            icon: _platformIcon(platform.platform),
-            title: platform.label,
-            subtitle: platform.issues.isEmpty
-                ? 'Cookie ${platform.hasCookie ? '已配置' : '未配置'} · 收藏同步 ${platform.favoritesEnabled ? '已启用' : '未启用'}'
-                : platform.issues.join('；'),
-            state: _platformState(platform),
-            action: OutlinedButton.icon(
-              onPressed: platform.auth['browser_auth_supported'] == true
-                  ? () => _checkPlatformLogin(context, ref, platform)
-                  : null,
-              icon: const Icon(Icons.fact_check_rounded, size: 16),
-              label: const Text('检测'),
-            ),
-          ),
+          _buildPlatformRow(context, ref, platform),
       ],
+    );
+  }
+
+  Widget _buildPlatformRow(
+    BuildContext context,
+    WidgetRef ref,
+    PlatformHealthStatus platform,
+  ) {
+    final lastRunId = _lastFavoritesRunId(platform);
+    return _HealthRow(
+      icon: _platformIcon(platform.platform),
+      title: platform.label,
+      subtitle: platform.issues.isEmpty
+          ? 'Cookie ${platform.hasCookie ? '已配置' : '未配置'} · 收藏同步 ${platform.favoritesEnabled ? '已启用' : '未启用'}'
+          : platform.issues.join('；'),
+      state: _platformState(platform),
+      action: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (lastRunId != null)
+            IconButton.filledTonal(
+              onPressed: () => _openFavoritesRun(context, lastRunId),
+              icon: const Icon(Icons.receipt_long_rounded, size: 18),
+              tooltip: '查看最近同步结果',
+            ),
+          if (lastRunId != null) const SizedBox(width: 6),
+          OutlinedButton.icon(
+            onPressed: platform.auth['browser_auth_supported'] == true
+                ? () => _checkPlatformLogin(context, ref, platform)
+                : null,
+            icon: const Icon(Icons.fact_check_rounded, size: 16),
+            label: const Text('检测'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -586,6 +607,22 @@ Future<void> _syncPushTarget(
       );
     }
   }
+}
+
+String? _lastFavoritesRunId(PlatformHealthStatus platform) {
+  final runId = platform.lastFavoritesRun?['run_id'];
+  if (runId == null) return null;
+  final text = runId.toString();
+  return text.isEmpty ? null : text;
+}
+
+void _openFavoritesRun(BuildContext context, String runId) {
+  context.go(
+    Uri(
+      path: '/automation',
+      queryParameters: {'tab': 'favorites', 'run': runId},
+    ).toString(),
+  );
 }
 
 String _shortId(String runId) =>

@@ -357,6 +357,7 @@ void main() {
       expect(find.text('配置'), findsOneWidget);
       expect(find.text('推送设置'), findsOneWidget);
       expect(find.text('检测'), findsOneWidget);
+      expect(find.byTooltip('查看最近同步结果'), findsOneWidget);
       expect(find.text('同步'), findsOneWidget);
       expect(find.text('刷新'), findsOneWidget);
     });
@@ -420,7 +421,11 @@ PlatformHealthResponse _mockPlatformHealth() {
         health: 'error',
         issues: ['登录状态不可用'],
         auth: {'cookie_configured': true, 'browser_auth_valid': false},
-        favoritesSync: {'supported': true, 'enabled': true},
+        favoritesSync: {
+          'supported': true,
+          'enabled': true,
+          'last_run': {'run_id': 'abcdef123456', 'status': 'error'},
+        },
       ),
     ],
     recentFavoritesRuns: [],
