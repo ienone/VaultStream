@@ -117,15 +117,15 @@ VaultStream 已经具备个人内容收集、解析、检索、发现、审核�
 - content-level 接口只用于明确的批量操作。
 - UI 在批量操作前显示影响范围，例如“将影响 3 个目标中的 3 条队列项”。
 
-### 2. 发现源类型声明和实际实现不一致
+### 2. 发现源支持边界需要持续保持清晰
 
-后端枚举包含 RSS、HackerNews、Reddit、GitHub、Telegram Channel，但实际同步器主要支持 RSS 和 Telegram Channel，前端设置页也主要识别这两类。
+后端枚举仍保留 RSS、HackerNews、Reddit、GitHub、Telegram Channel，用于表达路线图和历史数据兼容；当前实际可创建、可列出、可手动同步的普通用户来源已收敛为 RSS 和 Telegram Channel。未实现来源在创建或显式查询时应返回结构化错误 `source_kind_not_supported`，后台定时同步也只扫描已支持来源，避免“创建成功但同步无结果”的静默失败。
 
-建议：
+后续要求：
 
-- 当前 UI 和 API 创建入口只暴露已实现来源。
-- 未实现来源标记为 roadmap，不进入普通用户配置流。
-- 如果保留枚举，后端创建/同步时应返回明确错误：`source_kind_not_supported`。
+- 保持前端普通配置入口只暴露 RSS 和 Telegram Channel。
+- 新增 HackerNews、Reddit、GitHub 等来源时，必须同时补齐后端 scraper、API 测试和前端表单元数据。
+- 不要只扩展枚举或 UI 下拉项，否则会重新引入“看似支持、实际不可用”的体验问题。
 
 ### 3. 新增分发目标不回填历史内容
 
@@ -253,7 +253,7 @@ integration 失败主要集中在真实知乎/小红书内容解析和真实 LLM
 - 把收藏同步升级为可追踪、可预览、可重试的独立功能。
 - 建立账号与平台健康中心。
 - 所有服务端 URL 获取统一 SSRF 防护，包括媒体处理、图片代理、通用解析和 Playwright。
-- 明确发现源支持边界，只暴露 RSS 和 Telegram Channel，或为未实现类型返回明确 unsupported。
+- 明确发现源支持边界：当前已按 RSS 和 Telegram Channel 收敛；后续新增来源必须端到端补齐 scraper、API 和 UI。
 
 ### P2：提升产品可理解性
 
