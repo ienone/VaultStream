@@ -137,52 +137,6 @@ class ActionSummaryCard extends StatelessWidget {
                 ),
               ],
             ),
-            if (diagnostics.recentTaskRuns.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Divider(color: colorScheme.outlineVariant),
-              const SizedBox(height: 4),
-              Text(
-                '最近后台运行',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
-              ...diagnostics.recentTaskRuns
-                  .take(3)
-                  .map(
-                    (run) => Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.history_rounded,
-                            size: 18,
-                            color: _statusColor(colorScheme, run.status),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              run.task,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            run.status,
-                            style: Theme.of(context).textTheme.labelMedium
-                                ?.copyWith(
-                                  color: _statusColor(colorScheme, run.status),
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-            ],
           ],
         ),
       ),
@@ -252,13 +206,4 @@ class _MetricButton extends StatelessWidget {
       ),
     );
   }
-}
-
-Color _statusColor(ColorScheme colorScheme, String status) {
-  return switch (status) {
-    'success' || 'ok' => Colors.green,
-    'running' => colorScheme.primary,
-    'error' || 'failed' => colorScheme.error,
-    _ => colorScheme.onSurfaceVariant,
-  };
 }

@@ -13,6 +13,7 @@ import '../discovery/models/discovery_models.dart';
 import '../discovery/providers/discovery_stats_provider.dart';
 import '../discovery/providers/discovery_filter_provider.dart';
 import 'widgets/action_summary_card.dart';
+import 'widgets/activity_timeline_card.dart';
 import 'widgets/stat_card.dart';
 import 'widgets/queue_status_card.dart';
 import 'widgets/platform_distribution_card.dart';
@@ -128,6 +129,23 @@ class DashboardPage extends ConsumerWidget {
                       queueAsync,
                       discoveryStatsAsync,
                       backgroundDiagnosticsAsync,
+                    ),
+                    const SizedBox(height: 40),
+
+                    SectionHeader(
+                      title: '运行时间线',
+                      icon: Icons.timeline_rounded,
+                      padding: EdgeInsets.zero,
+                      textStyle: sectionStyle,
+                    ),
+                    const SizedBox(height: 16),
+                    backgroundDiagnosticsAsync.when(
+                      data: (d) => ActivityTimelineCard(
+                        runs: d.recentTaskRuns,
+                        onOpenTask: (run) => _openTaskRun(context, run),
+                      ),
+                      loading: () => const LoadingPlaceholder(height: 220),
+                      error: (e, _) => ErrorCard(message: '加载运行时间线失败: $e'),
                     ),
                     const SizedBox(height: 40),
 
@@ -426,6 +444,31 @@ class DashboardPage extends ConsumerWidget {
         ),
       ).animate().fadeIn().scale(begin: const Offset(0.9, 0.9)),
     );
+  }
+
+  void _openTaskRun(BuildContext context, BackgroundTaskRun run) {
+    final task = run.task;
+    if (task == 'favorites_sync') {
+      context.go('/automation?tab=favorites');
+      return;
+    }
+    if (task.startsWith('distribution_')) {
+      context.go('/automation?tab=history');
+      return;
+    }
+    if (task == 'discovery_sync' || task == 'discovery_patrol') {
+      context.go('/inbox');
+      return;
+    }
+    if (task == 'content_parse' ||
+        task == 'content_reparse' ||
+        task == 'content_summary' ||
+        task == 'content_embedding' ||
+        task == 'semantic_reindex') {
+      context.go('/collection');
+      return;
+    }
+    context.go('/automation?tab=health');
   }
 
   String _formatBytes(int bytes) {

@@ -86,7 +86,9 @@ void main() {
     expect(find.text('系统概览'), findsOneWidget);
     expect(find.text('待处理动态'), findsOneWidget);
     expect(find.text('有 10 个待处理动态'), findsOneWidget);
-    expect(find.text('favorites_sync'), findsWidgets);
+    expect(find.text('运行时间线'), findsOneWidget);
+    expect(find.text('最近后台运行'), findsWidgets);
+    expect(find.text('收藏同步'), findsOneWidget);
     expect(find.text('总内容'), findsWidgets);
     expect(find.text('15'), findsWidgets); // Total content count
 
