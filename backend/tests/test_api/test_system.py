@@ -116,11 +116,15 @@ class TestSystemAPI:
         assert "summary" in providers
         assert "embedding" in providers
         assert "agent_chat" in providers
+        assert "text_llm" in providers
+        assert "vision_llm" in providers
         assert "enabled" in providers["summary"]
         assert "api_version" in providers["summary"]
         assert "output_dimensionality" in providers["embedding"]
         assert "search_max_rows" in providers["embedding"]
         assert "base_url" in providers["agent_chat"]
+        assert "base_url" in providers["text_llm"]
+        assert "base_url" in providers["vision_llm"]
     
     @pytest.mark.asyncio
     async def test_api_root(self, client: AsyncClient):

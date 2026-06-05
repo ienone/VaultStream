@@ -1,5 +1,3 @@
-import os
-import logging
 from typing import Optional, Literal
 from loguru import logger
 from pydantic import Field, ConfigDict
@@ -7,7 +5,6 @@ from pydantic import Field, ConfigDict
 # LangChain 导入
 from langchain_openai import ChatOpenAI
 from app.services.config_service import ConfigService
-from app.services.settings_service import get_setting_value
 
 class ChatOpenAICompatible(ChatOpenAI):
     """
@@ -29,21 +26,19 @@ class LLMFactory:
         获取视觉大模型 (用于 Browser Use / 复杂 Agent 任务)
         读取 VISION_LLM_* 配置
         """
-        api_key = await get_setting_value("vision_llm_api_key")
-        base_url = await get_setting_value("vision_llm_api_base")
-        model = await get_setting_value("vision_llm_model")
+        config = await ConfigService().get_vision_llm_config()
 
-        if not api_key:
+        if not config.api_key:
             logger.warning("LLMFactory: VISION_LLM_API_KEY not found. Vision features will be disabled.")
             return None
 
-        logger.info(f"LLMFactory: Loading Vision Model ({model}) from {base_url}")
+        logger.info(f"LLMFactory: Loading Vision Model ({config.model}) from {config.base_url}")
         
         try:
             return ChatOpenAICompatible(
-                model=model,
-                api_key=api_key,
-                base_url=base_url,
+                model=config.model,
+                api_key=config.api_key,
+                base_url=config.base_url,
                 temperature=0.0, # Agent 任务通常需要低温度以保证确定性
             )
         except Exception as e:
@@ -56,24 +51,20 @@ class LLMFactory:
         获取文本大模型 (用于 Crawl4AI 提取 / 摘要生成 / 清洗)
         读取 TEXT_LLM_* 配置
         """
-        api_key = await get_setting_value("text_llm_api_key")
-        base_url = await get_setting_value("text_llm_base_url")
-        if not base_url:
-            base_url = await get_setting_value("text_llm_api_base")
-        model = await get_setting_value("text_llm_model")
+        config = await ConfigService().get_text_llm_config()
 
-        if not api_key:
+        if not config.api_key:
             # 如果没有专门配置文本模型，尝试回退到视觉模型配置 (假设视觉模型也能处理文本)
             logger.debug("LLMFactory: TEXT_LLM_API_KEY not found, trying fallback to VISION_LLM.")
             return await LLMFactory.get_vision_llm()
 
-        logger.info(f"LLMFactory: Loading Text Model ({model}) from {base_url}")
+        logger.info(f"LLMFactory: Loading Text Model ({config.model}) from {config.base_url}")
 
         try:
             return ChatOpenAICompatible(
-                model=model,
-                api_key=api_key,
-                base_url=base_url,
+                model=config.model,
+                api_key=config.api_key,
+                base_url=config.base_url,
                 temperature=0.3, # 文本生成稍微增加一点创造性
             )
         except Exception as e:
@@ -112,23 +103,22 @@ class LLMFactory:
         """
         专门为 Crawl4AI 获取 LLM 配置字典 (Crawl4AI 不需要 LangChain 对象，而是需要 dict)
         """
-        prefix = "vision" if model_type == "vision" else "text"
-        
-        api_key = await get_setting_value(f"{prefix}_llm_api_key")
-        base_url = await get_setting_value(f"{prefix}_llm_base_url")
-        if not base_url:
-            base_url = await get_setting_value(f"{prefix}_llm_api_base")
-        model = await get_setting_value(f"{prefix}_llm_model")
+        config_service = ConfigService()
+        config = (
+            await config_service.get_vision_llm_config()
+            if model_type == "vision"
+            else await config_service.get_text_llm_config()
+        )
         
         # 兼容性处理：Crawl4AI 的 provider 格式通常是 "openai/model-name"
         # 如果我们用的是兼容接口，provider 写 openai 即可
         
-        if not api_key:
+        if not config.api_key:
             logger.warning(f"LLMFactory: Missing API Key for {model_type} config.")
             return {}
 
         return {
-            "provider": f"openai/{model}", # 这里的格式取决于 liteLLM
-            "api_token": api_key,
-            "base_url": base_url
+            "provider": f"openai/{config.model}", # 这里的格式取决于 liteLLM
+            "api_token": config.api_key,
+            "base_url": config.base_url
         }

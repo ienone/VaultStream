@@ -59,10 +59,19 @@ class AgentChatConfig:
 
 
 @dataclass(frozen=True)
+class LLMConfig:
+    api_key: str | None
+    model: str
+    base_url: str | None
+
+
+@dataclass(frozen=True)
 class AIConfig:
     summary: SummaryAIConfig
     embedding: EmbeddingAIConfig
     agent_chat: AgentChatConfig
+    text_llm: LLMConfig
+    vision_llm: LLMConfig
 
 
 class ConfigService:
@@ -271,11 +280,57 @@ class ConfigService:
             base_url=str(base_url) if base_url else None,
         )
 
+    async def get_text_llm_config(self) -> LLMConfig:
+        from app.core.config import settings
+
+        api_key = await self.get_value("text_llm_api_key")
+        key_text = extract_secret_value(api_key)
+        if key_text is None:
+            key_text = extract_secret_value(settings.text_llm_api_key)
+
+        base_url = await self.get_value("text_llm_base_url")
+        if not base_url:
+            base_url = await self.get_value("text_llm_api_base")
+        if not base_url:
+            base_url = settings.text_llm_base_url
+
+        model = await self.get_value("text_llm_model", settings.text_llm_model)
+
+        return LLMConfig(
+            api_key=key_text,
+            model=str(model or settings.text_llm_model),
+            base_url=str(base_url) if base_url else None,
+        )
+
+    async def get_vision_llm_config(self) -> LLMConfig:
+        from app.core.config import settings
+
+        api_key = await self.get_value("vision_llm_api_key")
+        key_text = extract_secret_value(api_key)
+        if key_text is None:
+            key_text = extract_secret_value(settings.vision_llm_api_key)
+
+        base_url = await self.get_value("vision_llm_base_url")
+        if not base_url:
+            base_url = await self.get_value("vision_llm_api_base")
+        if not base_url:
+            base_url = settings.vision_llm_base_url
+
+        model = await self.get_value("vision_llm_model", settings.vision_llm_model)
+
+        return LLMConfig(
+            api_key=key_text,
+            model=str(model or settings.vision_llm_model),
+            base_url=str(base_url) if base_url else None,
+        )
+
     async def get_ai_config(self) -> AIConfig:
         return AIConfig(
             summary=await self.get_summary_ai_config(),
             embedding=await self.get_embedding_ai_config(),
             agent_chat=await self.get_agent_chat_config(),
+            text_llm=await self.get_text_llm_config(),
+            vision_llm=await self.get_vision_llm_config(),
         )
 
     def _sync_runtime_setting(self, key: str, value: Any) -> None:

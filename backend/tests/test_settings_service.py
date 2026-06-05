@@ -385,6 +385,46 @@ async def test_config_service_ai_config_uses_typed_values():
                     value="https://llm.example.test",
                     category="ai",
                 ),
+                SystemSetting(
+                    key="text_llm_api_key",
+                    value="text-key",
+                    category="ai",
+                ),
+                SystemSetting(
+                    key="text_llm_model",
+                    value="text-model",
+                    category="ai",
+                ),
+                SystemSetting(
+                    key="text_llm_base_url",
+                    value="https://text.example.test",
+                    category="ai",
+                ),
+                SystemSetting(
+                    key="text_llm_api_base",
+                    value="https://legacy-text.example.test",
+                    category="ai",
+                ),
+                SystemSetting(
+                    key="vision_llm_api_key",
+                    value="vision-key",
+                    category="ai",
+                ),
+                SystemSetting(
+                    key="vision_llm_model",
+                    value="vision-model",
+                    category="ai",
+                ),
+                SystemSetting(
+                    key="vision_llm_base_url",
+                    value="https://vision.example.test",
+                    category="ai",
+                ),
+                SystemSetting(
+                    key="vision_llm_api_base",
+                    value="https://legacy-vision.example.test",
+                    category="ai",
+                ),
             ]
         )
         await session.commit()
@@ -403,6 +443,12 @@ async def test_config_service_ai_config_uses_typed_values():
     assert ai_config.agent_chat.api_key == "agent-key"
     assert ai_config.agent_chat.model == "agent-model"
     assert ai_config.agent_chat.base_url == "https://llm.example.test"
+    assert ai_config.text_llm.api_key == "text-key"
+    assert ai_config.text_llm.model == "text-model"
+    assert ai_config.text_llm.base_url == "https://text.example.test"
+    assert ai_config.vision_llm.api_key == "vision-key"
+    assert ai_config.vision_llm.model == "vision-model"
+    assert ai_config.vision_llm.base_url == "https://vision.example.test"
 
 
 @pytest.mark.asyncio

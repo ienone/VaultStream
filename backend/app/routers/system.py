@@ -749,6 +749,16 @@ async def _build_provider_diagnostics(db: AsyncSession) -> dict[str, Any]:
             "model": ai_config.agent_chat.model,
             "base_url": ai_config.agent_chat.base_url,
         },
+        "text_llm": {
+            "configured": bool(ai_config.text_llm.api_key),
+            "model": ai_config.text_llm.model,
+            "base_url": ai_config.text_llm.base_url,
+        },
+        "vision_llm": {
+            "configured": bool(ai_config.vision_llm.api_key),
+            "model": ai_config.vision_llm.model,
+            "base_url": ai_config.vision_llm.base_url,
+        },
         "bots": {
             "enabled_configs": int(enabled_bot_count),
         },
