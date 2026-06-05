@@ -190,6 +190,7 @@ async def _build_background_failure_details(
         "content_reparse",
         "content_embedding",
         "content_summary",
+        "discovery_patrol",
         "discovery_sync",
         "distribution_push",
         "distribution_schedule",

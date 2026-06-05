@@ -2,9 +2,12 @@
 
 import json
 import pytest
+from uuid import uuid4
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services.patrol_service import PatrolService
+from app.services.background_task_state import get_recent_task_runs
+from app.models import Content
 from app.models.base import DiscoveryState, Platform
 
 
@@ -269,3 +272,64 @@ class TestScoreBatch:
             scored = await self.svc.score_batch(items)
 
         assert scored == 2
+
+
+@pytest.mark.asyncio
+async def test_score_pending_records_discovery_patrol_run(monkeypatch, db_session, client):
+    token = uuid4().hex
+    contents = [
+        Content(
+            platform=Platform.RSS,
+            url=f"https://example.com/patrol/{token}/1",
+            canonical_url=f"https://example.com/patrol/{token}/1",
+            title=f"Patrol run test {token} 1",
+            body="Interesting content",
+            discovery_state=DiscoveryState.INGESTED,
+        ),
+        Content(
+            platform=Platform.RSS,
+            url=f"https://example.com/patrol/{token}/2",
+            canonical_url=f"https://example.com/patrol/{token}/2",
+            title=f"Patrol run test {token} 2",
+            body="More interesting content",
+            discovery_state=DiscoveryState.INGESTED,
+        ),
+    ]
+    db_session.add_all(contents)
+    await db_session.commit()
+
+    async def fake_score_batch(self, items, interest_profile="", batch_size=10):
+        assert interest_profile == "AI and systems"
+        for item in items:
+            if item.title and token in item.title:
+                item.discovery_state = DiscoveryState.VISIBLE
+        return len(items)
+
+    monkeypatch.setattr(PatrolService, "score_batch", fake_score_batch)
+
+    with patch(
+        "app.services.settings_service.get_setting_value",
+        new_callable=AsyncMock,
+        return_value="AI and systems",
+    ):
+        scored = await PatrolService().score_pending(db_session)
+
+    runs = await get_recent_task_runs("discovery_patrol")
+    latest = runs[0]
+    assert latest["task"] == "discovery_patrol"
+    assert latest["status"] == "success"
+    assert latest["trigger"] == "auto"
+    assert latest["result"]["candidate_count"] == scored
+    assert latest["result"]["scored_count"] == scored
+    assert latest["result"]["failed_count"] == 0
+    assert latest["result"]["interest_profile_present"] is True
+
+    diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
+    assert diagnostics.status_code == 200
+    diagnostic_run = next(
+        run
+        for run in diagnostics.json()["recent_task_runs"]
+        if run["run_id"] == latest["run_id"]
+    )
+    assert diagnostic_run["task"] == "discovery_patrol"
+    assert diagnostic_run["status"] == "success"

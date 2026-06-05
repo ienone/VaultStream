@@ -14,6 +14,11 @@ from app.core.llm_factory import LLMFactory
 from app.core.logging import logger
 from app.models.content import Content
 from app.models.base import DiscoveryState
+from app.services.background_task_state import (
+    record_task_run_error,
+    record_task_run_started,
+    record_task_run_success,
+)
 
 
 # Horizon prompts
@@ -175,11 +180,37 @@ class PatrolService:
             logger.debug("巡逻评分: 没有待评分内容")
             return 0
 
-        interest_profile = await get_setting_value("discovery_interest_profile", "") or ""
+        run = await record_task_run_started(
+            "discovery_patrol",
+            trigger="auto",
+            candidate_count=len(items),
+        )
+        run_id = run["run_id"]
 
-        logger.info(f"巡逻评分: 开始处理 {len(items)} 条待评分内容")
-        scored = await self.score_batch(items, interest_profile=interest_profile)
+        try:
+            interest_profile = await get_setting_value("discovery_interest_profile", "") or ""
 
-        await db.commit()
-        logger.info(f"巡逻评分: 完成, 成功 {scored}/{len(items)}")
-        return scored
+            logger.info(f"巡逻评分: 开始处理 {len(items)} 条待评分内容")
+            scored = await self.score_batch(items, interest_profile=interest_profile)
+
+            await db.commit()
+            await record_task_run_success(
+                "discovery_patrol",
+                run_id,
+                trigger="auto",
+                candidate_count=len(items),
+                scored_count=scored,
+                failed_count=max(0, len(items) - scored),
+                interest_profile_present=bool(interest_profile.strip()),
+            )
+            logger.info(f"巡逻评分: 完成, 成功 {scored}/{len(items)}")
+            return scored
+        except Exception as e:
+            await record_task_run_error(
+                "discovery_patrol",
+                run_id,
+                e,
+                trigger="auto",
+                candidate_count=len(items),
+            )
+            raise
