@@ -3,7 +3,6 @@ from uuid import uuid4
 
 import pytest
 
-from app.services import settings_service
 from app.models import (
     BotChat,
     BotChatType,
@@ -17,13 +16,48 @@ from app.models import (
     Platform,
     QueueItemStatus,
 )
+from app.services.config_service import (
+    AIConfig,
+    AgentChatConfig,
+    EmbeddingAIConfig,
+    LLMConfig,
+    SummaryAIConfig,
+)
+
+
+def _ai_config_without_runtime_keys() -> AIConfig:
+    return AIConfig(
+        summary=SummaryAIConfig(
+            enabled=True,
+            api_key=None,
+            model="summary-model",
+            api_version="v1beta",
+        ),
+        embedding=EmbeddingAIConfig(
+            api_key=None,
+            model="gemini-embedding-2",
+            output_dimensionality=1536,
+            search_max_rows=5000,
+        ),
+        agent_chat=AgentChatConfig(
+            api_key=None,
+            model="agent-model",
+            base_url=None,
+        ),
+        text_llm=LLMConfig(api_key=None, model="text-model", base_url=None),
+        vision_llm=LLMConfig(api_key=None, model="vision-model", base_url=None),
+    )
 
 
 @pytest.mark.asyncio
 async def test_processing_status_includes_failure_payloads(client, db_session, monkeypatch):
-    monkeypatch.setitem(settings_service._SETTINGS_CACHE, "embedding_api_key", "")
-    monkeypatch.setitem(settings_service._SETTINGS_CACHE, "text_llm_api_key", "")
-    monkeypatch.setitem(settings_service._SETTINGS_CACHE, "vision_llm_api_key", "")
+    async def _fake_ai_config(self):
+        return _ai_config_without_runtime_keys()
+
+    monkeypatch.setattr(
+        "app.routers.contents.ConfigService.get_ai_config",
+        _fake_ai_config,
+    )
 
     suffix = uuid4().hex
     content = Content(

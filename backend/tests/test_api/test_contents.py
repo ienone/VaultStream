@@ -284,7 +284,7 @@ class TestContentsAPI:
         from app.services.background_task_state import get_recent_task_runs
         from app.services.patrol_service import PatrolService
 
-        async def fake_get_setting_value(key: str, default=None):
+        async def fake_get_value(self, key: str, default=None):
             if key == "discovery_interest_profile":
                 return "AI and systems"
             return default
@@ -298,7 +298,7 @@ class TestContentsAPI:
             content.discovery_state = DiscoveryState.VISIBLE
             return True
 
-        monkeypatch.setattr("app.routers.contents.get_setting_value", fake_get_setting_value)
+        monkeypatch.setattr("app.routers.contents.ConfigService.get_value", fake_get_value)
         monkeypatch.setattr(PatrolService, "score_item", fake_score_item)
 
         import time

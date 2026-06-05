@@ -45,8 +45,7 @@ from app.services.background_task_state import (
 )
 from app.media.extractor import sanitize_media_urls
 from app.adapters.utils import ensure_title
-from app.services.settings_service import get_setting_value
-from app.utils.sensitive_display import extract_secret_value
+from app.services.config_service import ConfigService
 
 router = APIRouter()
 
@@ -59,18 +58,13 @@ def _status_counts(rows) -> dict[str, int]:
     return counts
 
 
-def _is_configured_value(value) -> bool:
-    text = extract_secret_value(value)
-    return isinstance(text, str) and bool(text.strip())
-
-
 async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
-    summary_enabled = bool(await get_setting_value("enable_auto_summary", settings.enable_auto_summary))
-    summary_key = await get_setting_value("summary_api_key")
-    summary_key_ready = _is_configured_value(summary_key)
-    embedding_key_ready = _is_configured_value(await get_setting_value("embedding_api_key"))
-    text_llm_ready = _is_configured_value(await get_setting_value("text_llm_api_key"))
-    vision_llm_ready = _is_configured_value(await get_setting_value("vision_llm_api_key"))
+    ai_config = await ConfigService().get_ai_config()
+    summary_enabled = ai_config.summary.enabled
+    summary_key_ready = bool(ai_config.summary.api_key)
+    embedding_key_ready = bool(ai_config.embedding.api_key)
+    text_llm_ready = bool(ai_config.text_llm.api_key)
+    vision_llm_ready = bool(ai_config.vision_llm.api_key)
     has_summary = bool((content.summary or "").strip())
     has_chunks = bool(
         isinstance(content.rich_payload, dict)
@@ -615,7 +609,7 @@ async def score_content_patrol(
     if content.discovery_state is None:
         raise HTTPException(status_code=400, detail="非发现流内容不需要巡逻评分")
 
-    interest_profile = await get_setting_value("discovery_interest_profile", "") or ""
+    interest_profile = str(await ConfigService().get_value("discovery_interest_profile", "") or "")
     run = await record_task_run_started(
         "discovery_patrol",
         trigger="manual",
