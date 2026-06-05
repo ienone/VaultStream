@@ -27,6 +27,27 @@ class DistributionTargetCreate(BaseModel):
         return value
 
 
+class DistributionTargetBackfillPreviewRequest(BaseModel):
+    bot_chat_id: int
+    backfill_mode: Literal["new_only", "all_history", "recent_days"] = "new_only"
+    backfill_recent_days: Optional[int] = Field(default=None, ge=1, le=3650)
+
+    @field_validator("backfill_recent_days")
+    @classmethod
+    def validate_recent_days(cls, value: Optional[int], info):
+        if info.data.get("backfill_mode") == "recent_days" and value is None:
+            raise ValueError("backfill_recent_days is required when backfill_mode is recent_days")
+        return value
+
+
+class DistributionTargetBackfillPreviewResponse(BaseModel):
+    rule_id: int
+    bot_chat_id: int
+    backfill_mode: str
+    backfill_recent_days: Optional[int] = None
+    candidate_count: int
+
+
 class DistributionTargetUpdate(BaseModel):
     enabled: Optional[bool] = None
     merge_forward: Optional[bool] = None

@@ -672,6 +672,18 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                     .createRule(rule);
                 final uniqueChatIds = selectedChatIds.toSet();
                 var backfilledCount = 0;
+                final confirmed = await _confirmBackfillIfNeeded(
+                  ruleId: newRule.id,
+                  chatIds: uniqueChatIds,
+                  backfillMode: backfillMode,
+                  backfillRecentDays: backfillRecentDays,
+                );
+                if (!confirmed) {
+                  if (mounted) {
+                    Toast.show(context, '规则已创建，目标回填已取消');
+                  }
+                  return;
+                }
                 for (final chatId in uniqueChatIds) {
                   final result = await ref
                       .read(distributionTargetsProvider(newRule.id).notifier)
@@ -736,6 +748,21 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                 var backfilledCount = 0;
                 var addedCount = 0;
                 var removedCount = 0;
+                final addedChatIds = selected
+                    .where((chatId) => !existingByChatId.containsKey(chatId))
+                    .toSet();
+                final confirmed = await _confirmBackfillIfNeeded(
+                  ruleId: id,
+                  chatIds: addedChatIds,
+                  backfillMode: backfillMode,
+                  backfillRecentDays: backfillRecentDays,
+                );
+                if (!confirmed) {
+                  if (mounted) {
+                    Toast.show(context, '规则已更新，目标回填已取消');
+                  }
+                  return;
+                }
 
                 for (final target in existingTargets) {
                   if (!selected.contains(target.botChatId)) {
@@ -746,19 +773,17 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
                   }
                 }
 
-                for (final chatId in selected) {
-                  if (!existingByChatId.containsKey(chatId)) {
-                    final result = await ref
-                        .read(distributionTargetsProvider(id).notifier)
-                        .createTargetWithResult(
-                          id,
-                          DistributionTargetCreate(botChatId: chatId),
-                          backfillMode: backfillMode,
-                          backfillRecentDays: backfillRecentDays,
-                        );
-                    backfilledCount += result.backfilledCount;
-                    addedCount++;
-                  }
+                for (final chatId in addedChatIds) {
+                  final result = await ref
+                      .read(distributionTargetsProvider(id).notifier)
+                      .createTargetWithResult(
+                        id,
+                        DistributionTargetCreate(botChatId: chatId),
+                        backfillMode: backfillMode,
+                        backfillRecentDays: backfillRecentDays,
+                      );
+                  backfilledCount += result.backfilledCount;
+                  addedCount++;
                 }
                 ref.invalidate(distributionTargetsProvider(id));
                 ref.invalidate(contentQueueProvider);
@@ -778,6 +803,51 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
             },
       ),
     );
+  }
+
+  Future<bool> _confirmBackfillIfNeeded({
+    required int ruleId,
+    required Set<int> chatIds,
+    required String backfillMode,
+    required int? backfillRecentDays,
+  }) async {
+    if (backfillMode == 'new_only' || chatIds.isEmpty) return true;
+
+    var candidateCount = 0;
+    for (final chatId in chatIds) {
+      candidateCount += await ref
+          .read(distributionTargetsProvider(ruleId).notifier)
+          .previewBackfill(
+            ruleId,
+            chatId,
+            backfillMode: backfillMode,
+            backfillRecentDays: backfillRecentDays,
+          );
+    }
+    if (candidateCount <= 0 || !mounted) return true;
+
+    final modeLabel = backfillMode == 'recent_days'
+        ? '最近 ${backfillRecentDays ?? 30} 天'
+        : '全部历史';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认回填历史内容'),
+        content: Text('将为 $modeLabel 中匹配规则的内容补建约 $candidateCount 条分发队列。'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认回填'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
   }
 
   void _confirmDeleteRule(DistributionRule rule) {

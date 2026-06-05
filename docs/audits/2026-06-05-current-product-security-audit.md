@@ -162,10 +162,7 @@ VaultStream 已经具备个人内容收集、解析、检索、发现、审核�
 - 后端 `POST /api/v1/distribution-rules/{rule_id}/targets` 支持 `backfill_mode`：`new_only`、`recent_days`、`all_history`。
 - `recent_days` 支持 `backfill_recent_days`，后端只为解析成功且已审批/自动审批、匹配规则、目标可用的内容补建队列项。
 - 前端创建或编辑分发规则时新增“历史内容处理”选择，默认仅新内容；选择回填时 toast 会反馈补建队列数量。
-
-仍然存在的缺口：
-
-- 大量历史回填尚未提供 dry-run 预估和二次确认。
+- 后端新增 `POST /api/v1/distribution-rules/{rule_id}/targets/backfill-preview`，前端会在大量历史回填前先预估候选数量并要求二次确认。
 
 ### 4. 后处理失败未充分反馈给前端
 

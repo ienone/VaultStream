@@ -137,6 +137,16 @@ class TestDistributionPhase2API:
         assert new_only_resp.status_code == 201
         assert new_only_resp.json()["backfilled_count"] == 0
 
+        preview_resp = await client.post(
+            f"/api/v1/distribution-rules/{rule['id']}/targets/backfill-preview",
+            json={
+                "bot_chat_id": chats[1]["id"],
+                "backfill_mode": "all_history",
+            },
+        )
+        assert preview_resp.status_code == 200
+        assert preview_resp.json()["candidate_count"] == 1
+
         all_history_resp = await client.post(
             f"/api/v1/distribution-rules/{rule['id']}/targets",
             json={

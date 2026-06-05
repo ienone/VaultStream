@@ -69,6 +69,29 @@ class DistributionTargets extends _$DistributionTargets {
     );
   }
 
+  Future<int> previewBackfill(
+    int ruleId,
+    int botChatId, {
+    String backfillMode = 'new_only',
+    int? backfillRecentDays,
+  }) async {
+    if (backfillMode == 'new_only') return 0;
+    final dio = ref.watch(apiClientProvider);
+    final data = <String, dynamic>{
+      'bot_chat_id': botChatId,
+      'backfill_mode': backfillMode,
+    };
+    if (backfillRecentDays != null) {
+      data['backfill_recent_days'] = backfillRecentDays;
+    }
+    final response = await dio.post(
+      '/distribution-rules/$ruleId/targets/backfill-preview',
+      data: data,
+    );
+    final raw = Map<String, dynamic>.from(response.data as Map);
+    return (raw['candidate_count'] as num?)?.toInt() ?? 0;
+  }
+
   Future<DistributionTarget> updateTarget(
     int ruleId,
     int targetId,

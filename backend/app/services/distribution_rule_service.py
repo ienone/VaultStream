@@ -11,6 +11,7 @@ from app.models.bot import BotChat
 from app.schemas.distribution import (
     DistributionRuleCreate, 
     DistributionRuleUpdate,
+    DistributionTargetBackfillPreviewRequest,
     DistributionTargetCreate, 
     DistributionTargetUpdate,
     BatchTargetUpdateRequest,
@@ -99,14 +100,11 @@ class DistributionRuleService:
         if existing:
             raise HTTPException(status_code=400, detail=f"Target already exists for rule '{rule.name}' and chat '{chat.chat_id}'")
 
-        now = utcnow()
         backfill_mode = target_in.backfill_mode
-        if backfill_mode == "all_history":
-            backfill_watermark = None
-        elif backfill_mode == "recent_days":
-            backfill_watermark = now - timedelta(days=target_in.backfill_recent_days or 1)
-        else:
-            backfill_watermark = now
+        backfill_watermark = self._resolve_backfill_watermark(
+            backfill_mode,
+            target_in.backfill_recent_days,
+        )
 
         target_data = target_in.model_dump(
             exclude={"backfill_mode", "backfill_recent_days"}
@@ -140,16 +138,72 @@ class DistributionRuleService:
             })
         return db_target, inserted_records
 
-    async def _backfill_target_queue(
+    async def preview_rule_target_backfill(
+        self,
+        rule_id: int,
+        preview_in: DistributionTargetBackfillPreviewRequest,
+    ) -> int:
+        rule = await self.get_rule(rule_id)
+
+        chat = await self.bot_repo.get_chat_by_id(preview_in.bot_chat_id)
+        if not chat:
+            raise HTTPException(status_code=404, detail="BotChat not found")
+
+        existing = await self.repo.get_target_by_chat(rule_id, preview_in.bot_chat_id)
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Target already exists for rule '{rule.name}' and chat '{chat.chat_id}'",
+            )
+
+        if preview_in.backfill_mode == "new_only":
+            return 0
+
+        since = self._resolve_backfill_watermark(
+            preview_in.backfill_mode,
+            preview_in.backfill_recent_days,
+        )
+        return await self._count_backfill_candidates(
+            rule=rule,
+            bot_chat=chat,
+            since=since,
+        )
+
+    def _resolve_backfill_watermark(
+        self,
+        backfill_mode: str,
+        backfill_recent_days: int | None,
+    ):
+        if backfill_mode == "all_history":
+            return None
+        if backfill_mode == "recent_days":
+            return utcnow() - timedelta(days=backfill_recent_days or 1)
+        return utcnow()
+
+    async def _count_backfill_candidates(
         self,
         *,
         rule: DistributionRule,
-        target: DistributionTarget,
         bot_chat: BotChat,
         since,
     ) -> int:
-        if not rule.enabled or not target.enabled or not bot_chat.enabled:
-            return 0
+        return len(
+            await self._find_backfill_candidates(
+                rule=rule,
+                bot_chat=bot_chat,
+                since=since,
+            )
+        )
+
+    async def _find_backfill_candidates(
+        self,
+        *,
+        rule: DistributionRule,
+        bot_chat: BotChat,
+        since,
+    ) -> list[Content]:
+        if not rule.enabled or not bot_chat.enabled:
+            return []
 
         conditions = [
             Content.status == ContentStatus.PARSE_SUCCESS,
@@ -164,7 +218,7 @@ class DistributionRuleService:
             )
         ).scalars().all()
         if not contents:
-            return 0
+            return []
 
         existing_rows = (
             await self.db.execute(
@@ -176,7 +230,7 @@ class DistributionRuleService:
         ).scalars().all()
         existing_content_ids = {int(content_id) for content_id in existing_rows}
 
-        inserted = 0
+        candidates: list[Content] = []
         for content in contents:
             if content.id in existing_content_ids:
                 continue
@@ -188,6 +242,35 @@ class DistributionRuleService:
             if check_match_conditions(content, rule.match_conditions or {}).bucket == DECISION_FILTERED:
                 continue
 
+            decision = should_distribute(
+                content=content,
+                rule=rule,
+                bot_chat=bot_chat,
+                require_approval=False,
+            )
+            if decision.bucket == DECISION_FILTERED:
+                continue
+            candidates.append(content)
+
+        return candidates
+
+    async def _backfill_target_queue(
+        self,
+        *,
+        rule: DistributionRule,
+        target: DistributionTarget,
+        bot_chat: BotChat,
+        since,
+    ) -> int:
+        if not rule.enabled or not target.enabled or not bot_chat.enabled:
+            return 0
+
+        inserted = 0
+        for content in await self._find_backfill_candidates(
+            rule=rule,
+            bot_chat=bot_chat,
+            since=since,
+        ):
             decision = should_distribute(
                 content=content,
                 rule=rule,

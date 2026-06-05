@@ -18,7 +18,11 @@ from app.schemas import (
     TargetUsageInfo, TargetListResponse, TargetTestRequest, TargetTestResponse,
     BatchTargetUpdateRequest, BatchTargetUpdateResponse,
     RenderConfigPreset,
-    DistributionTargetCreate, DistributionTargetUpdate, DistributionTargetResponse,
+    DistributionTargetBackfillPreviewRequest,
+    DistributionTargetBackfillPreviewResponse,
+    DistributionTargetCreate,
+    DistributionTargetUpdate,
+    DistributionTargetResponse,
 )
 from app.core.logging import logger
 from app.core.dependencies import require_api_token
@@ -189,6 +193,29 @@ async def list_rule_targets(
     from app.services.distribution_rule_service import DistributionRuleService
     targets = await DistributionRuleService(db).list_rule_targets(rule_id)
     return [DistributionTargetResponse.model_validate(t) for t in targets]
+
+
+@router.post(
+    "/distribution-rules/{rule_id}/targets/backfill-preview",
+    response_model=DistributionTargetBackfillPreviewResponse,
+)
+async def preview_rule_target_backfill(
+    rule_id: int,
+    payload: DistributionTargetBackfillPreviewRequest,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """Preview how many historical queue items would be created for a new target."""
+    from app.services.distribution_rule_service import DistributionRuleService
+
+    count = await DistributionRuleService(db).preview_rule_target_backfill(rule_id, payload)
+    return DistributionTargetBackfillPreviewResponse(
+        rule_id=rule_id,
+        bot_chat_id=payload.bot_chat_id,
+        backfill_mode=payload.backfill_mode,
+        backfill_recent_days=payload.backfill_recent_days,
+        candidate_count=count,
+    )
 
 
 @router.post("/distribution-rules/{rule_id}/targets", response_model=DistributionTargetResponse, status_code=201)
