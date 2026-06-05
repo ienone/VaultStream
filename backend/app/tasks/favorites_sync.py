@@ -39,6 +39,7 @@ class FavoritesSyncTask:
 
     _DEFAULT_INTERVAL_MINUTES = 360
     _DEFAULT_MAX_ITEMS = 50
+    _FAILED_ITEMS_RECORD_LIMIT = 50
     _DEFAULT_RATES = {
         "zhihu": 5.0,
         "xiaohongshu": 3.0,
@@ -630,7 +631,7 @@ class FavoritesSyncTask:
                     skipped += 1
                 except Exception as e:
                     failed += 1
-                    if len(failed_items) < 5:
+                    if len(failed_items) < self._FAILED_ITEMS_RECORD_LIMIT:
                         failed_items.append(
                             {
                                 "url": item.url,
@@ -662,6 +663,8 @@ class FavoritesSyncTask:
             "imported": imported,
             "failed": failed,
             "failed_items": failed_items,
+            "failed_items_total": failed,
+            "failed_items_truncated": failed > len(failed_items),
             "skipped": skipped,
             "next_cursor": next_cursor,
             "error": None,

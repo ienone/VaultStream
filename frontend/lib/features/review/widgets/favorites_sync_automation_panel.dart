@@ -1040,6 +1040,12 @@ class _PlatformRunResult extends StatelessWidget {
     final authRequired = result['auth_required'] == true;
     final retryable = result['retryable'] == true;
     final failedItems = _mapListOfMaps(result, 'failed_items');
+    final failedItemsTotal = _mapInt(result, 'failed_items_total');
+    final displayedFailedItems = failedItems.take(20).toList();
+    final totalFailedItems = failedItemsTotal > 0
+        ? failedItemsTotal
+        : _mapInt(result, 'failed');
+    final failedItemsTruncated = result['failed_items_truncated'] == true;
     final errorText =
         _mapString(result, 'error_hint') ??
         _mapString(result, 'error') ??
@@ -1121,17 +1127,27 @@ class _PlatformRunResult extends StatelessWidget {
             if (failedItems.isNotEmpty) ...[
               const SizedBox(height: 10),
               Text(
-                '失败项',
+                totalFailedItems > failedItems.length || failedItemsTruncated
+                    ? '失败项 · 显示 ${displayedFailedItems.length} / $totalFailedItems'
+                    : '失败项',
                 style: theme.textTheme.labelLarge?.copyWith(
                   color: cs.error,
                   fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(height: 6),
-              for (final item in failedItems.take(5))
+              for (final item in displayedFailedItems)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: _FailedFavoriteItem(item: item),
+                ),
+              if (failedItemsTruncated ||
+                  totalFailedItems > displayedFailedItems.length)
+                Text(
+                  failedItemsTruncated
+                      ? '仍有失败项未写入本次运行结果，请缩小同步范围后重试。'
+                      : '仍有失败项未在此处展开，可在运行结果中查看记录列表。',
+                  style: theme.textTheme.bodySmall?.copyWith(color: cs.error),
                 ),
             ],
           ],

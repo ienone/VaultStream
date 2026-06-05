@@ -92,6 +92,32 @@ class _TwoItemFetcher(BaseFavoritesFetcher):
         )
 
 
+class _ManyFailingItemsFetcher(BaseFavoritesFetcher):
+    def platform_name(self) -> str:
+        return "dummy"
+
+    async def check_auth(self) -> bool:
+        return True
+
+    async def fetch_favorites(
+        self,
+        *,
+        max_items: int = 50,
+        cursor: str | None = None,
+    ) -> tuple[list[FavoriteItem], str | None]:
+        return (
+            [
+                FavoriteItem(
+                    url=f"https://example.com/fail-{index}",
+                    title=f"失败收藏 {index}",
+                    item_id=f"fail-{index}",
+                )
+                for index in range(55)
+            ],
+            None,
+        )
+
+
 @pytest.mark.asyncio
 async def test_sync_platform_returns_unified_auth_failure_payload():
     task = FavoritesSyncTask()
@@ -208,6 +234,41 @@ async def test_sync_platform_records_failed_item_samples():
             "error_code": "RuntimeError",
         }
     ]
+    assert result["failed_items_total"] == 1
+    assert result["failed_items_truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_sync_platform_records_bounded_failed_item_list():
+    task = FavoritesSyncTask()
+
+    async def _get_setting_value(key: str, default=None):
+        if key == "favorites_sync_max_items":
+            return 100
+        if key.startswith("favorites_sync_rate_"):
+            return 1000000
+        if key.startswith("favorites_sync_cursor_"):
+            return None
+        return default
+
+    with patch(
+        "app.tasks.favorites_sync.get_setting_value_fresh",
+        new=AsyncMock(side_effect=_get_setting_value),
+    ), patch(
+        "app.tasks.favorites_sync.set_setting_value",
+        new=AsyncMock(),
+    ), patch(
+        "app.services.content_service.ContentService.create_share",
+        new=AsyncMock(side_effect=RuntimeError("import exploded")),
+    ):
+        result = await task._sync_platform(_ManyFailingItemsFetcher())
+
+    assert result["status"] == "partial_success"
+    assert result["failed"] == 55
+    assert result["failed_items_total"] == 55
+    assert result["failed_items_truncated"] is True
+    assert len(result["failed_items"]) == 50
+    assert result["failed_items"][-1]["url"] == "https://example.com/fail-49"
 
 
 @pytest.mark.asyncio
