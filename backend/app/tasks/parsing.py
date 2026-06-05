@@ -31,6 +31,11 @@ from app.utils.datetime_utils import normalize_datetime_for_db
 from app.utils.url_utils import normalize_share_url_input
 from app.services.post_ingest import PostIngestService
 from app.services.settings_service import get_setting_value
+from app.services.background_task_state import (
+    record_task_run_error,
+    record_task_run_started,
+    record_task_run_success,
+)
 
 
 class ContentParser:
@@ -47,6 +52,18 @@ class ContentParser:
         if not content_id:
             logger.warning("任务数据缺少 content_id")
             return
+
+        run = await record_task_run_started(
+            "content_parse",
+            trigger="queue",
+            content_id=content_id,
+            task_id=task_id,
+            action=action,
+            attempt=attempt,
+            max_attempts=max_attempts,
+            schema_version=schema_version,
+        )
+        run_id = run["run_id"]
         
         async with AsyncSessionLocal() as session:
             content = None
@@ -62,6 +79,16 @@ class ContentParser:
                     if not content:
                         logger.warning(f"内容不存在: {content_id}")
                         await task_queue.mark_complete(content_id)
+                        await record_task_run_success(
+                            "content_parse",
+                            run_id,
+                            trigger="queue",
+                            content_id=content_id,
+                            task_id=task_id,
+                            action=action,
+                            skipped=True,
+                            reason="content_not_found",
+                        )
                         return
 
                     # 幂等处理
@@ -69,6 +96,17 @@ class ContentParser:
                         await self._handle_archived_media_fix(session, content)
                         logger.info("内容已解析完成，跳过解析")
                         await task_queue.mark_complete(content_id)
+                        await record_task_run_success(
+                            "content_parse",
+                            run_id,
+                            trigger="queue",
+                            content_id=content_id,
+                            task_id=task_id,
+                            action=action,
+                            skipped=True,
+                            reason="already_parse_success",
+                            status=content.status.value,
+                        )
                         return
 
                     # 更新状态为处理中
@@ -87,9 +125,32 @@ class ContentParser:
                     
                     # 自动审批检查
                     await self._check_auto_approval(session, content)
+                    await record_task_run_success(
+                        "content_parse",
+                        run_id,
+                        trigger="queue",
+                        content_id=content_id,
+                        task_id=task_id,
+                        action=action,
+                        skipped=False,
+                        status=content.status.value if content.status else None,
+                        title=content.title,
+                    )
 
                 except Exception as e:
                     await self._handle_parse_error(session, content, task_data, e, attempt, max_attempts)
+                    await record_task_run_error(
+                        "content_parse",
+                        run_id,
+                        e,
+                        trigger="queue",
+                        content_id=content_id,
+                        task_id=task_id,
+                        action=action,
+                        attempt=attempt,
+                        max_attempts=max_attempts,
+                        error_type=type(e).__name__,
+                    )
                 
                 finally:
                     # 标记任务完成

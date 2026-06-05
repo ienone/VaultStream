@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 from app.tasks.parsing import ContentParser
 from app.models import Content, ContentStatus, Platform
 from app.adapters.base import ParsedContent
+from app.services.background_task_state import get_recent_task_runs
 from sqlalchemy import select
 
 @pytest.fixture(autouse=True)
@@ -11,7 +12,7 @@ def mock_event_bus():
         yield mock
 
 @pytest.mark.asyncio
-async def test_process_parse_task_success(db_session, monkeypatch):
+async def test_process_parse_task_success(db_session, monkeypatch, client):
     # 1. Setup test data in DB
     content = Content(
         url="https://www.bilibili.com/video/BV1GJ411x7h7",
@@ -59,6 +60,24 @@ async def test_process_parse_task_success(db_session, monkeypatch):
         assert content.title == "Mock Title"
         assert content.author_name == "Mock Author"
         mock_mark_complete.assert_called_once_with(content_id)
+
+        runs = await get_recent_task_runs("content_parse")
+        latest = next(run for run in runs if run.get("content_id") == content_id)
+        assert latest["task"] == "content_parse"
+        assert latest["status"] == "success"
+        assert latest["trigger"] == "queue"
+        assert latest["task_id"] == "test_task_id"
+        assert latest["result"]["status"] == ContentStatus.PARSE_SUCCESS.value
+        assert latest["result"]["title"] == "Mock Title"
+
+        diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
+        assert diagnostics.status_code == 200
+        diagnostic_run = next(
+            run
+            for run in diagnostics.json()["recent_task_runs"]
+            if run["run_id"] == latest["run_id"]
+        )
+        assert diagnostic_run["task"] == "content_parse"
 
 @pytest.mark.asyncio
 async def test_process_parse_task_failure(db_session, monkeypatch):
