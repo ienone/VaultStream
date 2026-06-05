@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/toast.dart';
@@ -21,6 +22,8 @@ class FavoritesSyncAutomationPanel extends ConsumerWidget {
             _SyncOverviewCard(status: status),
             const SizedBox(height: 16),
             _SyncCommandBar(status: status),
+            const SizedBox(height: 16),
+            _SyncPolicyCard(status: status),
             const SizedBox(height: 16),
             _PlatformStatusGrid(platforms: status.platforms),
             const SizedBox(height: 24),
@@ -125,6 +128,122 @@ class _SyncOverviewCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SyncPolicyCard extends StatelessWidget {
+  const _SyncPolicyCard({required this.status});
+
+  final FavoritesSyncStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final enabledPlatforms = status.enabledPlatforms.isEmpty
+        ? '暂无已启用平台'
+        : status.enabledPlatforms.map(_platformLabel).join('、');
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.rule_folder_rounded, color: cs.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '同步策略',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () => context.push('/settings?tab=automation'),
+                  icon: const Icon(Icons.tune_rounded, size: 18),
+                  label: const Text('高级参数'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _PolicyLine(
+              icon: Icons.account_tree_rounded,
+              label: '同步范围',
+              value: enabledPlatforms,
+            ),
+            _PolicyLine(
+              icon: Icons.update_rounded,
+              label: '拉取策略',
+              value:
+                  '按平台 cursor 增量拉取；每轮最多 ${status.maxItems} 条；每 ${status.intervalMinutes} 分钟自动执行。',
+            ),
+            const _PolicyLine(
+              icon: Icons.difference_rounded,
+              label: '重复处理',
+              value: '预览会区分预计新增和已存在；导入时跳过重复内容，不覆盖已有收藏。',
+            ),
+            const _PolicyLine(
+              icon: Icons.delete_outline_rounded,
+              label: '取消收藏',
+              value: '当前不会因为远端取消收藏而自动删除本地收藏。',
+            ),
+            const _PolicyLine(
+              icon: Icons.replay_rounded,
+              label: '失败恢复',
+              value: '当前支持 run 级失败重试；尚未细化到单条失败候选重试。',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PolicyLine extends StatelessWidget {
+  const _PolicyLine({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: cs.onSurfaceVariant),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 72,
+            child: Text(
+              label,
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Expanded(child: Text(value, style: theme.textTheme.bodyMedium)),
+        ],
       ),
     );
   }

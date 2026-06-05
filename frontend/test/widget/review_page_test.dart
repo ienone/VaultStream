@@ -222,7 +222,11 @@ void main() {
       expect(find.text('收藏同步总览'), findsOneWidget);
       expect(find.text('同步全部'), findsOneWidget);
       expect(find.text('预览同步'), findsWidgets);
-      expect(find.text('知乎'), findsOneWidget);
+      expect(find.text('同步策略'), findsOneWidget);
+      expect(find.text('同步范围'), findsOneWidget);
+      expect(find.text('取消收藏'), findsOneWidget);
+      expect(find.text('高级参数'), findsOneWidget);
+      expect(find.text('知乎'), findsWidgets);
       expect(find.textContaining('abcdef12'), findsOneWidget);
       expect(find.text('重试'), findsOneWidget);
     });
