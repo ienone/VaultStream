@@ -705,26 +705,77 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
   }
 
   void _showEditRuleDialog(DistributionRule rule) {
+    final chats = ref.read(botChatsProvider).asData?.value ?? const <BotChat>[];
+    final existingTargets =
+        ref.read(distributionTargetsProvider(rule.id)).value ??
+        const <DistributionTarget>[];
+    final existingByChatId = {
+      for (final target in existingTargets) target.botChatId: target,
+    };
     showDialog(
       context: context,
       builder: (ctx) => DistributionRuleDialog(
         rule: rule,
+        availableChats: chats,
+        initialSelectedChatIds: existingByChatId.keys.toList(),
         onCreate:
             (ruleData, selectedChatIds, backfillMode, backfillRecentDays) {},
-        onUpdate: (id, update) async {
-          try {
-            await ref
-                .read(distributionRulesProvider.notifier)
-                .updateRule(id, update);
-            if (mounted) {
-              Toast.show(context, '规则更新成功');
-            }
-          } catch (e) {
-            if (mounted) {
-              Toast.show(context, '更新失败: $e', isError: true);
-            }
-          }
-        },
+        onUpdate:
+            (
+              id,
+              update,
+              selectedChatIds,
+              backfillMode,
+              backfillRecentDays,
+            ) async {
+              try {
+                await ref
+                    .read(distributionRulesProvider.notifier)
+                    .updateRule(id, update);
+                final selected = selectedChatIds.toSet();
+                var backfilledCount = 0;
+                var addedCount = 0;
+                var removedCount = 0;
+
+                for (final target in existingTargets) {
+                  if (!selected.contains(target.botChatId)) {
+                    await ref
+                        .read(distributionTargetsProvider(id).notifier)
+                        .deleteTarget(id, target.id);
+                    removedCount++;
+                  }
+                }
+
+                for (final chatId in selected) {
+                  if (!existingByChatId.containsKey(chatId)) {
+                    final result = await ref
+                        .read(distributionTargetsProvider(id).notifier)
+                        .createTargetWithResult(
+                          id,
+                          DistributionTargetCreate(botChatId: chatId),
+                          backfillMode: backfillMode,
+                          backfillRecentDays: backfillRecentDays,
+                        );
+                    backfilledCount += result.backfilledCount;
+                    addedCount++;
+                  }
+                }
+                ref.invalidate(distributionTargetsProvider(id));
+                ref.invalidate(contentQueueProvider);
+                ref.invalidate(queueStatsProvider(_selectedRuleId));
+                if (mounted) {
+                  final parts = <String>['规则更新成功'];
+                  if (addedCount > 0) parts.add('新增 $addedCount 个目标');
+                  if (removedCount > 0) parts.add('移除 $removedCount 个目标');
+                  if (backfilledCount > 0) parts.add('补建 $backfilledCount 条队列');
+                  Toast.show(context, parts.join('，'));
+                }
+              } catch (e) {
+                if (mounted) {
+                  Toast.show(context, '更新失败: $e', isError: true);
+                }
+              }
+            },
       ),
     );
   }

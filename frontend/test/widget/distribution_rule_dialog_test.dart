@@ -79,12 +79,19 @@ void main() {
                 rule: existingRule,
                 onCreate:
                     (_, selectedChatIds, backfillMode, backfillRecentDays) {},
-                onUpdate: (id, update) {
-                  final tags =
-                      (update.matchConditions!['tags'] as List<dynamic>?) ??
-                      const [];
-                  expect(tags, contains('new_tag'));
-                },
+                onUpdate:
+                    (
+                      id,
+                      update,
+                      selectedChatIds,
+                      backfillMode,
+                      backfillRecentDays,
+                    ) {
+                      final tags =
+                          (update.matchConditions!['tags'] as List<dynamic>?) ??
+                          const [];
+                      expect(tags, contains('new_tag'));
+                    },
               ),
             ),
           ),

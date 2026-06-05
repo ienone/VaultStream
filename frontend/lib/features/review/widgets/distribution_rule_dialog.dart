@@ -7,7 +7,8 @@ import 'render_config_editor.dart';
 class DistributionRuleDialog extends StatefulWidget {
   final DistributionRule? rule;
   final Function(DistributionRuleCreate, List<int>, String, int?) onCreate;
-  final Function(int, DistributionRuleUpdate)? onUpdate;
+  final Function(int, DistributionRuleUpdate, List<int>, String, int?)?
+  onUpdate;
   final List<BotChat> availableChats;
   final List<int> initialSelectedChatIds;
 
@@ -234,14 +235,12 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
                         chipColor: colorScheme.error,
                       ),
                       const SizedBox(height: 32),
-                      if (!isEditing) ...[
-                        _buildSubHeader('推送目标'),
-                        const SizedBox(height: 12),
-                        _buildTargetSelector(),
-                        const SizedBox(height: 24),
-                        _buildBackfillSelector(),
-                        const SizedBox(height: 32),
-                      ],
+                      _buildSubHeader('推送目标'),
+                      const SizedBox(height: 12),
+                      _buildTargetSelector(),
+                      const SizedBox(height: 24),
+                      _buildBackfillSelector(),
+                      const SizedBox(height: 32),
                       _buildRenderConfigSection(),
                       const SizedBox(height: 24),
                     ],
@@ -680,6 +679,9 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
       renderConfig: _renderConfig.isEmpty ? null : _renderConfig,
     );
     if (isEditing) {
+      final recentDays = _backfillMode == 'recent_days'
+          ? (int.tryParse(_backfillRecentDaysController.text) ?? 30)
+          : null;
       widget.onUpdate?.call(
         widget.rule!.id,
         DistributionRuleUpdate(
@@ -694,6 +696,9 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
           timeWindow: create.timeWindow,
           renderConfig: create.renderConfig,
         ),
+        _selectedTargetChatIds.toList()..sort(),
+        _backfillMode,
+        recentDays,
       );
     } else {
       final recentDays = _backfillMode == 'recent_days'
