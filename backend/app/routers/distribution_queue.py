@@ -387,6 +387,142 @@ async def cancel_queue_item(
     return {"status": "filtered", "id": item_id}
 
 
+@router.post("/items/{item_id}/status", response_model=ContentQueueItemResponse)
+async def set_queue_item_status(
+    item_id: int,
+    payload: dict = Body(default={}),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """Set status for exactly one queue item."""
+    target_status = str(payload.get("status") or "").strip().lower()
+    now = utcnow()
+    result = await db.execute(
+        select(ContentQueueItem, Content)
+        .join(Content, Content.id == ContentQueueItem.content_id, isouter=True)
+        .where(ContentQueueItem.id == item_id)
+    )
+    row = result.first()
+    item = row[0] if row else None
+    content = row[1] if row else None
+    if not item:
+        raise HTTPException(status_code=404, detail="Queue item not found")
+
+    if target_status == "will_push":
+        if item.status != QueueItemStatus.SUCCESS:
+            item.status = QueueItemStatus.SCHEDULED
+            item.scheduled_at = now
+            item.locked_at = None
+            item.locked_by = None
+            item.next_attempt_at = None
+            item.last_error = None
+            item.last_error_type = None
+            item.last_error_at = None
+    elif target_status == "filtered":
+        if item.status != QueueItemStatus.SUCCESS:
+            reason = str(payload.get("reason") or "Filtered manually").strip() or "Filtered manually"
+            item.status = QueueItemStatus.FAILED
+            item.locked_at = None
+            item.locked_by = None
+            item.next_attempt_at = None
+            item.last_error = reason
+            item.last_error_type = "manual_filtered"
+            item.last_error_at = now
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported status")
+
+    await db.commit()
+    await db.refresh(item)
+    await event_bus.publish("queue_updated", {
+        "action": "item_status",
+        "queue_item_id": item_id,
+        "status": item.status.value,
+        "timestamp": now.isoformat(),
+    })
+    return _to_queue_item_response(item, content)
+
+
+@router.post("/items/{item_id}/schedule", response_model=ContentQueueItemResponse)
+async def schedule_queue_item(
+    item_id: int,
+    payload: dict = Body(default={}),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """Set schedule for exactly one queue item."""
+    raw = payload.get("scheduled_at")
+    if not raw:
+        raise HTTPException(status_code=400, detail="scheduled_at is required")
+    try:
+        scheduled_at = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Invalid scheduled_at") from e
+
+    result = await db.execute(
+        select(ContentQueueItem, Content)
+        .join(Content, Content.id == ContentQueueItem.content_id, isouter=True)
+        .where(ContentQueueItem.id == item_id)
+    )
+    row = result.first()
+    item = row[0] if row else None
+    content = row[1] if row else None
+    if not item:
+        raise HTTPException(status_code=404, detail="Queue item not found")
+    if item.status == QueueItemStatus.SUCCESS:
+        raise HTTPException(status_code=400, detail="Cannot reschedule a pushed queue item")
+
+    item.status = QueueItemStatus.SCHEDULED
+    item.scheduled_at = scheduled_at
+    item.next_attempt_at = None
+    item.locked_at = None
+    item.locked_by = None
+
+    await db.commit()
+    await db.refresh(item)
+    await event_bus.publish("queue_updated", {
+        "action": "item_schedule",
+        "queue_item_id": item_id,
+        "scheduled_at": _as_utc(scheduled_at).isoformat() if _as_utc(scheduled_at) else None,
+        "timestamp": utcnow().isoformat(),
+    })
+    return _to_queue_item_response(item, content)
+
+
+@router.post("/items/{item_id}/reorder", response_model=ContentQueueItemResponse)
+async def reorder_queue_item(
+    item_id: int,
+    payload: dict = Body(default={}),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """Reorder exactly one queue item by boosting its priority."""
+    index = int(payload.get("index") or 0)
+    boost = max(1, 1000 - index)
+    result = await db.execute(
+        select(ContentQueueItem, Content)
+        .join(Content, Content.id == ContentQueueItem.content_id, isouter=True)
+        .where(ContentQueueItem.id == item_id)
+    )
+    row = result.first()
+    item = row[0] if row else None
+    content = row[1] if row else None
+    if not item:
+        raise HTTPException(status_code=404, detail="Queue item not found")
+
+    if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.PROCESSING):
+        item.priority = max(item.priority, boost)
+        await db.commit()
+        await db.refresh(item)
+        await event_bus.publish("queue_updated", {
+            "action": "item_reorder",
+            "queue_item_id": item_id,
+            "priority": item.priority,
+            "timestamp": utcnow().isoformat(),
+        })
+
+    return _to_queue_item_response(item, content)
+
+
 @router.post("/batch-retry")
 async def batch_retry_queue_items(
     request: BatchQueueRetryRequest,

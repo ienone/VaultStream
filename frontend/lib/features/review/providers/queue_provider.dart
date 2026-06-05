@@ -102,13 +102,13 @@ class ContentQueue extends _$ContentQueue {
   }
 
   Future<void> moveToStatus(
-    int contentId,
+    int itemId,
     QueueStatus newStatus, {
     String? reason,
   }) async {
     final dio = ref.read(apiClientProvider);
     await dio.post(
-      '/distribution-queue/content/$contentId/status',
+      '/distribution-queue/items/$itemId/status',
       data: {'status': newStatus.value, 'reason': ?reason},
     );
     _safeInvalidate();
@@ -118,10 +118,10 @@ class ContentQueue extends _$ContentQueue {
     ref.invalidate(queueStatsProvider(filter.ruleId));
   }
 
-  Future<void> reorderToIndex(int contentId, int index) async {
+  Future<void> reorderToIndex(int itemId, int index) async {
     final dio = ref.read(apiClientProvider);
     await dio.post(
-      '/distribution-queue/content/$contentId/reorder',
+      '/distribution-queue/items/$itemId/reorder',
       data: {'index': index},
     );
     // 不立即刷新，等待SSE事件或延迟软刷新
@@ -170,7 +170,7 @@ class ContentQueue extends _$ContentQueue {
 
     // 检查 ID 顺序
     for (int i = 0; i < oldItems.length; i++) {
-      if (oldItems[i].contentId != newItems[i].contentId) return true;
+      if (oldItems[i].id != newItems[i].id) return true;
       // 检查计划时间是否变化
       if (oldItems[i].scheduledTime != newItems[i].scheduledTime) return true;
       // 检查状态与错误信息是否变化
@@ -214,33 +214,33 @@ class ContentQueue extends _$ContentQueue {
     ref.invalidate(queueStatsProvider(filter.ruleId));
   }
 
-  Future<void> pushNow(int contentId) async {
+  Future<void> pushNow(int itemId) async {
     final dio = ref.read(apiClientProvider);
-    await dio.post('/distribution-queue/content/$contentId/push-now');
+    await dio.post('/distribution-queue/items/$itemId/push-now');
     _safeInvalidate();
     final filter = ref.read(queueFilterProvider);
     ref.invalidate(queueStatsProvider(filter.ruleId));
   }
 
-  Future<void> updateSchedule(int contentId, DateTime scheduledAt) async {
+  Future<void> updateSchedule(int itemId, DateTime scheduledAt) async {
     final dio = ref.read(apiClientProvider);
     await dio.post(
-      '/distribution-queue/content/$contentId/schedule',
+      '/distribution-queue/items/$itemId/schedule',
       data: {'scheduled_at': scheduledAt.toUtc().toIso8601String()},
     );
     _safeInvalidate();
   }
 
-  Future<void> approveItem(int contentId) async {
-    await moveToStatus(contentId, QueueStatus.willPush);
+  Future<void> approveItem(int itemId) async {
+    await moveToStatus(itemId, QueueStatus.willPush);
   }
 
-  Future<void> rejectItem(int contentId, {String? reason}) async {
-    await moveToStatus(contentId, QueueStatus.filtered, reason: reason);
+  Future<void> rejectItem(int itemId, {String? reason}) async {
+    await moveToStatus(itemId, QueueStatus.filtered, reason: reason);
   }
 
-  Future<void> restoreToPending(int contentId) async {
-    await moveToStatus(contentId, QueueStatus.willPush);
+  Future<void> restoreToPending(int itemId) async {
+    await moveToStatus(itemId, QueueStatus.willPush);
   }
 
   void _safeInvalidate() {

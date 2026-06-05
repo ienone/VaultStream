@@ -207,3 +207,38 @@ class TestDistributionQueueExtraAPI:
         assert resp.status_code == 200
         assert resp.json()["status"] == "scheduled"
 
+    @pytest.mark.asyncio
+    async def test_item_status_schedule_and_reorder_are_item_scoped(self, client: AsyncClient):
+        content_id, _, _ = await self._setup_data(client)
+        await client.post(f"/api/v1/distribution-queue/enqueue/{content_id}", json={"force": True})
+
+        items_resp = await client.get(f"/api/v1/distribution-queue/items?content_id={content_id}")
+        items = items_resp.json()["items"]
+        assert len(items) >= 1
+        item_id = items[0]["id"]
+
+        status_resp = await client.post(
+            f"/api/v1/distribution-queue/items/{item_id}/status",
+            json={"status": "filtered", "reason": "skip this target only"},
+        )
+        assert status_resp.status_code == 200
+        assert status_resp.json()["id"] == item_id
+        assert status_resp.json()["status"] == "failed"
+        assert status_resp.json()["last_error_type"] == "manual_filtered"
+
+        scheduled_at = datetime.now(timezone.utc).isoformat()
+        schedule_resp = await client.post(
+            f"/api/v1/distribution-queue/items/{item_id}/schedule",
+            json={"scheduled_at": scheduled_at},
+        )
+        assert schedule_resp.status_code == 200
+        assert schedule_resp.json()["id"] == item_id
+        assert schedule_resp.json()["status"] == "scheduled"
+
+        reorder_resp = await client.post(
+            f"/api/v1/distribution-queue/items/{item_id}/reorder",
+            json={"index": 0},
+        )
+        assert reorder_resp.status_code == 200
+        assert reorder_resp.json()["id"] == item_id
+        assert reorder_resp.json()["priority"] >= 1000

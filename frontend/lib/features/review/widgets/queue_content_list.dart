@@ -46,8 +46,8 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
 
     if (!listEquals(oldWidget.items, widget.items)) {
       // 智能合并：仅当列表ID集合变化时才完全替换
-      final oldIds = _localItems.map((e) => e.contentId).toSet();
-      final newIds = widget.items.map((e) => e.contentId).toSet();
+      final oldIds = _localItems.map((e) => e.id).toSet();
+      final newIds = widget.items.map((e) => e.id).toSet();
 
       if (oldIds.difference(newIds).isNotEmpty ||
           newIds.difference(oldIds).isNotEmpty) {
@@ -57,15 +57,15 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
         });
       } else {
         // 仅顺序字段变化时，更新字段但保持本地顺序
-        final newItemMap = {for (var i in widget.items) i.contentId: i};
+        final newItemMap = {for (var i in widget.items) i.id: i};
         setState(() {
           _localItems = _localItems.map((item) {
-            return newItemMap[item.contentId] ?? item;
+            return newItemMap[item.id] ?? item;
           }).toList();
         });
       }
 
-      final currentIds = _localItems.map((e) => e.contentId).toSet();
+      final currentIds = _localItems.map((e) => e.id).toSet();
       _selectedIds.retainAll(currentIds);
       if (_selectedIds.isEmpty) _isSelectionMode = false;
     }
@@ -177,22 +177,22 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                   });
                 }
                 return _QueueItemCard(
-                  key: ValueKey(item.contentId),
+                  key: ValueKey(item.id),
                   item: item,
                   index: index,
                   currentStatus: widget.currentStatus,
-                  isSelected: _selectedIds.contains(item.contentId),
+                  isSelected: _selectedIds.contains(item.id),
                   isSelectionMode: _isSelectionMode,
                   animateEntry: shouldAnimate,
-                  onToggleSelect: () => _toggleSelect(item.contentId),
-                  onLongPress: () => _startSelection(item.contentId),
+                  onToggleSelect: () => _toggleSelect(item.id),
+                  onLongPress: () => _startSelection(item.id),
                   onMoveToFiltered: () => _moveItem(item, QueueStatus.filtered),
                   onUpdateSchedule: (newTime) => _updateSchedule(item, newTime),
                   onPushNow: () async {
                     if (!context.mounted) return;
                     await ref
                         .read(contentQueueProvider.notifier)
-                        .pushNow(item.contentId);
+                        .pushNow(item.id);
                     if (context.mounted) {
                       Toast.show(context, '已加入立即推送');
                     }
@@ -214,7 +214,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
       itemBuilder: (context, index) {
         final item = _localItems[index];
         return _QueueItemCard(
-          key: ValueKey(item.contentId),
+          key: ValueKey(item.id),
           item: item,
           index: index,
           currentStatus: widget.currentStatus,
@@ -246,7 +246,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
       // 2. 后端请求
       await ref
           .read(contentQueueProvider.notifier)
-          .reorderToIndex(movedItem.contentId, newIndex);
+          .reorderToIndex(movedItem.id, newIndex);
 
       // 延迟解除锁定并软刷新
       Future.delayed(const Duration(seconds: 2), () {
@@ -381,10 +381,10 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
 
     // 乐观更新：将选中项移到列表最前面并更新时间
     final selectedItems = _localItems
-        .where((i) => idsSet.contains(i.contentId))
+        .where((i) => idsSet.contains(i.id))
         .toList();
     final otherItems = _localItems
-        .where((i) => !idsSet.contains(i.contentId))
+        .where((i) => !idsSet.contains(i.id))
         .toList();
 
     setState(() {
@@ -412,7 +412,9 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
     });
 
     try {
-      await ref.read(contentQueueProvider.notifier).batchPushNow(ids);
+      await ref
+          .read(contentQueueProvider.notifier)
+          .batchPushNow(selectedItems.map((i) => i.contentId).toList());
       if (mounted) {
         Toast.show(context, '批量推送任务已创建');
       }
@@ -453,7 +455,13 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
     try {
       await ref
           .read(contentQueueProvider.notifier)
-          .batchReschedule(ids, startTime);
+          .batchReschedule(
+            _localItems
+                .where((i) => ids.contains(i.id))
+                .map((i) => i.contentId)
+                .toList(),
+            startTime,
+          );
       if (mounted) {
         Toast.show(context, '批量排期完成');
       }
@@ -468,7 +476,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
     try {
       await ref
           .read(contentQueueProvider.notifier)
-          .updateSchedule(item.contentId, newTime);
+          .updateSchedule(item.id, newTime);
     } catch (e) {
       if (mounted) {
         Toast.show(context, '更新失败: $e');
@@ -478,13 +486,13 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
 
   Future<void> _moveItem(QueueItem item, QueueStatus newStatus) async {
     setState(() {
-      _localItems.removeWhere((i) => i.contentId == item.contentId);
+      _localItems.removeWhere((i) => i.id == item.id);
     });
 
     try {
       await ref
           .read(contentQueueProvider.notifier)
-          .moveToStatus(item.contentId, newStatus);
+          .moveToStatus(item.id, newStatus);
       if (mounted) {
         final dest = newStatus == QueueStatus.filtered ? '已过滤' : '待推送';
         Toast.show(
