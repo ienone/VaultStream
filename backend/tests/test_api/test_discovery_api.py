@@ -204,33 +204,46 @@ class TestDiscoveryAPI:
         assert create_resp.status_code == 422
 
     @pytest.mark.asyncio
+    async def test_create_source_unsupported_kind_returns_400(self, client: AsyncClient):
+        """Known-but-not-implemented source kinds must not be silently created."""
+        create_resp = await client.post(
+            "/api/v1/discovery/sources",
+            json={"kind": "hackernews", "name": "HN Source"},
+        )
+
+        assert create_resp.status_code == 400
+        detail = create_resp.json()
+        assert detail["error_code"] == "source_kind_not_supported"
+        assert detail["supported_kinds"] == ["rss", "telegram_channel"]
+
+    @pytest.mark.asyncio
     async def test_get_source_detail(self, client: AsyncClient):
         """GET /discovery/sources/{id}"""
         create_resp = await client.post(
             "/api/v1/discovery/sources",
-            json={"kind": "hackernews", "name": "HN Source"},
+            json={"kind": "rss", "name": "RSS Detail Source"},
         )
         sid = create_resp.json()["id"]
 
         detail_resp = await client.get(f"/api/v1/discovery/sources/{sid}")
         assert detail_resp.status_code == 200
-        assert detail_resp.json()["name"] == "HN Source"
+        assert detail_resp.json()["name"] == "RSS Detail Source"
 
     @pytest.mark.asyncio
     async def test_update_source(self, client: AsyncClient):
         """PUT /discovery/sources/{id}"""
         create_resp = await client.post(
             "/api/v1/discovery/sources",
-            json={"kind": "reddit", "name": "Reddit Source"},
+            json={"kind": "telegram_channel", "name": "Telegram Source"},
         )
         sid = create_resp.json()["id"]
 
         update_resp = await client.put(
             f"/api/v1/discovery/sources/{sid}",
-            json={"name": "Updated Reddit", "sync_interval_minutes": 120},
+            json={"name": "Updated Telegram", "sync_interval_minutes": 120},
         )
         assert update_resp.status_code == 200
-        assert update_resp.json()["name"] == "Updated Reddit"
+        assert update_resp.json()["name"] == "Updated Telegram"
         assert update_resp.json()["sync_interval_minutes"] == 120
 
     @pytest.mark.asyncio
@@ -238,7 +251,7 @@ class TestDiscoveryAPI:
         """DELETE /discovery/sources/{id}"""
         create_resp = await client.post(
             "/api/v1/discovery/sources",
-            json={"kind": "github", "name": "GitHub Source"},
+            json={"kind": "rss", "name": "RSS Delete Source"},
         )
         sid = create_resp.json()["id"]
 
