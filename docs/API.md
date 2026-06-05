@@ -397,7 +397,7 @@ QQ 配置支持字段：`napcat_http_url`、`napcat_ws_url`、`napcat_access_tok
 
 `GET /api/v1/background-tasks/diagnostics` 额外返回：
 
-- `recent_task_runs`: 最近后台任务运行记录。当前覆盖 `content_reparse`、`discovery_sync`、`favorites_sync` 和 `semantic_reindex`，包含 `run_id`、`task`、`status`、`started_at`、`finished_at`、`error`、`trigger` 以及任务特定元数据。
+- `recent_task_runs`: 最近后台任务运行记录。当前覆盖 `content_reparse`、`content_summary`、`discovery_sync`、`favorites_sync` 和 `semantic_reindex`，包含 `run_id`、`task`、`status`、`started_at`、`finished_at`、`error`、`trigger` 以及任务特定元数据。
 - `failed_parse_tasks`、`failed_distribution_items`、`failed_discovery_sources`: 仍用于展示可恢复或需排查的失败对象。
 
 `POST /api/v1/discovery/sources/{source_id}/sync` 返回 `202 Accepted`，响应包含 `run_id`。若发现同步任务实例未运行，返回 `503 discovery_task_unavailable`；若来源类型尚未实现，返回 `400 source_kind_not_supported`。
@@ -405,6 +405,8 @@ QQ 配置支持字段：`napcat_http_url`、`napcat_ws_url`、`napcat_access_tok
 `POST /api/v1/search/semantic/reindex` 在 `dry_run=false` 时会调度后台语义索引任务并返回 `run_id`；`dry_run=true` 只返回候选数量和预计 embedding 调用数，不创建运行记录。
 
 `POST /api/v1/contents/{content_id}/re-parse` 会调度后台重新解析任务并返回 `run_id`；运行结果进入 `recent_task_runs` 的 `content_reparse` 记录。
+
+`POST /api/v1/contents/{content_id}/generate-summary` 会执行摘要生成并返回 `run_id`；运行结果进入 `recent_task_runs` 的 `content_summary` 记录。
 
 ---
 
