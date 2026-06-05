@@ -1,6 +1,6 @@
 """Phase 2 API tests for distribution workflow refactor."""
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import AsyncClient
@@ -70,6 +70,91 @@ class TestDistributionPhase2API:
         targets = targets_resp.json()
         assert len(targets) >= 1
         assert any(t["bot_chat_id"] == chat["id"] for t in targets)
+
+    @pytest.mark.asyncio
+    async def test_create_target_backfill_modes_control_historical_queue(
+        self,
+        client: AsyncClient,
+        db_session,
+    ):
+        from sqlalchemy import select
+        from app.models import Content, ContentQueueItem, ContentStatus, Platform, ReviewStatus
+
+        suffix = datetime.utcnow().strftime("%H%M%S%f")
+        bot_config_id = await self._create_primary_bot_config(client, suffix)
+
+        chats = []
+        for index in range(2):
+            chat_resp = await client.post(
+                "/api/v1/bot/chats",
+                json={
+                    "bot_config_id": bot_config_id,
+                    "chat_id": f"-100backfill{suffix[-6:]}{index}",
+                    "chat_type": "channel",
+                    "title": f"Backfill Chat {index} {suffix}",
+                    "enabled": True,
+                },
+            )
+            assert chat_resp.status_code == 200
+            chats.append(chat_resp.json())
+
+        rule_resp = await client.post(
+            "/api/v1/distribution-rules",
+            json={
+                "name": f"backfill-rule-{suffix}",
+                "match_conditions": {"tags": ["backfill"], "tags_match_mode": "any"},
+                "enabled": True,
+                "priority": 1,
+                "nsfw_policy": "allow",
+                "approval_required": False,
+            },
+        )
+        assert rule_resp.status_code == 200
+        rule = rule_resp.json()
+
+        content = Content(
+            platform=Platform.BILIBILI,
+            url=f"https://www.bilibili.com/video/BVbackfill{suffix}",
+            canonical_url=f"https://www.bilibili.com/video/BVbackfill{suffix}",
+            status=ContentStatus.PARSE_SUCCESS,
+            review_status=ReviewStatus.APPROVED,
+            title="Backfill Content",
+            tags=["backfill"],
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=20),
+        )
+        db_session.add(content)
+        await db_session.commit()
+        await db_session.refresh(content)
+
+        new_only_resp = await client.post(
+            f"/api/v1/distribution-rules/{rule['id']}/targets",
+            json={
+                "bot_chat_id": chats[0]["id"],
+                "enabled": True,
+                "backfill_mode": "new_only",
+            },
+        )
+        assert new_only_resp.status_code == 201
+        assert new_only_resp.json()["backfilled_count"] == 0
+
+        all_history_resp = await client.post(
+            f"/api/v1/distribution-rules/{rule['id']}/targets",
+            json={
+                "bot_chat_id": chats[1]["id"],
+                "enabled": True,
+                "backfill_mode": "all_history",
+            },
+        )
+        assert all_history_resp.status_code == 201
+        assert all_history_resp.json()["backfilled_count"] == 1
+
+        items = (
+            await db_session.execute(
+                select(ContentQueueItem).where(ContentQueueItem.content_id == content.id)
+            )
+        ).scalars().all()
+        assert len(items) == 1
+        assert items[0].bot_chat_id == chats[1]["id"]
 
     @pytest.mark.asyncio
     async def test_assign_rules_for_chat(self, client: AsyncClient):

@@ -159,8 +159,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
     final colorScheme = theme.colorScheme;
 
     return Container(
-      color:
-          colorScheme.surfaceContainerLow,
+      color: colorScheme.surfaceContainerLow,
       child: Column(
         children: [
           Padding(
@@ -665,30 +664,42 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       context: context,
       builder: (ctx) => DistributionRuleDialog(
         availableChats: chats,
-        onCreate: (rule, selectedChatIds) async {
-          try {
-            final newRule = await ref
-                .read(distributionRulesProvider.notifier)
-                .createRule(rule);
-            final uniqueChatIds = selectedChatIds.toSet();
-            for (final chatId in uniqueChatIds) {
-              await ref
-                  .read(distributionTargetsProvider(newRule.id).notifier)
-                  .createTarget(
-                    newRule.id,
-                    DistributionTargetCreate(botChatId: chatId),
+        onCreate:
+            (rule, selectedChatIds, backfillMode, backfillRecentDays) async {
+              try {
+                final newRule = await ref
+                    .read(distributionRulesProvider.notifier)
+                    .createRule(rule);
+                final uniqueChatIds = selectedChatIds.toSet();
+                var backfilledCount = 0;
+                for (final chatId in uniqueChatIds) {
+                  final result = await ref
+                      .read(distributionTargetsProvider(newRule.id).notifier)
+                      .createTargetWithResult(
+                        newRule.id,
+                        DistributionTargetCreate(botChatId: chatId),
+                        backfillMode: backfillMode,
+                        backfillRecentDays: backfillRecentDays,
+                      );
+                  backfilledCount += result.backfilledCount;
+                }
+                ref.invalidate(botChatsProvider);
+                ref.invalidate(contentQueueProvider);
+                ref.invalidate(queueStatsProvider(_selectedRuleId));
+                if (mounted) {
+                  Toast.show(
+                    context,
+                    backfilledCount > 0
+                        ? '规则创建成功，已补建 $backfilledCount 条队列'
+                        : '规则创建成功',
                   );
-            }
-            ref.invalidate(botChatsProvider);
-            if (mounted) {
-              Toast.show(context, '规则创建成功');
-            }
-          } catch (e) {
-            if (mounted) {
-              Toast.show(context, '创建失败: $e', isError: true);
-            }
-          }
-        },
+                }
+              } catch (e) {
+                if (mounted) {
+                  Toast.show(context, '创建失败: $e', isError: true);
+                }
+              }
+            },
       ),
     );
   }
@@ -698,7 +709,8 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
       context: context,
       builder: (ctx) => DistributionRuleDialog(
         rule: rule,
-        onCreate: (ruleData, selectedChatIds) {},
+        onCreate:
+            (ruleData, selectedChatIds, backfillMode, backfillRecentDays) {},
         onUpdate: (id, update) async {
           try {
             await ref

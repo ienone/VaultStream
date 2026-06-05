@@ -4,6 +4,16 @@ import '../models/distribution_target.dart';
 
 part 'distribution_targets_provider.g.dart';
 
+class DistributionTargetCreateResult {
+  final DistributionTarget target;
+  final int backfilledCount;
+
+  const DistributionTargetCreateResult({
+    required this.target,
+    required this.backfilledCount,
+  });
+}
+
 @riverpod
 class DistributionTargets extends _$DistributionTargets {
   @override
@@ -21,16 +31,42 @@ class DistributionTargets extends _$DistributionTargets {
 
   Future<DistributionTarget> createTarget(
     int ruleId,
-    DistributionTargetCreate target,
-  ) async {
+    DistributionTargetCreate target, {
+    String backfillMode = 'new_only',
+    int? backfillRecentDays,
+  }) async {
+    final result = await createTargetWithResult(
+      ruleId,
+      target,
+      backfillMode: backfillMode,
+      backfillRecentDays: backfillRecentDays,
+    );
+    return result.target;
+  }
+
+  Future<DistributionTargetCreateResult> createTargetWithResult(
+    int ruleId,
+    DistributionTargetCreate target, {
+    String backfillMode = 'new_only',
+    int? backfillRecentDays,
+  }) async {
     final dio = ref.watch(apiClientProvider);
+    final data = target.toJson();
+    data['backfill_mode'] = backfillMode;
+    if (backfillRecentDays != null) {
+      data['backfill_recent_days'] = backfillRecentDays;
+    }
     final response = await dio.post(
       '/distribution-rules/$ruleId/targets',
-      data: target.toJson(),
+      data: data,
     );
-    final newTarget = DistributionTarget.fromJson(response.data);
+    final raw = Map<String, dynamic>.from(response.data as Map);
+    final newTarget = DistributionTarget.fromJson(raw);
     ref.invalidateSelf();
-    return newTarget;
+    return DistributionTargetCreateResult(
+      target: newTarget,
+      backfilledCount: (raw['backfilled_count'] as num?)?.toInt() ?? 0,
+    );
   }
 
   Future<DistributionTarget> updateTarget(

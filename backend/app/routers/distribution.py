@@ -208,7 +208,9 @@ async def create_rule_target(
         f"backfilled_success={inserted}"
     )
 
-    return DistributionTargetResponse.model_validate(db_target)
+    response = DistributionTargetResponse.model_validate(db_target)
+    response.backfilled_count = inserted
+    return response
 
 
 @router.patch("/distribution-rules/{rule_id}/targets/{target_id}", response_model=DistributionTargetResponse)

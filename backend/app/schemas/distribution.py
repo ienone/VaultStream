@@ -4,7 +4,7 @@ from __future__ import annotations
 """
 from datetime import datetime
 from enum import Enum
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from app.schemas.base import UtcDatetime, OptionalUtcDatetime
 
@@ -12,10 +12,19 @@ from app.schemas.base import UtcDatetime, OptionalUtcDatetime
 class DistributionTargetCreate(BaseModel):
     bot_chat_id: int
     enabled: bool = True
+    backfill_mode: Literal["new_only", "all_history", "recent_days"] = "new_only"
+    backfill_recent_days: Optional[int] = Field(default=None, ge=1, le=3650)
     merge_forward: bool = False
     use_author_name: bool = True
     summary: Optional[str] = None
     render_config_override: Optional[Dict[str, Any]] = None
+
+    @field_validator("backfill_recent_days")
+    @classmethod
+    def validate_recent_days(cls, value: Optional[int], info):
+        if info.data.get("backfill_mode") == "recent_days" and value is None:
+            raise ValueError("backfill_recent_days is required when backfill_mode is recent_days")
+        return value
 
 
 class DistributionTargetUpdate(BaseModel):
@@ -31,7 +40,8 @@ class DistributionTargetResponse(BaseModel):
     rule_id: int
     bot_chat_id: int
     enabled: bool
-    backfill_watermark: UtcDatetime
+    backfill_watermark: OptionalUtcDatetime
+    backfilled_count: int = 0
     merge_forward: bool
     use_author_name: bool
     summary: Optional[str]

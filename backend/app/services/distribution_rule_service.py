@@ -1,11 +1,12 @@
+from datetime import timedelta
 from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy import select, desc, and_, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.distribution import DistributionRule, DistributionTarget
-from app.models.system import PushedRecord
-from app.models.content import Content, ContentStatus
+from app.models.system import ContentQueueItem, PushedRecord, QueueItemStatus
+from app.models.content import Content, ContentStatus, ReviewStatus
 from app.models.bot import BotChat
 from app.schemas.distribution import (
     DistributionRuleCreate, 
@@ -23,11 +24,14 @@ from app.services.distribution.decision import (
     DECISION_PENDING_REVIEW,
     DECISION_WILL_PUSH,
     DistributionDecision,
+    check_match_conditions,
     should_distribute,
 )
 from app.media.extractor import pick_preview_thumbnail
 from fastapi import HTTPException
 from app.repositories import DistributionRepository, BotRepository, ContentRepository
+from app.core.events import event_bus
+from app.core.time_utils import utcnow
 
 
 class DistributionRuleService:
@@ -95,19 +99,120 @@ class DistributionRuleService:
         if existing:
             raise HTTPException(status_code=400, detail=f"Target already exists for rule '{rule.name}' and chat '{chat.chat_id}'")
 
+        now = utcnow()
+        backfill_mode = target_in.backfill_mode
+        if backfill_mode == "all_history":
+            backfill_watermark = None
+        elif backfill_mode == "recent_days":
+            backfill_watermark = now - timedelta(days=target_in.backfill_recent_days or 1)
+        else:
+            backfill_watermark = now
+
+        target_data = target_in.model_dump(
+            exclude={"backfill_mode", "backfill_recent_days"}
+        )
+        target_data["backfill_watermark"] = backfill_watermark
         db_target = await self.repo.create_target(
             rule_id=rule_id,
-            **target_in.model_dump()
+            **target_data
         )
 
-        # ROADMAP V2: historical content is skipped by backfill_watermark,
-        # no longer writing synthetic SUCCESS/SKIPPED queue rows.
         inserted_records = 0
+        if backfill_mode != "new_only" and db_target.enabled and chat.enabled:
+            inserted_records = await self._backfill_target_queue(
+                rule=rule,
+                target=db_target,
+                bot_chat=chat,
+                since=backfill_watermark,
+            )
 
         await self.db.commit()
         await self.db.refresh(db_target)
         db_target.bot_chat = chat  # Fix pydantic validation for DistributionTargetResponse
+        if inserted_records > 0:
+            await event_bus.publish("queue_updated", {
+                "action": "target_backfill",
+                "rule_id": rule_id,
+                "target_id": db_target.id,
+                "bot_chat_id": chat.id,
+                "items_changed": inserted_records,
+                "timestamp": utcnow().isoformat(),
+            })
         return db_target, inserted_records
+
+    async def _backfill_target_queue(
+        self,
+        *,
+        rule: DistributionRule,
+        target: DistributionTarget,
+        bot_chat: BotChat,
+        since,
+    ) -> int:
+        if not rule.enabled or not target.enabled or not bot_chat.enabled:
+            return 0
+
+        conditions = [
+            Content.status == ContentStatus.PARSE_SUCCESS,
+            Content.review_status.in_([ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED]),
+        ]
+        if since is not None:
+            conditions.append(Content.created_at >= since)
+
+        contents = (
+            await self.db.execute(
+                select(Content).where(and_(*conditions)).order_by(Content.created_at.desc())
+            )
+        ).scalars().all()
+        if not contents:
+            return 0
+
+        existing_rows = (
+            await self.db.execute(
+                select(ContentQueueItem.content_id).where(
+                    ContentQueueItem.rule_id == rule.id,
+                    ContentQueueItem.bot_chat_id == bot_chat.id,
+                )
+            )
+        ).scalars().all()
+        existing_content_ids = {int(content_id) for content_id in existing_rows}
+
+        inserted = 0
+        for content in contents:
+            if content.id in existing_content_ids:
+                continue
+            if (
+                rule.approval_required
+                and content.review_status == ReviewStatus.AUTO_APPROVED
+            ):
+                continue
+            if check_match_conditions(content, rule.match_conditions or {}).bucket == DECISION_FILTERED:
+                continue
+
+            decision = should_distribute(
+                content=content,
+                rule=rule,
+                bot_chat=bot_chat,
+                require_approval=False,
+            )
+            if decision.bucket == DECISION_FILTERED:
+                continue
+
+            self.db.add(
+                ContentQueueItem(
+                    content_id=content.id,
+                    rule_id=rule.id,
+                    bot_chat_id=bot_chat.id,
+                    target_platform=bot_chat.platform_type,
+                    target_id=decision.target_id or bot_chat.chat_id,
+                    status=QueueItemStatus.SCHEDULED,
+                    priority=rule.priority + content.queue_priority,
+                    scheduled_at=utcnow(),
+                    nsfw_routing_result=decision.nsfw_routing_result,
+                )
+            )
+            inserted += 1
+
+        return inserted
 
     async def update_rule_target(self, rule_id: int, target_id: int, update_in: DistributionTargetUpdate) -> DistributionTarget:
         db_target = await self.repo.get_target_by_id(target_id, rule_id=rule_id)

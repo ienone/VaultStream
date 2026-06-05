@@ -18,10 +18,13 @@ void main() {
           child: MaterialApp(
             home: Dialog(
               child: DistributionRuleDialog(
-                onCreate: (rule, selectedChatIds) {
-                  expect(rule.name, 'New Test Rule');
-                  expect(rule.matchConditions['tags'], ['tag1']);
-                },
+                onCreate:
+                    (rule, selectedChatIds, backfillMode, backfillRecentDays) {
+                      expect(rule.name, 'New Test Rule');
+                      expect(rule.matchConditions['tags'], ['tag1']);
+                      expect(backfillMode, 'new_only');
+                      expect(backfillRecentDays, isNull);
+                    },
                 onUpdate: null,
               ),
             ),
@@ -74,9 +77,12 @@ void main() {
             home: Dialog(
               child: DistributionRuleDialog(
                 rule: existingRule,
-                onCreate: (_, selectedChatIds) {},
+                onCreate:
+                    (_, selectedChatIds, backfillMode, backfillRecentDays) {},
                 onUpdate: (id, update) {
-                  final tags = (update.matchConditions!['tags'] as List<dynamic>?) ?? const [];
+                  final tags =
+                      (update.matchConditions!['tags'] as List<dynamic>?) ??
+                      const [];
                   expect(tags, contains('new_tag'));
                 },
               ),

@@ -335,6 +335,14 @@ eventSource.addEventListener('queue_updated', (e) => {
 - `PATCH /api/v1/distribution-rules/{rule_id}/targets/{target_id}`
 - `DELETE /api/v1/distribution-rules/{rule_id}/targets/{target_id}`
 
+`POST /api/v1/distribution-rules/{id}/targets` 支持历史回填控制：
+
+- `backfill_mode="new_only"`：默认值，仅对之后入库的内容生效。
+- `backfill_mode="recent_days"` + `backfill_recent_days=N`：为最近 N 天内已解析并已审批、匹配规则的内容补建队列。
+- `backfill_mode="all_history"`：为全部已解析并已审批、匹配规则的历史内容补建队列。
+
+响应中的 `backfilled_count` 表示本次实际补建的队列项数量。
+
 ### 全局目标视图
 
 - `GET /api/v1/targets`

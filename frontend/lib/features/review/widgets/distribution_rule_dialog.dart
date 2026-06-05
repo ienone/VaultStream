@@ -6,7 +6,7 @@ import 'render_config_editor.dart';
 
 class DistributionRuleDialog extends StatefulWidget {
   final DistributionRule? rule;
-  final Function(DistributionRuleCreate, List<int>) onCreate;
+  final Function(DistributionRuleCreate, List<int>, String, int?) onCreate;
   final Function(int, DistributionRuleUpdate)? onUpdate;
   final List<BotChat> availableChats;
   final List<int> initialSelectedChatIds;
@@ -31,6 +31,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
   late final TextEditingController _priorityController;
   late final TextEditingController _rateLimitController;
   late final TextEditingController _timeWindowController;
+  late final TextEditingController _backfillRecentDaysController;
 
   late String _nsfwPolicy;
   late bool _approvalRequired;
@@ -41,6 +42,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
   late String _tagsMatchMode;
   late RenderConfig _renderConfig;
   late Set<int> _selectedTargetChatIds;
+  late String _backfillMode;
 
   bool get isEditing => widget.rule != null;
 
@@ -61,6 +63,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
     _timeWindowController = TextEditingController(
       text: rule?.timeWindow?.toString() ?? '',
     );
+    _backfillRecentDaysController = TextEditingController(text: '30');
     _nsfwPolicy = rule?.nsfwPolicy ?? 'block';
     _approvalRequired = rule?.approvalRequired ?? false;
     _enabled = rule?.enabled ?? true;
@@ -71,6 +74,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
     _tagsMatchMode = conditions['tags_match_mode'] ?? 'any';
     _renderConfig = rule?.renderConfig ?? {};
     _selectedTargetChatIds = Set<int>.from(widget.initialSelectedChatIds);
+    _backfillMode = 'new_only';
   }
 
   @override
@@ -80,6 +84,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
     _priorityController.dispose();
     _rateLimitController.dispose();
     _timeWindowController.dispose();
+    _backfillRecentDaysController.dispose();
     super.dispose();
   }
 
@@ -233,6 +238,8 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
                         _buildSubHeader('推送目标'),
                         const SizedBox(height: 12),
                         _buildTargetSelector(),
+                        const SizedBox(height: 24),
+                        _buildBackfillSelector(),
                         const SizedBox(height: 32),
                       ],
                       _buildRenderConfigSection(),
@@ -352,6 +359,81 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildBackfillSelector() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Material(
+      color: colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.history_rounded,
+                  size: 20,
+                  color: colorScheme.outline,
+                ),
+                const SizedBox(width: 12),
+                Text('历史内容处理', style: Theme.of(context).textTheme.bodyMedium),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(
+                    value: 'new_only',
+                    label: Text('仅新内容'),
+                    icon: Icon(Icons.fiber_new_rounded, size: 18),
+                  ),
+                  ButtonSegment(
+                    value: 'recent_days',
+                    label: Text('最近 N 天'),
+                    icon: Icon(Icons.calendar_month_rounded, size: 18),
+                  ),
+                  ButtonSegment(
+                    value: 'all_history',
+                    label: Text('全部历史'),
+                    icon: Icon(Icons.all_inclusive_rounded, size: 18),
+                  ),
+                ],
+                selected: {_backfillMode},
+                onSelectionChanged: (selection) =>
+                    setState(() => _backfillMode = selection.first),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _backfillMode == 'new_only'
+                  ? '新目标只接收之后入库的内容。'
+                  : _backfillMode == 'recent_days'
+                  ? '为最近一段时间内已解析并已审批的内容补建队列。'
+                  : '为所有已解析并已审批的历史内容补建队列。',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            if (_backfillMode == 'recent_days') ...[
+              const SizedBox(height: 12),
+              _buildTextField(
+                controller: _backfillRecentDaysController,
+                label: '回填天数',
+                hint: '30',
+                icon: Icons.timelapse_rounded,
+                keyboardType: TextInputType.number,
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -614,7 +696,15 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
         ),
       );
     } else {
-      widget.onCreate(create, _selectedTargetChatIds.toList()..sort());
+      final recentDays = _backfillMode == 'recent_days'
+          ? (int.tryParse(_backfillRecentDaysController.text) ?? 30)
+          : null;
+      widget.onCreate(
+        create,
+        _selectedTargetChatIds.toList()..sort(),
+        _backfillMode,
+        recentDays,
+      );
     }
     Navigator.of(context).pop();
   }
