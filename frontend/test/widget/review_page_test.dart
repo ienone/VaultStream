@@ -28,6 +28,15 @@ class MockDio extends Mock implements Dio {
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) {
+    if (path == '/favorites-sync/preview') {
+      return Future.value(
+        Response(
+          requestOptions: RequestOptions(path: path),
+          data: _mockFavoritesPreviewPayload() as T,
+          statusCode: 200,
+        ),
+      );
+    }
     return Future.value(
       Response(
         requestOptions: RequestOptions(path: path),
@@ -253,6 +262,55 @@ void main() {
       expect(find.text('导入失败'), findsOneWidget);
     });
 
+    testWidgets('ReviewPage preview dialog shows favorites candidates', (
+      WidgetTester tester,
+    ) async {
+      final mockDistributionRules = <DistributionRule>[];
+      final mockQueueItems = <QueueItem>[];
+      final mockBotChats = <BotChat>[];
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            distributionRulesProvider.overrideWith(
+              () => MockDistributionRules(mockDistributionRules),
+            ),
+            contentQueueProvider.overrideWith(
+              () => MockContentQueue(mockQueueItems),
+            ),
+            queueStatsProvider(
+              null,
+            ).overrideWith((ref) => Future.value({'will_push': 0})),
+            favoritesSyncStatusProvider.overrideWith(
+              (ref) async => _mockFavoritesStatus(),
+            ),
+            platformHealthProvider.overrideWith(
+              (ref) async => _mockPlatformHealth(),
+            ),
+            discoverySourcesProvider.overrideWith(
+              () => MockDiscoverySources(_mockDiscoverySources()),
+            ),
+            botChatsProvider.overrideWith(() => MockBotChats(mockBotChats)),
+            apiClientProvider.overrideWith((ref) => MockDio()),
+          ],
+          child: const MaterialApp(home: ReviewPage(initialTab: 'favorites')),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('预览同步').first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('全平台 收藏同步预览'), findsOneWidget);
+      expect(find.text('候选样本'), findsOneWidget);
+      expect(find.text('预览候选 A'), findsOneWidget);
+      expect(find.text('https://example.com/new'), findsOneWidget);
+      expect(find.text('预计新增'), findsOneWidget);
+      expect(find.text('预览候选 B'), findsOneWidget);
+      expect(find.text('已存在'), findsOneWidget);
+      expect(find.text('预览不会导入内容或推进 cursor。'), findsOneWidget);
+    });
+
     testWidgets('ReviewPage opens highlighted favorites sync run detail', (
       WidgetTester tester,
     ) async {
@@ -368,6 +426,45 @@ void main() {
       expect(find.text('刷新'), findsOneWidget);
     });
   });
+}
+
+Map<String, dynamic> _mockFavoritesPreviewPayload() {
+  return {
+    'platform': 'all',
+    'status': 'success',
+    'fetched': 2,
+    'unique': 2,
+    'existing': 1,
+    'estimated_new': 1,
+    'skipped': 0,
+    'platforms': [
+      {
+        'platform': 'zhihu',
+        'status': 'success',
+        'authenticated': true,
+        'max_items': 50,
+        'cursor_present': true,
+        'fetched': 2,
+        'unique': 2,
+        'existing': 1,
+        'estimated_new': 1,
+        'skipped': 0,
+        'next_cursor_available': true,
+        'items': [
+          {
+            'url': 'https://example.com/new',
+            'title': '预览候选 A',
+            'exists': false,
+          },
+          {
+            'url': 'https://example.com/existing',
+            'title': '预览候选 B',
+            'exists': true,
+          },
+        ],
+      },
+    ],
+  };
 }
 
 FavoritesSyncStatus _mockFavoritesStatus() {

@@ -754,15 +754,8 @@ Future<bool> _showPreviewDialog(
               const SizedBox(height: 14),
               for (final item in preview.platforms)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    item.status == 'failed'
-                        ? '${_platformLabel(item.platform)}: ${item.errorHint ?? item.error ?? '预览失败'}'
-                        : '${_platformLabel(item.platform)}: 新增 ${item.estimatedNew}，重复 ${item.existing}',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: item.status == 'failed' ? cs.error : null,
-                    ),
-                  ),
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _PreviewPlatformSection(item: item),
                 ),
               Text(
                 '预览不会导入内容或推进 cursor。',
@@ -788,6 +781,117 @@ Future<bool> _showPreviewDialog(
     ),
   );
   return result == true;
+}
+
+class _PreviewPlatformSection extends StatelessWidget {
+  const _PreviewPlatformSection({required this.item});
+
+  final FavoritesSyncPlatformPreview item;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final failed = item.status == 'failed';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          failed
+              ? '${_platformLabel(item.platform)}: ${item.errorHint ?? item.error ?? '预览失败'}'
+              : '${_platformLabel(item.platform)}: 新增 ${item.estimatedNew}，重复 ${item.existing}',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: failed ? cs.error : null,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        if (!failed && item.items.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            '候选样本',
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          for (final sample in item.items.take(5))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: _PreviewFavoriteItem(item: sample),
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+class _PreviewFavoriteItem extends StatelessWidget {
+  const _PreviewFavoriteItem({required this.item});
+
+  final Map<String, dynamic> item;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final title = _mapString(item, 'title');
+    final url = _mapString(item, 'url') ?? '-';
+    final exists = item['exists'] == true;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              exists ? Icons.content_copy_rounded : Icons.add_circle_rounded,
+              size: 18,
+              color: exists ? cs.outline : cs.primary,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (title != null)
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  SelectableText(
+                    url,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              exists ? '已存在' : '预计新增',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: exists ? cs.outline : cs.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 Future<void> _retryRun(
