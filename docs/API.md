@@ -397,7 +397,7 @@ QQ 配置支持字段：`napcat_http_url`、`napcat_ws_url`、`napcat_access_tok
 
 `GET /api/v1/background-tasks/diagnostics` 额外返回：
 
-- `recent_task_runs`: 最近后台任务运行记录。当前覆盖 `content_parse`、`content_embedding`、`content_reparse`、`content_summary`、`discovery_patrol`、`discovery_sync`、`distribution_push`、`distribution_schedule`、`favorites_sync` 和 `semantic_reindex`，包含 `run_id`、`task`、`status`、`started_at`、`finished_at`、`error`、`trigger` 以及任务特定元数据。
+- `recent_task_runs`: 最近后台任务运行记录。当前覆盖 `content_parse`、`content_embedding`、`content_reparse`、`content_summary`、`discovery_patrol`、`discovery_sync`、`distribution_push`、`distribution_schedule`、`distribution_worker_poll`、`favorites_sync` 和 `semantic_reindex`，包含 `run_id`、`task`、`status`、`started_at`、`finished_at`、`error`、`trigger` 以及任务特定元数据。
 - `failed_parse_tasks`、`failed_distribution_items`、`failed_discovery_sources`: 仍用于展示可恢复或需排查的失败对象。
 
 `POST /api/v1/discovery/sources/{source_id}/sync` 返回 `202 Accepted`，响应包含 `run_id`。若发现同步任务实例未运行，返回 `503 discovery_task_unavailable`；若来源类型尚未实现，返回 `400 source_kind_not_supported`。
@@ -417,6 +417,8 @@ QQ 配置支持字段：`napcat_http_url`、`napcat_ws_url`、`napcat_access_tok
 `POST /api/v1/distribution-queue/items/{item_id}/push-now` 会立即处理单个分发队列项并返回 `run_id`；运行结果进入 `recent_task_runs` 的 `distribution_push` 记录。
 
 `POST /api/v1/distribution-queue/content/{content_id}/push-now` 与 `POST /api/v1/distribution-queue/content/batch-push-now` 会把相关队列项调整为立即可处理并返回 `run_id`；运行结果进入 `recent_task_runs` 的 `distribution_schedule` 记录。它们是排期/调度操作，不代表外部推送已经成功。
+
+分发队列 worker 每次自动领取到期队列项时会产生 `distribution_worker_poll` 运行记录，记录 worker 名称、领取项、处理数量、异常数量和最终队列状态分布；空轮询不会产生记录。
 
 ---
 
