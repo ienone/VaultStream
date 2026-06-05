@@ -7,31 +7,53 @@ import '../../../core/utils/toast.dart';
 import '../../settings/providers/favorites_sync_provider.dart';
 import '../../settings/providers/settings_provider.dart';
 
-class FavoritesSyncAutomationPanel extends ConsumerWidget {
-  const FavoritesSyncAutomationPanel({super.key});
+class FavoritesSyncAutomationPanel extends ConsumerStatefulWidget {
+  const FavoritesSyncAutomationPanel({super.key, this.highlightRunId});
+
+  final String? highlightRunId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<FavoritesSyncAutomationPanel> createState() =>
+      _FavoritesSyncAutomationPanelState();
+}
+
+class _FavoritesSyncAutomationPanelState
+    extends ConsumerState<FavoritesSyncAutomationPanel> {
+  String? _openedRunId;
+
+  @override
+  void didUpdateWidget(FavoritesSyncAutomationPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.highlightRunId != widget.highlightRunId) {
+      _openedRunId = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final statusAsync = ref.watch(favoritesSyncStatusProvider);
 
     return statusAsync.when(
-      data: (status) => RefreshIndicator(
-        onRefresh: () async => ref.invalidate(favoritesSyncStatusProvider),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
-          children: [
-            _SyncOverviewCard(status: status),
-            const SizedBox(height: 16),
-            _SyncCommandBar(status: status),
-            const SizedBox(height: 16),
-            _SyncPolicyCard(status: status),
-            const SizedBox(height: 16),
-            _PlatformStatusGrid(platforms: status.platforms),
-            const SizedBox(height: 24),
-            _RecentRunsList(runs: status.recentRuns),
-          ],
-        ),
-      ),
+      data: (status) {
+        _openHighlightedRunIfReady(status.recentRuns);
+        return RefreshIndicator(
+          onRefresh: () async => ref.invalidate(favoritesSyncStatusProvider),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+            children: [
+              _SyncOverviewCard(status: status),
+              const SizedBox(height: 16),
+              _SyncCommandBar(status: status),
+              const SizedBox(height: 16),
+              _SyncPolicyCard(status: status),
+              const SizedBox(height: 16),
+              _PlatformStatusGrid(platforms: status.platforms),
+              const SizedBox(height: 24),
+              _RecentRunsList(runs: status.recentRuns),
+            ],
+          ),
+        );
+      },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => Center(
         child: Padding(
@@ -57,6 +79,29 @@ class FavoritesSyncAutomationPanel extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  void _openHighlightedRunIfReady(List<Map<String, dynamic>> runs) {
+    final highlightRunId = widget.highlightRunId;
+    if (highlightRunId == null ||
+        highlightRunId.isEmpty ||
+        _openedRunId == highlightRunId) {
+      return;
+    }
+    Map<String, dynamic>? matchedRun;
+    for (final run in runs) {
+      if (_runString(run, 'run_id') == highlightRunId) {
+        matchedRun = run;
+        break;
+      }
+    }
+    if (matchedRun == null) return;
+
+    _openedRunId = highlightRunId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _showRunDetail(context, matchedRun!);
+    });
   }
 }
 

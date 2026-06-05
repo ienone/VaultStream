@@ -26,9 +26,10 @@ import 'widgets/rule_list_tile.dart';
 import '../../core/utils/toast.dart';
 
 class ReviewPage extends ConsumerStatefulWidget {
-  const ReviewPage({super.key, this.initialTab});
+  const ReviewPage({super.key, this.initialTab, this.highlightRunId});
 
   final String? initialTab;
+  final String? highlightRunId;
 
   @override
   ConsumerState<ReviewPage> createState() => _ReviewPageState();
@@ -132,7 +133,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         controller: _tabController,
         children: [
           _buildQueueTab(),
-          const FavoritesSyncAutomationPanel(),
+          FavoritesSyncAutomationPanel(highlightRunId: widget.highlightRunId),
           const AutomationHealthMatrixPanel(),
           _buildHistoryTab(),
         ],

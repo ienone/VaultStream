@@ -249,6 +249,53 @@ void main() {
       expect(find.text('登录状态不可用，请先完成该平台登录'), findsOneWidget);
     });
 
+    testWidgets('ReviewPage opens highlighted favorites sync run detail', (
+      WidgetTester tester,
+    ) async {
+      final mockDistributionRules = <DistributionRule>[];
+      final mockQueueItems = <QueueItem>[];
+      final mockBotChats = <BotChat>[];
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            distributionRulesProvider.overrideWith(
+              () => MockDistributionRules(mockDistributionRules),
+            ),
+            contentQueueProvider.overrideWith(
+              () => MockContentQueue(mockQueueItems),
+            ),
+            queueStatsProvider(
+              null,
+            ).overrideWith((ref) => Future.value({'will_push': 0})),
+            favoritesSyncStatusProvider.overrideWith(
+              (ref) async => _mockFavoritesStatus(),
+            ),
+            platformHealthProvider.overrideWith(
+              (ref) async => _mockPlatformHealth(),
+            ),
+            discoverySourcesProvider.overrideWith(
+              () => MockDiscoverySources(_mockDiscoverySources()),
+            ),
+            botChatsProvider.overrideWith(() => MockBotChats(mockBotChats)),
+            apiClientProvider.overrideWith((ref) => MockDio()),
+          ],
+          child: const MaterialApp(
+            home: ReviewPage(
+              initialTab: 'favorites',
+              highlightRunId: 'abcdef123456',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('收藏同步总览'), findsOneWidget);
+      expect(find.text('同步任务 abcdef12'), findsOneWidget);
+      expect(find.text('结果摘要'), findsOneWidget);
+      expect(find.text('登录状态不可用，请先完成该平台登录'), findsOneWidget);
+    });
+
     testWidgets('ReviewPage exposes automation health matrix', (
       WidgetTester tester,
     ) async {

@@ -449,7 +449,12 @@ class DashboardPage extends ConsumerWidget {
   void _openTaskRun(BuildContext context, BackgroundTaskRun run) {
     final task = run.task;
     if (task == 'favorites_sync') {
-      context.go('/automation?tab=favorites');
+      context.go(
+        Uri(
+          path: '/automation',
+          queryParameters: {'tab': 'favorites', 'run': run.runId},
+        ).toString(),
+      );
       return;
     }
     if (task.startsWith('distribution_')) {

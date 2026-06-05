@@ -178,8 +178,10 @@ GoRouter goRouter(Ref ref) {
             routes: [
               GoRoute(
                 path: '/automation',
-                builder: (context, state) =>
-                    ReviewPage(initialTab: state.uri.queryParameters['tab']),
+                builder: (context, state) => ReviewPage(
+                  initialTab: state.uri.queryParameters['tab'],
+                  highlightRunId: state.uri.queryParameters['run'],
+                ),
               ),
               GoRoute(
                 path: '/review',
