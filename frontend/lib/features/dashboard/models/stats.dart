@@ -82,6 +82,7 @@ class BackgroundTaskDiagnostics {
     required this.failedParseTasks,
     required this.failedDistributionItems,
     required this.failedDiscoverySources,
+    this.recentTaskRuns = const [],
   });
 
   factory BackgroundTaskDiagnostics.fromJson(Map<String, dynamic> json) {
@@ -105,6 +106,10 @@ class BackgroundTaskDiagnostics {
               .whereType<Map<String, dynamic>>()
               .map(FailedDiscoverySource.fromJson)
               .toList(),
+      recentTaskRuns: (json['recent_task_runs'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(BackgroundTaskRun.fromJson)
+          .toList(),
     );
   }
 
@@ -113,12 +118,73 @@ class BackgroundTaskDiagnostics {
   final List<FailedParseTask> failedParseTasks;
   final List<FailedDistributionItem> failedDistributionItems;
   final List<FailedDiscoverySource> failedDiscoverySources;
+  final List<BackgroundTaskRun> recentTaskRuns;
 
   int get totalFailures =>
       failedParseTasks.length +
       failedDistributionItems.length +
       failedDiscoverySources.length +
       taskStates.where((state) => state.status == 'error').length;
+}
+
+class BackgroundTaskRun {
+  const BackgroundTaskRun({
+    required this.raw,
+    required this.runId,
+    required this.task,
+    required this.status,
+    this.startedAt,
+    this.finishedAt,
+    this.error,
+    this.result,
+  });
+
+  factory BackgroundTaskRun.fromJson(Map<String, dynamic> json) {
+    return BackgroundTaskRun(
+      raw: Map<String, dynamic>.from(json),
+      runId: json['run_id']?.toString() ?? '',
+      task: json['task']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'unknown',
+      startedAt: _parseDate(json['started_at']),
+      finishedAt: _parseDate(json['finished_at']),
+      error: json['error']?.toString(),
+      result: json['result'] is Map
+          ? Map<String, dynamic>.from(json['result'] as Map)
+          : null,
+    );
+  }
+
+  final Map<String, dynamic> raw;
+  final String runId;
+  final String task;
+  final String status;
+  final DateTime? startedAt;
+  final DateTime? finishedAt;
+  final String? error;
+  final Map<String, dynamic>? result;
+
+  String get shortRunId => runId.length > 8 ? runId.substring(0, 8) : runId;
+
+  Map<String, dynamic> get metadata {
+    final data = Map<String, dynamic>.from(raw);
+    for (final key in [
+      'run_id',
+      'task',
+      'status',
+      'started_at',
+      'finished_at',
+      'error',
+      'result',
+    ]) {
+      data.remove(key);
+    }
+    return data;
+  }
+}
+
+DateTime? _parseDate(Object? value) {
+  if (value == null) return null;
+  return DateTime.tryParse(value.toString());
 }
 
 class BackgroundTaskState {

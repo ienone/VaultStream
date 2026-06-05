@@ -4,11 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/features/dashboard/dashboard_page.dart';
 import 'package:frontend/features/dashboard/providers/dashboard_provider.dart';
 import 'package:frontend/features/dashboard/models/stats.dart';
+import 'package:frontend/features/dashboard/widgets/background_diagnostics_card.dart';
 
 // Create a mock for the provider state if needed, or better, override the provider with a known state.
 
 void main() {
-  testWidgets('DashboardPage renders stats correctly (Portrait Mobile)', (WidgetTester tester) async {
+  testWidgets('DashboardPage renders stats correctly (Portrait Mobile)', (
+    WidgetTester tester,
+  ) async {
     // Set screen size to portrait mobile
     tester.view.physicalSize = const Size(1080, 2400); // Pixel 4 ish
     tester.view.devicePixelRatio = 2.0;
@@ -35,11 +38,11 @@ void main() {
         total: 18,
       ),
     );
-    
+
     final mockHealth = SystemHealth(
-        status: 'ok',
-        queueSize: 0,
-        components: {'db': 'ok'}
+      status: 'ok',
+      queueSize: 0,
+      components: {'db': 'ok'},
     );
 
     await tester.pumpWidget(
@@ -49,9 +52,7 @@ void main() {
           queueStatsProvider.overrideWith((ref) => Future.value(mockQueue)),
           systemHealthProvider.overrideWith((ref) => Future.value(mockHealth)),
         ],
-        child: const MaterialApp(
-          home: DashboardPage(),
-        ),
+        child: const MaterialApp(home: DashboardPage()),
       ),
     );
 
@@ -62,19 +63,22 @@ void main() {
     expect(find.text('系统概览'), findsOneWidget);
     expect(find.text('总内容'), findsWidgets);
     expect(find.text('15'), findsWidgets); // Total content count
-    
+
     // Verify responsive layout
     // In portrait, we expect 2 columns for grid
     final gridFinder = find.byType(GridView);
     final grid = tester.widget<GridView>(gridFinder);
-    final delegate = grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
+    final delegate =
+        grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
     expect(delegate.crossAxisCount, 2);
 
     // Reset view
     addTearDown(tester.view.resetPhysicalSize);
   });
 
-  testWidgets('DashboardPage renders stats correctly (Landscape Desktop)', (WidgetTester tester) async {
+  testWidgets('DashboardPage renders stats correctly (Landscape Desktop)', (
+    WidgetTester tester,
+  ) async {
     // Set screen size to landscape desktop
     tester.view.physicalSize = const Size(3840, 2160);
     tester.view.devicePixelRatio = 2.0;
@@ -101,11 +105,11 @@ void main() {
         total: 18,
       ),
     );
-    
+
     final mockHealth = SystemHealth(
-        status: 'ok',
-        queueSize: 0,
-        components: {'db': 'ok'}
+      status: 'ok',
+      queueSize: 0,
+      components: {'db': 'ok'},
     );
 
     await tester.pumpWidget(
@@ -115,9 +119,7 @@ void main() {
           queueStatsProvider.overrideWith((ref) => Future.value(mockQueue)),
           systemHealthProvider.overrideWith((ref) => Future.value(mockHealth)),
         ],
-        child: const MaterialApp(
-          home: DashboardPage(),
-        ),
+        child: const MaterialApp(home: DashboardPage()),
       ),
     );
 
@@ -126,9 +128,51 @@ void main() {
     // Verify 4 columns for grid in desktop
     final gridFinder = find.byType(GridView);
     final grid = tester.widget<GridView>(gridFinder);
-    final delegate = grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
+    final delegate =
+        grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
     expect(delegate.crossAxisCount, 4);
 
     addTearDown(tester.view.resetPhysicalSize);
+  });
+
+  testWidgets('BackgroundDiagnosticsCard shows recent run details', (
+    WidgetTester tester,
+  ) async {
+    final diagnostics = BackgroundTaskDiagnostics.fromJson({
+      'summary': {},
+      'task_states': [],
+      'failed_parse_tasks': [],
+      'failed_distribution_items': [],
+      'failed_discovery_sources': [],
+      'recent_task_runs': [
+        {
+          'run_id': 'abcdef123456',
+          'task': 'content_parse',
+          'status': 'success',
+          'started_at': '2026-06-05T12:00:00Z',
+          'trigger': 'queue',
+          'result': {'content_id': 1, 'status': 'parse_success'},
+        },
+      ],
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: BackgroundDiagnosticsCard(diagnostics: diagnostics),
+        ),
+      ),
+    );
+
+    expect(find.text('最近运行'), findsOneWidget);
+    expect(find.text('content_parse'), findsOneWidget);
+    expect(find.text('success'), findsOneWidget);
+
+    await tester.tap(find.text('content_parse'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('任务 content_parse'), findsOneWidget);
+    expect(find.text('abcdef123456'), findsOneWidget);
+    expect(find.textContaining('parse_success'), findsOneWidget);
   });
 }
