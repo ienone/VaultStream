@@ -12,6 +12,7 @@
 - [API.md](./API.md) - API 端点和请求/响应约定。
 - [DATABASE.md](./DATABASE.md) - 数据库结构、FTS、语义索引和迁移说明。
 - [architecture/VECTOR_SEARCH_EVALUATION.md](./architecture/VECTOR_SEARCH_EVALUATION.md) - 语义检索当前方案与 sqlite-vec 试点阈值。
+- [validation/product-acceptance.md](./validation/product-acceptance.md) - 产品级冒烟检查、真实平台端到端验收和测试结论口径。
 
 ## 平台适配器
 
