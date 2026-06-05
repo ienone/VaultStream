@@ -37,7 +37,7 @@ from app.core.api_errors import build_error_payload
 from app.adapters.favorites.errors import FavoritesFetchError
 from app.adapters.storage import get_storage_backend, LocalStorageBackend
 from app.core.queue import task_queue
-from app.services.background_task_state import get_background_task_states
+from app.services.background_task_state import get_background_task_states, get_recent_task_runs
 from app.utils.sensitive_display import as_configured_placeholder, is_sensitive_setting_key
 
 router = APIRouter()
@@ -670,6 +670,7 @@ async def get_favorites_sync_status(
         "max_items": max_items,
         "enabled_platforms": enabled_platforms,
         "last_sync_at": last_sync_at,
+        "recent_runs": await get_recent_task_runs("favorites_sync", limit=10),
         "platforms": platforms,
     }
 
@@ -705,8 +706,21 @@ async def trigger_favorites_sync(
                     request_id=getattr(request.state, "request_id", None),
                 ),
             )
-        asyncio.create_task(sync_task.sync_platform_by_name(platform))
-        return {"status": "accepted", "platform": platform}
+        run = await sync_task.create_run(platform=platform, trigger="manual")
+        asyncio.create_task(
+            sync_task.sync_platform_by_name(
+                platform,
+                run_id=run["run_id"],
+                trigger="manual",
+            )
+        )
+        return {"status": "accepted", "platform": platform, "run_id": run["run_id"]}
 
-    asyncio.create_task(sync_task.sync_all_platforms_once())
-    return {"status": "accepted", "platform": "all"}
+    run = await sync_task.create_run(platform=None, trigger="manual")
+    asyncio.create_task(
+        sync_task.sync_all_platforms_once(
+            run_id=run["run_id"],
+            trigger="manual",
+        )
+    )
+    return {"status": "accepted", "platform": "all", "run_id": run["run_id"]}
