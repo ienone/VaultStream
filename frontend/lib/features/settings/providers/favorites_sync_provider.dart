@@ -299,4 +299,27 @@ class FavoritesSyncActions {
     }
     return null;
   }
+
+  Future<String?> retryItems({
+    required String platform,
+    required List<Map<String, dynamic>> items,
+    String? sourceRunId,
+  }) async {
+    final dio = _ref.read(apiClientProvider);
+    final response = await dio.post(
+      '/favorites-sync/items/batch-retry',
+      data: {
+        'platform': platform,
+        'items': items,
+        if (sourceRunId != null && sourceRunId.isNotEmpty)
+          'source_run_id': sourceRunId,
+      },
+    );
+    _ref.invalidate(favoritesSyncStatusProvider);
+    final data = response.data;
+    if (data is Map && data['run_id'] != null) {
+      return data['run_id'].toString();
+    }
+    return null;
+  }
 }

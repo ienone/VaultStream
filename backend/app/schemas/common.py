@@ -162,14 +162,27 @@ class FavoritesSyncPreviewRequest(BaseModel):
     platform: Optional[str] = None
 
 
-class FavoritesSyncItemRetryRequest(BaseModel):
-    """Retry importing one failed favorites item."""
+class FavoritesSyncItemRetryEntry(BaseModel):
+    """One failed favorites item retry payload."""
 
-    platform: str = Field(..., min_length=1)
     url: str = Field(..., min_length=1)
     title: Optional[str] = None
     item_id: Optional[str] = None
+
+
+class FavoritesSyncItemRetryRequest(FavoritesSyncItemRetryEntry):
+    """Retry importing one failed favorites item."""
+
+    platform: str = Field(..., min_length=1)
     source_run_id: Optional[str] = None
+
+
+class FavoritesSyncItemsRetryRequest(BaseModel):
+    """Retry importing multiple failed favorites items."""
+
+    platform: str = Field(..., min_length=1)
+    source_run_id: Optional[str] = None
+    items: List[FavoritesSyncItemRetryEntry] = Field(..., min_length=1, max_length=50)
 
 
 class FavoritesSyncPlatformPreview(BaseModel):

@@ -32,6 +32,7 @@ from app.schemas import (
     SystemSettingResponse, SystemSettingUpdate, DashboardStats, 
     QueueStats, TagStats, QueueOverviewStats, DistributionStatusStats,
     FavoritesSyncItemRetryRequest,
+    FavoritesSyncItemsRetryRequest,
     FavoritesSyncPreviewRequest, FavoritesSyncPreviewResponse,
     FavoritesSyncTriggerRequest, BackgroundTaskDiagnosticsResponse,
 )
@@ -1650,3 +1651,139 @@ async def retry_favorites_sync_item(
                 request_id=getattr(request.state, "request_id", None),
             ),
         ) from e
+
+
+@router.post("/favorites-sync/items/batch-retry")
+async def retry_favorites_sync_items(
+    body: FavoritesSyncItemsRetryRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """Retry importing multiple failed favorites items in one observable run."""
+    from app.services.content_service import ContentService
+    from app.tasks.favorites_sync import FavoritesSyncTask
+
+    platform = body.platform.strip().lower()
+    supported_platforms = FavoritesSyncTask.get_fetcher_registry().keys()
+    if platform not in supported_platforms:
+        raise HTTPException(
+            status_code=400,
+            detail=build_error_payload(
+                message=f"Unknown platform: {platform}",
+                code="unsupported_platform",
+                hint="仅支持 zhihu / xiaohongshu / twitter",
+                request_id=getattr(request.state, "request_id", None),
+            ),
+        )
+
+    run = await record_task_run_started(
+        "favorites_sync",
+        scope=platform,
+        trigger="item_batch_retry",
+        platform=platform,
+        source_run_id=body.source_run_id,
+        item_count=len(body.items),
+    )
+
+    svc = ContentService(db)
+    imported = 0
+    skipped = 0
+    failed = 0
+    item_results: list[dict[str, Any]] = []
+    failed_items: list[dict[str, Any]] = []
+
+    for item in body.items:
+        url = item.url.strip()
+        if not url:
+            skipped += 1
+            item_results.append(
+                {
+                    "status": "skipped",
+                    "url": item.url,
+                    "title": item.title,
+                    "item_id": item.item_id,
+                    "error": "URL is required",
+                }
+            )
+            continue
+        try:
+            content = await svc.create_share(
+                url=url,
+                tags=[],
+                source_name=f"favorites_sync:{platform}:retry",
+                note=item.title,
+                client_context={
+                    "platform": platform,
+                    "item_id": item.item_id,
+                    "source_run_id": body.source_run_id,
+                    "retry_run_id": run["run_id"],
+                    "retry_mode": "batch",
+                },
+            )
+            imported += 1
+            item_results.append(
+                {
+                    "status": "success",
+                    "url": url,
+                    "title": item.title,
+                    "item_id": item.item_id,
+                    "content_id": content.id,
+                }
+            )
+        except ValueError as e:
+            skipped += 1
+            item_results.append(
+                {
+                    "status": "skipped",
+                    "url": url,
+                    "title": item.title,
+                    "item_id": item.item_id,
+                    "error": str(e)[:500],
+                    "error_code": e.__class__.__name__,
+                }
+            )
+        except Exception as e:
+            failed += 1
+            failed_item = {
+                "status": "failed",
+                "url": url,
+                "title": item.title,
+                "item_id": item.item_id,
+                "error": str(e)[:500],
+                "error_code": e.__class__.__name__,
+            }
+            item_results.append(failed_item)
+            failed_items.append(failed_item)
+            logger.bind(
+                event="favorites_item_batch_retry_failed",
+                platform=platform,
+                item_url=url,
+                run_id=run["run_id"],
+            ).exception("Favorites batch item retry failed: {}", e)
+
+    status = "success" if failed == 0 else "partial_success"
+    await record_task_run_success(
+        "favorites_sync",
+        run["run_id"],
+        platform=platform,
+        source_run_id=body.source_run_id,
+        status=status,
+        imported=imported,
+        skipped=skipped,
+        failed=failed,
+        items=item_results,
+        failed_items=failed_items,
+        failed_items_total=failed,
+        failed_items_truncated=False,
+    )
+    return {
+        "status": status,
+        "platform": platform,
+        "run_id": run["run_id"],
+        "source_run_id": body.source_run_id,
+        "imported": imported,
+        "skipped": skipped,
+        "failed": failed,
+        "items": item_results,
+    }

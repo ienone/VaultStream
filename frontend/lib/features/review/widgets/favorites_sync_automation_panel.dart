@@ -1044,6 +1044,64 @@ Future<void> _retryFailedFavoriteItem(
   }
 }
 
+Future<void> _retryFailedFavoriteItems(
+  BuildContext context,
+  WidgetRef ref, {
+  required String platform,
+  required String? sourceRunId,
+  required List<Map<String, dynamic>> items,
+}) async {
+  final retryableItems = items
+      .where((item) {
+        final url = _mapString(item, 'url');
+        return url != null && url.isNotEmpty;
+      })
+      .map(
+        (item) => {
+          'url': _mapString(item, 'url'),
+          if (_mapString(item, 'title') != null)
+            'title': _mapString(item, 'title'),
+          if (_mapString(item, 'item_id') != null)
+            'item_id': _mapString(item, 'item_id'),
+        },
+      )
+      .toList(growable: false);
+  if (retryableItems.isEmpty) {
+    Toast.show(context, '失败项缺少 URL，无法重试', isError: true);
+    return;
+  }
+
+  try {
+    final retryRunId = await ref
+        .read(favoritesSyncActionsProvider)
+        .retryItems(
+          platform: platform,
+          items: retryableItems,
+          sourceRunId: sourceRunId,
+        );
+    if (context.mounted) {
+      Toast.show(
+        context,
+        '已批量重试 ${retryableItems.length} 个失败项${retryRunId == null ? '' : ' #${_shortId(retryRunId)}'}',
+        action: retryRunId == null
+            ? null
+            : SnackBarAction(
+                label: '查看日志',
+                onPressed: () => context.go('/home?run=$retryRunId'),
+              ),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      Toast.show(
+        context,
+        formatApiErrorMessage(e, fallbackMessage: '批量重试失败项失败'),
+        isError: true,
+      );
+    }
+  }
+}
+
 void _showRunDetail(BuildContext context, Map<String, dynamic> run) {
   final runId = _runString(run, 'run_id');
   final status = _runString(run, 'status') ?? 'unknown';
@@ -1255,14 +1313,34 @@ class _PlatformRunResult extends ConsumerWidget {
             ],
             if (failedItems.isNotEmpty) ...[
               const SizedBox(height: 10),
-              Text(
-                totalFailedItems > failedItems.length || failedItemsTruncated
-                    ? '失败项 · 显示 ${displayedFailedItems.length} / $totalFailedItems'
-                    : '失败项',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: cs.error,
-                  fontWeight: FontWeight.w700,
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      totalFailedItems > failedItems.length ||
+                              failedItemsTruncated
+                          ? '失败项 · 显示 ${displayedFailedItems.length} / $totalFailedItems'
+                          : '失败项',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: cs.error,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: displayedFailedItems.isEmpty
+                        ? null
+                        : () => _retryFailedFavoriteItems(
+                            context,
+                            ref,
+                            platform: platform,
+                            sourceRunId: sourceRunId,
+                            items: displayedFailedItems,
+                          ),
+                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                    label: const Text('重试可见失败项'),
+                  ),
+                ],
               ),
               const SizedBox(height: 6),
               for (final item in displayedFailedItems)

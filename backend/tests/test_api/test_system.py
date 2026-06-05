@@ -265,6 +265,52 @@ class TestSystemAPI:
         assert latest["result"]["url"] == "https://example.com/fail"
 
     @pytest.mark.asyncio
+    async def test_favorites_sync_batch_retry_failed_items_records_run(
+        self,
+        client: AsyncClient,
+        monkeypatch,
+    ):
+        async def fake_create_share(self, **kwargs):
+            if kwargs["url"].endswith("/bad"):
+                raise RuntimeError("still broken")
+            return SimpleNamespace(id=456)
+
+        monkeypatch.setattr(
+            "app.services.content_service.ContentService.create_share",
+            fake_create_share,
+        )
+
+        retry = await client.post(
+            "/api/v1/favorites-sync/items/batch-retry",
+            json={
+                "platform": "zhihu",
+                "source_run_id": "failed-run",
+                "items": [
+                    {"url": "https://example.com/good", "title": "成功收藏"},
+                    {"url": "https://example.com/bad", "title": "失败收藏"},
+                ],
+            },
+        )
+        assert retry.status_code == 200
+        data = retry.json()
+        assert data["status"] == "partial_success"
+        assert data["run_id"]
+        assert data["imported"] == 1
+        assert data["failed"] == 1
+
+        status = await client.get("/api/v1/favorites-sync/status")
+        latest = next(
+            run
+            for run in status.json()["recent_runs"]
+            if run["run_id"] == data["run_id"]
+        )
+        assert latest["trigger"] == "item_batch_retry"
+        assert latest["scope"] == "zhihu"
+        assert latest["result"]["imported"] == 1
+        assert latest["result"]["failed"] == 1
+        assert latest["result"]["failed_items"][0]["url"] == "https://example.com/bad"
+
+    @pytest.mark.asyncio
     async def test_favorites_sync_duplicate_skip_strategy_skips_existing_item(
         self,
         monkeypatch,
