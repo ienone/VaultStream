@@ -5,6 +5,8 @@ import 'package:frontend/features/dashboard/dashboard_page.dart';
 import 'package:frontend/features/dashboard/providers/dashboard_provider.dart';
 import 'package:frontend/features/dashboard/models/stats.dart';
 import 'package:frontend/features/dashboard/widgets/background_diagnostics_card.dart';
+import 'package:frontend/features/discovery/models/discovery_models.dart';
+import 'package:frontend/features/discovery/providers/discovery_stats_provider.dart';
 
 // Create a mock for the provider state if needed, or better, override the provider with a known state.
 
@@ -44,6 +46,21 @@ void main() {
       queueSize: 0,
       components: {'db': 'ok'},
     );
+    final mockDiscovery = DiscoveryStats(
+      total: 4,
+      byState: {'visible': 4},
+      bySource: {'rss': 4},
+    );
+    final mockDiagnostics = BackgroundTaskDiagnostics.fromJson({
+      'summary': {},
+      'task_states': [],
+      'failed_parse_tasks': [],
+      'failed_distribution_items': [],
+      'failed_discovery_sources': [],
+      'recent_task_runs': [
+        {'run_id': 'run-1', 'task': 'favorites_sync', 'status': 'success'},
+      ],
+    });
 
     await tester.pumpWidget(
       ProviderScope(
@@ -51,6 +68,12 @@ void main() {
           dashboardStatsProvider.overrideWith((ref) => Future.value(mockStats)),
           queueStatsProvider.overrideWith((ref) => Future.value(mockQueue)),
           systemHealthProvider.overrideWith((ref) => Future.value(mockHealth)),
+          discoveryStatsProvider.overrideWith(
+            (ref) => Future.value(mockDiscovery),
+          ),
+          backgroundTaskDiagnosticsProvider.overrideWith(
+            (ref) => Future.value(mockDiagnostics),
+          ),
         ],
         child: const MaterialApp(home: DashboardPage()),
       ),
@@ -61,6 +84,9 @@ void main() {
 
     // Verify system overview
     expect(find.text('系统概览'), findsOneWidget);
+    expect(find.text('待处理动态'), findsOneWidget);
+    expect(find.text('有 10 个待处理动态'), findsOneWidget);
+    expect(find.text('favorites_sync'), findsWidgets);
     expect(find.text('总内容'), findsWidgets);
     expect(find.text('15'), findsWidgets); // Total content count
 
@@ -111,6 +137,21 @@ void main() {
       queueSize: 0,
       components: {'db': 'ok'},
     );
+    final mockDiscovery = DiscoveryStats(
+      total: 4,
+      byState: {'visible': 4},
+      bySource: {'rss': 4},
+    );
+    final mockDiagnostics = BackgroundTaskDiagnostics.fromJson({
+      'summary': {},
+      'task_states': [
+        {'task': 'distribution_worker', 'status': 'error'},
+      ],
+      'failed_parse_tasks': [],
+      'failed_distribution_items': [],
+      'failed_discovery_sources': [],
+      'recent_task_runs': [],
+    });
 
     await tester.pumpWidget(
       ProviderScope(
@@ -118,12 +159,20 @@ void main() {
           dashboardStatsProvider.overrideWith((ref) => Future.value(mockStats)),
           queueStatsProvider.overrideWith((ref) => Future.value(mockQueue)),
           systemHealthProvider.overrideWith((ref) => Future.value(mockHealth)),
+          discoveryStatsProvider.overrideWith(
+            (ref) => Future.value(mockDiscovery),
+          ),
+          backgroundTaskDiagnosticsProvider.overrideWith(
+            (ref) => Future.value(mockDiagnostics),
+          ),
         ],
         child: const MaterialApp(home: DashboardPage()),
       ),
     );
 
     await tester.pumpAndSettle();
+
+    expect(find.text('有 1 个异常需要处理'), findsOneWidget);
 
     // Verify 4 columns for grid in desktop
     final gridFinder = find.byType(GridView);

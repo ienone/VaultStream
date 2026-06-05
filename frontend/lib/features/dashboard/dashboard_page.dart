@@ -9,8 +9,10 @@ import '../../core/widgets/async_placeholders.dart';
 import 'providers/dashboard_provider.dart';
 import 'models/stats.dart';
 import '../collection/providers/collection_filter_provider.dart';
+import '../discovery/models/discovery_models.dart';
 import '../discovery/providers/discovery_stats_provider.dart';
 import '../discovery/providers/discovery_filter_provider.dart';
+import 'widgets/action_summary_card.dart';
 import 'widgets/stat_card.dart';
 import 'widgets/queue_status_card.dart';
 import 'widgets/platform_distribution_card.dart';
@@ -84,6 +86,7 @@ class DashboardPage extends ConsumerWidget {
               ref.invalidate(queueStatsProvider);
               ref.invalidate(systemHealthProvider);
               ref.invalidate(discoveryStatsProvider);
+              ref.invalidate(backgroundTaskDiagnosticsProvider);
             },
           ),
           const SizedBox(width: 8),
@@ -101,6 +104,7 @@ class DashboardPage extends ConsumerWidget {
                 ref.invalidate(queueStatsProvider);
                 ref.invalidate(systemHealthProvider);
                 ref.invalidate(discoveryStatsProvider);
+                ref.invalidate(backgroundTaskDiagnosticsProvider);
               },
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -111,6 +115,22 @@ class DashboardPage extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    SectionHeader(
+                      title: '待处理动态',
+                      icon: Icons.bolt_rounded,
+                      padding: EdgeInsets.zero,
+                      textStyle: sectionStyle,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildActionSummary(
+                      context,
+                      ref,
+                      queueAsync,
+                      discoveryStatsAsync,
+                      backgroundDiagnosticsAsync,
+                    ),
+                    const SizedBox(height: 40),
+
                     SectionHeader(
                       title: '系统概览',
                       icon: Icons.analytics_rounded,
@@ -286,6 +306,48 @@ class DashboardPage extends ConsumerWidget {
               _navigateToCollection(context, ref, statuses: ['parse_failed']),
         ),
       ],
+    );
+  }
+
+  Widget _buildActionSummary(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<QueueOverviewStats> queueAsync,
+    AsyncValue<DiscoveryStats> discoveryStatsAsync,
+    AsyncValue<BackgroundTaskDiagnostics> backgroundDiagnosticsAsync,
+  ) {
+    final queue = queueAsync.asData?.value;
+    final discovery = discoveryStatsAsync.asData?.value;
+    final diagnostics = backgroundDiagnosticsAsync.asData?.value;
+
+    if (queueAsync.hasError) {
+      return ErrorCard(message: '加载队列失败: ${queueAsync.error}');
+    }
+    if (discoveryStatsAsync.hasError) {
+      return ErrorCard(message: '加载收件箱统计失败: ${discoveryStatsAsync.error}');
+    }
+    if (backgroundDiagnosticsAsync.hasError) {
+      return ErrorCard(
+        message: '加载后台诊断失败: ${backgroundDiagnosticsAsync.error}',
+      );
+    }
+    if (queue == null || discovery == null || diagnostics == null) {
+      return const LoadingPlaceholder(height: 220);
+    }
+
+    return ActionSummaryCard(
+      queue: queue,
+      discovery: discovery,
+      diagnostics: diagnostics,
+      onOpenBacklog: () => _navigateToCollection(
+        context,
+        ref,
+        statuses: ['unprocessed', 'processing'],
+      ),
+      onOpenFailures: () =>
+          _navigateToCollection(context, ref, statuses: ['parse_failed']),
+      onOpenInbox: () => _navigateToDiscovery(context, ref),
+      onOpenAutomation: () => context.go('/automation'),
     );
   }
 

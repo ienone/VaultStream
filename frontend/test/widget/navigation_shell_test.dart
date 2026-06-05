@@ -106,10 +106,23 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('动态'), findsWidgets);
-    expect(find.text('收藏库'), findsOneWidget);
-    expect(find.text('收件箱'), findsOneWidget);
-    expect(find.text('自动化'), findsOneWidget);
+    final navigationBar = find.byType(NavigationBar);
+    expect(
+      find.descendant(of: navigationBar, matching: find.text('动态')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: navigationBar, matching: find.text('收藏库')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: navigationBar, matching: find.text('收件箱')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: navigationBar, matching: find.text('自动化')),
+      findsOneWidget,
+    );
     expect(find.text('Settings'), findsNothing);
     expect(find.text('Agent'), findsNothing);
 
