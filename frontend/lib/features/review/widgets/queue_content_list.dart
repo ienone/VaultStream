@@ -417,7 +417,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
     try {
       final runId = await ref
           .read(contentQueueProvider.notifier)
-          .batchPushNow(selectedItems.map((i) => i.contentId).toList());
+          .batchPushNow(selectedItems.map((i) => i.id).toList());
       if (mounted) {
         final suffix = runId == null
             ? ''
@@ -464,7 +464,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
           .batchReschedule(
             _localItems
                 .where((i) => ids.contains(i.id))
-                .map((i) => i.contentId)
+                .map((i) => i.id)
                 .toList(),
             startTime,
           );

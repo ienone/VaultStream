@@ -182,11 +182,11 @@ class ContentQueue extends _$ContentQueue {
     return false;
   }
 
-  Future<String?> batchPushNow(List<int> contentIds) async {
+  Future<String?> batchPushNow(List<int> itemIds) async {
     final dio = ref.read(apiClientProvider);
     final response = await dio.post(
-      '/distribution-queue/content/batch-push-now',
-      data: {'content_ids': contentIds},
+      '/distribution-queue/items/batch-push-now',
+      data: {'item_ids': itemIds},
     );
     _safeInvalidate();
     // 刷新统计
@@ -200,15 +200,15 @@ class ContentQueue extends _$ContentQueue {
   }
 
   Future<void> batchReschedule(
-    List<int> contentIds,
+    List<int> itemIds,
     DateTime startTime, {
     int interval = 300,
   }) async {
     final dio = ref.read(apiClientProvider);
     await dio.post(
-      '/distribution-queue/content/batch-reschedule',
+      '/distribution-queue/items/batch-schedule',
       data: {
-        'content_ids': contentIds,
+        'item_ids': itemIds,
         'start_time': startTime.toUtc().toIso8601String(),
         'interval_seconds': interval,
       },
