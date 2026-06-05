@@ -7,12 +7,25 @@ from types import SimpleNamespace
 import pytest
 from httpx import AsyncClient
 
+from app.adapters.favorites.base import FavoriteItem
 from app.main import app
 from app.services.background_task_state import (
     record_task_run_error,
     record_task_run_started,
     record_task_run_success,
 )
+from app.tasks.favorites_sync import FavoritesSyncTask
+
+
+class _FakeFavoritesFetcher:
+    async def check_auth(self) -> bool:
+        return True
+
+    def platform_name(self) -> str:
+        return "zhihu"
+
+    async def fetch_favorites(self, *, max_items: int = 50, cursor: str | None = None):
+        return ([FavoriteItem(url="https://example.com/existing", title="已有收藏")], None)
 
 
 class _FakeFavoritesSyncTask:
@@ -159,6 +172,7 @@ class TestSystemAPI:
 
             status = await client.get("/api/v1/favorites-sync/status")
             assert status.status_code == 200
+            assert status.json()["policies"]["duplicate_strategy"] in {"merge", "skip"}
             runs = status.json()["recent_runs"]
             assert runs
             assert runs[0]["run_id"] == "api-test-run"
@@ -249,6 +263,49 @@ class TestSystemAPI:
         assert latest["scope"] == "zhihu"
         assert latest["result"]["content_id"] == 123
         assert latest["result"]["url"] == "https://example.com/fail"
+
+    @pytest.mark.asyncio
+    async def test_favorites_sync_duplicate_skip_strategy_skips_existing_item(
+        self,
+        monkeypatch,
+    ):
+        async def fake_setting(key: str, default=None):
+            if key == "favorites_sync_duplicate_strategy":
+                return "skip"
+            if key == "favorites_sync_max_items":
+                return 50
+            if key == "favorites_sync_rate_zhihu":
+                return 100
+            return default
+
+        async def fake_exists(session, url: str) -> bool:
+            assert url == "https://example.com/existing"
+            return True
+
+        async def fail_create_share(self, **kwargs):
+            raise AssertionError("duplicate skip should not import existing item")
+
+        monkeypatch.setattr(
+            "app.tasks.favorites_sync.get_setting_value_fresh",
+            fake_setting,
+        )
+        monkeypatch.setattr(
+            FavoritesSyncTask,
+            "_favorite_item_exists",
+            staticmethod(fake_exists),
+        )
+        monkeypatch.setattr(
+            "app.tasks.favorites_sync.ContentService.create_share",
+            fail_create_share,
+        )
+
+        result = await FavoritesSyncTask()._sync_platform(_FakeFavoritesFetcher())
+
+        assert result["status"] == "success"
+        assert result["imported"] == 0
+        assert result["skipped"] == 1
+        assert result["duplicate_skipped"] == 1
+        assert result["duplicate_strategy"] == "skip"
 
     @pytest.mark.asyncio
     async def test_platform_health_aggregates_auth_and_favorites_sync(

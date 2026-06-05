@@ -1023,6 +1023,12 @@ async def get_favorites_sync_status(
             FavoritesSyncTask._DEFAULT_MAX_ITEMS,
         )
     )
+    duplicate_strategy = FavoritesSyncTask.normalize_duplicate_strategy(
+        await get_setting_value(
+            "favorites_sync_duplicate_strategy",
+            FavoritesSyncTask._DEFAULT_DUPLICATE_STRATEGY,
+        )
+    )
     enabled_platforms = await sync_task.load_enabled_platforms()
     last_sync_at = await get_setting_value("favorites_sync_last_sync_at")
 
@@ -1103,6 +1109,10 @@ async def get_favorites_sync_status(
         "enabled_platforms": enabled_platforms,
         "last_sync_at": last_sync_at,
         "recent_runs": await get_recent_task_runs("favorites_sync", limit=10),
+        "policies": {
+            "duplicate_strategy": duplicate_strategy,
+            "unfavorite_strategy": "keep_local",
+        },
         "platforms": platforms,
     }
 

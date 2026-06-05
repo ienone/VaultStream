@@ -259,10 +259,19 @@ class _SyncPolicyCard extends ConsumerWidget {
                 value: value,
               ),
             ),
-            const _PolicyLine(
-              icon: Icons.difference_rounded,
+            _PolicyStringControlRow(
               label: '重复处理',
-              value: '预览会区分预计新增和已存在；导入时跳过重复内容，不覆盖已有收藏。',
+              value: status.duplicateStrategy,
+              options: const {'merge': '合并已有收藏', 'skip': '跳过已有收藏'},
+              description: _duplicateStrategyDescription(
+                status.duplicateStrategy,
+              ),
+              onChanged: (value) => _updateFavoritesSyncSetting(
+                context,
+                ref,
+                key: 'favorites_sync_duplicate_strategy',
+                value: value,
+              ),
             ),
             const _PolicyLine(
               icon: Icons.delete_outline_rounded,
@@ -272,10 +281,79 @@ class _SyncPolicyCard extends ConsumerWidget {
             const _PolicyLine(
               icon: Icons.replay_rounded,
               label: '失败恢复',
-              value: '当前支持 run 级失败重试；尚未细化到单条失败候选重试。',
+              value: '支持 run 级失败重试，也可在结果摘要中重试单条失败候选。',
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PolicyStringControlRow extends StatelessWidget {
+  const _PolicyStringControlRow({
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.description,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String value;
+  final Map<String, String> options;
+  final String description;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final normalizedValue = options.containsKey(value)
+        ? value
+        : options.keys.first;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.difference_rounded, size: 18, color: cs.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  description,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          DropdownButton<String>(
+            value: normalizedValue,
+            underline: const SizedBox.shrink(),
+            items: [
+              for (final entry in options.entries)
+                DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+            ],
+            onChanged: (next) {
+              if (next != null && next != normalizedValue) {
+                onChanged(next);
+              }
+            },
+          ),
+        ],
       ),
     );
   }
@@ -1379,7 +1457,7 @@ Future<void> _updateFavoritesSyncSetting(
   BuildContext context,
   WidgetRef ref, {
   required String key,
-  required int value,
+  required Object value,
 }) async {
   try {
     await ref
@@ -1398,6 +1476,13 @@ Future<void> _updateFavoritesSyncSetting(
       );
     }
   }
+}
+
+String _duplicateStrategyDescription(String strategy) {
+  return switch (strategy) {
+    'skip' => '导入阶段发现本地已有同一 canonical URL 时直接跳过。',
+    _ => '导入阶段合并来源记录，并让已有内容继续执行必要后处理。',
+  };
 }
 
 String? _runString(Map<String, dynamic> run, String key) {

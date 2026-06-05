@@ -285,6 +285,10 @@ class AutomationTab extends ConsumerWidget {
         const intervalOptions = <int>[60, 180, 360, 720, 1440];
         const maxItemOptions = <int>[20, 50, 100, 200];
         const rateOptions = <int>[1, 3, 5, 10, 20];
+        const duplicateStrategyOptions = <String, String>{
+          'merge': '合并已有收藏',
+          'skip': '跳过已有收藏',
+        };
         final interval = parseIntSetting(
           getSettingValue(settings, 'favorites_sync_interval_minutes', 360),
           360,
@@ -293,6 +297,13 @@ class AutomationTab extends ConsumerWidget {
           getSettingValue(settings, 'favorites_sync_max_items', 50),
           50,
         );
+        final duplicateStrategy =
+            getSettingValue(
+              settings,
+              'favorites_sync_duplicate_strategy',
+              'merge',
+            )?.toString() ??
+            'merge';
 
         return statusAsync.when(
           data: (status) {
@@ -464,6 +475,38 @@ class AutomationTab extends ConsumerWidget {
                           .read(systemSettingsProvider.notifier)
                           .updateSetting(
                             'favorites_sync_max_items',
+                            value,
+                            category: 'favorites_sync',
+                          );
+                      ref.invalidate(favoritesSyncStatusProvider);
+                    },
+                  ),
+                  showArrow: false,
+                ),
+                SettingTile(
+                  title: '重复内容策略',
+                  subtitle: _duplicateStrategySubtitle(duplicateStrategy),
+                  icon: Icons.difference_rounded,
+                  trailing: DropdownButton<String>(
+                    value:
+                        duplicateStrategyOptions.containsKey(duplicateStrategy)
+                        ? duplicateStrategy
+                        : 'merge',
+                    underline: const SizedBox.shrink(),
+                    items: duplicateStrategyOptions.entries
+                        .map(
+                          (entry) => DropdownMenuItem<String>(
+                            value: entry.key,
+                            child: Text(entry.value),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) async {
+                      if (value == null) return;
+                      await ref
+                          .read(systemSettingsProvider.notifier)
+                          .updateSetting(
+                            'favorites_sync_duplicate_strategy',
                             value,
                             category: 'favorites_sync',
                           );
@@ -943,6 +986,13 @@ class AutomationTab extends ConsumerWidget {
       default:
         return platform;
     }
+  }
+
+  String _duplicateStrategySubtitle(String strategy) {
+    return switch (strategy) {
+      'skip' => '本地已有同一 canonical URL 时直接跳过，不追加来源记录',
+      _ => '本地已有同一 canonical URL 时合并来源记录并执行必要后处理',
+    };
   }
 
   IconData _platformIcon(String platform) {

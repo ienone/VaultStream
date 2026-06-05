@@ -307,6 +307,7 @@ void main() {
       expect(find.text('单轮上限'), findsOneWidget);
       expect(find.text('360 分钟'), findsOneWidget);
       expect(find.text('50 条'), findsOneWidget);
+      expect(find.text('合并已有收藏'), findsOneWidget);
       expect(find.text('高级参数'), findsOneWidget);
       expect(find.text('知乎'), findsWidgets);
 
@@ -600,6 +601,7 @@ FavoritesSyncStatus _mockFavoritesStatus() {
     maxItems: 50,
     enabledPlatforms: ['zhihu'],
     lastSyncAt: '2026-06-05T12:00:00Z',
+    duplicateStrategy: 'merge',
     recentRuns: [
       {
         'run_id': 'abcdef123456',

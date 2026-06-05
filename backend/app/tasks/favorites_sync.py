@@ -40,6 +40,8 @@ class FavoritesSyncTask:
     _DEFAULT_INTERVAL_MINUTES = 360
     _DEFAULT_MAX_ITEMS = 50
     _FAILED_ITEMS_RECORD_LIMIT = 50
+    _DEFAULT_DUPLICATE_STRATEGY = "merge"
+    _DUPLICATE_STRATEGIES = {"merge", "skip"}
     _DEFAULT_RATES = {
         "zhihu": 5.0,
         "xiaohongshu": 3.0,
@@ -567,6 +569,12 @@ class FavoritesSyncTask:
                 self.default_rate_for(platform),
             )
         )
+        duplicate_strategy = self.normalize_duplicate_strategy(
+            await get_setting_value_fresh(
+                "favorites_sync_duplicate_strategy",
+                self._DEFAULT_DUPLICATE_STRATEGY,
+            )
+        )
         delay = 60.0 / max(rate_limit, 0.1)
         cursor = await get_setting_value_fresh(f"favorites_sync_cursor_{platform}")
         if not isinstance(cursor, str):
@@ -605,6 +613,7 @@ class FavoritesSyncTask:
 
         imported = 0
         skipped = 0
+        duplicate_skipped = 0
         failed = 0
         failed_items: list[dict[str, Any]] = []
         seen_urls: set[str] = set()
@@ -621,6 +630,13 @@ class FavoritesSyncTask:
                 seen_urls.add(item.url)
 
                 try:
+                    if duplicate_strategy == "skip" and await self._favorite_item_exists(
+                        session,
+                        item.url,
+                    ):
+                        skipped += 1
+                        duplicate_skipped += 1
+                        continue
                     await svc.create_share(
                         url=item.url,
                         tags=[],
@@ -666,6 +682,8 @@ class FavoritesSyncTask:
             "failed_items_total": failed,
             "failed_items_truncated": failed > len(failed_items),
             "skipped": skipped,
+            "duplicate_skipped": duplicate_skipped,
+            "duplicate_strategy": duplicate_strategy,
             "next_cursor": next_cursor,
             "error": None,
             "error_code": None,
@@ -684,3 +702,10 @@ class FavoritesSyncTask:
             skipped,
         )
         return result
+
+    @classmethod
+    def normalize_duplicate_strategy(cls, value: Any) -> str:
+        strategy = str(value or cls._DEFAULT_DUPLICATE_STRATEGY).strip().lower()
+        if strategy not in cls._DUPLICATE_STRATEGIES:
+            return cls._DEFAULT_DUPLICATE_STRATEGY
+        return strategy

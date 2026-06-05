@@ -54,6 +54,7 @@ class FavoritesSyncStatus {
     required this.lastSyncAt,
     required this.recentRuns,
     required this.platforms,
+    required this.duplicateStrategy,
   });
 
   final bool running;
@@ -63,12 +64,17 @@ class FavoritesSyncStatus {
   final String? lastSyncAt;
   final List<Map<String, dynamic>> recentRuns;
   final List<FavoritesPlatformStatus> platforms;
+  final String duplicateStrategy;
 
   factory FavoritesSyncStatus.fromJson(Map<String, dynamic> json) {
     final interval = json['interval_minutes'];
     final max = json['max_items'];
     final enabled = json['enabled_platforms'];
     final list = json['platforms'];
+    final policies = json['policies'];
+    final duplicateStrategy = policies is Map
+        ? policies['duplicate_strategy']?.toString()
+        : null;
 
     return FavoritesSyncStatus(
       running: json['running'] == true,
@@ -91,6 +97,7 @@ class FavoritesSyncStatus {
                 .map(FavoritesPlatformStatus.fromJson)
                 .toList()
           : const <FavoritesPlatformStatus>[],
+      duplicateStrategy: duplicateStrategy == 'skip' ? 'skip' : 'merge',
     );
   }
 }
