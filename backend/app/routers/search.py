@@ -19,6 +19,11 @@ from app.schemas import (
     SemanticSearchItem,
 )
 from app.services.embedding_service import EmbeddingService
+from app.services.background_task_state import (
+    record_task_run_error,
+    record_task_run_started,
+    record_task_run_success,
+)
 
 router = APIRouter()
 
@@ -132,16 +137,33 @@ async def semantic_index_status(
     return SemanticIndexStatusResponse(**status)
 
 
-async def _run_reindex_job(scope: str, content_id: int | None, limit: int) -> None:
+async def _run_reindex_job(
+    scope: str,
+    content_id: int | None,
+    limit: int,
+    run_id: str,
+) -> None:
     async with AsyncSessionLocal() as session:
-        await EmbeddingService().reindex_scope(
-            scope=scope,
-            content_id=content_id,
-            limit=limit,
-            batch_size=8,
-            delay_seconds=0.2,
-            session=session,
-        )
+        try:
+            result = await EmbeddingService().reindex_scope(
+                scope=scope,
+                content_id=content_id,
+                limit=limit,
+                batch_size=8,
+                delay_seconds=0.2,
+                session=session,
+            )
+            await record_task_run_success("semantic_reindex", run_id, **result)
+        except Exception as exc:
+            await record_task_run_error(
+                "semantic_reindex",
+                run_id,
+                exc,
+                scope=scope,
+                content_id=content_id,
+                limit=limit,
+            )
+            raise
 
 
 @router.post("/search/semantic/reindex", response_model=SemanticReindexResponse)
@@ -163,8 +185,25 @@ async def semantic_reindex(
         limit=payload.limit,
         session=db,
     )
+    run_id = None
     if not payload.dry_run:
-        background_tasks.add_task(_run_reindex_job, scope, payload.content_id, payload.limit)
+        run = await record_task_run_started(
+            "semantic_reindex",
+            scope=scope,
+            content_id=payload.content_id,
+            limit=payload.limit,
+            candidate_count=len(content_ids),
+            estimated_embedding_calls=estimated_calls,
+            trigger="manual",
+        )
+        run_id = run["run_id"]
+        background_tasks.add_task(
+            _run_reindex_job,
+            scope,
+            payload.content_id,
+            payload.limit,
+            run_id,
+        )
     return SemanticReindexResponse(
         scope=scope,
         content_id=payload.content_id,
@@ -172,6 +211,7 @@ async def semantic_reindex(
         candidate_count=len(content_ids),
         estimated_embedding_calls=estimated_calls,
         scheduled=not payload.dry_run,
+        run_id=run_id,
         message=(
             "dry run only; no paid embedding calls scheduled"
             if payload.dry_run

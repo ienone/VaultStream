@@ -186,7 +186,7 @@ async def _build_background_failure_details(
         for name, state in sorted(task_states_raw.items())
     ]
     recent_task_runs: list[dict[str, Any]] = []
-    for task_name in ("discovery_sync", "favorites_sync"):
+    for task_name in ("discovery_sync", "favorites_sync", "semantic_reindex"):
         recent_task_runs.extend(await get_recent_task_runs(task_name, limit=limit))
     recent_task_runs.sort(
         key=lambda run: str(run.get("started_at") or ""),

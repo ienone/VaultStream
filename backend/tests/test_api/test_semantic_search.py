@@ -139,6 +139,57 @@ async def test_semantic_index_status_and_reindex_dry_run(client: AsyncClient, db
     assert data["scheduled"] is False
     assert data["candidate_count"] == 1
     assert data["estimated_embedding_calls"] >= 1
+    assert data["run_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_semantic_reindex_scheduled_returns_run_id_and_records_success(
+    client: AsyncClient,
+    monkeypatch,
+):
+    async def fake_plan_reindex(self, *, scope, content_id, limit, session):
+        return [321], 2
+
+    async def fake_reindex_scope(
+        self,
+        *,
+        scope,
+        content_id,
+        limit,
+        batch_size,
+        delay_seconds,
+        session,
+    ):
+        return {
+            "scope": scope,
+            "content_id": content_id,
+            "candidate_count": 1,
+            "estimated_embedding_calls": 2,
+            "indexed": 1,
+            "failed": 0,
+        }
+
+    monkeypatch.setattr(EmbeddingService, "plan_reindex", fake_plan_reindex)
+    monkeypatch.setattr(EmbeddingService, "reindex_scope", fake_reindex_scope)
+
+    response = await client.post(
+        "/api/v1/search/semantic/reindex",
+        json={"scope": "failed", "limit": 100, "dry_run": False},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["scheduled"] is True
+    assert data["run_id"]
+
+    diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
+    assert diagnostics.status_code == 200
+    runs = diagnostics.json()["recent_task_runs"]
+    latest = next(run for run in runs if run["run_id"] == data["run_id"])
+    assert latest["task"] == "semantic_reindex"
+    assert latest["status"] == "success"
+    assert latest["scope"] == "failed"
+    assert latest["result"]["indexed"] == 1
+    assert latest["result"]["failed"] == 0
 
 
 @pytest.mark.asyncio

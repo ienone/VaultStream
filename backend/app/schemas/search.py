@@ -52,6 +52,7 @@ class SemanticReindexResponse(BaseModel):
     candidate_count: int
     estimated_embedding_calls: int
     scheduled: bool
+    run_id: Optional[str] = None
     message: str
 
 
