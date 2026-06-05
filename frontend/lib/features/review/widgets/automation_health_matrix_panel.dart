@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/network/api_client.dart';
+import '../../../core/utils/toast.dart';
 import '../../discovery/models/discovery_models.dart';
 import '../../discovery/providers/discovery_sources_provider.dart';
 import '../../settings/providers/platform_health_provider.dart';
@@ -239,13 +241,13 @@ class _HealthSection extends StatelessWidget {
   }
 }
 
-class _PlatformHealthList extends StatelessWidget {
+class _PlatformHealthList extends ConsumerWidget {
   const _PlatformHealthList({required this.platforms});
 
   final List<PlatformHealthStatus> platforms;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     if (platforms.isEmpty) return const _EmptyState(message: '暂无平台账号');
     return Column(
       children: [
@@ -257,19 +259,26 @@ class _PlatformHealthList extends StatelessWidget {
                 ? 'Cookie ${platform.hasCookie ? '已配置' : '未配置'} · 收藏同步 ${platform.favoritesEnabled ? '已启用' : '未启用'}'
                 : platform.issues.join('；'),
             state: _platformState(platform),
+            action: OutlinedButton.icon(
+              onPressed: platform.auth['browser_auth_supported'] == true
+                  ? () => _checkPlatformLogin(context, ref, platform)
+                  : null,
+              icon: const Icon(Icons.fact_check_rounded, size: 16),
+              label: const Text('检测'),
+            ),
           ),
       ],
     );
   }
 }
 
-class _DiscoverySourceHealthList extends StatelessWidget {
+class _DiscoverySourceHealthList extends ConsumerWidget {
   const _DiscoverySourceHealthList({required this.sources});
 
   final List<DiscoverySource> sources;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     if (sources.isEmpty) return const _EmptyState(message: '暂无发现源');
     return Column(
       children: [
@@ -285,19 +294,26 @@ class _DiscoverySourceHealthList extends StatelessWidget {
                 : source.enabled
                 ? _HealthState.ok
                 : _HealthState.inactive,
+            action: OutlinedButton.icon(
+              onPressed: source.enabled
+                  ? () => _syncDiscoverySource(context, ref, source)
+                  : null,
+              icon: const Icon(Icons.sync_rounded, size: 16),
+              label: const Text('同步'),
+            ),
           ),
       ],
     );
   }
 }
 
-class _PushTargetHealthList extends StatelessWidget {
+class _PushTargetHealthList extends ConsumerWidget {
   const _PushTargetHealthList({required this.chats});
 
   final List<BotChat> chats;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final targets = chats.where((chat) => chat.isPushTarget).toList();
     if (targets.isEmpty) return const _EmptyState(message: '暂无推送目标');
     return Column(
@@ -314,6 +330,11 @@ class _PushTargetHealthList extends StatelessWidget {
                 : (!chat.isAccessible || chat.syncError != null)
                 ? _HealthState.error
                 : _HealthState.ok,
+            action: OutlinedButton.icon(
+              onPressed: () => _syncPushTarget(context, ref, chat),
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: const Text('刷新'),
+            ),
           ),
       ],
     );
@@ -326,12 +347,14 @@ class _HealthRow extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.state,
+    this.action,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final _HealthState state;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -375,6 +398,7 @@ class _HealthRow extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
+          if (action != null) ...[const SizedBox(width: 8), action!],
         ],
       ),
     );
@@ -477,3 +501,82 @@ IconData _targetIcon(BotChat chat) {
   if (chat.isChannel) return Icons.campaign_rounded;
   return Icons.outbox_rounded;
 }
+
+Future<void> _checkPlatformLogin(
+  BuildContext context,
+  WidgetRef ref,
+  PlatformHealthStatus platform,
+) async {
+  try {
+    final response = await ref
+        .read(apiClientProvider)
+        .post('/browser-auth/${platform.platform}/check');
+    ref.invalidate(platformHealthProvider);
+    final ok = response.data is Map && response.data['is_valid'] == true;
+    if (context.mounted) {
+      Toast.show(
+        context,
+        ok ? '${platform.label} 登录有效' : '${platform.label} 登录不可用',
+        isError: !ok,
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      Toast.show(
+        context,
+        formatApiErrorMessage(e, fallbackMessage: '检测登录失败'),
+        isError: true,
+      );
+    }
+  }
+}
+
+Future<void> _syncDiscoverySource(
+  BuildContext context,
+  WidgetRef ref,
+  DiscoverySource source,
+) async {
+  try {
+    final runId = await ref
+        .read(discoverySourcesProvider.notifier)
+        .triggerSync(source.id);
+    if (context.mounted) {
+      Toast.show(
+        context,
+        '已触发 ${source.name} 同步${runId == null ? '' : ' #${_shortId(runId)}'}',
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      Toast.show(
+        context,
+        formatApiErrorMessage(e, fallbackMessage: '发现源同步失败'),
+        isError: true,
+      );
+    }
+  }
+}
+
+Future<void> _syncPushTarget(
+  BuildContext context,
+  WidgetRef ref,
+  BotChat chat,
+) async {
+  try {
+    await ref.read(botChatsProvider.notifier).syncChats(chatId: chat.chatId);
+    if (context.mounted) {
+      Toast.show(context, '已刷新 ${chat.displayName}');
+    }
+  } catch (e) {
+    if (context.mounted) {
+      Toast.show(
+        context,
+        formatApiErrorMessage(e, fallbackMessage: '推送目标刷新失败'),
+        isError: true,
+      );
+    }
+  }
+}
+
+String _shortId(String runId) =>
+    runId.length > 8 ? runId.substring(0, 8) : runId;
