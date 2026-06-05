@@ -48,7 +48,7 @@ String mapUrl(String url, String apiBaseUrl) {
       // Ensure we use the root of the API base URL (remove /api/v1 suffix)
       final uri = Uri.parse(apiBaseUrl);
       final origin = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
-      return '$origin$cleanPath';
+      return '$origin/api/v1$cleanPath';
     }
     if (url.contains('/api/v1/')) {
       return url.replaceFirst('/api/v1/', '/api/v1/media/');
@@ -58,7 +58,7 @@ String mapUrl(String url, String apiBaseUrl) {
     
     final uri = Uri.parse(apiBaseUrl);
     final origin = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
-    return '$origin/media/$cleanKey';
+    return '$origin/api/v1/media/$cleanKey';
   }
 
   if (url.startsWith('/media') || url.contains('/media/')) {
@@ -70,7 +70,7 @@ String mapUrl(String url, String apiBaseUrl) {
     
     final uri = Uri.parse(apiBaseUrl);
     final origin = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
-    return '$origin$cleanPath';
+    return '$origin/api/v1$cleanPath';
   }
 
   // 4. 所有其他外部URL都走代理以避免CORS问题

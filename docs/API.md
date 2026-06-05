@@ -118,7 +118,7 @@ WebSocket 接口同样只接受请求头中的 `X-API-Token` 或 `Authorization:
 | `POST` | `/api/v1/favorites-sync/sync` |
 | `GET` | `/api/v1/health` |
 | `GET` | `/api/v1/init-status` |
-| `GET` | `/api/v1/media/{key}` |
+| `GET` | `/api/v1/media/{key}`（需要 API token） |
 | `GET` | `/api/v1/proxy/image` |
 | `GET` | `/api/v1/pushed-records` |
 | `DELETE` | `/api/v1/pushed-records/{record_id}` |

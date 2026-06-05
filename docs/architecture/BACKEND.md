@@ -803,8 +803,11 @@ API 输出:
 
 前端加载:
   GET /api/v1/media/vaultstream/blobs/sha256/ab/cd/hash.webp
+    ├→ require_api_token
     └→ FileResponse (1年缓存)
 ```
+
+历史 `/media/...` 静态挂载已移除；前端需要把旧 `/media/...` 或裸 blob key 统一映射为 `/api/v1/media/...` 并携带同源 `X-API-Token`。
 
 ---
 

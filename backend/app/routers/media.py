@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from app.core.logging import logger
 from app.core.config import settings
+from app.core.dependencies import require_api_token
 from app.adapters.storage import get_storage_backend, LocalStorageBackend
 
 router = APIRouter()
@@ -244,7 +245,7 @@ async def _enforce_proxy_cache_quota(storage: LocalStorageBackend) -> None:
     await asyncio.to_thread(trim_cache)
 
 
-@router.get("/media/{key:path}")
+@router.get("/media/{key:path}", dependencies=[Depends(require_api_token)])
 async def proxy_media(
     key: str,
     size: str = Query("original", pattern=r"^(original|thumb)$"),

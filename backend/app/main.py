@@ -12,13 +12,11 @@ if sys.platform == 'win32':
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
 from contextlib import asynccontextmanager
-from pathlib import Path
 from time import perf_counter
 from fastapi import FastAPI
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.logging import logger, setup_logging, log_context, new_request_id
@@ -274,12 +272,6 @@ async def health_root():
     """健康检查（根路径）— 代理到 /api/v1/health"""
     from app.routers.system import health_check
     return await health_check()
-
-
-# 挂载媒体文件目录（供 frontend 访问归档的图片视频）
-media_dir = Path(settings.storage_local_root)
-if media_dir.exists():
-    app.mount("/media", StaticFiles(directory=str(media_dir)), name="media")
 
 
 if __name__ == "__main__":

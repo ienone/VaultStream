@@ -187,8 +187,9 @@ integration 失败主要集中在真实知乎/小红书内容解析和真实 LLM
 - `backend/app/routers/media.py` 的本地媒体路径已经使用 `Path.resolve()` + `relative_to()` 校验真实祖先关系，并拒绝 absolute/rooted key；`backend/tests/test_api/test_media.py` 已覆盖 sibling-prefix 路径和正常存储根内路径。因此原扫描中的“公开媒体路由字符串前缀路径检查”不再作为待修项保留。
 - `backend/app/bot/permissions.py` 的 Telegram bot 权限已经在白名单为空时 fail closed，管理员仍可使用普通命令，黑名单优先级最高；`backend/tests/test_bot/test_permissions.py` 已覆盖这些边界。因此原扫描中的“Telegram bot 白名单默认允许所有用户”不再作为待修项保留。
 - `backend/app/core/safe_fetch.py` 已建立服务端 URL 获取的基础 SSRF 防护；归档图片/视频下载、封面主色远程取图、通用解析 direct HTTP 和 Playwright 抓取均已接入。它会校验 scheme、DNS/IP、redirect 最终目标、响应大小和 content-type；`backend/tests/test_core/test_safe_fetch.py`、`backend/tests/test_media_processor_deep.py`、`backend/tests/test_media_color.py`、`backend/tests/test_adapters/test_tiered_fetcher_security.py` 已覆盖私网地址、私网重定向、类型/大小限制和通用解析阻断。因此原扫描中的“归档媒体处理缺少 SSRF 控制”和“通用分享解析可触发内部 URL 获取”不再作为待修项保留。
+- `backend/app/routers/media.py` 的本地媒体 API 已要求 `X-API-Token`/Bearer token，`backend/app/main.py` 已移除 unauthenticated `/media` StaticFiles 挂载；前端 `frontend/lib/core/utils/media_utils.dart` 会把历史 `/media/...` 和裸 blob key 映射到 `/api/v1/media/...`，继续使用同源图片 header 携带 API token；`backend/tests/test_api/test_media.py` 与 `frontend/test/unit/media_utils_test.dart` 已覆盖。因此原扫描中的“本地归档媒体可无鉴权访问”不再作为待修项保留。
 
-当前仍需跟进 2 项。
+当前仍需跟进 1 项。
 
 ### S1. 公开图片代理只做连接前 DNS 校验
 
@@ -196,13 +197,6 @@ integration 失败主要集中在真实知乎/小红书内容解析和真实 LLM
 - 置信度：medium
 - 影响：图片代理会预解析 DNS 并拒绝私网地址，但实际 httpx 连接仍使用原始 hostname，没有绑定已校验 IP，理论上存在 DNS rebinding 或解析差异绕过。
 - 建议：连接时绑定或验证目标 IP；每次重定向后重新校验；禁止私网、link-local、reserved 目标。
-
-### S2. 本地归档媒体可无鉴权访问
-
-- 严重性：low
-- 置信度：medium
-- 影响：内容展示会把本地归档媒体改写为 `/api/v1/media/...`，而媒体路由/静态挂载不要求 API token。若媒体 key 泄露，可能绕过内容 API 的鉴权边界。
-- 建议：使用短期签名 URL 或媒体路由鉴权；避免私有归档存储直接被 unauthenticated StaticFiles 暴露。
 
 ## 综合优先级
 
