@@ -284,6 +284,7 @@ class AutomationTab extends ConsumerWidget {
                 : null;
             final latestRunStatus = latestRun?['status']?.toString();
             final latestRunId = latestRun?['run_id']?.toString();
+            final latestRunScope = latestRun?['scope']?.toString();
 
             return SettingGroup(
               children: [
@@ -507,6 +508,48 @@ class AutomationTab extends ConsumerWidget {
                   ),
                   showArrow: false,
                 ),
+                if (latestRunId != null)
+                  SettingTile(
+                    title: '最近同步任务',
+                    subtitle:
+                        '${latestRunId.length > 8 ? latestRunId.substring(0, 8) : latestRunId} · ${latestRunScope ?? 'all'} · ${latestRunStatus ?? 'unknown'}',
+                    icon: latestRunStatus == 'error'
+                        ? Icons.error_outline_rounded
+                        : Icons.task_alt_rounded,
+                    iconColor: latestRunStatus == 'error'
+                        ? Theme.of(context).colorScheme.error
+                        : null,
+                    trailing: latestRunStatus == 'error'
+                        ? OutlinedButton.icon(
+                            onPressed: () async {
+                              try {
+                                final retryRunId = await ref
+                                    .read(favoritesSyncActionsProvider)
+                                    .retryRun(latestRunId);
+                                if (context.mounted) {
+                                  final retrySuffix = retryRunId == null
+                                      ? ''
+                                      : ' #${retryRunId.length > 8 ? retryRunId.substring(0, 8) : retryRunId}';
+                                  showToast(context, '已重新触发同步$retrySuffix');
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  showToast(
+                                    context,
+                                    formatApiErrorMessage(
+                                      e,
+                                      fallbackMessage: '重试同步失败',
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                            icon: const Icon(Icons.replay_rounded),
+                            label: const Text('重试'),
+                          )
+                        : null,
+                    showArrow: false,
+                  ),
               ],
             );
           },

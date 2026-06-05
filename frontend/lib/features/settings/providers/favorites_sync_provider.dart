@@ -127,4 +127,15 @@ class FavoritesSyncActions {
     }
     return null;
   }
+
+  Future<String?> retryRun(String runId) async {
+    final dio = _ref.read(apiClientProvider);
+    final response = await dio.post('/favorites-sync/runs/$runId/retry');
+    _ref.invalidate(favoritesSyncStatusProvider);
+    final data = response.data;
+    if (data is Map && data['run_id'] != null) {
+      return data['run_id'].toString();
+    }
+    return null;
+  }
 }
