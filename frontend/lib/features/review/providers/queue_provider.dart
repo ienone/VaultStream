@@ -214,12 +214,19 @@ class ContentQueue extends _$ContentQueue {
     ref.invalidate(queueStatsProvider(filter.ruleId));
   }
 
-  Future<void> pushNow(int itemId) async {
+  Future<String?> pushNow(int itemId) async {
     final dio = ref.read(apiClientProvider);
-    await dio.post('/distribution-queue/items/$itemId/push-now');
+    final response = await dio.post(
+      '/distribution-queue/items/$itemId/push-now',
+    );
     _safeInvalidate();
     final filter = ref.read(queueFilterProvider);
     ref.invalidate(queueStatsProvider(filter.ruleId));
+    final data = response.data;
+    if (data is Map && data['run_id'] != null) {
+      return data['run_id'].toString();
+    }
+    return null;
   }
 
   Future<void> updateSchedule(int itemId, DateTime scheduledAt) async {

@@ -190,11 +190,14 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                   onUpdateSchedule: (newTime) => _updateSchedule(item, newTime),
                   onPushNow: () async {
                     if (!context.mounted) return;
-                    await ref
+                    final runId = await ref
                         .read(contentQueueProvider.notifier)
                         .pushNow(item.id);
                     if (context.mounted) {
-                      Toast.show(context, '已加入立即推送');
+                      final suffix = runId == null
+                          ? ''
+                          : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
+                      Toast.show(context, '已加入立即推送$suffix');
                     }
                   },
                 );
