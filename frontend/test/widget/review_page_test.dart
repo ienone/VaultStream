@@ -461,9 +461,16 @@ void main() {
       expect(find.byTooltip('测试推送目标'), findsOneWidget);
       expect(find.byTooltip('刷新推送目标'), findsOneWidget);
       expect(find.byTooltip('查看最近同步结果'), findsOneWidget);
-      expect(find.text('同步'), findsOneWidget);
+      expect(find.byTooltip('检查发现源质量'), findsOneWidget);
+      expect(find.byTooltip('同步发现源'), findsOneWidget);
 
-      await tester.tap(find.text('同步'));
+      await tester.tap(find.byTooltip('检查发现源质量'));
+      await tester.pump();
+
+      expect(find.text('Tech RSS 抓取到 3 条候选'), findsOneWidget);
+      expect(find.text('查看日志'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('同步发现源'));
       await tester.pump();
 
       expect(find.text('已触发 Tech RSS 同步 #discover'), findsOneWidget);
@@ -652,4 +659,12 @@ class MockDiscoverySources extends DiscoverySources {
 
   @override
   Future<String?> triggerSync(int id) async => 'discovery-run';
+
+  @override
+  Future<Map<String, dynamic>> testQuality(int id) async => {
+    'ok': true,
+    'status': 'ok',
+    'run_id': 'discovery-quality-run',
+    'item_count': 3,
+  };
 }

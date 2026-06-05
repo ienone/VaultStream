@@ -66,4 +66,14 @@ class DiscoverySources extends _$DiscoverySources {
     }
     return null;
   }
+
+  Future<Map<String, dynamic>> testQuality(int id) async {
+    final dio = ref.read(apiClientProvider);
+    final response = await dio.post('/discovery/sources/$id/test');
+    final data = response.data;
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+    return const <String, dynamic>{};
+  }
 }

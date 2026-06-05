@@ -597,6 +597,7 @@ async def _build_background_failure_details(
         "content_embedding",
         "content_summary",
         "discovery_patrol",
+        "discovery_source_test",
         "discovery_sync",
         "distribution_push",
         "distribution_schedule",

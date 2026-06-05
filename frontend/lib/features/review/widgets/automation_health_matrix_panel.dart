@@ -332,12 +332,25 @@ class _DiscoverySourceHealthList extends ConsumerWidget {
                 : source.enabled
                 ? _HealthState.ok
                 : _HealthState.inactive,
-            action: OutlinedButton.icon(
-              onPressed: source.enabled
-                  ? () => _syncDiscoverySource(context, ref, source)
-                  : null,
-              icon: const Icon(Icons.sync_rounded, size: 16),
-              label: const Text('同步'),
+            action: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton.outlined(
+                  onPressed: source.enabled
+                      ? () => _testDiscoverySource(context, ref, source)
+                      : null,
+                  tooltip: '检查发现源质量',
+                  icon: const Icon(Icons.analytics_rounded, size: 18),
+                ),
+                const SizedBox(width: 6),
+                IconButton.outlined(
+                  onPressed: source.enabled
+                      ? () => _syncDiscoverySource(context, ref, source)
+                      : null,
+                  tooltip: '同步发现源',
+                  icon: const Icon(Icons.sync_rounded, size: 18),
+                ),
+              ],
             ),
           ),
       ],
@@ -606,6 +619,50 @@ Future<void> _syncDiscoverySource(
       Toast.show(
         context,
         formatApiErrorMessage(e, fallbackMessage: '发现源同步失败'),
+        isError: true,
+      );
+    }
+  }
+}
+
+Future<void> _testDiscoverySource(
+  BuildContext context,
+  WidgetRef ref,
+  DiscoverySource source,
+) async {
+  try {
+    final result = await ref
+        .read(discoverySourcesProvider.notifier)
+        .testQuality(source.id);
+    final ok = result['ok'] == true;
+    final status = result['status']?.toString();
+    final runId = result['run_id']?.toString();
+    final itemCount = (result['item_count'] as num?)?.toInt() ?? 0;
+    final error = result['error']?.toString();
+    final message = ok
+        ? '${source.name} 抓取到 $itemCount 条候选'
+        : status == 'empty'
+        ? '${source.name} 未抓取到候选'
+        : (error == null || error.isEmpty ? '${source.name} 质量检查失败' : error);
+    if (context.mounted) {
+      Toast.show(
+        context,
+        message,
+        icon: ok ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+        isError: !ok,
+        action: runId == null || runId.isEmpty
+            ? null
+            : SnackBarAction(
+                label: '查看日志',
+                onPressed: () => context.go('/home?run=$runId'),
+              ),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      Toast.show(
+        context,
+        formatApiErrorMessage(e, fallbackMessage: '发现源质量检查失败'),
         isError: true,
       );
     }

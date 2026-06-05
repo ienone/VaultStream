@@ -1,9 +1,12 @@
 import asyncio
+from datetime import datetime, timezone
 
 import pytest
 from httpx import AsyncClient
 
+from app.adapters.discovery.base import DiscoveryItem
 from app.main import app
+from app.models import DiscoverySource, DiscoverySourceKind
 from app.services.background_task_state import (
     record_task_run_started,
     record_task_run_success,
@@ -35,6 +38,27 @@ class _FakeDiscoverySyncTask:
             source_id=source_id,
             trigger=trigger,
             ingested_count=0,
+        )
+
+
+class _FakeDiscoveryScraper:
+    async def fetch(self, last_cursor=None):
+        return (
+            [
+                DiscoveryItem(
+                    url="https://example.test/post-1",
+                    title="发现源候选 A",
+                    author="tester",
+                    published_at=datetime(2026, 6, 6, tzinfo=timezone.utc),
+                    source_tags=["tech"],
+                    media_urls=["https://example.test/a.png"],
+                ),
+                DiscoveryItem(
+                    url="https://example.test/post-2",
+                    title="发现源候选 B",
+                ),
+            ],
+            "cursor-2",
         )
 
 
@@ -119,3 +143,51 @@ class TestDiscoverySourcesAPI:
                 app.state._state.pop("discovery_sync_task", None)
             else:
                 app.state.discovery_sync_task = previous
+
+    @pytest.mark.asyncio
+    async def test_quality_test_records_run(
+        self,
+        client: AsyncClient,
+        db_session,
+        monkeypatch,
+    ):
+        source = DiscoverySource(
+            kind=DiscoverySourceKind.RSS,
+            name="quality-test-rss",
+            enabled=True,
+            config={"url": "https://example.test/feed.xml"},
+            sync_interval_minutes=60,
+        )
+        db_session.add(source)
+        await db_session.commit()
+        await db_session.refresh(source)
+
+        def _fake_scraper(self, tested_source):
+            assert tested_source.id == source.id
+            return _FakeDiscoveryScraper()
+
+        monkeypatch.setattr(
+            "app.tasks.discovery_sync.DiscoverySyncTask._get_scraper",
+            _fake_scraper,
+        )
+
+        response = await client.post(f"/api/v1/discovery/sources/{source.id}/test")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["status"] == "ok"
+        assert data["item_count"] == 2
+        assert data["sample_count"] == 2
+        assert data["samples"][0]["title"] == "发现源候选 A"
+        assert data["cursor_available"] is True
+
+        diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
+        latest = next(
+            run
+            for run in diagnostics.json()["recent_task_runs"]
+            if run["run_id"] == data["run_id"]
+        )
+        assert latest["task"] == "discovery_source_test"
+        assert latest["status"] == "success"
+        assert latest["source_id"] == source.id
+        assert latest["result"]["item_count"] == 2

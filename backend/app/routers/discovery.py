@@ -2,6 +2,7 @@
 Discovery API — 发现缓冲区管理
 """
 from typing import Optional, List
+import time
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select, func, desc, asc, cast, String, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,11 @@ from app.core.events import event_bus
 from app.core.dependencies import require_api_token
 from app.core.api_errors import build_error_payload
 from app.core.time_utils import utcnow
+from app.services.background_task_state import (
+    record_task_run_error,
+    record_task_run_started,
+    record_task_run_success,
+)
 from app.models import Content, DiscoverySource, DiscoveryState, DiscoverySourceKind
 from app.schemas.discovery import (
     DiscoveryItemListItem, DiscoveryItemListResponse, DiscoveryItemResponse,
@@ -35,6 +41,7 @@ _SUPPORTED_DISCOVERY_SOURCE_KINDS = {
     DiscoverySourceKind.TELEGRAM_CHANNEL,
 }
 _SUPPORTED_DISCOVERY_SOURCE_KIND_VALUES = [k.value for k in _SUPPORTED_DISCOVERY_SOURCE_KINDS]
+_SOURCE_TEST_SAMPLE_LIMIT = 5
 
 
 def _source_kind_value(kind: DiscoverySourceKind | str) -> str:
@@ -68,6 +75,17 @@ def _parse_list_param(values: Optional[List[str]]) -> Optional[List[str]]:
         else:
             result.append(value.strip())
     return result or None
+
+
+def _serialize_source_test_item(item) -> dict:
+    return {
+        "url": item.url,
+        "title": item.title,
+        "author": item.author,
+        "published_at": item.published_at.isoformat() if item.published_at else None,
+        "tag_count": len(item.source_tags or []),
+        "media_count": len(item.media_urls or []),
+    }
 
 
 # ── Items ──────────────────────────────────────────────────────────────
@@ -356,6 +374,89 @@ async def delete_source(
     await db.delete(source)
     await db.commit()
     return {"success": True, "id": source_id}
+
+
+@router.post("/discovery/sources/{source_id}/test")
+async def test_source_quality(
+    source_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    result = await db.execute(
+        select(DiscoverySource).where(DiscoverySource.id == source_id)
+    )
+    source = result.scalar_one_or_none()
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    if source.kind not in _SUPPORTED_DISCOVERY_SOURCE_KINDS:
+        _raise_unsupported_source_kind(source.kind, request)
+
+    from app.tasks.discovery_sync import DiscoverySyncTask
+
+    run = await record_task_run_started(
+        "discovery_source_test",
+        trigger="manual",
+        source_id=source.id,
+        source_name=source.name,
+        source_kind=_source_kind_value(source.kind),
+    )
+    started = time.perf_counter()
+    try:
+        scraper = DiscoverySyncTask()._get_scraper(source)
+        if scraper is None:
+            raise RuntimeError(f"Unsupported discovery source kind: {_source_kind_value(source.kind)}")
+
+        items, new_cursor = await scraper.fetch(last_cursor=None)
+        elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+        samples = [
+            _serialize_source_test_item(item)
+            for item in items[:_SOURCE_TEST_SAMPLE_LIMIT]
+        ]
+        payload = {
+            "source_id": source.id,
+            "source_name": source.name,
+            "source_kind": _source_kind_value(source.kind),
+            "item_count": len(items),
+            "sample_count": len(samples),
+            "samples": samples,
+            "cursor_available": bool(new_cursor),
+            "elapsed_ms": elapsed_ms,
+        }
+        await record_task_run_success(
+            "discovery_source_test",
+            run["run_id"],
+            **payload,
+        )
+        status = "ok" if items else "empty"
+        return {
+            "run_id": run["run_id"],
+            "ok": bool(items),
+            "status": status,
+            **payload,
+        }
+    except Exception as exc:
+        elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+        await record_task_run_error(
+            "discovery_source_test",
+            run["run_id"],
+            exc,
+            trigger="manual",
+            source_id=source.id,
+            source_name=source.name,
+            source_kind=_source_kind_value(source.kind),
+            elapsed_ms=elapsed_ms,
+        )
+        return {
+            "run_id": run["run_id"],
+            "ok": False,
+            "status": "error",
+            "source_id": source.id,
+            "source_name": source.name,
+            "source_kind": _source_kind_value(source.kind),
+            "error": str(exc)[:1000],
+            "elapsed_ms": elapsed_ms,
+        }
 
 
 @router.post("/discovery/sources/{source_id}/sync", status_code=202)
