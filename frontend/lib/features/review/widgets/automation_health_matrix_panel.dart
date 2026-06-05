@@ -587,6 +587,12 @@ Future<void> _syncDiscoverySource(
       Toast.show(
         context,
         '已触发 ${source.name} 同步${runId == null ? '' : ' #${_shortId(runId)}'}',
+        action: runId == null
+            ? null
+            : SnackBarAction(
+                label: '查看日志',
+                onPressed: () => context.go('/home?run=$runId'),
+              ),
       );
     }
   } catch (e) {

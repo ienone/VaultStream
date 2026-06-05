@@ -443,6 +443,12 @@ void main() {
       expect(find.byTooltip('查看最近同步结果'), findsOneWidget);
       expect(find.text('同步'), findsOneWidget);
 
+      await tester.tap(find.text('同步'));
+      await tester.pump();
+
+      expect(find.text('已触发 Tech RSS 同步 #discover'), findsOneWidget);
+      expect(find.text('查看日志'), findsOneWidget);
+
       await tester.tap(find.byTooltip('测试推送目标'));
       await tester.pump();
 
@@ -609,4 +615,7 @@ class MockDiscoverySources extends DiscoverySources {
   MockDiscoverySources(this._sources);
   @override
   FutureOr<List<DiscoverySource>> build() => _sources;
+
+  @override
+  Future<String?> triggerSync(int id) async => 'discovery-run';
 }
