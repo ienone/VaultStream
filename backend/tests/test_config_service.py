@@ -74,3 +74,30 @@ async def test_get_favorites_sync_platform_state_normalizes_rate_and_cursor():
     assert state.rate_per_minute == 5.0
     assert state.cursor is None
     assert state.last_result == {"status": "success"}
+
+
+@pytest.mark.asyncio
+async def test_get_http_proxy_normalizes_empty_and_socks_scheme():
+    assert await _MemoryConfigService({"http_proxy": ""}).get_http_proxy() is None
+    assert await _MemoryConfigService(
+        {"http_proxy": " socks://127.0.0.1:1080 "}
+    ).get_http_proxy(normalize_socks_scheme=True) == "socks5://127.0.0.1:1080"
+
+
+@pytest.mark.asyncio
+async def test_get_archive_media_config_normalizes_values():
+    service = _MemoryConfigService(
+        {
+            "enable_archive_media_processing": "true",
+            "archive_image_webp_quality": "180",
+            "archive_image_max_count": "0",
+            "archive_video_max_count": "4",
+        }
+    )
+
+    config = await service.get_archive_media_config()
+
+    assert config.enabled is True
+    assert config.image_webp_quality == 100
+    assert config.image_max_count is None
+    assert config.video_max_count == 4

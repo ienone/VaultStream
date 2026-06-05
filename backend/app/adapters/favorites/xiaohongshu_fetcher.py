@@ -23,6 +23,7 @@ from app.adapters.xiaohongshu_profile import (
     build_xhs_crypto_config,
 )
 from app.core.logging import logger
+from app.services.config_service import ConfigService
 from app.services.settings_service import get_setting_value
 
 _USER_AGENT = DEFAULT_XHS_USER_AGENT
@@ -78,7 +79,7 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
         params: Optional[dict] = None,
     ) -> dict:
         params = params or {}
-        proxy_url = await get_setting_value("http_proxy")
+        proxy_url = await ConfigService().get_http_proxy()
         url = f"{_EDITH_HOST}{uri}"
 
         for attempt in range(_MAX_RETRY):

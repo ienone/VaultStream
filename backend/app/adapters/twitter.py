@@ -19,7 +19,7 @@ from app.adapters.errors import (
 )
 from app.adapters.utils import generate_title_from_text
 from app.models import TwitterContentType
-from app.core.config import settings
+from app.services.config_service import ConfigService
 
 
 class TwitterAdapter(PlatformAdapter):
@@ -137,8 +137,7 @@ class TwitterAdapter(PlatformAdapter):
         
         try:
             # 创建 HTTP 客户端（使用代理如果配置了）
-            from app.services.settings_service import get_setting_value
-            proxy = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
+            proxy = await ConfigService().get_http_proxy()
             timeout = httpx.Timeout(30.0, read=60.0)
             
             # 设置请求头（模拟浏览器避免被拦截）

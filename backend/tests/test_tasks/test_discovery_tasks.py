@@ -16,6 +16,7 @@ from app.models import (
     DiscoveryState,
     Platform,
 )
+from app.services.config_service import ArchiveMediaConfig
 from app.tasks.discovery_cleanup import DiscoveryCleanupTask
 from app.tasks.discovery_sync import DiscoverySyncTask
 from app.utils.url_utils import normalize_url_for_dedup
@@ -32,6 +33,27 @@ def disable_background_embedding(monkeypatch):
     monkeypatch.setattr(
         "app.tasks.discovery_sync.PostIngestService.schedule_embedding_index",
         lambda self, content_id, *, source="post_ingest": None,
+    )
+
+
+def _patch_archive_config(
+    monkeypatch,
+    *,
+    enabled: bool = True,
+    image_webp_quality: int = 80,
+    image_max_count: int | None = None,
+):
+    async def _config(self):
+        return ArchiveMediaConfig(
+            enabled=enabled,
+            image_webp_quality=image_webp_quality,
+            image_max_count=image_max_count,
+            video_max_count=None,
+        )
+
+    monkeypatch.setattr(
+        "app.tasks.discovery_sync.ConfigService.get_archive_media_config",
+        _config,
     )
 
 
@@ -544,7 +566,7 @@ async def test_sync_records_error(db_session):
 
 
 @pytest.mark.asyncio
-async def test_archive_discovery_media_rewrites_body_to_local_urls(db_session):
+async def test_archive_discovery_media_rewrites_body_to_local_urls(db_session, monkeypatch):
     """Discovery media archiving should rewrite body markdown image URLs to local://."""
     content = Content(
         platform=Platform.UNIVERSAL,
@@ -563,15 +585,6 @@ async def test_archive_discovery_media_rewrites_body_to_local_urls(db_session):
 
     task = DiscoverySyncTask()
 
-    async def _setting_side_effect(key, default=None):
-        if key == "enable_archive_media_processing":
-            return True
-        if key == "archive_image_webp_quality":
-            return 80
-        if key == "archive_image_max_count":
-            return None
-        return default
-
     async def _store_images_side_effect(*, archive, storage, namespace, quality, max_images):
         archive["stored_images"] = [
             {
@@ -583,12 +596,9 @@ async def test_archive_discovery_media_rewrites_body_to_local_urls(db_session):
 
     mock_storage = AsyncMock()
     mock_storage.ensure_bucket = AsyncMock()
+    _patch_archive_config(monkeypatch)
 
     with patch(
-        "app.tasks.discovery_sync.get_setting_value",
-        new_callable=AsyncMock,
-        side_effect=_setting_side_effect,
-    ), patch(
         "app.tasks.discovery_sync.get_storage_backend",
         return_value=mock_storage,
     ), patch(

@@ -18,6 +18,7 @@ from app.core.config import settings
 from app.core.dependencies import require_api_token
 from app.core.safe_fetch import create_safe_async_transport, is_safe_url
 from app.adapters.storage import get_storage_backend, LocalStorageBackend
+from app.services.config_service import ConfigService
 
 router = APIRouter()
 
@@ -314,8 +315,7 @@ async def proxy_image(
     logger.info(f"图片代理缓存未命中，开始下载: {url}")
     
     headers = _request_headers_for_url(url)
-    from app.services.settings_service import get_setting_value
-    proxy = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
+    proxy = await ConfigService().get_http_proxy()
     
     try:
         transport = create_safe_async_transport(proxy=proxy) if proxy else create_safe_async_transport()

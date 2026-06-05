@@ -40,6 +40,7 @@ from app.services.background_task_state import (
     record_task_started,
     record_task_success,
 )
+from app.services.config_service import ConfigService
 from app.services.settings_service import get_setting_value
 from app.utils.url_utils import normalize_url_for_dedup
 from app.utils.datetime_utils import normalize_datetime_for_db
@@ -405,11 +406,8 @@ class DiscoverySyncTask:
 
     async def _archive_discovery_media(self, db, content_ids: list[int]):
         """Download and convert images to WebP for newly ingested discovery items."""
-        enable_processing = await get_setting_value(
-            "enable_archive_media_processing",
-            settings.enable_archive_media_processing,
-        )
-        if not enable_processing:
+        archive_config = await ConfigService().get_archive_media_config()
+        if not archive_config.enabled:
             return
 
         if not content_ids:
@@ -421,19 +419,6 @@ class DiscoverySyncTask:
             await ensure_bucket()
 
         namespace = "vaultstream"
-        quality = int(
-            await get_setting_value(
-                "archive_image_webp_quality",
-                settings.archive_image_webp_quality,
-            ) or 80
-        )
-        max_count = await get_setting_value(
-            "archive_image_max_count",
-            settings.archive_image_max_count,
-        )
-        if max_count is not None:
-            max_count = int(max_count)
-
         stmt = select(Content).where(Content.id.in_(content_ids))
         result = await db.execute(stmt)
         contents = result.scalars().all()
@@ -449,8 +434,8 @@ class DiscoverySyncTask:
                     archive=archive,
                     storage=storage,
                     namespace=namespace,
-                    quality=quality,
-                    max_images=max_count,
+                    quality=archive_config.image_webp_quality,
+                    max_images=archive_config.image_max_count,
                 )
 
                 stored_images = archive.get("stored_images", [])

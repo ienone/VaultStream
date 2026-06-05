@@ -15,6 +15,7 @@ from app.core.logging import logger
 from app.adapters.base import PlatformAdapter, ParsedContent
 from app.adapters.errors import NonRetryableAdapterError
 from app.core.config import settings
+from app.services.config_service import ConfigService
 
 # 导入parser
 from app.adapters.weibo_parser import parse_weibo, parse_user
@@ -87,8 +88,7 @@ class WeiboAdapter(PlatformAdapter):
                 }
                 
                 # 配置代理
-                from app.services.settings_service import get_setting_value
-                proxy = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
+                proxy = await ConfigService().get_http_proxy()
                 
                 # 对mapp链接使用GET请求，因为HEAD常常不能正确重定向
                 async with httpx.AsyncClient(headers=headers, follow_redirects=True, timeout=10.0, proxy=proxy) as client:
@@ -176,8 +176,7 @@ class WeiboAdapter(PlatformAdapter):
 
         # 准备代理
         proxies = None
-        from app.services.settings_service import get_setting_value
-        global_proxy = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
+        global_proxy = await ConfigService().get_http_proxy()
         if global_proxy:
             global_proxy = global_proxy.strip()
             proxies = {

@@ -13,9 +13,9 @@ from telegram.request import HTTPXRequest
 from telegram.error import TelegramError
 
 from app.core.logging import logger
-from app.core.config import settings
 from app.adapters.storage import get_storage_backend
 from app.services.bot_config_runtime import get_primary_telegram_token_from_db
+from app.services.config_service import ConfigService
 from app.utils.text_formatters import format_content_for_tg, format_content_with_render_config
 from app.media.extractor import extract_media_urls
 from .base import BasePushService
@@ -51,8 +51,7 @@ class TelegramPushService(BasePushService):
             bot_token = await get_primary_telegram_token_from_db()
             
             # 配置代理 (通过环境变量，httpx 会自动读取)
-            from app.services.settings_service import get_setting_value
-            proxy = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
+            proxy = await ConfigService().get_http_proxy()
             
             if proxy:
                 os.environ['HTTP_PROXY'] = proxy

@@ -4,6 +4,7 @@ from app.tasks.parsing import ContentParser
 from app.models import Content, ContentStatus, Platform
 from app.adapters.base import ParsedContent
 from app.services.background_task_state import get_recent_task_runs
+from app.services.config_service import ArchiveMediaConfig
 from sqlalchemy import select
 
 @pytest.fixture(autouse=True)
@@ -16,6 +17,28 @@ def _disable_background_embedding(monkeypatch):
     monkeypatch.setattr(
         "app.tasks.parsing.PostIngestService.schedule_embedding_index",
         lambda self, content_id, *, source="post_ingest": None,
+    )
+
+
+def _patch_archive_config(
+    monkeypatch,
+    *,
+    enabled: bool = True,
+    image_webp_quality: int = 80,
+    image_max_count: int | None = None,
+    video_max_count: int | None = None,
+):
+    async def _config(self):
+        return ArchiveMediaConfig(
+            enabled=enabled,
+            image_webp_quality=image_webp_quality,
+            image_max_count=image_max_count,
+            video_max_count=video_max_count,
+        )
+
+    monkeypatch.setattr(
+        "app.tasks.parsing.ConfigService.get_archive_media_config",
+        _config,
     )
 
 
@@ -701,15 +724,8 @@ async def test_maybe_process_images_and_cover(monkeypatch):
     parsed.cover_url = "https://example.com/img1.jpg"
     parsed.media_urls = []
 
-    async def _setting(key, default=None):
-        if key == "archive_image_webp_quality":
-            return 80
-        if key == "archive_image_max_count":
-            return None
-        return default
-
-    mocks = _patch_common(monkeypatch,
-                          get_setting_value=AsyncMock(side_effect=_setting))
+    _patch_archive_config(monkeypatch)
+    mocks = _patch_common(monkeypatch)
 
     with mocks["factory"]:
         parser = ContentParser()
@@ -734,15 +750,8 @@ async def test_maybe_process_videos(monkeypatch):
     parsed.archive_metadata = {"archive": archive_data}
     parsed.media_urls = []
 
-    async def _setting(key, default=None):
-        if key == "archive_image_webp_quality":
-            return 80
-        if key == "archive_image_max_count":
-            return None
-        return default
-
-    mocks = _patch_common(monkeypatch,
-                          get_setting_value=AsyncMock(side_effect=_setting))
+    _patch_archive_config(monkeypatch)
+    mocks = _patch_common(monkeypatch)
 
     with mocks["factory"]:
         parser = ContentParser()
@@ -761,8 +770,8 @@ async def test_handle_archived_media_fix_no_processing(db_session, monkeypatch):
     """Setting disabled → skip processing."""
     content = await _make_content(db_session,
                                   archive_metadata={"archive": {"images": [{"url": "x"}]}})
-    mocks = _patch_common(monkeypatch,
-                          get_setting_value=AsyncMock(return_value=False))
+    _patch_archive_config(monkeypatch, enabled=False)
+    mocks = _patch_common(monkeypatch)
 
     with mocks["factory"]:
         parser = ContentParser()
@@ -778,17 +787,8 @@ async def test_handle_archived_media_fix_needs_media(db_session, monkeypatch):
         archive_metadata={"archive": {"images": [{"url": "https://img.com/1.jpg"}]}},
     )
 
-    async def _setting(key, default=None):
-        if key == "enable_archive_media_processing":
-            return True
-        if key == "archive_image_webp_quality":
-            return 80
-        if key == "archive_image_max_count":
-            return None
-        return default
-
-    mocks = _patch_common(monkeypatch,
-                          get_setting_value=AsyncMock(side_effect=_setting))
+    _patch_archive_config(monkeypatch)
+    mocks = _patch_common(monkeypatch)
 
     with mocks["factory"]:
         parser = ContentParser()
@@ -806,15 +806,6 @@ async def test_handle_archived_media_fix_updates_body_from_rewritten_markdown(db
         archive_metadata={"archive": {"images": [{"url": "https://img.com/1.jpg"}], "markdown": "![img](https://img.com/1.jpg)"}},
     )
 
-    async def _setting(key, default=None):
-        if key == "enable_archive_media_processing":
-            return True
-        if key == "archive_image_webp_quality":
-            return 80
-        if key == "archive_image_max_count":
-            return None
-        return default
-
     async def _store_images_side_effect(*, archive, storage, namespace, quality, max_images):
         archive["stored_images"] = [
             {
@@ -826,9 +817,9 @@ async def test_handle_archived_media_fix_updates_body_from_rewritten_markdown(db
         archive["markdown"] = "![img](local://abc/img1.webp)"
 
     store_images_mock = AsyncMock(side_effect=_store_images_side_effect)
+    _patch_archive_config(monkeypatch)
     mocks = _patch_common(
         monkeypatch,
-        get_setting_value=AsyncMock(side_effect=_setting),
         store_images=store_images_mock,
     )
 
@@ -875,19 +866,10 @@ async def test_handle_archived_media_fix_rewrites_existing_remote_refs_without_r
         },
     )
 
-    async def _setting(key, default=None):
-        if key == "enable_archive_media_processing":
-            return True
-        if key == "archive_image_webp_quality":
-            return 80
-        if key == "archive_image_max_count":
-            return None
-        return default
-
     store_images_mock = AsyncMock()
+    _patch_archive_config(monkeypatch)
     mocks = _patch_common(
         monkeypatch,
-        get_setting_value=AsyncMock(side_effect=_setting),
         store_images=store_images_mock,
     )
 

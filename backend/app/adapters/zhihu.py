@@ -18,6 +18,7 @@ from app.adapters.zhihu_parser.base import preprocess_zhihu_html, extract_images
 from app.adapters.zhihu_parser.models import ZhihuAuthor
 from app.adapters.utils.cookie_utils import normalize_cookie_header_value
 from app.core.config import settings
+from app.services.config_service import ConfigService
 
 
 class ZhihuAdapter(PlatformAdapter):
@@ -203,12 +204,7 @@ class ZhihuAdapter(PlatformAdapter):
         return url.split('?')[0]
 
     async def _get_proxy_url(self) -> Optional[str]:
-        from app.services.settings_service import get_setting_value
-        proxy_url = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
-        
-        if proxy_url and proxy_url.startswith("socks://"):
-            proxy_url = proxy_url.replace("socks://", "socks5://")
-        return proxy_url
+        return await ConfigService().get_http_proxy(normalize_socks_scheme=True)
 
     def _extract_id_from_url(self, url: str, content_type: str) -> Optional[str]:
         """从URL中提取内容ID"""

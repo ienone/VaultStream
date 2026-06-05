@@ -99,6 +99,14 @@ class FavoritesSyncPlatformState:
     last_result: Any
 
 
+@dataclass(frozen=True)
+class ArchiveMediaConfig:
+    enabled: bool
+    image_webp_quality: int
+    image_max_count: int | None
+    video_max_count: int | None
+
+
 class ConfigService:
     def __init__(
         self,
@@ -497,6 +505,71 @@ class ConfigService:
             value,
             category="favorites_sync",
         )
+
+    async def get_http_proxy(
+        self,
+        *,
+        fresh: bool = False,
+        normalize_socks_scheme: bool = False,
+    ) -> str | None:
+        from app.core.config import settings
+
+        read = self.get_value_fresh if fresh else self.get_value
+        proxy = await read("http_proxy", settings.http_proxy)
+        if not proxy:
+            return None
+        proxy_text = str(proxy).strip()
+        if not proxy_text:
+            return None
+        if normalize_socks_scheme and proxy_text.startswith("socks://"):
+            return proxy_text.replace("socks://", "socks5://", 1)
+        return proxy_text
+
+    async def get_archive_media_config(self, *, fresh: bool = False) -> ArchiveMediaConfig:
+        from app.core.config import settings
+
+        read = self.get_value_fresh if fresh else self.get_value
+
+        image_quality = coerce_int(
+            await read(
+                "archive_image_webp_quality",
+                settings.archive_image_webp_quality,
+            ),
+            settings.archive_image_webp_quality,
+        )
+        image_quality = max(1, min(100, image_quality))
+
+        image_max_count = self._coerce_optional_positive_int(
+            await read("archive_image_max_count", settings.archive_image_max_count)
+        )
+        video_max_count = self._coerce_optional_positive_int(
+            await read(
+                "archive_video_max_count",
+                getattr(settings, "archive_video_max_count", None),
+            )
+        )
+
+        return ArchiveMediaConfig(
+            enabled=coerce_bool(
+                await read(
+                    "enable_archive_media_processing",
+                    settings.enable_archive_media_processing,
+                )
+            ),
+            image_webp_quality=image_quality,
+            image_max_count=image_max_count,
+            video_max_count=video_max_count,
+        )
+
+    @staticmethod
+    def _coerce_optional_positive_int(value: Any) -> int | None:
+        if value is None or value == "":
+            return None
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return None
+        return parsed if parsed > 0 else None
 
     def _sync_runtime_setting(self, key: str, value: Any) -> None:
         from app.core.config import settings

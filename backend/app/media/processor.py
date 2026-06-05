@@ -20,9 +20,9 @@ from urllib.parse import quote, unquote, urlsplit, urlunsplit
 import httpx
 
 from app.core.logging import logger
-from app.core.config import settings
 from app.core.safe_fetch import safe_client_get
 from app.adapters.storage import LocalStorageBackend
+from app.services.config_service import ConfigService
 
 _URL_PATH_SAFE_CHARS = "/%:@!$&'()*+,;=-._~"
 _URL_QUERY_SAFE_CHARS = "/?:@!$&'()*+,;=-._~%="
@@ -270,8 +270,7 @@ async def extract_cover_color(url: str, timeout_seconds: float = 10.0) -> Option
     if not url:
         return None
     
-    from app.services.settings_service import get_setting_value
-    proxy = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
+    proxy = await ConfigService().get_http_proxy()
     
     headers = _request_headers_for_url(url)
     try:
@@ -328,8 +327,7 @@ async def store_archive_images_as_webp(
     count = 0
     
     # 配置代理（如 Twitter 图片需要代理）
-    from app.services.settings_service import get_setting_value
-    proxy = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
+    proxy = await ConfigService().get_http_proxy()
     
     async with httpx.AsyncClient(proxy=proxy, timeout=timeout_seconds, follow_redirects=True) as client:
         for img in images:
@@ -548,8 +546,7 @@ async def store_archive_videos(
     count = 0
     
     # 配置代理（如 Twitter 视频需要代理）
-    from app.services.settings_service import get_setting_value
-    proxy = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
+    proxy = await ConfigService().get_http_proxy()
     
     async with httpx.AsyncClient(proxy=proxy, timeout=timeout_seconds, follow_redirects=True) as client:
         for vid in videos:

@@ -22,6 +22,7 @@ from app.adapters.utils.anti_risk import (
 from app.adapters.zhihu import ZhihuAdapter
 from app.core.logging import logger
 from app.core.time_utils import utcnow
+from app.services.config_service import ConfigService
 from app.services.settings_service import get_setting_value
 
 
@@ -111,7 +112,7 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
             return False
 
     async def _api_get(self, url: str, cookies: dict[str, str]) -> dict:
-        proxy_url = await get_setting_value("http_proxy")
+        proxy_url = await ConfigService().get_http_proxy()
 
         async with httpx.AsyncClient(
             follow_redirects=True,
