@@ -299,6 +299,27 @@ async def test_list_settings_values():
         assert filtered[0]["key"] == "b"
 
 
+@pytest.mark.asyncio
+async def test_list_settings_values_masks_agent_chat_api_key():
+    import app.services.settings_service as svc
+
+    async with _TestSessionLocal() as session:
+        session.add(
+            SystemSetting(
+                key="agent_chat_api_key",
+                value="agent-secret",
+                category="ai",
+            )
+        )
+        await session.commit()
+
+    with patch("app.services.settings_service.AsyncSessionLocal", _session_factory):
+        settings = await svc.list_settings_values(category="ai")
+
+    assert settings[0]["key"] == "agent_chat_api_key"
+    assert settings[0]["value"] == "*** [Configured] ***"
+
+
 # ---------------------------------------------------------------------------
 # ConfigService typed views
 # ---------------------------------------------------------------------------

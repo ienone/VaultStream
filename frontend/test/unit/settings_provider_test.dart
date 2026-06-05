@@ -24,7 +24,7 @@ class _MockDio extends Mock implements Dio {
     return Response<T>(
       requestOptions: RequestOptions(path: path),
       statusCode: 200,
-      data: {'ok': true, 'run_id': 'ai-test-run', 'target': 'text_llm'} as T,
+      data: {'ok': true, 'run_id': 'ai-test-run', 'target': 'agent_chat'} as T,
     );
   }
 }
@@ -39,10 +39,10 @@ void main() {
 
     final result = await container
         .read(aiConnectivityTestProvider)
-        .run('text_llm');
+        .run('agent_chat');
 
     expect(dio.postPaths, ['/ai/connectivity-test']);
-    expect(dio.lastData, {'target': 'text_llm'});
+    expect(dio.lastData, {'target': 'agent_chat'});
     expect(result['ok'], isTrue);
     expect(result['run_id'], 'ai-test-run');
   });

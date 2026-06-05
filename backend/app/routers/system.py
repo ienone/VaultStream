@@ -179,11 +179,17 @@ def _capability_item(
 
 
 async def _build_ai_capabilities(db: AsyncSession) -> list[dict[str, Any]]:
+    from app.services.config_service import ConfigService
+
     text_ready = await _llm_key_configured("text_llm")
     vision_ready = await _llm_key_configured("vision_llm")
     summary_key_ready = _is_configured_value(await _get_configured_setting("summary_api_key"))
     summary_enabled = bool(await _get_configured_setting("enable_auto_summary", settings.enable_auto_summary))
     embedding_ready = _is_configured_value(await _get_configured_setting("embedding_api_key"))
+    agent_config = await ConfigService().get_agent_chat_config()
+    agent_chat_ready = bool(agent_config.api_key)
+    agent_chat_direct = _is_configured_value(await _get_configured_setting("agent_chat_api_key"))
+    agent_chat_target_ready = agent_chat_ready or text_ready or vision_ready
     semantic_status = await EmbeddingService().get_index_status(session=db)
     indexed_total = int(semantic_status.get("indexed_total") or 0)
     connectivity = await _latest_ai_connectivity_by_target()
@@ -327,18 +333,21 @@ async def _build_ai_capabilities(db: AsyncSession) -> list[dict[str, Any]]:
             )
         )
 
-    if text_ready or vision_ready:
-        target = "text_llm" if text_ready else "vision_llm"
+    if agent_chat_target_ready:
         capabilities.append(
             _capability_item(
                 "agent",
                 "Agent",
                 "available",
-                "Agent 可使用已配置的文本模型；缺少文本模型时会尝试回退到视觉模型。",
+                "Agent 可使用已配置的 Agent chat 模型；未单独配置时会回退到文本模型，再保留视觉模型 fallback。",
                 details={
+                    "agent_chat": agent_chat_target_ready,
+                    "agent_chat_direct": agent_chat_direct,
+                    "model": agent_config.model,
+                    "base_url": agent_config.base_url,
                     "text_llm": text_ready,
                     "vision_llm": vision_ready,
-                    "connectivity": connectivity.get(target),
+                    "connectivity": connectivity.get("agent_chat"),
                 },
             )
         )
@@ -348,10 +357,16 @@ async def _build_ai_capabilities(db: AsyncSession) -> list[dict[str, Any]]:
                 "agent",
                 "Agent",
                 "unavailable",
-                "Agent 需要至少一个可用的文本或视觉 LLM。",
+                "Agent 需要至少一个可用的 Agent chat、文本或视觉 LLM。",
                 issues=["未配置可供 Agent 使用的 LLM 密钥"],
-                actions=["配置 text_llm_api_key 或 vision_llm_api_key"],
-                details={"text_llm": False, "vision_llm": False, "connectivity": None},
+                actions=["配置 agent_chat_api_key 或 text_llm_api_key"],
+                details={
+                    "agent_chat": False,
+                    "agent_chat_direct": False,
+                    "text_llm": False,
+                    "vision_llm": False,
+                    "connectivity": None,
+                },
             )
         )
 
@@ -384,31 +399,33 @@ def _normalize_ai_connectivity_target(target: str) -> str:
         "summary": "summary_generation",
         "text": "text_llm",
         "vision": "vision_llm",
-        "agent": "text_llm",
+        "agent": "agent_chat",
     }
     normalized = aliases.get(normalized, normalized)
     if normalized not in {
+        "agent_chat",
         "text_llm",
         "vision_llm",
         "summary_generation",
         "semantic_search",
     }:
-        raise ValueError("target must be text_llm, vision_llm, summary_generation or semantic_search")
+        raise ValueError("target must be agent_chat, text_llm, vision_llm, summary_generation or semantic_search")
     return normalized
 
 
 async def _run_ai_connectivity_target(target: str) -> dict[str, Any]:
-    if target in {"text_llm", "vision_llm"}:
+    if target in {"agent_chat", "text_llm", "vision_llm"}:
         from langchain_core.messages import HumanMessage
         from app.core.llm_factory import LLMFactory
 
-        llm = (
-            await LLMFactory.get_text_llm()
-            if target == "text_llm"
-            else await LLMFactory.get_vision_llm()
-        )
+        if target == "agent_chat":
+            llm = await LLMFactory.get_agent_chat_llm()
+        elif target == "text_llm":
+            llm = await LLMFactory.get_text_llm()
+        else:
+            llm = await LLMFactory.get_vision_llm()
         if llm is None:
-            raise RuntimeError(f"{target}_api_key is not configured or model initialization failed")
+            raise RuntimeError(f"{target} is not configured or model initialization failed")
         response = await llm.ainvoke([HumanMessage(content="VaultStream connectivity test. Reply with OK.")])
         text = str(getattr(response, "content", "") or "").strip()
         return {"target": target, "response_present": bool(text), "preview": text[:120]}

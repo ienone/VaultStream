@@ -458,6 +458,7 @@ class TestSystemAPI:
         assert capabilities["summary_generation"]["status"] == "disabled"
         assert capabilities["semantic_search"]["status"] == "pending"
         assert capabilities["agent"]["status"] == "available"
+        assert capabilities["agent"]["details"]["agent_chat"] is True
 
     @pytest.mark.asyncio
     async def test_ai_connectivity_test_records_run_and_updates_capabilities(
@@ -466,7 +467,7 @@ class TestSystemAPI:
         monkeypatch,
     ):
         async def fake_connectivity(target: str):
-            assert target == "text_llm"
+            assert target == "agent_chat"
             return {
                 "target": target,
                 "response_present": True,
@@ -500,13 +501,13 @@ class TestSystemAPI:
 
         response = await client.post(
             "/api/v1/ai/connectivity-test",
-            json={"target": "text_llm"},
+            json={"target": "agent"},
         )
         assert response.status_code == 200
         data = response.json()
         assert data["ok"] is True
         assert data["run_id"]
-        assert data["target"] == "text_llm"
+        assert data["target"] == "agent_chat"
 
         diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
         latest = next(
@@ -516,7 +517,7 @@ class TestSystemAPI:
         )
         assert latest["task"] == "ai_connectivity_test"
         assert latest["status"] == "success"
-        assert latest["target"] == "text_llm"
+        assert latest["target"] == "agent_chat"
         assert latest["result"]["response_present"] is True
 
         capabilities_resp = await client.get("/api/v1/ai/capabilities")

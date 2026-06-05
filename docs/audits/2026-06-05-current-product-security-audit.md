@@ -116,7 +116,7 @@ VaultStream 已经具备个人内容收集、解析、检索、发现、审核�
 当前补齐：
 
 - 后端新增 `GET /api/v1/ai/capabilities`，按配置与语义索引状态聚合内容理解、摘要生成、语义搜索和 Agent 的用户可见能力状态。
-- AI 能力页已新增真实连通性测试入口，可对 text LLM、vision LLM、摘要模型和 Embedding 做一次实际调用并记录 `ai_connectivity_test`。
+- AI 能力页已新增真实连通性测试入口，可对 Agent chat、text LLM、vision LLM、摘要模型和 Embedding 做一次实际调用并记录 `ai_connectivity_test`。
 - 前端“大模型引擎”区域先展示能力摘要，再保留文本模型、视觉模型和 Embedding 的高级配置。
 - 单条内容的 `processing-status` 已把摘要、语义索引、巡逻评分、分发阶段的配置缺失、失败状态和下一步建议作为 `issues/actions` 返回，详情页会直接展示这些提示。
 
@@ -185,7 +185,7 @@ VaultStream 已经具备个人内容收集、解析、检索、发现、审核�
 - 后端新增 `POST /api/v1/search/semantic/embeddings/{embedding_id}/retry`，前端处理状态面板可对语义索引失败分块逐项重试，并记录 `semantic_reindex` 运行日志。
 - 摘要生成、语义索引重建和巡逻评分手动触发等返回 `run_id` 的后处理动作成功后，前端 toast 会提供“查看日志”，跳到动态页并自动打开对应 run 详情。
 - 摘要、语义索引、巡逻评分和分发阶段已返回 `issues/actions`：例如缺少 `summary_api_key`、缺少 `embedding_api_key`、缺少巡逻评分 LLM key、分发队列失败，并在前端展示“问题/建议”。
-- AI 能力状态已提供真实连通性测试：`POST /api/v1/ai/connectivity-test` 会真实调用对应模型/Embedding，并把最近测试成功或失败展示在能力卡中。
+- AI 能力状态已提供真实连通性测试：`POST /api/v1/ai/connectivity-test` 会真实调用对应 Agent chat、模型或 Embedding，并把最近测试成功或失败展示在能力卡中。
 
 仍然存在的缺口：
 

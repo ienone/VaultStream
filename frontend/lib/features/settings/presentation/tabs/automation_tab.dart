@@ -1281,8 +1281,7 @@ class AutomationTab extends ConsumerWidget {
       case 'semantic_search':
         return 'semantic_search';
       case 'agent':
-        if (details['text_llm'] == true) return 'text_llm';
-        if (details['vision_llm'] == true) return 'vision_llm';
+        if (details['agent_chat'] == true) return 'agent_chat';
         return null;
       default:
         return null;

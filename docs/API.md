@@ -455,7 +455,7 @@ QQ 配置支持字段：`napcat_http_url`、`napcat_ws_url`、`napcat_access_tok
 
 `POST /api/v1/contents/{content_id}/patrol-score` 会为单条发现流内容手动触发巡逻评分并返回 `run_id`；运行结果进入 `recent_task_runs` 的 `discovery_patrol` 记录，`trigger=manual`，并记录 `content_id`、评分结果和失败数量。非发现流内容返回 `400`。
 
-`POST /api/v1/ai/connectivity-test` 会对 AI 能力执行一次真实连通性测试，`target` 支持 `text_llm`、`vision_llm`、`summary_generation` 和 `semantic_search`。接口返回 `ok`、`run_id`、耗时和错误摘要；成功或失败都会写入 `recent_task_runs` 的 `ai_connectivity_test` 记录，用于区分“未配置”和“已配置但真实调用不可用”。
+`POST /api/v1/ai/connectivity-test` 会对 AI 能力执行一次真实连通性测试，`target` 支持 `agent_chat`、`text_llm`、`vision_llm`、`summary_generation` 和 `semantic_search`，其中 `agent` 可作为 `agent_chat` 的别名。接口返回 `ok`、`run_id`、耗时和错误摘要；成功或失败都会写入 `recent_task_runs` 的 `ai_connectivity_test` 记录，用于区分“未配置”和“已配置但真实调用不可用”。
 
 `POST /api/v1/platform-health/parse-test` 会对指定平台和 URL 执行一次真实解析测试，`platform` 使用平台枚举值，`url` 必须是 HTTP(S)。接口不会创建收藏内容，也不会推进同步 cursor；成功返回标题、内容类型、布局类型、作者、媒体数量、耗时和 `run_id`，成功或失败都会写入 `recent_task_runs` 的 `platform_parse_test` 记录。
 
