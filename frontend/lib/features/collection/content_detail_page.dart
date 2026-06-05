@@ -540,19 +540,28 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   Future<void> _generateSummary(int contentId) async {
     setState(() => _isGeneratingSummary = true);
     try {
-      await ref
+      final response = await ref
           .read(apiClientProvider)
           .post(
             '/contents/$contentId/generate-summary',
             queryParameters: {'force': true},
           );
       if (mounted) {
-        Toast.show(context, '摘要已更新');
+        final data = response.data;
+        final runId = data is Map ? data['run_id']?.toString() : null;
+        final suffix = runId == null
+            ? ''
+            : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
+        Toast.show(context, '摘要已更新$suffix');
       }
       ref.invalidate(contentDetailProvider(contentId));
     } catch (e) {
       if (mounted) {
-        Toast.show(context, '摘要生成失败: $e', isError: true);
+        Toast.show(
+          context,
+          formatApiErrorMessage(e, fallbackMessage: '摘要生成失败'),
+          isError: true,
+        );
       }
     } finally {
       if (mounted) {
