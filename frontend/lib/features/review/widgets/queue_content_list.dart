@@ -415,11 +415,14 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
     });
 
     try {
-      await ref
+      final runId = await ref
           .read(contentQueueProvider.notifier)
           .batchPushNow(selectedItems.map((i) => i.contentId).toList());
       if (mounted) {
-        Toast.show(context, '批量推送任务已创建');
+        final suffix = runId == null
+            ? ''
+            : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
+        Toast.show(context, '批量推送任务已创建$suffix');
       }
     } catch (e) {
       if (mounted) {

@@ -182,9 +182,9 @@ class ContentQueue extends _$ContentQueue {
     return false;
   }
 
-  Future<void> batchPushNow(List<int> contentIds) async {
+  Future<String?> batchPushNow(List<int> contentIds) async {
     final dio = ref.read(apiClientProvider);
-    await dio.post(
+    final response = await dio.post(
       '/distribution-queue/content/batch-push-now',
       data: {'content_ids': contentIds},
     );
@@ -192,6 +192,11 @@ class ContentQueue extends _$ContentQueue {
     // 刷新统计
     final filter = ref.read(queueFilterProvider);
     ref.invalidate(queueStatsProvider(filter.ruleId));
+    final data = response.data;
+    if (data is Map && data['run_id'] != null) {
+      return data['run_id'].toString();
+    }
+    return null;
   }
 
   Future<void> batchReschedule(
