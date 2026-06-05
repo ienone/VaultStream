@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/toast.dart';
 import '../../settings/providers/favorites_sync_provider.dart';
+import '../../settings/providers/settings_provider.dart';
 
 class FavoritesSyncAutomationPanel extends ConsumerWidget {
   const FavoritesSyncAutomationPanel({super.key});
@@ -133,13 +134,13 @@ class _SyncOverviewCard extends StatelessWidget {
   }
 }
 
-class _SyncPolicyCard extends StatelessWidget {
+class _SyncPolicyCard extends ConsumerWidget {
   const _SyncPolicyCard({required this.status});
 
   final FavoritesSyncStatus status;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final enabledPlatforms = status.enabledPlatforms.isEmpty
@@ -188,6 +189,31 @@ class _SyncPolicyCard extends StatelessWidget {
               value:
                   '按平台 cursor 增量拉取；每轮最多 ${status.maxItems} 条；每 ${status.intervalMinutes} 分钟自动执行。',
             ),
+            const SizedBox(height: 10),
+            _PolicyControlRow(
+              label: '同步间隔',
+              value: status.intervalMinutes,
+              values: const [60, 180, 360, 720, 1440],
+              suffix: '分钟',
+              onChanged: (value) => _updateFavoritesSyncSetting(
+                context,
+                ref,
+                key: 'favorites_sync_interval_minutes',
+                value: value,
+              ),
+            ),
+            _PolicyControlRow(
+              label: '单轮上限',
+              value: status.maxItems,
+              values: const [20, 50, 100, 200],
+              suffix: '条',
+              onChanged: (value) => _updateFavoritesSyncSetting(
+                context,
+                ref,
+                key: 'favorites_sync_max_items',
+                value: value,
+              ),
+            ),
             const _PolicyLine(
               icon: Icons.difference_rounded,
               label: '重复处理',
@@ -205,6 +231,61 @@ class _SyncPolicyCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PolicyControlRow extends StatelessWidget {
+  const _PolicyControlRow({
+    required this.label,
+    required this.value,
+    required this.values,
+    required this.suffix,
+    required this.onChanged,
+  });
+
+  final String label;
+  final int value;
+  final List<int> values;
+  final String suffix;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final options = _withCurrentValue(values, value);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          Icon(Icons.tune_rounded, size: 18, color: cs.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          DropdownButton<int>(
+            value: value,
+            underline: const SizedBox.shrink(),
+            items: [
+              for (final option in options)
+                DropdownMenuItem(value: option, child: Text('$option $suffix')),
+            ],
+            onChanged: (next) {
+              if (next != null && next != value) {
+                onChanged(next);
+              }
+            },
+          ),
+        ],
       ),
     );
   }
@@ -970,6 +1051,36 @@ String _platformRunStatusLabel(String status) {
     'skipped' => '已跳过',
     _ => status,
   };
+}
+
+List<int> _withCurrentValue(List<int> values, int current) {
+  final set = {current, ...values}.toList()..sort();
+  return set;
+}
+
+Future<void> _updateFavoritesSyncSetting(
+  BuildContext context,
+  WidgetRef ref, {
+  required String key,
+  required int value,
+}) async {
+  try {
+    await ref
+        .read(systemSettingsProvider.notifier)
+        .updateSetting(key, value, category: 'favorites_sync');
+    ref.invalidate(favoritesSyncStatusProvider);
+    if (context.mounted) {
+      Toast.show(context, '收藏同步参数已更新');
+    }
+  } catch (e) {
+    if (context.mounted) {
+      Toast.show(
+        context,
+        formatApiErrorMessage(e, fallbackMessage: '更新收藏同步参数失败'),
+        isError: true,
+      );
+    }
+  }
 }
 
 String? _runString(Map<String, dynamic> run, String key) {

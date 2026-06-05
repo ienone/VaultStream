@@ -225,8 +225,18 @@ void main() {
       expect(find.text('同步策略'), findsOneWidget);
       expect(find.text('同步范围'), findsOneWidget);
       expect(find.text('取消收藏'), findsOneWidget);
+      expect(find.text('同步间隔'), findsOneWidget);
+      expect(find.text('单轮上限'), findsOneWidget);
+      expect(find.text('360 分钟'), findsOneWidget);
+      expect(find.text('50 条'), findsOneWidget);
       expect(find.text('高级参数'), findsOneWidget);
       expect(find.text('知乎'), findsWidgets);
+
+      await tester.scrollUntilVisible(
+        find.textContaining('abcdef12'),
+        320,
+        scrollable: find.byType(Scrollable).last,
+      );
       expect(find.textContaining('abcdef12'), findsOneWidget);
       expect(find.text('重试'), findsOneWidget);
 
