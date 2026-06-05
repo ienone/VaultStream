@@ -1,7 +1,7 @@
 # VaultStream Current State and Roadmap
 
 > Updated: 2026-05-25
-> Purpose: current, code-backed direction for continued development. This file replaces the older long speculative V2 plan. Historical audit notes remain under `docs/architecture_audit/` and `docs/exam/`.
+> Purpose: current, code-backed direction for continued development. This file replaces the older long speculative V2 plan. Historical audit notes are archived under `docs/archive/`. Current product/security status is tracked in `docs/audits/2026-06-05-current-product-security-audit.md`.
 
 ## Current State
 
@@ -19,13 +19,14 @@ The current product direction should be:
 
 ## Verified Baseline
 
-Recent local checks:
+Recent local checks are summarized in `docs/audits/2026-06-05-current-product-security-audit.md`. The latest recorded results there are:
 
-- `python scripts/check_openapi_docs.py docs/API.md`: OpenAPI docs check passed, 107 endpoints covered.
-- `python scripts/check_database_schema.py`: schema version 29, integrity ok, FTS ok.
-- Targeted pytest for semantic search, embedding, EventBus, and Agent tools: 45 passed.
+- Backend non-integration tests: 670 passed, 4 skipped, 16 deselected.
+- Backend integration tests: 5 failed, 8 passed, 1 skipped, 2 xfailed.
+- Flutter analyze: no issues found.
+- Flutter test: 21 tests passed, with one existing non-fatal tap target warning.
 
-Known caveat: the targeted pytest run still emitted SQLite `ResourceWarning` messages in the Agent WebSocket unauthorized test path. Treat that as test fixture hygiene work, not as a product feature failure.
+Treat historical verification numbers in archived docs as snapshots, not current status.
 
 ## Core Backend Shape
 
