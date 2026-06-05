@@ -38,6 +38,9 @@ from app.adapters.favorites.errors import FavoritesFetchError
 from app.adapters.storage import get_storage_backend, LocalStorageBackend
 from app.core.queue import task_queue
 from app.services.background_task_state import get_background_task_states, get_recent_task_runs
+from app.services.embedding_service import EmbeddingService
+from app.services.settings_service import get_setting_value
+from app.utils.sensitive_display import extract_secret_value
 from app.utils.sensitive_display import as_configured_placeholder, is_sensitive_setting_key
 
 router = APIRouter()
@@ -118,6 +121,182 @@ def _latest_favorites_run_for_platform(
         if scope == platform or scope == "all":
             return run
     return None
+
+
+def _is_configured_value(value: Any) -> bool:
+    text = extract_secret_value(value)
+    return isinstance(text, str) and bool(text.strip())
+
+
+async def _get_configured_setting(key: str, default: Any = None) -> Any:
+    return await get_setting_value(key, default)
+
+
+async def _llm_key_configured(prefix: str) -> bool:
+    return _is_configured_value(await _get_configured_setting(f"{prefix}_api_key"))
+
+
+def _capability_item(
+    key: str,
+    label: str,
+    status: str,
+    summary: str,
+    *,
+    issues: list[str] | None = None,
+    actions: list[str] | None = None,
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "key": key,
+        "label": label,
+        "status": status,
+        "available": status == "available",
+        "summary": summary,
+        "issues": issues or [],
+        "actions": actions or [],
+        "details": details or {},
+    }
+
+
+async def _build_ai_capabilities(db: AsyncSession) -> list[dict[str, Any]]:
+    text_ready = await _llm_key_configured("text_llm")
+    vision_ready = await _llm_key_configured("vision_llm")
+    summary_key_ready = _is_configured_value(await _get_configured_setting("summary_api_key"))
+    summary_enabled = bool(await _get_configured_setting("enable_auto_summary", settings.enable_auto_summary))
+    embedding_ready = _is_configured_value(await _get_configured_setting("embedding_api_key"))
+    semantic_status = await EmbeddingService().get_index_status(session=db)
+    indexed_total = int(semantic_status.get("indexed_total") or 0)
+
+    capabilities: list[dict[str, Any]] = []
+
+    if text_ready and vision_ready:
+        capabilities.append(
+            _capability_item(
+                "content_understanding",
+                "内容理解",
+                "available",
+                "文本与视觉模型均已配置，可用于解析增强和复杂内容理解。",
+                details={"text_llm": True, "vision_llm": True},
+            )
+        )
+    elif text_ready or vision_ready:
+        missing = "视觉模型未配置" if text_ready else "文本模型未配置"
+        capabilities.append(
+            _capability_item(
+                "content_understanding",
+                "内容理解",
+                "partial",
+                "已有部分模型配置，部分解析增强能力可用。",
+                issues=[missing],
+                actions=["补齐文本与视觉模型密钥"],
+                details={"text_llm": text_ready, "vision_llm": vision_ready},
+            )
+        )
+    else:
+        capabilities.append(
+            _capability_item(
+                "content_understanding",
+                "内容理解",
+                "unavailable",
+                "未配置文本或视觉模型，AI 内容理解能力不可用。",
+                issues=["text_llm_api_key 与 vision_llm_api_key 均未配置"],
+                actions=["配置文本或视觉 LLM 密钥"],
+                details={"text_llm": False, "vision_llm": False},
+            )
+        )
+
+    if not summary_enabled:
+        capabilities.append(
+            _capability_item(
+                "summary_generation",
+                "摘要生成",
+                "disabled",
+                "自动摘要开关已关闭。",
+                actions=["开启自动摘要"],
+                details={"enabled": False, "summary_key": summary_key_ready},
+            )
+        )
+    elif summary_key_ready:
+        capabilities.append(
+            _capability_item(
+                "summary_generation",
+                "摘要生成",
+                "available",
+                "自动摘要已开启，摘要模型密钥已配置。",
+                details={"enabled": True, "summary_key": True},
+            )
+        )
+    else:
+        capabilities.append(
+            _capability_item(
+                "summary_generation",
+                "摘要生成",
+                "unavailable",
+                "自动摘要已开启，但摘要模型密钥缺失。",
+                issues=["summary_api_key 未配置"],
+                actions=["配置摘要模型密钥或关闭自动摘要"],
+                details={"enabled": True, "summary_key": False},
+            )
+        )
+
+    if not embedding_ready:
+        capabilities.append(
+            _capability_item(
+                "semantic_search",
+                "语义搜索",
+                "unavailable",
+                "Embedding 密钥未配置，无法生成或更新语义索引。",
+                issues=["embedding_api_key 未配置"],
+                actions=["配置 Embedding 密钥"],
+                details={"indexed_total": indexed_total, **semantic_status},
+            )
+        )
+    elif indexed_total <= 0:
+        capabilities.append(
+            _capability_item(
+                "semantic_search",
+                "语义搜索",
+                "pending",
+                "Embedding 已配置，但当前还没有已索引内容。",
+                actions=["运行语义重建或等待新内容入库"],
+                details={"indexed_total": indexed_total, **semantic_status},
+            )
+        )
+    else:
+        capabilities.append(
+            _capability_item(
+                "semantic_search",
+                "语义搜索",
+                "available",
+                f"已有 {indexed_total} 条内容进入语义索引。",
+                details={"indexed_total": indexed_total, **semantic_status},
+            )
+        )
+
+    if text_ready or vision_ready:
+        capabilities.append(
+            _capability_item(
+                "agent",
+                "Agent",
+                "available",
+                "Agent 可使用已配置的文本模型；缺少文本模型时会尝试回退到视觉模型。",
+                details={"text_llm": text_ready, "vision_llm": vision_ready},
+            )
+        )
+    else:
+        capabilities.append(
+            _capability_item(
+                "agent",
+                "Agent",
+                "unavailable",
+                "Agent 需要至少一个可用的文本或视觉 LLM。",
+                issues=["未配置可供 Agent 使用的 LLM 密钥"],
+                actions=["配置 text_llm_api_key 或 vision_llm_api_key"],
+                details={"text_llm": False, "vision_llm": False},
+            )
+        )
+
+    return capabilities
 
 
 async def _count_by_status(db: AsyncSession, model, status_column, enum_cls) -> dict[str, int]:
@@ -866,6 +1045,16 @@ async def get_platform_health(
         "platforms": items,
         "recent_favorites_runs": recent_runs[:10],
     }
+
+
+@router.get("/ai/capabilities")
+async def get_ai_capabilities(
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """Return user-facing AI capability status before advanced model fields."""
+    capabilities = await _build_ai_capabilities(db)
+    return {"capabilities": capabilities}
 
 
 @router.post("/favorites-sync/sync", status_code=202)

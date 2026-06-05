@@ -21,6 +21,7 @@ class AutomationTab extends ConsumerWidget {
     final discoverySourcesAsync = ref.watch(discoverySourcesProvider);
     final favoritesSyncAsync = ref.watch(favoritesSyncStatusProvider);
     final semanticStatusAsync = ref.watch(semanticIndexStatusProvider);
+    final aiCapabilitiesAsync = ref.watch(aiCapabilitiesProvider);
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -55,7 +56,13 @@ class AutomationTab extends ConsumerWidget {
           title: '大模型引擎 (LLM)',
           icon: Icons.psychology_rounded,
         ),
-        _buildLlmSettings(context, ref, settingsAsync, semanticStatusAsync),
+        _buildLlmSettings(
+          context,
+          ref,
+          settingsAsync,
+          semanticStatusAsync,
+          aiCapabilitiesAsync,
+        ),
         const SizedBox(height: 40),
       ],
     );
@@ -941,37 +948,159 @@ class AutomationTab extends ConsumerWidget {
     WidgetRef ref,
     AsyncValue<List<SystemSetting>> settingsAsync,
     AsyncValue<Map<String, dynamic>> semanticStatusAsync,
+    AsyncValue<List<Map<String, dynamic>>> aiCapabilitiesAsync,
   ) {
-    return settingsAsync.when(
-      data: (settings) => SettingGroup(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildAiCapabilitySummary(context, ref, aiCapabilitiesAsync),
+        const Gap(12),
+        settingsAsync.when(
+          data: (settings) => SettingGroup(
+            children: [
+              ExpandableSettingTile(
+                title: '文本大模型 (Text LLM)',
+                subtitle: _getLlmSubtitle(settings, 'text'),
+                icon: Icons.text_fields_rounded,
+                expandedContent: _buildLlmConfigEditor(context, ref, 'text'),
+              ),
+              ExpandableSettingTile(
+                title: '视觉大模型 (Vision LLM)',
+                subtitle: _getLlmSubtitle(settings, 'vision'),
+                icon: Icons.image_search_rounded,
+                expandedContent: _buildLlmConfigEditor(context, ref, 'vision'),
+              ),
+              ExpandableSettingTile(
+                title: 'Gemini Embedding',
+                subtitle: _getEmbeddingSubtitle(settings),
+                icon: Icons.hub_rounded,
+                expandedContent: _buildEmbeddingConfigEditor(
+                  context,
+                  ref,
+                  semanticStatusAsync,
+                ),
+              ),
+            ],
+          ),
+          loading: () => const LoadingGroup(),
+          error: (error, _) => const Text('加载失败'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAiCapabilitySummary(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<List<Map<String, dynamic>>> capabilitiesAsync,
+  ) {
+    return capabilitiesAsync.when(
+      data: (capabilities) {
+        if (capabilities.isEmpty) {
+          return const SettingGroup(
+            children: [
+              SettingTile(
+                title: '能力状态',
+                subtitle: '暂无能力状态数据',
+                icon: Icons.psychology_alt_rounded,
+                showArrow: false,
+              ),
+            ],
+          );
+        }
+        return SettingGroup(
+          children: capabilities.map((capability) {
+            final key = capability['key']?.toString() ?? '';
+            final status = capability['status']?.toString() ?? 'unknown';
+            final summary = capability['summary']?.toString() ?? '';
+            final issues = (capability['issues'] as List<dynamic>? ?? [])
+                .map((item) => item.toString())
+                .where((item) => item.isNotEmpty)
+                .toList();
+            return SettingTile(
+              title: capability['label']?.toString() ?? key,
+              subtitle: issues.isEmpty ? summary : '${issues.first} · $summary',
+              icon: _aiCapabilityIcon(key),
+              iconColor: _aiCapabilityColor(context, status),
+              showArrow: false,
+              trailing: Text(
+                _aiCapabilityStatusLabel(status),
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: _aiCapabilityColor(context, status),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            );
+          }).toList(),
+        );
+      },
+      loading: () => const LoadingGroup(),
+      error: (error, _) => SettingGroup(
         children: [
-          ExpandableSettingTile(
-            title: '文本大模型 (Text LLM)',
-            subtitle: _getLlmSubtitle(settings, 'text'),
-            icon: Icons.text_fields_rounded,
-            expandedContent: _buildLlmConfigEditor(context, ref, 'text'),
-          ),
-          ExpandableSettingTile(
-            title: '视觉大模型 (Vision LLM)',
-            subtitle: _getLlmSubtitle(settings, 'vision'),
-            icon: Icons.image_search_rounded,
-            expandedContent: _buildLlmConfigEditor(context, ref, 'vision'),
-          ),
-          ExpandableSettingTile(
-            title: 'Gemini Embedding',
-            subtitle: _getEmbeddingSubtitle(settings),
-            icon: Icons.hub_rounded,
-            expandedContent: _buildEmbeddingConfigEditor(
-              context,
-              ref,
-              semanticStatusAsync,
+          SettingTile(
+            title: '能力状态',
+            subtitle: '加载失败: $error',
+            icon: Icons.error_outline_rounded,
+            iconColor: Theme.of(context).colorScheme.error,
+            showArrow: false,
+            trailing: IconButton(
+              tooltip: '刷新',
+              icon: const Icon(Icons.refresh_rounded),
+              onPressed: () => ref.invalidate(aiCapabilitiesProvider),
             ),
           ),
         ],
       ),
-      loading: () => const LoadingGroup(),
-      error: (error, _) => const Text('加载失败'),
     );
+  }
+
+  IconData _aiCapabilityIcon(String key) {
+    switch (key) {
+      case 'content_understanding':
+        return Icons.psychology_alt_rounded;
+      case 'summary_generation':
+        return Icons.summarize_rounded;
+      case 'semantic_search':
+        return Icons.manage_search_rounded;
+      case 'agent':
+        return Icons.smart_toy_rounded;
+      default:
+        return Icons.auto_awesome_rounded;
+    }
+  }
+
+  Color _aiCapabilityColor(BuildContext context, String status) {
+    final colorScheme = Theme.of(context).colorScheme;
+    switch (status) {
+      case 'available':
+        return Colors.green;
+      case 'partial':
+      case 'pending':
+        return Colors.orange;
+      case 'disabled':
+        return colorScheme.outline;
+      case 'unavailable':
+        return colorScheme.error;
+      default:
+        return colorScheme.primary;
+    }
+  }
+
+  String _aiCapabilityStatusLabel(String status) {
+    switch (status) {
+      case 'available':
+        return '可用';
+      case 'partial':
+        return '部分可用';
+      case 'pending':
+        return '待索引';
+      case 'disabled':
+        return '已关闭';
+      case 'unavailable':
+        return '不可用';
+      default:
+        return status;
+    }
   }
 
   void _showAddSourceDialog(BuildContext context, WidgetRef ref) {

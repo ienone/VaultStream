@@ -43,3 +43,12 @@ final semanticIndexStatusProvider =
           .get('/search/semantic/index-status');
       return Map<String, dynamic>.from(response.data as Map);
     });
+
+final aiCapabilitiesProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+      final response = await ref.read(apiClientProvider).get('/ai/capabilities');
+      final data = Map<String, dynamic>.from(response.data as Map);
+      return (data['capabilities'] as List<dynamic>? ?? [])
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+    });

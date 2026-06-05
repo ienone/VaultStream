@@ -256,3 +256,46 @@ class TestSystemAPI:
                 app.state._state.pop("favorites_sync_task", None)
             else:
                 app.state.favorites_sync_task = previous
+
+    @pytest.mark.asyncio
+    async def test_ai_capabilities_report_user_facing_status(
+        self,
+        client: AsyncClient,
+        monkeypatch,
+    ):
+        values = {
+            "text_llm_api_key": "text-key",
+            "vision_llm_api_key": "",
+            "summary_api_key": "summary-key",
+            "enable_auto_summary": False,
+            "embedding_api_key": "embedding-key",
+        }
+
+        async def _setting_value(key: str, default=None):
+            return values.get(key, default)
+
+        async def _index_status(self, session):
+            return {
+                "indexed_total": 0,
+                "parse_success_total": 3,
+                "pending_total": 3,
+                "failed_total": 0,
+            }
+
+        monkeypatch.setattr("app.routers.system._get_configured_setting", _setting_value)
+        monkeypatch.setattr(
+            "app.services.embedding_service.EmbeddingService.get_index_status",
+            _index_status,
+        )
+
+        response = await client.get("/api/v1/ai/capabilities")
+        assert response.status_code == 200
+        capabilities = {
+            item["key"]: item
+            for item in response.json()["capabilities"]
+        }
+
+        assert capabilities["content_understanding"]["status"] == "partial"
+        assert capabilities["summary_generation"]["status"] == "disabled"
+        assert capabilities["semantic_search"]["status"] == "pending"
+        assert capabilities["agent"]["status"] == "available"
