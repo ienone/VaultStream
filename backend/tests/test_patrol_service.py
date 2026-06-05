@@ -40,6 +40,20 @@ def _mock_llm_response(data: dict):
     return response
 
 
+class _FakeConfigService:
+    def __init__(self, values: dict[str, object]) -> None:
+        self.values = values
+
+    async def get_value(self, key: str, default=None):
+        return self.values.get(key, default)
+
+
+def _patrol_service(**config_values) -> PatrolService:
+    values = {"discovery_score_threshold": 6.0}
+    values.update(config_values)
+    return PatrolService(config_service=_FakeConfigService(values))
+
+
 GOOD_SCORING = {
     "score": 7.5,
     "reason": "High quality technical content",
@@ -61,7 +75,7 @@ LOW_SCORING = {
 
 class TestParseScoringResponse:
     def setup_method(self):
-        self.svc = PatrolService()
+        self.svc = _patrol_service()
 
     def test_parse_valid_json(self):
         result = self.svc._parse_scoring_response(json.dumps(GOOD_SCORING))
@@ -95,7 +109,7 @@ class TestParseScoringResponse:
 
 class TestBuildSystemPrompt:
     def setup_method(self):
-        self.svc = PatrolService()
+        self.svc = _patrol_service()
 
     def test_build_system_prompt_without_interest(self):
         prompt = self.svc._build_system_prompt("")
@@ -114,7 +128,7 @@ class TestBuildSystemPrompt:
 
 class TestBuildUserPrompt:
     def setup_method(self):
-        self.svc = PatrolService()
+        self.svc = _patrol_service()
 
     def test_build_user_prompt(self):
         content = _make_content(
@@ -139,7 +153,7 @@ class TestBuildUserPrompt:
 @pytest.mark.asyncio
 class TestScoreItem:
     def setup_method(self):
-        self.svc = PatrolService()
+        self.svc = _patrol_service()
 
     async def test_score_item_updates_content(self):
         """Mock LLM, verify content fields updated + state transition."""
@@ -147,8 +161,7 @@ class TestScoreItem:
         mock_llm = AsyncMock()
         mock_llm.ainvoke.return_value = _mock_llm_response(GOOD_SCORING)
 
-        with patch("app.services.patrol_service.LLMFactory") as mock_factory, \
-             patch("app.services.settings_service.get_setting_value", new_callable=AsyncMock, return_value=6.0):
+        with patch("app.services.patrol_service.LLMFactory") as mock_factory:
             mock_factory.get_text_llm = AsyncMock(return_value=mock_llm)
 
             result = await self.svc.score_item(content)
@@ -165,8 +178,7 @@ class TestScoreItem:
         mock_llm = AsyncMock()
         mock_llm.ainvoke.return_value = _mock_llm_response(GOOD_SCORING)
 
-        with patch("app.services.patrol_service.LLMFactory") as mock_factory, \
-             patch("app.services.settings_service.get_setting_value", new_callable=AsyncMock, return_value=6.0):
+        with patch("app.services.patrol_service.LLMFactory") as mock_factory:
             mock_factory.get_text_llm = AsyncMock(return_value=mock_llm)
 
             await self.svc.score_item(content)
@@ -179,11 +191,24 @@ class TestScoreItem:
         mock_llm = AsyncMock()
         mock_llm.ainvoke.return_value = _mock_llm_response(LOW_SCORING)
 
-        with patch("app.services.patrol_service.LLMFactory") as mock_factory, \
-             patch("app.services.settings_service.get_setting_value", new_callable=AsyncMock, return_value=6.0):
+        with patch("app.services.patrol_service.LLMFactory") as mock_factory:
             mock_factory.get_text_llm = AsyncMock(return_value=mock_llm)
 
             await self.svc.score_item(content)
+
+        assert content.discovery_state == DiscoveryState.IGNORED
+
+    async def test_score_item_uses_injected_threshold_config(self):
+        """Injected threshold controls visible/ignored state."""
+        content = _make_content()
+        mock_llm = AsyncMock()
+        mock_llm.ainvoke.return_value = _mock_llm_response(GOOD_SCORING)
+        svc = _patrol_service(discovery_score_threshold=8.0)
+
+        with patch("app.services.patrol_service.LLMFactory") as mock_factory:
+            mock_factory.get_text_llm = AsyncMock(return_value=mock_llm)
+
+            await svc.score_item(content)
 
         assert content.discovery_state == DiscoveryState.IGNORED
 
@@ -235,7 +260,7 @@ class TestScoreItem:
 @pytest.mark.asyncio
 class TestScoreBatch:
     def setup_method(self):
-        self.svc = PatrolService()
+        self.svc = _patrol_service()
 
     async def test_score_batch(self):
         """Mock LLM, verify batch processes all items."""
@@ -243,8 +268,7 @@ class TestScoreBatch:
         mock_llm = AsyncMock()
         mock_llm.ainvoke.return_value = _mock_llm_response(GOOD_SCORING)
 
-        with patch("app.services.patrol_service.LLMFactory") as mock_factory, \
-             patch("app.services.settings_service.get_setting_value", new_callable=AsyncMock, return_value=6.0):
+        with patch("app.services.patrol_service.LLMFactory") as mock_factory:
             mock_factory.get_text_llm = AsyncMock(return_value=mock_llm)
 
             scored = await self.svc.score_batch(items)
@@ -265,8 +289,7 @@ class TestScoreBatch:
             _mock_llm_response(GOOD_SCORING),
         ]
 
-        with patch("app.services.patrol_service.LLMFactory") as mock_factory, \
-             patch("app.services.settings_service.get_setting_value", new_callable=AsyncMock, return_value=6.0):
+        with patch("app.services.patrol_service.LLMFactory") as mock_factory:
             mock_factory.get_text_llm = AsyncMock(return_value=mock_llm)
 
             scored = await self.svc.score_batch(items)
@@ -307,12 +330,11 @@ async def test_score_pending_records_discovery_patrol_run(monkeypatch, db_sessio
 
     monkeypatch.setattr(PatrolService, "score_batch", fake_score_batch)
 
-    with patch(
-        "app.services.settings_service.get_setting_value",
-        new_callable=AsyncMock,
-        return_value="AI and systems",
-    ):
-        scored = await PatrolService().score_pending(db_session)
+    scored = await PatrolService(
+        config_service=_FakeConfigService(
+            {"discovery_interest_profile": "AI and systems"}
+        )
+    ).score_pending(db_session)
 
     runs = await get_recent_task_runs("discovery_patrol")
     latest = runs[0]

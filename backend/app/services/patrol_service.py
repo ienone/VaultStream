@@ -19,6 +19,7 @@ from app.services.background_task_state import (
     record_task_run_started,
     record_task_run_success,
 )
+from app.services.config_service import ConfigService
 
 
 # Horizon prompts
@@ -65,6 +66,16 @@ Respond with valid JSON only:
 class PatrolService:
     """AI 巡逻评分服务"""
 
+    def __init__(self, config_service: ConfigService | None = None) -> None:
+        self._config_service = config_service or ConfigService()
+
+    async def _get_score_threshold(self) -> float:
+        return float(await self._config_service.get_value("discovery_score_threshold", 6.0))
+
+    async def _get_interest_profile(self) -> str:
+        value = await self._config_service.get_value("discovery_interest_profile", "")
+        return str(value or "")
+
     def _build_system_prompt(self, interest_profile: str) -> str:
         """Build system prompt combining base scoring criteria + user interest profile."""
         prompt = _CONTENT_ANALYSIS_SYSTEM
@@ -105,8 +116,6 @@ class PatrolService:
         Score a single discovery item.
         Returns True if scoring succeeded.
         """
-        from app.services.settings_service import get_setting_value
-
         llm = await LLMFactory.get_text_llm()
         if llm is None:
             logger.warning("巡逻评分: LLM 不可用，跳过评分")
@@ -137,7 +146,7 @@ class PatrolService:
         content.ai_tags = parsed["tags"]
 
         # State transition
-        threshold = float(await get_setting_value("discovery_score_threshold", 6.0))
+        threshold = await self._get_score_threshold()
         if parsed["score"] >= threshold:
             content.discovery_state = DiscoveryState.VISIBLE
         else:
@@ -170,8 +179,6 @@ class PatrolService:
         Query all contents with discovery_state=INGESTED, load settings, and score them.
         This is the entry point called by background tasks.
         """
-        from app.services.settings_service import get_setting_value
-
         stmt = select(Content).where(Content.discovery_state == DiscoveryState.INGESTED)
         result = await db.execute(stmt)
         items = list(result.scalars().all())
@@ -188,7 +195,7 @@ class PatrolService:
         run_id = run["run_id"]
 
         try:
-            interest_profile = await get_setting_value("discovery_interest_profile", "") or ""
+            interest_profile = await self._get_interest_profile()
 
             logger.info(f"巡逻评分: 开始处理 {len(items)} 条待评分内容")
             scored = await self.score_batch(items, interest_profile=interest_profile)
