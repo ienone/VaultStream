@@ -1,17 +1,14 @@
 import re
 import json
 import asyncio
-import os
 from typing import Optional, List
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
-from app.core.config import settings
 from app.core.logging import logger
 from app.models import Content
-from app.services.settings_service import get_setting_value
-from app.utils.sensitive_display import extract_secret_value
+from app.services.config_service import ConfigService
 
 
 class SemanticChunk(BaseModel):
@@ -29,28 +26,14 @@ class ContentIntelligence(BaseModel):
     rag_chunks: List[SemanticChunk] = Field(..., description="将全文拆解为若干个语义逻辑块，用于精准检索")
 
 
-def _as_nonempty_string(value: object) -> str | None:
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return None
-
-
 async def _get_summary_llm_config() -> tuple[str | None, str, str]:
     """Return summary-specific Gemini config without falling back to embedding settings."""
-    key = _as_nonempty_string(await get_setting_value("summary_api_key"))
-    if not key:
-        key = extract_secret_value(settings.summary_api_key)
-    if not key:
-        # Backward-compatible env alias; still intentionally separate from embedding_api_key.
-        key = os.environ.get("GEMINI_API_KEY")
-
-    model = _as_nonempty_string(
-        await get_setting_value("summary_model", settings.summary_model)
-    ) or settings.summary_model
-    api_version = _as_nonempty_string(
-        await get_setting_value("summary_api_version", settings.summary_api_version)
-    ) or settings.summary_api_version
-    return key, model, api_version
+    summary_config = await ConfigService().get_summary_ai_config()
+    return (
+        summary_config.api_key,
+        summary_config.model,
+        summary_config.api_version,
+    )
 
 
 def strip_markdown(text: str) -> str:

@@ -10,6 +10,21 @@ from app.services.content_summary_service import (
     generate_summary_for_content,
     strip_markdown,
 )
+from app.services.config_service import SummaryAIConfig
+
+
+def _summary_config(
+    *,
+    api_key: str | None = "test-key",
+    model: str = "gemini-test-model",
+    api_version: str = "v1beta",
+) -> SummaryAIConfig:
+    return SummaryAIConfig(
+        enabled=True,
+        api_key=api_key,
+        model=model,
+        api_version=api_version,
+    )
 
 
 class TestStripMarkdown:
@@ -152,10 +167,10 @@ class TestGenerateSummaryForContent:
         session = AsyncMock()
         session.get.return_value = content
 
-        with patch.dict("os.environ", {}, clear=True), patch(
-            "app.services.content_summary_service.get_setting_value",
+        with patch(
+            "app.services.content_summary_service.ConfigService.get_summary_ai_config",
             new_callable=AsyncMock,
-            return_value=None,
+            return_value=_summary_config(api_key=None),
         ):
             result = await generate_summary_for_content(session, 1)
 
@@ -182,7 +197,11 @@ class TestGenerateSummaryForContent:
         }
         fake_client = _install_fake_genai(monkeypatch, response)
 
-        with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}), patch(
+        with patch(
+            "app.services.content_summary_service.ConfigService.get_summary_ai_config",
+            new_callable=AsyncMock,
+            return_value=_summary_config(model="gemini-summary", api_version="v1"),
+        ), patch(
             "app.services.content_summary_service.flag_modified",
         ) as mock_flag:
             result = await generate_summary_for_content(session, 1)
@@ -191,6 +210,8 @@ class TestGenerateSummaryForContent:
         assert sorted(result.tags) == ["ai", "existing"]
         assert result.rich_payload["chunks"][0]["title"] == "切片"
         assert fake_client.kwargs["api_key"] == "test-key"
+        assert fake_client.kwargs["http_options"] == {"api_version": "v1"}
+        assert fake_client.models.calls[0]["model"] == "gemini-summary"
         session.commit.assert_awaited_once()
         assert mock_flag.call_count == 2
 
@@ -207,7 +228,11 @@ class TestGenerateSummaryForContent:
         )
         _install_fake_genai(monkeypatch, response)
 
-        with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}), patch(
+        with patch(
+            "app.services.content_summary_service.ConfigService.get_summary_ai_config",
+            new_callable=AsyncMock,
+            return_value=_summary_config(),
+        ), patch(
             "app.services.content_summary_service.flag_modified",
         ):
             result = await generate_summary_for_content(session, 1)
@@ -240,7 +265,11 @@ class TestGenerateSummaryForContent:
         monkeypatch.setitem(sys.modules, "google.genai", genai_module)
         monkeypatch.setitem(sys.modules, "google.genai.types", genai_types_module)
 
-        with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}):
+        with patch(
+            "app.services.content_summary_service.ConfigService.get_summary_ai_config",
+            new_callable=AsyncMock,
+            return_value=_summary_config(),
+        ):
             result = await generate_summary_for_content(session, 1)
 
         assert result is content
