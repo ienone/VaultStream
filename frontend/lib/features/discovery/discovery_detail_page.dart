@@ -21,11 +21,13 @@ import 'providers/discovery_actions_provider.dart';
 class DiscoveryDetailPage extends ConsumerWidget {
   final int itemId;
   final bool isEmbedded;
+  final double embeddedTopInset;
 
   const DiscoveryDetailPage({
     super.key,
     required this.itemId,
     this.isEmbedded = false,
+    this.embeddedTopInset = 0,
   });
 
   @override
@@ -34,7 +36,8 @@ class DiscoveryDetailPage extends ConsumerWidget {
 
     if (isEmbedded) {
       return detailAsync.when(
-        data: (item) => _EmbeddedDetailContent(item: item),
+        data: (item) =>
+            _EmbeddedDetailContent(item: item, topInset: embeddedTopInset),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, _) => Center(
           child: Column(
@@ -95,11 +98,16 @@ class DiscoveryDetailPage extends ConsumerWidget {
 // --- Embedded detail (desktop right panel) ---
 class _EmbeddedDetailContent extends ConsumerWidget {
   final DiscoveryItem item;
-  const _EmbeddedDetailContent({required this.item});
+  final double topInset;
+
+  const _EmbeddedDetailContent({required this.item, required this.topInset});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return _DesktopDetailBody(item: item).animate().fadeIn(duration: 200.ms);
+    return _DesktopDetailBody(
+      item: item,
+      topInset: topInset,
+    ).animate().fadeIn(duration: 200.ms);
   }
 }
 
@@ -210,69 +218,70 @@ class _DetailBody extends ConsumerWidget {
 
     return SelectionArea(
       child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _DiscoveryMetaWrap(item: item, scoreColor: _scoreColor),
-        const Gap(16),
-        ContentSideInfoCard(detail: contentDetail),
-        const Gap(24),
-        RichContent(
-          detail: contentDetail,
-          apiBaseUrl: apiBaseUrl,
-          apiToken: apiToken,
-          headerKeys: headerKeys,
-          useHero: false,
-        ),
-        if (headers.isNotEmpty) ...[
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _DiscoveryMetaWrap(item: item, scoreColor: _scoreColor),
           const Gap(16),
-          _DiscoveryTocCard(headers: headers, headerKeys: headerKeys),
-        ],
+          ContentSideInfoCard(detail: contentDetail),
+          const Gap(24),
+          RichContent(
+            detail: contentDetail,
+            apiBaseUrl: apiBaseUrl,
+            apiToken: apiToken,
+            headerKeys: headerKeys,
+            useHero: false,
+          ),
+          if (headers.isNotEmpty) ...[
+            const Gap(16),
+            _DiscoveryTocCard(headers: headers, headerKeys: headerKeys),
+          ],
 
-        if (item.aiReason != null && item.aiReason!.isNotEmpty) ...[
-          const Gap(16),
-          _SectionCard(
-            title: 'AI 分析',
-            icon: Icons.auto_awesome_rounded,
-            child: Text(
-              item.aiReason!,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                height: 1.6,
+          if (item.aiReason != null && item.aiReason!.isNotEmpty) ...[
+            const Gap(16),
+            _SectionCard(
+              title: 'AI 分析',
+              icon: Icons.auto_awesome_rounded,
+              child: Text(
+                item.aiReason!,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  height: 1.6,
+                ),
               ),
             ),
-          ),
-        ],
-        if (item.aiTags != null && item.aiTags!.isNotEmpty) ...[
-          const Gap(16),
-          _SectionCard(
-            title: '标签',
-            icon: Icons.sell_rounded,
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: item.aiTags!
-                  .map(
-                    (tag) => Chip(
-                      label: Text(tag),
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  )
-                  .toList(),
+          ],
+          if (item.aiTags != null && item.aiTags!.isNotEmpty) ...[
+            const Gap(16),
+            _SectionCard(
+              title: '标签',
+              icon: Icons.sell_rounded,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: item.aiTags!
+                    .map(
+                      (tag) => Chip(
+                        label: Text(tag),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    )
+                    .toList(),
+              ),
             ),
-          ),
+          ],
         ],
-      ],
-    ),
-  );
+      ),
+    );
   }
 }
 
 // --- Desktop detail body (LayoutBuilder-aware; gallery uses GalleryLandscapeLayout) ---
 class _DesktopDetailBody extends ConsumerStatefulWidget {
   final DiscoveryItem item;
+  final double topInset;
 
-  const _DesktopDetailBody({required this.item});
+  const _DesktopDetailBody({required this.item, required this.topInset});
 
   @override
   ConsumerState<_DesktopDetailBody> createState() => _DesktopDetailBodyState();
@@ -303,30 +312,43 @@ class _DesktopDetailBodyState extends ConsumerState<_DesktopDetailBody> {
         // 竖屏：统一使用单列布局
         if (!isLandscape) {
           return SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, kToolbarHeight + 16, 16, 32),
+            padding: EdgeInsets.fromLTRB(16, widget.topInset + 16, 16, 32),
             child: _DetailBody(item: widget.item),
           );
         }
 
         // Gallery / video: 小红书 style — left image carousel, right info
-        final effectiveLayout = ContentParser.getEffectiveLayoutType(contentDetail);
+        final effectiveLayout = ContentParser.getEffectiveLayoutType(
+          contentDetail,
+        );
         if (effectiveLayout == 'gallery' || effectiveLayout == 'video') {
-          final images =
-              ContentParser.extractAllImages(contentDetail, apiBaseUrl);
+          final images = ContentParser.extractAllImages(
+            contentDetail,
+            apiBaseUrl,
+          );
           return SelectionArea(
-            child: GalleryLandscapeLayout(
-              detail: contentDetail,
-              apiBaseUrl: apiBaseUrl,
-              apiToken: apiToken,
-              images: images,
-              imagePageController: _imagePageController,
-              currentImageIndex: _currentImageIndex,
-              onImageTap: (idx) => _showFullScreen(
-                  context, images, idx, apiBaseUrl, apiToken, contentDetail.id),
-              onPageChanged: (idx) {
-                if (mounted) setState(() => _currentImageIndex = idx);
-              },
-              headerKeys: headerKeys,
+            child: Padding(
+              padding: EdgeInsets.only(top: widget.topInset),
+              child: GalleryLandscapeLayout(
+                detail: contentDetail,
+                apiBaseUrl: apiBaseUrl,
+                apiToken: apiToken,
+                images: images,
+                imagePageController: _imagePageController,
+                currentImageIndex: _currentImageIndex,
+                onImageTap: (idx) => _showFullScreen(
+                  context,
+                  images,
+                  idx,
+                  apiBaseUrl,
+                  apiToken,
+                  contentDetail.id,
+                ),
+                onPageChanged: (idx) {
+                  if (mounted) setState(() => _currentImageIndex = idx);
+                },
+                headerKeys: headerKeys,
+              ),
             ),
           );
         }
@@ -342,7 +364,12 @@ class _DesktopDetailBodyState extends ConsumerState<_DesktopDetailBody> {
               Expanded(
                 flex: 13,
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(28, kToolbarHeight + 24, 16, 28),
+                  padding: EdgeInsets.fromLTRB(
+                    28,
+                    widget.topInset + 24,
+                    16,
+                    28,
+                  ),
                   child: RichContent(
                     detail: contentDetail,
                     apiBaseUrl: apiBaseUrl,
@@ -355,18 +382,27 @@ class _DesktopDetailBodyState extends ConsumerState<_DesktopDetailBody> {
               Expanded(
                 flex: 7,
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, kToolbarHeight + 24, 28, 28),
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    widget.topInset + 24,
+                    28,
+                    28,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _DiscoveryMetaWrap(
-                          item: widget.item, scoreColor: _scoreColorForItem),
+                        item: widget.item,
+                        scoreColor: _scoreColorForItem,
+                      ),
                       const Gap(16),
                       ContentSideInfoCard(detail: contentDetail),
                       if (headers.isNotEmpty) ...[
                         const Gap(16),
                         _DiscoveryTocCard(
-                            headers: headers, headerKeys: headerKeys),
+                          headers: headers,
+                          headerKeys: headerKeys,
+                        ),
                       ],
                       if (widget.item.aiReason != null &&
                           widget.item.aiReason!.isNotEmpty) ...[
@@ -376,13 +412,13 @@ class _DesktopDetailBodyState extends ConsumerState<_DesktopDetailBody> {
                           icon: Icons.auto_awesome_rounded,
                           child: Text(
                             widget.item.aiReason!,
-                            style:
-                                Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                              height: 1.6,
-                            ),
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                  height: 1.6,
+                                ),
                           ),
                         ),
                       ],

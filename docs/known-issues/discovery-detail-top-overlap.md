@@ -1,6 +1,6 @@
 # 已知问题：探索详情页顶部内容被导航栏遮挡
 
-**状态**：未完全修复  
+**状态**：已修复
 **影响范围**：`lib/features/discovery/`（桌面端嵌入式详情 + 移动端全页详情）  
 **首次发现**：2026-03-09
 
@@ -43,11 +43,8 @@ Padding(top: MediaQuery.padding.top)         ← 仅处理系统状态栏
 
 原来使用 `extendBodyBehindAppBar: true` + 手动计算 padding，现已去掉该配置，
 改为标准 `Scaffold + FrostedAppBar` 布局（与收藏详情页一致）。  
-移动端遮挡问题基本已解决。
-
-**但遗留问题**：`FrostedAppBar` 设置了 `scrolledUnderElevation: 0`，
-内容上滑时顶部栏与内容区域之间**没有分割线**，视觉上边界不清晰。
-收藏详情页的 AppBar 同样如此，但对用户来说仍可感知为问题。
+移动端遮挡问题已改为标准 `Scaffold + FrostedAppBar` 布局。`FrostedAppBar`
+现在通过底部边框提供稳定分割线，不再依赖滚动 elevation 表达边界。
 
 ---
 
@@ -58,47 +55,20 @@ Padding(top: MediaQuery.padding.top)         ← 仅处理系统状态栏
 | 2026-03-09 | 将 `kToolbarHeight + 16` 改为 `kToolbarHeight + 40` | 仍遮挡，量不够且未覆盖 gallery |
 | 2026-03-09 | 移除 `extendBodyBehindAppBar: true`，mobile 改用标准 Scaffold | 移动端基本修复 |
 | 2026-03-09 | 桌面端文章布局两列 ScrollView 均改为 `kToolbarHeight + 24` | 文章布局改善，gallery 未修复 |
+| 2026-06-05 | 嵌入式详情由外层传入顶部栏高度，文章/画廊布局统一避让；`FrostedAppBar` 增加底部边框 | 已修复当前遮挡和边界不清晰问题 |
 
 ---
 
-## 四、正确修复方案
+## 四、当前实现
 
-### 方案 A（推荐）：将顶部栏高度传入 `_DesktopDetailBody`
+桌面端 `_buildDesktopBody` 将顶部栏高度传入嵌入式 `DiscoveryDetailPage`，
+`_DesktopDetailBody` 再用 `topInset` 驱动文章布局 padding，并在画廊/视频布局外层增加同等
+top padding。这样右侧详情不再硬编码外层结构，也覆盖了 `GalleryLandscapeLayout`。
 
-在 `_buildDesktopBody` 中将实际顶部栏高度作为参数传下去，
-`_DesktopDetailBody` 用参数驱动 padding，而不是硬编码常量：
+通用 `FrostedAppBar` 现在直接使用 `shape` 绘制底部 0.5px 边框，保持 preferred size 不变。
 
-```dart
-// discovery_page.dart
-_DesktopDetailBody(
-  item: item,
-  topBarHeight: kToolbarHeight,  // 新增参数
-)
-```
-
-```dart
-// discovery_detail_page.dart
-class _DesktopDetailBody extends ConsumerStatefulWidget {
-  final double topBarHeight;   // 新增
-  // ...
-}
-
-// 在 SingleChildScrollView 中：
-padding: EdgeInsets.fromLTRB(28, widget.topBarHeight + 24, 16, 28),
-```
-
-同样在 `GalleryLandscapeLayout` 调用处，通过 `contentPadding` 或类似参数把
-`topBarHeight` 传进去，或在外层包一个 `Padding` widget。
-
-### 方案 B：改用 `CustomScrollView + SliverPersistentHeader`
-
-将 Stack 架构重构为标准的 Sliver 架构，让 Flutter 框架自动处理 AppBar 和内容区域的滚动关系，
-彻底消除手动计算 padding 的需求。工程量较大，适合后续大重构。
-
-### 顶部栏描边
-
-在 `FrostedAppBar` 中增加 `bottom: PreferredSize` 描边，或在 AppBar 下方插一条 `Divider`，
-与桌面端毛玻璃头部的 `BorderSide` 保持视觉一致。
+如果未来要进一步降低手动布局复杂度，可以把桌面 Discovery 重构为
+`CustomScrollView + SliverPersistentHeader`，但这不再是当前缺陷修复的必要条件。
 
 ---
 

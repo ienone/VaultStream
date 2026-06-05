@@ -22,21 +22,24 @@ class FrostedAppBar extends StatelessWidget implements PreferredSizeWidget {
   });
 
   @override
-  Size get preferredSize => Size.fromHeight(
-        kToolbarHeight + (bottom?.preferredSize.height ?? 0),
-      );
+  Size get preferredSize =>
+      Size.fromHeight(kToolbarHeight + (bottom?.preferredSize.height ?? 0));
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final dividerColor = theme.dividerColor.withValues(alpha: 0.45);
     return AppBar(
       title: title,
       leading: leading,
       actions: actions,
-      backgroundColor: theme.colorScheme.surface.withValues(alpha: backgroundAlpha),
+      backgroundColor: theme.colorScheme.surface.withValues(
+        alpha: backgroundAlpha,
+      ),
       elevation: 0,
       scrolledUnderElevation: 0,
       surfaceTintColor: Colors.transparent,
+      shape: Border(bottom: BorderSide(color: dividerColor, width: 0.5)),
       bottom: bottom,
       flexibleSpace: ClipRect(
         child: BackdropFilter(

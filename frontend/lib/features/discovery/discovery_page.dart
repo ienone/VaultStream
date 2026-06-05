@@ -73,8 +73,8 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
           appBar: selection.isSelectionMode
               ? _buildSelectionAppBar(context, selection)
               : isMobile
-                  ? _buildAppBar(context, filterState, isMobile: true)
-                  : null,
+              ? _buildAppBar(context, filterState, isMobile: true)
+              : null,
           body: itemsAsync.when(
             data: (response) {
               if (isMobile) {
@@ -87,8 +87,11 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.error_outline, size: 48,
-                      color: Theme.of(context).colorScheme.error),
+                  Icon(
+                    Icons.error_outline,
+                    size: 48,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
                   const SizedBox(height: 16),
                   Text('加载失败: $err'),
                   const SizedBox(height: 16),
@@ -144,7 +147,8 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
             isSelected: selection.isSelected(item.id),
             onTap: () {
               if (selection.isSelectionMode) {
-                ref.read(discoverySelectionProvider.notifier)
+                ref
+                    .read(discoverySelectionProvider.notifier)
                     .toggleSelection(item.id);
               } else {
                 Navigator.of(context).push(
@@ -155,8 +159,11 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
               }
             },
             onLongPress: () {
-              ref.read(discoverySelectionProvider.notifier).enterSelectionMode();
-              ref.read(discoverySelectionProvider.notifier)
+              ref
+                  .read(discoverySelectionProvider.notifier)
+                  .enterSelectionMode();
+              ref
+                  .read(discoverySelectionProvider.notifier)
                   .toggleSelection(item.id);
             },
           ).animate().fadeIn(duration: 200.ms, delay: (index * 30).ms);
@@ -208,22 +215,22 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
                 SizedBox(
                   width: 360,
                   child: RefreshIndicator(
-                    onRefresh: () =>
-                        ref.refresh(discoveryItemsProvider.future),
+                    onRefresh: () => ref.refresh(discoveryItemsProvider.future),
                     child: ListView.builder(
                       controller: _scrollController,
                       padding: selection.isSelectionMode
                           ? const EdgeInsets.only(bottom: 80)
                           : const EdgeInsets.only(
-                              top: kToolbarHeight, bottom: 80),
-                      itemCount: response.items.length +
-                          (response.hasMore ? 1 : 0),
+                              top: kToolbarHeight,
+                              bottom: 80,
+                            ),
+                      itemCount:
+                          response.items.length + (response.hasMore ? 1 : 0),
                       itemBuilder: (context, index) {
                         if (index >= response.items.length) {
                           return const Padding(
                             padding: EdgeInsets.all(16),
-                            child: Center(
-                                child: CircularProgressIndicator()),
+                            child: Center(child: CircularProgressIndicator()),
                           );
                         }
                         final item = response.items[index];
@@ -262,6 +269,7 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
                           key: ValueKey(_selectedItemId),
                           itemId: _selectedItemId!,
                           isEmbedded: true,
+                          embeddedTopInset: kToolbarHeight,
                         )
                       : Center(
                           child: Column(
@@ -276,10 +284,8 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
                               const SizedBox(height: 16),
                               Text(
                                 '选择一项查看详情',
-                                style:
-                                    theme.textTheme.bodyLarge?.copyWith(
-                                  color:
-                                      theme.colorScheme.onSurfaceVariant,
+                                style: theme.textTheme.bodyLarge?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
                                 ),
                               ),
                             ],
@@ -320,43 +326,52 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
                               children: [
                                 _buildSearchAnchor(context, theme),
                                 const Spacer(),
-                                Builder(builder: (context) {
-                                  final filterState =
-                                      ref.watch(discoveryFilterProvider);
-                                  if (filterState.searchQuery.isNotEmpty) {
-                                    return IconButton(
-                                      icon: const Icon(Icons.close_rounded),
-                                      onPressed: () {
-                                        ref
-                                            .read(discoveryFilterProvider
-                                                .notifier)
-                                            .updateSearchQuery('');
-                                        _searchController.clear();
-                                      },
+                                Builder(
+                                  builder: (context) {
+                                    final filterState = ref.watch(
+                                      discoveryFilterProvider,
                                     );
-                                  }
-                                  return const SizedBox.shrink();
-                                }),
+                                    if (filterState.searchQuery.isNotEmpty) {
+                                      return IconButton(
+                                        icon: const Icon(Icons.close_rounded),
+                                        onPressed: () {
+                                          ref
+                                              .read(
+                                                discoveryFilterProvider
+                                                    .notifier,
+                                              )
+                                              .updateSearchQuery('');
+                                          _searchController.clear();
+                                        },
+                                      );
+                                    }
+                                    return const SizedBox.shrink();
+                                  },
+                                ),
                                 IconButton(
                                   icon: const Icon(Icons.refresh_rounded),
                                   tooltip: '刷新',
                                   onPressed: () =>
                                       ref.invalidate(discoveryItemsProvider),
                                 ),
-                                Builder(builder: (context) {
-                                  final filterState =
-                                      ref.watch(discoveryFilterProvider);
-                                  return IconButton(
-                                    icon: Icon(
-                                      Icons.filter_list_rounded,
-                                      color: filterState.hasActiveFilters
-                                          ? theme.colorScheme.primary
-                                          : null,
-                                    ),
-                                    tooltip: '筛选',
-                                    onPressed: () => _showFilterSheet(context),
-                                  );
-                                }),
+                                Builder(
+                                  builder: (context) {
+                                    final filterState = ref.watch(
+                                      discoveryFilterProvider,
+                                    );
+                                    return IconButton(
+                                      icon: Icon(
+                                        Icons.filter_list_rounded,
+                                        color: filterState.hasActiveFilters
+                                            ? theme.colorScheme.primary
+                                            : null,
+                                      ),
+                                      tooltip: '筛选',
+                                      onPressed: () =>
+                                          _showFilterSheet(context),
+                                    );
+                                  },
+                                ),
                               ],
                             ),
                           ),
@@ -365,8 +380,7 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
                         // Right: detail action buttons
                         Expanded(
                           child: Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
                             child: Row(
                               children: [
                                 const Spacer(),
@@ -375,28 +389,37 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
                                     tooltip: '查看原文',
                                     onPressed: () =>
                                         SafeUrlLauncher.openExternal(
-                                            context, currentItem!.url),
+                                          context,
+                                          currentItem!.url,
+                                        ),
                                     icon: const Icon(
-                                        Icons.open_in_new_rounded,
-                                        size: 20),
+                                      Icons.open_in_new_rounded,
+                                      size: 20,
+                                    ),
                                   ),
                                   const Gap(4),
                                   IconButton.filledTonal(
                                     tooltip: '收藏',
                                     onPressed: () => _promoteDesktop(
-                                        context, currentItem!.id),
+                                      context,
+                                      currentItem!.id,
+                                    ),
                                     icon: const Icon(
-                                        Icons.bookmark_add_rounded,
-                                        size: 20),
+                                      Icons.bookmark_add_rounded,
+                                      size: 20,
+                                    ),
                                   ),
                                   const Gap(4),
                                   IconButton.filledTonal(
                                     tooltip: '移出发现区',
                                     onPressed: () => _ignoreDesktop(
-                                        context, currentItem!.id),
+                                      context,
+                                      currentItem!.id,
+                                    ),
                                     icon: const Icon(
-                                        Icons.visibility_off_rounded,
-                                        size: 20),
+                                      Icons.visibility_off_rounded,
+                                      size: 20,
+                                    ),
                                   ),
                                 ],
                               ],
@@ -439,7 +462,9 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
                 IconButton(
                   icon: const Icon(Icons.close_rounded),
                   onPressed: () {
-                    ref.read(discoveryFilterProvider.notifier).updateSearchQuery('');
+                    ref
+                        .read(discoveryFilterProvider.notifier)
+                        .updateSearchQuery('');
                     _searchController.clear();
                   },
                 ),
@@ -537,8 +562,7 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
     try {
       await ref.read(discoveryActionsProvider.notifier).ignoreItem(itemId);
       if (context.mounted) {
-        Toast.show(context, '已移出发现区',
-            icon: Icons.check_circle_outline_rounded);
+        Toast.show(context, '已移出发现区', icon: Icons.check_circle_outline_rounded);
       }
     } catch (e) {
       if (context.mounted) {
@@ -559,17 +583,20 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
         current: ref.read(discoveryFilterProvider),
         sources: sources,
         onApply: (updated) {
-          ref.read(discoveryFilterProvider.notifier).setFilters(
-            discoveryState: updated.state,
-            showAll: updated.showAll,
-            sourceName: updated.sourceName,
-            scoreMin: updated.scoreMin,
-            scoreMax: updated.scoreMax,
-            sortBy: updated.sortBy,
-            sortOrder: updated.sortOrder,
-          );
+          ref
+              .read(discoveryFilterProvider.notifier)
+              .setFilters(
+                discoveryState: updated.state,
+                showAll: updated.showAll,
+                sourceName: updated.sourceName,
+                scoreMin: updated.scoreMin,
+                scoreMax: updated.scoreMax,
+                sortBy: updated.sortBy,
+                sortOrder: updated.sortOrder,
+              );
         },
-        onReset: () => ref.read(discoveryFilterProvider.notifier).clearFilters(),
+        onReset: () =>
+            ref.read(discoveryFilterProvider.notifier).clearFilters(),
       ),
     );
   }
@@ -669,7 +696,12 @@ class _DiscoveryFilterSheetState extends State<_DiscoveryFilterSheet> {
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
             child: Row(
               children: [
-                Text('筛选与排序', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                Text(
+                  '筛选与排序',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const Spacer(),
                 TextButton(
                   onPressed: () {
@@ -694,8 +726,18 @@ class _DiscoveryFilterSheetState extends State<_DiscoveryFilterSheet> {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    _FilterChip(label: '全部',   icon: Icons.inbox_rounded,          selected: _viewMode == 'active',  onTap: () => _setViewMode('active')),
-                    _FilterChip(label: '已忽略', icon: Icons.visibility_off_rounded,  selected: _viewMode == 'ignored', onTap: () => _setViewMode('ignored')),
+                    _FilterChip(
+                      label: '全部',
+                      icon: Icons.inbox_rounded,
+                      selected: _viewMode == 'active',
+                      onTap: () => _setViewMode('active'),
+                    ),
+                    _FilterChip(
+                      label: '已忽略',
+                      icon: Icons.visibility_off_rounded,
+                      selected: _viewMode == 'ignored',
+                      onTap: () => _setViewMode('ignored'),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -707,27 +749,41 @@ class _DiscoveryFilterSheetState extends State<_DiscoveryFilterSheet> {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    _FilterChip(label: '全部', icon: Icons.all_inclusive_rounded, selected: _sourceName == null, onTap: () => setState(() => _sourceName = null)),
+                    _FilterChip(
+                      label: '全部',
+                      icon: Icons.all_inclusive_rounded,
+                      selected: _sourceName == null,
+                      onTap: () => setState(() => _sourceName = null),
+                    ),
                     for (final src in widget.sources)
                       _FilterChip(
                         label: src.name,
-                        icon: src.kind == 'telegram_channel' ? Icons.send_rounded : Icons.rss_feed_rounded,
+                        icon: src.kind == 'telegram_channel'
+                            ? Icons.send_rounded
+                            : Icons.rss_feed_rounded,
                         selected: _sourceName == src.name,
-                        onTap: () => setState(() => _sourceName = _sourceName == src.name ? null : src.name),
+                        onTap: () => setState(
+                          () => _sourceName = _sourceName == src.name
+                              ? null
+                              : src.name,
+                        ),
                       ),
                   ],
                 ),
                 const SizedBox(height: 20),
 
                 // --- AI 评分下限 ---
-                _SectionTitle(label: 'AI 评分下限 (${_scoreMin?.toStringAsFixed(1) ?? '不限'})'),
+                _SectionTitle(
+                  label: 'AI 评分下限 (${_scoreMin?.toStringAsFixed(1) ?? '不限'})',
+                ),
                 Slider(
                   value: _scoreMin ?? 0,
                   min: 0,
                   max: 10,
                   divisions: 20,
                   label: _scoreMin?.toStringAsFixed(1) ?? '0',
-                  onChanged: (v) => setState(() => _scoreMin = v > 0 ? v : null),
+                  onChanged: (v) =>
+                      setState(() => _scoreMin = v > 0 ? v : null),
                 ),
                 const SizedBox(height: 20),
 
@@ -738,17 +794,42 @@ class _DiscoveryFilterSheetState extends State<_DiscoveryFilterSheet> {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    _FilterChip(label: '发现时间', icon: Icons.access_time_rounded,    selected: _sortBy == 'created_at',   onTap: () => setState(() => _sortBy = 'created_at')),
-                    _FilterChip(label: '发布时间', icon: Icons.calendar_today_rounded, selected: _sortBy == 'published_at', onTap: () => setState(() => _sortBy = 'published_at')),
-                    _FilterChip(label: 'AI 评分',  icon: Icons.auto_awesome_rounded,   selected: _sortBy == 'ai_score',     onTap: () => setState(() => _sortBy = 'ai_score')),
+                    _FilterChip(
+                      label: '发现时间',
+                      icon: Icons.access_time_rounded,
+                      selected: _sortBy == 'created_at',
+                      onTap: () => setState(() => _sortBy = 'created_at'),
+                    ),
+                    _FilterChip(
+                      label: '发布时间',
+                      icon: Icons.calendar_today_rounded,
+                      selected: _sortBy == 'published_at',
+                      onTap: () => setState(() => _sortBy = 'published_at'),
+                    ),
+                    _FilterChip(
+                      label: 'AI 评分',
+                      icon: Icons.auto_awesome_rounded,
+                      selected: _sortBy == 'ai_score',
+                      onTap: () => setState(() => _sortBy = 'ai_score'),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
                   children: [
-                    _FilterChip(label: '降序', icon: Icons.arrow_downward_rounded, selected: _sortOrder == 'desc', onTap: () => setState(() => _sortOrder = 'desc')),
-                    _FilterChip(label: '升序', icon: Icons.arrow_upward_rounded,   selected: _sortOrder == 'asc',  onTap: () => setState(() => _sortOrder = 'asc')),
+                    _FilterChip(
+                      label: '降序',
+                      icon: Icons.arrow_downward_rounded,
+                      selected: _sortOrder == 'desc',
+                      onTap: () => setState(() => _sortOrder = 'desc'),
+                    ),
+                    _FilterChip(
+                      label: '升序',
+                      icon: Icons.arrow_upward_rounded,
+                      selected: _sortOrder == 'asc',
+                      onTap: () => setState(() => _sortOrder = 'asc'),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 28),
@@ -757,16 +838,20 @@ class _DiscoveryFilterSheetState extends State<_DiscoveryFilterSheet> {
                 FilledButton.icon(
                   icon: const Icon(Icons.check_rounded),
                   label: const Text('应用'),
-                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                  ),
                   onPressed: () {
-                    widget.onApply(DiscoveryFilterState(
-                      state: _state,
-                      showAll: _showAll,
-                      sourceName: _sourceName,
-                      scoreMin: _scoreMin,
-                      sortBy: _sortBy,
-                      sortOrder: _sortOrder,
-                    ));
+                    widget.onApply(
+                      DiscoveryFilterState(
+                        state: _state,
+                        showAll: _showAll,
+                        sourceName: _sourceName,
+                        scoreMin: _scoreMin,
+                        sortBy: _sortBy,
+                        sortOrder: _sortOrder,
+                      ),
+                    );
                     Navigator.pop(context);
                   },
                 ),
@@ -784,11 +869,11 @@ class _SectionTitle extends StatelessWidget {
   const _SectionTitle({required this.label});
   @override
   Widget build(BuildContext context) => Text(
-        label,
-        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
-      );
+    label,
+    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    ),
+  );
 }
 
 class _FilterChip extends StatelessWidget {
@@ -823,7 +908,11 @@ class _FilterChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 14, color: selected ? cs.primary : cs.onSurfaceVariant),
+            Icon(
+              icon,
+              size: 14,
+              color: selected ? cs.primary : cs.onSurfaceVariant,
+            ),
             const SizedBox(width: 6),
             Text(
               label,
