@@ -390,3 +390,70 @@ class TestSystemAPI:
         assert data["status"] == "error"
         assert data["target"] == "semantic_search"
         assert "provider timeout" in data["error"]
+
+    @pytest.mark.asyncio
+    async def test_platform_parse_test_records_run(
+        self,
+        client: AsyncClient,
+        monkeypatch,
+    ):
+        async def fake_parse_test(platform: str, url: str):
+            assert platform == "zhihu"
+            assert url == "https://www.zhihu.com/question/1/answer/2"
+            return {
+                "platform": platform,
+                "url": url,
+                "detected_platform": "zhihu",
+                "title": "解析测试内容",
+                "content_type": "answer",
+                "layout_type": "article",
+                "author": "tester",
+                "media_count": 0,
+            }
+
+        monkeypatch.setattr("app.routers.system._run_platform_parse_test", fake_parse_test)
+
+        response = await client.post(
+            "/api/v1/platform-health/parse-test",
+            json={
+                "platform": "zhihu",
+                "url": "https://www.zhihu.com/question/1/answer/2",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["run_id"]
+        assert data["title"] == "解析测试内容"
+
+        diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
+        latest = next(
+            run
+            for run in diagnostics.json()["recent_task_runs"]
+            if run["run_id"] == data["run_id"]
+        )
+        assert latest["task"] == "platform_parse_test"
+        assert latest["status"] == "success"
+        assert latest["platform"] == "zhihu"
+        assert latest["result"]["title"] == "解析测试内容"
+
+    @pytest.mark.asyncio
+    async def test_platform_parse_test_rejects_platform_mismatch(
+        self,
+        client: AsyncClient,
+        monkeypatch,
+    ):
+        async def fake_parse_test(platform: str, url: str):
+            raise ValueError("url is detected as bilibili, not zhihu")
+
+        monkeypatch.setattr("app.routers.system._run_platform_parse_test", fake_parse_test)
+
+        response = await client.post(
+            "/api/v1/platform-health/parse-test",
+            json={
+                "platform": "zhihu",
+                "url": "https://www.bilibili.com/video/BV1xx411c7mD",
+            },
+        )
+        assert response.status_code == 400
+        assert "bilibili" in response.json()["detail"]

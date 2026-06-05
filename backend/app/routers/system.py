@@ -22,6 +22,7 @@ from app.models import (
     ContentQueueItem,
     DiscoverySource,
     DiscoveryState,
+    Platform,
     QueueItemStatus,
     SystemSetting,
     Task,
@@ -59,6 +60,11 @@ _STORAGE_CACHE_TTL = 300  # 5 minutes
 
 class AIConnectivityTestRequest(BaseModel):
     target: str
+
+
+class PlatformParseTestRequest(BaseModel):
+    platform: str
+    url: str
 
 
 def _get_cached_storage_usage() -> int:
@@ -438,6 +444,49 @@ async def _run_ai_connectivity_target(target: str) -> dict[str, Any]:
     }
 
 
+def _normalize_parse_test_platform(platform: str) -> str:
+    normalized = (platform or "").strip().lower()
+    aliases = {
+        "x": "twitter",
+        "twitter_x": "twitter",
+        "telegram_channel": "telegram",
+    }
+    normalized = aliases.get(normalized, normalized)
+    valid = {item.value for item in Platform}
+    if normalized not in valid:
+        raise ValueError("platform is not supported")
+    return normalized
+
+
+async def _run_platform_parse_test(platform: str, url: str) -> dict[str, Any]:
+    from app.adapters import AdapterFactory, open_adapter
+
+    text = (url or "").strip()
+    if not text:
+        raise ValueError("url is required")
+    if not text.startswith(("http://", "https://")):
+        raise ValueError("url must start with http:// or https://")
+
+    platform_enum = Platform(platform)
+    detected = AdapterFactory.detect_platform(text)
+    if platform_enum != Platform.UNIVERSAL and detected != Platform.UNIVERSAL and detected != platform_enum:
+        raise ValueError(f"url is detected as {detected.value}, not {platform}")
+
+    async with open_adapter(platform_enum) as adapter:
+        parsed = await adapter.parse(text)
+
+    return {
+        "platform": platform,
+        "url": text,
+        "detected_platform": detected.value,
+        "title": parsed.title,
+        "content_type": parsed.content_type,
+        "layout_type": parsed.layout_type.value if hasattr(parsed.layout_type, "value") else str(parsed.layout_type),
+        "author": parsed.author,
+        "media_count": len(parsed.media_urls or []),
+    }
+
+
 async def _count_by_status(db: AsyncSession, model, status_column, enum_cls) -> dict[str, int]:
     rows = (
         await db.execute(
@@ -556,6 +605,7 @@ async def _build_background_failure_details(
         "favorites_sync",
         "semantic_reindex",
         "ai_connectivity_test",
+        "platform_parse_test",
     ):
         recent_task_runs.extend(await get_recent_task_runs(task_name, limit=limit))
     recent_task_runs.sort(
@@ -1244,6 +1294,73 @@ async def test_ai_connectivity(
         return {
             "run_id": run["run_id"],
             "target": target,
+            "status": "error",
+            "ok": False,
+            "error": str(exc)[:1000],
+            "elapsed_ms": elapsed_ms,
+        }
+
+
+@router.post("/platform-health/parse-test")
+async def test_platform_parse(
+    payload: PlatformParseTestRequest,
+    _: None = Depends(require_api_token),
+):
+    """Run a one-shot platform parser test without importing the content."""
+    try:
+        platform = _normalize_parse_test_platform(payload.platform)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    run = await record_task_run_started(
+        "platform_parse_test",
+        trigger="manual",
+        platform=platform,
+        url=payload.url,
+    )
+    started = time.perf_counter()
+    try:
+        result = await _run_platform_parse_test(platform, payload.url)
+        elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+        result = {**result, "elapsed_ms": elapsed_ms}
+        await record_task_run_success(
+            "platform_parse_test",
+            run["run_id"],
+            **result,
+        )
+        return {
+            "run_id": run["run_id"],
+            "platform": platform,
+            "status": "success",
+            "ok": True,
+            **result,
+        }
+    except ValueError as exc:
+        elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+        await record_task_run_error(
+            "platform_parse_test",
+            run["run_id"],
+            exc,
+            trigger="manual",
+            platform=platform,
+            url=payload.url,
+            elapsed_ms=elapsed_ms,
+        )
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+        await record_task_run_error(
+            "platform_parse_test",
+            run["run_id"],
+            exc,
+            trigger="manual",
+            platform=platform,
+            url=payload.url,
+            elapsed_ms=elapsed_ms,
+        )
+        return {
+            "run_id": run["run_id"],
+            "platform": platform,
             "status": "error",
             "ok": False,
             "error": str(exc)[:1000],

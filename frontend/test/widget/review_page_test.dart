@@ -54,6 +54,25 @@ class MockDio extends Mock implements Dio {
         ),
       );
     }
+    if (path == '/platform-health/parse-test') {
+      return Future.value(
+        Response(
+          requestOptions: RequestOptions(path: path),
+          data:
+              {
+                    'ok': true,
+                    'status': 'success',
+                    'run_id': 'parse-test-run',
+                    'platform': 'zhihu',
+                    'title': '解析测试内容',
+                    'content_type': 'answer',
+                    'layout_type': 'article',
+                  }
+                  as T,
+          statusCode: 200,
+        ),
+      );
+    }
     return Future.value(
       Response(
         requestOptions: RequestOptions(path: path),
@@ -438,6 +457,7 @@ void main() {
       expect(find.text('配置'), findsOneWidget);
       expect(find.text('推送设置'), findsOneWidget);
       expect(find.text('检测'), findsOneWidget);
+      expect(find.byTooltip('测试解析'), findsOneWidget);
       expect(find.byTooltip('测试推送目标'), findsOneWidget);
       expect(find.byTooltip('刷新推送目标'), findsOneWidget);
       expect(find.byTooltip('查看最近同步结果'), findsOneWidget);
@@ -453,6 +473,20 @@ void main() {
       await tester.pump();
 
       expect(find.text('Connected to chat: Push Channel'), findsOneWidget);
+      expect(find.text('查看日志'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('测试解析'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('知乎 解析测试'), findsOneWidget);
+      await tester.enterText(
+        find.byType(TextField),
+        'https://www.zhihu.com/question/1/answer/2',
+      );
+      await tester.tap(find.text('开始测试'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('知乎 解析测试通过：解析测试内容'), findsOneWidget);
       expect(find.text('查看日志'), findsOneWidget);
     });
   });
