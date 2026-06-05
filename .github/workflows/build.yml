@@ -4,8 +4,23 @@ on:
   workflow_dispatch:
 
 jobs:
+  client-secret-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Reject API token in client builds
+        run: |
+          pattern='--dart-define=API''_TOKEN'
+          if grep -R -- "$pattern" .github/workflows; then
+            echo "API_TOKEN must not be embedded into distributed Flutter artifacts"
+            exit 1
+          fi
+
   # Android Build
   android:
+    needs: client-secret-guard
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -44,7 +59,6 @@ jobs:
         run: |
           flutter build apk --debug \
             --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL || 'http://localhost:8000' }} \
-            --dart-define=API_TOKEN=${{ secrets.API_TOKEN || '' }} \
             --dart-define=DEBUG_LOG=false
         working-directory: frontend
         env:
@@ -54,7 +68,6 @@ jobs:
         run: |
           flutter build apk --release \
             --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL || 'http://localhost:8000' }} \
-            --dart-define=API_TOKEN=${{ secrets.API_TOKEN || '' }} \
             --dart-define=DEBUG_LOG=false
         working-directory: frontend
         env:
@@ -74,6 +87,7 @@ jobs:
 
   # Web Build
   web:
+    needs: client-secret-guard
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -97,7 +111,6 @@ jobs:
         run: |
           flutter build web --release \
             --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL || 'http://localhost:8000' }} \
-            --dart-define=API_TOKEN=${{ secrets.API_TOKEN || '' }} \
             --dart-define=DEBUG_LOG=false
         working-directory: frontend
 
@@ -109,6 +122,7 @@ jobs:
 
   # Linux Build
   linux:
+    needs: client-secret-guard
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
