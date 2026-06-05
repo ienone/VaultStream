@@ -27,7 +27,7 @@ class PostIngestService:
         if summary:
             await self.generate_summary(session, content)
         if embedding:
-            self.schedule_embedding_index(content.id)
+            self.schedule_embedding_index(content.id, source=source)
         if patrol:
             await self.score_discovery(session)
         if distribution:
@@ -53,25 +53,57 @@ class PostIngestService:
         except Exception as e:
             logger.warning("摘要生成/处理失败: {}", e)
 
-    def schedule_embedding_index(self, content_id: int) -> None:
+    def schedule_embedding_index(self, content_id: int, *, source: str = "post_ingest") -> None:
         async def _run():
+            run_id: str | None = None
             try:
                 from app.services.embedding_service import EmbeddingService
-                from app.services.background_task_state import record_task_success
+                from app.services.background_task_state import (
+                    record_task_run_started,
+                    record_task_run_success,
+                    record_task_success,
+                )
 
+                run = await record_task_run_started(
+                    "content_embedding",
+                    content_id=content_id,
+                    source=source,
+                    trigger="auto",
+                )
+                run_id = run["run_id"]
                 indexed = await EmbeddingService().index_content(content_id)
+                await record_task_run_success(
+                    "content_embedding",
+                    run_id,
+                    content_id=content_id,
+                    source=source,
+                    indexed=bool(indexed),
+                    trigger="auto",
+                )
                 await record_task_success(
                     "embedding_index",
                     content_id=content_id,
                     indexed=bool(indexed),
                 )
             except Exception as e:
-                from app.services.background_task_state import record_task_error
+                from app.services.background_task_state import (
+                    record_task_error,
+                    record_task_run_error,
+                )
 
                 logger.bind(component="embedding", content_id=content_id).warning(
                     "语义索引失败(已忽略): {}",
                     e,
                 )
+                if run_id:
+                    await record_task_run_error(
+                        "content_embedding",
+                        run_id,
+                        e,
+                        content_id=content_id,
+                        source=source,
+                        trigger="auto",
+                    )
                 await record_task_error("embedding_index", e, content_id=content_id)
 
         asyncio.create_task(_run())
