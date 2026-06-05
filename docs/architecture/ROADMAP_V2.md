@@ -21,8 +21,8 @@ The current product direction should be:
 
 Recent local checks are summarized in `docs/audits/2026-06-05-current-product-security-audit.md`. The latest recorded results there are:
 
-- Backend non-integration tests: 742 passed, 4 skipped, 16 deselected.
-- Backend `ResourceWarning` error gate: 742 passed, 4 skipped, 16 deselected.
+- Backend non-integration tests: 746 passed, 4 skipped, 16 deselected.
+- Backend `ResourceWarning` error gate: 746 passed, 4 skipped, 16 deselected.
 - Backend integration tests: 5 failed, 8 passed, 1 skipped, 2 xfailed.
 - Flutter analyze: no issues found.
 - Flutter test: 37 tests passed, with one existing non-fatal tap target warning.
@@ -44,10 +44,11 @@ Important current boundaries:
 - Text and vision LLM runtime creation, Crawl4AI config, and health provider diagnostics now use typed `ConfigService` config while preserving `*_base_url` before legacy `*_api_base` fallback.
 - Content processing-status diagnostics now read AI capability readiness from typed `ConfigService` config, so detail-page repair hints match the same config sources used by summary, embedding, and patrol runtime paths.
 - Discovery settings API now reads and writes patrol interest profile, score threshold, and retention days through `ConfigService`, aligning the Inbox/Discovery configuration surface with patrol runtime config.
+- Browser-auth account checks, logout, QR-login Cookie persistence, and Zhihu fingerprint refresh now use injected `ConfigService` access, aligning account-center behavior with the typed configuration path.
 
 Main backend risks:
 
-- `ConfigService` now owns typed dynamic setting access and AI provider diagnostics; summary generation, semantic embedding, discovery patrol scoring, Discovery settings API, content processing-status diagnostics, text/vision LLM runtime creation, Agent runtime, and connectivity tests use typed/dedicated config access, while browser auth and other lower-level callers still use the compatibility `settings_service` functions and should be migrated gradually.
+- `ConfigService` now owns typed dynamic setting access and AI provider diagnostics; summary generation, semantic embedding, discovery patrol scoring, Discovery settings API, browser-auth account Cookie operations, content processing-status diagnostics, text/vision LLM runtime creation, Agent runtime, and connectivity tests use typed/dedicated config access, while background task state, proxy/media configuration, platform adapters, and other lower-level callers still use the compatibility `settings_service` functions and should be migrated gradually.
 - EventBus runtime state remains process-local; API diagnostics now read it through a public EventBus snapshot instead of route-level private field access.
 - Background tasks have health state but not a full failure/retry operations panel.
 - Several long task/adapter files still mix orchestration, parsing, media processing, and persistence.
@@ -81,7 +82,7 @@ Target: remove issues that make the current system feel unreliable.
 
 Target: reduce drift between settings, tasks, and user-facing behavior.
 
-- Continue migrating high-value callers from legacy `settings_service` helpers to typed `ConfigService` methods, prioritizing browser auth and background-task diagnostics now that summary generation, semantic embedding, discovery patrol scoring, Discovery settings API, content processing-status diagnostics, and text/vision LLM runtime creation have moved.
+- Continue migrating high-value callers from legacy `settings_service` helpers to typed `ConfigService` methods, prioritizing background-task diagnostics, proxy/media configuration, and platform adapter runtime settings now that summary generation, semantic embedding, discovery patrol scoring, Discovery settings API, browser auth, content processing-status diagnostics, and text/vision LLM runtime creation have moved.
 - Extend explicit AI config modeling beyond health diagnostics, Agent runtime, and connectivity tests: add provider fields and migrate more call sites from raw setting keys.
 - Keep `DistributionService` as the single distribution business entrypoint and remove old wrapper logic in a breaking cleanup release.
 - Split `ContentParser` by responsibility: task orchestration, adapter parsing, archive media processing, post-ingest scheduling, and error/dead-letter handling.

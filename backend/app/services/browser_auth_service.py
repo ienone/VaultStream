@@ -26,7 +26,7 @@ from xhshow import Xhshow, SessionManager
 
 from app.adapters.xiaohongshu_profile import build_xhs_crypto_config
 from app.adapters.utils.cookie_utils import strip_cookie_wrapper_quotes
-from app.services.settings_service import set_setting_value, get_setting_value, delete_setting_value
+from app.services.config_service import ConfigService
 from app.adapters.browser import browser_manager
 
 
@@ -52,7 +52,8 @@ class AuthSession:
 
 
 class BrowserAuthService:
-    def __init__(self):
+    def __init__(self, config_service: ConfigService | None = None):
+        self._config_service = config_service or ConfigService()
         self.sessions: Dict[str, AuthSession] = {}
         self._zhihu_refresh_lock = asyncio.Lock()
         self._zhihu_refresh_inflight: Optional[asyncio.Task] = None
@@ -120,7 +121,7 @@ class BrowserAuthService:
         if platform not in self.platforms:
             return False
             
-        cookie_str = await get_setting_value(f"{platform}_cookie")
+        cookie_str = await self._config_service.get_value(f"{platform}_cookie")
         if not cookie_str:
             return False
             
@@ -133,7 +134,7 @@ class BrowserAuthService:
     async def logout_platform(self, platform: str):
         if platform not in self.platforms:
             return
-        await delete_setting_value(f"{platform}_cookie")
+        await self._config_service.delete_value(f"{platform}_cookie")
         logger.info(f"已删除 {platform}_cookie")
 
     async def cancel_session(self, session_id: str):
@@ -160,7 +161,7 @@ class BrowserAuthService:
         return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
     async def _persist_cookie(self, session: AuthSession):
-        await set_setting_value(
+        await self._config_service.set_value(
             key=f"{session.platform}_cookie",
             value=session.cookie_str,
             category="platform",
@@ -588,7 +589,7 @@ class BrowserAuthService:
         注意：所有 Playwright 操作必须在专用后台 Loop 中执行，
         因此将浏览器部分封装为内部协程，通过 submit_coro 整体派发。
         """
-        cookie_str = await get_setting_value("zhihu_cookie")
+        cookie_str = await self._config_service.get_value("zhihu_cookie")
         if not cookie_str:
             # 测试场景下常直接注入 settings.zhihu_cookie（不写入 test DB）
             # 这里做一次回退，避免误报“未配置 zhihu_cookie”。
@@ -662,7 +663,7 @@ class BrowserAuthService:
         cookie_dict.update(extracted)  # 覆盖更新 __zse_ck 及其他刷新的 cookie
 
         new_cookie_str = "; ".join(f"{k}={v}" for k, v in cookie_dict.items())
-        await set_setting_value(
+        await self._config_service.set_value(
             key="zhihu_cookie",
             value=new_cookie_str,
             category="platform",
