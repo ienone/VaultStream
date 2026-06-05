@@ -33,6 +33,7 @@ Treat historical verification numbers in archived docs as snapshots, not current
 Important current boundaries:
 
 - Ingest entrypoints converge on `PostIngestService`, which coordinates summary, embedding, discovery patrol, and distribution hooks.
+- FavoritesSync imports through `ContentService.create_share`; new favorites enter the parse queue, and already parsed duplicates trigger `PostIngestService` with `favorites_sync:<platform>` source metadata.
 - Semantic search is exposed through `/search/semantic`, `/search/semantic/index-status`, and `/search/semantic/reindex`.
 - Distribution decisions are centered on `DistributionService`; legacy engine/scheduler modules should stay thin compatibility wrappers until removed.
 - Agent and GUI actions share a controlled tool/action surface. Dangerous writes require confirmation, and the internal API bridge is allowlist-only.
@@ -68,7 +69,6 @@ Target: remove issues that make the current system feel unreliable.
 
 - Fix test fixture resource warnings, especially SQLite connections in Agent/WebSocket tests.
 - Visually verify and refine the collection card-to-detail shared transition across article, gallery, video, and text-only items.
-- Verify FavoritesSync goes through the same post-ingest path as parsing and Discovery.
 
 ### P1: Architecture Convergence
 
