@@ -57,8 +57,13 @@ class DiscoverySources extends _$DiscoverySources {
     ref.invalidateSelf();
   }
 
-  Future<void> triggerSync(int id) async {
+  Future<String?> triggerSync(int id) async {
     final dio = ref.read(apiClientProvider);
-    await dio.post('/discovery/sources/$id/sync');
+    final response = await dio.post('/discovery/sources/$id/sync');
+    final data = response.data;
+    if (data is Map && data['run_id'] != null) {
+      return data['run_id'].toString();
+    }
+    return null;
   }
 }

@@ -219,10 +219,24 @@ class AutomationTab extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.sync_rounded),
             onPressed: () async {
-              await ref
-                  .read(discoverySourcesProvider.notifier)
-                  .triggerSync(source.id);
-              if (context.mounted) showToast(context, '已手动触发同步');
+              try {
+                final runId = await ref
+                    .read(discoverySourcesProvider.notifier)
+                    .triggerSync(source.id);
+                if (context.mounted) {
+                  final suffix = runId == null
+                      ? ''
+                      : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
+                  showToast(context, '已手动触发同步$suffix');
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  showToast(
+                    context,
+                    formatApiErrorMessage(e, fallbackMessage: '手动同步失败'),
+                  );
+                }
+              }
             },
           ),
         ],
