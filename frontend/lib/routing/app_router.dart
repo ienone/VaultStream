@@ -89,7 +89,8 @@ GoRouter goRouter(Ref ref) {
       ),
       GoRoute(
         path: '/settings',
-        builder: (context, state) => const SettingsPage(),
+        builder: (context, state) =>
+            SettingsPage(initialTab: state.uri.queryParameters['tab']),
       ),
       GoRoute(path: '/agent', builder: (context, state) => const AgentPage()),
       StatefulShellRoute.indexedStack(
@@ -177,7 +178,8 @@ GoRouter goRouter(Ref ref) {
             routes: [
               GoRoute(
                 path: '/automation',
-                builder: (context, state) => const ReviewPage(),
+                builder: (context, state) =>
+                    ReviewPage(initialTab: state.uri.queryParameters['tab']),
               ),
               GoRoute(
                 path: '/review',

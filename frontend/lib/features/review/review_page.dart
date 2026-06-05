@@ -26,7 +26,9 @@ import 'widgets/rule_list_tile.dart';
 import '../../core/utils/toast.dart';
 
 class ReviewPage extends ConsumerStatefulWidget {
-  const ReviewPage({super.key});
+  const ReviewPage({super.key, this.initialTab});
+
+  final String? initialTab;
 
   @override
   ConsumerState<ReviewPage> createState() => _ReviewPageState();
@@ -43,8 +45,20 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(
+      length: 4,
+      initialIndex: _tabIndex(widget.initialTab),
+      vsync: this,
+    );
     _bindRealtimeEvents();
+  }
+
+  @override
+  void didUpdateWidget(ReviewPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialTab != widget.initialTab) {
+      _tabController.animateTo(_tabIndex(widget.initialTab));
+    }
   }
 
   @override
@@ -124,6 +138,16 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         ],
       ),
     );
+  }
+
+  int _tabIndex(String? tab) {
+    return switch (tab) {
+      'queue' || 'distribution' => 0,
+      'favorites' || 'favorites-sync' || 'sync' => 1,
+      'health' || 'matrix' => 2,
+      'history' || 'logs' || 'pushed' => 3,
+      _ => 0,
+    };
   }
 
   Widget _buildQueueTab() {

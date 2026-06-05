@@ -10,7 +10,9 @@ import 'presentation/tabs/push_tab.dart';
 import 'presentation/tabs/system_tab.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
-  const SettingsPage({super.key});
+  const SettingsPage({super.key, this.initialTab});
+
+  final String? initialTab;
 
   @override
   ConsumerState<SettingsPage> createState() => _SettingsPageState();
@@ -32,7 +34,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _tabs.length, vsync: this);
+    _tabController = TabController(
+      length: _tabs.length,
+      initialIndex: _tabIndex(widget.initialTab),
+      vsync: this,
+    );
+  }
+
+  @override
+  void didUpdateWidget(SettingsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialTab != widget.initialTab) {
+      _tabController.animateTo(_tabIndex(widget.initialTab));
+    }
   }
 
   @override
@@ -73,5 +87,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
       ),
       body: TabBarView(controller: _tabController, children: _tabs),
     );
+  }
+
+  int _tabIndex(String? tab) {
+    return switch (tab) {
+      'connection' || 'account' || 'accounts' => 0,
+      'automation' || 'ai' || 'discovery' || 'sources' => 1,
+      'push' || 'bot' || 'notifications' => 2,
+      'system' || 'appearance' => 3,
+      _ => 0,
+    };
   }
 }

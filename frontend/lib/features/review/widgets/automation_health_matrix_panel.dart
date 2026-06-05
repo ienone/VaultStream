@@ -54,7 +54,7 @@ class AutomationHealthMatrixPanel extends ConsumerWidget {
                   title: '发现源',
                   icon: Icons.sensors_rounded,
                   actionLabel: '配置',
-                  onAction: () => context.push('/settings'),
+                  onAction: () => context.push('/settings?tab=automation'),
                   child: sourcesAsync.when(
                     data: (sources) =>
                         _DiscoverySourceHealthList(sources: sources),
@@ -66,7 +66,7 @@ class AutomationHealthMatrixPanel extends ConsumerWidget {
                   title: '推送目标',
                   icon: Icons.outbox_rounded,
                   actionLabel: '推送设置',
-                  onAction: () => context.push('/settings'),
+                  onAction: () => context.push('/settings?tab=push'),
                   child: chatsAsync.when(
                     data: (chats) => _PushTargetHealthList(chats: chats),
                     loading: () => const _SectionLoading(),

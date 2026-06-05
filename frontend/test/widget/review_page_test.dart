@@ -272,12 +272,9 @@ void main() {
             botChatsProvider.overrideWith(() => MockBotChats(mockBotChats)),
             apiClientProvider.overrideWith((ref) => MockDio()),
           ],
-          child: const MaterialApp(home: ReviewPage()),
+          child: const MaterialApp(home: ReviewPage(initialTab: 'health')),
         ),
       );
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('健康矩阵'));
       await tester.pumpAndSettle();
 
       expect(find.text('平台账号'), findsOneWidget);
