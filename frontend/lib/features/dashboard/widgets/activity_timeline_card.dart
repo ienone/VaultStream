@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../models/stats.dart';
@@ -63,7 +65,11 @@ class ActivityTimelineCard extends StatelessWidget {
                 _TimelineRow(
                   run: entry.$2,
                   isLast: entry.$1 == displayRuns.length - 1,
-                  onOpen: () => onOpenTask(entry.$2),
+                  onOpen: () => _showRunDetails(
+                    context,
+                    entry.$2,
+                    onOpenTask: onOpenTask,
+                  ),
                 ),
               ],
           ],
@@ -184,6 +190,159 @@ class _TimelineRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+void _showRunDetails(
+  BuildContext context,
+  BackgroundTaskRun run, {
+  required void Function(BackgroundTaskRun run) onOpenTask,
+}) {
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (sheetContext) {
+      final theme = Theme.of(sheetContext);
+      final cs = theme.colorScheme;
+      final started = run.startedAt?.toLocal();
+      final finished = run.finishedAt?.toLocal();
+      final metadata = run.metadata;
+      final result = run.result;
+      final encoder = const JsonEncoder.withIndent('  ');
+
+      return SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            4,
+            20,
+            MediaQuery.of(sheetContext).viewInsets.bottom + 20,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.timeline_rounded, color: cs.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '运行详情',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      _statusLabel(run.status),
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: _statusColor(cs, run.status),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                _DetailLine(label: '任务', value: _taskLabel(run.task)),
+                _DetailLine(label: 'Run ID', value: run.runId),
+                _DetailLine(label: '状态', value: run.status),
+                if (started != null)
+                  _DetailLine(label: '开始', value: started.toString()),
+                if (finished != null)
+                  _DetailLine(label: '结束', value: finished.toString()),
+                if (run.error != null && run.error!.isNotEmpty)
+                  _DetailLine(label: '错误', value: run.error!),
+                if (metadata.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    '元数据',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  SelectableText(
+                    encoder.convert(metadata),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+                if (result != null && result.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    '结果',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  SelectableText(
+                    encoder.convert(result),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(sheetContext).pop(),
+                      child: const Text('关闭'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.icon(
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+                        onOpenTask(run);
+                      },
+                      icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                      label: const Text('打开相关工作区'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _DetailLine extends StatelessWidget {
+  const _DetailLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 64,
+            child: Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(child: SelectableText(value)),
+        ],
+      ),
     );
   }
 }

@@ -58,7 +58,13 @@ void main() {
       'failed_distribution_items': [],
       'failed_discovery_sources': [],
       'recent_task_runs': [
-        {'run_id': 'run-1', 'task': 'favorites_sync', 'status': 'success'},
+        {
+          'run_id': 'run-1',
+          'task': 'favorites_sync',
+          'status': 'success',
+          'trigger': 'manual',
+          'result': {'platform': 'zhihu', 'imported': 3},
+        },
       ],
     });
 
@@ -89,6 +95,12 @@ void main() {
     expect(find.text('运行时间线'), findsOneWidget);
     expect(find.text('最近后台运行'), findsWidgets);
     expect(find.text('收藏同步'), findsOneWidget);
+    await tester.tap(find.text('查看'));
+    await tester.pumpAndSettle();
+    expect(find.text('运行详情'), findsOneWidget);
+    expect(find.text('run-1'), findsOneWidget);
+    expect(find.text('打开相关工作区'), findsOneWidget);
+    expect(find.textContaining('imported'), findsOneWidget);
     expect(find.text('总内容'), findsWidgets);
     expect(find.text('15'), findsWidgets); // Total content count
 
