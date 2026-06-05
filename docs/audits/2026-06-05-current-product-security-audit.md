@@ -173,7 +173,7 @@ integration 失败主要集中在真实知乎/小红书内容解析和真实 LLM
 
 安全扫描报告位于 `.codex-security-scans/VaultStream/1a616d81_20260530T145418_ws/report.md`。扫描方式是 repository-wide Deep Security Scan，包含深度发现、集中验证和攻击路径分析。报告明确说明未运行生产部署、外部网络探测或完整后端端到端服务。
 
-扫描结果：
+原始扫描结果：
 
 | 指标 | 结果 |
 | --- | --- |
@@ -181,6 +181,8 @@ integration 失败主要集中在真实知乎/小红书内容解析和真实 LLM
 | 严重性 | medium=5, low=1 |
 | 置信度 | high=3, medium=3 |
 | 验证方式 | 静态追踪和有限本地路径模拟 |
+
+当前复核结论：`backend/app/routers/media.py` 的本地媒体路径已经使用 `Path.resolve()` + `relative_to()` 校验真实祖先关系，并拒绝 absolute/rooted key；`backend/tests/test_api/test_media.py` 已覆盖 sibling-prefix 路径和正常存储根内路径。因此原扫描中的“公开媒体路由字符串前缀路径检查”不再作为待修项保留。当前仍需跟进 5 项。
 
 ### S1. 归档媒体处理缺少 SSRF 控制
 
@@ -196,28 +198,21 @@ integration 失败主要集中在真实知乎/小红书内容解析和真实 LLM
 - 影响：图片代理会预解析 DNS 并拒绝私网地址，但实际 httpx 连接仍使用原始 hostname，没有绑定已校验 IP，理论上存在 DNS rebinding 或解析差异绕过。
 - 建议：连接时绑定或验证目标 IP；每次重定向后重新校验；禁止私网、link-local、reserved 目标。
 
-### S3. 公开媒体路由使用不安全字符串前缀路径检查
-
-- 严重性：medium
-- 置信度：medium
-- 影响：Windows 路径下，`realpath(file).startswith(realpath(root))` 可能把 sibling-prefix 路径误判为在存储根目录内。
-- 建议：拒绝 absolute/rooted key；使用 `Path.resolve()` 和 `relative_to()` 做真实祖先关系校验；补 Windows 编码分隔符、盘符、大小写测试。
-
-### S4. Telegram bot 白名单默认允许所有用户
+### S3. Telegram bot 白名单默认允许所有用户
 
 - 严重性：medium
 - 置信度：high
 - 影响：白名单为空时当前逻辑等价 allow-all。启用 bot 后，未列入黑名单的任意 Telegram 用户可能调用命令，甚至通过 `/ai` 进入 Agent 执行。
 - 建议：生产环境无白名单时 fail closed；如确需公开 bot，使用显式 `ALLOW_ALL_TELEGRAM_USERS=true`；启动时给出阻断或强警告。
 
-### S5. 通用分享解析可触发内部 URL 获取
+### S4. 通用分享解析可触发内部 URL 获取
 
 - 严重性：medium
 - 置信度：high
 - 影响：持有 API token 的客户端可以提交任意 URL，unknown host 会进入 universal adapter，`tiered_fetch` 使用 httpx/Playwright 直接获取，缺少统一 SSRF 策略。
 - 建议：通用解析和 Playwright navigation 也必须走 SSRF-safe fetcher/策略；对 localhost、RFC1918、metadata、redirect 加测试。
 
-### S6. 本地归档媒体可无鉴权访问
+### S5. 本地归档媒体可无鉴权访问
 
 - 严重性：low
 - 置信度：medium
