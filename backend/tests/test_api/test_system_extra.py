@@ -30,7 +30,12 @@ class TestSystemExtraAPI:
     async def test_events_health(self, client: AsyncClient):
         response = await client.get("/api/v1/events/health")
         assert response.status_code == 200
-        assert response.json()["status"] == "healthy"
+        data = response.json()
+        assert data["status"] == "healthy"
+        assert data["event_bus"] == "ready"
+        assert "active_subscribers" in data
+        assert "max_subscribers" in data
+        assert "instance_id" in data
 
     @pytest.mark.asyncio
     async def test_proxy_image_success(self, client: AsyncClient):

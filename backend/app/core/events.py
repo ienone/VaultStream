@@ -25,6 +25,23 @@ class EventBus:
     _MAX_LOCAL_QUEUE_SIZE = 100
 
     @classmethod
+    async def get_diagnostics(cls) -> dict[str, Any]:
+        """Return a public diagnostics snapshot for API routes and health checks."""
+        from app.core.config import settings
+
+        async with cls._lock:
+            subscriber_count = len(cls._subscribers)
+
+        return {
+            "active_subscribers": subscriber_count,
+            "max_subscribers": settings.max_sse_subscribers,
+            "instance_id": cls._instance_id,
+            "running": cls._running,
+            "outbox_polling_enabled": settings.enable_event_outbox_polling,
+            "last_seen_event_id": cls._last_seen_event_id,
+        }
+
+    @classmethod
     async def start(cls) -> None:
         """启动跨实例事件桥接轮询。"""
         if cls._running:

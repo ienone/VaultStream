@@ -19,6 +19,31 @@ async def test_event_bus_broadcast_with_full_queues():
     assert len(EventBus._subscribers) == 1
     assert EventBus._subscribers[0] == normal_queue
 
+
+@pytest.mark.asyncio
+async def test_event_bus_diagnostics_exposes_public_subscriber_state():
+    """Diagnostics should expose subscriber state without routes reading private fields."""
+    original_subscribers = EventBus._subscribers
+    original_running = EventBus._running
+    original_last_seen_event_id = EventBus._last_seen_event_id
+    try:
+        EventBus._subscribers = [asyncio.Queue(maxsize=10), asyncio.Queue(maxsize=10)]
+        EventBus._running = True
+        EventBus._last_seen_event_id = 42
+
+        diagnostics = await EventBus.get_diagnostics()
+
+        assert diagnostics["active_subscribers"] == 2
+        assert diagnostics["running"] is True
+        assert diagnostics["last_seen_event_id"] == 42
+        assert "max_subscribers" in diagnostics
+        assert "instance_id" in diagnostics
+    finally:
+        EventBus._subscribers = original_subscribers
+        EventBus._running = original_running
+        EventBus._last_seen_event_id = original_last_seen_event_id
+
+
 @pytest.mark.asyncio
 async def test_event_bus_subscribe_timeout_heartbeat():
     """Test that subscribe() yields a ping event on timeout."""

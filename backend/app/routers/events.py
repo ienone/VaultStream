@@ -102,12 +102,10 @@ async def subscribe_events(
 @router.get("/events/health")
 async def events_health(_: None = Depends(require_api_token)):
     """事件系统健康检查"""
-    from app.core.events import EventBus
-    
-    subscriber_count = len(EventBus._subscribers)
+    diagnostics = await event_bus.get_diagnostics()
     
     return {
         "status": "healthy",
-        "active_subscribers": subscriber_count,
-        "event_bus": "ready"
+        "event_bus": "ready",
+        **diagnostics,
     }
