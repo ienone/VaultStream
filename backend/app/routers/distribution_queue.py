@@ -856,11 +856,18 @@ async def push_now_content_queue(
     _: None = Depends(require_api_token),
 ):
     """将内容相关队列项立即推送。"""
+    run = await record_task_run_started(
+        "distribution_schedule",
+        action="content_push_now",
+        content_id=content_id,
+        trigger="manual",
+    )
     now = utcnow()
     result = await db.execute(select(ContentQueueItem).where(ContentQueueItem.content_id == content_id))
     items = result.scalars().all()
 
     changed = 0
+    changed_item_ids: list[int] = []
     for item in items:
         if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
             item.status = QueueItemStatus.SCHEDULED
@@ -870,6 +877,7 @@ async def push_now_content_queue(
             item.last_error_type = None
             item.last_error_at = None
             changed += 1
+            changed_item_ids.append(item.id)
 
     await db.commit()
     await event_bus.publish("queue_updated", {
@@ -878,7 +886,16 @@ async def push_now_content_queue(
         "items_changed": changed,
         "timestamp": now.isoformat(),
     })
-    return {"status": "ok", "changed": changed}
+    await record_task_run_success(
+        "distribution_schedule",
+        run["run_id"],
+        action="content_push_now",
+        content_id=content_id,
+        changed=changed,
+        queue_item_ids=changed_item_ids,
+        trigger="manual",
+    )
+    return {"status": "ok", "changed": changed, "run_id": run["run_id"]}
 
 
 @router.post("/content/{content_id}/schedule")
@@ -932,6 +949,12 @@ async def batch_push_now_content_queue(
     if not content_ids:
         return {"status": "ok", "changed": 0}
 
+    run = await record_task_run_started(
+        "distribution_schedule",
+        action="content_batch_push_now",
+        content_ids=content_ids,
+        trigger="manual",
+    )
     now = utcnow()
     result = await db.execute(
         select(ContentQueueItem).where(ContentQueueItem.content_id.in_(content_ids))
@@ -939,6 +962,7 @@ async def batch_push_now_content_queue(
     items = result.scalars().all()
 
     changed = 0
+    changed_item_ids: list[int] = []
     for item in items:
         if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
             item.status = QueueItemStatus.SCHEDULED
@@ -948,6 +972,7 @@ async def batch_push_now_content_queue(
             item.last_error_type = None
             item.last_error_at = None
             changed += 1
+            changed_item_ids.append(item.id)
 
     await db.commit()
     await event_bus.publish("queue_updated", {
@@ -956,7 +981,16 @@ async def batch_push_now_content_queue(
         "items_changed": changed,
         "timestamp": now.isoformat(),
     })
-    return {"status": "ok", "changed": changed}
+    await record_task_run_success(
+        "distribution_schedule",
+        run["run_id"],
+        action="content_batch_push_now",
+        content_ids=content_ids,
+        changed=changed,
+        queue_item_ids=changed_item_ids,
+        trigger="manual",
+    )
+    return {"status": "ok", "changed": changed, "run_id": run["run_id"]}
 
 
 @router.post("/content/batch-reschedule")

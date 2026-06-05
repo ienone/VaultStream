@@ -186,6 +186,34 @@ class TestDistributionQueueExtraAPI:
         # Push now (content dimension)
         push_now_resp = await client.post(f"/api/v1/distribution-queue/content/{content_id}/push-now")
         assert push_now_resp.status_code == 200
+        push_now_data = push_now_resp.json()
+        assert push_now_data["run_id"]
+
+        diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
+        runs = diagnostics.json()["recent_task_runs"]
+        content_run = next(run for run in runs if run["run_id"] == push_now_data["run_id"])
+        assert content_run["task"] == "distribution_schedule"
+        assert content_run["action"] == "content_push_now"
+        assert content_run["status"] == "success"
+        assert content_run["content_id"] == content_id
+        assert content_run["result"]["changed"] >= 0
+
+        # Batch push now
+        batch_push_resp = await client.post(
+            "/api/v1/distribution-queue/content/batch-push-now",
+            json={"content_ids": [content_id]},
+        )
+        assert batch_push_resp.status_code == 200
+        batch_push_data = batch_push_resp.json()
+        assert batch_push_data["run_id"]
+
+        diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
+        runs = diagnostics.json()["recent_task_runs"]
+        batch_run = next(run for run in runs if run["run_id"] == batch_push_data["run_id"])
+        assert batch_run["task"] == "distribution_schedule"
+        assert batch_run["action"] == "content_batch_push_now"
+        assert batch_run["status"] == "success"
+        assert batch_run["content_ids"] == [content_id]
 
         # Batch repush now
         batch_repush_resp = await client.post(
