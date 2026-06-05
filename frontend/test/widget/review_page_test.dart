@@ -287,6 +287,9 @@ void main() {
       expect(find.text('Tech RSS'), findsOneWidget);
       expect(find.text('Push Channel'), findsOneWidget);
       expect(find.textContaining('bot lost access'), findsOneWidget);
+      expect(find.text('查看动态'), findsOneWidget);
+      expect(find.text('配置'), findsOneWidget);
+      expect(find.text('推送设置'), findsOneWidget);
       expect(find.text('检测'), findsOneWidget);
       expect(find.text('同步'), findsOneWidget);
       expect(find.text('刷新'), findsOneWidget);

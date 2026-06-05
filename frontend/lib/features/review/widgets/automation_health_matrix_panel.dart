@@ -53,6 +53,8 @@ class AutomationHealthMatrixPanel extends ConsumerWidget {
                 _HealthSection(
                   title: '发现源',
                   icon: Icons.sensors_rounded,
+                  actionLabel: '配置',
+                  onAction: () => context.push('/settings'),
                   child: sourcesAsync.when(
                     data: (sources) =>
                         _DiscoverySourceHealthList(sources: sources),
@@ -63,6 +65,8 @@ class AutomationHealthMatrixPanel extends ConsumerWidget {
                 _HealthSection(
                   title: '推送目标',
                   icon: Icons.outbox_rounded,
+                  actionLabel: '推送设置',
+                  onAction: () => context.push('/settings'),
                   child: chatsAsync.when(
                     data: (chats) => _PushTargetHealthList(chats: chats),
                     loading: () => const _SectionLoading(),
@@ -178,6 +182,12 @@ class _OverviewBand extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+            const SizedBox(width: 12),
+            TextButton.icon(
+              onPressed: () => context.go('/home'),
+              icon: const Icon(Icons.timeline_rounded, size: 18),
+              label: const Text('查看动态'),
             ),
           ],
         ),
