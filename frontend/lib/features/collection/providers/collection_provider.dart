@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/sse_service.dart';
@@ -361,3 +362,10 @@ Future<ContentDetail> contentDetail(Ref ref, int id) async {
   final response = await dio.get('/contents/$id');
   return ContentDetail.fromJson(response.data);
 }
+
+final contentProcessingStatusProvider =
+    FutureProvider.autoDispose.family<Map<String, dynamic>, int>((ref, id) async {
+      final dio = ref.watch(apiClientProvider);
+      final response = await dio.get('/contents/$id/processing-status');
+      return Map<String, dynamic>.from(response.data as Map);
+    });

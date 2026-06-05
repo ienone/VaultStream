@@ -5,6 +5,7 @@ import 'author_header.dart';
 import 'tags_section.dart';
 import 'unified_stats.dart';
 import 'summary_section.dart';
+import 'post_processing_status_panel.dart';
 import '../../renderers/context_card_renderer.dart';
 import '../../renderers/payload_block_renderer.dart';
 
@@ -65,6 +66,8 @@ class ContentSideInfoCard extends StatelessWidget {
         // 4. 摘要区域
         const Gap(16),
         SummarySection(detail: detail),
+        const Gap(16),
+        PostProcessingStatusPanel(contentId: detail.id),
 
         // 5. 标签
         if (detail.tags.isNotEmpty || detail.sourceTags.isNotEmpty) ...[

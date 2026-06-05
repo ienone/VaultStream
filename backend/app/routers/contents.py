@@ -6,11 +6,21 @@
 from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models import Content, ContentStatus, PushedRecord, Platform, ReviewStatus, ContentSource
+from app.models import (
+    Content,
+    ContentEmbedding,
+    ContentQueueItem,
+    ContentStatus,
+    PushedRecord,
+    QueueItemStatus,
+    Platform,
+    ReviewStatus,
+    ContentSource,
+)
 from app.schemas import (
     ShareRequest, ShareResponse, ContentDetail,
     ShareCardListResponse, ContentListItemResponse, ContentListItem,
@@ -34,8 +44,134 @@ from app.services.background_task_state import (
 )
 from app.media.extractor import sanitize_media_urls
 from app.adapters.utils import ensure_title
+from app.services.settings_service import get_setting_value
 
 router = APIRouter()
+
+
+def _status_counts(rows) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for status, count in rows:
+        key = status.value if hasattr(status, "value") else str(status or "unknown")
+        counts[key] = int(count or 0)
+    return counts
+
+
+async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
+    summary_enabled = bool(await get_setting_value("enable_auto_summary", settings.enable_auto_summary))
+    summary_key = await get_setting_value("summary_api_key")
+    has_summary = bool((content.summary or "").strip())
+    has_chunks = bool(
+        isinstance(content.rich_payload, dict)
+        and content.rich_payload.get("chunks")
+    )
+
+    if has_summary or has_chunks:
+        summary_status = "success"
+        summary_message = "摘要或 RAG 分块已生成"
+    elif content.status != ContentStatus.PARSE_SUCCESS:
+        summary_status = "waiting_parse"
+        summary_message = "等待解析成功后生成摘要"
+    elif not summary_enabled:
+        summary_status = "disabled"
+        summary_message = "自动摘要已关闭"
+    elif not summary_key:
+        summary_status = "unavailable"
+        summary_message = "摘要模型密钥未配置"
+    else:
+        summary_status = "pending"
+        summary_message = "尚未生成摘要"
+
+    embedding_rows = (
+        await db.execute(
+            select(ContentEmbedding.index_status, func.count(ContentEmbedding.id))
+            .where(ContentEmbedding.content_id == content.id)
+            .group_by(ContentEmbedding.index_status)
+        )
+    ).all()
+    embedding_counts = _status_counts(embedding_rows)
+    if embedding_counts.get("indexed", 0) > 0:
+        embedding_status = "success"
+        embedding_message = f"{embedding_counts['indexed']} 个分块已进入语义索引"
+    elif embedding_counts.get("failed", 0) > 0:
+        embedding_status = "failed"
+        embedding_message = "语义索引生成失败"
+    elif embedding_counts.get("pending", 0) > 0 or embedding_counts.get("processing", 0) > 0:
+        embedding_status = "pending"
+        embedding_message = "语义索引正在生成或排队"
+    elif content.status != ContentStatus.PARSE_SUCCESS:
+        embedding_status = "waiting_parse"
+        embedding_message = "等待解析成功后进入语义索引"
+    else:
+        embedding_status = "not_indexed"
+        embedding_message = "尚未进入语义索引"
+
+    queue_rows = (
+        await db.execute(
+            select(ContentQueueItem.status, func.count(ContentQueueItem.id))
+            .where(ContentQueueItem.content_id == content.id)
+            .group_by(ContentQueueItem.status)
+        )
+    ).all()
+    queue_counts = _status_counts(queue_rows)
+    pushed_records = int(
+        (
+            await db.execute(
+                select(func.count(PushedRecord.id)).where(PushedRecord.content_id == content.id)
+            )
+        ).scalar()
+        or 0
+    )
+    queued_count = queue_counts.get(QueueItemStatus.SCHEDULED.value, 0) + queue_counts.get(
+        QueueItemStatus.PROCESSING.value,
+        0,
+    )
+    if queued_count > 0:
+        distribution_status = "queued"
+        distribution_message = f"{queued_count} 条分发队列项待处理"
+    elif queue_counts.get(QueueItemStatus.FAILED.value, 0) > 0:
+        distribution_status = "failed"
+        distribution_message = "存在失败或被过滤的分发队列项"
+    elif queue_counts.get(QueueItemStatus.SUCCESS.value, 0) > 0 or pushed_records > 0:
+        distribution_status = "pushed"
+        distribution_message = "已有分发成功记录"
+    else:
+        distribution_status = "not_matched"
+        distribution_message = "暂未匹配分发规则"
+
+    return {
+        "content_id": content.id,
+        "stages": [
+            {
+                "key": "summary",
+                "label": "摘要",
+                "status": summary_status,
+                "message": summary_message,
+                "details": {
+                    "summary_present": has_summary,
+                    "chunks_present": has_chunks,
+                    "auto_summary_enabled": summary_enabled,
+                },
+            },
+            {
+                "key": "semantic_index",
+                "label": "语义索引",
+                "status": embedding_status,
+                "message": embedding_message,
+                "details": {"counts": embedding_counts},
+            },
+            {
+                "key": "distribution",
+                "label": "分发",
+                "status": distribution_status,
+                "message": distribution_message,
+                "details": {
+                    "queue_counts": queue_counts,
+                    "pushed_records": pushed_records,
+                },
+            },
+        ],
+    }
 
 
 async def _run_reparse_job(content_id: int, run_id: str, *, force: bool) -> None:
@@ -181,6 +317,21 @@ async def get_content_detail(
         
     base_url = settings.base_url or "http://localhost:8000"
     return transform_content_detail(ContentDetail.model_validate(content), base_url)
+
+
+@router.get("/contents/{content_id}/processing-status")
+async def get_content_processing_status(
+    content_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """Expose post-ingest processing status for the content detail UI."""
+    result = await db.execute(select(Content).where(Content.id == content_id))
+    content = result.scalar_one_or_none()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+    return await _build_processing_status(content, db)
+
 
 @router.patch("/contents/{content_id}", response_model=ContentDetail)
 async def update_content(

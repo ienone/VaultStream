@@ -132,6 +132,7 @@ WebSocket 接口同样只接受请求头中的 `X-API-Token` 或 `Authorization:
 | `GET` | `/api/v1/settings` |
 | `DELETE, GET, PUT` | `/api/v1/settings/{key}` |
 | `POST` | `/api/v1/shares` |
+| `GET` | `/api/v1/contents/{content_id}/processing-status` |
 | `GET` | `/api/v1/storage/stats` |
 | `GET` | `/api/v1/tags` |
 | `GET` | `/api/v1/targets` |

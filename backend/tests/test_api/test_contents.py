@@ -105,6 +105,44 @@ class TestContentsAPI:
 
         await db_session.refresh(content)
         assert content.media_urls == ["https://cdn.example.com/content.jpg"]
+
+    @pytest.mark.asyncio
+    async def test_get_content_processing_status(self, client: AsyncClient, db_session):
+        """Detail processing status should summarize post-ingest stages."""
+        from app.models import Content, ContentEmbedding, Platform, ContentStatus
+
+        content = Content(
+            platform=Platform.BILIBILI,
+            url="https://www.bilibili.com/video/BVprocessingstatus",
+            canonical_url="https://www.bilibili.com/video/BVprocessingstatus",
+            status=ContentStatus.PARSE_SUCCESS,
+            title="Processing Status",
+            summary="已生成摘要",
+        )
+        db_session.add(content)
+        await db_session.commit()
+        await db_session.refresh(content)
+
+        db_session.add(
+            ContentEmbedding(
+                content_id=content.id,
+                chunk_index=0,
+                chunk_title="摘要",
+                source_text="已生成摘要",
+                embedding=[0.1, 0.2],
+                index_status="indexed",
+            )
+        )
+        await db_session.commit()
+
+        response = await client.get(f"/api/v1/contents/{content.id}/processing-status")
+        assert response.status_code == 200
+        data = response.json()
+        stages = {item["key"]: item for item in data["stages"]}
+        assert stages["summary"]["status"] == "success"
+        assert stages["semantic_index"]["status"] == "success"
+        assert stages["semantic_index"]["details"]["counts"]["indexed"] == 1
+        assert stages["distribution"]["status"] == "not_matched"
     
     @pytest.mark.asyncio
     async def test_delete_content(self, client: AsyncClient):
