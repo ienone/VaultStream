@@ -177,6 +177,64 @@ class TestContentsAPI:
         assert latest["force"] is True
 
     @pytest.mark.asyncio
+    async def test_generate_summary_returns_run_id_and_records_success(
+        self,
+        client: AsyncClient,
+        monkeypatch,
+    ):
+        """Test manual summary generation records an observable run."""
+        async def fake_generate_summary_for_content(session, content_id: int, *, force: bool = False):
+            from app.models import Content
+
+            content = await session.get(Content, content_id)
+            content.summary = "测试摘要"
+            content.tags = ["摘要", "测试"]
+            content.rich_payload = {
+                "chunks": [
+                    {
+                        "title": "核心",
+                        "content": "测试语义块",
+                        "importance": 1.0,
+                        "media_refs": [],
+                    }
+                ]
+            }
+            await session.commit()
+            return content
+
+        monkeypatch.setattr(
+            "app.services.content_summary_service.generate_summary_for_content",
+            fake_generate_summary_for_content,
+        )
+
+        import time
+
+        resp = await client.post(
+            "/api/v1/shares",
+            json={"url": f"https://www.bilibili.com/video/BVsummary{time.time_ns()}"},
+        )
+        content_id = resp.json()["id"]
+
+        summary_resp = await client.post(
+            f"/api/v1/contents/{content_id}/generate-summary",
+            params={"force": True},
+        )
+        assert summary_resp.status_code == 200
+        data = summary_resp.json()
+        assert data["summary"] == "测试摘要"
+        assert data["run_id"]
+
+        diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
+        runs = diagnostics.json()["recent_task_runs"]
+        latest = next(run for run in runs if run["run_id"] == data["run_id"])
+        assert latest["task"] == "content_summary"
+        assert latest["status"] == "success"
+        assert latest["content_id"] == content_id
+        assert latest["force"] is True
+        assert latest["result"]["summary_present"] is True
+        assert latest["result"]["chunk_count"] == 1
+
+    @pytest.mark.asyncio
     async def test_content_retry(self, client: AsyncClient):
         """Test retry action endpoint accepts the request."""
         import time

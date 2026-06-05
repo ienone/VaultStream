@@ -188,6 +188,7 @@ async def _build_background_failure_details(
     recent_task_runs: list[dict[str, Any]] = []
     for task_name in (
         "content_reparse",
+        "content_summary",
         "discovery_sync",
         "favorites_sync",
         "semantic_reindex",

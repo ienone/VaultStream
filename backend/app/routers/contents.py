@@ -254,12 +254,46 @@ async def generate_content_summary(
 ):
     """为指定内容生成 AI 摘要"""
     from app.services.content_summary_service import generate_summary_for_content
+    run = await record_task_run_started(
+        "content_summary",
+        content_id=content_id,
+        force=force,
+        trigger="manual",
+    )
     try:
         content = await generate_summary_for_content(db, content_id, force=force)
-        return {"summary": content.summary, "content_id": content_id}
+        chunks = (
+            content.rich_payload.get("chunks", [])
+            if isinstance(content.rich_payload, dict)
+            else []
+        )
+        await record_task_run_success(
+            "content_summary",
+            run["run_id"],
+            content_id=content_id,
+            force=force,
+            summary_present=bool(content.summary),
+            chunk_count=len(chunks) if isinstance(chunks, list) else 0,
+            tag_count=len(content.tags or []),
+        )
+        return {"summary": content.summary, "content_id": content_id, "run_id": run["run_id"]}
     except ValueError as e:
+        await record_task_run_error(
+            "content_summary",
+            run["run_id"],
+            e,
+            content_id=content_id,
+            force=force,
+        )
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        await record_task_run_error(
+            "content_summary",
+            run["run_id"],
+            e,
+            content_id=content_id,
+            force=force,
+        )
         raise HTTPException(status_code=500, detail=f"摘要生成失败: {e}")
 
 @router.post("/contents/{content_id}/re-parse")
