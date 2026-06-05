@@ -1,6 +1,6 @@
 # VaultStream Current State and Roadmap
 
-> Updated: 2026-05-25
+> Updated: 2026-06-06
 > Purpose: current, code-backed direction for continued development. This file replaces the older long speculative V2 plan. Historical audit notes are archived under `docs/archive/`. Current product/security status is tracked in `docs/audits/2026-06-05-current-product-security-audit.md`.
 
 ## Current State
@@ -8,7 +8,7 @@
 VaultStream is no longer just a prototype. It is a local-first content archive and distribution system with:
 
 - FastAPI backend, SQLite persistence, background workers, platform adapters, distribution rules, SSE events, semantic search, and Agent tools.
-- Flutter frontend with dashboard, collection, discovery, review/distribution, settings, onboarding/connect, and Agent pages.
+- Flutter frontend with Home/Dynamics, Library, Inbox, Automation, settings, account center, onboarding/connect, and Agent assist pages.
 - CI gates for backend tests, Python dependency audit, Bandit, OpenAPI docs inventory, SQLite schema gate, Flutter codegen/analyze/test, release image scan, and SBOM generation.
 
 The current product direction should be:
@@ -21,10 +21,10 @@ The current product direction should be:
 
 Recent local checks are summarized in `docs/audits/2026-06-05-current-product-security-audit.md`. The latest recorded results there are:
 
-- Backend non-integration tests: 670 passed, 4 skipped, 16 deselected.
+- Backend non-integration tests: 734 passed, 4 skipped, 16 deselected.
 - Backend integration tests: 5 failed, 8 passed, 1 skipped, 2 xfailed.
 - Flutter analyze: no issues found.
-- Flutter test: 21 tests passed, with one existing non-fatal tap target warning.
+- Flutter test: 36 tests passed, with one existing non-fatal tap target warning.
 
 Treat historical verification numbers in archived docs as snapshots, not current status.
 
@@ -40,7 +40,7 @@ Important current boundaries:
 Main backend risks:
 
 - Configuration is still split across `Settings`, DB settings, runtime mutation, and cache behavior.
-- EventBus still stores subscribers and runtime state as class-level state.
+- EventBus runtime state remains process-local; API diagnostics now read it through a public EventBus snapshot instead of route-level private field access.
 - Background tasks have health state but not a full failure/retry operations panel.
 - Several long task/adapter files still mix orchestration, parsing, media processing, and persistence.
 
@@ -57,7 +57,7 @@ Main frontend risks:
 
 - Some pages are still large Stateful widgets and should be split around state ownership, not just by visual sections.
 - Shared-element motion between collection cards and detail pages has an initial shared-card fix. See `docs/known-issues/collection-card-detail-transition.md` for remaining visual validation.
-- Discovery detail desktop layout still has a documented top overlap issue.
+- Discovery detail top overlap has been fixed; keep future Discovery layout work focused on reducing manual desktop layout complexity.
 - Frontend test coverage is much thinner than backend coverage.
 
 ## Roadmap
@@ -68,9 +68,7 @@ Target: remove issues that make the current system feel unreliable.
 
 - Fix test fixture resource warnings, especially SQLite connections in Agent/WebSocket tests.
 - Visually verify and refine the collection card-to-detail shared transition across article, gallery, video, and text-only items.
-- Fix Discovery detail desktop top overlap and app bar separation.
 - Verify FavoritesSync goes through the same post-ingest path as parsing and Discovery.
-- Expose EventBus subscriber counts through a method/diagnostic service instead of reading private class state in routes.
 
 ### P1: Architecture Convergence
 

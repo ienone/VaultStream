@@ -39,7 +39,7 @@
 
 当前保留的判断：
 
-- Discovery 仍有当前已知 UI 问题，见 `docs/known-issues/discovery-detail-top-overlap.md`。
+- Discovery 顶部遮挡问题已在当前代码中修复，旧问题文档已移除；后续 Discovery 布局工作只保留为降低手动桌面布局复杂度的设计债。
 - 编码问题排查时应先确认读取工具和终端编码；不要把 PowerShell 默认编码显示问题误判为文件损坏。
 
 ## 历史修复记录处理原则

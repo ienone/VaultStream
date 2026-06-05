@@ -1,6 +1,6 @@
 # VaultStream 文档索引
 
-> 最后整理：2026-06-05  
+> 最后整理：2026-06-06
 > 使用原则：当前状态以代码、测试和 `docs/audits/2026-06-05-current-product-security-audit.md` 为准。已确认完成的历史事项已从当前文档中移除；仍保留的历史状态描述需要按当前代码重新验证。
 
 ## 当前必读
@@ -26,7 +26,6 @@
 ## 当前已知问题
 
 - [known-issues/collection-card-detail-transition.md](./known-issues/collection-card-detail-transition.md) - 收藏卡片到详情页 shared transition 的剩余视觉验证。
-- [known-issues/discovery-detail-top-overlap.md](./known-issues/discovery-detail-top-overlap.md) - Discovery 详情页顶部遮挡问题。
 
 ## 评估数据
 
