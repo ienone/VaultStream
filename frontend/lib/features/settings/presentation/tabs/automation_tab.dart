@@ -1345,14 +1345,31 @@ class AutomationTab extends ConsumerWidget {
                   alignment: Alignment.centerRight,
                   child: OutlinedButton.icon(
                     onPressed: () async {
-                      await ref
-                          .read(apiClientProvider)
-                          .post(
-                            '/search/semantic/reindex',
-                            data: {'scope': 'failed', 'limit': 100},
+                      try {
+                        final response = await ref
+                            .read(apiClientProvider)
+                            .post(
+                              '/search/semantic/reindex',
+                              data: {'scope': 'failed', 'limit': 100},
+                            );
+                        ref.invalidate(semanticIndexStatusProvider);
+                        if (context.mounted) {
+                          final runId = response.data is Map
+                              ? response.data['run_id']?.toString()
+                              : null;
+                          final suffix = runId == null
+                              ? ''
+                              : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
+                          showToast(context, '已调度失败索引重试$suffix');
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          showToast(
+                            context,
+                            formatApiErrorMessage(e, fallbackMessage: '索引重试失败'),
                           );
-                      ref.invalidate(semanticIndexStatusProvider);
-                      if (context.mounted) showToast(context, '已调度失败索引重试');
+                        }
+                      }
                     },
                     icon: const Icon(Icons.replay_rounded),
                     label: const Text('重试失败项'),
