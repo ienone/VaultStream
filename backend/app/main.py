@@ -180,6 +180,13 @@ async def lifespan(app: FastAPI):
 
     # 停止事件总线
     await event_bus.stop()
+
+    # TestClient and production reloads create a distinct application lifespan.
+    # Dispose the async engine here so aiosqlite worker threads are closed before
+    # their owning event loop shuts down.
+    from app.core.db_adapter import engine
+
+    await engine.dispose()
     
     logger.info("应用程序关闭完成")
 

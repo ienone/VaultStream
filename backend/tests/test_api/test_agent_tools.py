@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from contextlib import contextmanager
 import uuid
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
 from pydantic import SecretStr
@@ -11,8 +13,10 @@ from sqlalchemy import select
 from starlette.websockets import WebSocketDisconnect
 
 from app.core.config import settings
+from app.core.db_adapter import engine
 from app.core.time_utils import utcnow
 from app.main import app
+from app.routers import agent as agent_router
 from app.models import (
     BotChat,
     BotChatType,
@@ -636,8 +640,21 @@ def _ws_headers() -> dict[str, str]:
     return {"X-API-Token": token} if token else {}
 
 
+_agent_test_app = FastAPI()
+_agent_test_app.include_router(agent_router.router, prefix="/api/v1")
+
+
+@contextmanager
+def _sync_test_client():
+    with TestClient(_agent_test_app) as sync_client:
+        try:
+            yield sync_client
+        finally:
+            sync_client.portal.call(engine.dispose)
+
+
 def test_agent_ws_stream_tool_success():
-    with TestClient(app) as sync_client:
+    with _sync_test_client() as sync_client:
         with sync_client.websocket_connect(
             "/api/v1/agent/ws",
             headers=_ws_headers(),
@@ -655,7 +672,7 @@ def test_agent_ws_stream_tool_success():
 
 
 def test_agent_ws_stream_tool_unknown():
-    with TestClient(app) as sync_client:
+    with _sync_test_client() as sync_client:
         with sync_client.websocket_connect(
             "/api/v1/agent/ws",
             headers=_ws_headers(),
@@ -686,7 +703,7 @@ def test_agent_sse_does_not_duplicate_streamed_error(monkeypatch):
 
     monkeypatch.setattr("app.routers.agent.AgentService.run_message", _fake_run)
 
-    with TestClient(app) as sync_client:
+    with _sync_test_client() as sync_client:
         with sync_client.stream(
             "GET",
             "/api/v1/agent/sse",
@@ -702,7 +719,7 @@ def test_agent_sse_does_not_duplicate_streamed_error(monkeypatch):
 
 def test_agent_ws_unauthorized(monkeypatch):
     monkeypatch.setattr(settings, "api_token", SecretStr("ws-token-required"))
-    with TestClient(app) as sync_client:
+    with _sync_test_client() as sync_client:
         with pytest.raises(WebSocketDisconnect):
             with sync_client.websocket_connect("/api/v1/agent/ws"):
                 pass
@@ -710,7 +727,7 @@ def test_agent_ws_unauthorized(monkeypatch):
 
 def test_agent_ws_rejects_query_token(monkeypatch):
     monkeypatch.setattr(settings, "api_token", SecretStr("ws-token-required"))
-    with TestClient(app) as sync_client:
+    with _sync_test_client() as sync_client:
         with pytest.raises(WebSocketDisconnect):
             with sync_client.websocket_connect("/api/v1/agent/ws?token=ws-token-required"):
                 pass

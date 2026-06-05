@@ -11,6 +11,14 @@ def mock_event_bus():
     with patch("app.core.events.event_bus.publish", new_callable=AsyncMock) as mock:
         yield mock
 
+
+def _disable_background_embedding(monkeypatch):
+    monkeypatch.setattr(
+        "app.tasks.parsing.PostIngestService.schedule_embedding_index",
+        lambda self, content_id, *, source="post_ingest": None,
+    )
+
+
 @pytest.mark.asyncio
 async def test_process_parse_task_success(db_session, monkeypatch, client):
     # 1. Setup test data in DB
@@ -43,6 +51,7 @@ async def test_process_parse_task_success(db_session, monkeypatch, client):
     # We need to monkeypatch AsyncSessionLocal used inside ContentParser
     from tests.conftest import TestingSessionLocal
     monkeypatch.setattr("app.tasks.parsing.AsyncSessionLocal", TestingSessionLocal)
+    _disable_background_embedding(monkeypatch)
     
     # Mock AdapterFactory
     with patch("app.tasks.parsing.AdapterFactory.create", return_value=mock_adapter), \
@@ -144,6 +153,7 @@ def _patch_common(monkeypatch, mock_adapter=None, parsed=None,
     """Apply common monkeypatches used by many tests.  Returns a dict of mocks."""
     from tests.conftest import TestingSessionLocal
     monkeypatch.setattr("app.tasks.parsing.AsyncSessionLocal", TestingSessionLocal)
+    _disable_background_embedding(monkeypatch)
 
     mocks = {}
 

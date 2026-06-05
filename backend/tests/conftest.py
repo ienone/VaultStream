@@ -77,6 +77,14 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
         # as per the specific requirement to "use real data".
         # In a normal test suite, we would rollback here.
 
+
+@pytest.fixture(scope="function", autouse=True)
+async def cleanup_app_db_engine():
+    yield
+    await engine.dispose()
+    await app_engine.dispose()
+
+
 @pytest.fixture(scope="function")
 async def client() -> AsyncGenerator[AsyncClient, None]:
     """Provide an authenticated AsyncClient."""

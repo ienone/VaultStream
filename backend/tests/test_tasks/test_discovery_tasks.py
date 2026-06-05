@@ -27,6 +27,14 @@ def mock_event_bus():
         yield mock
 
 
+@pytest.fixture(autouse=True)
+def disable_background_embedding(monkeypatch):
+    monkeypatch.setattr(
+        "app.tasks.discovery_sync.PostIngestService.schedule_embedding_index",
+        lambda self, content_id, *, source="post_ingest": None,
+    )
+
+
 # ---------------------------------------------------------------------------
 # DiscoverySyncTask tests
 # ---------------------------------------------------------------------------

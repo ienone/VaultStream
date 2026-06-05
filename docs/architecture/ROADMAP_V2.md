@@ -22,6 +22,7 @@ The current product direction should be:
 Recent local checks are summarized in `docs/audits/2026-06-05-current-product-security-audit.md`. The latest recorded results there are:
 
 - Backend non-integration tests: 734 passed, 4 skipped, 16 deselected.
+- Backend `ResourceWarning` error gate: 734 passed, 4 skipped, 16 deselected.
 - Backend integration tests: 5 failed, 8 passed, 1 skipped, 2 xfailed.
 - Flutter analyze: no issues found.
 - Flutter test: 36 tests passed, with one existing non-fatal tap target warning.
@@ -67,8 +68,8 @@ Main frontend risks:
 
 Target: remove issues that make the current system feel unreliable.
 
-- Fix test fixture resource warnings, especially SQLite connections in Agent/WebSocket tests.
 - Visually verify and refine the collection card-to-detail shared transition across article, gallery, video, and text-only items.
+- Watch the remaining intermittent full-suite `ResourceWarning` noise: the Agent/WebSocket SQLite worker leak and parsing/discovery background embedding leaks are fixed, but a default-warning run can still surface a proxy socket warning and one sqlite3 GC warning that do not reproduce as failures under `-W error::ResourceWarning`.
 
 ### P1: Architecture Convergence
 
