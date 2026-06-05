@@ -1,6 +1,6 @@
 # Known Issue: Collection Card to Detail Transition Shows Blank Surfaces
 
-**Status**: initial fix implemented on 2026-05-25; visual verification pending  
+**Status**: implementation strengthened on 2026-06-06; automated transition smoke tests pass; manual visual verification pending
 **Area**: `frontend/lib/features/collection/`  
 **Observed**: the card-to-detail transition moves geometrically, but the moving surface is visually empty during both forward and back navigation.
 
@@ -128,11 +128,19 @@ After implementation, verify:
 - Passed `ShareCard` through GoRouter `extra` when opening a collection detail route.
 - Added a preview-aware loading state in `ContentDetailPage` so slow detail fetches still have a matching target Hero.
 - Added `flightShuttleBuilder` on the grid card Hero so push uses the source card appearance and pop uses the destination card appearance.
+- Added a matching `flightShuttleBuilder` on the loaded detail Hero so fast detail loads and back navigation do not fall back to an empty in-flight surface.
 - Softened the detail route transition from slide/fade to a near-opaque fade so it does not fight the Hero motion.
 - Removed delayed per-card list entry animation from `ContentCard`, reducing blank/late repaint risk on back navigation.
+- Added widget coverage for both loading and loaded detail states keeping the expected Hero behavior.
 
 Remaining validation:
 
 - Inspect the animation on desktop/web and mobile widths.
 - Confirm gallery/video/article/text-only items all have acceptable forward and back transitions.
 - Confirm SSE list refresh during detail view does not remove the returning card before pop finishes.
+
+Latest automated checks:
+
+- `flutter test test/widget/content_detail_transition_test.dart`: passed.
+- `flutter analyze`: no issues found.
+- `flutter test`: 37 tests passed; the existing distribution-rule tap target warning remains non-fatal.

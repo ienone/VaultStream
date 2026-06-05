@@ -158,6 +158,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       data: (detail) {
         final customTheme = _getCustomTheme(detail, theme.brightness);
         final colorScheme = customTheme.colorScheme;
+        final heroPreview = widget.preview ?? _shareCardFromDetail(detail);
 
         return Theme(
           data: customTheme,
@@ -167,6 +168,10 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                 child: Hero(
                   tag: collectionCardHeroTag(widget.contentId),
                   transitionOnUserGestures: true,
+                  flightShuttleBuilder: collectionCardFlightShuttleBuilder(
+                    content: heroPreview,
+                    isTinyCard: false,
+                  ),
                   child: Material(
                     color: colorScheme.surface,
                     child: const SizedBox.expand(),
@@ -221,6 +226,31 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       },
       loading: () => _buildLoadingState(theme),
       error: (err, stack) => _buildErrorState(err),
+    );
+  }
+
+  ShareCard _shareCardFromDetail(ContentDetail detail) {
+    return ShareCard(
+      id: detail.id,
+      platform: detail.platform,
+      url: detail.url,
+      status: detail.status,
+      cleanUrl: detail.cleanUrl,
+      contentType: detail.contentType,
+      layoutType: detail.layoutType,
+      title: detail.title,
+      authorName: detail.authorName,
+      authorId: detail.authorId,
+      authorAvatarUrl: detail.authorAvatarUrl,
+      coverUrl: detail.coverUrl,
+      coverColor: detail.coverColor,
+      tags: detail.tags,
+      isNsfw: detail.isNsfw,
+      reviewStatus: detail.reviewStatus,
+      publishedAt: detail.publishedAt,
+      createdAt: detail.createdAt,
+      viewCount: detail.viewCount,
+      likeCount: detail.likeCount,
     );
   }
 

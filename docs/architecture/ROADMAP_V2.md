@@ -25,7 +25,7 @@ Recent local checks are summarized in `docs/audits/2026-06-05-current-product-se
 - Backend `ResourceWarning` error gate: 734 passed, 4 skipped, 16 deselected.
 - Backend integration tests: 5 failed, 8 passed, 1 skipped, 2 xfailed.
 - Flutter analyze: no issues found.
-- Flutter test: 36 tests passed, with one existing non-fatal tap target warning.
+- Flutter test: 37 tests passed, with one existing non-fatal tap target warning.
 
 Treat historical verification numbers in archived docs as snapshots, not current status.
 

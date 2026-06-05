@@ -55,4 +55,60 @@ void main() {
     expect(find.byType(CollectionCardPreview), findsOneWidget);
     expect(find.text('Preview title'), findsOneWidget);
   });
+
+  testWidgets('ContentDetailPage data state keeps deterministic Hero shuttle', (
+    tester,
+  ) async {
+    final preview = ShareCard(
+      id: 43,
+      platform: 'x',
+      url: 'https://example.test/item/43',
+      status: 'archived',
+      layoutType: 'article',
+      title: 'Loaded preview title',
+      authorName: 'Preview author',
+      tags: const ['transition'],
+      createdAt: DateTime(2026, 5, 25),
+    );
+    final detail = ContentDetail(
+      id: preview.id,
+      platform: preview.platform,
+      url: preview.url,
+      status: 'parse_success',
+      tags: const ['transition'],
+      isNsfw: false,
+      title: 'Loaded detail title',
+      body: 'Loaded body',
+      authorName: 'Detail author',
+      coverUrl: null,
+      createdAt: DateTime(2026, 5, 25),
+      updatedAt: DateTime(2026, 5, 25),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWith(
+            (ref) => Dio(BaseOptions(baseUrl: 'http://localhost')),
+          ),
+          contentDetailProvider(
+            preview.id,
+          ).overrideWith((ref) async => detail),
+        ],
+        child: MaterialApp(
+          home: ContentDetailPage(contentId: preview.id, preview: preview),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    final hero = tester.widget<Hero>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Hero && widget.tag == collectionCardHeroTag(preview.id),
+      ),
+    );
+    expect(hero.flightShuttleBuilder, isNotNull);
+  });
 }
