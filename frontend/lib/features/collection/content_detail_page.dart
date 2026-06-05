@@ -518,11 +518,22 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
   Future<void> _reParseContent(int contentId) async {
     try {
-      await ref.read(apiClientProvider).post('/contents/$contentId/re-parse');
-      Toast.show(context, '已触发重新解析');
+      final response = await ref
+          .read(apiClientProvider)
+          .post('/contents/$contentId/re-parse');
+      final data = response.data;
+      final runId = data is Map ? data['run_id']?.toString() : null;
+      final suffix = runId == null
+          ? ''
+          : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
+      Toast.show(context, '已触发重新解析$suffix');
       ref.invalidate(contentDetailProvider(contentId));
     } catch (e) {
-      Toast.show(context, '请求失败: $e', isError: true);
+      Toast.show(
+        context,
+        formatApiErrorMessage(e, fallbackMessage: '重新解析失败'),
+        isError: true,
+      );
     }
   }
 
