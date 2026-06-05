@@ -17,6 +17,7 @@ from app.services.background_task_state import (
     record_task_run_started,
     record_task_run_success,
 )
+from app.services.config_service import ConfigService
 from app.models import Content, DiscoverySource, DiscoveryState, DiscoverySourceKind
 from app.schemas.discovery import (
     DiscoveryItemListItem, DiscoveryItemListResponse, DiscoveryItemResponse,
@@ -59,6 +60,18 @@ def _raise_unsupported_source_kind(kind: DiscoverySourceKind | str, request: Req
             request_id=getattr(getattr(request, "state", None), "request_id", None),
             extra={"supported_kinds": sorted(_SUPPORTED_DISCOVERY_SOURCE_KIND_VALUES)},
         ),
+    )
+
+
+async def _read_discovery_settings(config: ConfigService) -> DiscoverySettingsResponse:
+    interest_profile = await config.get_value("discovery_interest_profile", "")
+    score_threshold = await config.get_value("discovery_score_threshold", 6.0)
+    retention_days = await config.get_value("discovery_retention_days", 7)
+
+    return DiscoverySettingsResponse(
+        interest_profile=str(interest_profile or ""),
+        score_threshold=float(score_threshold) if score_threshold is not None else 6.0,
+        retention_days=int(retention_days) if retention_days is not None else 7,
     )
 
 
@@ -506,17 +519,7 @@ async def trigger_sync(
 async def get_discovery_settings(
     _: None = Depends(require_api_token),
 ):
-    from app.services.settings_service import get_setting_value
-
-    interest_profile = await get_setting_value("discovery_interest_profile", "")
-    score_threshold = await get_setting_value("discovery_score_threshold", 6.0)
-    retention_days = await get_setting_value("discovery_retention_days", 7)
-
-    return DiscoverySettingsResponse(
-        interest_profile=interest_profile or "",
-        score_threshold=float(score_threshold) if score_threshold is not None else 6.0,
-        retention_days=int(retention_days) if retention_days is not None else 7,
-    )
+    return await _read_discovery_settings(ConfigService())
 
 
 @router.patch("/discovery/settings", response_model=DiscoverySettingsResponse)
@@ -524,24 +527,16 @@ async def update_discovery_settings(
     body: DiscoverySettingsUpdate,
     _: None = Depends(require_api_token),
 ):
-    from app.services.settings_service import get_setting_value, set_setting_value
+    config = ConfigService()
 
     if body.interest_profile is not None:
-        await set_setting_value("discovery_interest_profile", body.interest_profile, category="discovery")
+        await config.set_value("discovery_interest_profile", body.interest_profile, category="discovery")
     if body.score_threshold is not None:
-        await set_setting_value("discovery_score_threshold", body.score_threshold, category="discovery")
+        await config.set_value("discovery_score_threshold", body.score_threshold, category="discovery")
     if body.retention_days is not None:
-        await set_setting_value("discovery_retention_days", body.retention_days, category="discovery")
+        await config.set_value("discovery_retention_days", body.retention_days, category="discovery")
 
-    interest_profile = await get_setting_value("discovery_interest_profile", "")
-    score_threshold = await get_setting_value("discovery_score_threshold", 6.0)
-    retention_days = await get_setting_value("discovery_retention_days", 7)
-
-    return DiscoverySettingsResponse(
-        interest_profile=interest_profile or "",
-        score_threshold=float(score_threshold) if score_threshold is not None else 6.0,
-        retention_days=int(retention_days) if retention_days is not None else 7,
-    )
+    return await _read_discovery_settings(config)
 
 
 # ── Stats ──────────────────────────────────────────────────────────────
