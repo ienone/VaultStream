@@ -105,6 +105,8 @@ class _StageRow extends ConsumerWidget {
     final label = stage['label']?.toString() ?? stage['key']?.toString() ?? '';
     final message = stage['message']?.toString() ?? '';
     final failures = _extractFailures(stage);
+    final issues = _extractStringList(stage['issues']);
+    final actions = _extractStringList(stage['actions']);
     final action = _stageAction(stage, status);
 
     return Padding(
@@ -145,6 +147,18 @@ class _StageRow extends ConsumerWidget {
                                 color: Theme.of(context).colorScheme.error,
                               ),
                         ),
+                      ),
+                    if (issues.isNotEmpty)
+                      _StageHintLine(
+                        label: '问题',
+                        values: issues,
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    if (actions.isNotEmpty)
+                      _StageHintLine(
+                        label: '建议',
+                        values: actions,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                   ],
                 ),
@@ -194,6 +208,14 @@ class _StageRow extends ConsumerWidget {
     return failures
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  List<String> _extractStringList(dynamic value) {
+    if (value is! List) return const [];
+    return value
+        .map((item) => item?.toString().trim() ?? '')
+        .where((item) => item.isNotEmpty)
         .toList();
   }
 
@@ -399,6 +421,31 @@ class _StageRow extends ConsumerWidget {
       default:
         return status;
     }
+  }
+}
+
+class _StageHintLine extends StatelessWidget {
+  final String label;
+  final List<String> values;
+  final Color color;
+
+  const _StageHintLine({
+    required this.label,
+    required this.values,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        '$label: ${values.join('；')}',
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: color),
+      ),
+    );
   }
 }
 

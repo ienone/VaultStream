@@ -46,6 +46,7 @@ from app.services.background_task_state import (
 from app.media.extractor import sanitize_media_urls
 from app.adapters.utils import ensure_title
 from app.services.settings_service import get_setting_value
+from app.utils.sensitive_display import extract_secret_value
 
 router = APIRouter()
 
@@ -58,9 +59,18 @@ def _status_counts(rows) -> dict[str, int]:
     return counts
 
 
+def _is_configured_value(value) -> bool:
+    text = extract_secret_value(value)
+    return isinstance(text, str) and bool(text.strip())
+
+
 async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
     summary_enabled = bool(await get_setting_value("enable_auto_summary", settings.enable_auto_summary))
     summary_key = await get_setting_value("summary_api_key")
+    summary_key_ready = _is_configured_value(summary_key)
+    embedding_key_ready = _is_configured_value(await get_setting_value("embedding_api_key"))
+    text_llm_ready = _is_configured_value(await get_setting_value("text_llm_api_key"))
+    vision_llm_ready = _is_configured_value(await get_setting_value("vision_llm_api_key"))
     has_summary = bool((content.summary or "").strip())
     has_chunks = bool(
         isinstance(content.rich_payload, dict)
@@ -76,7 +86,7 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
     elif not summary_enabled:
         summary_status = "disabled"
         summary_message = "自动摘要已关闭"
-    elif not summary_key:
+    elif not summary_key_ready:
         summary_status = "unavailable"
         summary_message = "摘要模型密钥未配置"
     else:
@@ -193,6 +203,39 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
         patrol_status = "not_scored"
         patrol_message = "未记录巡逻评分"
 
+    summary_issues: list[str] = []
+    summary_actions: list[str] = []
+    if not summary_enabled:
+        summary_actions.append("开启自动摘要")
+    elif not summary_key_ready and not has_summary:
+        summary_issues.append("summary_api_key 未配置")
+        summary_actions.append("配置摘要模型密钥或关闭自动摘要")
+
+    embedding_issues: list[str] = []
+    embedding_actions: list[str] = []
+    if not embedding_key_ready and embedding_status in {"failed", "not_indexed"}:
+        embedding_issues.append("embedding_api_key 未配置")
+        embedding_actions.append("配置 Embedding 密钥")
+    elif embedding_status in {"failed", "not_indexed"}:
+        embedding_actions.append("重建单条语义索引")
+
+    patrol_issues: list[str] = []
+    patrol_actions: list[str] = []
+    if patrol_status in {"pending", "not_scored"}:
+        if not (text_llm_ready or vision_llm_ready):
+            patrol_issues.append("未配置可用于巡逻评分的 LLM 密钥")
+            patrol_actions.append("配置 text_llm_api_key 或 vision_llm_api_key")
+        else:
+            patrol_actions.append("等待 discovery_patrol 后台任务或手动触发巡逻评分")
+
+    distribution_issues: list[str] = []
+    distribution_actions: list[str] = []
+    if distribution_status == "failed":
+        distribution_issues.append("存在失败或被过滤的分发队列项")
+        distribution_actions.append("查看失败详情并重试失败分发项")
+    elif distribution_status == "not_matched":
+        distribution_actions.append("检查分发规则匹配条件并重新匹配")
+
     return {
         "content_id": content.id,
         "stages": [
@@ -201,10 +244,13 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
                 "label": "摘要",
                 "status": summary_status,
                 "message": summary_message,
+                "issues": summary_issues,
+                "actions": summary_actions,
                 "details": {
                     "summary_present": has_summary,
                     "chunks_present": has_chunks,
                     "auto_summary_enabled": summary_enabled,
+                    "summary_key_configured": summary_key_ready,
                 },
             },
             {
@@ -212,8 +258,11 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
                 "label": "语义索引",
                 "status": embedding_status,
                 "message": embedding_message,
+                "issues": embedding_issues,
+                "actions": embedding_actions,
                 "details": {
                     "counts": embedding_counts,
+                    "embedding_key_configured": embedding_key_ready,
                     "failures": [
                         {
                             "id": row.id,
@@ -233,11 +282,15 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
                 "label": "巡逻评分",
                 "status": patrol_status,
                 "message": patrol_message,
+                "issues": patrol_issues,
+                "actions": patrol_actions,
                 "details": {
                     "ai_score": content.ai_score,
                     "ai_reason": content.ai_reason,
                     "ai_tags": content.ai_tags or [],
                     "discovery_state": discovery_state,
+                    "text_llm_configured": text_llm_ready,
+                    "vision_llm_configured": vision_llm_ready,
                 },
             },
             {
@@ -245,6 +298,8 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
                 "label": "分发",
                 "status": distribution_status,
                 "message": distribution_message,
+                "issues": distribution_issues,
+                "actions": distribution_actions,
                 "details": {
                     "queue_counts": queue_counts,
                     "pushed_records": pushed_records,

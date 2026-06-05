@@ -24,6 +24,8 @@ void main() {
           'label': '语义索引',
           'status': 'failed',
           'message': '语义索引生成失败',
+          'issues': ['embedding_api_key 未配置'],
+          'actions': ['配置 Embedding 密钥'],
           'details': {
             'failures': [
               {
@@ -39,6 +41,8 @@ void main() {
           'label': '分发',
           'status': 'failed',
           'message': '存在失败或被过滤的分发队列项',
+          'issues': ['存在失败或被过滤的分发队列项'],
+          'actions': ['查看失败详情并重试失败分发项'],
           'details': {
             'failures': [
               {
@@ -54,6 +58,8 @@ void main() {
           'label': '巡逻评分',
           'status': 'not_scored',
           'message': '未记录巡逻评分',
+          'issues': ['未配置可用于巡逻评分的 LLM 密钥'],
+          'actions': ['配置 text_llm_api_key 或 vision_llm_api_key'],
           'details': {'discovery_state': 'visible'},
         },
       ],
@@ -80,6 +86,9 @@ void main() {
     expect(find.text('巡逻评分'), findsOneWidget);
     expect(find.text('未评分'), findsOneWidget);
     expect(find.text('失败详情'), findsNWidgets(2));
+    expect(find.textContaining('问题: embedding_api_key 未配置'), findsOneWidget);
+    expect(find.textContaining('建议: 配置 Embedding 密钥'), findsOneWidget);
+    expect(find.textContaining('配置 text_llm_api_key'), findsOneWidget);
     expect(find.textContaining('embedding api unavailable'), findsOneWidget);
     expect(find.textContaining('telegram rate limited'), findsOneWidget);
   });

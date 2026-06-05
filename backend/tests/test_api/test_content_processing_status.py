@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.services import settings_service
 from app.models import (
     BotChat,
     BotChatType,
@@ -19,7 +20,11 @@ from app.models import (
 
 
 @pytest.mark.asyncio
-async def test_processing_status_includes_failure_payloads(client, db_session):
+async def test_processing_status_includes_failure_payloads(client, db_session, monkeypatch):
+    monkeypatch.setitem(settings_service._SETTINGS_CACHE, "embedding_api_key", "")
+    monkeypatch.setitem(settings_service._SETTINGS_CACHE, "text_llm_api_key", "")
+    monkeypatch.setitem(settings_service._SETTINGS_CACHE, "vision_llm_api_key", "")
+
     suffix = uuid4().hex
     content = Content(
         platform=Platform.ZHIHU,
@@ -87,12 +92,18 @@ async def test_processing_status_includes_failure_payloads(client, db_session):
 
     assert stages["patrol"]["status"] == "disabled"
     assert stages["patrol"]["details"]["discovery_state"] is None
+    assert stages["patrol"]["issues"] == []
+    assert stages["patrol"]["actions"] == []
 
     assert stages["semantic_index"]["status"] == "failed"
+    assert stages["semantic_index"]["issues"] == ["embedding_api_key 未配置"]
+    assert stages["semantic_index"]["actions"] == ["配置 Embedding 密钥"]
     assert embedding_failures[0]["failure_reason"] == "embedding api unavailable"
     assert embedding_failures[0]["retry_count"] == 2
 
     assert stages["distribution"]["status"] == "failed"
+    assert stages["distribution"]["issues"] == ["存在失败或被过滤的分发队列项"]
+    assert stages["distribution"]["actions"] == ["查看失败详情并重试失败分发项"]
     assert distribution_failures[0]["last_error"] == "telegram rate limited"
     assert distribution_failures[0]["last_error_type"] == "rate_limit"
     assert distribution_failures[0]["target_platform"] == "telegram"
