@@ -196,7 +196,28 @@ class TestDistributionQueueExtraAPI:
         assert batch_repush_resp.json()["changed"] >= 1
 
     @pytest.mark.asyncio
-    async def test_item_push_now(self, client: AsyncClient):
+    async def test_item_push_now(self, client: AsyncClient, monkeypatch):
+        class FakeQueueWorker:
+            async def process_item_now(self, item_id: int, worker_name: str = "api-manual"):
+                from app.core.db_adapter import AsyncSessionLocal
+                from app.core.time_utils import utcnow
+                from app.models import ContentQueueItem, QueueItemStatus
+
+                async with AsyncSessionLocal() as session:
+                    item = await session.get(ContentQueueItem, item_id)
+                    item.status = QueueItemStatus.SUCCESS
+                    item.message_id = "test-message-id"
+                    item.completed_at = utcnow()
+                    item.last_error = None
+                    item.last_error_type = None
+                    item.last_error_at = None
+                    await session.commit()
+
+        monkeypatch.setattr(
+            "app.routers.distribution_queue.get_queue_worker",
+            lambda: FakeQueueWorker(),
+        )
+
         content_id, _, _ = await self._setup_data(client)
         await client.post(f"/api/v1/distribution-queue/enqueue/{content_id}", json={"force": True})
         
@@ -205,7 +226,19 @@ class TestDistributionQueueExtraAPI:
         
         resp = await client.post(f"/api/v1/distribution-queue/items/{item_id}/push-now")
         assert resp.status_code == 200
-        assert resp.json()["status"] == "scheduled"
+        data = resp.json()
+        assert data["status"] == "success"
+        assert data["run_id"]
+        assert data["message_id"] == "test-message-id"
+
+        diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
+        runs = diagnostics.json()["recent_task_runs"]
+        latest = next(run for run in runs if run["run_id"] == data["run_id"])
+        assert latest["task"] == "distribution_push"
+        assert latest["status"] == "success"
+        assert latest["queue_item_id"] == item_id
+        assert latest["content_id"] == content_id
+        assert latest["result"]["message_id"] == "test-message-id"
 
     @pytest.mark.asyncio
     async def test_item_status_schedule_and_reorder_are_item_scoped(self, client: AsyncClient):

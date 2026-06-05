@@ -14,6 +14,11 @@ from app.core.events import event_bus
 from app.core.logging import logger
 from app.core.time_utils import utcnow
 from app.models import Content, ContentQueueItem, QueueItemStatus, PushedRecord
+from app.services.background_task_state import (
+    record_task_run_error,
+    record_task_run_started,
+    record_task_run_success,
+)
 from app.tasks import DistributionQueueWorker
 
 def get_queue_worker():
@@ -69,6 +74,11 @@ def _to_queue_item_response(item: ContentQueueItem, content: Optional[Content] =
         created_at=_as_utc(item.created_at) or datetime.now(timezone.utc),
         updated_at=_as_utc(item.updated_at) or datetime.now(timezone.utc),
     )
+
+
+def _with_run_id(response: ContentQueueItemResponse, run_id: str) -> ContentQueueItemResponse:
+    response.run_id = run_id
+    return response
 
 
 def _build_status_conditions(status: Optional[str]):
@@ -269,23 +279,81 @@ async def push_queue_item_now(
     if not item:
         raise HTTPException(status_code=404, detail="Queue item not found")
 
+    run = await record_task_run_started(
+        "distribution_push",
+        queue_item_id=item.id,
+        content_id=item.content_id,
+        target_platform=item.target_platform,
+        target_id=item.target_id,
+        trigger="manual",
+    )
+
     worker = get_queue_worker()
     try:
         await worker.process_item_now(item_id, worker_name="api-manual")
     except ValueError as e:
+        await record_task_run_error(
+            "distribution_push",
+            run["run_id"],
+            e,
+            queue_item_id=item.id,
+            content_id=item.content_id,
+            target_platform=item.target_platform,
+            target_id=item.target_id,
+            trigger="manual",
+        )
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        await record_task_run_error(
+            "distribution_push",
+            run["run_id"],
+            e,
+            queue_item_id=item.id,
+            content_id=item.content_id,
+            target_platform=item.target_platform,
+            target_id=item.target_id,
+            trigger="manual",
+        )
+        raise
 
     refreshed = await db.execute(
         select(ContentQueueItem, Content)
         .join(Content, Content.id == ContentQueueItem.content_id, isouter=True)
         .where(ContentQueueItem.id == item_id)
+        .execution_options(populate_existing=True)
     )
     row = refreshed.first()
     item = row[0] if row else None
     content = row[1] if row else None
     if not item:
         raise HTTPException(status_code=404, detail="Queue item not found")
-    return _to_queue_item_response(item, content)
+    if item.status == QueueItemStatus.SUCCESS:
+        await record_task_run_success(
+            "distribution_push",
+            run["run_id"],
+            queue_item_id=item.id,
+            content_id=item.content_id,
+            target_platform=item.target_platform,
+            target_id=item.target_id,
+            message_id=item.message_id,
+            attempt_count=item.attempt_count,
+            trigger="manual",
+        )
+    else:
+        await record_task_run_error(
+            "distribution_push",
+            run["run_id"],
+            item.last_error or f"Distribution push ended with status {item.status.value}",
+            queue_item_id=item.id,
+            content_id=item.content_id,
+            target_platform=item.target_platform,
+            target_id=item.target_id,
+            status=item.status.value,
+            last_error_type=item.last_error_type,
+            attempt_count=item.attempt_count,
+            trigger="manual",
+        )
+    return _with_run_id(_to_queue_item_response(item, content), run["run_id"])
 
 
 @router.post("/enqueue/{content_id}")

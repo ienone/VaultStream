@@ -190,6 +190,7 @@ async def _build_background_failure_details(
         "content_reparse",
         "content_summary",
         "discovery_sync",
+        "distribution_push",
         "favorites_sync",
         "semantic_reindex",
     ):

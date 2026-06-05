@@ -42,6 +42,7 @@ class ContentQueueItemResponse(BaseModel):
     completed_at: OptionalUtcDatetime
     created_at: UtcDatetime
     updated_at: UtcDatetime
+    run_id: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
