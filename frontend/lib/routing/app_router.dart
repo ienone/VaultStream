@@ -11,6 +11,7 @@ import '../features/discovery/discovery_page.dart';
 import '../features/review/review_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/agent/agent_page.dart';
+import '../features/accounts/account_center_page.dart';
 import '../features/auth/presentation/connect_page.dart';
 import '../features/auth/presentation/onboarding_page.dart';
 import '../layout/app_shell.dart';
@@ -81,6 +82,10 @@ GoRouter goRouter(Ref ref) {
       GoRoute(
         path: '/onboarding',
         builder: (context, state) => const OnboardingPage(),
+      ),
+      GoRoute(
+        path: '/accounts',
+        builder: (context, state) => const AccountCenterPage(),
       ),
       StatefulShellRoute.indexedStack(
         // builder用于构建StatefulShellRoute的UI
