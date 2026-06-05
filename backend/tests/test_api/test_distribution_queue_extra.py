@@ -1,7 +1,7 @@
 
 import pytest
 from httpx import AsyncClient
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 class TestDistributionQueueExtraAPI:
     """Extra tests for distribution queue management endpoints."""
@@ -303,3 +303,47 @@ class TestDistributionQueueExtraAPI:
         assert reorder_resp.status_code == 200
         assert reorder_resp.json()["id"] == item_id
         assert reorder_resp.json()["priority"] >= 1000
+
+    @pytest.mark.asyncio
+    async def test_item_batch_push_and_schedule_are_item_scoped(self, client: AsyncClient):
+        content_id, _, _ = await self._setup_data(client)
+        await client.post(f"/api/v1/distribution-queue/enqueue/{content_id}", json={"force": True})
+
+        items_resp = await client.get(f"/api/v1/distribution-queue/items?content_id={content_id}")
+        items = items_resp.json()["items"]
+        assert len(items) >= 1
+        item_id = items[0]["id"]
+
+        push_resp = await client.post(
+            "/api/v1/distribution-queue/items/batch-push-now",
+            json={"item_ids": [item_id]},
+        )
+        assert push_resp.status_code == 200
+        push_data = push_resp.json()
+        assert push_data["changed"] == 1
+        assert push_data["run_id"]
+
+        diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
+        runs = diagnostics.json()["recent_task_runs"]
+        push_run = next(run for run in runs if run["run_id"] == push_data["run_id"])
+        assert push_run["task"] == "distribution_schedule"
+        assert push_run["action"] == "item_batch_push_now"
+        assert push_run["queue_item_ids"] == [item_id]
+        assert push_run["result"]["queue_item_ids"] == [item_id]
+
+        start_time = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+        schedule_resp = await client.post(
+            "/api/v1/distribution-queue/items/batch-schedule",
+            json={
+                "item_ids": [item_id],
+                "start_time": start_time,
+                "interval_seconds": 60,
+            },
+        )
+        assert schedule_resp.status_code == 200
+        assert schedule_resp.json()["changed"] == 1
+
+        item_resp = await client.get(f"/api/v1/distribution-queue/items/{item_id}")
+        assert item_resp.status_code == 200
+        assert item_resp.json()["id"] == item_id
+        assert item_resp.json()["status"] == "scheduled"
