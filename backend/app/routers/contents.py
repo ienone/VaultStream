@@ -27,10 +27,45 @@ from app.services.content_presenter import (
     compute_effective_layout_type, compute_display_title, compute_author_avatar_url,
     transform_media_url, transform_content_detail,
 )
+from app.services.background_task_state import (
+    record_task_run_error,
+    record_task_run_started,
+    record_task_run_success,
+)
 from app.media.extractor import sanitize_media_urls
 from app.adapters.utils import ensure_title
 
 router = APIRouter()
+
+
+async def _run_reparse_job(content_id: int, run_id: str, *, force: bool) -> None:
+    try:
+        ok = await worker.retry_parse(content_id, force=force)
+        if ok:
+            await record_task_run_success(
+                "content_reparse",
+                run_id,
+                content_id=content_id,
+                force=force,
+            )
+            return
+
+        await record_task_run_error(
+            "content_reparse",
+            run_id,
+            "Re-parse failed or reached retry limit",
+            content_id=content_id,
+            force=force,
+        )
+    except Exception as exc:
+        await record_task_run_error(
+            "content_reparse",
+            run_id,
+            exc,
+            content_id=content_id,
+            force=force,
+        )
+        raise
 
 def _parse_list_param(values: Optional[List[str]]) -> Optional[List[str]]:
     """处理 FastAPI List[str] 参数，支持逗号分隔或多个相同 Key"""
@@ -239,8 +274,24 @@ async def re_parse_content(
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
 
-    background_tasks.add_task(worker.retry_parse, content_id, force=True)
-    return {"status": "processing", "content_id": content_id, "message": "Re-parsing started in background"}
+    run = await record_task_run_started(
+        "content_reparse",
+        content_id=content_id,
+        force=True,
+        trigger="manual",
+    )
+    background_tasks.add_task(
+        _run_reparse_job,
+        content_id,
+        run["run_id"],
+        force=True,
+    )
+    return {
+        "status": "processing",
+        "content_id": content_id,
+        "run_id": run["run_id"],
+        "message": "Re-parsing started in background",
+    }
 
 @router.get("/pushed-records", response_model=List[PushedRecordResponse])
 async def list_pushed_records(

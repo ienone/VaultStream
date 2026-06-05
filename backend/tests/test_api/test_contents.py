@@ -152,14 +152,29 @@ class TestContentsAPI:
         assert data["is_nsfw"] is True
 
     @pytest.mark.asyncio
-    async def test_content_reparse(self, client: AsyncClient):
+    async def test_content_reparse(self, client: AsyncClient, monkeypatch):
         """Test re-parse action resets content to processing state."""
+        async def fake_retry_parse(content_id: int, max_retries: int = 3, force: bool = False):
+            return True
+
+        monkeypatch.setattr("app.routers.contents.worker.retry_parse", fake_retry_parse)
+
         resp = await client.post("/api/v1/shares", json={"url": "https://www.bilibili.com/video/BVreparse123"})
         content_id = resp.json()["id"]
 
         reparse_resp = await client.post(f"/api/v1/contents/{content_id}/re-parse")
         assert reparse_resp.status_code == 200
-        assert reparse_resp.json()["status"] == "processing"
+        data = reparse_resp.json()
+        assert data["status"] == "processing"
+        assert data["run_id"]
+
+        diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
+        runs = diagnostics.json()["recent_task_runs"]
+        latest = next(run for run in runs if run["run_id"] == data["run_id"])
+        assert latest["task"] == "content_reparse"
+        assert latest["status"] == "success"
+        assert latest["content_id"] == content_id
+        assert latest["force"] is True
 
     @pytest.mark.asyncio
     async def test_content_retry(self, client: AsyncClient):
@@ -211,4 +226,3 @@ class TestContentsAPI:
         # Verify
         list_resp2 = await client.get("/api/v1/pushed-records")
         assert not any(r["id"] == rid for r in list_resp2.json())
-
