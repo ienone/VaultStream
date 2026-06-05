@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend/features/discovery/models/discovery_models.dart';
+import 'package:frontend/features/discovery/providers/discovery_sources_provider.dart';
 import 'package:frontend/features/review/models/bot_chat.dart';
 import 'package:frontend/features/review/models/distribution_rule.dart';
 import 'package:frontend/features/review/models/queue_item.dart';
@@ -10,6 +12,7 @@ import 'package:frontend/features/review/providers/distribution_rules_provider.d
 import 'package:frontend/features/review/providers/queue_provider.dart';
 import 'package:frontend/features/review/review_page.dart';
 import 'package:frontend/features/settings/providers/favorites_sync_provider.dart';
+import 'package:frontend/features/settings/providers/platform_health_provider.dart';
 import 'package:frontend/core/network/api_client.dart';
 import 'package:dio/dio.dart';
 import 'package:mockito/mockito.dart';
@@ -76,6 +79,12 @@ void main() {
             ).overrideWith((ref) => Future.value({'will_push': 0})),
             favoritesSyncStatusProvider.overrideWith(
               (ref) async => _mockFavoritesStatus(),
+            ),
+            platformHealthProvider.overrideWith(
+              (ref) async => _mockPlatformHealth(),
+            ),
+            discoverySourcesProvider.overrideWith(
+              () => MockDiscoverySources(_mockDiscoverySources()),
             ),
             botChatsProvider.overrideWith(() => MockBotChats(mockBotChats)),
             apiClientProvider.overrideWith((ref) => MockDio()),
@@ -148,6 +157,12 @@ void main() {
             favoritesSyncStatusProvider.overrideWith(
               (ref) async => _mockFavoritesStatus(),
             ),
+            platformHealthProvider.overrideWith(
+              (ref) async => _mockPlatformHealth(),
+            ),
+            discoverySourcesProvider.overrideWith(
+              () => MockDiscoverySources(_mockDiscoverySources()),
+            ),
             botChatsProvider.overrideWith(() => MockBotChats(mockBotChats)),
             apiClientProvider.overrideWith((ref) => MockDio()),
           ],
@@ -187,6 +202,12 @@ void main() {
             favoritesSyncStatusProvider.overrideWith(
               (ref) async => _mockFavoritesStatus(),
             ),
+            platformHealthProvider.overrideWith(
+              (ref) async => _mockPlatformHealth(),
+            ),
+            discoverySourcesProvider.overrideWith(
+              () => MockDiscoverySources(_mockDiscoverySources()),
+            ),
             botChatsProvider.overrideWith(() => MockBotChats(mockBotChats)),
             apiClientProvider.overrideWith((ref) => MockDio()),
           ],
@@ -204,6 +225,68 @@ void main() {
       expect(find.text('知乎'), findsOneWidget);
       expect(find.textContaining('abcdef12'), findsOneWidget);
       expect(find.text('重试'), findsOneWidget);
+    });
+
+    testWidgets('ReviewPage exposes automation health matrix', (
+      WidgetTester tester,
+    ) async {
+      final mockDistributionRules = <DistributionRule>[];
+      final mockQueueItems = <QueueItem>[];
+      final mockBotChats = [
+        BotChat(
+          id: 2,
+          botConfigId: 1,
+          chatId: 'target-1',
+          chatType: 'channel',
+          title: 'Push Channel',
+          enabled: true,
+          isPushTarget: true,
+          isAccessible: false,
+          syncError: 'bot lost access',
+          createdAt: DateTime(2026, 6, 6),
+          updatedAt: DateTime(2026, 6, 6),
+        ),
+      ];
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            distributionRulesProvider.overrideWith(
+              () => MockDistributionRules(mockDistributionRules),
+            ),
+            contentQueueProvider.overrideWith(
+              () => MockContentQueue(mockQueueItems),
+            ),
+            queueStatsProvider(
+              null,
+            ).overrideWith((ref) => Future.value({'will_push': 0})),
+            favoritesSyncStatusProvider.overrideWith(
+              (ref) async => _mockFavoritesStatus(),
+            ),
+            platformHealthProvider.overrideWith(
+              (ref) async => _mockPlatformHealth(),
+            ),
+            discoverySourcesProvider.overrideWith(
+              () => MockDiscoverySources(_mockDiscoverySources()),
+            ),
+            botChatsProvider.overrideWith(() => MockBotChats(mockBotChats)),
+            apiClientProvider.overrideWith((ref) => MockDio()),
+          ],
+          child: const MaterialApp(home: ReviewPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('健康矩阵'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('平台账号'), findsOneWidget);
+      expect(find.text('发现源'), findsOneWidget);
+      expect(find.text('推送目标'), findsOneWidget);
+      expect(find.text('知乎'), findsOneWidget);
+      expect(find.text('Tech RSS'), findsOneWidget);
+      expect(find.text('Push Channel'), findsOneWidget);
+      expect(find.textContaining('bot lost access'), findsOneWidget);
     });
   });
 }
@@ -240,6 +323,36 @@ FavoritesSyncStatus _mockFavoritesStatus() {
   );
 }
 
+PlatformHealthResponse _mockPlatformHealth() {
+  return const PlatformHealthResponse(
+    platforms: [
+      PlatformHealthStatus(
+        platform: 'zhihu',
+        label: '知乎',
+        health: 'error',
+        issues: ['登录状态不可用'],
+        auth: {'cookie_configured': true, 'browser_auth_valid': false},
+        favoritesSync: {'supported': true, 'enabled': true},
+      ),
+    ],
+    recentFavoritesRuns: [],
+  );
+}
+
+List<DiscoverySource> _mockDiscoverySources() {
+  return [
+    DiscoverySource(
+      id: 1,
+      kind: 'rss',
+      name: 'Tech RSS',
+      enabled: true,
+      lastError: 'feed timeout',
+      syncIntervalMinutes: 60,
+      createdAt: DateTime(2026, 6, 6),
+    ),
+  ];
+}
+
 class MockDistributionRules extends DistributionRules {
   final List<DistributionRule> _rules;
   MockDistributionRules(this._rules);
@@ -261,4 +374,11 @@ class MockBotChats extends BotChats {
   MockBotChats(this._chats);
   @override
   FutureOr<List<BotChat>> build() => _chats;
+}
+
+class MockDiscoverySources extends DiscoverySources {
+  final List<DiscoverySource> _sources;
+  MockDiscoverySources(this._sources);
+  @override
+  FutureOr<List<DiscoverySource>> build() => _sources;
 }

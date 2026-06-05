@@ -18,6 +18,7 @@ import 'providers/bot_chats_provider.dart';
 import 'providers/queue_provider.dart';
 import 'widgets/pushed_record_tile.dart';
 import 'widgets/distribution_rule_dialog.dart';
+import 'widgets/automation_health_matrix_panel.dart';
 import 'widgets/favorites_sync_automation_panel.dart';
 import 'widgets/rule_config_panel.dart';
 import 'widgets/queue_content_list.dart';
@@ -42,7 +43,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _bindRealtimeEvents();
   }
 
@@ -108,6 +109,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
           tabs: const [
             Tab(text: '分发队列'),
             Tab(text: '收藏同步'),
+            Tab(text: '健康矩阵'),
             Tab(text: '推送历史'),
           ],
         ),
@@ -117,6 +119,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
         children: [
           _buildQueueTab(),
           const FavoritesSyncAutomationPanel(),
+          const AutomationHealthMatrixPanel(),
           _buildHistoryTab(),
         ],
       ),
