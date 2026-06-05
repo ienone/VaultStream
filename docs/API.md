@@ -301,6 +301,16 @@ eventSource.addEventListener('queue_updated', (e) => {
 ### 队列项维度操作
 
 - `POST /api/v1/distribution-queue/items/{item_id}/push-now`
+- `POST /api/v1/distribution-queue/items/{item_id}/schedule`
+- `POST /api/v1/distribution-queue/items/{item_id}/status`
+- `POST /api/v1/distribution-queue/items/{item_id}/reorder`
+- `POST /api/v1/distribution-queue/items/batch-push-now`
+  - 请求体：`{"item_ids": [1, 2, 3]}`
+  - 返回 `run_id`，运行结果进入 `recent_task_runs` 的 `distribution_schedule` 记录，`action=item_batch_push_now`。
+- `POST /api/v1/distribution-queue/items/batch-schedule`
+  - 请求体：`{"item_ids": [1, 2, 3], "start_time": "2026-06-05T12:00:00Z", "interval_seconds": 300}`
+
+前端默认的单条与批量分发操作应使用队列项维度接口；内容维度接口只用于明确希望影响同一内容下所有目标队列项的批量操作。
 
 ---
 
