@@ -564,6 +564,22 @@ class AutomationTab extends ConsumerWidget {
                         : null,
                     showArrow: false,
                   ),
+                if (status.recentRuns.isNotEmpty)
+                  SettingTile(
+                    title: '同步运行记录',
+                    subtitle: '最近 ${status.recentRuns.length} 次任务，可查看结果与失败原因',
+                    icon: Icons.history_rounded,
+                    trailing: TextButton.icon(
+                      onPressed: () => _showFavoritesSyncRunsDialog(
+                        context,
+                        ref,
+                        status.recentRuns,
+                      ),
+                      icon: const Icon(Icons.open_in_new_rounded),
+                      label: const Text('查看'),
+                    ),
+                    showArrow: false,
+                  ),
               ],
             );
           },
@@ -574,6 +590,199 @@ class AutomationTab extends ConsumerWidget {
       loading: () => const LoadingGroup(),
       error: (error, _) => const Text('配置加载失败'),
     );
+  }
+
+  void _showFavoritesSyncRunsDialog(
+    BuildContext context,
+    WidgetRef ref,
+    List<Map<String, dynamic>> runs,
+  ) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('同步运行记录'),
+          content: SizedBox(
+            width: 560,
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: runs.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final run = runs[index];
+                final runId = _runString(run, 'run_id');
+                final status = _runString(run, 'status') ?? 'unknown';
+                final error = _runString(run, 'error');
+                return ListTile(
+                  leading: Icon(
+                    _favoritesRunIcon(status),
+                    color: _favoritesRunColor(dialogContext, status),
+                  ),
+                  title: Text('${_shortRunId(runId)} · ${_runString(run, 'scope') ?? 'all'}'),
+                  subtitle: Text(
+                    [
+                      _favoritesRunStatusLabel(status),
+                      if (_runString(run, 'trigger') != null)
+                        '触发: ${_runString(run, 'trigger')}',
+                      if (_runString(run, 'started_at') != null)
+                        '开始: ${_runString(run, 'started_at')}',
+                      if (error != null) '错误: $error',
+                    ].join('\n'),
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  isThreeLine: true,
+                  trailing: status == 'error' && runId != null
+                      ? IconButton(
+                          tooltip: '重试',
+                          icon: const Icon(Icons.replay_rounded),
+                          onPressed: () => _retryFavoritesRun(
+                            dialogContext,
+                            ref,
+                            runId,
+                          ),
+                        )
+                      : null,
+                  onTap: () => _showFavoritesSyncRunDetailDialog(
+                    dialogContext,
+                    ref,
+                    run,
+                  ),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('关闭'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showFavoritesSyncRunDetailDialog(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> run,
+  ) {
+    final runId = _runString(run, 'run_id');
+    final status = _runString(run, 'status') ?? 'unknown';
+    final error = _runString(run, 'error');
+    final result = run['result'];
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('任务 ${_shortRunId(runId)}'),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              [
+                '状态: ${_favoritesRunStatusLabel(status)}',
+                '范围: ${_runString(run, 'scope') ?? 'all'}',
+                '触发: ${_runString(run, 'trigger') ?? '-'}',
+                '开始: ${_runString(run, 'started_at') ?? '-'}',
+                '结束: ${_runString(run, 'finished_at') ?? '-'}',
+                if (_runString(run, 'retry_of') != null)
+                  '重试自: ${_runString(run, 'retry_of')}',
+                if (error != null) '错误: $error',
+                if (result != null) '结果: $result',
+              ].join('\n'),
+            ),
+          ),
+        ),
+        actions: [
+          if (status == 'error' && runId != null)
+            TextButton.icon(
+              onPressed: () => _retryFavoritesRun(dialogContext, ref, runId),
+              icon: const Icon(Icons.replay_rounded),
+              label: const Text('重试'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _retryFavoritesRun(
+    BuildContext context,
+    WidgetRef ref,
+    String runId,
+  ) async {
+    try {
+      final retryRunId = await ref
+          .read(favoritesSyncActionsProvider)
+          .retryRun(runId);
+      if (context.mounted) {
+        final retrySuffix = retryRunId == null
+            ? ''
+            : ' #${_shortRunId(retryRunId)}';
+        showToast(context, '已重新触发同步$retrySuffix');
+      }
+    } catch (e) {
+      if (context.mounted) {
+        showToast(
+          context,
+          formatApiErrorMessage(e, fallbackMessage: '重试同步失败'),
+        );
+      }
+    }
+  }
+
+  String? _runString(Map<String, dynamic> run, String key) {
+    final value = run[key];
+    if (value == null) return null;
+    final text = value.toString();
+    return text.isEmpty ? null : text;
+  }
+
+  String _shortRunId(String? runId) {
+    if (runId == null || runId.isEmpty) return '-';
+    return runId.length > 8 ? runId.substring(0, 8) : runId;
+  }
+
+  String _favoritesRunStatusLabel(String status) {
+    switch (status) {
+      case 'running':
+        return '运行中';
+      case 'success':
+        return '成功';
+      case 'error':
+        return '失败';
+      default:
+        return status;
+    }
+  }
+
+  IconData _favoritesRunIcon(String status) {
+    switch (status) {
+      case 'running':
+        return Icons.sync_rounded;
+      case 'success':
+        return Icons.task_alt_rounded;
+      case 'error':
+        return Icons.error_outline_rounded;
+      default:
+        return Icons.info_outline_rounded;
+    }
+  }
+
+  Color? _favoritesRunColor(BuildContext context, String status) {
+    switch (status) {
+      case 'success':
+        return Theme.of(context).colorScheme.primary;
+      case 'error':
+        return Theme.of(context).colorScheme.error;
+      default:
+        return null;
+    }
   }
 
   String _platformLabel(String platform) {

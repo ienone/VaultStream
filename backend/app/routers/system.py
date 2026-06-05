@@ -761,7 +761,7 @@ async def retry_favorites_sync_run(
             detail=build_error_payload(
                 message="Favorites sync task is not running",
                 code="favorites_task_unavailable",
-                hint="璇风‘璁ゅ悗绔换鍔″凡鍚姩鍚庨噸璇?",
+                hint="请确认后端收藏同步任务已启动后重试",
                 request_id=getattr(request.state, "request_id", None),
             ),
         )
@@ -774,7 +774,7 @@ async def retry_favorites_sync_run(
             detail=build_error_payload(
                 message=f"Favorites sync run not found: {run_id}",
                 code="favorites_sync_run_not_found",
-                hint="璇峰埛鏂板悓姝ョ姸鎬佸悗閲嶈瘯",
+                hint="请刷新同步状态后重试",
                 request_id=getattr(request.state, "request_id", None),
             ),
         )
@@ -787,7 +787,7 @@ async def retry_favorites_sync_run(
             detail=build_error_payload(
                 message=f"Unsupported favorites sync scope: {scope}",
                 code="unsupported_platform",
-                hint="浠呮敮鎸?zhihu / xiaohongshu / twitter",
+                hint="仅支持 zhihu / xiaohongshu / twitter",
                 request_id=getattr(request.state, "request_id", None),
             ),
         )
