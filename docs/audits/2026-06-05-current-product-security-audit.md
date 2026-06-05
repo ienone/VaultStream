@@ -186,31 +186,18 @@ integration 失败主要集中在真实知乎/小红书内容解析和真实 LLM
 
 - `backend/app/routers/media.py` 的本地媒体路径已经使用 `Path.resolve()` + `relative_to()` 校验真实祖先关系，并拒绝 absolute/rooted key；`backend/tests/test_api/test_media.py` 已覆盖 sibling-prefix 路径和正常存储根内路径。因此原扫描中的“公开媒体路由字符串前缀路径检查”不再作为待修项保留。
 - `backend/app/bot/permissions.py` 的 Telegram bot 权限已经在白名单为空时 fail closed，管理员仍可使用普通命令，黑名单优先级最高；`backend/tests/test_bot/test_permissions.py` 已覆盖这些边界。因此原扫描中的“Telegram bot 白名单默认允许所有用户”不再作为待修项保留。
+- `backend/app/core/safe_fetch.py` 已建立服务端 URL 获取的基础 SSRF 防护；归档图片/视频下载、封面主色远程取图、通用解析 direct HTTP 和 Playwright 抓取均已接入。它会校验 scheme、DNS/IP、redirect 最终目标、响应大小和 content-type；`backend/tests/test_core/test_safe_fetch.py`、`backend/tests/test_media_processor_deep.py`、`backend/tests/test_media_color.py`、`backend/tests/test_adapters/test_tiered_fetcher_security.py` 已覆盖私网地址、私网重定向、类型/大小限制和通用解析阻断。因此原扫描中的“归档媒体处理缺少 SSRF 控制”和“通用分享解析可触发内部 URL 获取”不再作为待修项保留。
 
-当前仍需跟进 4 项。
+当前仍需跟进 2 项。
 
-### S1. 归档媒体处理缺少 SSRF 控制
-
-- 严重性：medium
-- 置信度：high
-- 影响：RSS、发现源或通用解析可以带入图片/视频 URL，媒体处理器会用 httpx 跟随重定向下载，缺少私网、link-local、redirect 最终目标校验。
-- 建议：所有服务端 URL 获取统一走 SSRF-safe fetcher，校验 scheme、DNS、连接目标、重定向、大小和内容类型。
-
-### S2. 公开图片代理只做连接前 DNS 校验
+### S1. 公开图片代理只做连接前 DNS 校验
 
 - 严重性：medium
 - 置信度：medium
 - 影响：图片代理会预解析 DNS 并拒绝私网地址，但实际 httpx 连接仍使用原始 hostname，没有绑定已校验 IP，理论上存在 DNS rebinding 或解析差异绕过。
 - 建议：连接时绑定或验证目标 IP；每次重定向后重新校验；禁止私网、link-local、reserved 目标。
 
-### S3. 通用分享解析可触发内部 URL 获取
-
-- 严重性：medium
-- 置信度：high
-- 影响：持有 API token 的客户端可以提交任意 URL，unknown host 会进入 universal adapter，`tiered_fetch` 使用 httpx/Playwright 直接获取，缺少统一 SSRF 策略。
-- 建议：通用解析和 Playwright navigation 也必须走 SSRF-safe fetcher/策略；对 localhost、RFC1918、metadata、redirect 加测试。
-
-### S4. 本地归档媒体可无鉴权访问
+### S2. 本地归档媒体可无鉴权访问
 
 - 严重性：low
 - 置信度：medium
@@ -227,7 +214,7 @@ integration 失败主要集中在真实知乎/小红书内容解析和真实 LLM
 
 - 把收藏同步升级为可追踪、可预览、可重试的独立功能。
 - 建立账号与平台健康中心。
-- 所有服务端 URL 获取统一 SSRF 防护，包括媒体处理、图片代理、通用解析和 Playwright。
+- 继续收敛图片代理的 SSRF 连接绑定问题；归档媒体处理、封面主色远程取图、通用解析和 Playwright 已接入 `safe_fetch` 基础防护。
 - 明确发现源支持边界：当前已按 RSS 和 Telegram Channel 收敛；后续新增来源必须端到端补齐 scraper、API 和 UI。
 
 ### P2：提升产品可理解性

@@ -1,11 +1,26 @@
 import pytest
+import httpx
 from unittest.mock import patch, MagicMock, AsyncMock
+from app.core.safe_fetch import SafeFetchResult
 from app.media.processor import (
     _request_headers_for_url,
     _sha256_bytes,
     _content_addressed_key,
     _build_request_url,
 )
+
+
+def _safe_fetch_result(
+    content: bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 128,
+    content_type: str = "image/png",
+    url: str = "https://ok.example.com/good.jpg",
+) -> SafeFetchResult:
+    return SafeFetchResult(
+        url=url,
+        status_code=200,
+        headers=httpx.Headers({"content-type": content_type}),
+        content=content,
+    )
 
 @pytest.mark.parametrize("url, expected_header", [
     ("https://i0.hdslb.com/bfs/image.jpg", "https://www.bilibili.com/"),
@@ -62,33 +77,52 @@ async def test_store_archive_images_skips_on_download_failure():
     mock_storage.put_bytes = AsyncMock()
     mock_storage.get_url = MagicMock(return_value="http://local/good.webp")
 
-    # First image: all 3 retries fail; second image: succeeds
-    good_png = b'\x89PNG\r\n\x1a\n' + b'\x00' * 100
-    mock_resp_fail = MagicMock()
-    mock_resp_fail.raise_for_status.side_effect = Exception("Connection refused")
-
-    mock_resp_ok = MagicMock()
-    mock_resp_ok.raise_for_status = MagicMock()
-    mock_resp_ok.content = good_png
-
     with patch("httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(side_effect=[
-            mock_resp_fail, mock_resp_fail, mock_resp_fail,  # 3 retries for first image
-            mock_resp_ok,  # second image succeeds
-        ])
         mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.media.processor._image_to_webp", return_value=(b"webp_data", 100, 100)):
+        safe_fetch_mock = AsyncMock(side_effect=[
+            Exception("Connection refused"),
+            Exception("Connection refused"),
+            Exception("Connection refused"),
+            _safe_fetch_result(),
+        ])
+        with patch("app.media.processor.safe_client_get", safe_fetch_mock):
+            with patch("app.media.processor._image_to_webp", return_value=(b"webp_data", 100, 100)):
+                with patch("app.services.settings_service.get_setting_value", AsyncMock(return_value=None)):
+                    result = await store_archive_images_as_webp(
+                        archive=archive, storage=mock_storage, namespace="test"
+                    )
+
+    # First image skipped, second stored
+    assert len(result.get("stored_images", [])) == 1
+    assert result["stored_images"][0]["orig_url"] == "https://ok.example.com/good.jpg"
+
+
+@pytest.mark.asyncio
+async def test_store_archive_images_skips_unsafe_private_url():
+    """Archive media downloading must not fetch internal/private URLs."""
+    from app.media.processor import store_archive_images_as_webp
+
+    archive = {"images": [{"url": "http://127.0.0.1/private.jpg"}]}
+    mock_storage = MagicMock()
+    mock_storage.put_bytes = AsyncMock()
+
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        safe_fetch_mock = AsyncMock(side_effect=Exception("unsafe url"))
+
+        with patch("app.media.processor.safe_client_get", safe_fetch_mock):
             with patch("app.services.settings_service.get_setting_value", AsyncMock(return_value=None)):
                 result = await store_archive_images_as_webp(
                     archive=archive, storage=mock_storage, namespace="test"
                 )
 
-    # First image skipped, second stored
-    assert len(result.get("stored_images", [])) == 1
-    assert result["stored_images"][0]["orig_url"] == "https://ok.example.com/good.jpg"
+    assert "stored_images" not in result
+    mock_storage.put_bytes.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -106,22 +140,17 @@ async def test_store_archive_images_rewrites_markdown_with_local_url():
     mock_storage.put_bytes = AsyncMock()
     mock_storage.get_url = MagicMock(return_value="http://local/ignored.webp")
 
-    good_png = b'\x89PNG\r\n\x1a\n' + b'\x00' * 128
-    mock_resp_ok = MagicMock()
-    mock_resp_ok.raise_for_status = MagicMock()
-    mock_resp_ok.content = good_png
-
     with patch("httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_resp_ok)
         mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.media.processor._image_to_webp", return_value=(b"webp_data", 100, 100)):
-            with patch("app.services.settings_service.get_setting_value", AsyncMock(return_value=None)):
-                result = await store_archive_images_as_webp(
-                    archive=archive, storage=mock_storage, namespace="test"
-                )
+        with patch("app.media.processor.safe_client_get", AsyncMock(return_value=_safe_fetch_result(url=source_url))):
+            with patch("app.media.processor._image_to_webp", return_value=(b"webp_data", 100, 100)):
+                with patch("app.services.settings_service.get_setting_value", AsyncMock(return_value=None)):
+                    result = await store_archive_images_as_webp(
+                        archive=archive, storage=mock_storage, namespace="test"
+                    )
 
     stored = result.get("stored_images", [])
     assert len(stored) == 1
@@ -153,16 +182,17 @@ async def test_store_archive_images_rewrites_markdown_from_existing_stored_key()
 
     with patch("httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock()
         mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
+        safe_fetch_mock = AsyncMock()
         with patch("app.services.settings_service.get_setting_value", AsyncMock(return_value=None)):
-            result = await store_archive_images_as_webp(
-                archive=archive, storage=mock_storage, namespace="test"
-            )
+            with patch("app.media.processor.safe_client_get", safe_fetch_mock):
+                result = await store_archive_images_as_webp(
+                    archive=archive, storage=mock_storage, namespace="test"
+                )
 
-    mock_client.get.assert_not_awaited()
+    safe_fetch_mock.assert_not_awaited()
     assert result["markdown"] == "![img](local://vaultstream/blobs/sha256/aa/bb/existing.webp)"
     assert result["stored_images"][0]["key"] == "vaultstream/blobs/sha256/aa/bb/existing.webp"
 
@@ -181,23 +211,20 @@ async def test_store_archive_images_keeps_bang_in_request_url():
     mock_storage.put_bytes = AsyncMock()
     mock_storage.get_url = MagicMock(return_value="http://local/img.webp")
 
-    mock_resp_ok = MagicMock()
-    mock_resp_ok.raise_for_status = MagicMock()
-    mock_resp_ok.content = b"\x89PNG\r\n\x1a\n" + b"\x00" * 128
-
     with patch("httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_resp_ok)
         mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.media.processor._image_to_webp", return_value=(b"webp_data", 100, 100)):
-            with patch("app.services.settings_service.get_setting_value", AsyncMock(return_value=None)):
-                await store_archive_images_as_webp(
-                    archive=archive, storage=mock_storage, namespace="test"
-                )
+        safe_fetch_mock = AsyncMock(return_value=_safe_fetch_result(url=source_url))
+        with patch("app.media.processor.safe_client_get", safe_fetch_mock):
+            with patch("app.media.processor._image_to_webp", return_value=(b"webp_data", 100, 100)):
+                with patch("app.services.settings_service.get_setting_value", AsyncMock(return_value=None)):
+                    await store_archive_images_as_webp(
+                        archive=archive, storage=mock_storage, namespace="test"
+                    )
 
-    request_url = mock_client.get.await_args.args[0]
+    request_url = safe_fetch_mock.await_args.args[1]
     assert request_url.endswith("!nd_dft_wlteh_webp_3")
     assert "%21" not in request_url
 

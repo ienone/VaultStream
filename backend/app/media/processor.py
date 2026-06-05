@@ -21,10 +21,13 @@ import httpx
 
 from app.core.logging import logger
 from app.core.config import settings
+from app.core.safe_fetch import safe_client_get
 from app.adapters.storage import LocalStorageBackend
 
 _URL_PATH_SAFE_CHARS = "/%:@!$&'()*+,;=-._~"
 _URL_QUERY_SAFE_CHARS = "/?:@!$&'()*+,;=-._~%="
+_MAX_ARCHIVE_IMAGE_BYTES = 20 * 1024 * 1024
+_MAX_ARCHIVE_VIDEO_BYTES = 200 * 1024 * 1024
 
 
 def _request_headers_for_url(url: str) -> dict[str, str]:
@@ -273,8 +276,19 @@ async def extract_cover_color(url: str, timeout_seconds: float = 10.0) -> Option
     headers = _request_headers_for_url(url)
     try:
         async with httpx.AsyncClient(proxy=proxy, timeout=timeout_seconds, follow_redirects=True) as client:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
+            resp = await safe_client_get(
+                client,
+                url,
+                headers=headers,
+                max_bytes=_MAX_ARCHIVE_IMAGE_BYTES,
+                allowed_content_type_prefixes=("image/",),
+            )
+            if resp.status_code >= 400:
+                raise httpx.HTTPStatusError(
+                    f"Unexpected status code: {resp.status_code}",
+                    request=httpx.Request("GET", resp.url),
+                    response=httpx.Response(resp.status_code),
+                )
             return _get_dominant_color(resp.content)
     except Exception as e:
         logger.warning(f"Failed to extract color from {url}: {e}")
@@ -362,8 +376,19 @@ async def store_archive_images_as_webp(
             # Best-effort retries for transient failures (network hiccups, CDN throttling).
             for attempt in range(3):
                 try:
-                    resp = await client.get(request_url, headers=_request_headers_for_url(orig_url))
-                    resp.raise_for_status()
+                    resp = await safe_client_get(
+                        client,
+                        request_url,
+                        headers=_request_headers_for_url(orig_url),
+                        max_bytes=_MAX_ARCHIVE_IMAGE_BYTES,
+                        allowed_content_type_prefixes=("image/",),
+                    )
+                    if resp.status_code >= 400:
+                        raise httpx.HTTPStatusError(
+                            f"Unexpected status code: {resp.status_code}",
+                            request=httpx.Request("GET", request_url),
+                            response=httpx.Response(resp.status_code),
+                        )
                     src_bytes = resp.content
                     webp_bytes, width, height = _image_to_webp(src_bytes, quality=quality)
                     sha256_hex = _sha256_bytes(webp_bytes)
@@ -548,8 +573,19 @@ async def store_archive_videos(
             # Best-effort retries for transient failures
             for attempt in range(3):
                 try:
-                    resp = await client.get(orig_url, headers=_request_headers_for_url(orig_url))
-                    resp.raise_for_status()
+                    resp = await safe_client_get(
+                        client,
+                        orig_url,
+                        headers=_request_headers_for_url(orig_url),
+                        max_bytes=_MAX_ARCHIVE_VIDEO_BYTES,
+                        allowed_content_type_prefixes=("video/",),
+                    )
+                    if resp.status_code >= 400:
+                        raise httpx.HTTPStatusError(
+                            f"Unexpected status code: {resp.status_code}",
+                            request=httpx.Request("GET", orig_url),
+                            response=httpx.Response(resp.status_code),
+                        )
                     video_bytes = resp.content
                     sha256_hex = _sha256_bytes(video_bytes)
                     

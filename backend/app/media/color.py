@@ -10,6 +10,9 @@ from urllib.parse import urlparse
 
 from app.core.logging import logger
 from app.core.config import settings
+from app.core.safe_fetch import safe_client_get
+
+_MAX_COLOR_IMAGE_BYTES = 20 * 1024 * 1024
 
 
 def _get_dominant_color(data: bytes) -> str:
@@ -60,7 +63,9 @@ def _try_read_local_media(url: str) -> Optional[bytes]:
         # 检查是否是本地媒体路径 (如 /media/vaultstream/blobs/...)
         if parsed.path.startswith("/media/"):
             relative_path = parsed.path[7:]  # 去掉 "/media/" 前缀
-            local_path = Path(settings.storage_local_root) / relative_path
+            storage_root = Path(settings.storage_local_root).resolve()
+            local_path = (storage_root / relative_path).resolve()
+            local_path.relative_to(storage_root)
             if local_path.exists() and local_path.is_file():
                 return local_path.read_bytes()
     except Exception:
@@ -91,8 +96,18 @@ async def extract_cover_color(url: str, timeout_seconds: float = 10.0) -> Option
         
         # 远程URL通过HTTP获取
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
+            resp = await safe_client_get(
+                client,
+                url,
+                max_bytes=_MAX_COLOR_IMAGE_BYTES,
+                allowed_content_type_prefixes=("image/",),
+            )
+            if resp.status_code >= 400:
+                raise httpx.HTTPStatusError(
+                    f"Unexpected status code: {resp.status_code}",
+                    request=httpx.Request("GET", resp.url),
+                    response=httpx.Response(resp.status_code),
+                )
             data = resp.content
             return _get_dominant_color(data)
     except Exception as e:

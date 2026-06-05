@@ -19,6 +19,14 @@ import httpx
 from bs4 import BeautifulSoup
 
 from app.core.crawler_config import get_delay_for_url_sync
+from app.core.safe_fetch import is_safe_url, safe_client_get
+
+_MAX_FETCH_TEXT_BYTES = 5 * 1024 * 1024
+_TEXT_CONTENT_TYPES = (
+    "text/",
+    "application/xhtml+xml",
+    "application/xml",
+)
 
 
 @dataclass
@@ -101,8 +109,14 @@ async def _try_cloudflare_markdown(url: str, timeout: float = 10.0) -> Optional[
     }
 
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
-            resp = await client.get(url, headers=headers)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await safe_client_get(
+                client,
+                url,
+                headers=headers,
+                max_bytes=_MAX_FETCH_TEXT_BYTES,
+                allowed_content_type_prefixes=_TEXT_CONTENT_TYPES,
+            )
             content_type = resp.headers.get("content-type", "")
 
             if "text/markdown" in content_type:
@@ -140,8 +154,15 @@ async def _try_direct_http(url: str, cookies: Optional[dict] = None, timeout: fl
     }
 
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=timeout, cookies=cookies) as client:
-            resp = await client.get(url, headers=headers)
+        async with httpx.AsyncClient(timeout=timeout, cookies=cookies) as client:
+            resp = await safe_client_get(
+                client,
+                url,
+                headers=headers,
+                cookies=cookies,
+                max_bytes=_MAX_FETCH_TEXT_BYTES,
+                allowed_content_type_prefixes=_TEXT_CONTENT_TYPES,
+            )
             if resp.status_code != 200:
                 return None
 
@@ -188,6 +209,9 @@ async def _try_crawl4ai(url: str, cookies: Optional[dict] = None) -> Optional[Fe
             pw_cookies.append({"name": k, "value": v, "domain": domain, "path": "/"})
 
     async def _fetch_coro() -> Optional[str]:
+        if not is_safe_url(url):
+            return None
+
         browser = browser_manager.get_browser()
         context = await browser.new_context(
             viewport=browser_manager.fetch_viewport,
@@ -197,6 +221,13 @@ async def _try_crawl4ai(url: str, cookies: Optional[dict] = None) -> Optional[Fe
             await context.add_cookies(pw_cookies)
             
         try:
+            async def _route_guard(route, request) -> None:
+                if is_safe_url(request.url):
+                    await route.continue_()
+                else:
+                    await route.abort()
+
+            await context.route("**/*", _route_guard)
             page = await context.new_page()
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
