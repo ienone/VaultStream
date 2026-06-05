@@ -14,6 +14,7 @@ from app.services.background_task_state import (
     record_task_run_started,
     record_task_run_success,
 )
+from app.services.config_service import FavoritesSyncConfig, FavoritesSyncPlatformState
 from app.tasks.favorites_sync import FavoritesSyncTask
 
 
@@ -76,6 +77,32 @@ class _FakeFavoritesSyncTask:
             results={},
         )
         return {}
+
+
+class _FakeFavoritesConfigService:
+    async def get_favorites_sync_config(self, **kwargs) -> FavoritesSyncConfig:
+        return FavoritesSyncConfig(
+            enabled_platforms=[],
+            interval_minutes=kwargs["default_interval_minutes"],
+            max_items=50,
+            duplicate_strategy="skip",
+            last_sync_at=None,
+        )
+
+    async def get_favorites_sync_platform_state(
+        self,
+        platform: str,
+        **kwargs,
+    ) -> FavoritesSyncPlatformState:
+        return FavoritesSyncPlatformState(
+            platform=platform,
+            rate_per_minute=100,
+            cursor=None,
+            last_result=None,
+        )
+
+    async def set_favorites_sync_cursor(self, platform: str, value: str):
+        raise AssertionError("cursor should not be updated in this test")
 
 
 class _HealthyFavoritesFetcher:
@@ -329,15 +356,6 @@ class TestSystemAPI:
         self,
         monkeypatch,
     ):
-        async def fake_setting(key: str, default=None):
-            if key == "favorites_sync_duplicate_strategy":
-                return "skip"
-            if key == "favorites_sync_max_items":
-                return 50
-            if key == "favorites_sync_rate_zhihu":
-                return 100
-            return default
-
         async def fake_exists(session, url: str) -> bool:
             assert url == "https://example.com/existing"
             return True
@@ -345,10 +363,6 @@ class TestSystemAPI:
         async def fail_create_share(self, **kwargs):
             raise AssertionError("duplicate skip should not import existing item")
 
-        monkeypatch.setattr(
-            "app.tasks.favorites_sync.get_setting_value_fresh",
-            fake_setting,
-        )
         monkeypatch.setattr(
             FavoritesSyncTask,
             "_favorite_item_exists",
@@ -359,7 +373,9 @@ class TestSystemAPI:
             fail_create_share,
         )
 
-        result = await FavoritesSyncTask()._sync_platform(_FakeFavoritesFetcher())
+        result = await FavoritesSyncTask(
+            config_service=_FakeFavoritesConfigService()
+        )._sync_platform(_FakeFavoritesFetcher())
 
         assert result["status"] == "success"
         assert result["imported"] == 0

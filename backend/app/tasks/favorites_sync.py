@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
-from collections.abc import Iterable
 from typing import Any, Optional
 
 from sqlalchemy import and_, or_, select
@@ -28,10 +26,7 @@ from app.services.background_task_state import (
     record_task_success,
 )
 from app.services.content_service import ContentService
-from app.services.settings_service import (
-    get_setting_value_fresh,
-    set_setting_value,
-)
+from app.services.config_service import ConfigService
 
 
 class FavoritesSyncTask:
@@ -48,10 +43,11 @@ class FavoritesSyncTask:
         "twitter": 5.0,
     }
 
-    def __init__(self):
+    def __init__(self, config_service: ConfigService | None = None):
         self._task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
         self._fetchers = self.get_fetcher_registry()
+        self._config_service = config_service or ConfigService()
 
     @staticmethod
     def get_fetcher_registry() -> dict[str, type[BaseFavoritesFetcher]]:
@@ -86,35 +82,16 @@ class FavoritesSyncTask:
             metadata["retry_of"] = retry_of
         return await record_task_run_started("favorites_sync", **metadata)
 
-    @staticmethod
-    def _parse_enabled_platforms(raw_value: object) -> list[str]:
-        if raw_value is None:
-            return []
-        if isinstance(raw_value, str):
-            text = raw_value.strip()
-            if not text:
-                return []
-            try:
-                parsed = json.loads(text)
-                if isinstance(parsed, list):
-                    return [str(x).strip().lower() for x in parsed if str(x).strip()]
-            except json.JSONDecodeError:
-                pass
-            return [x.strip().lower() for x in text.split(",") if x.strip()]
-        if isinstance(raw_value, Iterable):
-            values: list[str] = []
-            for x in raw_value:
-                sx = str(x).strip().lower()
-                if sx:
-                    values.append(sx)
-            return values
-        return []
-
     async def load_enabled_platforms(self) -> list[str]:
-        # Read from DB directly to avoid stale in-process cache when running multi workers.
-        raw = await get_setting_value_fresh("favorites_sync_platforms", [])
-        parsed = self._parse_enabled_platforms(raw)
-        return [p for p in parsed if p in self._fetchers]
+        config = await self._config_service.get_favorites_sync_config(
+            default_interval_minutes=self._DEFAULT_INTERVAL_MINUTES,
+            default_max_items=self._DEFAULT_MAX_ITEMS,
+            default_duplicate_strategy=self._DEFAULT_DUPLICATE_STRATEGY,
+            supported_platforms=self._fetchers.keys(),
+            allowed_duplicate_strategies=self._DUPLICATE_STRATEGIES,
+            fresh=True,
+        )
+        return config.enabled_platforms
 
     def start(self):
         if self.is_running():
@@ -133,15 +110,17 @@ class FavoritesSyncTask:
 
     async def _sync_loop(self):
         while True:
+            interval = self._DEFAULT_INTERVAL_MINUTES
             try:
-                interval = int(
-                    await get_setting_value_fresh(
-                        "favorites_sync_interval_minutes",
-                        self._DEFAULT_INTERVAL_MINUTES,
-                    )
+                config = await self._config_service.get_favorites_sync_config(
+                    default_interval_minutes=self._DEFAULT_INTERVAL_MINUTES,
+                    default_max_items=self._DEFAULT_MAX_ITEMS,
+                    default_duplicate_strategy=self._DEFAULT_DUPLICATE_STRATEGY,
+                    supported_platforms=self._fetchers.keys(),
+                    allowed_duplicate_strategies=self._DUPLICATE_STRATEGIES,
+                    fresh=True,
                 )
-                if interval <= 0:
-                    interval = self._DEFAULT_INTERVAL_MINUTES
+                interval = config.interval_minutes
                 await self.sync_all_platforms_once()
             except Exception as e:
                 logger.exception("Favorites sync loop failed: {}", e)
@@ -206,16 +185,8 @@ class FavoritesSyncTask:
                         )
 
                 now_iso = utcnow().isoformat()
-                await set_setting_value(
-                    "favorites_sync_last_sync_at",
-                    now_iso,
-                    category="favorites_sync",
-                )
-                await set_setting_value(
-                    "favorites_sync_last_result",
-                    results,
-                    category="favorites_sync",
-                )
+                await self._config_service.set_favorites_sync_last_sync_at(now_iso)
+                await self._config_service.set_favorites_sync_last_result(results)
                 failed_platforms = [
                     platform
                     for platform, result in results.items()
@@ -306,16 +277,11 @@ class FavoritesSyncTask:
     async def _sync_platform_by_name_inner(self, platform: str) -> dict:
         fetcher_cls = self._fetchers[platform]
         result = await self._sync_platform(fetcher_cls())
-        await set_setting_value(
-            f"favorites_sync_last_result_{platform}",
+        await self._config_service.set_favorites_sync_platform_last_result(
+            platform,
             result,
-            category="favorites_sync",
         )
-        await set_setting_value(
-            "favorites_sync_last_sync_at",
-            utcnow().isoformat(),
-            category="favorites_sync",
-        )
+        await self._config_service.set_favorites_sync_last_sync_at(utcnow().isoformat())
         return result
 
     async def preview_all_platforms(self) -> dict:
@@ -348,25 +314,34 @@ class FavoritesSyncTask:
 
     async def _preview_platform(self, fetcher: BaseFavoritesFetcher) -> dict:
         platform = fetcher.platform_name()
-        max_items = int(
-            await get_setting_value_fresh(
-                "favorites_sync_max_items",
-                self._DEFAULT_MAX_ITEMS,
-            )
+        config = await self._config_service.get_favorites_sync_config(
+            default_interval_minutes=self._DEFAULT_INTERVAL_MINUTES,
+            default_max_items=self._DEFAULT_MAX_ITEMS,
+            default_duplicate_strategy=self._DEFAULT_DUPLICATE_STRATEGY,
+            supported_platforms=self._fetchers.keys(),
+            allowed_duplicate_strategies=self._DUPLICATE_STRATEGIES,
+            fresh=True,
         )
-        cursor = await get_setting_value_fresh(f"favorites_sync_cursor_{platform}")
-        if not isinstance(cursor, str):
-            cursor = None
+        platform_state = await self._config_service.get_favorites_sync_platform_state(
+            platform,
+            default_rate_per_minute=self.default_rate_for(platform),
+            fresh=True,
+        )
 
         try:
             is_authenticated = await fetcher.check_auth()
         except FavoritesFetchError as e:
-            return self._build_preview_failure(platform, max_items, bool(cursor), e)
+            return self._build_preview_failure(
+                platform,
+                config.max_items,
+                bool(platform_state.cursor),
+                e,
+            )
         except Exception as e:
             return self._build_preview_failure(
                 platform,
-                max_items,
-                bool(cursor),
+                config.max_items,
+                bool(platform_state.cursor),
                 FavoritesFetchError(
                     code="auth_check_failed",
                     message=str(e),
@@ -378,8 +353,8 @@ class FavoritesSyncTask:
         if not is_authenticated:
             return self._build_preview_failure(
                 platform,
-                max_items,
-                bool(cursor),
+                config.max_items,
+                bool(platform_state.cursor),
                 FavoritesFetchError(
                     code="auth_required",
                     message="Authentication required",
@@ -390,16 +365,21 @@ class FavoritesSyncTask:
 
         try:
             items, next_cursor = await fetcher.fetch_favorites(
-                max_items=max_items,
-                cursor=cursor,
+                max_items=config.max_items,
+                cursor=platform_state.cursor,
             )
         except FavoritesFetchError as e:
-            return self._build_preview_failure(platform, max_items, bool(cursor), e)
+            return self._build_preview_failure(
+                platform,
+                config.max_items,
+                bool(platform_state.cursor),
+                e,
+            )
         except Exception as e:
             return self._build_preview_failure(
                 platform,
-                max_items,
-                bool(cursor),
+                config.max_items,
+                bool(platform_state.cursor),
                 FavoritesFetchError(
                     code="fetch_failed",
                     message=str(e),
@@ -441,8 +421,8 @@ class FavoritesSyncTask:
             "platform": platform,
             "status": "success",
             "authenticated": True,
-            "max_items": max_items,
-            "cursor_present": bool(cursor),
+            "max_items": config.max_items,
+            "cursor_present": bool(platform_state.cursor),
             "fetched": len(items),
             "unique": len(unique_items),
             "existing": existing,
@@ -557,33 +537,26 @@ class FavoritesSyncTask:
                 ),
             )
 
-        max_items = int(
-            await get_setting_value_fresh(
-                "favorites_sync_max_items",
-                self._DEFAULT_MAX_ITEMS,
-            )
+        config = await self._config_service.get_favorites_sync_config(
+            default_interval_minutes=self._DEFAULT_INTERVAL_MINUTES,
+            default_max_items=self._DEFAULT_MAX_ITEMS,
+            default_duplicate_strategy=self._DEFAULT_DUPLICATE_STRATEGY,
+            supported_platforms=self._fetchers.keys(),
+            allowed_duplicate_strategies=self._DUPLICATE_STRATEGIES,
+            fresh=True,
         )
-        rate_limit = float(
-            await get_setting_value_fresh(
-                f"favorites_sync_rate_{platform}",
-                self.default_rate_for(platform),
-            )
+        platform_state = await self._config_service.get_favorites_sync_platform_state(
+            platform,
+            default_rate_per_minute=self.default_rate_for(platform),
+            fresh=True,
         )
-        duplicate_strategy = self.normalize_duplicate_strategy(
-            await get_setting_value_fresh(
-                "favorites_sync_duplicate_strategy",
-                self._DEFAULT_DUPLICATE_STRATEGY,
-            )
-        )
-        delay = 60.0 / max(rate_limit, 0.1)
-        cursor = await get_setting_value_fresh(f"favorites_sync_cursor_{platform}")
-        if not isinstance(cursor, str):
-            cursor = None
+        duplicate_strategy = config.duplicate_strategy
+        delay = 60.0 / max(platform_state.rate_per_minute, 0.1)
 
         try:
             items, next_cursor = await fetcher.fetch_favorites(
-                max_items=max_items,
-                cursor=cursor,
+                max_items=config.max_items,
+                cursor=platform_state.cursor,
             )
         except FavoritesFetchError as e:
             logger.bind(
@@ -665,11 +638,7 @@ class FavoritesSyncTask:
                 await asyncio.sleep(delay)
 
         if next_cursor is not None:
-            await set_setting_value(
-                f"favorites_sync_cursor_{platform}",
-                next_cursor,
-                category="favorites_sync",
-            )
+            await self._config_service.set_favorites_sync_cursor(platform, next_cursor)
 
         result = {
             "platform": platform,

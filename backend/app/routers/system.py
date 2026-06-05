@@ -50,6 +50,7 @@ from app.services.background_task_state import (
     record_task_run_success,
 )
 from app.services.embedding_service import EmbeddingService
+from app.services.config_service import ConfigService
 from app.services.settings_service import get_setting_value
 from app.utils.sensitive_display import extract_secret_value
 from app.utils.sensitive_display import as_configured_placeholder, is_sensitive_setting_key
@@ -1023,33 +1024,21 @@ async def get_favorites_sync_status(
     _: None = Depends(require_api_token),
 ):
     """Get favorites sync runtime/settings status for frontend panel."""
-    from app.services.settings_service import get_setting_value
     from app.tasks.favorites_sync import FavoritesSyncTask
 
+    config_service = ConfigService()
     sync_task = getattr(request.app.state, "favorites_sync_task", None)
     if sync_task is None:
-        sync_task = FavoritesSyncTask()
+        sync_task = FavoritesSyncTask(config_service=config_service)
 
-    interval = int(
-        await get_setting_value(
-            "favorites_sync_interval_minutes",
-            FavoritesSyncTask._DEFAULT_INTERVAL_MINUTES,
-        )
-    )
-    max_items = int(
-        await get_setting_value(
-            "favorites_sync_max_items",
-            FavoritesSyncTask._DEFAULT_MAX_ITEMS,
-        )
-    )
-    duplicate_strategy = FavoritesSyncTask.normalize_duplicate_strategy(
-        await get_setting_value(
-            "favorites_sync_duplicate_strategy",
-            FavoritesSyncTask._DEFAULT_DUPLICATE_STRATEGY,
-        )
+    config = await config_service.get_favorites_sync_config(
+        default_interval_minutes=FavoritesSyncTask._DEFAULT_INTERVAL_MINUTES,
+        default_max_items=FavoritesSyncTask._DEFAULT_MAX_ITEMS,
+        default_duplicate_strategy=FavoritesSyncTask._DEFAULT_DUPLICATE_STRATEGY,
+        supported_platforms=sync_task.get_supported_platforms(),
+        allowed_duplicate_strategies=FavoritesSyncTask._DUPLICATE_STRATEGIES,
     )
     enabled_platforms = await sync_task.load_enabled_platforms()
-    last_sync_at = await get_setting_value("favorites_sync_last_sync_at")
 
     platforms: list[dict[str, Any]] = []
     for platform in sync_task.get_supported_platforms():
@@ -1100,13 +1089,10 @@ async def get_favorites_sync_status(
                 )
                 logger.exception("[favorites status] check_auth failed for {}", platform)
 
-        rate = float(
-            await get_setting_value(
-                f"favorites_sync_rate_{platform}",
-                sync_task.default_rate_for(platform),
-            )
+        platform_state = await config_service.get_favorites_sync_platform_state(
+            platform,
+            default_rate_per_minute=sync_task.default_rate_for(platform),
         )
-        last_result = await get_setting_value(f"favorites_sync_last_result_{platform}")
 
         platforms.append(
             {
@@ -1114,8 +1100,8 @@ async def get_favorites_sync_status(
                 "enabled": platform in enabled_platforms,
                 "available": available,
                 "authenticated": authenticated,
-                "rate_per_minute": rate,
-                "last_result": last_result,
+                "rate_per_minute": platform_state.rate_per_minute,
+                "last_result": platform_state.last_result,
                 "error": error,
                 "status_error": status_error,
             }
@@ -1123,13 +1109,13 @@ async def get_favorites_sync_status(
 
     return {
         "running": sync_task.is_running(),
-        "interval_minutes": interval,
-        "max_items": max_items,
+        "interval_minutes": config.interval_minutes,
+        "max_items": config.max_items,
         "enabled_platforms": enabled_platforms,
-        "last_sync_at": last_sync_at,
+        "last_sync_at": config.last_sync_at,
         "recent_runs": await get_recent_task_runs("favorites_sync", limit=10),
         "policies": {
-            "duplicate_strategy": duplicate_strategy,
+            "duplicate_strategy": config.duplicate_strategy,
             "unfavorite_strategy": "keep_local",
         },
         "platforms": platforms,
@@ -1143,12 +1129,12 @@ async def get_platform_health(
 ):
     """Aggregate platform login, cookie and favorites-sync health in one API."""
     from app.services.browser_auth_service import browser_auth_service
-    from app.services.settings_service import get_setting_value
     from app.tasks.favorites_sync import FavoritesSyncTask
 
+    config_service = ConfigService()
     sync_task = getattr(request.app.state, "favorites_sync_task", None)
     if sync_task is None:
-        sync_task = FavoritesSyncTask()
+        sync_task = FavoritesSyncTask(config_service=config_service)
 
     enabled_favorites = await sync_task.load_enabled_platforms()
     recent_runs = await get_recent_task_runs("favorites_sync", limit=20)
@@ -1181,7 +1167,11 @@ async def get_platform_health(
         favorites_available = favorites_supported
         favorites_error: str | None = None
         favorites_status_error: dict[str, Any] | None = None
-        favorites_last_result = await get_setting_value(f"favorites_sync_last_result_{platform}")
+        platform_state = await config_service.get_favorites_sync_platform_state(
+            platform,
+            default_rate_per_minute=sync_task.default_rate_for(platform),
+        )
+        favorites_last_result = platform_state.last_result
 
         if favorites_supported and favorites_enabled:
             fetcher_cls = sync_task.get_fetcher_cls(platform)
