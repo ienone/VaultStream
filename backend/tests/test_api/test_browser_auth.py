@@ -1,7 +1,11 @@
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 from unittest.mock import AsyncMock, patch
+
+from app.core.config import settings
+from app.main import app
 from app.services.browser_auth_service import AuthSessionStatus
 
 class TestBrowserAuthAPI:
@@ -72,3 +76,27 @@ class TestBrowserAuthAPI:
             response = await client.delete("/api/v1/browser-auth/xiaohongshu")
             assert response.status_code == 200
             mock_logout.assert_called_once_with("xiaohongshu")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("method", "path"),
+        [
+            ("POST", "/api/v1/browser-auth/session/xiaohongshu"),
+            ("GET", "/api/v1/browser-auth/session/test-session-123/status"),
+            ("GET", "/api/v1/browser-auth/session/test-session-123/qrcode"),
+            ("POST", "/api/v1/browser-auth/xiaohongshu/check"),
+            ("POST", "/api/v1/browser-auth/xiaohongshu/logout"),
+            ("DELETE", "/api/v1/browser-auth/xiaohongshu"),
+            ("POST", "/api/v1/browser-auth/zhihu/refresh-zse"),
+        ],
+    )
+    async def test_browser_auth_requires_api_token(self, monkeypatch, method: str, path: str):
+        monkeypatch.setattr(settings, "api_token", SecretStr("required-token"))
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as unauthenticated:
+            response = await unauthenticated.request(method, path)
+
+        assert response.status_code == 401
+        body = response.json()
+        assert body["detail"] == "Invalid or missing API Token"
+        assert body["error_code"] == "invalid_api_token"

@@ -1,11 +1,10 @@
 from fastapi import APIRouter, HTTPException, Depends
-from typing import Optional
 from pydantic import BaseModel
-from loguru import logger
 
+from app.core.dependencies import require_api_token
 from app.services.browser_auth_service import browser_auth_service, AuthSessionStatus
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_api_token)])
 
 class QRResponse(BaseModel):
     qrcode_b64: str

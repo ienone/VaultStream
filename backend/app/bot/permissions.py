@@ -34,12 +34,17 @@ class PermissionManager:
                 return False, MSG_ADMIN_ONLY
             return True, None
         
-        # 检查白名单（如果配置了白名单）
-        if self.whitelist_ids:
-            # 管理员自动在白名单中
-            if user_id not in self.whitelist_ids and user_id not in self.admin_ids:
-                return False, MSG_NO_PERMISSION
-        
+        # 管理员自动拥有普通命令权限。
+        if user_id in self.admin_ids:
+            return True, None
+
+        # 白名单为空时 fail closed，避免启用 Bot 后默认暴露给所有 Telegram 用户。
+        if not self.whitelist_ids:
+            return False, MSG_NO_PERMISSION
+
+        if user_id not in self.whitelist_ids:
+            return False, MSG_NO_PERMISSION
+
         return True, None
 
 
