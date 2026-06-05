@@ -52,6 +52,7 @@ class FavoritesSyncStatus {
     required this.maxItems,
     required this.enabledPlatforms,
     required this.lastSyncAt,
+    required this.recentRuns,
     required this.platforms,
   });
 
@@ -60,6 +61,7 @@ class FavoritesSyncStatus {
   final int maxItems;
   final List<String> enabledPlatforms;
   final String? lastSyncAt;
+  final List<Map<String, dynamic>> recentRuns;
   final List<FavoritesPlatformStatus> platforms;
 
   factory FavoritesSyncStatus.fromJson(Map<String, dynamic> json) {
@@ -76,18 +78,26 @@ class FavoritesSyncStatus {
           ? enabled.map((e) => e.toString()).toList()
           : const <String>[],
       lastSyncAt: json['last_sync_at']?.toString(),
+      recentRuns: json['recent_runs'] is List
+          ? (json['recent_runs'] as List)
+                .whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item))
+                .toList()
+          : const <Map<String, dynamic>>[],
       platforms: list is List
           ? list
-              .whereType<Map>()
-              .map((item) => Map<String, dynamic>.from(item))
-              .map(FavoritesPlatformStatus.fromJson)
-              .toList()
+                .whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item))
+                .map(FavoritesPlatformStatus.fromJson)
+                .toList()
           : const <FavoritesPlatformStatus>[],
     );
   }
 }
 
-final favoritesSyncStatusProvider = FutureProvider<FavoritesSyncStatus>((ref) async {
+final favoritesSyncStatusProvider = FutureProvider<FavoritesSyncStatus>((
+  ref,
+) async {
   final dio = ref.read(apiClientProvider);
   final response = await dio.get('/favorites-sync/status');
   final data = response.data as Map<String, dynamic>;
@@ -103,13 +113,18 @@ class FavoritesSyncActions {
 
   final Ref _ref;
 
-  Future<void> triggerSync({String? platform}) async {
+  Future<String?> triggerSync({String? platform}) async {
     final dio = _ref.read(apiClientProvider);
     final payload = <String, dynamic>{};
     if (platform != null && platform.isNotEmpty) {
       payload['platform'] = platform;
     }
-    await dio.post('/favorites-sync/sync', data: payload);
+    final response = await dio.post('/favorites-sync/sync', data: payload);
     _ref.invalidate(favoritesSyncStatusProvider);
+    final data = response.data;
+    if (data is Map && data['run_id'] != null) {
+      return data['run_id'].toString();
+    }
+    return null;
   }
 }

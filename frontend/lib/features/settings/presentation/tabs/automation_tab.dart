@@ -279,6 +279,11 @@ class AutomationTab extends ConsumerWidget {
               for (final item in status.platforms) item.platform: item,
             };
             final platforms = <String>['zhihu', 'xiaohongshu', 'twitter'];
+            final latestRun = status.recentRuns.isNotEmpty
+                ? status.recentRuns.first
+                : null;
+            final latestRunStatus = latestRun?['status']?.toString();
+            final latestRunId = latestRun?['run_id']?.toString();
 
             return SettingGroup(
               children: [
@@ -377,13 +382,16 @@ class AutomationTab extends ConsumerWidget {
                               ? null
                               : () async {
                                   try {
-                                    await ref
+                                    final runId = await ref
                                         .read(favoritesSyncActionsProvider)
                                         .triggerSync(platform: platform);
                                     if (context.mounted) {
+                                      final runSuffix = runId == null
+                                          ? ''
+                                          : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
                                       showToast(
                                         context,
-                                        '已触发 ${_platformLabel(platform)} 同步',
+                                        '已触发 ${_platformLabel(platform)} 同步$runSuffix',
                                       );
                                     }
                                   } catch (e) {
@@ -465,7 +473,9 @@ class AutomationTab extends ConsumerWidget {
                 ),
                 SettingTile(
                   title: '立即同步',
-                  subtitle: status.lastSyncAt == null
+                  subtitle: latestRunId != null
+                      ? '最近任务: ${latestRunId.length > 8 ? latestRunId.substring(0, 8) : latestRunId} · ${latestRunStatus ?? 'unknown'}'
+                      : status.lastSyncAt == null
                       ? '尚未同步'
                       : '上次同步: ${status.lastSyncAt}',
                   icon: status.running
@@ -474,10 +484,15 @@ class AutomationTab extends ConsumerWidget {
                   trailing: FilledButton.tonalIcon(
                     onPressed: () async {
                       try {
-                        await ref
+                        final runId = await ref
                             .read(favoritesSyncActionsProvider)
                             .triggerSync();
-                        if (context.mounted) showToast(context, '已触发全平台同步');
+                        if (context.mounted) {
+                          final runSuffix = runId == null
+                              ? ''
+                              : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
+                          showToast(context, '已触发全平台同步$runSuffix');
+                        }
                       } catch (e) {
                         if (context.mounted) {
                           showToast(
