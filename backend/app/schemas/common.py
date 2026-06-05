@@ -156,6 +156,48 @@ class FavoritesSyncTriggerRequest(BaseModel):
     platform: Optional[str] = None
 
 
+class FavoritesSyncPreviewRequest(BaseModel):
+    """Favorites sync preview payload."""
+
+    platform: Optional[str] = None
+
+
+class FavoritesSyncPlatformPreview(BaseModel):
+    """Read-only preview of one platform favorites sync round."""
+
+    platform: str
+    status: str
+    authenticated: bool = False
+    max_items: int
+    cursor_present: bool = False
+    fetched: int = 0
+    unique: int = 0
+    existing: int = 0
+    estimated_new: int = 0
+    skipped: int = 0
+    next_cursor_available: bool = False
+    error: Optional[str] = None
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+    error_hint: Optional[str] = None
+    retryable: bool = False
+    auth_required: bool = False
+    items: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class FavoritesSyncPreviewResponse(BaseModel):
+    """Read-only preview of a favorites sync trigger."""
+
+    platform: str
+    status: str
+    fetched: int = 0
+    unique: int = 0
+    existing: int = 0
+    estimated_new: int = 0
+    skipped: int = 0
+    platforms: List[FavoritesSyncPlatformPreview] = Field(default_factory=list)
+
+
 class StorageStatsResponse(BaseModel):
     """存储统计响应"""
     total_bytes: int

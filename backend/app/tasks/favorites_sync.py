@@ -3,8 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Iterable
-from typing import Optional
+from typing import Any, Optional
 
+from sqlalchemy import and_, or_, select
+
+from app.adapters import AdapterFactory, open_adapter
 from app.adapters.favorites import (
     BaseFavoritesFetcher,
     TwitterFavoritesFetcher,
@@ -14,6 +17,7 @@ from app.adapters.favorites import (
 from app.adapters.favorites.errors import FavoritesFetchError
 from app.core.database import AsyncSessionLocal
 from app.core.logging import ensure_task_id, log_context, logger
+from app.models import Content
 from app.core.time_utils import utcnow
 from app.services.background_task_state import (
     record_task_run_error,
@@ -310,6 +314,189 @@ class FavoritesSyncTask:
             category="favorites_sync",
         )
         return result
+
+    async def preview_all_platforms(self) -> dict:
+        enabled = await self.load_enabled_platforms()
+        previews = []
+        for platform in enabled:
+            previews.append(await self.preview_platform_by_name(platform))
+        return self._build_preview_summary("all", previews)
+
+    async def preview_platform_by_name(self, platform: str) -> dict:
+        platform = (platform or "").strip().lower()
+        fetcher_cls = self._fetchers.get(platform)
+        if fetcher_cls is None:
+            raise ValueError(f"Unknown platform: {platform}")
+        return await self._preview_platform(fetcher_cls())
+
+    @staticmethod
+    def _build_preview_summary(platform: str, previews: list[dict]) -> dict:
+        has_failure = any(item.get("status") == "failed" for item in previews)
+        return {
+            "platform": platform,
+            "status": "failed" if has_failure else "success",
+            "fetched": sum(int(item.get("fetched") or 0) for item in previews),
+            "unique": sum(int(item.get("unique") or 0) for item in previews),
+            "existing": sum(int(item.get("existing") or 0) for item in previews),
+            "estimated_new": sum(int(item.get("estimated_new") or 0) for item in previews),
+            "skipped": sum(int(item.get("skipped") or 0) for item in previews),
+            "platforms": previews,
+        }
+
+    async def _preview_platform(self, fetcher: BaseFavoritesFetcher) -> dict:
+        platform = fetcher.platform_name()
+        max_items = int(
+            await get_setting_value_fresh(
+                "favorites_sync_max_items",
+                self._DEFAULT_MAX_ITEMS,
+            )
+        )
+        cursor = await get_setting_value_fresh(f"favorites_sync_cursor_{platform}")
+        if not isinstance(cursor, str):
+            cursor = None
+
+        try:
+            is_authenticated = await fetcher.check_auth()
+        except FavoritesFetchError as e:
+            return self._build_preview_failure(platform, max_items, bool(cursor), e)
+        except Exception as e:
+            return self._build_preview_failure(
+                platform,
+                max_items,
+                bool(cursor),
+                FavoritesFetchError(
+                    code="auth_check_failed",
+                    message=str(e),
+                    hint="认证状态检查失败，请稍后重试",
+                    retryable=True,
+                ),
+            )
+
+        if not is_authenticated:
+            return self._build_preview_failure(
+                platform,
+                max_items,
+                bool(cursor),
+                FavoritesFetchError(
+                    code="auth_required",
+                    message="Authentication required",
+                    hint="登录状态不可用，请先完成该平台登录",
+                    auth_required=True,
+                ),
+            )
+
+        try:
+            items, next_cursor = await fetcher.fetch_favorites(
+                max_items=max_items,
+                cursor=cursor,
+            )
+        except FavoritesFetchError as e:
+            return self._build_preview_failure(platform, max_items, bool(cursor), e)
+        except Exception as e:
+            return self._build_preview_failure(
+                platform,
+                max_items,
+                bool(cursor),
+                FavoritesFetchError(
+                    code="fetch_failed",
+                    message=str(e),
+                    hint="拉取收藏失败，请查看日志并稍后重试",
+                    retryable=True,
+                ),
+            )
+
+        seen_urls: set[str] = set()
+        unique_items = []
+        skipped = 0
+        for item in items:
+            url = (item.url or "").strip()
+            if not url or url in seen_urls:
+                skipped += 1
+                continue
+            seen_urls.add(url)
+            unique_items.append(item)
+
+        sample_items: list[dict[str, Any]] = []
+        existing = 0
+        async with AsyncSessionLocal() as session:
+            for item in unique_items:
+                exists = await self._favorite_item_exists(session, item.url)
+                if exists:
+                    existing += 1
+                if len(sample_items) < 5:
+                    sample_items.append(
+                        {
+                            "url": item.url,
+                            "title": item.title,
+                            "author": item.author,
+                            "content_type": item.content_type,
+                            "exists": exists,
+                        }
+                    )
+
+        return {
+            "platform": platform,
+            "status": "success",
+            "authenticated": True,
+            "max_items": max_items,
+            "cursor_present": bool(cursor),
+            "fetched": len(items),
+            "unique": len(unique_items),
+            "existing": existing,
+            "estimated_new": max(0, len(unique_items) - existing),
+            "skipped": skipped,
+            "next_cursor_available": next_cursor is not None,
+            "error": None,
+            "error_code": None,
+            "error_message": None,
+            "error_hint": None,
+            "retryable": False,
+            "auth_required": False,
+            "items": sample_items,
+        }
+
+    @staticmethod
+    async def _favorite_item_exists(session, url: str) -> bool:
+        platform = AdapterFactory.detect_platform(url)
+        canonical_url = url
+        if platform is not None:
+            try:
+                async with open_adapter(platform) as adapter:
+                    canonical_url = await adapter.clean_url(url)
+            except Exception:
+                canonical_url = url
+
+        filters = [Content.url == url, Content.clean_url == canonical_url]
+        if platform is not None:
+            filters.append(
+                and_(Content.platform == platform, Content.canonical_url == canonical_url)
+            )
+        stmt = select(Content.id).where(or_(*filters)).limit(1)
+        return (await session.execute(stmt)).scalar_one_or_none() is not None
+
+    @staticmethod
+    def _build_preview_failure(
+        platform: str,
+        max_items: int,
+        cursor_present: bool,
+        error: FavoritesFetchError,
+    ) -> dict:
+        return {
+            "platform": platform,
+            "status": "failed",
+            "authenticated": not error.auth_required,
+            "max_items": max_items,
+            "cursor_present": cursor_present,
+            "fetched": 0,
+            "unique": 0,
+            "existing": 0,
+            "estimated_new": 0,
+            "skipped": 0,
+            "next_cursor_available": False,
+            "error": error.message,
+            **error.as_dict(),
+            "items": [],
+        }
 
     @staticmethod
     def _build_failure_result(platform: str, error: FavoritesFetchError) -> dict:

@@ -402,32 +402,11 @@ class AutomationTab extends ConsumerWidget {
                           tooltip: '手动同步 ${_platformLabel(platform)}',
                           onPressed: statusMap[platform]?.available == false
                               ? null
-                              : () async {
-                                  try {
-                                    final runId = await ref
-                                        .read(favoritesSyncActionsProvider)
-                                        .triggerSync(platform: platform);
-                                    if (context.mounted) {
-                                      final runSuffix = runId == null
-                                          ? ''
-                                          : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
-                                      showToast(
-                                        context,
-                                        '已触发 ${_platformLabel(platform)} 同步$runSuffix',
-                                      );
-                                    }
-                                  } catch (e) {
-                                    if (context.mounted) {
-                                      showToast(
-                                        context,
-                                        formatApiErrorMessage(
-                                          e,
-                                          fallbackMessage: '手动同步失败',
-                                        ),
-                                      );
-                                    }
-                                  }
-                                },
+                              : () => _triggerFavoritesSyncWithPreview(
+                                  context,
+                                  ref,
+                                  platform: platform,
+                                ),
                         ),
                       ],
                     ),
@@ -504,26 +483,8 @@ class AutomationTab extends ConsumerWidget {
                       ? Icons.play_circle_fill_rounded
                       : Icons.pause_circle_filled_rounded,
                   trailing: FilledButton.tonalIcon(
-                    onPressed: () async {
-                      try {
-                        final runId = await ref
-                            .read(favoritesSyncActionsProvider)
-                            .triggerSync();
-                        if (context.mounted) {
-                          final runSuffix = runId == null
-                              ? ''
-                              : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
-                          showToast(context, '已触发全平台同步$runSuffix');
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          showToast(
-                            context,
-                            formatApiErrorMessage(e, fallbackMessage: '手动同步失败'),
-                          );
-                        }
-                      }
-                    },
+                    onPressed: () =>
+                        _triggerFavoritesSyncWithPreview(context, ref),
                     icon: const Icon(Icons.sync_rounded),
                     label: const Text('手动同步'),
                   ),
@@ -625,7 +586,9 @@ class AutomationTab extends ConsumerWidget {
                     _favoritesRunIcon(status),
                     color: _favoritesRunColor(dialogContext, status),
                   ),
-                  title: Text('${_shortRunId(runId)} · ${_runString(run, 'scope') ?? 'all'}'),
+                  title: Text(
+                    '${_shortRunId(runId)} · ${_runString(run, 'scope') ?? 'all'}',
+                  ),
                   subtitle: Text(
                     [
                       _favoritesRunStatusLabel(status),
@@ -643,11 +606,8 @@ class AutomationTab extends ConsumerWidget {
                       ? IconButton(
                           tooltip: '重试',
                           icon: const Icon(Icons.replay_rounded),
-                          onPressed: () => _retryFavoritesRun(
-                            dialogContext,
-                            ref,
-                            runId,
-                          ),
+                          onPressed: () =>
+                              _retryFavoritesRun(dialogContext, ref, runId),
                         )
                       : null,
                   onTap: () => _showFavoritesSyncRunDetailDialog(
@@ -735,12 +695,192 @@ class AutomationTab extends ConsumerWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        showToast(
-          context,
-          formatApiErrorMessage(e, fallbackMessage: '重试同步失败'),
-        );
+        showToast(context, formatApiErrorMessage(e, fallbackMessage: '重试同步失败'));
       }
     }
+  }
+
+  Future<void> _triggerFavoritesSyncWithPreview(
+    BuildContext context,
+    WidgetRef ref, {
+    String? platform,
+  }) async {
+    try {
+      final actions = ref.read(favoritesSyncActionsProvider);
+      final preview = await actions.previewSync(platform: platform);
+      if (!context.mounted) return;
+
+      final confirmed = await _showFavoritesSyncPreviewDialog(context, preview);
+      if (!confirmed || !context.mounted) return;
+
+      final runId = await actions.triggerSync(platform: platform);
+      if (context.mounted) {
+        final runSuffix = runId == null ? '' : ' #${_shortRunId(runId)}';
+        final label = platform == null ? '全平台' : _platformLabel(platform);
+        showToast(context, '已触发 $label 同步$runSuffix');
+      }
+    } catch (e) {
+      if (context.mounted) {
+        showToast(context, formatApiErrorMessage(e, fallbackMessage: '手动同步失败'));
+      }
+    }
+  }
+
+  Future<bool> _showFavoritesSyncPreviewDialog(
+    BuildContext context,
+    FavoritesSyncPreview preview,
+  ) async {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final platformLabel = preview.platform == 'all'
+        ? '全平台'
+        : _platformLabel(preview.platform);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text('确认同步 $platformLabel 收藏'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _PreviewMetricChip(
+                        label: '预览拉取',
+                        value: preview.fetched,
+                        icon: Icons.download_rounded,
+                      ),
+                      _PreviewMetricChip(
+                        label: '预计新增',
+                        value: preview.estimatedNew,
+                        icon: Icons.add_circle_outline_rounded,
+                      ),
+                      _PreviewMetricChip(
+                        label: '已存在',
+                        value: preview.existing,
+                        icon: Icons.check_circle_outline_rounded,
+                      ),
+                      _PreviewMetricChip(
+                        label: '跳过',
+                        value: preview.skipped,
+                        icon: Icons.block_rounded,
+                      ),
+                    ],
+                  ),
+                  if (preview.hasFailures) ...[
+                    const Gap(12),
+                    Text(
+                      '部分平台预览失败，触发同步后仍可能失败。',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: cs.error,
+                      ),
+                    ),
+                  ],
+                  const Gap(16),
+                  ...preview.platforms.map((item) {
+                    final failed = item.status == 'failed';
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: failed ? cs.error : cs.outlineVariant,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    _platformIcon(item.platform),
+                                    size: 18,
+                                    color: failed ? cs.error : cs.primary,
+                                  ),
+                                  const Gap(8),
+                                  Text(
+                                    _platformLabel(item.platform),
+                                    style: theme.textTheme.titleSmall,
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    failed
+                                        ? '失败'
+                                        : '新增 ${item.estimatedNew} / 已存在 ${item.existing}',
+                                    style: theme.textTheme.labelMedium
+                                        ?.copyWith(
+                                          color: failed
+                                              ? cs.error
+                                              : cs.onSurfaceVariant,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                              if (failed && item.error != null) ...[
+                                const Gap(8),
+                                Text(
+                                  item.errorHint ?? item.error!,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: cs.error,
+                                  ),
+                                ),
+                              ],
+                              if (!failed && item.items.isNotEmpty) ...[
+                                const Gap(8),
+                                ...item.items.take(3).map((sample) {
+                                  final title = sample['title']
+                                      ?.toString()
+                                      .trim();
+                                  final exists = sample['exists'] == true;
+                                  return Text(
+                                    '${exists ? '已存在' : '新候选'} · ${title == null || title.isEmpty ? sample['url'] : title}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: cs.onSurfaceVariant,
+                                    ),
+                                  );
+                                }),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                  Text(
+                    '预览不会写入内容，也不会推进同步 cursor。',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('确认同步'),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed == true;
   }
 
   String? _runString(Map<String, dynamic> run, String key) {
@@ -1909,6 +2049,42 @@ class _SourceEditDialogState extends State<_SourceEditDialog> {
           child: const Text('保存'),
         ),
       ],
+    );
+  }
+}
+
+class _PreviewMetricChip extends StatelessWidget {
+  const _PreviewMetricChip({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  final String label;
+  final int value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: cs.primary),
+            const Gap(6),
+            Text('$label $value', style: theme.textTheme.labelMedium),
+          ],
+        ),
+      ),
     );
   }
 }

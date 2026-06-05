@@ -29,6 +29,7 @@ from app.models import (
 from app.schemas import (
     SystemSettingResponse, SystemSettingUpdate, DashboardStats, 
     QueueStats, TagStats, QueueOverviewStats, DistributionStatusStats,
+    FavoritesSyncPreviewRequest, FavoritesSyncPreviewResponse,
     FavoritesSyncTriggerRequest, BackgroundTaskDiagnosticsResponse,
 )
 from app.core.logging import logger
@@ -1106,6 +1107,52 @@ async def trigger_favorites_sync(
         )
     )
     return {"status": "accepted", "platform": "all", "run_id": run["run_id"]}
+
+
+@router.post("/favorites-sync/preview", response_model=FavoritesSyncPreviewResponse)
+async def preview_favorites_sync(
+    request: Request,
+    body: FavoritesSyncPreviewRequest | None = Body(default=None),
+    _: None = Depends(require_api_token),
+):
+    """Preview one favorites sync round without importing content or advancing cursors."""
+    sync_task = getattr(request.app.state, "favorites_sync_task", None)
+    if sync_task is None:
+        raise HTTPException(
+            status_code=503,
+            detail=build_error_payload(
+                message="Favorites sync task is not running",
+                code="favorites_task_unavailable",
+                hint="请确认后端任务已启动后重试",
+                request_id=getattr(request.state, "request_id", None),
+            ),
+        )
+
+    platform = ((body.platform if body else "") or "").strip().lower()
+    if platform:
+        if platform not in sync_task.get_supported_platforms():
+            raise HTTPException(
+                status_code=400,
+                detail=build_error_payload(
+                    message=f"Unknown platform: {platform}",
+                    code="unsupported_platform",
+                    hint="仅支持 zhihu / xiaohongshu / twitter",
+                    request_id=getattr(request.state, "request_id", None),
+                ),
+            )
+        preview = await sync_task.preview_platform_by_name(platform)
+        return FavoritesSyncPreviewResponse(
+            platform=platform,
+            status=preview.get("status", "unknown"),
+            fetched=int(preview.get("fetched") or 0),
+            unique=int(preview.get("unique") or 0),
+            existing=int(preview.get("existing") or 0),
+            estimated_new=int(preview.get("estimated_new") or 0),
+            skipped=int(preview.get("skipped") or 0),
+            platforms=[preview],
+        )
+
+    return await sync_task.preview_all_platforms()
 
 
 @router.post("/favorites-sync/runs/{run_id}/retry", status_code=202)
