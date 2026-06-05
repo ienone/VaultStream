@@ -37,11 +37,16 @@ _SUPPORTED_DISCOVERY_SOURCE_KINDS = {
 _SUPPORTED_DISCOVERY_SOURCE_KIND_VALUES = [k.value for k in _SUPPORTED_DISCOVERY_SOURCE_KINDS]
 
 
-def _raise_unsupported_source_kind(kind: DiscoverySourceKind, request: Request | None = None) -> None:
+def _source_kind_value(kind: DiscoverySourceKind | str) -> str:
+    return kind.value if hasattr(kind, "value") else str(kind)
+
+
+def _raise_unsupported_source_kind(kind: DiscoverySourceKind | str, request: Request | None = None) -> None:
+    kind_value = _source_kind_value(kind)
     raise HTTPException(
         status_code=400,
         detail=build_error_payload(
-            message=f"Discovery source kind is not supported yet: {kind.value}",
+            message=f"Discovery source kind is not supported yet: {kind_value}",
             code="source_kind_not_supported",
             hint="当前发现源仅支持 RSS 和 Telegram Channel，其他来源仍在路线图中。",
             request_id=getattr(getattr(request, "state", None), "request_id", None),
@@ -361,21 +366,37 @@ async def trigger_sync(
     _: None = Depends(require_api_token),
 ):
     result = await db.execute(
-        select(DiscoverySource).where(
-            DiscoverySource.id == source_id,
-            DiscoverySource.kind.in_(_SUPPORTED_DISCOVERY_SOURCE_KIND_VALUES),
-        )
+        select(DiscoverySource).where(DiscoverySource.id == source_id)
     )
     source = result.scalar_one_or_none()
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
+    if source.kind not in _SUPPORTED_DISCOVERY_SOURCE_KINDS:
+        _raise_unsupported_source_kind(source.kind, request)
 
     sync_task = getattr(request.app.state, "discovery_sync_task", None)
-    if sync_task is not None:
-        import asyncio
-        asyncio.create_task(sync_task.sync_source_by_id(source_id))
+    if sync_task is None:
+        raise HTTPException(
+            status_code=503,
+            detail=build_error_payload(
+                message="Discovery sync task is not running",
+                code="discovery_task_unavailable",
+                hint="请确认后端发现同步任务已启动后重试",
+                request_id=getattr(request.state, "request_id", None),
+            ),
+        )
 
-    return {"status": "accepted", "source_id": source_id}
+    run = await sync_task.create_run(source, trigger="manual")
+    import asyncio
+    asyncio.create_task(
+        sync_task.sync_source_by_id(
+            source_id,
+            run_id=run["run_id"],
+            trigger="manual",
+        )
+    )
+
+    return {"status": "accepted", "source_id": source_id, "run_id": run["run_id"]}
 
 
 # ── Settings ───────────────────────────────────────────────────────────

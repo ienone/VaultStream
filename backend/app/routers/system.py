@@ -185,6 +185,14 @@ async def _build_background_failure_details(
         _serialize_task_state(name, state)
         for name, state in sorted(task_states_raw.items())
     ]
+    recent_task_runs: list[dict[str, Any]] = []
+    for task_name in ("discovery_sync", "favorites_sync"):
+        recent_task_runs.extend(await get_recent_task_runs(task_name, limit=limit))
+    recent_task_runs.sort(
+        key=lambda run: str(run.get("started_at") or ""),
+        reverse=True,
+    )
+    recent_task_runs = recent_task_runs[:limit]
 
     failed_tasks_rows = (
         await db.execute(
@@ -264,6 +272,7 @@ async def _build_background_failure_details(
     return {
         "summary": summary,
         "task_states": task_states,
+        "recent_task_runs": recent_task_runs,
         "failed_parse_tasks": failed_parse_tasks,
         "failed_distribution_items": failed_distribution_items,
         "failed_discovery_sources": failed_discovery_sources,

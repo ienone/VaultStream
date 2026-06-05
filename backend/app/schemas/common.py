@@ -104,11 +104,26 @@ class FailedDiscoverySourceResponse(BaseModel):
     last_error: Optional[str] = None
 
 
+class BackgroundTaskRunResponse(BaseModel):
+    """Recent background task run with task-specific metadata."""
+
+    run_id: str
+    task: str
+    status: str
+    started_at: OptionalUtcDatetime = None
+    finished_at: OptionalUtcDatetime = None
+    error: Optional[str] = None
+    result: Optional[Dict[str, Any]] = None
+
+    model_config = ConfigDict(extra="allow")
+
+
 class BackgroundTaskDiagnosticsResponse(BaseModel):
     """Detailed backend diagnostics for failed background work."""
 
     summary: Dict[str, Any]
     task_states: List[BackgroundTaskStateResponse]
+    recent_task_runs: List[BackgroundTaskRunResponse]
     failed_parse_tasks: List[FailedParseTaskResponse]
     failed_distribution_items: List[FailedDistributionQueueItemResponse]
     failed_discovery_sources: List[FailedDiscoverySourceResponse]

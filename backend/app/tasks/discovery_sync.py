@@ -34,6 +34,9 @@ from app.services.embedding_service import EmbeddingService
 from app.services.post_ingest import PostIngestService
 from app.services.background_task_state import (
     record_task_error,
+    record_task_run_error,
+    record_task_run_started,
+    record_task_run_success,
     record_task_started,
     record_task_success,
 )
@@ -46,6 +49,10 @@ SUPPORTED_DISCOVERY_SOURCE_KINDS = {
     DiscoverySourceKind.TELEGRAM_CHANNEL,
 }
 SUPPORTED_DISCOVERY_SOURCE_KIND_VALUES = [kind.value for kind in SUPPORTED_DISCOVERY_SOURCE_KINDS]
+
+
+def _source_kind_value(source: DiscoverySource) -> str:
+    return source.kind.value if hasattr(source.kind, "value") else str(source.kind)
 
 
 class DiscoverySyncTask:
@@ -100,14 +107,35 @@ class DiscoverySyncTask:
                         continue
 
                 checked += 1
-                await self._sync_single_source(db, source)
+                run = await self.create_run(source, trigger="scheduled")
+                await self._sync_single_source(
+                    db,
+                    source,
+                    run_id=run["run_id"],
+                    trigger="scheduled",
+                )
             await record_task_success(
                 "discovery_sync",
                 checked_sources=checked,
                 source_count=len(sources),
             )
 
-    async def sync_source_by_id(self, source_id: int):
+    async def create_run(self, source: DiscoverySource, *, trigger: str) -> dict:
+        return await record_task_run_started(
+            "discovery_sync",
+            source_id=source.id,
+            source_name=source.name,
+            source_kind=_source_kind_value(source),
+            trigger=trigger,
+        )
+
+    async def sync_source_by_id(
+        self,
+        source_id: int,
+        *,
+        run_id: str | None = None,
+        trigger: str = "manual",
+    ):
         """Manually trigger sync for a specific source, managing its own DB session."""
         async with AsyncSessionLocal() as db:
             result = await db.execute(
@@ -117,13 +145,24 @@ class DiscoverySyncTask:
             if source is None:
                 logger.warning(f"Discovery manual sync: source {source_id} not found")
                 return
-            await self._sync_single_source(db, source)
+            if run_id is None:
+                run = await self.create_run(source, trigger=trigger)
+                run_id = run["run_id"]
+            await self._sync_single_source(db, source, run_id=run_id, trigger=trigger)
 
-    async def _sync_single_source(self, db, source: DiscoverySource):
+    async def _sync_single_source(
+        self,
+        db,
+        source: DiscoverySource,
+        *,
+        run_id: str | None = None,
+        trigger: str = "scheduled",
+    ):
         """Sync a single discovery source"""
         scraper = self._get_scraper(source)
         if not scraper:
-            source.last_error = f"Unsupported discovery source kind: {source.kind.value}"
+            source_kind = _source_kind_value(source)
+            source.last_error = f"Unsupported discovery source kind: {source_kind}"
             source.last_sync_at = utcnow()
             await db.commit()
             await record_task_error(
@@ -131,8 +170,18 @@ class DiscoverySyncTask:
                 source.last_error,
                 source_id=source.id,
                 source_name=source.name,
-                source_kind=source.kind.value,
+                source_kind=source_kind,
             )
+            if run_id:
+                await record_task_run_error(
+                    "discovery_sync",
+                    run_id,
+                    source.last_error,
+                    source_id=source.id,
+                    source_name=source.name,
+                    source_kind=source_kind,
+                    trigger=trigger,
+                )
             return
 
         try:
@@ -320,6 +369,17 @@ class DiscoverySyncTask:
                 source_name=source.name,
                 ingested_count=ingested_count,
             )
+            if run_id:
+                await record_task_run_success(
+                    "discovery_sync",
+                    run_id,
+                    source_id=source.id,
+                    source_name=source.name,
+                    source_kind=_source_kind_value(source),
+                    trigger=trigger,
+                    ingested_count=ingested_count,
+                    new_content_ids=new_content_ids,
+                )
 
         except Exception as e:
             source.last_error = str(e)[:500]
@@ -332,6 +392,16 @@ class DiscoverySyncTask:
                 source_id=source.id,
                 source_name=source.name,
             )
+            if run_id:
+                await record_task_run_error(
+                    "discovery_sync",
+                    run_id,
+                    e,
+                    source_id=source.id,
+                    source_name=source.name,
+                    source_kind=_source_kind_value(source),
+                    trigger=trigger,
+                )
 
     async def _archive_discovery_media(self, db, content_ids: list[int]):
         """Download and convert images to WebP for newly ingested discovery items."""
