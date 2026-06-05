@@ -273,6 +273,72 @@ class TestContentsAPI:
         assert latest["result"]["chunk_count"] == 1
 
     @pytest.mark.asyncio
+    async def test_patrol_score_returns_run_id_and_records_success(
+        self,
+        client: AsyncClient,
+        db_session,
+        monkeypatch,
+    ):
+        """Test manual patrol scoring records an observable run."""
+        from app.models import Content, ContentStatus, DiscoveryState, Platform
+        from app.services.background_task_state import get_recent_task_runs
+        from app.services.patrol_service import PatrolService
+
+        async def fake_get_setting_value(key: str, default=None):
+            if key == "discovery_interest_profile":
+                return "AI and systems"
+            return default
+
+        async def fake_score_item(self, content, interest_profile: str = ""):
+            assert interest_profile == "AI and systems"
+            content.ai_score = 8.5
+            content.ai_reason = "High signal"
+            content.summary = "A high-signal article"
+            content.ai_tags = ["ai", "systems"]
+            content.discovery_state = DiscoveryState.VISIBLE
+            return True
+
+        monkeypatch.setattr("app.routers.contents.get_setting_value", fake_get_setting_value)
+        monkeypatch.setattr(PatrolService, "score_item", fake_score_item)
+
+        import time
+
+        content = Content(
+            platform=Platform.RSS,
+            url=f"https://example.com/patrol-score/{time.time_ns()}",
+            canonical_url=f"https://example.com/patrol-score/{time.time_ns()}",
+            status=ContentStatus.PARSE_SUCCESS,
+            title="Manual patrol scoring",
+            body="Interesting technical content",
+            discovery_state=DiscoveryState.INGESTED,
+        )
+        db_session.add(content)
+        await db_session.commit()
+        await db_session.refresh(content)
+
+        response = await client.post(f"/api/v1/contents/{content.id}/patrol-score")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["run_id"]
+        assert data["ai_score"] == 8.5
+        assert data["discovery_state"] == "visible"
+
+        await db_session.refresh(content)
+        assert content.ai_score == 8.5
+        assert content.discovery_state == DiscoveryState.VISIBLE
+
+        latest = next(
+            run
+            for run in await get_recent_task_runs("discovery_patrol")
+            if run["run_id"] == data["run_id"]
+        )
+        assert latest["status"] == "success"
+        assert latest["trigger"] == "manual"
+        assert latest["content_id"] == content.id
+        assert latest["result"]["scored_count"] == 1
+        assert latest["result"]["failed_count"] == 0
+
+    @pytest.mark.asyncio
     async def test_content_retry(self, client: AsyncClient):
         """Test retry action endpoint accepts the request."""
         import time

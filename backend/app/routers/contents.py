@@ -599,6 +599,85 @@ async def generate_content_summary(
         )
         raise HTTPException(status_code=500, detail=f"摘要生成失败: {e}")
 
+@router.post("/contents/{content_id}/patrol-score")
+async def score_content_patrol(
+    content_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """为发现流内容手动触发单条巡逻评分"""
+    from app.services.patrol_service import PatrolService
+
+    result = await db.execute(select(Content).where(Content.id == content_id))
+    content = result.scalar_one_or_none()
+    if not content:
+        raise HTTPException(status_code=404, detail="内容不存在")
+    if content.discovery_state is None:
+        raise HTTPException(status_code=400, detail="非发现流内容不需要巡逻评分")
+
+    interest_profile = await get_setting_value("discovery_interest_profile", "") or ""
+    run = await record_task_run_started(
+        "discovery_patrol",
+        trigger="manual",
+        content_id=content_id,
+        candidate_count=1,
+    )
+    try:
+        ok = await PatrolService().score_item(content, interest_profile=interest_profile)
+        if not ok:
+            await db.rollback()
+            error = "巡逻评分失败或模型不可用"
+            await record_task_run_error(
+                "discovery_patrol",
+                run["run_id"],
+                error,
+                trigger="manual",
+                content_id=content_id,
+                candidate_count=1,
+                scored_count=0,
+                failed_count=1,
+                interest_profile_present=bool(interest_profile.strip()),
+            )
+            raise HTTPException(status_code=503, detail=error)
+
+        await db.commit()
+        await db.refresh(content)
+        await record_task_run_success(
+            "discovery_patrol",
+            run["run_id"],
+            trigger="manual",
+            content_id=content_id,
+            candidate_count=1,
+            scored_count=1,
+            failed_count=0,
+            interest_profile_present=bool(interest_profile.strip()),
+            ai_score=content.ai_score,
+            discovery_state=content.discovery_state.value if content.discovery_state else None,
+        )
+        return {
+            "status": "success",
+            "content_id": content_id,
+            "run_id": run["run_id"],
+            "ai_score": content.ai_score,
+            "discovery_state": content.discovery_state.value if content.discovery_state else None,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        await record_task_run_error(
+            "discovery_patrol",
+            run["run_id"],
+            e,
+            trigger="manual",
+            content_id=content_id,
+            candidate_count=1,
+            scored_count=0,
+            failed_count=1,
+            interest_profile_present=bool(interest_profile.strip()),
+        )
+        raise HTTPException(status_code=500, detail=f"巡逻评分失败: {e}")
+
 @router.post("/contents/{content_id}/re-parse")
 async def re_parse_content(
     content_id: int,

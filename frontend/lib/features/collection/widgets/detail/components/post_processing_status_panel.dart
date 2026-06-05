@@ -254,6 +254,13 @@ class _StageRow extends ConsumerWidget {
         kind: _StageActionKind.distribution,
       );
     }
+    if (key == 'patrol' && {'pending', 'not_scored'}.contains(status)) {
+      return const _StageAction(
+        label: '触发评分',
+        icon: Icons.rate_review_rounded,
+        kind: _StageActionKind.patrol,
+      );
+    }
     return null;
   }
 
@@ -301,6 +308,11 @@ class _StageRow extends ConsumerWidget {
             );
             successMessage = '已重新匹配分发规则';
           }
+          break;
+        case _StageActionKind.patrol:
+          await dio.post('/contents/$contentId/patrol-score');
+          ref.invalidate(contentDetailProvider(contentId));
+          successMessage = '已触发巡逻评分';
           break;
       }
       ref.invalidate(contentProcessingStatusProvider(contentId));
@@ -449,7 +461,7 @@ class _StageHintLine extends StatelessWidget {
   }
 }
 
-enum _StageActionKind { summary, semanticIndex, distribution }
+enum _StageActionKind { summary, semanticIndex, distribution, patrol }
 
 class _StageAction {
   const _StageAction({

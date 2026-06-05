@@ -434,6 +434,8 @@ QQ 配置支持字段：`napcat_http_url`、`napcat_ws_url`、`napcat_access_tok
 
 发现缓冲区的自动巡逻评分会产生 `discovery_patrol` 运行记录，记录候选数量、成功评分数量、失败数量与兴趣画像是否存在；它用于排查探索库内容为何未进入可见状态或评分后处理是否中断。
 
+`POST /api/v1/contents/{content_id}/patrol-score` 会为单条发现流内容手动触发巡逻评分并返回 `run_id`；运行结果进入 `recent_task_runs` 的 `discovery_patrol` 记录，`trigger=manual`，并记录 `content_id`、评分结果和失败数量。非发现流内容返回 `400`。
+
 解析主队列消费分享/导入后的解析任务时会产生 `content_parse` 运行记录，记录 `content_id`、`task_id`、队列动作、重试参数、跳过原因或解析后的状态；它区别于手动重新解析接口产生的 `content_reparse`。
 
 `POST /api/v1/contents/{content_id}/re-parse` 会调度后台重新解析任务并返回 `run_id`；运行结果进入 `recent_task_runs` 的 `content_reparse` 记录。
