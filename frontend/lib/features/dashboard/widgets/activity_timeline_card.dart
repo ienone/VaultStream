@@ -420,6 +420,7 @@ String _taskLabel(String task) {
     'distribution_schedule' => '分发排期',
     'distribution_worker_poll' => '分发轮询',
     'distribution_target_test' => '推送目标测试',
+    'distribution_target_send_test' => '推送真实发送测试',
     'semantic_reindex' => '索引重建',
     'ai_connectivity_test' => 'AI 连通性测试',
     _ => task,

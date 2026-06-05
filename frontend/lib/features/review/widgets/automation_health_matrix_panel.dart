@@ -391,6 +391,12 @@ class _PushTargetHealthList extends ConsumerWidget {
                 ),
                 const SizedBox(width: 6),
                 IconButton.outlined(
+                  onPressed: () => _sendPushTargetTest(context, ref, chat),
+                  tooltip: '发送测试消息',
+                  icon: const Icon(Icons.send_rounded, size: 18),
+                ),
+                const SizedBox(width: 6),
+                IconButton.outlined(
                   onPressed: () => _syncPushTarget(context, ref, chat),
                   tooltip: '刷新推送目标',
                   icon: const Icon(Icons.refresh_rounded, size: 18),
@@ -729,6 +735,70 @@ Future<void> _testPushTarget(
       Toast.show(
         context,
         formatApiErrorMessage(e, fallbackMessage: '推送目标测试失败'),
+        isError: true,
+      );
+    }
+  }
+}
+
+Future<void> _sendPushTargetTest(
+  BuildContext context,
+  WidgetRef ref,
+  BotChat chat,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('发送测试消息'),
+      content: Text('将向 ${chat.displayName} 发送一条 VaultStream 测试消息。'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          child: const Text('取消'),
+        ),
+        FilledButton.icon(
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          icon: const Icon(Icons.send_rounded),
+          label: const Text('发送'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true) return;
+
+  try {
+    final result = await ref
+        .read(targetsProvider().notifier)
+        .sendTest(
+          platform: chat.isQQ ? 'qq' : 'telegram',
+          targetId: chat.chatId,
+        );
+    final status = result['status']?.toString();
+    final message = result['message']?.toString();
+    final runId = result['run_id']?.toString();
+    if (context.mounted) {
+      Toast.show(
+        context,
+        message == null || message.isEmpty
+            ? (status == 'ok' ? '测试消息已发送' : '测试消息发送失败')
+            : message,
+        icon: status == 'ok'
+            ? Icons.check_circle_rounded
+            : Icons.error_outline_rounded,
+        isError: status != 'ok',
+        action: runId == null || runId.isEmpty
+            ? null
+            : SnackBarAction(
+                label: '查看日志',
+                onPressed: () => context.go('/home?run=$runId'),
+              ),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      Toast.show(
+        context,
+        formatApiErrorMessage(e, fallbackMessage: '测试消息发送失败'),
         isError: true,
       );
     }

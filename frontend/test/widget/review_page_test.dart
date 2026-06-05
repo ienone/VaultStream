@@ -54,6 +54,24 @@ class MockDio extends Mock implements Dio {
         ),
       );
     }
+    if (path == '/targets/send-test') {
+      return Future.value(
+        Response(
+          requestOptions: RequestOptions(path: path),
+          data:
+              {
+                    'status': 'ok',
+                    'message': '测试消息已发送',
+                    'run_id': 'target-send-run',
+                    'platform': 'telegram',
+                    'target_id': 'target-1',
+                    'details': {'message_id': 'message-1'},
+                  }
+                  as T,
+          statusCode: 200,
+        ),
+      );
+    }
     if (path == '/platform-health/parse-test') {
       return Future.value(
         Response(
@@ -459,6 +477,7 @@ void main() {
       expect(find.text('检测'), findsOneWidget);
       expect(find.byTooltip('测试解析'), findsOneWidget);
       expect(find.byTooltip('测试推送目标'), findsOneWidget);
+      expect(find.byTooltip('发送测试消息'), findsOneWidget);
       expect(find.byTooltip('刷新推送目标'), findsOneWidget);
       expect(find.byTooltip('查看最近同步结果'), findsOneWidget);
       expect(find.byTooltip('检查发现源质量'), findsOneWidget);
@@ -480,6 +499,20 @@ void main() {
       await tester.pump();
 
       expect(find.text('Connected to chat: Push Channel'), findsOneWidget);
+      expect(find.text('查看日志'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('发送测试消息'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('发送测试消息'), findsOneWidget);
+      expect(
+        find.text('将向 Push Channel 发送一条 VaultStream 测试消息。'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('发送'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('测试消息已发送'), findsOneWidget);
       expect(find.text('查看日志'), findsOneWidget);
 
       await tester.tap(find.byTooltip('测试解析'));

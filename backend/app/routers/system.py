@@ -603,6 +603,7 @@ async def _build_background_failure_details(
         "distribution_schedule",
         "distribution_worker_poll",
         "distribution_target_test",
+        "distribution_target_send_test",
         "favorites_sync",
         "semantic_reindex",
         "ai_connectivity_test",

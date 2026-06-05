@@ -114,6 +114,47 @@ class TestBotConfigExtraAPI:
         assert latest["result"]["message"] == data["message"]
 
     @pytest.mark.asyncio
+    async def test_targets_send_test_endpoint_records_success_run(
+        self,
+        client: AsyncClient,
+        monkeypatch,
+    ):
+        class FakePushService:
+            async def push(self, content: Dict[str, Any], target_id: str):
+                assert target_id == "target-1"
+                assert content["title"] == "VaultStream 推送目标真实发送测试"
+                assert content["render_config"]["media_mode"] == "none"
+                return "message-123"
+
+        monkeypatch.setattr(
+            "app.push.factory.get_push_service",
+            lambda platform: FakePushService(),
+        )
+
+        resp = await client.post(
+            "/api/v1/targets/send-test",
+            json={"platform": "telegram", "target_id": "target-1"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["platform"] == "telegram"
+        assert data["target_id"] == "target-1"
+        assert data["run_id"]
+        assert data["details"]["message_id"] == "message-123"
+
+        diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
+        latest = next(
+            run
+            for run in diagnostics.json()["recent_task_runs"]
+            if run["run_id"] == data["run_id"]
+        )
+        assert latest["task"] == "distribution_target_send_test"
+        assert latest["status"] == "success"
+        assert latest["target_id"] == "target-1"
+        assert latest["result"]["details"]["message_id"] == "message-123"
+
+    @pytest.mark.asyncio
     async def test_targets_batch_update_endpoint(self, client: AsyncClient):
         # Create a rule and a target
         rule_resp = await client.post(

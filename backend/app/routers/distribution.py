@@ -40,6 +40,34 @@ _TELEGRAM_CHAT_TYPES = {"channel", "group", "supergroup", "private"}
 _QQ_CHAT_TYPES = {"qq_group", "qq_private"}
 
 
+def _build_target_send_test_content(platform: str, target_id: str) -> Dict[str, Any]:
+    now_text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return {
+        "id": "diagnostic-target-send-test",
+        "platform": "system",
+        "title": "VaultStream 推送目标真实发送测试",
+        "author_name": "VaultStream",
+        "summary": (
+            "这是一条由健康矩阵触发的测试消息，用于验证推送目标能否接收真实消息。"
+        ),
+        "body": f"测试时间：{now_text}\n平台：{platform}\n目标：{target_id}",
+        "url": "https://vaultstream.local/diagnostics/target-send-test",
+        "clean_url": "https://vaultstream.local/diagnostics/target-send-test",
+        "tags": ["diagnostic"],
+        "media_items": [],
+        "archive_metadata": {},
+        "render_config": {
+            "media_mode": "none",
+            "link_mode": "none",
+            "show_platform_id": False,
+            "show_title": True,
+            "author_mode": "none",
+            "content_mode": "summary",
+            "show_tags": False,
+        },
+    }
+
+
 def _normalize_chat_type(chat_type: Any) -> str:
     if isinstance(chat_type, str):
         return chat_type
@@ -543,6 +571,102 @@ async def test_target_connection(
                 target_id=target_id,
                 status="error",
                 message=f"Connection test failed: {str(e)}"
+            )
+        )
+
+
+@router.post("/targets/send-test", response_model=TargetTestResponse)
+async def send_target_test_message(
+    request: TargetTestRequest,
+    _: None = Depends(require_api_token),
+):
+    """
+    Send a real diagnostic message to a distribution target.
+
+    This is intentionally separate from /targets/test because it has an
+    externally visible side effect.
+    """
+    platform = request.platform.lower()
+    target_id = request.target_id or ""
+    if platform not in {Platform.TELEGRAM.value, Platform.QQ.value}:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported platform: {platform}",
+        )
+
+    run = await record_task_run_started(
+        "distribution_target_send_test",
+        trigger="manual",
+        platform=platform,
+        target_id=target_id,
+    )
+    started = time.perf_counter()
+
+    async def _finish(response: TargetTestResponse) -> TargetTestResponse:
+        elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+        response.run_id = str(run["run_id"])
+        response.elapsed_ms = elapsed_ms
+        response.platform = platform
+        response.target_id = target_id
+        if response.status == "ok":
+            await record_task_run_success(
+                "distribution_target_send_test",
+                run["run_id"],
+                platform=platform,
+                target_id=target_id,
+                message=response.message,
+                details=response.details or {},
+                elapsed_ms=elapsed_ms,
+            )
+        else:
+            error = RuntimeError(response.message or "Target send test failed")
+            await record_task_run_error(
+                "distribution_target_send_test",
+                run["run_id"],
+                error,
+                trigger="manual",
+                platform=platform,
+                target_id=target_id,
+                details=response.details or {},
+                elapsed_ms=elapsed_ms,
+            )
+        return response
+
+    if not target_id:
+        return await _finish(
+            TargetTestResponse(
+                status="error",
+                message="Target ID is required",
+            )
+        )
+
+    try:
+        from app.push.factory import get_push_service
+
+        service = get_push_service(platform)
+        content = _build_target_send_test_content(platform, target_id)
+        message_id = await service.push(content, target_id)
+        if not message_id:
+            return await _finish(
+                TargetTestResponse(
+                    status="error",
+                    message="Test message was not accepted by push service",
+                    details={"message_id": None},
+                )
+            )
+        return await _finish(
+            TargetTestResponse(
+                status="ok",
+                message="测试消息已发送",
+                details={"message_id": str(message_id)},
+            )
+        )
+    except Exception as e:
+        logger.error(f"Target send test failed: {e}")
+        return await _finish(
+            TargetTestResponse(
+                status="error",
+                message=f"Send test failed: {str(e)}",
             )
         )
 

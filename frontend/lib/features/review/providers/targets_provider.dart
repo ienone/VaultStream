@@ -42,6 +42,18 @@ class Targets extends _$Targets {
     return response.data;
   }
 
+  Future<Map<String, dynamic>> sendTest({
+    required String platform,
+    required String targetId,
+  }) async {
+    final dio = ref.watch(apiClientProvider);
+    final response = await dio.post(
+      '/targets/send-test',
+      data: {'platform': platform, 'target_id': targetId},
+    );
+    return response.data;
+  }
+
   Future<void> batchUpdate({
     required List<int> ruleIds,
     required String targetPlatform,
