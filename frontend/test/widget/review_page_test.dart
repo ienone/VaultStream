@@ -229,6 +229,14 @@ void main() {
       expect(find.text('知乎'), findsWidgets);
       expect(find.textContaining('abcdef12'), findsOneWidget);
       expect(find.text('重试'), findsOneWidget);
+
+      await tester.tap(find.textContaining('abcdef12'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('同步任务 abcdef12'), findsOneWidget);
+      expect(find.text('结果摘要'), findsOneWidget);
+      expect(find.text('需要登录'), findsOneWidget);
+      expect(find.text('登录状态不可用，请先完成该平台登录'), findsOneWidget);
     });
 
     testWidgets('ReviewPage exposes automation health matrix', (
@@ -313,6 +321,22 @@ FavoritesSyncStatus _mockFavoritesStatus() {
         'trigger': 'manual',
         'started_at': '2026-06-05T11:00:00Z',
         'error': 'cookie expired',
+        'result': {
+          'platform': 'zhihu',
+          'result': {
+            'platform': 'zhihu',
+            'status': 'failed',
+            'authenticated': false,
+            'fetched': 0,
+            'imported': 0,
+            'failed': 0,
+            'skipped': 0,
+            'error': 'cookie expired',
+            'error_hint': '登录状态不可用，请先完成该平台登录',
+            'auth_required': true,
+            'retryable': false,
+          },
+        },
       },
     ],
     platforms: [

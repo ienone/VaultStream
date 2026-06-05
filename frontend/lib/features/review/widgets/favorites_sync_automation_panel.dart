@@ -700,20 +700,7 @@ void _showRunDetail(BuildContext context, Map<String, dynamic> run) {
       content: SizedBox(
         width: 520,
         child: SingleChildScrollView(
-          child: SelectableText(
-            [
-              '状态: ${_runStatusLabel(status)}',
-              '范围: ${_runString(run, 'scope') ?? 'all'}',
-              '触发: ${_runString(run, 'trigger') ?? '-'}',
-              '开始: ${_runString(run, 'started_at') ?? '-'}',
-              '结束: ${_runString(run, 'finished_at') ?? '-'}',
-              if (_runString(run, 'retry_of') != null)
-                '重试自: ${_runString(run, 'retry_of')}',
-              if (_runString(run, 'error') != null)
-                '错误: ${_runString(run, 'error')}',
-              if (run['result'] != null) '结果: ${run['result']}',
-            ].join('\n'),
-          ),
+          child: _RunDetailContent(run: run, status: status),
         ),
       ),
       actions: [
@@ -724,6 +711,265 @@ void _showRunDetail(BuildContext context, Map<String, dynamic> run) {
       ],
     ),
   );
+}
+
+class _RunDetailContent extends StatelessWidget {
+  const _RunDetailContent({required this.run, required this.status});
+
+  final Map<String, dynamic> run;
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final platformResults = _extractPlatformResults(run);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _DetailLine(label: '状态', value: _runStatusLabel(status)),
+        _DetailLine(label: '范围', value: _runString(run, 'scope') ?? 'all'),
+        _DetailLine(label: '触发', value: _runString(run, 'trigger') ?? '-'),
+        _DetailLine(label: '开始', value: _runString(run, 'started_at') ?? '-'),
+        _DetailLine(label: '结束', value: _runString(run, 'finished_at') ?? '-'),
+        if (_runString(run, 'retry_of') != null)
+          _DetailLine(label: '重试自', value: _runString(run, 'retry_of')!),
+        if (_runString(run, 'error') != null)
+          _DetailLine(label: '错误', value: _runString(run, 'error')!),
+        if (platformResults.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Text(
+            '结果摘要',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _MetricChip(
+                label: '拉取',
+                value: _sumResultCount(platformResults, 'fetched'),
+              ),
+              _MetricChip(
+                label: '导入',
+                value: _sumResultCount(platformResults, 'imported'),
+              ),
+              _MetricChip(
+                label: '跳过',
+                value: _sumResultCount(platformResults, 'skipped'),
+              ),
+              _MetricChip(
+                label: '失败',
+                value: _sumResultCount(platformResults, 'failed'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          for (final result in platformResults)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: _PlatformRunResult(result: result),
+            ),
+        ] else if (run['result'] != null) ...[
+          const SizedBox(height: 14),
+          Text(
+            '原始结果',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SelectableText(
+            run['result'].toString(),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _PlatformRunResult extends StatelessWidget {
+  const _PlatformRunResult({required this.result});
+
+  final Map<String, dynamic> result;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final status = _mapString(result, 'status') ?? 'unknown';
+    final hasError = status == 'failed' || status == 'partial_success';
+    final authRequired = result['auth_required'] == true;
+    final retryable = result['retryable'] == true;
+    final errorText =
+        _mapString(result, 'error_hint') ??
+        _mapString(result, 'error') ??
+        _mapString(result, 'error_message');
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: hasError
+            ? cs.errorContainer.withValues(alpha: 0.18)
+            : cs.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: hasError
+              ? cs.error.withValues(alpha: 0.35)
+              : cs.outlineVariant,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  hasError
+                      ? Icons.report_problem_outlined
+                      : Icons.task_alt_rounded,
+                  size: 18,
+                  color: hasError ? cs.error : cs.primary,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _platformLabel(_mapString(result, 'platform') ?? 'unknown'),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Text(
+                  _platformRunStatusLabel(status),
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: hasError ? cs.error : cs.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _MetricChip(label: '拉取', value: _mapInt(result, 'fetched')),
+                _MetricChip(label: '导入', value: _mapInt(result, 'imported')),
+                _MetricChip(label: '跳过', value: _mapInt(result, 'skipped')),
+                _MetricChip(label: '失败', value: _mapInt(result, 'failed')),
+              ],
+            ),
+            if (authRequired || retryable) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (authRequired) const Chip(label: Text('需要登录')),
+                  if (retryable) const Chip(label: Text('可重试')),
+                ],
+              ),
+            ],
+            if (errorText != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                errorText,
+                style: theme.textTheme.bodySmall?.copyWith(color: cs.error),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailLine extends StatelessWidget {
+  const _DetailLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 64,
+            child: Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(child: SelectableText(value)),
+        ],
+      ),
+    );
+  }
+}
+
+List<Map<String, dynamic>> _extractPlatformResults(Map<String, dynamic> run) {
+  final result = run['result'];
+  if (result is! Map) return const [];
+  final normalized = Map<String, dynamic>.from(result);
+  final allResults = normalized['results'];
+  if (allResults is Map) {
+    return allResults.values
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
+  }
+  final singleResult = normalized['result'];
+  if (singleResult is Map) {
+    return [Map<String, dynamic>.from(singleResult)];
+  }
+  if (normalized.containsKey('platform') && normalized.containsKey('status')) {
+    return [normalized];
+  }
+  return const [];
+}
+
+int _sumResultCount(List<Map<String, dynamic>> results, String key) {
+  return results.fold<int>(0, (sum, item) => sum + _mapInt(item, key));
+}
+
+int _mapInt(Map<String, dynamic> item, String key) {
+  final value = item[key];
+  if (value is num) return value.toInt();
+  return int.tryParse('$value') ?? 0;
+}
+
+String? _mapString(Map<String, dynamic> item, String key) {
+  final value = item[key];
+  if (value == null) return null;
+  final text = value.toString();
+  return text.isEmpty ? null : text;
+}
+
+String _platformRunStatusLabel(String status) {
+  return switch (status) {
+    'success' => '成功',
+    'partial_success' => '部分成功',
+    'failed' => '失败',
+    'skipped' => '已跳过',
+    _ => status,
+  };
 }
 
 String? _runString(Map<String, dynamic> run, String key) {
