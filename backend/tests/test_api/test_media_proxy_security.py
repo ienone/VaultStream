@@ -5,12 +5,13 @@ import pytest
 from fastapi import HTTPException
 
 from app.routers import media
+from app.core import safe_fetch
 
 
 def test_is_safe_url_blocks_private_ip_even_when_debug(monkeypatch):
     monkeypatch.setattr(media.settings, "debug", True)
     monkeypatch.setattr(
-        media.socket,
+        safe_fetch.socket,
         "getaddrinfo",
         lambda host, _port: [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", 0))],
     )

@@ -4,9 +4,7 @@
 调用方式：无需 API Token (方便前端直接加载)，但部分接口可能限制来源
 """
 import os
-import ipaddress
 import mimetypes
-import socket
 import urllib.parse
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -18,6 +16,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from app.core.logging import logger
 from app.core.config import settings
 from app.core.dependencies import require_api_token
+from app.core.safe_fetch import create_safe_async_transport, is_safe_url
 from app.adapters.storage import get_storage_backend, LocalStorageBackend
 
 router = APIRouter()
@@ -47,26 +46,7 @@ def _resolve_local_media_path(storage: LocalStorageBackend, key: str) -> Path:
 
 def _is_safe_url(url: str) -> bool:
     """检查 URL 是否安全（防止 SSRF 访问内网）"""
-    try:
-        parsed = urlparse(url)
-        if parsed.scheme not in ("http", "https"):
-            return False
-        hostname = parsed.hostname
-        if not hostname:
-            return False
-        # 解析域名到 IP 并检查是否为私有/保留地址
-        for info in socket.getaddrinfo(hostname, None):
-            addr = ipaddress.ip_address(info[4][0])
-            
-            # 放行 Fake-IP 常见网段 (Clash / V2Ray 等代理环境)
-            if addr.version == 4 and addr in ipaddress.ip_network('198.18.0.0/15'):
-                continue
-
-            if addr.is_private or addr.is_reserved or addr.is_link_local:
-                return False
-        return True
-    except (ValueError, socket.gaierror):
-        return False
+    return is_safe_url(url)
 
 
 def _allowed_proxy_origins() -> set[str]:
@@ -338,7 +318,11 @@ async def proxy_image(
     proxy = await get_setting_value("http_proxy", getattr(settings, 'http_proxy', None))
     
     try:
-        async with httpx.AsyncClient(proxy=proxy, timeout=httpx.Timeout(10.0, connect=5.0)) as client:
+        transport = create_safe_async_transport(proxy=proxy) if proxy else create_safe_async_transport()
+        async with httpx.AsyncClient(
+            transport=transport,
+            timeout=httpx.Timeout(10.0, connect=5.0),
+        ) as client:
             original_data, content_type, final_url = await _download_remote_image(
                 client,
                 url,

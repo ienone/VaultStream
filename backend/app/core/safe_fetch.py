@@ -5,9 +5,10 @@ from __future__ import annotations
 import ipaddress
 import socket
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Any, Mapping
 from urllib.parse import urljoin, urlparse
 
+import httpcore
 import httpx
 
 
@@ -69,12 +70,72 @@ def validate_safe_url(url: str) -> None:
             raise UnsafeUrlError("URL resolves to a disallowed address")
 
 
+def _resolve_safe_host(host: str, port: int | None = None) -> str:
+    try:
+        infos = socket.getaddrinfo(host, port)
+    except socket.gaierror as e:
+        raise UnsafeUrlError("URL hostname cannot be resolved") from e
+
+    candidates: list[str] = []
+    for info in infos:
+        ip = info[4][0]
+        if _is_disallowed_ip(ip):
+            raise UnsafeUrlError("URL resolves to a disallowed address")
+        if ip not in candidates:
+            candidates.append(ip)
+
+    if not candidates:
+        raise UnsafeUrlError("URL hostname cannot be resolved")
+    return candidates[0]
+
+
 def is_safe_url(url: str) -> bool:
     try:
         validate_safe_url(url)
         return True
     except (UnsafeUrlError, ValueError):
         return False
+
+
+class SafeAsyncNetworkBackend(httpcore.AsyncNetworkBackend):
+    """httpcore network backend that connects to a prevalidated IP address."""
+
+    def __init__(self, backend: httpcore.AsyncNetworkBackend | None = None) -> None:
+        if backend is None:
+            from httpcore._backends.auto import AutoBackend
+
+            self._backend = AutoBackend()
+        else:
+            self._backend = backend
+
+    async def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Any = None,
+    ) -> httpcore.AsyncNetworkStream:
+        resolved_ip = _resolve_safe_host(host, port)
+        return await self._backend.connect_tcp(
+            resolved_ip,
+            port,
+            timeout=timeout,
+            local_address=local_address,
+            socket_options=socket_options,
+        )
+
+
+def create_safe_async_transport(**kwargs: Any) -> httpx.AsyncHTTPTransport:
+    """Create an HTTP transport whose direct TCP connections use safe DNS results."""
+
+    transport = httpx.AsyncHTTPTransport(**kwargs)
+    pool = getattr(transport, "_pool", None)
+    if hasattr(pool, "_network_backend"):
+        # httpx does not expose httpcore's network_backend in 0.28.x. This
+        # private assignment is intentionally narrow and covered by tests.
+        pool._network_backend = SafeAsyncNetworkBackend()
+    return transport
 
 
 def _content_type_allowed(content_type: str, allowed_prefixes: tuple[str, ...] | None) -> bool:

@@ -1,9 +1,15 @@
 import socket
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 
-from app.core.safe_fetch import UnsafeUrlError, safe_client_get, validate_safe_url
+from app.core.safe_fetch import (
+    SafeAsyncNetworkBackend,
+    UnsafeUrlError,
+    safe_client_get,
+    validate_safe_url,
+)
 
 
 def _fake_getaddrinfo(host: str, port=None, *args, **kwargs):
@@ -20,6 +26,38 @@ def test_validate_safe_url_blocks_private_address(monkeypatch):
 
     with pytest.raises(UnsafeUrlError):
         validate_safe_url("http://private.test/data")
+
+
+@pytest.mark.asyncio
+async def test_safe_network_backend_connects_to_validated_ip(monkeypatch):
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo)
+    inner_backend = AsyncMock()
+    inner_backend.connect_tcp = AsyncMock(return_value="stream")
+    backend = SafeAsyncNetworkBackend(inner_backend)
+
+    result = await backend.connect_tcp("example.test", 443, timeout=1.0)
+
+    assert result == "stream"
+    inner_backend.connect_tcp.assert_awaited_once_with(
+        "93.184.216.34",
+        443,
+        timeout=1.0,
+        local_address=None,
+        socket_options=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_safe_network_backend_blocks_private_resolution(monkeypatch):
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo)
+    inner_backend = AsyncMock()
+    inner_backend.connect_tcp = AsyncMock()
+    backend = SafeAsyncNetworkBackend(inner_backend)
+
+    with pytest.raises(UnsafeUrlError):
+        await backend.connect_tcp("private.test", 80)
+
+    inner_backend.connect_tcp.assert_not_awaited()
 
 
 @pytest.mark.asyncio
