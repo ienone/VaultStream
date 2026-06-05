@@ -1,5 +1,6 @@
 import pytest
 from httpx import AsyncClient
+from types import SimpleNamespace
 from typing import Dict, Any
 
 class TestBotConfigExtraAPI:
@@ -64,6 +65,53 @@ class TestBotConfigExtraAPI:
         )
         assert resp.status_code == 200
         assert resp.json()["status"] == "error" # Should fail normally since bot is not actually configured
+        assert resp.json()["run_id"]
+
+    @pytest.mark.asyncio
+    async def test_targets_test_endpoint_records_success_run(
+        self,
+        client: AsyncClient,
+        monkeypatch,
+    ):
+        class FakeBot:
+            async def get_chat(self, target_id: str):
+                return SimpleNamespace(
+                    title="Push Channel",
+                    type="channel",
+                    username="push_channel",
+                )
+
+        class FakeTelegramPushService:
+            async def _get_bot(self):
+                return FakeBot()
+
+        monkeypatch.setattr(
+            "app.push.telegram.TelegramPushService",
+            FakeTelegramPushService,
+        )
+
+        resp = await client.post(
+            "/api/v1/targets/test",
+            json={"platform": "telegram", "target_id": "target-1"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["platform"] == "telegram"
+        assert data["target_id"] == "target-1"
+        assert data["run_id"]
+        assert "Push Channel" in data["message"]
+
+        diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
+        latest = next(
+            run
+            for run in diagnostics.json()["recent_task_runs"]
+            if run["run_id"] == data["run_id"]
+        )
+        assert latest["task"] == "distribution_target_test"
+        assert latest["status"] == "success"
+        assert latest["target_id"] == "target-1"
+        assert latest["result"]["message"] == data["message"]
 
     @pytest.mark.asyncio
     async def test_targets_batch_update_endpoint(self, client: AsyncClient):

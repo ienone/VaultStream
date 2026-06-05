@@ -254,5 +254,9 @@ class BotConfigQrCodeResponse(BaseModel):
 class TargetTestResponse(BaseModel):
     """测试目标连接响应"""
     status: str = Field(..., description="ok or error")
+    platform: Optional[str] = None
+    target_id: Optional[str] = None
+    run_id: Optional[str] = None
+    elapsed_ms: Optional[float] = None
     message: Optional[str] = None
     details: Optional[Dict[str, Any]] = Field(None, description="详细错误信息")

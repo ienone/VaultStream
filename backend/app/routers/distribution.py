@@ -3,6 +3,7 @@
 包含：规则增删改查、规则预览、目标管理、渲染配置预设
 调用方式：需要 API Token
 """
+import time
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -26,6 +27,11 @@ from app.schemas import (
 )
 from app.core.logging import logger
 from app.core.dependencies import require_api_token
+from app.services.background_task_state import (
+    record_task_run_error,
+    record_task_run_started,
+    record_task_run_success,
+)
 
 
 router = APIRouter()
@@ -382,7 +388,46 @@ async def test_target_connection(
     For QQ: verifies Napcat API connection
     """
     platform = request.platform.lower()
-    target_id = request.target_id
+    target_id = request.target_id or ""
+    run = await record_task_run_started(
+        "distribution_target_test",
+        trigger="manual",
+        platform=platform,
+        target_id=target_id,
+    )
+    started = time.perf_counter()
+
+    async def _finish(response: TargetTestResponse) -> TargetTestResponse:
+        elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+        response.run_id = str(run["run_id"])
+        response.elapsed_ms = elapsed_ms
+        response.platform = platform
+        response.target_id = target_id
+        if response.status == "ok":
+            await record_task_run_success(
+                "distribution_target_test",
+                run["run_id"],
+                platform=platform,
+                target_id=target_id,
+                message=response.message,
+                details=response.details or {},
+                elapsed_ms=elapsed_ms,
+            )
+        else:
+            error = RuntimeError(
+                response.message or "Target connection test failed"
+            )
+            await record_task_run_error(
+                "distribution_target_test",
+                run["run_id"],
+                error,
+                trigger="manual",
+                platform=platform,
+                target_id=target_id,
+                details=response.details or {},
+                elapsed_ms=elapsed_ms,
+            )
+        return response
     
     try:
         if platform == Platform.TELEGRAM.value:
@@ -394,23 +439,29 @@ async def test_target_connection(
             # Try to get chat
             try:
                 chat = await bot.get_chat(target_id)
-                return TargetTestResponse(
-                    platform=platform,
-                    target_id=target_id,
-                    status="ok",
-                    message=f"Connected to chat: {chat.title or target_id}",
-                    details={
-                        "title": chat.title,
-                        "type": chat.type,
-                        "username": chat.username
-                    }
+                return await _finish(
+                    TargetTestResponse(
+                        platform=platform,
+                        target_id=target_id,
+                        status="ok",
+                        message=(
+                            f"Connected to chat: {chat.title or target_id}"
+                        ),
+                        details={
+                            "title": chat.title,
+                            "type": chat.type,
+                            "username": chat.username
+                        }
+                    )
                 )
             except Exception as e:
-                return TargetTestResponse(
-                    platform=platform,
-                    target_id=target_id,
-                    status="error",
-                    message=f"Unable to access chat: {str(e)}"
+                return await _finish(
+                    TargetTestResponse(
+                        platform=platform,
+                        target_id=target_id,
+                        status="error",
+                        message=f"Unable to access chat: {str(e)}"
+                    )
                 )
         
         elif platform == Platform.QQ.value:
@@ -429,11 +480,16 @@ async def test_target_connection(
                 try:
                     group_id_int = int(group_id)
                 except ValueError:
-                    return TargetTestResponse(
-                        platform=platform,
-                        target_id=target_id,
-                        status="error",
-                        message=f"Invalid QQ group ID format: '{target_id}'. Must be numeric."
+                    return await _finish(
+                        TargetTestResponse(
+                            platform=platform,
+                            target_id=target_id,
+                            status="error",
+                            message=(
+                                f"Invalid QQ group ID format: '{target_id}'. "
+                                "Must be numeric."
+                            )
+                        )
                     )
                 
                 client = await service._get_client()
@@ -442,26 +498,35 @@ async def test_target_connection(
                 
                 if data.get("status") == "ok" and data.get("data"):
                     group_info = data["data"]
-                    return TargetTestResponse(
-                        platform=platform,
-                        target_id=target_id,
-                        status="ok",
-                        message=f"Connected to group: {group_info.get('group_name', group_id)}",
-                        details=group_info
+                    return await _finish(
+                        TargetTestResponse(
+                            platform=platform,
+                            target_id=target_id,
+                            status="ok",
+                            message=(
+                                "Connected to group: "
+                                f"{group_info.get('group_name', group_id)}"
+                            ),
+                            details=group_info
+                        )
                     )
                 else:
-                    return TargetTestResponse(
+                    return await _finish(
+                        TargetTestResponse(
+                            platform=platform,
+                            target_id=target_id,
+                            status="error",
+                            message="Unable to get group information"
+                        )
+                    )
+            except Exception as e:
+                return await _finish(
+                    TargetTestResponse(
                         platform=platform,
                         target_id=target_id,
                         status="error",
-                        message="Unable to get group information"
+                        message=f"Connection failed: {str(e)}"
                     )
-            except Exception as e:
-                return TargetTestResponse(
-                    platform=platform,
-                    target_id=target_id,
-                    status="error",
-                    message=f"Connection failed: {str(e)}"
                 )
         
         else:
@@ -472,11 +537,13 @@ async def test_target_connection(
     
     except Exception as e:
         logger.error(f"Target connection test failed: {e}")
-        return TargetTestResponse(
-            platform=platform,
-            target_id=target_id,
-            status="error",
-            message=f"Connection test failed: {str(e)}"
+        return await _finish(
+            TargetTestResponse(
+                platform=platform,
+                target_id=target_id,
+                status="error",
+                message=f"Connection test failed: {str(e)}"
+            )
         )
 
 

@@ -9,6 +9,7 @@ import '../../discovery/providers/discovery_sources_provider.dart';
 import '../../settings/providers/platform_health_provider.dart';
 import '../models/bot_chat.dart';
 import '../providers/bot_chats_provider.dart';
+import '../providers/targets_provider.dart';
 
 class AutomationHealthMatrixPanel extends ConsumerWidget {
   const AutomationHealthMatrixPanel({super.key});
@@ -361,10 +362,21 @@ class _PushTargetHealthList extends ConsumerWidget {
                 : (!chat.isAccessible || chat.syncError != null)
                 ? _HealthState.error
                 : _HealthState.ok,
-            action: OutlinedButton.icon(
-              onPressed: () => _syncPushTarget(context, ref, chat),
-              icon: const Icon(Icons.refresh_rounded, size: 16),
-              label: const Text('刷新'),
+            action: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton.outlined(
+                  onPressed: () => _testPushTarget(context, ref, chat),
+                  tooltip: '测试推送目标',
+                  icon: const Icon(Icons.wifi_tethering_rounded, size: 18),
+                ),
+                const SizedBox(width: 6),
+                IconButton.outlined(
+                  onPressed: () => _syncPushTarget(context, ref, chat),
+                  tooltip: '刷新推送目标',
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                ),
+              ],
             ),
           ),
       ],
@@ -603,6 +615,51 @@ Future<void> _syncPushTarget(
       Toast.show(
         context,
         formatApiErrorMessage(e, fallbackMessage: '推送目标刷新失败'),
+        isError: true,
+      );
+    }
+  }
+}
+
+Future<void> _testPushTarget(
+  BuildContext context,
+  WidgetRef ref,
+  BotChat chat,
+) async {
+  try {
+    final result = await ref
+        .read(targetsProvider().notifier)
+        .testConnection(
+          platform: chat.isQQ ? 'qq' : 'telegram',
+          targetId: chat.chatId,
+        );
+    ref.invalidate(botChatsProvider);
+    final status = result['status']?.toString();
+    final message = result['message']?.toString();
+    final runId = result['run_id']?.toString();
+    if (context.mounted) {
+      Toast.show(
+        context,
+        message == null || message.isEmpty
+            ? (status == 'ok' ? '推送目标测试通过' : '推送目标测试失败')
+            : message,
+        icon: status == 'ok'
+            ? Icons.check_circle_rounded
+            : Icons.error_outline_rounded,
+        isError: status != 'ok',
+        action: runId == null || runId.isEmpty
+            ? null
+            : SnackBarAction(
+                label: '查看日志',
+                onPressed: () => context.go('/home?run=$runId'),
+              ),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      Toast.show(
+        context,
+        formatApiErrorMessage(e, fallbackMessage: '推送目标测试失败'),
         isError: true,
       );
     }

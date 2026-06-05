@@ -37,6 +37,23 @@ class MockDio extends Mock implements Dio {
         ),
       );
     }
+    if (path == '/targets/test') {
+      return Future.value(
+        Response(
+          requestOptions: RequestOptions(path: path),
+          data:
+              {
+                    'status': 'ok',
+                    'message': 'Connected to chat: Push Channel',
+                    'run_id': 'target-test-run',
+                    'platform': 'telegram',
+                    'target_id': 'target-1',
+                  }
+                  as T,
+          statusCode: 200,
+        ),
+      );
+    }
     return Future.value(
       Response(
         requestOptions: RequestOptions(path: path),
@@ -421,9 +438,16 @@ void main() {
       expect(find.text('配置'), findsOneWidget);
       expect(find.text('推送设置'), findsOneWidget);
       expect(find.text('检测'), findsOneWidget);
+      expect(find.byTooltip('测试推送目标'), findsOneWidget);
+      expect(find.byTooltip('刷新推送目标'), findsOneWidget);
       expect(find.byTooltip('查看最近同步结果'), findsOneWidget);
       expect(find.text('同步'), findsOneWidget);
-      expect(find.text('刷新'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('测试推送目标'));
+      await tester.pump();
+
+      expect(find.text('Connected to chat: Push Channel'), findsOneWidget);
+      expect(find.text('查看日志'), findsOneWidget);
     });
   });
 }
