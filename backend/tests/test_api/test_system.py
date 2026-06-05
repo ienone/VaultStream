@@ -299,3 +299,94 @@ class TestSystemAPI:
         assert capabilities["summary_generation"]["status"] == "disabled"
         assert capabilities["semantic_search"]["status"] == "pending"
         assert capabilities["agent"]["status"] == "available"
+
+    @pytest.mark.asyncio
+    async def test_ai_connectivity_test_records_run_and_updates_capabilities(
+        self,
+        client: AsyncClient,
+        monkeypatch,
+    ):
+        async def fake_connectivity(target: str):
+            assert target == "text_llm"
+            return {
+                "target": target,
+                "response_present": True,
+                "preview": "OK",
+            }
+
+        async def _setting_value(key: str, default=None):
+            values = {
+                "text_llm_api_key": "text-key",
+                "vision_llm_api_key": "",
+                "summary_api_key": "",
+                "enable_auto_summary": False,
+                "embedding_api_key": "",
+            }
+            return values.get(key, default)
+
+        async def _index_status(self, session):
+            return {
+                "indexed_total": 0,
+                "parse_success_total": 0,
+                "pending_total": 0,
+                "failed_total": 0,
+            }
+
+        monkeypatch.setattr("app.routers.system._run_ai_connectivity_target", fake_connectivity)
+        monkeypatch.setattr("app.routers.system._get_configured_setting", _setting_value)
+        monkeypatch.setattr(
+            "app.services.embedding_service.EmbeddingService.get_index_status",
+            _index_status,
+        )
+
+        response = await client.post(
+            "/api/v1/ai/connectivity-test",
+            json={"target": "text_llm"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["run_id"]
+        assert data["target"] == "text_llm"
+
+        diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
+        latest = next(
+            run
+            for run in diagnostics.json()["recent_task_runs"]
+            if run["run_id"] == data["run_id"]
+        )
+        assert latest["task"] == "ai_connectivity_test"
+        assert latest["status"] == "success"
+        assert latest["target"] == "text_llm"
+        assert latest["result"]["response_present"] is True
+
+        capabilities_resp = await client.get("/api/v1/ai/capabilities")
+        capabilities = {
+            item["key"]: item
+            for item in capabilities_resp.json()["capabilities"]
+        }
+        connectivity = capabilities["agent"]["details"]["connectivity"]
+        assert connectivity["run_id"] == data["run_id"]
+        assert connectivity["status"] == "success"
+
+    @pytest.mark.asyncio
+    async def test_ai_connectivity_test_reports_real_call_failure(
+        self,
+        client: AsyncClient,
+        monkeypatch,
+    ):
+        async def fake_connectivity(target: str):
+            raise RuntimeError("provider timeout")
+
+        monkeypatch.setattr("app.routers.system._run_ai_connectivity_target", fake_connectivity)
+
+        response = await client.post(
+            "/api/v1/ai/connectivity-test",
+            json={"target": "semantic_search"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is False
+        assert data["status"] == "error"
+        assert data["target"] == "semantic_search"
+        assert "provider timeout" in data["error"]

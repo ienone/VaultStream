@@ -1157,18 +1157,44 @@ class AutomationTab extends ConsumerWidget {
                 .map((item) => item.toString())
                 .where((item) => item.isNotEmpty)
                 .toList();
+            final details = capability['details'] is Map
+                ? Map<String, dynamic>.from(capability['details'] as Map)
+                : <String, dynamic>{};
+            final connectivity = details['connectivity'] is Map
+                ? Map<String, dynamic>.from(details['connectivity'] as Map)
+                : null;
+            final testTarget = _aiConnectivityTarget(key, details);
+            final connectivityText = _aiConnectivitySummary(connectivity);
+            final subtitle = [
+              issues.isEmpty ? summary : '${issues.first} · $summary',
+              if (connectivityText != null) connectivityText,
+            ].where((item) => item.isNotEmpty).join('\n');
             return SettingTile(
               title: capability['label']?.toString() ?? key,
-              subtitle: issues.isEmpty ? summary : '${issues.first} · $summary',
+              subtitle: subtitle,
               icon: _aiCapabilityIcon(key),
               iconColor: _aiCapabilityColor(context, status),
               showArrow: false,
-              trailing: Text(
-                _aiCapabilityStatusLabel(status),
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: _aiCapabilityColor(context, status),
-                  fontWeight: FontWeight.w700,
-                ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _aiCapabilityStatusLabel(status),
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: _aiCapabilityColor(context, status),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (testTarget != null) ...[
+                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip: '测试连通性',
+                      icon: const Icon(Icons.network_check_rounded),
+                      onPressed: () =>
+                          _runAiConnectivityTest(context, ref, testTarget),
+                    ),
+                  ],
+                ],
               ),
             );
           }).toList(),
@@ -1192,6 +1218,65 @@ class AutomationTab extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  String? _aiConnectivityTarget(String key, Map<String, dynamic> details) {
+    switch (key) {
+      case 'content_understanding':
+        if (details['text_llm'] == true) return 'text_llm';
+        if (details['vision_llm'] == true) return 'vision_llm';
+        return null;
+      case 'summary_generation':
+        return 'summary_generation';
+      case 'semantic_search':
+        return 'semantic_search';
+      case 'agent':
+        if (details['text_llm'] == true) return 'text_llm';
+        if (details['vision_llm'] == true) return 'vision_llm';
+        return null;
+      default:
+        return null;
+    }
+  }
+
+  String? _aiConnectivitySummary(Map<String, dynamic>? connectivity) {
+    if (connectivity == null || connectivity.isEmpty) return null;
+    final status = connectivity['status']?.toString();
+    final result = connectivity['result'] is Map
+        ? Map<String, dynamic>.from(connectivity['result'] as Map)
+        : <String, dynamic>{};
+    final elapsed = result['elapsed_ms'];
+    final suffix = elapsed == null ? '' : ' · ${elapsed}ms';
+    if (status == 'success') {
+      return '最近测试成功$suffix';
+    }
+    final error = connectivity['error']?.toString();
+    return error == null || error.isEmpty ? '最近测试失败' : '最近测试失败: $error';
+  }
+
+  Future<void> _runAiConnectivityTest(
+    BuildContext context,
+    WidgetRef ref,
+    String target,
+  ) async {
+    try {
+      final result = await ref.read(aiConnectivityTestProvider).run(target);
+      final ok = result['ok'] == true;
+      final runId = result['run_id']?.toString();
+      final suffix = runId == null || runId.isEmpty
+          ? ''
+          : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
+      if (context.mounted) {
+        showToast(context, ok ? '连通性测试通过$suffix' : '连通性测试失败$suffix');
+      }
+    } catch (e) {
+      if (context.mounted) {
+        showToast(
+          context,
+          formatApiErrorMessage(e, fallbackMessage: '连通性测试失败'),
+        );
+      }
+    }
   }
 
   IconData _aiCapabilityIcon(String key) {

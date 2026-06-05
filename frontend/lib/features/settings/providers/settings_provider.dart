@@ -46,9 +46,29 @@ final semanticIndexStatusProvider =
 
 final aiCapabilitiesProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-      final response = await ref.read(apiClientProvider).get('/ai/capabilities');
+      final response = await ref
+          .read(apiClientProvider)
+          .get('/ai/capabilities');
       final data = Map<String, dynamic>.from(response.data as Map);
       return (data['capabilities'] as List<dynamic>? ?? [])
           .map((item) => Map<String, dynamic>.from(item as Map))
           .toList();
     });
+
+final aiConnectivityTestProvider = Provider<AiConnectivityTestActions>((ref) {
+  return AiConnectivityTestActions(ref);
+});
+
+class AiConnectivityTestActions {
+  const AiConnectivityTestActions(this.ref);
+
+  final Ref ref;
+
+  Future<Map<String, dynamic>> run(String target) async {
+    final response = await ref
+        .read(apiClientProvider)
+        .post('/ai/connectivity-test', data: {'target': target});
+    ref.invalidate(aiCapabilitiesProvider);
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+}

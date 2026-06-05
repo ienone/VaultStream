@@ -421,7 +421,7 @@ QQ 配置支持字段：`napcat_http_url`、`napcat_ws_url`、`napcat_access_tok
 
 `GET /api/v1/background-tasks/diagnostics` 额外返回：
 
-- `recent_task_runs`: 最近后台任务运行记录。当前覆盖 `content_parse`、`content_embedding`、`content_reparse`、`content_summary`、`discovery_patrol`、`discovery_sync`、`distribution_push`、`distribution_schedule`、`distribution_worker_poll`、`favorites_sync` 和 `semantic_reindex`，包含 `run_id`、`task`、`status`、`started_at`、`finished_at`、`error`、`trigger` 以及任务特定元数据。
+- `recent_task_runs`: 最近后台任务运行记录。当前覆盖 `ai_connectivity_test`、`content_parse`、`content_embedding`、`content_reparse`、`content_summary`、`discovery_patrol`、`discovery_sync`、`distribution_push`、`distribution_schedule`、`distribution_worker_poll`、`favorites_sync` 和 `semantic_reindex`，包含 `run_id`、`task`、`status`、`started_at`、`finished_at`、`error`、`trigger` 以及任务特定元数据。
 - `failed_parse_tasks`、`failed_distribution_items`、`failed_discovery_sources`: 仍用于展示可恢复或需排查的失败对象。
 
 `favorites_sync` 运行记录的 `result` 会包含平台级 `fetched/imported/skipped/failed` 汇总；导入阶段发生单条失败时，平台结果还会返回最多 5 条 `failed_items` 样本，字段包含 `url`、`title`、`item_id`、`error`、`error_code`，用于前端解释失败来源。当前 `failed_items` 只用于诊断展示，还不是单条失败重试 API。
@@ -437,6 +437,8 @@ QQ 配置支持字段：`napcat_http_url`、`napcat_ws_url`、`napcat_access_tok
 发现缓冲区的自动巡逻评分会产生 `discovery_patrol` 运行记录，记录候选数量、成功评分数量、失败数量与兴趣画像是否存在；它用于排查探索库内容为何未进入可见状态或评分后处理是否中断。
 
 `POST /api/v1/contents/{content_id}/patrol-score` 会为单条发现流内容手动触发巡逻评分并返回 `run_id`；运行结果进入 `recent_task_runs` 的 `discovery_patrol` 记录，`trigger=manual`，并记录 `content_id`、评分结果和失败数量。非发现流内容返回 `400`。
+
+`POST /api/v1/ai/connectivity-test` 会对 AI 能力执行一次真实连通性测试，`target` 支持 `text_llm`、`vision_llm`、`summary_generation` 和 `semantic_search`。接口返回 `ok`、`run_id`、耗时和错误摘要；成功或失败都会写入 `recent_task_runs` 的 `ai_connectivity_test` 记录，用于区分“未配置”和“已配置但真实调用不可用”。
 
 解析主队列消费分享/导入后的解析任务时会产生 `content_parse` 运行记录，记录 `content_id`、`task_id`、队列动作、重试参数、跳过原因或解析后的状态；它区别于手动重新解析接口产生的 `content_reparse`。
 

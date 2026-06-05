@@ -9,6 +9,7 @@ import asyncio
 import os
 import time
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Body, Response
+from pydantic import BaseModel
 from sqlalchemy import Integer, select, and_, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,7 +39,13 @@ from app.core.api_errors import build_error_payload
 from app.adapters.favorites.errors import FavoritesFetchError
 from app.adapters.storage import get_storage_backend, LocalStorageBackend
 from app.core.queue import task_queue
-from app.services.background_task_state import get_background_task_states, get_recent_task_runs
+from app.services.background_task_state import (
+    get_background_task_states,
+    get_recent_task_runs,
+    record_task_run_error,
+    record_task_run_started,
+    record_task_run_success,
+)
 from app.services.embedding_service import EmbeddingService
 from app.services.settings_service import get_setting_value
 from app.utils.sensitive_display import extract_secret_value
@@ -48,6 +55,10 @@ router = APIRouter()
 
 _storage_usage_cache: dict = {"value": 0, "expires_at": 0.0}
 _STORAGE_CACHE_TTL = 300  # 5 minutes
+
+
+class AIConnectivityTestRequest(BaseModel):
+    target: str
 
 
 def _get_cached_storage_usage() -> int:
@@ -167,6 +178,7 @@ async def _build_ai_capabilities(db: AsyncSession) -> list[dict[str, Any]]:
     embedding_ready = _is_configured_value(await _get_configured_setting("embedding_api_key"))
     semantic_status = await EmbeddingService().get_index_status(session=db)
     indexed_total = int(semantic_status.get("indexed_total") or 0)
+    connectivity = await _latest_ai_connectivity_by_target()
 
     capabilities: list[dict[str, Any]] = []
 
@@ -177,11 +189,16 @@ async def _build_ai_capabilities(db: AsyncSession) -> list[dict[str, Any]]:
                 "内容理解",
                 "available",
                 "文本与视觉模型均已配置，可用于解析增强和复杂内容理解。",
-                details={"text_llm": True, "vision_llm": True},
+                details={
+                    "text_llm": True,
+                    "vision_llm": True,
+                    "connectivity": connectivity.get("text_llm") or connectivity.get("vision_llm"),
+                },
             )
         )
     elif text_ready or vision_ready:
         missing = "视觉模型未配置" if text_ready else "文本模型未配置"
+        target = "text_llm" if text_ready else "vision_llm"
         capabilities.append(
             _capability_item(
                 "content_understanding",
@@ -190,7 +207,11 @@ async def _build_ai_capabilities(db: AsyncSession) -> list[dict[str, Any]]:
                 "已有部分模型配置，部分解析增强能力可用。",
                 issues=[missing],
                 actions=["补齐文本与视觉模型密钥"],
-                details={"text_llm": text_ready, "vision_llm": vision_ready},
+                details={
+                    "text_llm": text_ready,
+                    "vision_llm": vision_ready,
+                    "connectivity": connectivity.get(target),
+                },
             )
         )
     else:
@@ -202,7 +223,7 @@ async def _build_ai_capabilities(db: AsyncSession) -> list[dict[str, Any]]:
                 "未配置文本或视觉模型，AI 内容理解能力不可用。",
                 issues=["text_llm_api_key 与 vision_llm_api_key 均未配置"],
                 actions=["配置文本或视觉 LLM 密钥"],
-                details={"text_llm": False, "vision_llm": False},
+                details={"text_llm": False, "vision_llm": False, "connectivity": None},
             )
         )
 
@@ -214,7 +235,11 @@ async def _build_ai_capabilities(db: AsyncSession) -> list[dict[str, Any]]:
                 "disabled",
                 "自动摘要开关已关闭。",
                 actions=["开启自动摘要"],
-                details={"enabled": False, "summary_key": summary_key_ready},
+                details={
+                    "enabled": False,
+                    "summary_key": summary_key_ready,
+                    "connectivity": connectivity.get("summary_generation"),
+                },
             )
         )
     elif summary_key_ready:
@@ -224,7 +249,11 @@ async def _build_ai_capabilities(db: AsyncSession) -> list[dict[str, Any]]:
                 "摘要生成",
                 "available",
                 "自动摘要已开启，摘要模型密钥已配置。",
-                details={"enabled": True, "summary_key": True},
+                details={
+                    "enabled": True,
+                    "summary_key": True,
+                    "connectivity": connectivity.get("summary_generation"),
+                },
             )
         )
     else:
@@ -236,7 +265,11 @@ async def _build_ai_capabilities(db: AsyncSession) -> list[dict[str, Any]]:
                 "自动摘要已开启，但摘要模型密钥缺失。",
                 issues=["summary_api_key 未配置"],
                 actions=["配置摘要模型密钥或关闭自动摘要"],
-                details={"enabled": True, "summary_key": False},
+                details={
+                    "enabled": True,
+                    "summary_key": False,
+                    "connectivity": connectivity.get("summary_generation"),
+                },
             )
         )
 
@@ -249,7 +282,11 @@ async def _build_ai_capabilities(db: AsyncSession) -> list[dict[str, Any]]:
                 "Embedding 密钥未配置，无法生成或更新语义索引。",
                 issues=["embedding_api_key 未配置"],
                 actions=["配置 Embedding 密钥"],
-                details={"indexed_total": indexed_total, **semantic_status},
+                details={
+                    "indexed_total": indexed_total,
+                    "connectivity": connectivity.get("semantic_search"),
+                    **semantic_status,
+                },
             )
         )
     elif indexed_total <= 0:
@@ -260,7 +297,11 @@ async def _build_ai_capabilities(db: AsyncSession) -> list[dict[str, Any]]:
                 "pending",
                 "Embedding 已配置，但当前还没有已索引内容。",
                 actions=["运行语义重建或等待新内容入库"],
-                details={"indexed_total": indexed_total, **semantic_status},
+                details={
+                    "indexed_total": indexed_total,
+                    "connectivity": connectivity.get("semantic_search"),
+                    **semantic_status,
+                },
             )
         )
     else:
@@ -270,18 +311,27 @@ async def _build_ai_capabilities(db: AsyncSession) -> list[dict[str, Any]]:
                 "语义搜索",
                 "available",
                 f"已有 {indexed_total} 条内容进入语义索引。",
-                details={"indexed_total": indexed_total, **semantic_status},
+                details={
+                    "indexed_total": indexed_total,
+                    "connectivity": connectivity.get("semantic_search"),
+                    **semantic_status,
+                },
             )
         )
 
     if text_ready or vision_ready:
+        target = "text_llm" if text_ready else "vision_llm"
         capabilities.append(
             _capability_item(
                 "agent",
                 "Agent",
                 "available",
                 "Agent 可使用已配置的文本模型；缺少文本模型时会尝试回退到视觉模型。",
-                details={"text_llm": text_ready, "vision_llm": vision_ready},
+                details={
+                    "text_llm": text_ready,
+                    "vision_llm": vision_ready,
+                    "connectivity": connectivity.get(target),
+                },
             )
         )
     else:
@@ -293,11 +343,99 @@ async def _build_ai_capabilities(db: AsyncSession) -> list[dict[str, Any]]:
                 "Agent 需要至少一个可用的文本或视觉 LLM。",
                 issues=["未配置可供 Agent 使用的 LLM 密钥"],
                 actions=["配置 text_llm_api_key 或 vision_llm_api_key"],
-                details={"text_llm": False, "vision_llm": False},
+                details={"text_llm": False, "vision_llm": False, "connectivity": None},
             )
         )
 
     return capabilities
+
+
+async def _latest_ai_connectivity_by_target() -> dict[str, dict[str, Any]]:
+    runs = await get_recent_task_runs("ai_connectivity_test", limit=20)
+    latest: dict[str, dict[str, Any]] = {}
+    for run in runs:
+        target = str(run.get("target") or "")
+        if not target or target in latest:
+            continue
+        latest[target] = {
+            "run_id": run.get("run_id"),
+            "status": run.get("status"),
+            "started_at": run.get("started_at"),
+            "finished_at": run.get("finished_at"),
+            "error": run.get("error"),
+            "result": run.get("result") if isinstance(run.get("result"), dict) else {},
+        }
+    return latest
+
+
+def _normalize_ai_connectivity_target(target: str) -> str:
+    normalized = (target or "").strip().lower()
+    aliases = {
+        "embedding": "semantic_search",
+        "semantic": "semantic_search",
+        "summary": "summary_generation",
+        "text": "text_llm",
+        "vision": "vision_llm",
+        "agent": "text_llm",
+    }
+    normalized = aliases.get(normalized, normalized)
+    if normalized not in {
+        "text_llm",
+        "vision_llm",
+        "summary_generation",
+        "semantic_search",
+    }:
+        raise ValueError("target must be text_llm, vision_llm, summary_generation or semantic_search")
+    return normalized
+
+
+async def _run_ai_connectivity_target(target: str) -> dict[str, Any]:
+    if target in {"text_llm", "vision_llm"}:
+        from langchain_core.messages import HumanMessage
+        from app.core.llm_factory import LLMFactory
+
+        llm = (
+            await LLMFactory.get_text_llm()
+            if target == "text_llm"
+            else await LLMFactory.get_vision_llm()
+        )
+        if llm is None:
+            raise RuntimeError(f"{target}_api_key is not configured or model initialization failed")
+        response = await llm.ainvoke([HumanMessage(content="VaultStream connectivity test. Reply with OK.")])
+        text = str(getattr(response, "content", "") or "").strip()
+        return {"target": target, "response_present": bool(text), "preview": text[:120]}
+
+    if target == "semantic_search":
+        vector = await EmbeddingService().embed_query("VaultStream connectivity test")
+        return {"target": target, "dimension": len(vector), "response_present": bool(vector)}
+
+    from app.services.content_summary_service import _get_summary_llm_config
+
+    key, model, api_version = await _get_summary_llm_config()
+    if not key:
+        raise RuntimeError("summary_api_key is not configured")
+
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=key, http_options={"api_version": api_version})
+
+    def _call():
+        return client.models.generate_content(
+            model=model,
+            contents="VaultStream connectivity test. Reply with OK.",
+            config=types.GenerateContentConfig(max_output_tokens=16),
+        )
+
+    response = await asyncio.to_thread(_call)
+    text = str(getattr(response, "text", "") or "").strip()
+    return {
+        "target": target,
+        "model": model,
+        "api_version": api_version,
+        "response_present": bool(text or response),
+        "preview": text[:120],
+    }
 
 
 async def _count_by_status(db: AsyncSession, model, status_column, enum_cls) -> dict[str, int]:
@@ -416,6 +554,7 @@ async def _build_background_failure_details(
         "distribution_worker_poll",
         "favorites_sync",
         "semantic_reindex",
+        "ai_connectivity_test",
     ):
         recent_task_runs.extend(await get_recent_task_runs(task_name, limit=limit))
     recent_task_runs.sort(
@@ -1056,6 +1195,59 @@ async def get_ai_capabilities(
     """Return user-facing AI capability status before advanced model fields."""
     capabilities = await _build_ai_capabilities(db)
     return {"capabilities": capabilities}
+
+
+@router.post("/ai/connectivity-test")
+async def test_ai_connectivity(
+    payload: AIConnectivityTestRequest,
+    _: None = Depends(require_api_token),
+):
+    """Run a real one-shot AI provider connectivity test."""
+    try:
+        target = _normalize_ai_connectivity_target(payload.target)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    run = await record_task_run_started(
+        "ai_connectivity_test",
+        trigger="manual",
+        target=target,
+    )
+    started = time.perf_counter()
+    try:
+        result = await _run_ai_connectivity_target(target)
+        elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+        result = {**result, "elapsed_ms": elapsed_ms}
+        await record_task_run_success(
+            "ai_connectivity_test",
+            run["run_id"],
+            **result,
+        )
+        return {
+            "run_id": run["run_id"],
+            "target": target,
+            "status": "success",
+            "ok": True,
+            **result,
+        }
+    except Exception as exc:
+        elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+        await record_task_run_error(
+            "ai_connectivity_test",
+            run["run_id"],
+            exc,
+            trigger="manual",
+            target=target,
+            elapsed_ms=elapsed_ms,
+        )
+        return {
+            "run_id": run["run_id"],
+            "target": target,
+            "status": "error",
+            "ok": False,
+            "error": str(exc)[:1000],
+            "elapsed_ms": elapsed_ms,
+        }
 
 
 @router.post("/favorites-sync/sync", status_code=202)
