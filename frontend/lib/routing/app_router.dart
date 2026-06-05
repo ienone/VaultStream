@@ -37,7 +37,7 @@ GoRouter goRouter(Ref ref) {
 
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
-    initialLocation: '/dashboard',
+    initialLocation: '/home',
     refreshListenable: listenable,
     redirect: (context, state) {
       final settings = ref.read(localSettingsProvider);
@@ -61,11 +61,11 @@ GoRouter goRouter(Ref ref) {
             if (!isOnboarding) return '/onboarding';
             return null;
           } else {
-            if (isConnecting) return '/dashboard';
+            if (isConnecting) return '/home';
 
             // Release mode behavior: block onboarding if already setup
             // Debug mode behavior: allow jumping to onboarding for testing
-            if (isOnboarding && !kDebugMode) return '/dashboard';
+            if (isOnboarding && !kDebugMode) return '/home';
 
             return null;
           }
@@ -87,6 +87,11 @@ GoRouter goRouter(Ref ref) {
         path: '/accounts',
         builder: (context, state) => const AccountCenterPage(),
       ),
+      GoRoute(
+        path: '/settings',
+        builder: (context, state) => const SettingsPage(),
+      ),
+      GoRoute(path: '/agent', builder: (context, state) => const AgentPage()),
       StatefulShellRoute.indexedStack(
         // builder用于构建StatefulShellRoute的UI
         // context参数是用于构建Widget的BuildContext对象
@@ -97,16 +102,18 @@ GoRouter goRouter(Ref ref) {
           return AppShell(navigationShell: navigationShell);
         },
         branches: [
-          // StatefulShellBranch表示一个带有状态的路由分支
-          // 定义四个StatefulShellBranch，每个分支对应一个底部导航栏的选项卡
+          // StatefulShellBranch 表示一个带有状态的主导航分支。
+          // 主导航只承载高频任务入口：动态、收藏库、收件箱、自动化。
           StatefulShellBranch(
             // routes参数定义该分支下的路由列表
             routes: [
-              // 定义一个GoRoute，表示仪表盘页面的路由
               GoRoute(
-                path: '/dashboard', // 路由路径为/dashboard
-                builder: (context, state) =>
-                    const DashboardPage(), // 构建仪表盘页面的UI,生成DashboardPage Widget
+                path: '/home',
+                builder: (context, state) => const DashboardPage(),
+              ),
+              GoRoute(
+                path: '/dashboard',
+                redirect: (context, state) => '/home',
               ),
             ],
           ),
@@ -157,32 +164,24 @@ GoRouter goRouter(Ref ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/discovery',
+                path: '/inbox',
                 builder: (context, state) => const DiscoveryPage(),
               ),
+              GoRoute(
+                path: '/discovery',
+                redirect: (context, state) => '/inbox',
+              ),
             ],
           ),
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/review',
+                path: '/automation',
                 builder: (context, state) => const ReviewPage(),
               ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
               GoRoute(
-                path: '/settings',
-                builder: (context, state) => const SettingsPage(),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/agent',
-                builder: (context, state) => const AgentPage(),
+                path: '/review',
+                redirect: (context, state) => '/automation',
               ),
             ],
           ),

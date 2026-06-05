@@ -94,7 +94,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
 
     return Scaffold(
       appBar: FrostedAppBar(
-        title: const Text('审批与分发'),
+        title: const Text('自动化'),
         bottom: TabBar(
           controller: _tabController,
           dividerColor: Colors.transparent,
@@ -105,7 +105,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
           ),
           unselectedLabelStyle: theme.textTheme.labelLarge,
           tabs: const [
-            Tab(text: '内容队列'),
+            Tab(text: '分发队列'),
             Tab(text: '推送历史'),
           ],
         ),

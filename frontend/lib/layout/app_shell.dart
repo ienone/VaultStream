@@ -108,39 +108,36 @@ class _MobileShell extends StatelessWidget {
         currentIndex: navigationShell.currentIndex,
         child: navigationShell,
       ),
+      floatingActionButton: navigationShell.currentIndex == 0
+          ? FloatingActionButton.small(
+              tooltip: '辅助入口',
+              onPressed: () => _showUtilityMenu(context),
+              child: const Icon(Icons.more_horiz_rounded),
+            )
+          : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: navigationShell.currentIndex,
         onDestinationSelected: onDestinationSelected,
         destinations: const [
           NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard_rounded),
-            label: 'Dashboard',
+            icon: Icon(Icons.dynamic_feed_outlined),
+            selectedIcon: Icon(Icons.dynamic_feed_rounded),
+            label: '动态',
           ),
           NavigationDestination(
             icon: Icon(Icons.perm_media_outlined),
             selectedIcon: Icon(Icons.perm_media_rounded),
-            label: 'Library',
+            label: '收藏库',
           ),
           NavigationDestination(
-            icon: Icon(Icons.explore_outlined),
-            selectedIcon: Icon(Icons.explore_rounded),
-            label: 'Discover',
+            icon: Icon(Icons.inbox_outlined),
+            selectedIcon: Icon(Icons.inbox_rounded),
+            label: '收件箱',
           ),
           NavigationDestination(
-            icon: Icon(Icons.rate_review_outlined),
-            selectedIcon: Icon(Icons.rate_review_rounded),
-            label: 'Review',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings_rounded),
-            label: 'Settings',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.smart_toy_outlined),
-            selectedIcon: Icon(Icons.smart_toy_rounded),
-            label: 'Agent',
+            icon: Icon(Icons.account_tree_outlined),
+            selectedIcon: Icon(Icons.account_tree_rounded),
+            label: '自动化',
           ),
         ],
       ),
@@ -159,15 +156,16 @@ class _DesktopShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final extended =
+        MediaQuery.of(context).size.width >= ResponsiveLayout.desktopBreakpoint;
+
     return Scaffold(
       body: Row(
         children: [
           NavigationRail(
             selectedIndex: navigationShell.currentIndex,
             onDestinationSelected: onDestinationSelected,
-            extended:
-                MediaQuery.of(context).size.width >=
-                ResponsiveLayout.desktopBreakpoint,
+            extended: extended,
             minWidth: 80,
             minExtendedWidth: 200,
             leading: Padding(
@@ -188,36 +186,30 @@ class _DesktopShell extends StatelessWidget {
             ),
             destinations: const [
               NavigationRailDestination(
-                icon: Icon(Icons.dashboard_outlined),
-                selectedIcon: Icon(Icons.dashboard_rounded),
-                label: Text('Dashboard'),
+                icon: Icon(Icons.dynamic_feed_outlined),
+                selectedIcon: Icon(Icons.dynamic_feed_rounded),
+                label: Text('动态'),
               ),
               NavigationRailDestination(
                 icon: Icon(Icons.perm_media_outlined),
                 selectedIcon: Icon(Icons.perm_media_rounded),
-                label: Text('Library'),
+                label: Text('收藏库'),
               ),
               NavigationRailDestination(
-                icon: Icon(Icons.explore_outlined),
-                selectedIcon: Icon(Icons.explore_rounded),
-                label: Text('Discover'),
+                icon: Icon(Icons.inbox_outlined),
+                selectedIcon: Icon(Icons.inbox_rounded),
+                label: Text('收件箱'),
               ),
               NavigationRailDestination(
-                icon: Icon(Icons.rate_review_outlined),
-                selectedIcon: Icon(Icons.rate_review_rounded),
-                label: Text('Review'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.settings_outlined),
-                selectedIcon: Icon(Icons.settings_rounded),
-                label: Text('Settings'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.smart_toy_outlined),
-                selectedIcon: Icon(Icons.smart_toy_rounded),
-                label: Text('Agent'),
+                icon: Icon(Icons.account_tree_outlined),
+                selectedIcon: Icon(Icons.account_tree_rounded),
+                label: Text('自动化'),
               ),
             ],
+            trailing: Padding(
+              padding: const EdgeInsets.only(top: 24),
+              child: _UtilityRailActions(extended: extended),
+            ),
           ),
           VerticalDivider(
             thickness: 1,
@@ -236,6 +228,124 @@ class _DesktopShell extends StatelessWidget {
       ),
     );
   }
+}
+
+void _showUtilityMenu(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _UtilityMenuTile(
+            icon: Icons.smart_toy_outlined,
+            label: 'Agent 工作台',
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              context.push('/agent');
+            },
+          ),
+          _UtilityMenuTile(
+            icon: Icons.manage_accounts_outlined,
+            label: '账号中心',
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              context.push('/accounts');
+            },
+          ),
+          _UtilityMenuTile(
+            icon: Icons.settings_outlined,
+            label: '系统设置',
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              context.push('/settings');
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+}
+
+class _UtilityMenuTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _UtilityMenuTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(leading: Icon(icon), title: Text(label), onTap: onTap);
+  }
+}
+
+class _UtilityRailActions extends StatelessWidget {
+  final bool extended;
+
+  const _UtilityRailActions({required this.extended});
+
+  @override
+  Widget build(BuildContext context) {
+    final actions = [
+      _UtilityAction(
+        icon: Icons.smart_toy_outlined,
+        label: 'Agent',
+        route: '/agent',
+      ),
+      _UtilityAction(
+        icon: Icons.manage_accounts_outlined,
+        label: '账号',
+        route: '/accounts',
+      ),
+      _UtilityAction(
+        icon: Icons.settings_outlined,
+        label: '设置',
+        route: '/settings',
+      ),
+    ];
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final action in actions)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Tooltip(
+              message: action.label,
+              child: extended
+                  ? TextButton.icon(
+                      onPressed: () => context.push(action.route),
+                      icon: Icon(action.icon, size: 18),
+                      label: Text(action.label),
+                    )
+                  : IconButton(
+                      onPressed: () => context.push(action.route),
+                      icon: Icon(action.icon),
+                    ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _UtilityAction {
+  final IconData icon;
+  final String label;
+  final String route;
+
+  const _UtilityAction({
+    required this.icon,
+    required this.label,
+    required this.route,
+  });
 }
 
 /// A wrapper that animates transitions between navigation branches.

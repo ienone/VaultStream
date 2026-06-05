@@ -81,7 +81,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('审批与分发'), findsOneWidget);
+      expect(find.text('自动化'), findsOneWidget);
+      expect(find.text('分发队列'), findsOneWidget);
       expect(find.byType(TabBar), findsOneWidget);
     });
 

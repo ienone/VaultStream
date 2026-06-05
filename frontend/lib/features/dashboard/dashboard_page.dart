@@ -31,7 +31,7 @@ class DashboardPage extends ConsumerWidget {
     ref
         .read(discoveryFilterProvider.notifier)
         .resetToFilters(discoveryState: state, showAll: showAll);
-    context.go('/discovery');
+    context.go('/inbox');
   }
 
   void _navigateToCollection(
@@ -75,7 +75,7 @@ class DashboardPage extends ConsumerWidget {
 
     return Scaffold(
       appBar: FrostedAppBar(
-        title: const Text('仪表盘'),
+        title: const Text('动态'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -188,14 +188,14 @@ class DashboardPage extends ConsumerWidget {
                     const SizedBox(height: 40),
 
                     SectionHeader(
-                      title: '探索概览',
-                      icon: Icons.explore_rounded,
+                      title: '收件箱概览',
+                      icon: Icons.inbox_rounded,
                       padding: EdgeInsets.zero,
                       textStyle: sectionStyle,
                       action: TextButton.icon(
                         onPressed: () => _navigateToDiscovery(context, ref),
                         icon: const Icon(Icons.arrow_forward_rounded, size: 16),
-                        label: const Text('前往探索'),
+                        label: const Text('前往收件箱'),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -348,7 +348,7 @@ class DashboardPage extends ConsumerWidget {
                 ),
                 const SizedBox(width: 16),
                 FilledButton.icon(
-                  onPressed: () => context.go('/settings'),
+                  onPressed: () => context.push('/settings'),
                   icon: const Icon(Icons.settings_rounded),
                   label: const Text('前往设置'),
                   style: FilledButton.styleFrom(

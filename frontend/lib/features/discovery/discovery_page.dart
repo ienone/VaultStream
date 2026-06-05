@@ -454,7 +454,7 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
                 style: const TextStyle(fontSize: 16),
               ),
             )
-          : const Text('探索'),
+          : const Text('收件箱'),
       actions: isMobile
           ? [
               _buildSearchAnchor(context, theme),
@@ -525,7 +525,7 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
   Widget _buildSearchAnchor(BuildContext context, ThemeData theme) {
     return SearchAnchor(
       searchController: _searchController,
-      viewHintText: '搜索发现内容...',
+      viewHintText: '搜索收件箱内容...',
       builder: (context, controller) => IconButton(
         icon: const Icon(Icons.search_rounded),
         onPressed: () => controller.openView(),
