@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 import pytest
 
@@ -18,11 +19,12 @@ async def test_schedule_embedding_index_records_content_embedding_run(monkeypatc
 
     PostIngestService().schedule_embedding_index(123, source="unit-test")
 
-    for _ in range(10):
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
         runs = await get_recent_task_runs("content_embedding")
         if runs and runs[0]["content_id"] == 123 and runs[0]["status"] == "success":
             break
-        await asyncio.sleep(0)
+        await asyncio.sleep(0.01)
 
     runs = await get_recent_task_runs("content_embedding")
     latest = runs[0]

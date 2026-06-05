@@ -21,7 +21,7 @@ from app.models import (
     DiscoveryState,
     Platform,
 )
-from app.services.settings_service import get_setting_value
+from app.services.config_service import ConfigService, EmbeddingAIConfig
 
 
 @dataclass
@@ -898,9 +898,12 @@ class EmbeddingService:
         if not text_value:
             raise RuntimeError("embedding text is empty")
 
-        model = await self._get_embedding_model()
-        api_key = await self._get_embedding_api_key()
-        output_dimensionality = await self._get_embedding_output_dimensionality()
+        config = await self._get_embedding_config()
+        model = self._normalize_embedding_model(config.model)
+        api_key = config.api_key
+        output_dimensionality = self._normalize_embedding_output_dimensionality(
+            config.output_dimensionality
+        )
         if not api_key:
             raise RuntimeError("embedding_api_key is required")
 
@@ -940,8 +943,14 @@ class EmbeddingService:
             ).warning(f"Embedding remote call failed: {e}")
             raise
 
+    async def _get_embedding_config(self) -> EmbeddingAIConfig:
+        return await ConfigService().get_embedding_ai_config()
+
     async def _get_embedding_model(self) -> str:
-        model = await get_setting_value("embedding_model")
+        config = await self._get_embedding_config()
+        return self._normalize_embedding_model(config.model)
+
+    def _normalize_embedding_model(self, model: object) -> str:
         if isinstance(model, str) and model.strip():
             normalized = model.strip()
         else:
@@ -951,13 +960,19 @@ class EmbeddingService:
         return normalized
 
     async def _get_embedding_api_key(self) -> Optional[str]:
-        key = await get_setting_value("embedding_api_key")
+        config = await self._get_embedding_config()
+        key = config.api_key
         if isinstance(key, str) and key.strip():
             return key.strip()
         return None
 
     async def _get_embedding_output_dimensionality(self) -> int:
-        value = await get_setting_value("embedding_output_dimensionality")
+        config = await self._get_embedding_config()
+        return self._normalize_embedding_output_dimensionality(
+            config.output_dimensionality
+        )
+
+    def _normalize_embedding_output_dimensionality(self, value: object) -> int:
         try:
             dimension = int(value)
         except (TypeError, ValueError):
@@ -968,7 +983,10 @@ class EmbeddingService:
         return self._DEFAULT_OUTPUT_DIMENSIONALITY
 
     async def _get_embedding_search_max_rows(self) -> int:
-        value = await get_setting_value("embedding_search_max_rows", 5000)
+        config = await self._get_embedding_config()
+        return self._normalize_embedding_search_max_rows(config.search_max_rows)
+
+    def _normalize_embedding_search_max_rows(self, value: object) -> int:
         try:
             row_limit = int(value)
         except (TypeError, ValueError):

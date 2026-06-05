@@ -197,10 +197,10 @@ VaultStream 已经具备个人内容收集、解析、检索、发现、审核�
 
 | 范围 | 命令 | 结果 | 结论 |
 | --- | --- | --- | --- |
-| 后端非 integration | `.venv\Scripts\python.exe -m pytest backend/tests -q -m "not integration" --no-cov` | 734 passed, 4 skipped, 16 deselected | 本地核心逻辑较稳 |
+| 后端非 integration | `.venv\Scripts\python.exe -m pytest backend/tests -q -m "not integration" --no-cov` | 739 passed, 4 skipped, 16 deselected | 本地核心逻辑较稳 |
 | 后端 integration | `.venv\Scripts\python.exe -m pytest backend/tests -q -m integration --no-cov` | 5 failed, 8 passed, 1 skipped, 2 xfailed | 真实平台/真实外部服务链路不稳 |
 | 前端静态检查 | `flutter analyze` | No issues found | Dart/Flutter 静态检查通过 |
-| 前端测试 | `flutter test` | 36 tests passed | 基础 widget/unit 测试通过，但覆盖仍有限 |
+| 前端测试 | `flutter test` | 37 tests passed，存在既有非致命 tap target warning | 基础 widget/unit 测试通过，但覆盖仍有限 |
 
 integration 失败主要集中在真实知乎/小红书内容解析和真实 LLM 调用路径，存在 403、安全校验、连接失败或 cwd 依赖导致 skip 的问题。这说明当前离线单元测试可信，但真实平台功能还不能只靠现有测试证明稳定。
 

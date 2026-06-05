@@ -7,7 +7,23 @@ from sqlalchemy import select
 
 from app.core.time_utils import utcnow
 from app.models import Content, ContentEmbedding, ContentStatus, Platform, ReviewStatus
+from app.services.config_service import EmbeddingAIConfig
 from app.services.embedding_service import EmbeddingService
+
+
+def _embedding_config(
+    *,
+    api_key: str | None = "embedding-key",
+    model: str = "gemini-embedding-2",
+    output_dimensionality: int = 1536,
+    search_max_rows: int = 5000,
+) -> EmbeddingAIConfig:
+    return EmbeddingAIConfig(
+        api_key=api_key,
+        model=model,
+        output_dimensionality=output_dimensionality,
+        search_max_rows=search_max_rows,
+    )
 
 
 @pytest.mark.asyncio
@@ -52,6 +68,29 @@ async def test_embed_query_uses_retrieval_query(monkeypatch):
 
     assert vector == [0.3, 0.4]
     assert captured["text"] == "VaultStream retrieval query:\nrust async"
+
+
+@pytest.mark.asyncio
+async def test_embedding_config_helpers_use_typed_config(monkeypatch):
+    svc = EmbeddingService()
+
+    async def _fake_config(self):
+        return _embedding_config(
+            api_key="typed-key",
+            model="gemini-embedding-2",
+            output_dimensionality=768,
+            search_max_rows=2500,
+        )
+
+    monkeypatch.setattr(
+        "app.services.embedding_service.ConfigService.get_embedding_ai_config",
+        _fake_config,
+    )
+
+    assert await svc._get_embedding_model() == "gemini-embedding-2"
+    assert await svc._get_embedding_api_key() == "typed-key"
+    assert await svc._get_embedding_output_dimensionality() == 768
+    assert await svc._get_embedding_search_max_rows() == 2500
 
 
 @pytest.mark.asyncio
@@ -296,14 +335,12 @@ async def test_vector_rank_limits_database_scan(db_session, monkeypatch):
         )
     await db_session.commit()
 
-    async def _fake_setting(key: str, default=None):
-        if key == "embedding_search_max_rows":
-            return 2
-        return default
+    async def _fake_config(self):
+        return _embedding_config(search_max_rows=2)
 
     monkeypatch.setattr(
-        "app.services.embedding_service.get_setting_value",
-        _fake_setting,
+        "app.services.embedding_service.ConfigService.get_embedding_ai_config",
+        _fake_config,
     )
 
     ranked = await svc._vector_rank_ids(

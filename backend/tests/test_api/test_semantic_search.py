@@ -7,11 +7,36 @@ from httpx import AsyncClient
 
 from app.core.time_utils import utcnow
 from app.models import Content, ContentEmbedding, ContentStatus, Platform, ReviewStatus
+from app.services.config_service import EmbeddingAIConfig
 from app.services.embedding_service import EmbeddingService
 
 
+def _embedding_config(
+    *,
+    api_key: str | None = "embedding-key",
+    model: str = "gemini-embedding-2",
+    output_dimensionality: int = 1536,
+    search_max_rows: int = 5000,
+) -> EmbeddingAIConfig:
+    return EmbeddingAIConfig(
+        api_key=api_key,
+        model=model,
+        output_dimensionality=output_dimensionality,
+        search_max_rows=search_max_rows,
+    )
+
+
 @pytest.mark.asyncio
-async def test_semantic_search_returns_ranked_results(client: AsyncClient, db_session):
+async def test_semantic_search_returns_ranked_results(
+    client: AsyncClient,
+    db_session,
+    monkeypatch,
+):
+    async def _fake_embed_query(self, query: str) -> list[float]:
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(EmbeddingService, "embed_query", _fake_embed_query)
+
     now = utcnow()
     item = Content(
         platform=Platform.BILIBILI,
@@ -24,6 +49,17 @@ async def test_semantic_search_returns_ranked_results(client: AsyncClient, db_se
         created_at=now,
     )
     db_session.add(item)
+    await db_session.flush()
+    db_session.add(
+        ContentEmbedding(
+            content_id=item.id,
+            embedding_model="gemini-embedding-2",
+            embedding_model_signature=await EmbeddingService()._get_document_embedding_signature(),
+            index_status="indexed",
+            embedding=[1.0, 0.0],
+            indexed_at=now,
+        )
+    )
     await db_session.commit()
 
     resp = await client.get(
@@ -45,7 +81,16 @@ async def test_semantic_search_returns_ranked_results(client: AsyncClient, db_se
 
 
 @pytest.mark.asyncio
-async def test_semantic_search_supports_platform_and_date_filters(client: AsyncClient, db_session):
+async def test_semantic_search_supports_platform_and_date_filters(
+    client: AsyncClient,
+    db_session,
+    monkeypatch,
+):
+    async def _fake_embed_query(self, query: str) -> list[float]:
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(EmbeddingService, "embed_query", _fake_embed_query)
+
     now = utcnow()
     old_item = Content(
         platform=Platform.BILIBILI,
@@ -271,14 +316,13 @@ async def test_retry_semantic_embedding_records_run(
 
 @pytest.mark.asyncio
 async def test_embedding_signature_uses_gemini_2_without_task_type(monkeypatch):
-    async def _fake_setting(key: str, default=None):
-        values = {
-            "embedding_model": "gemini-embedding-2",
-            "embedding_output_dimensionality": "1536",
-        }
-        return values.get(key, default)
+    async def _fake_config(self):
+        return _embedding_config(output_dimensionality=1536)
 
-    monkeypatch.setattr("app.services.embedding_service.get_setting_value", _fake_setting)
+    monkeypatch.setattr(
+        "app.services.embedding_service.ConfigService.get_embedding_ai_config",
+        _fake_config,
+    )
     signature = await EmbeddingService()._get_document_embedding_signature()
     assert signature == "gemini-embedding-2|dim=1536|prefix=vaultstream_rag_v1|role=document"
     assert "task" not in signature.lower()
@@ -286,11 +330,12 @@ async def test_embedding_signature_uses_gemini_2_without_task_type(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_embedding_rejects_non_gemini_2_model(monkeypatch):
-    async def _fake_setting(key: str, default=None):
-        if key == "embedding_model":
-            return "text-embedding-3-small"
-        return default
+    async def _fake_config(self):
+        return _embedding_config(model="text-embedding-3-small")
 
-    monkeypatch.setattr("app.services.embedding_service.get_setting_value", _fake_setting)
+    monkeypatch.setattr(
+        "app.services.embedding_service.ConfigService.get_embedding_ai_config",
+        _fake_config,
+    )
     with pytest.raises(RuntimeError, match="Only gemini-embedding-2"):
         await EmbeddingService()._get_embedding_model()

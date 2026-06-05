@@ -21,8 +21,8 @@ The current product direction should be:
 
 Recent local checks are summarized in `docs/audits/2026-06-05-current-product-security-audit.md`. The latest recorded results there are:
 
-- Backend non-integration tests: 738 passed, 4 skipped, 16 deselected.
-- Backend `ResourceWarning` error gate: 738 passed, 4 skipped, 16 deselected.
+- Backend non-integration tests: 739 passed, 4 skipped, 16 deselected.
+- Backend `ResourceWarning` error gate: 739 passed, 4 skipped, 16 deselected.
 - Backend integration tests: 5 failed, 8 passed, 1 skipped, 2 xfailed.
 - Flutter analyze: no issues found.
 - Flutter test: 37 tests passed, with one existing non-fatal tap target warning.
@@ -39,10 +39,11 @@ Important current boundaries:
 - Distribution decisions are centered on `DistributionService`; legacy engine/scheduler modules should stay thin compatibility wrappers until removed.
 - Agent and GUI actions share a controlled tool/action surface. Dangerous writes require confirmation, and the internal API bridge is allowlist-only. Agent chat uses typed `agent_chat_*` config with `text_llm_*` compatibility fallback and has a dedicated connectivity-test target.
 - Summary generation now reads typed summary config through `ConfigService`, preserving the `GEMINI_API_KEY` compatibility alias while avoiding fallback to embedding/text model settings.
+- Semantic embedding and vector-scan limits now read typed embedding config through `ConfigService`, while preserving the Gemini embedding model guard and dimensionality/row-limit bounds.
 
 Main backend risks:
 
-- `ConfigService` now owns typed dynamic setting access and AI provider diagnostics; summary generation, Agent runtime, and connectivity tests use typed AI config, while embedding, patrol, browser auth, and other lower-level callers still use the compatibility `settings_service` functions and should be migrated gradually.
+- `ConfigService` now owns typed dynamic setting access and AI provider diagnostics; summary generation, semantic embedding, Agent runtime, and connectivity tests use typed AI config, while patrol, browser auth, and other lower-level callers still use the compatibility `settings_service` functions and should be migrated gradually.
 - EventBus runtime state remains process-local; API diagnostics now read it through a public EventBus snapshot instead of route-level private field access.
 - Background tasks have health state but not a full failure/retry operations panel.
 - Several long task/adapter files still mix orchestration, parsing, media processing, and persistence.
@@ -76,7 +77,7 @@ Target: remove issues that make the current system feel unreliable.
 
 Target: reduce drift between settings, tasks, and user-facing behavior.
 
-- Continue migrating high-value callers from legacy `settings_service` helpers to typed `ConfigService` methods, prioritizing embedding, patrol scoring, and background-task diagnostics now that summary generation has moved.
+- Continue migrating high-value callers from legacy `settings_service` helpers to typed `ConfigService` methods, prioritizing patrol scoring, browser auth, and background-task diagnostics now that summary generation and semantic embedding have moved.
 - Extend explicit AI config modeling beyond health diagnostics, Agent runtime, and connectivity tests: add provider fields and migrate more call sites from raw setting keys.
 - Keep `DistributionService` as the single distribution business entrypoint and remove old wrapper logic in a breaking cleanup release.
 - Split `ContentParser` by responsibility: task orchestration, adapter parsing, archive media processing, post-ingest scheduling, and error/dead-letter handling.
