@@ -26,6 +26,9 @@ from app.models import (
 from app.push.factory import get_push_service
 from app.services.background_task_state import (
     record_task_error,
+    record_task_run_error,
+    record_task_run_started,
+    record_task_run_success,
     record_task_started,
     record_task_success,
 )
@@ -175,22 +178,9 @@ class DistributionQueueWorker:
         logger.info("Worker {} 开始运行", worker_name)
         while self.running:
             try:
-                async with AsyncSessionLocal() as session:
-                    items = await self._claim_items(session, worker_name)
-                    if not items:
-                        await asyncio.sleep(POLL_INTERVAL)
-                        continue
-
-                    for item in items:
-                        try:
-                            await self._process_item(session, item, worker_name)
-                        except Exception as e:
-                            logger.error(
-                                f"Worker {worker_name} 处理失败 item_id={item.id} error={e}",
-                                exc_info=True,
-                            )
-                            await record_task_error("distribution_worker", e, worker=worker_name)
-                            await session.rollback()
+                result = await self._poll_once(worker_name)
+                if not result.get("claimed_count"):
+                    await asyncio.sleep(POLL_INTERVAL)
             except asyncio.CancelledError:
                 raise
             except Exception as e:
@@ -200,6 +190,77 @@ class DistributionQueueWorker:
                 )
                 await record_task_error("distribution_worker", e, worker=worker_name)
                 await asyncio.sleep(10)
+
+    async def _poll_once(self, worker_name: str) -> dict:
+        """领取并处理一批到期分发队列项。空轮询不创建运行记录。"""
+        async with AsyncSessionLocal() as session:
+            items = await self._claim_items(session, worker_name)
+            if not items:
+                return {"worker": worker_name, "claimed_count": 0}
+
+            queue_item_ids = [item.id for item in items]
+            run = await record_task_run_started(
+                "distribution_worker_poll",
+                trigger="auto",
+                worker=worker_name,
+                claimed_count=len(items),
+                queue_item_ids=queue_item_ids,
+            )
+            run_id = run["run_id"]
+
+            status_counts: dict[str, int] = {}
+            processed_count = 0
+            error_count = 0
+            first_error: Exception | None = None
+
+            for item in items:
+                item_id = item.id
+                try:
+                    await self._process_item(session, item, worker_name)
+                    processed_count += 1
+                    status = item.status.value if item.status else "unknown"
+                    status_counts[status] = status_counts.get(status, 0) + 1
+                except Exception as e:
+                    error_count += 1
+                    if first_error is None:
+                        first_error = e
+                    logger.error(
+                        f"Worker {worker_name} 处理失败 item_id={item_id} error={e}",
+                        exc_info=True,
+                    )
+                    await record_task_error(
+                        "distribution_worker",
+                        e,
+                        worker=worker_name,
+                        queue_item_id=item_id,
+                    )
+                    await session.rollback()
+
+            result = {
+                "trigger": "auto",
+                "worker": worker_name,
+                "claimed_count": len(items),
+                "processed_count": processed_count,
+                "error_count": error_count,
+                "queue_item_ids": queue_item_ids,
+                "status_counts": status_counts,
+            }
+
+            if first_error is not None:
+                await record_task_run_error(
+                    "distribution_worker_poll",
+                    run_id,
+                    first_error,
+                    **result,
+                )
+            else:
+                await record_task_run_success(
+                    "distribution_worker_poll",
+                    run_id,
+                    **result,
+                )
+
+            return result
 
     # ── 领取队列项 ────────────────────────────────────
 

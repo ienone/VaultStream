@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from app.tasks.distribution_worker import DistributionQueueWorker
 from app.models import Content, ContentQueueItem, QueueItemStatus, ContentStatus, ReviewStatus, BotChat, DistributionRule, BotConfig, BotChatType, BotConfigPlatform, PushedRecord
 from app.core.time_utils import utcnow
+from app.services.background_task_state import get_recent_task_runs
 
 @pytest.fixture(autouse=True)
 def mock_event_bus():
@@ -206,6 +207,43 @@ async def _setup_full_chain(db_session, *, bot_chat_enabled=True, bot_chat_acces
     await db_session.commit()
     await db_session.refresh(item)
     return bot_config, bot_chat, rule, content, item
+
+
+@pytest.mark.asyncio
+async def test_poll_once_records_distribution_worker_run(db_session, monkeypatch, client):
+    _, _, _, _, item = await _setup_full_chain(db_session)
+
+    from tests.conftest import TestingSessionLocal
+    monkeypatch.setattr("app.tasks.distribution_worker.AsyncSessionLocal", TestingSessionLocal)
+
+    mock_push_service = AsyncMock()
+    mock_push_service.push.return_value = "msg_poll"
+
+    with patch("app.tasks.distribution_worker.get_push_service", return_value=mock_push_service):
+        worker = DistributionQueueWorker(worker_count=0)
+        result = await worker._poll_once("queue-worker-test")
+
+    await db_session.refresh(item)
+    assert item.status == QueueItemStatus.SUCCESS
+    assert result["claimed_count"] >= 1
+    assert item.id in result["queue_item_ids"]
+
+    runs = await get_recent_task_runs("distribution_worker_poll")
+    latest = next(run for run in runs if item.id in run.get("queue_item_ids", []))
+    assert latest["task"] == "distribution_worker_poll"
+    assert latest["status"] == "success"
+    assert latest["trigger"] == "auto"
+    assert latest["worker"] == "queue-worker-test"
+    assert latest["result"]["status_counts"][QueueItemStatus.SUCCESS.value] >= 1
+
+    diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
+    assert diagnostics.status_code == 200
+    diagnostic_run = next(
+        run
+        for run in diagnostics.json()["recent_task_runs"]
+        if run["run_id"] == latest["run_id"]
+    )
+    assert diagnostic_run["task"] == "distribution_worker_poll"
 
 
 # ── process_item_now — item not found ───────────────────

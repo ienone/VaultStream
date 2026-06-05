@@ -195,6 +195,7 @@ async def _build_background_failure_details(
         "discovery_sync",
         "distribution_push",
         "distribution_schedule",
+        "distribution_worker_poll",
         "favorites_sync",
         "semantic_reindex",
     ):
