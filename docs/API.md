@@ -408,7 +408,9 @@ QQ 配置支持字段：`napcat_http_url`、`napcat_ws_url`、`napcat_access_tok
 
 `POST /api/v1/contents/{content_id}/generate-summary` 会执行摘要生成并返回 `run_id`；运行结果进入 `recent_task_runs` 的 `content_summary` 记录。
 
-`POST /api/v1/distribution-queue/items/{item_id}/push-now` 会立即处理单个分发队列项并返回 `run_id`；运行结果进入 `recent_task_runs` 的 `distribution_push` 记录。批量和 content-level 分发接口仍应按影响范围单独审视。
+`POST /api/v1/distribution-queue/items/{item_id}/push-now` 会立即处理单个分发队列项并返回 `run_id`；运行结果进入 `recent_task_runs` 的 `distribution_push` 记录。
+
+`POST /api/v1/distribution-queue/content/{content_id}/push-now` 与 `POST /api/v1/distribution-queue/content/batch-push-now` 会把相关队列项调整为立即可处理并返回 `run_id`；运行结果进入 `recent_task_runs` 的 `distribution_schedule` 记录。它们是排期/调度操作，不代表外部推送已经成功。
 
 ---
 
