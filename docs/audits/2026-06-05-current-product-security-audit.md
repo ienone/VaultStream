@@ -177,55 +177,47 @@ integration 失败主要集中在真实知乎/小红书内容解析和真实 LLM
 
 | 指标 | 结果 |
 | --- | --- |
-| 可报告发现 | 7 |
-| 严重性 | high=1, medium=5, low=1 |
-| 置信度 | high=4, medium=3 |
+| 可报告发现 | 6 |
+| 严重性 | medium=5, low=1 |
+| 置信度 | high=3, medium=3 |
 | 验证方式 | 静态追踪和有限本地路径模拟 |
 
-### S1. Release 构建把后端 API token 嵌入客户端产物
-
-- 严重性：high
-- 置信度：high
-- 影响：如果 GitHub Actions 手动构建把 `secrets.API_TOKEN` 通过 `--dart-define=API_TOKEN` 注入 Flutter web/APK，分发产物中可能包含可恢复的后端共享 token。
-- 风险：任何拿到产物的人可能提取 token 并调用受保护后端 API。
-- 建议：停止在分发构建中注入后端共享 token；改为用户级或短期 token；如曾发布相关产物，应轮换 token；CI 增加禁止规则。
-
-### S2. 归档媒体处理缺少 SSRF 控制
+### S1. 归档媒体处理缺少 SSRF 控制
 
 - 严重性：medium
 - 置信度：high
 - 影响：RSS、发现源或通用解析可以带入图片/视频 URL，媒体处理器会用 httpx 跟随重定向下载，缺少私网、link-local、redirect 最终目标校验。
 - 建议：所有服务端 URL 获取统一走 SSRF-safe fetcher，校验 scheme、DNS、连接目标、重定向、大小和内容类型。
 
-### S3. 公开图片代理只做连接前 DNS 校验
+### S2. 公开图片代理只做连接前 DNS 校验
 
 - 严重性：medium
 - 置信度：medium
 - 影响：图片代理会预解析 DNS 并拒绝私网地址，但实际 httpx 连接仍使用原始 hostname，没有绑定已校验 IP，理论上存在 DNS rebinding 或解析差异绕过。
 - 建议：连接时绑定或验证目标 IP；每次重定向后重新校验；禁止私网、link-local、reserved 目标。
 
-### S4. 公开媒体路由使用不安全字符串前缀路径检查
+### S3. 公开媒体路由使用不安全字符串前缀路径检查
 
 - 严重性：medium
 - 置信度：medium
 - 影响：Windows 路径下，`realpath(file).startswith(realpath(root))` 可能把 sibling-prefix 路径误判为在存储根目录内。
 - 建议：拒绝 absolute/rooted key；使用 `Path.resolve()` 和 `relative_to()` 做真实祖先关系校验；补 Windows 编码分隔符、盘符、大小写测试。
 
-### S5. Telegram bot 白名单默认允许所有用户
+### S4. Telegram bot 白名单默认允许所有用户
 
 - 严重性：medium
 - 置信度：high
 - 影响：白名单为空时当前逻辑等价 allow-all。启用 bot 后，未列入黑名单的任意 Telegram 用户可能调用命令，甚至通过 `/ai` 进入 Agent 执行。
 - 建议：生产环境无白名单时 fail closed；如确需公开 bot，使用显式 `ALLOW_ALL_TELEGRAM_USERS=true`；启动时给出阻断或强警告。
 
-### S6. 通用分享解析可触发内部 URL 获取
+### S5. 通用分享解析可触发内部 URL 获取
 
 - 严重性：medium
 - 置信度：high
 - 影响：持有 API token 的客户端可以提交任意 URL，unknown host 会进入 universal adapter，`tiered_fetch` 使用 httpx/Playwright 直接获取，缺少统一 SSRF 策略。
 - 建议：通用解析和 Playwright navigation 也必须走 SSRF-safe fetcher/策略；对 localhost、RFC1918、metadata、redirect 加测试。
 
-### S7. 本地归档媒体可无鉴权访问
+### S6. 本地归档媒体可无鉴权访问
 
 - 严重性：low
 - 置信度：medium
@@ -236,7 +228,6 @@ integration 失败主要集中在真实知乎/小红书内容解析和真实 LLM
 
 ### P0：先修影响安全和用户信任的基础问题
 
-- 禁止 release/manual 分发构建注入后端 API token，并轮换可能泄露的 token。
 - 当前统一任务运行记录已覆盖主要后台链路；后续重点是统一任务详情页与前端可操作入口。
 - 分发队列前端默认改用 `queue_item_id` 级操作，content-level 操作必须显示影响范围。
 

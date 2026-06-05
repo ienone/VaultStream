@@ -55,6 +55,11 @@ jobs:
             echo "DEBUG_LOG=true must not be used in release automation"
             exit 1
           fi
+          pattern='--dart-define=API''_TOKEN'
+          if grep -R -- "$pattern" .github/workflows; then
+            echo "API_TOKEN must not be embedded into distributed Flutter artifacts"
+            exit 1
+          fi
           grep -R -- "--dart-define=DEBUG_LOG=false" .github/workflows/release.yml
 
       - name: Build backend image for scan
