@@ -247,6 +247,10 @@ void main() {
       expect(find.text('结果摘要'), findsOneWidget);
       expect(find.text('需要登录'), findsOneWidget);
       expect(find.text('登录状态不可用，请先完成该平台登录'), findsOneWidget);
+      expect(find.text('失败项'), findsOneWidget);
+      expect(find.text('失败收藏'), findsOneWidget);
+      expect(find.text('https://example.com/fail'), findsOneWidget);
+      expect(find.text('导入失败'), findsOneWidget);
     });
 
     testWidgets('ReviewPage opens highlighted favorites sync run detail', (
@@ -294,6 +298,8 @@ void main() {
       expect(find.text('同步任务 abcdef12'), findsOneWidget);
       expect(find.text('结果摘要'), findsOneWidget);
       expect(find.text('登录状态不可用，请先完成该平台登录'), findsOneWidget);
+      expect(find.text('失败项'), findsOneWidget);
+      expect(find.text('https://example.com/fail'), findsOneWidget);
     });
 
     testWidgets('ReviewPage exposes automation health matrix', (
@@ -387,8 +393,16 @@ FavoritesSyncStatus _mockFavoritesStatus() {
             'authenticated': false,
             'fetched': 0,
             'imported': 0,
-            'failed': 0,
+            'failed': 1,
             'skipped': 0,
+            'failed_items': [
+              {
+                'url': 'https://example.com/fail',
+                'title': '失败收藏',
+                'error': '导入失败',
+                'error_code': 'RuntimeError',
+              },
+            ],
             'error': 'cookie expired',
             'error_hint': '登录状态不可用，请先完成该平台登录',
             'auth_required': true,

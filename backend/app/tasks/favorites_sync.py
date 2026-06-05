@@ -605,6 +605,7 @@ class FavoritesSyncTask:
         imported = 0
         skipped = 0
         failed = 0
+        failed_items: list[dict[str, Any]] = []
         seen_urls: set[str] = set()
 
         async with AsyncSessionLocal() as session:
@@ -629,6 +630,16 @@ class FavoritesSyncTask:
                     skipped += 1
                 except Exception as e:
                     failed += 1
+                    if len(failed_items) < 5:
+                        failed_items.append(
+                            {
+                                "url": item.url,
+                                "title": item.title,
+                                "item_id": item.item_id,
+                                "error": str(e)[:500],
+                                "error_code": e.__class__.__name__,
+                            }
+                        )
                     logger.bind(
                         event="favorites_import_failed",
                         platform=platform,
@@ -650,6 +661,7 @@ class FavoritesSyncTask:
             "fetched": len(items),
             "imported": imported,
             "failed": failed,
+            "failed_items": failed_items,
             "skipped": skipped,
             "next_cursor": next_cursor,
             "error": None,

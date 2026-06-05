@@ -935,6 +935,7 @@ class _PlatformRunResult extends StatelessWidget {
     final hasError = status == 'failed' || status == 'partial_success';
     final authRequired = result['auth_required'] == true;
     final retryable = result['retryable'] == true;
+    final failedItems = _mapListOfMaps(result, 'failed_items');
     final errorText =
         _mapString(result, 'error_hint') ??
         _mapString(result, 'error') ??
@@ -1013,6 +1014,75 @@ class _PlatformRunResult extends StatelessWidget {
                 style: theme.textTheme.bodySmall?.copyWith(color: cs.error),
               ),
             ],
+            if (failedItems.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                '失败项',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: cs.error,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              for (final item in failedItems.take(5))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: _FailedFavoriteItem(item: item),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FailedFavoriteItem extends StatelessWidget {
+  const _FailedFavoriteItem({required this.item});
+
+  final Map<String, dynamic> item;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final title = _mapString(item, 'title');
+    final url = _mapString(item, 'url') ?? '-';
+    final error = _mapString(item, 'error') ?? _mapString(item, 'error_code');
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: cs.errorContainer.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: cs.error.withValues(alpha: 0.22)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (title != null)
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            SelectableText(
+              url,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+            if (error != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                error,
+                style: theme.textTheme.bodySmall?.copyWith(color: cs.error),
+              ),
+            ],
           ],
         ),
       ),
@@ -1086,6 +1156,18 @@ String? _mapString(Map<String, dynamic> item, String key) {
   if (value == null) return null;
   final text = value.toString();
   return text.isEmpty ? null : text;
+}
+
+List<Map<String, dynamic>> _mapListOfMaps(
+  Map<String, dynamic> item,
+  String key,
+) {
+  final value = item[key];
+  if (value is! List) return const [];
+  return value
+      .whereType<Map>()
+      .map((entry) => Map<String, dynamic>.from(entry))
+      .toList(growable: false);
 }
 
 String _platformRunStatusLabel(String status) {

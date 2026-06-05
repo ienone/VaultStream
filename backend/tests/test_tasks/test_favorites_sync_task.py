@@ -62,6 +62,36 @@ class _OneItemFetcher(BaseFavoritesFetcher):
         return [FavoriteItem(url="https://example.com/favorite")], None
 
 
+class _TwoItemFetcher(BaseFavoritesFetcher):
+    def platform_name(self) -> str:
+        return "dummy"
+
+    async def check_auth(self) -> bool:
+        return True
+
+    async def fetch_favorites(
+        self,
+        *,
+        max_items: int = 50,
+        cursor: str | None = None,
+    ) -> tuple[list[FavoriteItem], str | None]:
+        return (
+            [
+                FavoriteItem(
+                    url="https://example.com/ok",
+                    title="正常收藏",
+                    item_id="ok-1",
+                ),
+                FavoriteItem(
+                    url="https://example.com/fail",
+                    title="失败收藏",
+                    item_id="fail-1",
+                ),
+            ],
+            None,
+        )
+
+
 @pytest.mark.asyncio
 async def test_sync_platform_returns_unified_auth_failure_payload():
     task = FavoritesSyncTask()
@@ -139,6 +169,45 @@ async def test_sync_platform_imports_favorites_through_content_service():
         tags=[],
         source_name="favorites_sync:dummy",
     )
+
+
+@pytest.mark.asyncio
+async def test_sync_platform_records_failed_item_samples():
+    task = FavoritesSyncTask()
+
+    async def _get_setting_value(key: str, default=None):
+        if key == "favorites_sync_max_items":
+            return 50
+        if key.startswith("favorites_sync_rate_"):
+            return 1000000
+        if key.startswith("favorites_sync_cursor_"):
+            return None
+        return default
+
+    with patch(
+        "app.tasks.favorites_sync.get_setting_value_fresh",
+        new=AsyncMock(side_effect=_get_setting_value),
+    ), patch(
+        "app.tasks.favorites_sync.set_setting_value",
+        new=AsyncMock(),
+    ), patch(
+        "app.services.content_service.ContentService.create_share",
+        new=AsyncMock(side_effect=[object(), RuntimeError("import exploded")]),
+    ):
+        result = await task._sync_platform(_TwoItemFetcher())
+
+    assert result["status"] == "partial_success"
+    assert result["imported"] == 1
+    assert result["failed"] == 1
+    assert result["failed_items"] == [
+        {
+            "url": "https://example.com/fail",
+            "title": "失败收藏",
+            "item_id": "fail-1",
+            "error": "import exploded",
+            "error_code": "RuntimeError",
+        }
+    ]
 
 
 @pytest.mark.asyncio
