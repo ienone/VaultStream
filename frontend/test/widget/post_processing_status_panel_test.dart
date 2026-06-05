@@ -49,6 +49,13 @@ void main() {
             ],
           },
         },
+        {
+          'key': 'patrol',
+          'label': '巡逻评分',
+          'status': 'not_scored',
+          'message': '未记录巡逻评分',
+          'details': {'discovery_state': 'visible'},
+        },
       ],
     };
 
@@ -70,6 +77,8 @@ void main() {
     expect(find.text('生成摘要'), findsOneWidget);
     expect(find.text('重建索引'), findsOneWidget);
     expect(find.text('重试分发'), findsOneWidget);
+    expect(find.text('巡逻评分'), findsOneWidget);
+    expect(find.text('未评分'), findsOneWidget);
     expect(find.text('失败详情'), findsNWidgets(2));
     expect(find.textContaining('embedding api unavailable'), findsOneWidget);
     expect(find.textContaining('telegram rate limited'), findsOneWidget);

@@ -15,6 +15,7 @@ from app.models import (
     ContentEmbedding,
     ContentQueueItem,
     ContentStatus,
+    DiscoveryState,
     PushedRecord,
     QueueItemStatus,
     Platform,
@@ -178,6 +179,20 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
         distribution_status = "not_matched"
         distribution_message = "暂未匹配分发规则"
 
+    discovery_state = content.discovery_state.value if content.discovery_state else None
+    if content.ai_score is not None:
+        patrol_status = "success"
+        patrol_message = f"评分 {content.ai_score:.1f}"
+    elif content.discovery_state == DiscoveryState.INGESTED:
+        patrol_status = "pending"
+        patrol_message = "等待巡逻评分"
+    elif content.discovery_state is None:
+        patrol_status = "disabled"
+        patrol_message = "非发现流内容不需要巡逻评分"
+    else:
+        patrol_status = "not_scored"
+        patrol_message = "未记录巡逻评分"
+
     return {
         "content_id": content.id,
         "stages": [
@@ -211,6 +226,18 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
                         }
                         for row in embedding_failures
                     ],
+                },
+            },
+            {
+                "key": "patrol",
+                "label": "巡逻评分",
+                "status": patrol_status,
+                "message": patrol_message,
+                "details": {
+                    "ai_score": content.ai_score,
+                    "ai_reason": content.ai_reason,
+                    "ai_tags": content.ai_tags or [],
+                    "discovery_state": discovery_state,
                 },
             },
             {

@@ -85,6 +85,9 @@ async def test_processing_status_includes_failure_payloads(client, db_session):
     embedding_failures = stages["semantic_index"]["details"]["failures"]
     distribution_failures = stages["distribution"]["details"]["failures"]
 
+    assert stages["patrol"]["status"] == "disabled"
+    assert stages["patrol"]["details"]["discovery_state"] is None
+
     assert stages["semantic_index"]["status"] == "failed"
     assert embedding_failures[0]["failure_reason"] == "embedding api unavailable"
     assert embedding_failures[0]["retry_count"] == 2

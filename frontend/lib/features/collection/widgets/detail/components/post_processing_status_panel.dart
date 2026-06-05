@@ -341,6 +341,7 @@ class _StageRow extends ConsumerWidget {
       case 'disabled':
       case 'not_matched':
       case 'not_indexed':
+      case 'not_scored':
       case 'waiting_parse':
         return Icons.info_rounded;
       default:
@@ -363,6 +364,7 @@ class _StageRow extends ConsumerWidget {
       case 'disabled':
       case 'not_matched':
       case 'not_indexed':
+      case 'not_scored':
       case 'waiting_parse':
         return colorScheme.outline;
       default:
@@ -390,6 +392,8 @@ class _StageRow extends ConsumerWidget {
         return '未匹配';
       case 'not_indexed':
         return '未索引';
+      case 'not_scored':
+        return '未评分';
       case 'waiting_parse':
         return '等解析';
       default:
