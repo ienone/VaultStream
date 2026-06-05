@@ -27,6 +27,23 @@ _MAX_PROXY_IMAGE_PIXELS = 40_000_000
 _MAX_PROXY_CACHE_BYTES = 512 * 1024 * 1024
 
 
+def _resolve_local_media_path(storage: LocalStorageBackend, key: str) -> Path:
+    if ".." in key:
+        raise HTTPException(status_code=400, detail="Invalid media key")
+
+    raw_key = Path(key)
+    if raw_key.is_absolute() or key.startswith(("/", "\\")):
+        raise HTTPException(status_code=400, detail="Invalid media key")
+
+    storage_root = Path(storage.root_dir).resolve()
+    file_path = Path(storage._full_path(key)).resolve()
+    try:
+        file_path.relative_to(storage_root)
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail="Access denied") from e
+    return file_path
+
+
 def _is_safe_url(url: str) -> bool:
     """检查 URL 是否安全（防止 SSRF 访问内网）"""
     try:
@@ -245,24 +262,18 @@ async def proxy_media(
         raise HTTPException(status_code=400, detail="Only local storage proxy is supported")
 
     # 路径穿越防护
-    if ".." in key:
-        raise HTTPException(status_code=400, detail="Invalid media key")
-
-    file_path = storage._full_path(key)
+    file_path = _resolve_local_media_path(storage, key)
     # 确保解析后的路径仍在存储根目录内
-    if not os.path.realpath(file_path).startswith(os.path.realpath(storage.root_dir)):
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    if not os.path.exists(file_path):
+    if not file_path.exists():
         raise HTTPException(status_code=404, detail="Media not found")
         
-    mime_type, _ = mimetypes.guess_type(file_path)
+    mime_type, _ = mimetypes.guess_type(str(file_path))
     if not mime_type:
         mime_type = "application/octet-stream"
     
     # 添加缓存头优化性能
     return FileResponse(
-        file_path, 
+        str(file_path),
         media_type=mime_type,
         headers={
             "Cache-Control": "public, max-age=31536000, immutable",  # 1年缓存
