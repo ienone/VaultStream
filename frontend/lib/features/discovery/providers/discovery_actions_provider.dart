@@ -27,13 +27,30 @@ class DiscoveryActions extends _$DiscoveryActions {
     (dio) => dio.patch('/discovery/items/$id', data: {'state': 'ignored'}),
   );
 
+  Future<void> snoozeItem(int id) => _runAction(
+    (dio) => dio.patch('/discovery/items/$id', data: {'state': 'snoozed'}),
+  );
+
+  Future<void> addRuleCandidate(int id) => _runAction(
+    (dio) =>
+        dio.patch('/discovery/items/$id', data: {'state': 'rule_candidate'}),
+  );
+
+  Future<void> requestDistribution(int id) => _runAction(
+    (dio) => dio.patch('/discovery/items/$id', data: {'state': 'queued'}),
+  );
+
+  Future<void> requestRepair(int id) => _runAction(
+    (dio) => dio.patch('/discovery/items/$id', data: {'state': 'needs_repair'}),
+  );
+
   Future<void> bulkAction(Set<int> ids, String action) async {
     if (ids.isEmpty) return;
     await _runAction(
-      (dio) => dio.post('/discovery/items/bulk-action', data: {
-        'ids': ids.toList(),
-        'action': action,
-      }),
+      (dio) => dio.post(
+        '/discovery/items/bulk-action',
+        data: {'ids': ids.toList(), 'action': action},
+      ),
     );
   }
 

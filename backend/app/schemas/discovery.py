@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional, List, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models import DiscoverySourceKind, DiscoveryState
+from app.models import ContentStatus, DiscoverySourceKind, DiscoveryState
 from app.schemas.base import UtcDatetime, OptionalUtcDatetime
 
 
@@ -16,6 +16,7 @@ class DiscoveryItemListItem(BaseModel):
     id: int
     title: Optional[str] = None
     url: str
+    status: Optional[ContentStatus] = None
     author_name: Optional[str] = None
     summary: Optional[str] = None
     ai_score: Optional[float] = None
@@ -38,6 +39,7 @@ class DiscoveryItemResponse(BaseModel):
     title: Optional[str] = None
     url: str
     body: Optional[str] = None
+    status: Optional[ContentStatus] = None
     author_name: Optional[str] = None
     author_avatar_url: Optional[str] = None
     author_url: Optional[str] = None
@@ -77,12 +79,12 @@ class DiscoveryItemListResponse(BaseModel):
 
 
 class DiscoveryItemUpdate(BaseModel):
-    state: Literal["promoted", "ignored"]
+    state: Literal["promoted", "ignored", "snoozed", "rule_candidate", "queued", "needs_repair"]
 
 
 class DiscoveryBulkAction(BaseModel):
     ids: List[int]
-    action: Literal["promote", "ignore"]
+    action: Literal["promote", "ignore", "snooze", "rule_candidate", "queue", "repair"]
 
 
 # --- Discovery Source ---
@@ -122,12 +124,15 @@ class DiscoverySettingsResponse(BaseModel):
     interest_profile: str = ""
     score_threshold: float = 6.0
     retention_days: int = 7
+    cleanup_mode: Literal["hard_delete", "expire_only", "archive"] = "hard_delete"
+    retention_scope: str = "new_candidates_only"
 
 
 class DiscoverySettingsUpdate(BaseModel):
     interest_profile: Optional[str] = None
     score_threshold: Optional[float] = None
     retention_days: Optional[int] = None
+    cleanup_mode: Optional[Literal["hard_delete", "expire_only", "archive"]] = None
 
 
 # --- Stats ---

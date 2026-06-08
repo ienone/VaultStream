@@ -31,6 +31,7 @@ class _FakeDiscoverySyncTask:
         *,
         run_id: str | None = None,
         trigger: str = "manual",
+        force: bool = False,
     ) -> None:
         await record_task_run_success(
             "discovery_sync",
@@ -138,6 +139,44 @@ class TestDiscoverySourcesAPI:
             assert latest["status"] == "success"
             assert latest["source_id"] == source_id
             assert latest["trigger"] == "manual"
+        finally:
+            if previous is None:
+                app.state._state.pop("discovery_sync_task", None)
+            else:
+                app.state.discovery_sync_task = previous
+
+    @pytest.mark.asyncio
+    async def test_manual_sync_rejects_disabled_source_without_force(
+        self,
+        client: AsyncClient,
+    ):
+        create_response = await client.post(
+            "/api/v1/discovery/sources",
+            json={
+                "kind": "rss",
+                "name": "API test disabled sync RSS source",
+                "enabled": False,
+                "config": {"url": "https://example.com/disabled-feed.xml"},
+                "sync_interval_minutes": 60,
+            },
+        )
+        assert create_response.status_code == 201
+        source_id = create_response.json()["id"]
+
+        previous = getattr(app.state, "discovery_sync_task", None)
+        app.state.discovery_sync_task = _FakeDiscoverySyncTask()
+        try:
+            blocked = await client.post(f"/api/v1/discovery/sources/{source_id}/sync")
+            assert blocked.status_code == 409
+            data = blocked.json()
+            assert data["error_code"] == "discovery_source_disabled"
+            assert data["policy"]["allowed"] is False
+
+            forced = await client.post(
+                f"/api/v1/discovery/sources/{source_id}/sync?force=true"
+            )
+            assert forced.status_code == 202
+            assert forced.json()["run_id"] == "api-test-discovery-run"
         finally:
             if previous is None:
                 app.state._state.pop("discovery_sync_task", None)

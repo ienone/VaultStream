@@ -17,6 +17,7 @@ class DiscoverySettingsState extends _$DiscoverySettingsState {
     String? interestProfile,
     double? scoreThreshold,
     int? retentionDays,
+    String? cleanupMode,
   }) async {
     final dio = ref.read(apiClientProvider);
     final response = await dio.patch(
@@ -25,6 +26,7 @@ class DiscoverySettingsState extends _$DiscoverySettingsState {
         'interest_profile': ?interestProfile,
         'score_threshold': ?scoreThreshold,
         'retention_days': ?retentionDays,
+        'cleanup_mode': ?cleanupMode,
       },
     );
     state = AsyncData(DiscoverySettings.fromJson(response.data));

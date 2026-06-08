@@ -30,13 +30,14 @@ class ActionSummaryCard extends StatelessWidget {
     final parseFailures = queue.parse.parseFailed;
     final distributionPending = queue.distribution.willPush;
     final inboxVisible =
-        discovery.byState['visible'] ??
-        discovery.byState['new'] ??
-        discovery.total;
+        (discovery.byState['ingested'] ?? 0) +
+        (discovery.byState['scored'] ?? 0) +
+        (discovery.byState['visible'] ?? 0);
+    final inboxPending = inboxVisible > 0 ? inboxVisible : discovery.total;
     final failureCount = diagnostics.totalFailures > parseFailures
         ? diagnostics.totalFailures
         : parseFailures;
-    final pendingCount = parseBacklog + distributionPending + inboxVisible;
+    final pendingCount = parseBacklog + distributionPending + inboxPending;
     final hasFailures = failureCount > 0;
     final hasPending = pendingCount > 0;
 
@@ -130,7 +131,7 @@ class ActionSummaryCard extends StatelessWidget {
                 ),
                 _MetricButton(
                   label: '收件箱',
-                  value: inboxVisible,
+                  value: inboxPending,
                   icon: Icons.inbox_rounded,
                   color: colorScheme.primary,
                   onPressed: onOpenInbox,

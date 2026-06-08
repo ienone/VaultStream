@@ -12,12 +12,14 @@ from app.core.events import event_bus
 from app.core.dependencies import require_api_token
 from app.core.api_errors import build_error_payload
 from app.core.time_utils import utcnow
+from app.core.config import settings
 from app.services.background_task_state import (
     record_task_run_error,
     record_task_run_started,
     record_task_run_success,
 )
 from app.services.config_service import ConfigService
+from app.services.automation_policy import AutomationPolicyService
 from app.models import Content, DiscoverySource, DiscoveryState, DiscoverySourceKind
 from app.schemas.discovery import (
     DiscoveryItemListItem, DiscoveryItemListResponse, DiscoveryItemResponse,
@@ -67,11 +69,19 @@ async def _read_discovery_settings(config: ConfigService) -> DiscoverySettingsRe
     interest_profile = await config.get_value("discovery_interest_profile", "")
     score_threshold = await config.get_value("discovery_score_threshold", 6.0)
     retention_days = await config.get_value("discovery_retention_days", 7)
+    cleanup_mode = await config.get_value(
+        "discovery_cleanup_mode",
+        settings.discovery_cleanup_mode,
+    )
+    if cleanup_mode not in {"hard_delete", "expire_only", "archive"}:
+        cleanup_mode = settings.discovery_cleanup_mode
 
     return DiscoverySettingsResponse(
         interest_profile=str(interest_profile or ""),
         score_threshold=float(score_threshold) if score_threshold is not None else 6.0,
         retention_days=int(retention_days) if retention_days is not None else 7,
+        cleanup_mode=cleanup_mode,
+        retention_scope="new_candidates_only",
     )
 
 
@@ -99,6 +109,34 @@ def _serialize_source_test_item(item) -> dict:
         "tag_count": len(item.source_tags or []),
         "media_count": len(item.media_urls or []),
     }
+
+
+def _apply_inbox_action(item: Content, action: str, now=None) -> None:
+    now = now or utcnow()
+    if action == "promote":
+        item.discovery_state = DiscoveryState.PROMOTED
+        item.promoted_at = now
+        return
+    if action == "ignore":
+        item.discovery_state = DiscoveryState.IGNORED
+        return
+
+    context = dict(item.context_data or {})
+    context["inbox_action"] = {
+        "action": action,
+        "requested_at": now.isoformat(),
+        "status": "placeholder",
+    }
+    if action == "snooze":
+        item.discovery_state = DiscoveryState.INGESTED
+    elif action == "rule_candidate":
+        context["rule_candidate"] = True
+    elif action == "queue":
+        context["distribution_requested"] = True
+    elif action == "repair":
+        item.discovery_state = DiscoveryState.VISIBLE
+        context["repair_requested"] = True
+    item.context_data = context
 
 
 # ── Items ──────────────────────────────────────────────────────────────
@@ -229,11 +267,15 @@ async def update_discovery_item(
     if not item:
         raise HTTPException(status_code=404, detail="Discovery item not found")
 
-    if body.state == "promoted":
-        item.discovery_state = DiscoveryState.PROMOTED
-        item.promoted_at = utcnow()
-    else:
-        item.discovery_state = DiscoveryState.IGNORED
+    action_map = {
+        "promoted": "promote",
+        "ignored": "ignore",
+        "snoozed": "snooze",
+        "rule_candidate": "rule_candidate",
+        "queued": "queue",
+        "needs_repair": "repair",
+    }
+    _apply_inbox_action(item, action_map[body.state])
 
     await db.commit()
     await db.refresh(item)
@@ -265,11 +307,7 @@ async def bulk_action(
 
     now = utcnow()
     for item in items:
-        if body.action == "promote":
-            item.discovery_state = DiscoveryState.PROMOTED
-            item.promoted_at = now
-        else:
-            item.discovery_state = DiscoveryState.IGNORED
+        _apply_inbox_action(item, body.action, now)
 
     await db.commit()
     for item in items:
@@ -476,6 +514,7 @@ async def test_source_quality(
 async def trigger_sync(
     source_id: int,
     request: Request,
+    force: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
@@ -487,6 +526,21 @@ async def trigger_sync(
         raise HTTPException(status_code=404, detail="Source not found")
     if source.kind not in _SUPPORTED_DISCOVERY_SOURCE_KINDS:
         _raise_unsupported_source_kind(source.kind, request)
+    policy = await AutomationPolicyService().discovery_source_manual(
+        source_enabled=bool(source.enabled),
+        force=force,
+    )
+    if not policy.allowed:
+        raise HTTPException(
+            status_code=409,
+            detail=build_error_payload(
+                message=policy.reason,
+                code=policy.code,
+                hint="启用该发现源，或在请求中显式传入 force=true。",
+                request_id=getattr(request.state, "request_id", None),
+                extra={"policy": policy.as_dict()},
+            ),
+        )
 
     sync_task = getattr(request.app.state, "discovery_sync_task", None)
     if sync_task is None:
@@ -507,6 +561,7 @@ async def trigger_sync(
             source_id,
             run_id=run["run_id"],
             trigger="manual",
+            force=force,
         )
     )
 
@@ -534,7 +589,19 @@ async def update_discovery_settings(
     if body.score_threshold is not None:
         await config.set_value("discovery_score_threshold", body.score_threshold, category="discovery")
     if body.retention_days is not None:
-        await config.set_value("discovery_retention_days", body.retention_days, category="discovery")
+        await config.set_value(
+            "discovery_retention_days",
+            body.retention_days,
+            category="discovery",
+            description="只影响新候选的 expire_at；不会自动改写既有候选。",
+        )
+    if body.cleanup_mode is not None:
+        await config.set_value(
+            "discovery_cleanup_mode",
+            body.cleanup_mode,
+            category="discovery",
+            description="收件箱候选过期后的清理策略：硬删除、仅过期、或归档隐藏。",
+        )
 
     return await _read_discovery_settings(config)
 

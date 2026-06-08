@@ -107,6 +107,18 @@ class DiscoveryItemCard extends ConsumerWidget {
                         ),
                       ),
                       const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          _InboxKindChip(label: item.inboxKindLabel),
+                          if (item.discoveryState != null)
+                            _StateChip(
+                              label: _stateLabel(item.discoveryState!),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
                       Row(
                         children: [
                           if (item.sourceType != null) ...[
@@ -166,4 +178,71 @@ class DiscoveryItemCard extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _InboxKindChip extends StatelessWidget {
+  const _InboxKindChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: cs.primaryContainer.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: cs.onPrimaryContainer,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StateChip extends StatelessWidget {
+  const _StateChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        child: Text(
+          label,
+          style: Theme.of(
+            context,
+          ).textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+        ),
+      ),
+    );
+  }
+}
+
+String _stateLabel(String state) {
+  return switch (state) {
+    'ingested' => '待评分',
+    'scored' => '已评分',
+    'visible' => '待处理',
+    'promoted' => '已收藏',
+    'ignored' => '已忽略',
+    'expired' => '已过期',
+    'merged' => '已合并',
+    _ => state,
+  };
 }

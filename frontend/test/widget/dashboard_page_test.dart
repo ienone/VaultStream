@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:frontend/features/dashboard/dashboard_page.dart';
 import 'package:frontend/features/dashboard/providers/dashboard_provider.dart';
 import 'package:frontend/features/dashboard/models/stats.dart';
@@ -198,6 +199,77 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
   });
 
+  testWidgets('DashboardPage summary counts inbox candidate states', (
+    WidgetTester tester,
+  ) async {
+    final mockStats = DashboardStats(
+      platformCounts: {'rss': 1},
+      dailyGrowth: [],
+      storageUsageBytes: 1024,
+    );
+    final mockQueue = QueueOverviewStats(
+      parse: QueueStats(
+        unprocessed: 0,
+        processing: 0,
+        parseSuccess: 1,
+        parseFailed: 0,
+        total: 1,
+      ),
+      distribution: DistributionStats(
+        willPush: 0,
+        filtered: 0,
+        pushed: 0,
+        total: 0,
+      ),
+    );
+    final mockHealth = SystemHealth(
+      status: 'ok',
+      queueSize: 0,
+      components: {'db': 'ok'},
+    );
+    final mockDiscovery = DiscoveryStats(
+      total: 12,
+      byState: {'ingested': 2, 'scored': 3, 'visible': 4, 'ignored': 3},
+      bySource: {'rss': 9, 'favorites_sync': 3},
+    );
+    final mockDiagnostics = BackgroundTaskDiagnostics.fromJson({
+      'summary': {},
+      'task_states': [],
+      'failed_parse_tasks': [],
+      'failed_distribution_items': [],
+      'failed_discovery_sources': [],
+      'recent_task_runs': [],
+    });
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          dashboardStatsProvider.overrideWith((ref) => Future.value(mockStats)),
+          queueStatsProvider.overrideWith((ref) => Future.value(mockQueue)),
+          systemHealthProvider.overrideWith((ref) => Future.value(mockHealth)),
+          discoveryStatsProvider.overrideWith(
+            (ref) => Future.value(mockDiscovery),
+          ),
+          backgroundTaskDiagnosticsProvider.overrideWith(
+            (ref) => Future.value(mockDiagnostics),
+          ),
+        ],
+        child: const MaterialApp(home: DashboardPage()),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('有 9 个待处理动态'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.widgetWithText(OutlinedButton, '收件箱'),
+        matching: find.text('9'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('DashboardPage opens highlighted run detail from query state', (
     WidgetTester tester,
   ) async {
@@ -296,13 +368,23 @@ void main() {
       ],
     });
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: BackgroundDiagnosticsCard(diagnostics: diagnostics),
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, state) => Scaffold(
+            body: BackgroundDiagnosticsCard(diagnostics: diagnostics),
+          ),
         ),
-      ),
+        GoRoute(
+          path: '/tasks/:runId',
+          builder: (context, state) =>
+              Text('task route ${state.pathParameters['runId']}'),
+        ),
+      ],
     );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
 
     expect(find.text('最近运行'), findsOneWidget);
     expect(find.text('content_parse'), findsOneWidget);
@@ -311,8 +393,6 @@ void main() {
     await tester.tap(find.text('content_parse'));
     await tester.pumpAndSettle();
 
-    expect(find.text('任务 content_parse'), findsOneWidget);
-    expect(find.text('abcdef123456'), findsOneWidget);
-    expect(find.textContaining('parse_success'), findsOneWidget);
+    expect(find.text('task route abcdef123456'), findsOneWidget);
   });
 }

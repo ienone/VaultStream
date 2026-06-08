@@ -132,6 +132,46 @@ class TestDiscoveryAPI:
         assert main_item.discovery_state is None
 
     @pytest.mark.asyncio
+    async def test_inbox_placeholder_actions_keep_candidates_testable(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ):
+        """Inbox-only actions should keep API/UI abstraction without requiring real distribution."""
+        item = Content(
+            platform=Platform.UNIVERSAL,
+            url="https://example.com/inbox-placeholder",
+            status=ContentStatus.PARSE_FAILED,
+            discovery_state=DiscoveryState.VISIBLE,
+            source_type="favorites_sync",
+            title="Needs Repair",
+        )
+        db_session.add(item)
+        await db_session.commit()
+        await db_session.refresh(item)
+
+        response = await client.patch(
+            f"/api/v1/discovery/items/{item.id}",
+            json={"state": "needs_repair"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["discovery_state"] == DiscoveryState.VISIBLE.value
+        assert data["context_data"]["repair_requested"] is True
+        assert data["context_data"]["inbox_action"]["status"] == "placeholder"
+
+        response = await client.post(
+            "/api/v1/discovery/items/bulk-action",
+            json={"ids": [item.id], "action": "queue"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["updated"] == 1
+        await db_session.refresh(item)
+        assert item.context_data["distribution_requested"] is True
+
+    @pytest.mark.asyncio
     async def test_list_discovery_items_tag_filter(self, client: AsyncClient, db_session: AsyncSession):
         """tag query param should filter by JSON tag arrays."""
         matched = Content(
@@ -273,6 +313,8 @@ class TestDiscoveryAPI:
         assert "interest_profile" in data
         assert "score_threshold" in data
         assert "retention_days" in data
+        assert data["cleanup_mode"] in {"hard_delete", "expire_only", "archive"}
+        assert data["retention_scope"] == "new_candidates_only"
 
     @pytest.mark.asyncio
     async def test_update_discovery_settings(self, client: AsyncClient):
@@ -285,6 +327,19 @@ class TestDiscoveryAPI:
         data = response.json()
         assert data["score_threshold"] == 8.0
         assert data["retention_days"] == 14
+
+    @pytest.mark.asyncio
+    async def test_update_discovery_cleanup_mode_and_retention_scope(self, client: AsyncClient):
+        """PATCH /discovery/settings exposes cleanup strategy and keeps retention scope explicit."""
+        response = await client.patch(
+            "/api/v1/discovery/settings",
+            json={"retention_days": 21, "cleanup_mode": "archive"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["retention_days"] == 21
+        assert data["cleanup_mode"] == "archive"
+        assert data["retention_scope"] == "new_candidates_only"
 
     # ── Stats ──────────────────────────────────────────────────────
 

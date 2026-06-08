@@ -10,6 +10,8 @@ from sqlalchemy import delete, select, update
 
 from app.core.db_adapter import AsyncSessionLocal
 from app.core.time_utils import utcnow
+from app.core.config import settings
+from app.services.settings_service import get_setting_value
 from app.services.background_task_state import (
     record_task_error,
     record_task_started,
@@ -59,9 +61,15 @@ class DiscoveryCleanupTask:
             await asyncio.sleep(6 * 3600)
 
     async def _cleanup_expired(self) -> int:
-        """Delete contents where expire_at < now and state in (ignored, expired)"""
+        """Apply configured cleanup policy to expired inbox candidates."""
         async with AsyncSessionLocal() as db:
             now = utcnow()
+            cleanup_mode = await get_setting_value(
+                "discovery_cleanup_mode",
+                settings.discovery_cleanup_mode,
+            )
+            if cleanup_mode not in {"hard_delete", "expire_only", "archive"}:
+                cleanup_mode = settings.discovery_cleanup_mode
 
             # Mark expired visible items
             await db.execute(
@@ -71,6 +79,38 @@ class DiscoveryCleanupTask:
                 .where(Content.expire_at < now)
                 .values(discovery_state=DiscoveryState.EXPIRED)
             )
+
+            if cleanup_mode == "expire_only":
+                await db.commit()
+                return 0
+
+            if cleanup_mode == "archive":
+                result = await db.execute(
+                    update(Content)
+                    .where(
+                        Content.discovery_state.in_(
+                            [
+                                DiscoveryState.EXPIRED,
+                                DiscoveryState.IGNORED,
+                            ]
+                        )
+                    )
+                    .where(Content.expire_at != None)  # noqa: E711
+                    .where(Content.expire_at < now)
+                    .where(Content.deleted_at == None)  # noqa: E711
+                    .values(
+                        deleted_at=now,
+                        context_data={
+                            "inbox_archived": True,
+                            "archive_reason": "discovery_cleanup",
+                        },
+                    )
+                )
+                await db.commit()
+                archived = int(result.rowcount or 0)
+                if archived > 0:
+                    logger.info(f"Discovery cleanup: archived {archived} expired items")
+                return archived
 
             # Hard delete expired and old ignored items
             target_ids = (

@@ -421,6 +421,34 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
                                       size: 20,
                                     ),
                                   ),
+                                  const Gap(4),
+                                  PopupMenuButton<String>(
+                                    tooltip: '更多收件箱动作',
+                                    icon: const Icon(Icons.more_horiz_rounded),
+                                    onSelected: (action) => _runInboxAction(
+                                      context,
+                                      currentItem!.id,
+                                      action,
+                                    ),
+                                    itemBuilder: (context) => const [
+                                      PopupMenuItem(
+                                        value: 'snooze',
+                                        child: Text('稍后处理'),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'rule_candidate',
+                                        child: Text('加入规则候选'),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'queue',
+                                        child: Text('请求分发'),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'repair',
+                                        child: Text('修复失败'),
+                                      ),
+                                    ],
+                                  ),
                                 ],
                               ],
                             ),
@@ -563,6 +591,44 @@ class _DiscoveryPageState extends ConsumerState<DiscoveryPage> {
       await ref.read(discoveryActionsProvider.notifier).ignoreItem(itemId);
       if (context.mounted) {
         Toast.show(context, '已移出发现区', icon: Icons.check_circle_outline_rounded);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Toast.show(context, '操作失败: $e', isError: true);
+      }
+    }
+  }
+
+  Future<void> _runInboxAction(
+    BuildContext context,
+    int itemId,
+    String action,
+  ) async {
+    final notifier = ref.read(discoveryActionsProvider.notifier);
+    final label = switch (action) {
+      'snooze' => '已标记稍后处理',
+      'rule_candidate' => '已加入规则候选',
+      'queue' => '已记录分发请求',
+      'repair' => '已标记待修复',
+      _ => '已更新',
+    };
+    try {
+      switch (action) {
+        case 'snooze':
+          await notifier.snoozeItem(itemId);
+          break;
+        case 'rule_candidate':
+          await notifier.addRuleCandidate(itemId);
+          break;
+        case 'queue':
+          await notifier.requestDistribution(itemId);
+          break;
+        case 'repair':
+          await notifier.requestRepair(itemId);
+          break;
+      }
+      if (context.mounted) {
+        Toast.show(context, label, icon: Icons.check_circle_outline_rounded);
       }
     } catch (e) {
       if (context.mounted) {

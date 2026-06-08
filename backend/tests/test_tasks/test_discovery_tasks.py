@@ -40,15 +40,19 @@ def _patch_archive_config(
     monkeypatch,
     *,
     enabled: bool = True,
+    images_enabled: bool = True,
     image_webp_quality: int = 80,
     image_max_count: int | None = None,
 ):
     async def _config(self):
         return ArchiveMediaConfig(
             enabled=enabled,
+            images_enabled=enabled and images_enabled,
+            videos_enabled=enabled,
             image_webp_quality=image_webp_quality,
             image_max_count=image_max_count,
             video_max_count=None,
+            video_max_bytes=None,
         )
 
     monkeypatch.setattr(
@@ -620,8 +624,12 @@ async def test_archive_discovery_media_rewrites_body_to_local_urls(db_session, m
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_cleanup_deletes_expired(db_session):
+async def test_cleanup_deletes_expired(db_session, monkeypatch):
     """Expired IGNORED content should be hard-deleted."""
+    monkeypatch.setattr(
+        "app.tasks.discovery_cleanup.get_setting_value",
+        AsyncMock(return_value="hard_delete"),
+    )
     content = Content(
         platform=Platform.UNIVERSAL,
         url="https://example.com/cleanup-1",
@@ -645,8 +653,12 @@ async def test_cleanup_deletes_expired(db_session):
 
 
 @pytest.mark.asyncio
-async def test_cleanup_marks_visible_as_expired(db_session):
+async def test_cleanup_marks_visible_as_expired(db_session, monkeypatch):
     """VISIBLE content past expire_at should be marked EXPIRED."""
+    monkeypatch.setattr(
+        "app.tasks.discovery_cleanup.get_setting_value",
+        AsyncMock(return_value="hard_delete"),
+    )
     content = Content(
         platform=Platform.UNIVERSAL,
         url="https://example.com/cleanup-2",
@@ -696,3 +708,71 @@ async def test_cleanup_preserves_promoted(db_session):
 
     result = await db_session.execute(select(Content).where(Content.id == content_id))
     assert result.scalar_one_or_none() is not None
+
+
+@pytest.mark.asyncio
+async def test_cleanup_expire_only_preserves_expired_candidates(db_session, monkeypatch):
+    """expire_only should mark visible candidates expired without deleting them."""
+    monkeypatch.setattr(
+        "app.tasks.discovery_cleanup.get_setting_value",
+        AsyncMock(return_value="expire_only"),
+    )
+    content = Content(
+        platform=Platform.UNIVERSAL,
+        url="https://example.com/cleanup-expire-only",
+        canonical_url="https://example.com/cleanup-expire-only",
+        title="Expire Only",
+        status=ContentStatus.UNPROCESSED,
+        discovery_state=DiscoveryState.VISIBLE,
+        expire_at=utcnow() - timedelta(hours=1),
+    )
+    db_session.add(content)
+    await db_session.commit()
+    content_id = content.id
+
+    task = DiscoveryCleanupTask()
+    changed = await task._cleanup_expired()
+
+    assert changed == 0
+    db_session.expire_all()
+    from sqlalchemy import select
+
+    result = await db_session.execute(select(Content).where(Content.id == content_id))
+    updated = result.scalar_one_or_none()
+    assert updated is not None
+    assert updated.discovery_state == DiscoveryState.EXPIRED
+
+
+@pytest.mark.asyncio
+async def test_cleanup_archive_soft_hides_expired_candidates(db_session, monkeypatch):
+    """archive should set deleted_at/context metadata instead of hard-deleting."""
+    monkeypatch.setattr(
+        "app.tasks.discovery_cleanup.get_setting_value",
+        AsyncMock(return_value="archive"),
+    )
+    content = Content(
+        platform=Platform.UNIVERSAL,
+        url="https://example.com/cleanup-archive",
+        canonical_url="https://example.com/cleanup-archive",
+        title="Archive Expired",
+        status=ContentStatus.UNPROCESSED,
+        discovery_state=DiscoveryState.IGNORED,
+        expire_at=utcnow() - timedelta(hours=1),
+        context_data={"existing": True},
+    )
+    db_session.add(content)
+    await db_session.commit()
+    content_id = content.id
+
+    task = DiscoveryCleanupTask()
+    changed = await task._cleanup_expired()
+
+    assert changed >= 1
+    db_session.expire_all()
+    from sqlalchemy import select
+
+    result = await db_session.execute(select(Content).where(Content.id == content_id))
+    updated = result.scalar_one_or_none()
+    assert updated is not None
+    assert updated.deleted_at is not None
+    assert updated.context_data["inbox_archived"] is True

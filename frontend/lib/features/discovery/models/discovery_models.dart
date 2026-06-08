@@ -10,6 +10,7 @@ abstract class DiscoveryItem with _$DiscoveryItem {
     required int id,
     String? title,
     required String url,
+    String? status,
     String? body,
     @JsonKey(name: 'author_name') String? authorName,
     @JsonKey(name: 'author_avatar_url') String? authorAvatarUrl,
@@ -44,6 +45,28 @@ abstract class DiscoveryItem with _$DiscoveryItem {
 }
 
 extension DiscoveryItemX on DiscoveryItem {
+  String get inboxKind {
+    if (status == 'parse_failed') return 'parse_failure';
+    if (sourceType == 'favorites_sync') return 'favorites_sync';
+    if (sourceType == 'rss' || sourceType == 'telegram_channel') {
+      return 'source_discovery';
+    }
+    final score = aiScore;
+    if (score != null && score < 6) return 'low_confidence';
+    return 'manual_review';
+  }
+
+  String get inboxKindLabel {
+    return switch (inboxKind) {
+      'parse_failure' => '待修复',
+      'favorites_sync' => '收藏候选',
+      'source_discovery' =>
+        sourceType == 'telegram_channel' ? 'Telegram' : 'RSS',
+      'low_confidence' => '低置信度',
+      _ => '待确认',
+    };
+  }
+
   ContentDetail toContentDetail() {
     return ContentDetail(
       id: id,
@@ -52,7 +75,7 @@ extension DiscoveryItemX on DiscoveryItem {
       contentType: contentType,
       layoutType: layoutType ?? 'article',
       url: url,
-      status: 'parse_success',
+      status: status ?? 'parse_success',
       tags: [],
       isNsfw: false,
       title: title,
@@ -139,6 +162,10 @@ abstract class DiscoverySettings with _$DiscoverySettings {
     @JsonKey(name: 'interest_profile') @Default('') String interestProfile,
     @JsonKey(name: 'score_threshold') @Default(6.0) double scoreThreshold,
     @JsonKey(name: 'retention_days') @Default(7) int retentionDays,
+    @JsonKey(name: 'cleanup_mode') @Default('hard_delete') String cleanupMode,
+    @JsonKey(name: 'retention_scope')
+    @Default('new_candidates_only')
+    String retentionScope,
   }) = _DiscoverySettings;
 
   factory DiscoverySettings.fromJson(Map<String, dynamic> json) =>
