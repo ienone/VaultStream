@@ -716,7 +716,7 @@ PermissionManager
   └── blacklist_ids: Set[int] — 黑名单 (硬拦截)
 ```
 
-- 白名单为空 → 允许所有非黑名单用户
+- 普通命令：管理员始终允许；白名单为空时 fail closed；非管理员必须在白名单内
 - 黑名单优先级最高
 
 ---

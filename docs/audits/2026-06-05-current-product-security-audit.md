@@ -3,6 +3,7 @@
 > 日期：2026-06-05  
 > 范围：用户视角功能可用性、前后端控制边界、测试可信度、`.codex-security-scans` 安全扫描报告汇总。  
 > 主要来源：当前代码路径、最近本地测试结果、`.codex-security-scans/VaultStream/1a616d81_20260530T145418_ws/report.md`。
+> 后续实施边界：近期执行顺序以后续 `2026-06-06` 前端协同审计和 `docs/design/implementation-steps-2026-06-06.md` 为准。本文中的 embedding/语义索引、RAG 和 Agent 相关内容描述当前能力或风险，不代表近期必须实现。
 
 ## 结论
 
@@ -197,7 +198,7 @@ VaultStream 已经具备个人内容收集、解析、检索、发现、审核�
 
 | 范围 | 命令 | 结果 | 结论 |
 | --- | --- | --- | --- |
-| 后端非 integration | `.venv\Scripts\python.exe -m pytest backend/tests -q -m "not integration" --no-cov` | 751 passed, 4 skipped, 16 deselected | 本地核心逻辑较稳 |
+| 后端非 integration | `.venv\Scripts\python.exe -m pytest backend/tests -q -m "not integration" --no-cov` | 752 passed, 4 skipped, 16 deselected | 本地核心逻辑较稳 |
 | 后端 integration | `.venv\Scripts\python.exe -m pytest backend/tests -q -m integration --no-cov` | 5 failed, 8 passed, 1 skipped, 2 xfailed | 真实平台/真实外部服务链路不稳 |
 | 前端静态检查 | `flutter analyze` | No issues found | Dart/Flutter 静态检查通过 |
 | 前端测试 | `flutter test` | 37 tests passed，存在既有非致命 tap target warning | 基础 widget/unit 测试通过，但覆盖仍有限 |
@@ -207,16 +208,16 @@ integration 失败主要集中在真实知乎/小红书内容解析和真实 LLM
 当前补齐：
 
 - 新增 `scripts/product_smoke_check.py`，用于检查运行中后端的健康、初始化、账号健康、AI 能力、收藏同步、后台任务、语义索引、发现源和分发队列控制面。
-- 新增 `docs/validation/product-acceptance.md`，区分自动冒烟检查、真实平台人工端到端验收和测试结论口径。
+- 新增 `docs/validation/product-acceptance.md`，区分自动测试、自动冒烟检查、可选真实平台检查和测试结论口径。
 
-仍需按功能人工验收：
+仍需按功能建立分层验收：
 
-1. 添加普通 URL，确认收藏库出现、解析状态成功、摘要/封面/标签生成。
-2. 添加知乎/小红书 URL，确认登录态有效时能解析，失效时错误可理解。
-3. 配置 RSS 发现源，手动同步，确认发现列表出现新条目。
-4. 配置一个分发目标和规则，确认审核后只影响预期目标。
-5. 启用收藏同步，手动触发一次，确认同步数量、失败数量、重复处理和最近同步时间。
-6. 故意填错 LLM key 或断开平台登录，确认 UI 能指出具体失败原因。
+1. 添加普通 URL：用 API/服务测试证明内容创建、解析状态、摘要/封面/标签路径正确。
+2. 知乎/小红书 URL：用 fixture 或 mock 覆盖成功、登录态失效和错误分类；真实平台检查仅作为补充。
+3. RSS 发现源：用只读 source test 或同步测试证明发现列表和 run 记录更新。
+4. 分发目标和规则：用队列项维度测试证明审核后只影响预期目标。
+5. 收藏同步：用任务/API 测试确认同步数量、失败数量、重复处理和最近同步时间。
+6. 故意填错 LLM key 或断开平台登录：用配置/mock 测试确认 UI 能指出具体失败原因。
 
 ## 安全扫描汇总
 

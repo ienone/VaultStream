@@ -1,7 +1,7 @@
 # 2026-05 全项目审计摘要
 
 > 来源：旧 `full_project_audit_2026-05-13/` 目录。  
-> 当前状态：只保留未完全解决或曾被过度声明完成的事项。
+> 当前状态：历史审计浓缩版。已由当前综合审计确认解决的事项不再列为待修；剩余项只保留仍影响路线图、验收或风险判断的部分。
 
 ## 原审计结论浓缩
 
@@ -20,29 +20,29 @@
 - Discovery list raw dict 基础类型化。
 - 3 月服务器端历史 bugfix 记录。
 
-## 仍需处理的遗留风险
+## 仍影响当前工作的遗留风险
 
 | 主题 | 当前状态 | 说明 |
 | --- | --- | --- |
 | 真实平台 integration 测试 | 未稳定 | 非 integration 通过不能证明知乎、小红书、真实 LLM 等外部链路稳定。 |
-| 图片代理 SSRF | 部分缓解 | 已有预检、redirect、大小和类型限制，但连接目标未绑定，仍有 DNS rebinding/解析差异风险。 |
-| 归档媒体与通用解析 SSRF | 未修 | RSS/发现源/通用解析/Playwright navigation 仍缺统一 SSRF-safe fetcher。 |
-| Browser-auth 鉴权 | 未修 | `/api/v1/browser-auth` 仍未强制 API token。 |
-| Telegram Bot 默认权限 | 未修 | 空白名单仍等价 allow-all。 |
-| API token 构建注入 | 未修 | manual build workflow 仍可能把共享后端 token 编译进客户端产物。 |
+| API token 构建注入 | 未确认清零 | manual build workflow 仍需按当前 workflow 和产物策略复核，避免把共享后端 token 编译进客户端产物。 |
 | 向量检索性能 | 短期缓解 | 仍是 JSON 向量表和应用层计算，只是增加扫描上限、日志和 sqlite-vec 触发阈值。 |
-| 后台任务诊断 | 基础能力存在 | 有 health/task state，但没有任务运行记录、失败列表、run id 和重试历史。 |
-| FavoritesSync 产品闭环 | 未完成 | 有任务代码，但缺结果页、失败追踪、同步范围、冲突策略和真实验收。 |
-| Distribution 控制粒度 | 部分成立 | 后端服务入口收敛，但前端仍有 content-level 操作可能影响多个目标。 |
+| 后台任务诊断 | 部分解决 | 已有最近运行记录、`run_id`、动态页时间线和若干重试入口；仍缺更完整事件流、独立结果页、按异常项聚焦的恢复入口和跨链路运维面板。 |
+| FavoritesSync 产品闭环 | 部分解决 | 已有运行记录、预览、结构化结果摘要、失败诊断、失败 run/单条/批量失败项重试和重复策略配置；仍缺收藏夹/分组范围、完整失败列表、独立结果页、候选进入收件箱以及取消收藏/删除/冲突策略。 |
+| Distribution 控制粒度 | 基本收敛，需守边界 | 前端队列主体已使用 item 级接口，后端仍保留 content-level 兼容/批量接口；后续需要继续避免普通单项操作误用 content-level path。 |
+
+## 已由当前综合审计确认不再作为待修项保留
+
+- 图片代理、本地媒体、归档媒体和通用解析 SSRF 风险已接入 `safe_fetch` 或本地路径祖先校验，并有相关测试覆盖。
+- `/api/v1/browser-auth` router 已要求 API token。
+- Telegram Bot 白名单为空时已 fail closed，管理员仍保留普通命令权限。
+- 本地归档媒体 API 已要求 API token，旧的无鉴权 `/media` StaticFiles 挂载已移除。
 
 ## 剩余整改方向
 
-1. 移除客户端构建中的后端 API token 注入。
-2. 给 browser-auth 路由补 API token 鉴权。
-3. 修正 Telegram Bot 空白名单默认 allow-all。
-4. 建立统一 SSRF-safe fetcher。
-5. 修正本地媒体路径校验和媒体访问鉴权策略。
-6. 建立后台任务运行记录。
-7. 收藏同步产品化。
-8. 分发队列默认改为 item 级控制。
-9. 真实平台 integration 建立可重复验收。
+1. 复核并移除客户端构建中的后端 API token 注入风险。
+2. 继续扩展后台任务运行记录、独立结果页、失败列表和恢复入口。
+3. 收藏同步继续产品化：范围、策略、候选审核、完整结果和真实验收。
+4. 持续保持分发队列默认 item 级控制，并限制 content-level 接口的 UI 使用场景。
+5. 真实平台 integration 建立可重复验收。
+6. 新增服务端 URL 获取入口时复用现有 safe fetch/path 校验策略，避免回归。

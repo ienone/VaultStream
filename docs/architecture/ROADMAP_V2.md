@@ -2,6 +2,7 @@
 
 > Updated: 2026-06-06
 > Purpose: current, code-backed direction for continued development. This file replaces the older long speculative V2 plan. Historical audit notes are archived under `docs/archive/`. Current product/security status is tracked in `docs/audits/2026-06-05-current-product-security-audit.md`.
+> Current execution boundary: follow `docs/design/implementation-steps-2026-06-06.md` for near-term sequencing. Embedding/semantic-index policy work, RAG expansion, Agent permission policy, and Agent recommendations are deferred; references below describe existing capability or long-term direction, not current implementation tasks.
 
 ## Current State
 
@@ -14,15 +15,15 @@ VaultStream is no longer just a prototype. It is a local-first content archive a
 The current product direction should be:
 
 1. Make self-hosting reliable and diagnosable.
-2. Turn the archive into a useful personal knowledge base.
-3. Keep Agent actions narrow, confirmed, audited, and reusable by the GUI.
+2. Turn the archive into a useful personal knowledge base, while deferring new RAG/embedding expansion in the current execution window.
+3. Keep Agent actions narrow, confirmed, audited, and reusable by the GUI; new Agent permission-policy work is deferred for now.
 
 ## Verified Baseline
 
 Recent local checks are summarized in `docs/audits/2026-06-05-current-product-security-audit.md`. The latest recorded results there are:
 
-- Backend non-integration tests: 751 passed, 4 skipped, 16 deselected.
-- Backend `ResourceWarning` error gate: 751 passed, 4 skipped, 16 deselected.
+- Backend non-integration tests: 752 passed, 4 skipped, 16 deselected.
+- Backend `ResourceWarning` error gate: 752 passed, 4 skipped, 16 deselected.
 - Backend integration tests: 5 failed, 8 passed, 1 skipped, 2 xfailed.
 - Flutter analyze: no issues found.
 - Flutter test: 37 tests passed, with one existing non-fatal tap target warning.
@@ -48,10 +49,11 @@ Important current boundaries:
 - Background task state and recent run persistence now use `ConfigService`, keeping Dynamics/diagnostics timeline data on the same configuration access path as other runtime settings.
 - Favorites sync task configuration, platform cursors, platform rates, duplicate strategy, last result, and status/health API reads now use `ConfigService`, while preserving the existing `favorites_sync_*` setting keys for frontend compatibility.
 - HTTP proxy and archive media processing settings now use `ConfigService` across media processing, media proxying, Telegram push, parsing/discovery media archiving, and major platform adapters, while preserving existing setting keys and startup runtime settings compatibility.
+- Platform Cookie string reads for parsing, Xiaohongshu runtime refresh, and favorites fetchers now use `ConfigService`, preserving DB-first behavior with environment fallback where applicable.
 
 Main backend risks:
 
-- `ConfigService` now owns typed dynamic setting access and AI provider diagnostics; summary generation, semantic embedding, discovery patrol scoring, Discovery settings API, browser-auth account Cookie operations, background task state/recent runs, favorites sync runtime/status access, proxy/media processing, content processing-status diagnostics, text/vision LLM runtime creation, Agent runtime, and connectivity tests use typed/dedicated config access, while remaining platform Cookie helpers and other lower-level callers still use the compatibility `settings_service` functions and should be migrated gradually.
+- `ConfigService` now owns typed dynamic setting access and AI provider diagnostics; summary generation, semantic embedding, discovery patrol scoring, Discovery settings API, browser-auth account Cookie operations, background task state/recent runs, favorites sync runtime/status access, proxy/media processing, platform Cookie string reads, content processing-status diagnostics, text/vision LLM runtime creation, Agent runtime, and connectivity tests use typed/dedicated config access, while remaining bot/system compatibility helpers and lower-level callers still use the compatibility `settings_service` functions and should be migrated gradually.
 - EventBus runtime state remains process-local; API diagnostics now read it through a public EventBus snapshot instead of route-level private field access.
 - Background tasks have health state but not a full failure/retry operations panel.
 - Several long task/adapter files still mix orchestration, parsing, media processing, and persistence.
@@ -85,8 +87,8 @@ Target: remove issues that make the current system feel unreliable.
 
 Target: reduce drift between settings, tasks, and user-facing behavior.
 
-- Continue migrating high-value callers from legacy `settings_service` helpers to typed `ConfigService` methods, prioritizing platform Cookie/runtime settings now that summary generation, semantic embedding, discovery patrol scoring, Discovery settings API, browser auth, favorites sync, proxy/media processing, background task state, content processing-status diagnostics, and text/vision LLM runtime creation have moved.
-- Extend explicit AI config modeling beyond health diagnostics, Agent runtime, and connectivity tests: add provider fields and migrate more call sites from raw setting keys.
+- Continue migrating high-value callers from legacy `settings_service` helpers to typed `ConfigService` methods, prioritizing bot/system runtime settings and remaining task toggles now that summary generation, semantic embedding, discovery patrol scoring, Discovery settings API, browser auth, favorites sync, proxy/media processing, platform Cookie string reads, background task state, content processing-status diagnostics, and text/vision LLM runtime creation have moved.
+- Extend explicit AI config modeling for non-deferred runtime paths: add provider fields and migrate more call sites from raw setting keys, but do not expand Agent or embedding policy in the current execution window.
 - Keep `DistributionService` as the single distribution business entrypoint and remove old wrapper logic in a breaking cleanup release.
 - Split `ContentParser` by responsibility: task orchestration, adapter parsing, archive media processing, post-ingest scheduling, and error/dead-letter handling.
 - Convert high-value dynamic contracts into typed DTOs where they cross frontend/backend boundaries.
@@ -96,7 +98,7 @@ Target: reduce drift between settings, tasks, and user-facing behavior.
 Target: make self-hosting and recovery straightforward.
 
 - Add a background task diagnostics page: last run, last error, retry count, manual retry, and recent failure payload.
-- Add failed embedding/reindex controls in settings or diagnostics.
+- Keep failed embedding/reindex controls as a known gap; do not schedule this in the current execution window.
 - Add distribution queue failure details and retry history.
 - Add backup/restore documentation for SQLite data, media storage, and config secrets.
 - Keep OpenAPI and schema gates mandatory for endpoint or migration changes.
@@ -104,6 +106,8 @@ Target: make self-hosting and recovery straightforward.
 ### P3: Knowledge Base and RAG
 
 Target: make the archive useful beyond browsing.
+
+Current status: deferred. Keep these items as long-term direction until the current execution plan re-enables semantic/RAG work.
 
 - Improve semantic result presentation: visible chunk title, match snippet, score/source, and link to exact section where possible.
 - Add content clustering and similar-content suggestions.
@@ -114,6 +118,8 @@ Target: make the archive useful beyond browsing.
 ### P4: Safe Agent Workflows
 
 Target: make Agent useful without weakening system safety.
+
+Current status: deferred. Keep existing confirmation and allowlist behavior, but do not start new Agent permission-policy or Agent recommendation work in the current execution window.
 
 - Keep the allowlist-only API bridge. Do not add unrestricted SQL/table editing tools.
 - Promote common workflows into first-class actions: tag cleanup, failed-task inspection, distribution preview, rule creation, favorites sync, and reindex planning.
