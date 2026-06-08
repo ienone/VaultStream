@@ -56,10 +56,12 @@ class PlatformHealthResponse {
   const PlatformHealthResponse({
     required this.platforms,
     required this.recentFavoritesRuns,
+    required this.cookieKeepalive,
   });
 
   final List<PlatformHealthStatus> platforms;
   final List<Map<String, dynamic>> recentFavoritesRuns;
+  final Map<String, dynamic> cookieKeepalive;
 
   factory PlatformHealthResponse.fromJson(Map<String, dynamic> json) {
     final platforms = json['platforms'];
@@ -68,9 +70,11 @@ class PlatformHealthResponse {
       platforms: platforms is List
           ? platforms
                 .whereType<Map>()
-                .map((item) => PlatformHealthStatus.fromJson(
-                      Map<String, dynamic>.from(item),
-                    ))
+                .map(
+                  (item) => PlatformHealthStatus.fromJson(
+                    Map<String, dynamic>.from(item),
+                  ),
+                )
                 .toList()
           : const <PlatformHealthStatus>[],
       recentFavoritesRuns: runs is List
@@ -79,11 +83,16 @@ class PlatformHealthResponse {
                 .map((item) => Map<String, dynamic>.from(item))
                 .toList()
           : const <Map<String, dynamic>>[],
+      cookieKeepalive: json['cookie_keepalive'] is Map
+          ? Map<String, dynamic>.from(json['cookie_keepalive'] as Map)
+          : const <String, dynamic>{},
     );
   }
 }
 
-final platformHealthProvider = FutureProvider<PlatformHealthResponse>((ref) async {
+final platformHealthProvider = FutureProvider<PlatformHealthResponse>((
+  ref,
+) async {
   final response = await ref.read(apiClientProvider).get('/platform-health');
   return PlatformHealthResponse.fromJson(
     Map<String, dynamic>.from(response.data as Map),

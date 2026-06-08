@@ -68,6 +68,14 @@ class SystemTab extends ConsumerWidget {
           return defaultVal;
         }
 
+        int parseInt(dynamic val, {int defaultVal = 0}) {
+          if (val == null) return defaultVal;
+          if (val is int) return val;
+          if (val is num) return val.toInt();
+          if (val is String) return int.tryParse(val) ?? defaultVal;
+          return defaultVal;
+        }
+
         final enableProcessing = parseBool(
           settings
               .firstWhere(
@@ -77,35 +85,65 @@ class SystemTab extends ConsumerWidget {
               .value,
           defaultVal: true,
         );
+        final enableImages = parseBool(
+          settings
+              .firstWhere(
+                (s) => s.key == 'enable_archive_image_processing',
+                orElse: () => const SystemSetting(key: '', value: true),
+              )
+              .value,
+          defaultVal: true,
+        );
+        final enableVideos = parseBool(
+          settings
+              .firstWhere(
+                (s) => s.key == 'enable_archive_video_processing',
+                orElse: () => const SystemSetting(key: '', value: true),
+              )
+              .value,
+          defaultVal: true,
+        );
 
-        final webpQuality =
-            settings
-                    .firstWhere(
-                      (s) => s.key == 'archive_image_webp_quality',
-                      orElse: () => const SystemSetting(key: '', value: 80),
-                    )
-                    .value
-                as int? ??
-            80;
+        final webpQuality = parseInt(
+          settings
+              .firstWhere(
+                (s) => s.key == 'archive_image_webp_quality',
+                orElse: () => const SystemSetting(key: '', value: 80),
+              )
+              .value,
+          defaultVal: 80,
+        );
 
-        final maxCount =
-            settings
-                    .firstWhere(
-                      (s) => s.key == 'archive_image_max_count',
-                      orElse: () => const SystemSetting(
-                        key: '',
-                        value: 0,
-                      ), // 0 or null means unlimited
-                    )
-                    .value
-                as int? ??
-            0;
+        final maxCount = parseInt(
+          settings
+              .firstWhere(
+                (s) => s.key == 'archive_image_max_count',
+                orElse: () => const SystemSetting(key: '', value: 0),
+              )
+              .value,
+        );
+        final videoMaxCount = parseInt(
+          settings
+              .firstWhere(
+                (s) => s.key == 'archive_video_max_count',
+                orElse: () => const SystemSetting(key: '', value: 0),
+              )
+              .value,
+        );
+        final videoMaxBytes = parseInt(
+          settings
+              .firstWhere(
+                (s) => s.key == 'archive_video_max_bytes',
+                orElse: () => const SystemSetting(key: '', value: 0),
+              )
+              .value,
+        );
 
         return SettingGroup(
           children: [
             SettingTile(
-              title: '启用媒体压缩处理',
-              subtitle: enableProcessing ? '自动转码为 WebP 以节省空间' : '保留原始图片格式',
+              title: '自动归档远程媒体',
+              subtitle: enableProcessing ? '按策略归档图片和视频' : '不下载网络媒体到本地',
               icon: Icons.compress_rounded,
               trailing: Switch(
                 value: enableProcessing,
@@ -134,19 +172,52 @@ class SystemTab extends ConsumerWidget {
                     category: 'storage',
                   ),
             ),
-            if (enableProcessing)
+            if (enableProcessing) ...[
+              SettingTile(
+                title: '归档远程图片',
+                subtitle: enableImages ? '启用 WebP 转换和数量限制' : '跳过图片归档',
+                icon: Icons.image_rounded,
+                trailing: Switch(
+                  value: enableImages,
+                  onChanged: (val) => ref
+                      .read(systemSettingsProvider.notifier)
+                      .updateSetting(
+                        'enable_archive_image_processing',
+                        val,
+                        category: 'storage',
+                      ),
+                ),
+              ),
+              SettingTile(
+                title: '归档远程视频',
+                subtitle: enableVideos ? '启用视频数量和体积限制' : '跳过视频归档',
+                icon: Icons.movie_creation_rounded,
+                trailing: Switch(
+                  value: enableVideos,
+                  onChanged: (val) => ref
+                      .read(systemSettingsProvider.notifier)
+                      .updateSetting(
+                        'enable_archive_video_processing',
+                        val,
+                        category: 'storage',
+                      ),
+                ),
+              ),
               ExpandableSettingTile(
-                title: '压缩质量与限制',
+                title: '归档质量与限制',
                 subtitle:
-                    'WebP 质量: $webpQuality% | 数量限制: ${maxCount == 0 ? "无限制" : maxCount}',
+                    'WebP: $webpQuality% | 图片: ${maxCount == 0 ? "无限制" : maxCount} | 视频: ${videoMaxCount == 0 ? "无限制" : videoMaxCount}',
                 icon: Icons.tune_rounded,
                 expandedContent: _buildStorageAdvanced(
                   context,
                   ref,
                   webpQuality,
                   maxCount,
+                  videoMaxCount,
+                  videoMaxBytes,
                 ),
               ),
+            ],
           ],
         );
       },
@@ -160,6 +231,8 @@ class SystemTab extends ConsumerWidget {
     WidgetRef ref,
     int quality,
     int maxCount,
+    int videoMaxCount,
+    int videoMaxBytes,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
@@ -242,6 +315,56 @@ class SystemTab extends ConsumerWidget {
                 .read(systemSettingsProvider.notifier)
                 .updateSetting(
                   'archive_image_max_count',
+                  num,
+                  category: 'storage',
+                );
+          },
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: TextEditingController(text: videoMaxCount.toString()),
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: '单条最大视频数限制',
+            helperText: '0 表示无限制',
+            prefixIcon: const Icon(Icons.video_library_rounded),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            filled: true,
+            fillColor: colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.3,
+            ),
+          ),
+          onSubmitted: (val) {
+            final num = int.tryParse(val) ?? 0;
+            ref
+                .read(systemSettingsProvider.notifier)
+                .updateSetting(
+                  'archive_video_max_count',
+                  num,
+                  category: 'storage',
+                );
+          },
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: TextEditingController(text: videoMaxBytes.toString()),
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: '单个视频最大字节数',
+            helperText: '0 表示使用后端默认上限',
+            prefixIcon: const Icon(Icons.sd_storage_rounded),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            filled: true,
+            fillColor: colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.3,
+            ),
+          ),
+          onSubmitted: (val) {
+            final num = int.tryParse(val) ?? 0;
+            ref
+                .read(systemSettingsProvider.notifier)
+                .updateSetting(
+                  'archive_video_max_bytes',
                   num,
                   category: 'storage',
                 );

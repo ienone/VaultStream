@@ -100,6 +100,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Clear old tag
+      await tester.ensureVisible(find.byIcon(Icons.close_rounded).first);
       await tester.tap(find.byIcon(Icons.close_rounded).first);
       await tester.pumpAndSettle();
 
@@ -116,5 +117,37 @@ void main() {
       await tester.tap(find.text('保存修改'));
       await tester.pumpAndSettle();
     });
+
+    testWidgets(
+      'DistributionRuleDialog uses fullscreen surface on narrow screens',
+      (WidgetTester tester) async {
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(
+          ProviderScope(
+            child: MaterialApp(
+              home: DistributionRuleDialog(
+                onCreate:
+                    (
+                      rule,
+                      selectedChatIds,
+                      backfillMode,
+                      backfillRecentDays,
+                    ) {},
+                onUpdate: null,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final dialogSize = tester.getSize(find.byType(Dialog).first);
+        expect(dialogSize.width, closeTo(390, 1));
+        expect(find.text('创建规则'), findsAtLeastNWidgets(1));
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 }

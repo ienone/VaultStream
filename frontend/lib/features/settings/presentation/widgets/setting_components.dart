@@ -80,54 +80,168 @@ class SettingTile extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: (iconColor ?? colorScheme.primary).withValues(
-                    alpha: 0.1,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = trailing != null && constraints.maxWidth < 560;
+            final leading = Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: (iconColor ?? colorScheme.primary).withValues(
+                  alpha: 0.1,
+                ),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                icon,
+                color: iconColor ?? colorScheme.primary,
+                size: 22,
+              ),
+            );
+            final copy = Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  icon,
-                  color: iconColor ?? colorScheme.primary,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              ?trailing,
-              if (trailing == null && showArrow)
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: colorScheme.outline.withValues(alpha: 0.5),
-                ),
-            ],
+            );
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+              child: compact
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [leading, const SizedBox(width: 16), copy],
+                        ),
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          width: double.infinity,
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: trailing!,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        leading,
+                        const SizedBox(width: 16),
+                        copy,
+                        ?trailing,
+                        if (trailing == null && showArrow)
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: colorScheme.outline.withValues(alpha: 0.5),
+                          ),
+                      ],
+                    ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class AdaptiveTaskSurface extends StatelessWidget {
+  const AdaptiveTaskSurface({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.body,
+    required this.actions,
+    this.maxWidth = 560,
+  });
+
+  final String title;
+  final IconData icon;
+  final Widget body;
+  final List<Widget> actions;
+  final double maxWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final size = MediaQuery.sizeOf(context);
+    final compact = size.width < 640;
+    final header = Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: colorScheme.primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(16),
           ),
+          child: Icon(icon, color: colorScheme.primary),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ],
+    );
+    final actionBar = OverflowBar(
+      alignment: MainAxisAlignment.end,
+      spacing: 12,
+      overflowSpacing: 8,
+      children: actions,
+    );
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        header,
+        const SizedBox(height: 24),
+        Expanded(child: body),
+        const SizedBox(height: 16),
+        actionBar,
+      ],
+    );
+
+    if (compact) {
+      return Dialog.fullscreen(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+            child: content,
+          ),
+        ),
+      );
+    }
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: maxWidth,
+          maxHeight: size.height * 0.9,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
+          child: content,
         ),
       ),
     );

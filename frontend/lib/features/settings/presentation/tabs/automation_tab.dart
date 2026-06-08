@@ -26,6 +26,9 @@ class AutomationTab extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       children: [
+        const SectionHeader(title: '自动化策略约束', icon: Icons.rule_folder_rounded),
+        _buildAutomationPolicySettings(context, ref, settingsAsync),
+        const SizedBox(height: 32),
         const SectionHeader(
           title: 'AI 巡逻 (Patrol)',
           icon: Icons.auto_awesome_rounded,
@@ -68,6 +71,196 @@ class AutomationTab extends ConsumerWidget {
     );
   }
 
+  Widget _buildAutomationPolicySettings(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<List<SystemSetting>> settingsAsync,
+  ) {
+    return settingsAsync.when(
+      data: (settings) {
+        final discoveryPatrolEnabled = parseBoolSetting(
+          getSettingValue(settings, 'enable_discovery_patrol', true),
+          true,
+        );
+        final aiScoringEnabled = parseBoolSetting(
+          getSettingValue(settings, 'enable_ai_scoring', true),
+          true,
+        );
+        final autoSummaryEnabled = parseBoolSetting(
+          getSettingValue(settings, 'enable_auto_summary', false),
+          false,
+        );
+        final cookieKeepaliveEnabled = parseBoolSetting(
+          getSettingValue(settings, 'enable_cookie_keepalive', true),
+          true,
+        );
+        final favoritesSchedulerEnabled = parseBoolSetting(
+          getSettingValue(settings, 'enable_favorites_sync_scheduler', true),
+          true,
+        );
+        final allowDisabledFavoritesManual = parseBoolSetting(
+          getSettingValue(
+            settings,
+            'allow_manual_favorites_sync_disabled_platform',
+            false,
+          ),
+          false,
+        );
+        final rawDistributionMode =
+            getSettingValue(
+              settings,
+              'distribution_mode',
+              'auto',
+            )?.toString() ??
+            'auto';
+        final distributionMode = rawDistributionMode == 'paused'
+            ? 'paused'
+            : 'auto';
+
+        return SettingGroup(
+          children: [
+            SettingTile(
+              title: '发现巡逻',
+              subtitle: discoveryPatrolEnabled
+                  ? '自动扫描待评分发现项'
+                  : '暂停自动巡逻，手动入口仍按接口策略处理',
+              icon: Icons.travel_explore_rounded,
+              trailing: Switch(
+                value: discoveryPatrolEnabled,
+                onChanged: (value) => ref
+                    .read(systemSettingsProvider.notifier)
+                    .updateSetting(
+                      'enable_discovery_patrol',
+                      value,
+                      category: 'automation',
+                    ),
+              ),
+              showArrow: false,
+            ),
+            SettingTile(
+              title: 'AI 发现评分写入',
+              subtitle: aiScoringEnabled
+                  ? '巡逻评分可写入分数、理由、标签、摘要与可见性'
+                  : '保留发现项，不写入 AI 评分字段',
+              icon: Icons.fact_check_rounded,
+              trailing: Switch(
+                value: aiScoringEnabled,
+                onChanged: (value) => ref
+                    .read(systemSettingsProvider.notifier)
+                    .updateSetting(
+                      'enable_ai_scoring',
+                      value,
+                      category: 'automation',
+                    ),
+              ),
+              showArrow: false,
+            ),
+            SettingTile(
+              title: '内容理解/摘要',
+              subtitle: autoSummaryEnabled
+                  ? '解析后自动生成内容理解/摘要'
+                  : '解析后不自动生成内容理解/摘要',
+              icon: Icons.summarize_rounded,
+              trailing: Switch(
+                value: autoSummaryEnabled,
+                onChanged: (value) => ref
+                    .read(systemSettingsProvider.notifier)
+                    .updateSetting(
+                      'enable_auto_summary',
+                      value,
+                      category: 'llm',
+                    ),
+              ),
+              showArrow: false,
+            ),
+            SettingTile(
+              title: '分发模式',
+              subtitle: distributionMode == 'paused'
+                  ? '暂停自动分发入队/领取'
+                  : '自动分发按规则入队并由 worker 领取',
+              icon: Icons.outbox_rounded,
+              trailing: DropdownButton<String>(
+                value: distributionMode,
+                underline: const SizedBox.shrink(),
+                items: const [
+                  DropdownMenuItem(value: 'auto', child: Text('auto')),
+                  DropdownMenuItem(value: 'paused', child: Text('paused')),
+                ],
+                onChanged: (value) {
+                  if (value == null) return;
+                  ref
+                      .read(systemSettingsProvider.notifier)
+                      .updateSetting(
+                        'distribution_mode',
+                        value,
+                        category: 'automation',
+                      );
+                },
+              ),
+              showArrow: false,
+            ),
+            SettingTile(
+              title: 'Cookie 保活',
+              subtitle: cookieKeepaliveEnabled
+                  ? '后台维护已配置平台 Cookie'
+                  : '暂停 Cookie 保活任务',
+              icon: Icons.cookie_rounded,
+              trailing: Switch(
+                value: cookieKeepaliveEnabled,
+                onChanged: (value) => ref
+                    .read(systemSettingsProvider.notifier)
+                    .updateSetting(
+                      'enable_cookie_keepalive',
+                      value,
+                      category: 'automation',
+                    ),
+              ),
+              showArrow: false,
+            ),
+            SettingTile(
+              title: '收藏同步调度',
+              subtitle: favoritesSchedulerEnabled
+                  ? '按间隔自动同步已启用平台'
+                  : '暂停自动调度，手动同步仍受平台启用策略约束',
+              icon: Icons.bookmark_added_rounded,
+              trailing: Switch(
+                value: favoritesSchedulerEnabled,
+                onChanged: (value) => ref
+                    .read(systemSettingsProvider.notifier)
+                    .updateSetting(
+                      'enable_favorites_sync_scheduler',
+                      value,
+                      category: 'favorites_sync',
+                    ),
+              ),
+              showArrow: false,
+            ),
+            SettingTile(
+              title: '禁用平台手动同步覆盖',
+              subtitle: allowDisabledFavoritesManual
+                  ? '后端允许 force=true 覆盖禁用平台'
+                  : '禁用平台手动同步默认拒绝',
+              icon: Icons.admin_panel_settings_rounded,
+              trailing: Switch(
+                value: allowDisabledFavoritesManual,
+                onChanged: (value) => ref
+                    .read(systemSettingsProvider.notifier)
+                    .updateSetting(
+                      'allow_manual_favorites_sync_disabled_platform',
+                      value,
+                      category: 'favorites_sync',
+                    ),
+              ),
+              showArrow: false,
+            ),
+          ],
+        );
+      },
+      loading: () => const LoadingGroup(),
+      error: (error, _) => Text('自动化策略加载失败: $error'),
+    );
+  }
+
   Widget _buildPatrolSettings(
     BuildContext context,
     WidgetRef ref,
@@ -107,7 +300,7 @@ class AutomationTab extends ConsumerWidget {
           ),
           SettingTile(
             title: '发现保留天数',
-            subtitle: '${settings.retentionDays} 天后自动清理',
+            subtitle: '${settings.retentionDays} 天后按清理策略处理；修改后只影响新候选。',
             icon: Icons.auto_delete_rounded,
             trailing: DropdownButton<int>(
               value: settings.retentionDays,
@@ -124,11 +317,40 @@ class AutomationTab extends ConsumerWidget {
               },
             ),
           ),
+          SettingTile(
+            title: '收件箱清理策略',
+            subtitle: _cleanupModeDescription(settings.cleanupMode),
+            icon: Icons.inventory_2_rounded,
+            trailing: DropdownButton<String>(
+              value: settings.cleanupMode,
+              underline: const SizedBox.shrink(),
+              items: const [
+                DropdownMenuItem(value: 'hard_delete', child: Text('硬删除')),
+                DropdownMenuItem(value: 'expire_only', child: Text('仅过期')),
+                DropdownMenuItem(value: 'archive', child: Text('归档')),
+              ],
+              onChanged: (val) {
+                if (val != null) {
+                  ref
+                      .read(discoverySettingsStateProvider.notifier)
+                      .updateSettings(cleanupMode: val);
+                }
+              },
+            ),
+          ),
         ],
       ),
       loading: () => const LoadingGroup(),
       error: (error, _) => const Text('加载失败'),
     );
+  }
+
+  String _cleanupModeDescription(String mode) {
+    return switch (mode) {
+      'expire_only' => '过期候选只标记为已过期，不自动删除。',
+      'archive' => '过期或已忽略候选软归档隐藏，保留记录便于审计。',
+      _ => '过期或已忽略候选会被清理任务硬删除。',
+    };
   }
 
   Widget _buildInterestProfileEditor(
@@ -226,6 +448,10 @@ class AutomationTab extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.sync_rounded),
             onPressed: () async {
+              if (!source.enabled) {
+                showToast(context, '该发现源已禁用，手动同步已按策略拒绝');
+                return;
+              }
               try {
                 final runId = await ref
                     .read(discoverySourcesProvider.notifier)
@@ -323,18 +549,23 @@ class AutomationTab extends ConsumerWidget {
                 for (final platform in platforms)
                   SettingTile(
                     title: _platformLabel(platform),
-                    subtitle: _platformSubtitle(
-                      platform: platform,
-                      configuredRate: parseDoubleSetting(
-                        getSettingValue(
-                          settings,
-                          'favorites_sync_rate_$platform',
-                          5,
+                    subtitle: [
+                      _platformSubtitle(
+                        platform: platform,
+                        configuredRate: parseDoubleSetting(
+                          getSettingValue(
+                            settings,
+                            'favorites_sync_rate_$platform',
+                            5,
+                          ),
+                          statusMap[platform]?.ratePerMinute ?? 5,
                         ),
-                        statusMap[platform]?.ratePerMinute ?? 5,
+                        status: statusMap[platform],
                       ),
-                      status: statusMap[platform],
-                    ),
+                      currentEnabled.contains(platform)
+                          ? '自动同步此平台'
+                          : '未自动同步此平台',
+                    ].join(' · '),
                     icon: _platformIcon(platform),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -413,11 +644,17 @@ class AutomationTab extends ConsumerWidget {
                           tooltip: '手动同步 ${_platformLabel(platform)}',
                           onPressed: statusMap[platform]?.available == false
                               ? null
-                              : () => _triggerFavoritesSyncWithPreview(
-                                  context,
-                                  ref,
-                                  platform: platform,
-                                ),
+                              : () {
+                                  if (!currentEnabled.contains(platform)) {
+                                    showToast(context, '该平台未启用自动同步，手动同步已按策略拒绝');
+                                    return;
+                                  }
+                                  _triggerFavoritesSyncWithPreview(
+                                    context,
+                                    ref,
+                                    platform: platform,
+                                  );
+                                },
                         ),
                       ],
                     ),
@@ -1083,27 +1320,16 @@ class AutomationTab extends ConsumerWidget {
   ) {
     return settingsAsync.when(
       data: (settings) {
-        bool parseBool(dynamic val) {
-          if (val == null) return false;
-          if (val is bool) return val;
-          if (val is String) return val.toLowerCase() == 'true';
-          return false;
-        }
-
-        final enableAutoSummary = parseBool(
-          settings
-              .firstWhere(
-                (s) => s.key == 'enable_auto_summary',
-                orElse: () => const SystemSetting(key: '', value: false),
-              )
-              .value,
+        final enableAutoSummary = parseBoolSetting(
+          getSettingValue(settings, 'enable_auto_summary', false),
+          false,
         );
 
         return SettingGroup(
           children: [
             SettingTile(
-              title: '启用 AI 自动生成摘要',
-              subtitle: '解析完成后自动调用大模型生成摘要',
+              title: '内容理解/摘要',
+              subtitle: '解析后自动生成内容理解/摘要',
               icon: Icons.summarize_rounded,
               trailing: Switch(
                 value: enableAutoSummary,
@@ -1186,7 +1412,11 @@ class AutomationTab extends ConsumerWidget {
   ) {
     return capabilitiesAsync.when(
       data: (capabilities) {
-        if (capabilities.isEmpty) {
+        final visibleCapabilities = capabilities.where((capability) {
+          final key = capability['key']?.toString() ?? '';
+          return key != 'semantic_search' && key != 'agent';
+        }).toList();
+        if (visibleCapabilities.isEmpty) {
           return const SettingGroup(
             children: [
               SettingTile(
@@ -1199,7 +1429,7 @@ class AutomationTab extends ConsumerWidget {
           );
         }
         return SettingGroup(
-          children: capabilities.map((capability) {
+          children: visibleCapabilities.map((capability) {
             final key = capability['key']?.toString() ?? '';
             final status = capability['status']?.toString() ?? 'unknown';
             final summary = capability['summary']?.toString() ?? '';
@@ -1272,6 +1502,10 @@ class AutomationTab extends ConsumerWidget {
 
   String? _aiConnectivityTarget(String key, Map<String, dynamic> details) {
     switch (key) {
+      case 'text_llm':
+        return 'text_llm';
+      case 'vision_llm':
+        return 'vision_llm';
       case 'content_understanding':
         if (details['text_llm'] == true) return 'text_llm';
         if (details['vision_llm'] == true) return 'vision_llm';
@@ -1330,6 +1564,12 @@ class AutomationTab extends ConsumerWidget {
 
   IconData _aiCapabilityIcon(String key) {
     switch (key) {
+      case 'text_llm':
+        return Icons.text_fields_rounded;
+      case 'vision_llm':
+        return Icons.image_search_rounded;
+      case 'discovery_patrol':
+        return Icons.travel_explore_rounded;
       case 'content_understanding':
         return Icons.psychology_alt_rounded;
       case 'summary_generation':
@@ -2084,9 +2324,10 @@ class _SourceEditDialogState extends State<_SourceEditDialog> {
   @override
   Widget build(BuildContext context) {
     final meta = _kindMeta[_kind]!;
-    return AlertDialog(
-      title: Text(widget.initialSource == null ? '添加来源' : '编辑来源'),
-      content: SingleChildScrollView(
+    return AdaptiveTaskSurface(
+      title: widget.initialSource == null ? '添加来源' : '编辑来源',
+      icon: Icons.sensors_rounded,
+      body: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

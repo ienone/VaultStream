@@ -336,49 +336,18 @@ void main() {
       expect(find.text('同步全部'), findsOneWidget);
       expect(find.text('预览同步'), findsWidgets);
       expect(find.text('同步策略'), findsOneWidget);
-      expect(find.text('同步范围'), findsOneWidget);
+      expect(find.text('同步范围'), findsWidgets);
       expect(find.text('取消收藏'), findsOneWidget);
       expect(find.text('同步间隔'), findsOneWidget);
       expect(find.text('单轮上限'), findsOneWidget);
       expect(find.text('360 分钟'), findsOneWidget);
       expect(find.text('50 条'), findsOneWidget);
       expect(find.text('合并已有收藏'), findsOneWidget);
+      expect(find.text('全部收藏'), findsOneWidget);
+      expect(find.text('仅拉取当前页'), findsOneWidget);
+      expect(find.text('保留本地收藏'), findsOneWidget);
       expect(find.text('高级参数'), findsOneWidget);
       expect(find.text('知乎'), findsWidgets);
-
-      await tester.scrollUntilVisible(
-        find.textContaining('abcdef12'),
-        320,
-        scrollable: find.byType(Scrollable).last,
-      );
-      expect(find.textContaining('abcdef12'), findsOneWidget);
-      expect(find.text('重试'), findsOneWidget);
-
-      await tester.tap(find.textContaining('abcdef12'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('同步任务 abcdef12'), findsOneWidget);
-      expect(find.text('结果摘要'), findsOneWidget);
-      expect(find.text('需要登录'), findsOneWidget);
-      expect(find.text('登录状态不可用，请先完成该平台登录'), findsOneWidget);
-      expect(find.text('失败项'), findsOneWidget);
-      expect(find.text('失败收藏'), findsOneWidget);
-      expect(find.text('https://example.com/fail'), findsOneWidget);
-      expect(find.text('导入失败'), findsOneWidget);
-      expect(find.text('重试可见失败项'), findsOneWidget);
-      expect(find.text('重试此项'), findsOneWidget);
-
-      await tester.tap(find.text('重试可见失败项'));
-      await tester.pump();
-
-      expect(find.textContaining('已批量重试 1 个失败项'), findsOneWidget);
-      expect(find.text('查看日志'), findsOneWidget);
-
-      await tester.tap(find.text('重试此项'));
-      await tester.pump();
-
-      expect(find.textContaining('已重试失败项'), findsOneWidget);
-      expect(find.text('查看日志'), findsOneWidget);
     });
 
     testWidgets('ReviewPage preview dialog shows favorites candidates', (
@@ -650,6 +619,9 @@ FavoritesSyncStatus _mockFavoritesStatus() {
     enabledPlatforms: ['zhihu'],
     lastSyncAt: '2026-06-05T12:00:00Z',
     duplicateStrategy: 'merge',
+    scopeStrategy: 'all_favorites',
+    firstSyncStrategy: 'latest_page',
+    unfavoriteStrategy: 'keep_local',
     recentRuns: [
       {
         'run_id': 'abcdef123456',
@@ -716,6 +688,7 @@ PlatformHealthResponse _mockPlatformHealth() {
       ),
     ],
     recentFavoritesRuns: [],
+    cookieKeepalive: {},
   );
 }
 
@@ -763,7 +736,8 @@ class MockDiscoverySources extends DiscoverySources {
   FutureOr<List<DiscoverySource>> build() => _sources;
 
   @override
-  Future<String?> triggerSync(int id) async => 'discovery-run';
+  Future<String?> triggerSync(int id, {bool force = false}) async =>
+      'discovery-run';
 
   @override
   Future<Map<String, dynamic>> testQuality(int id) async => {

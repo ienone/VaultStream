@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/utils/toast.dart';
@@ -33,6 +34,8 @@ class AccountCenterPage extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
             children: [
               _AccountOverview(response: health),
+              const SizedBox(height: 12),
+              _CookieKeepaliveCard(status: health.cookieKeepalive),
               const SizedBox(height: 20),
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -163,6 +166,90 @@ class _OverviewTile extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CookieKeepaliveCard extends StatelessWidget {
+  const _CookieKeepaliveCard({required this.status});
+
+  final Map<String, dynamic> status;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final enabled = status['enabled'] == true;
+    final recentRun = status['recent_run'] is Map
+        ? Map<String, dynamic>.from(status['recent_run'] as Map)
+        : null;
+    final recentFailure = status['recent_failure'] is Map
+        ? Map<String, dynamic>.from(status['recent_failure'] as Map)
+        : null;
+    final recentRunText = recentRun == null
+        ? '暂无运行记录'
+        : '${_shortId(recentRun['run_id']?.toString() ?? '-')} · ${_runLabel(recentRun['status']?.toString() ?? 'unknown')}';
+    final failureText = recentFailure == null
+        ? '暂无失败记录'
+        : '${_shortId(recentFailure['run_id']?.toString() ?? '-')} · ${recentFailure['error'] ?? recentFailure['task'] ?? '-'}';
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.cookie_rounded,
+                  color: enabled ? cs.primary : cs.outline,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Cookie 保活',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Text(
+                  enabled ? '已启用' : '已暂停',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: enabled ? cs.primary : cs.outline,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _CapabilityLine(
+              icon: Icons.history_rounded,
+              label: '最近运行',
+              value: recentRunText,
+              state: recentRun?['status'] == 'error' ? false : null,
+              onTap: _runIdOf(recentRun) == null
+                  ? null
+                  : () => _openTaskRun(context, _runIdOf(recentRun)!),
+            ),
+            _CapabilityLine(
+              icon: Icons.error_outline_rounded,
+              label: '最近失败',
+              value: failureText,
+              state: recentFailure == null ? null : false,
+              onTap: _runIdOf(recentFailure) == null
+                  ? null
+                  : () => _openTaskRun(context, _runIdOf(recentFailure)!),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -350,12 +437,14 @@ class _CapabilityLine extends StatelessWidget {
     required this.label,
     required this.value,
     required this.state,
+    this.onTap,
   });
 
   final IconData icon;
   final String label;
   final String value;
   final bool? state;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -366,16 +455,26 @@ class _CapabilityLine extends StatelessWidget {
         : state!
         ? cs.primary
         : cs.error;
+    final row = Row(
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 8),
+        Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
+        Text(value, style: theme.textTheme.bodySmall?.copyWith(color: color)),
+      ],
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 8),
-          Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
-          Text(value, style: theme.textTheme.bodySmall?.copyWith(color: color)),
-        ],
-      ),
+      child: onTap == null
+          ? row
+          : InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: row,
+              ),
+            ),
     );
   }
 }
@@ -483,6 +582,7 @@ class _RecentFavoritesRuns extends StatelessWidget {
           final runId = run['run_id']?.toString() ?? '-';
           return ListTile(
             contentPadding: EdgeInsets.zero,
+            onTap: runId == '-' ? null : () => _openTaskRun(context, runId),
             leading: Icon(
               status == 'error'
                   ? Icons.error_outline_rounded
@@ -583,4 +683,13 @@ String _runLabel(String status) {
 
 String _shortId(String value) {
   return value.length > 8 ? value.substring(0, 8) : value;
+}
+
+String? _runIdOf(Map<String, dynamic>? run) {
+  final runId = run?['run_id']?.toString();
+  return runId == null || runId.isEmpty ? null : runId;
+}
+
+void _openTaskRun(BuildContext context, String runId) {
+  context.go('/tasks/${Uri.encodeComponent(runId)}');
 }

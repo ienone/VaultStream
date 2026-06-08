@@ -616,7 +616,7 @@ Future<void> _syncDiscoverySource(
             ? null
             : SnackBarAction(
                 label: '查看日志',
-                onPressed: () => context.go('/home?run=$runId'),
+                onPressed: () => _openTaskRun(context, runId),
               ),
       );
     }
@@ -660,7 +660,7 @@ Future<void> _testDiscoverySource(
             ? null
             : SnackBarAction(
                 label: '查看日志',
-                onPressed: () => context.go('/home?run=$runId'),
+                onPressed: () => _openTaskRun(context, runId),
               ),
       );
     }
@@ -692,7 +692,7 @@ Future<void> _syncPushTarget(
             ? null
             : SnackBarAction(
                 label: '查看日志',
-                onPressed: () => context.go('/home?run=${result.runId}'),
+                onPressed: () => _openTaskRun(context, result.runId!),
               ),
       );
     }
@@ -737,7 +737,7 @@ Future<void> _testPushTarget(
             ? null
             : SnackBarAction(
                 label: '查看日志',
-                onPressed: () => context.go('/home?run=$runId'),
+                onPressed: () => _openTaskRun(context, runId),
               ),
       );
     }
@@ -801,7 +801,7 @@ Future<void> _sendPushTargetTest(
             ? null
             : SnackBarAction(
                 label: '查看日志',
-                onPressed: () => context.go('/home?run=$runId'),
+                onPressed: () => _openTaskRun(context, runId),
               ),
       );
     }
@@ -852,7 +852,7 @@ Future<void> _testPlatformParse(
             ? null
             : SnackBarAction(
                 label: '查看日志',
-                onPressed: () => context.go('/home?run=$runId'),
+                onPressed: () => _openTaskRun(context, runId),
               ),
       );
     }
@@ -936,12 +936,11 @@ String? _lastFavoritesRunId(PlatformHealthStatus platform) {
 }
 
 void _openFavoritesRun(BuildContext context, String runId) {
-  context.go(
-    Uri(
-      path: '/automation',
-      queryParameters: {'tab': 'favorites', 'run': runId},
-    ).toString(),
-  );
+  _openTaskRun(context, runId);
+}
+
+void _openTaskRun(BuildContext context, String runId) {
+  context.go('/tasks/${Uri.encodeComponent(runId)}');
 }
 
 String _shortId(String runId) =>

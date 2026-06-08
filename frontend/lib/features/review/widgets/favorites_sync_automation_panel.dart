@@ -273,10 +273,54 @@ class _SyncPolicyCard extends ConsumerWidget {
                 value: value,
               ),
             ),
-            const _PolicyLine(
-              icon: Icons.delete_outline_rounded,
+            _PolicyStringControlRow(
+              label: '同步范围',
+              value: status.scopeStrategy,
+              options: const {
+                'all_favorites': '全部收藏',
+                'collections_api_placeholder': '收藏夹/分组接口预留',
+              },
+              description: _scopeStrategyDescription(status.scopeStrategy),
+              onChanged: (value) => _updateFavoritesSyncSetting(
+                context,
+                ref,
+                key: 'favorites_sync_scope_strategy',
+                value: value,
+              ),
+            ),
+            _PolicyStringControlRow(
+              label: '首次同步',
+              value: status.firstSyncStrategy,
+              options: const {
+                'latest_page': '仅拉取当前页',
+                'full_backfill_placeholder': '全量回填接口预留',
+              },
+              description: _firstSyncStrategyDescription(
+                status.firstSyncStrategy,
+              ),
+              onChanged: (value) => _updateFavoritesSyncSetting(
+                context,
+                ref,
+                key: 'favorites_sync_first_sync_strategy',
+                value: value,
+              ),
+            ),
+            _PolicyStringControlRow(
               label: '取消收藏',
-              value: '当前不会因为远端取消收藏而自动删除本地收藏。',
+              value: status.unfavoriteStrategy,
+              options: const {
+                'keep_local': '保留本地收藏',
+                'mark_archived_placeholder': '标记归档接口预留',
+              },
+              description: _unfavoriteStrategyDescription(
+                status.unfavoriteStrategy,
+              ),
+              onChanged: (value) => _updateFavoritesSyncSetting(
+                context,
+                ref,
+                key: 'favorites_sync_unfavorite_strategy',
+                value: value,
+              ),
             ),
             const _PolicyLine(
               icon: Icons.replay_rounded,
@@ -1029,7 +1073,7 @@ Future<void> _retryFailedFavoriteItem(
             ? null
             : SnackBarAction(
                 label: '查看日志',
-                onPressed: () => context.go('/home?run=$retryRunId'),
+                onPressed: () => context.go('/tasks/$retryRunId'),
               ),
       );
     }
@@ -1087,7 +1131,7 @@ Future<void> _retryFailedFavoriteItems(
             ? null
             : SnackBarAction(
                 label: '查看日志',
-                onPressed: () => context.go('/home?run=$retryRunId'),
+                onPressed: () => context.go('/tasks/$retryRunId'),
               ),
       );
     }
@@ -1560,6 +1604,27 @@ String _duplicateStrategyDescription(String strategy) {
   return switch (strategy) {
     'skip' => '导入阶段发现本地已有同一 canonical URL 时直接跳过。',
     _ => '导入阶段合并来源记录，并让已有内容继续执行必要后处理。',
+  };
+}
+
+String _scopeStrategyDescription(String strategy) {
+  return switch (strategy) {
+    'collections_api_placeholder' => '保留收藏夹/分组范围接口抽象；平台适配完成前不影响当前全部收藏同步。',
+    _ => '同步该平台当前可访问的全部收藏列表。',
+  };
+}
+
+String _firstSyncStrategyDescription(String strategy) {
+  return switch (strategy) {
+    'full_backfill_placeholder' => '保留全量回填策略位；平台分页/分组能力接入前不会强制长链路抓取。',
+    _ => '没有 cursor 时只拉取当前默认页，避免首次同步失控。',
+  };
+}
+
+String _unfavoriteStrategyDescription(String strategy) {
+  return switch (strategy) {
+    'mark_archived_placeholder' => '保留远端取消收藏后的本地归档策略位；真实差异检测接入前不改动本地内容。',
+    _ => '远端取消收藏不会自动删除或归档本地内容。',
   };
 }
 

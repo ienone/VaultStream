@@ -93,197 +93,208 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final size = MediaQuery.sizeOf(context);
+    final compact = size.width < 640;
 
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 560),
-        padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Icon(
-                    Icons.settings_suggest_rounded,
-                    color: colorScheme.primary,
-                  ),
+    final content = Container(
+      constraints: BoxConstraints(
+        maxWidth: compact ? double.infinity : 560,
+        maxHeight: compact ? double.infinity : size.height * 0.9,
+      ),
+      padding: compact
+          ? const EdgeInsets.fromLTRB(20, 20, 20, 16)
+          : const EdgeInsets.fromLTRB(24, 40, 24, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                const SizedBox(width: 16),
-                Text(
-                  isEditing ? '编辑分发规则' : '创建分发规则',
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                child: Icon(
+                  Icons.settings_suggest_rounded,
+                  color: colorScheme.primary,
                 ),
-              ],
-            ),
-            const SizedBox(height: 28),
-            Flexible(
-              child: Form(
-                key: _formKey,
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(top: 6, bottom: 6),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildTextField(
-                        controller: _nameController,
-                        label: '规则名称',
-                        hint: '为规则起一个直观的名字',
-                        icon: Icons.label_important_rounded,
-                        validator: (v) =>
-                            v == null || v.isEmpty ? '请输入规则名称' : null,
-                      ),
-                      const SizedBox(height: 24),
-                      _buildTextField(
-                        controller: _descriptionController,
-                        label: '规则描述',
-                        hint: '可选：描述该规则的用途',
-                        icon: Icons.description_rounded,
-                        maxLines: 2,
-                      ),
-                      const SizedBox(height: 32),
-                      _buildSubHeader('分发策略'),
-                      const SizedBox(height: 16),
-                      _buildNsfwSelector(),
-                      const SizedBox(height: 24),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildTextField(
-                              controller: _priorityController,
-                              label: '优先级',
-                              hint: '0',
-                              icon: Icons.priority_high_rounded,
-                              keyboardType: TextInputType.number,
-                            ),
+              ),
+              const SizedBox(width: 16),
+              Text(
+                isEditing ? '编辑分发规则' : '创建分发规则',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 28),
+          Flexible(
+            child: Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(top: 6, bottom: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildTextField(
+                      controller: _nameController,
+                      label: '规则名称',
+                      hint: '为规则起一个直观的名字',
+                      icon: Icons.label_important_rounded,
+                      validator: (v) =>
+                          v == null || v.isEmpty ? '请输入规则名称' : null,
+                    ),
+                    const SizedBox(height: 24),
+                    _buildTextField(
+                      controller: _descriptionController,
+                      label: '规则描述',
+                      hint: '可选：描述该规则的用途',
+                      icon: Icons.description_rounded,
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 32),
+                    _buildSubHeader('分发策略'),
+                    const SizedBox(height: 16),
+                    _buildNsfwSelector(),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildTextField(
+                            controller: _priorityController,
+                            label: '优先级',
+                            hint: '0',
+                            icon: Icons.priority_high_rounded,
+                            keyboardType: TextInputType.number,
                           ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _buildTextField(
-                              controller: _rateLimitController,
-                              label: '频率限制',
-                              hint: '最大推送数',
-                              icon: Icons.speed_rounded,
-                              keyboardType: TextInputType.number,
-                            ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _buildTextField(
+                            controller: _rateLimitController,
+                            label: '频率限制',
+                            hint: '最大推送数',
+                            icon: Icons.speed_rounded,
+                            keyboardType: TextInputType.number,
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      _buildTextField(
-                        controller: _timeWindowController,
-                        label: '时间窗口 (秒)',
-                        hint: '3600',
-                        icon: Icons.timer_rounded,
-                        keyboardType: TextInputType.number,
-                      ),
-                      const SizedBox(height: 24),
-                      _buildSwitchTile(
-                        title: '人工审批',
-                        subtitle: '开启后，符合规则的内容需在“待审批”中手动确认',
-                        icon: Icons.rate_review_rounded,
-                        value: _approvalRequired,
-                        onChanged: (v) => setState(() => _approvalRequired = v),
-                      ),
-                      _buildSwitchTile(
-                        title: '启用该规则',
-                        subtitle: '控制该规则是否立即生效',
-                        icon: Icons.power_settings_new_rounded,
-                        value: _enabled,
-                        onChanged: (v) => setState(() => _enabled = v),
-                      ),
-                      const SizedBox(height: 32),
-                      _buildSubHeader('标签匹配'),
-                      const SizedBox(height: 16),
-                      _TagInput(
-                        label: '包含标签',
-                        tags: _includeTags,
-                        onChanged: (tags) =>
-                            setState(() => _includeTags = tags),
-                        placeholder: '输入标签后回车',
-                        chipColor: colorScheme.primary,
-                      ),
-                      if (_includeTags.isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        _buildExpressiveDropdown<String>(
-                          label: '匹配模式',
-                          value: _tagsMatchMode,
-                          icon: Icons.api_rounded,
-                          entries: const [
-                            DropdownMenuEntry(value: 'any', label: '包含任一'),
-                            DropdownMenuEntry(value: 'all', label: '包含全部'),
-                          ],
-                          onChanged: (v) => setState(() => _tagsMatchMode = v!),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 24),
+                    _buildTextField(
+                      controller: _timeWindowController,
+                      label: '时间窗口 (秒)',
+                      hint: '3600',
+                      icon: Icons.timer_rounded,
+                      keyboardType: TextInputType.number,
+                    ),
+                    const SizedBox(height: 24),
+                    _buildSwitchTile(
+                      title: '人工审批',
+                      subtitle: '开启后，符合规则的内容需在“待审批”中手动确认',
+                      icon: Icons.rate_review_rounded,
+                      value: _approvalRequired,
+                      onChanged: (v) => setState(() => _approvalRequired = v),
+                    ),
+                    _buildSwitchTile(
+                      title: '启用该规则',
+                      subtitle: '控制该规则是否立即生效',
+                      icon: Icons.power_settings_new_rounded,
+                      value: _enabled,
+                      onChanged: (v) => setState(() => _enabled = v),
+                    ),
+                    const SizedBox(height: 32),
+                    _buildSubHeader('标签匹配'),
+                    const SizedBox(height: 16),
+                    _TagInput(
+                      label: '包含标签',
+                      tags: _includeTags,
+                      onChanged: (tags) => setState(() => _includeTags = tags),
+                      placeholder: '输入标签后回车',
+                      chipColor: colorScheme.primary,
+                    ),
+                    if (_includeTags.isNotEmpty) ...[
                       const SizedBox(height: 16),
-                      _TagInput(
-                        label: '排除标签',
-                        tags: _excludeTags,
-                        onChanged: (tags) =>
-                            setState(() => _excludeTags = tags),
-                        placeholder: '输入要过滤的标签',
-                        chipColor: colorScheme.error,
+                      _buildExpressiveDropdown<String>(
+                        label: '匹配模式',
+                        value: _tagsMatchMode,
+                        icon: Icons.api_rounded,
+                        entries: const [
+                          DropdownMenuEntry(value: 'any', label: '包含任一'),
+                          DropdownMenuEntry(value: 'all', label: '包含全部'),
+                        ],
+                        onChanged: (v) => setState(() => _tagsMatchMode = v!),
                       ),
-                      const SizedBox(height: 32),
-                      _buildSubHeader('推送目标'),
-                      const SizedBox(height: 12),
-                      _buildTargetSelector(),
-                      const SizedBox(height: 24),
-                      _buildBackfillSelector(),
-                      const SizedBox(height: 32),
-                      _buildRenderConfigSection(),
-                      const SizedBox(height: 24),
                     ],
-                  ),
+                    const SizedBox(height: 16),
+                    _TagInput(
+                      label: '排除标签',
+                      tags: _excludeTags,
+                      onChanged: (tags) => setState(() => _excludeTags = tags),
+                      placeholder: '输入要过滤的标签',
+                      chipColor: colorScheme.error,
+                    ),
+                    const SizedBox(height: 32),
+                    _buildSubHeader('推送目标'),
+                    const SizedBox(height: 12),
+                    _buildTargetSelector(),
+                    const SizedBox(height: 24),
+                    _buildBackfillSelector(),
+                    const SizedBox(height: 32),
+                    _buildRenderConfigSection(),
+                    const SizedBox(height: 24),
+                  ],
                 ),
               ),
             ),
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
                   ),
-                  child: const Text('取消'),
-                ),
-                const SizedBox(width: 12),
-                FilledButton(
-                  onPressed: _submit,
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Text(isEditing ? '保存修改' : '创建规则'),
                 ),
-              ],
-            ),
-          ],
-        ),
+                child: const Text('取消'),
+              ),
+              const SizedBox(width: 12),
+              FilledButton(
+                onPressed: _submit,
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text(isEditing ? '保存修改' : '创建规则'),
+              ),
+            ],
+          ),
+        ],
       ),
+    );
+
+    if (compact) {
+      return Dialog.fullscreen(child: SafeArea(child: content));
+    }
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+      child: content,
     );
   }
 

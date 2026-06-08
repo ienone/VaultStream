@@ -55,6 +55,9 @@ class FavoritesSyncStatus {
     required this.recentRuns,
     required this.platforms,
     required this.duplicateStrategy,
+    required this.scopeStrategy,
+    required this.firstSyncStrategy,
+    required this.unfavoriteStrategy,
   });
 
   final bool running;
@@ -65,6 +68,9 @@ class FavoritesSyncStatus {
   final List<Map<String, dynamic>> recentRuns;
   final List<FavoritesPlatformStatus> platforms;
   final String duplicateStrategy;
+  final String scopeStrategy;
+  final String firstSyncStrategy;
+  final String unfavoriteStrategy;
 
   factory FavoritesSyncStatus.fromJson(Map<String, dynamic> json) {
     final interval = json['interval_minutes'];
@@ -74,6 +80,15 @@ class FavoritesSyncStatus {
     final policies = json['policies'];
     final duplicateStrategy = policies is Map
         ? policies['duplicate_strategy']?.toString()
+        : null;
+    final scopeStrategy = policies is Map
+        ? policies['scope_strategy']?.toString()
+        : null;
+    final firstSyncStrategy = policies is Map
+        ? policies['first_sync_strategy']?.toString()
+        : null;
+    final unfavoriteStrategy = policies is Map
+        ? policies['unfavorite_strategy']?.toString()
         : null;
 
     return FavoritesSyncStatus(
@@ -98,6 +113,15 @@ class FavoritesSyncStatus {
                 .toList()
           : const <FavoritesPlatformStatus>[],
       duplicateStrategy: duplicateStrategy == 'skip' ? 'skip' : 'merge',
+      scopeStrategy: scopeStrategy == 'collections_api_placeholder'
+          ? 'collections_api_placeholder'
+          : 'all_favorites',
+      firstSyncStrategy: firstSyncStrategy == 'full_backfill_placeholder'
+          ? 'full_backfill_placeholder'
+          : 'latest_page',
+      unfavoriteStrategy: unfavoriteStrategy == 'mark_archived_placeholder'
+          ? 'mark_archived_placeholder'
+          : 'keep_local',
     );
   }
 }
@@ -236,11 +260,14 @@ class FavoritesSyncActions {
 
   final Ref _ref;
 
-  Future<String?> triggerSync({String? platform}) async {
+  Future<String?> triggerSync({String? platform, bool force = false}) async {
     final dio = _ref.read(apiClientProvider);
     final payload = <String, dynamic>{};
     if (platform != null && platform.isNotEmpty) {
       payload['platform'] = platform;
+    }
+    if (force) {
+      payload['force'] = true;
     }
     final response = await dio.post('/favorites-sync/sync', data: payload);
     _ref.invalidate(favoritesSyncStatusProvider);

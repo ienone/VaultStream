@@ -42,6 +42,11 @@ void main() {
       recentFavoritesRuns: const [
         {'run_id': 'abcdef123456', 'status': 'error', 'scope': 'zhihu'},
       ],
+      cookieKeepalive: const {
+        'enabled': true,
+        'recent_run': {'run_id': 'keepalive123456', 'status': 'success'},
+        'recent_failure': {'run_id': 'failed123456', 'status': 'error'},
+      },
     );
 
     await tester.pumpWidget(
@@ -58,6 +63,12 @@ void main() {
     expect(find.text('知乎'), findsOneWidget);
     expect(find.text('登录状态不可用'), findsOneWidget);
     expect(find.text('预览同步'), findsOneWidget);
+    expect(find.text('Cookie 保活'), findsOneWidget);
+    expect(find.textContaining('keepaliv'), findsOneWidget);
+
+    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.pumpAndSettle();
+
     expect(find.text('最近收藏同步'), findsOneWidget);
     expect(find.textContaining('abcdef12'), findsOneWidget);
   });
