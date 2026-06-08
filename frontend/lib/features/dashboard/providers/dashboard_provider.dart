@@ -32,3 +32,12 @@ final backgroundTaskDiagnosticsProvider =
       final response = await dio.get('/background-tasks/diagnostics');
       return BackgroundTaskDiagnostics.fromJson(response.data);
     });
+
+final backgroundTaskRunProvider =
+    FutureProvider.family<BackgroundTaskRun, String>((ref, runId) async {
+      final dio = ref.watch(apiClientProvider);
+      final response = await dio.get('/background-tasks/runs/$runId');
+      return BackgroundTaskRun.fromJson(
+        Map<String, dynamic>.from(response.data as Map),
+      );
+    });

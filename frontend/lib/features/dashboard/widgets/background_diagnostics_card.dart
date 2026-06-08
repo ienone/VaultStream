@@ -1,6 +1,5 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../models/stats.dart';
 
@@ -151,7 +150,7 @@ class _TaskRunRow extends StatelessWidget {
 
     return InkWell(
       borderRadius: BorderRadius.circular(8),
-      onTap: () => _showTaskRunDetails(context, run),
+      onTap: () => context.push('/tasks/${Uri.encodeComponent(run.runId)}'),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
@@ -208,105 +207,6 @@ Color _statusColor(ColorScheme colorScheme, String status) {
 String _formatLocalTime(DateTime value) {
   String two(int n) => n.toString().padLeft(2, '0');
   return '${two(value.month)}/${two(value.day)} ${two(value.hour)}:${two(value.minute)}';
-}
-
-void _showTaskRunDetails(BuildContext context, BackgroundTaskRun run) {
-  final encoder = const JsonEncoder.withIndent('  ');
-  final metadata = run.metadata;
-  final result = run.result;
-
-  showDialog<void>(
-    context: context,
-    builder: (context) {
-      final colorScheme = Theme.of(context).colorScheme;
-      return AlertDialog(
-        title: Text('任务 ${run.task}'),
-        content: SizedBox(
-          width: 560,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _DetailLine(label: 'Run ID', value: run.runId),
-                _DetailLine(label: '状态', value: run.status),
-                if (run.startedAt != null)
-                  _DetailLine(
-                    label: '开始',
-                    value: run.startedAt!.toLocal().toString(),
-                  ),
-                if (run.finishedAt != null)
-                  _DetailLine(
-                    label: '结束',
-                    value: run.finishedAt!.toLocal().toString(),
-                  ),
-                if (run.error != null && run.error!.isNotEmpty)
-                  _DetailLine(label: '错误', value: run.error!),
-                if (metadata.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Text('元数据', style: Theme.of(context).textTheme.titleSmall),
-                  const SizedBox(height: 6),
-                  SelectableText(
-                    encoder.convert(metadata),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontFamily: 'monospace',
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-                if (result != null && result.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Text('结果', style: Theme.of(context).textTheme.titleSmall),
-                  const SizedBox(height: 6),
-                  SelectableText(
-                    encoder.convert(result),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontFamily: 'monospace',
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('关闭'),
-          ),
-        ],
-      );
-    },
-  );
-}
-
-class _DetailLine extends StatelessWidget {
-  const _DetailLine({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 64,
-            child: Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Expanded(child: SelectableText(value)),
-        ],
-      ),
-    );
-  }
 }
 
 class _CountChip extends StatelessWidget {

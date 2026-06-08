@@ -7,6 +7,7 @@ import '../features/collection/collection_page.dart';
 import '../features/collection/content_detail_page.dart';
 import '../features/collection/models/content.dart';
 import '../features/dashboard/dashboard_page.dart';
+import '../features/dashboard/task_result_page.dart';
 import '../features/discovery/discovery_page.dart';
 import '../features/review/review_page.dart';
 import '../features/settings/settings_page.dart';
@@ -93,6 +94,11 @@ GoRouter goRouter(Ref ref) {
             SettingsPage(initialTab: state.uri.queryParameters['tab']),
       ),
       GoRoute(path: '/agent', builder: (context, state) => const AgentPage()),
+      GoRoute(
+        path: '/tasks/:runId',
+        builder: (context, state) =>
+            TaskResultPage(runId: state.pathParameters['runId']!),
+      ),
       StatefulShellRoute.indexedStack(
         // builder用于构建StatefulShellRoute的UI
         // context参数是用于构建Widget的BuildContext对象

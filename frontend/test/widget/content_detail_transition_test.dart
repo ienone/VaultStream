@@ -56,7 +56,7 @@ void main() {
     expect(find.text('Preview title'), findsOneWidget);
   });
 
-  testWidgets('ContentDetailPage data state keeps deterministic Hero shuttle', (
+  testWidgets('ContentDetailPage data state uses a real detail Hero target', (
     tester,
   ) async {
     final preview = ShareCard(
@@ -91,9 +91,7 @@ void main() {
           apiClientProvider.overrideWith(
             (ref) => Dio(BaseOptions(baseUrl: 'http://localhost')),
           ),
-          contentDetailProvider(
-            preview.id,
-          ).overrideWith((ref) async => detail),
+          contentDetailProvider(preview.id).overrideWith((ref) async => detail),
         ],
         child: MaterialApp(
           home: ContentDetailPage(contentId: preview.id, preview: preview),
@@ -110,5 +108,10 @@ void main() {
       ),
     );
     expect(hero.flightShuttleBuilder, isNotNull);
+    expect(hero.child, isA<DetailHeroHeader>());
+    expect(find.byType(DetailHeroHeader), findsOneWidget);
+    expect(find.text('Loaded detail title'), findsWidgets);
+    expect(find.text('Detail author'), findsWidgets);
+    expect(find.text('transition'), findsWidgets);
   });
 }
