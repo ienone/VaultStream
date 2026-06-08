@@ -76,11 +76,13 @@ Horizon_temp/
 !/scripts/check_backend_requirements.py
 !/scripts/check_database_schema.py
 !/scripts/check_openapi_docs.py
+# keep backend tests and fixtures versioned; ignore only runtime/local artifacts
 !backend/tests/
-backend/tests/*
-!backend/tests/data/
-!backend/tests/data/**
+!backend/tests/**
+backend/tests/**/__pycache__/
+backend/tests/logs/
 backend/tests/outputs/
+backend/manual_tests/
 # keep backend agent tool definitions versioned
 !backend/app/services/agent/tools/
 !backend/app/services/agent/tools/*.py
@@ -102,4 +104,3 @@ Gemini
 COMPLETE.md
 TASKS.md
 temp_cookies.txt
-AGENTS.md
