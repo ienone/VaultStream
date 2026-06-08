@@ -89,6 +89,7 @@ backend/tests/outputs/
 .gemini/
 
 # 临时文件
+.codex-security-scans/
 experiments/
 *.tmp
 *.bak
