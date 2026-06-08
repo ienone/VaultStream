@@ -88,6 +88,9 @@ class FavoritesSyncConfig:
     interval_minutes: int
     max_items: int
     duplicate_strategy: str
+    scope_strategy: str
+    first_sync_strategy: str
+    unfavorite_strategy: str
     last_sync_at: Any
 
 
@@ -102,9 +105,12 @@ class FavoritesSyncPlatformState:
 @dataclass(frozen=True)
 class ArchiveMediaConfig:
     enabled: bool
+    images_enabled: bool
+    videos_enabled: bool
     image_webp_quality: int
     image_max_count: int | None
     video_max_count: int | None
+    video_max_bytes: int | None
 
 
 class ConfigService:
@@ -429,6 +435,27 @@ class ConfigService:
         if allowed_duplicate_strategies and strategy not in allowed_duplicate_strategies:
             strategy = default_duplicate_strategy
 
+        scope_strategy = str(
+            await read("favorites_sync_scope_strategy", "all_favorites")
+            or "all_favorites"
+        ).strip().lower()
+        if scope_strategy not in {"all_favorites", "collections_api_placeholder"}:
+            scope_strategy = "all_favorites"
+
+        first_sync_strategy = str(
+            await read("favorites_sync_first_sync_strategy", "latest_page")
+            or "latest_page"
+        ).strip().lower()
+        if first_sync_strategy not in {"latest_page", "full_backfill_placeholder"}:
+            first_sync_strategy = "latest_page"
+
+        unfavorite_strategy = str(
+            await read("favorites_sync_unfavorite_strategy", "keep_local")
+            or "keep_local"
+        ).strip().lower()
+        if unfavorite_strategy not in {"keep_local", "mark_archived_placeholder"}:
+            unfavorite_strategy = "keep_local"
+
         raw_platforms = await read("favorites_sync_platforms", [])
         enabled_platforms = self.parse_favorites_sync_platforms(raw_platforms)
         if supported_platforms is not None:
@@ -442,6 +469,9 @@ class ConfigService:
             interval_minutes=interval,
             max_items=max_items,
             duplicate_strategy=strategy,
+            scope_strategy=scope_strategy,
+            first_sync_strategy=first_sync_strategy,
+            unfavorite_strategy=unfavorite_strategy,
             last_sync_at=await read("favorites_sync_last_sync_at"),
         )
 
@@ -548,17 +578,39 @@ class ConfigService:
                 getattr(settings, "archive_video_max_count", None),
             )
         )
+        video_max_bytes = self._coerce_optional_positive_int(
+            await read(
+                "archive_video_max_bytes",
+                getattr(settings, "archive_video_max_bytes", None),
+            )
+        )
+        enabled = coerce_bool(
+            await read(
+                "enable_archive_media_processing",
+                settings.enable_archive_media_processing,
+            )
+        )
+        images_enabled = enabled and coerce_bool(
+            await read(
+                "enable_archive_image_processing",
+                getattr(settings, "enable_archive_image_processing", True),
+            )
+        )
+        videos_enabled = enabled and coerce_bool(
+            await read(
+                "enable_archive_video_processing",
+                getattr(settings, "enable_archive_video_processing", True),
+            )
+        )
 
         return ArchiveMediaConfig(
-            enabled=coerce_bool(
-                await read(
-                    "enable_archive_media_processing",
-                    settings.enable_archive_media_processing,
-                )
-            ),
+            enabled=enabled,
+            images_enabled=images_enabled,
+            videos_enabled=videos_enabled,
             image_webp_quality=image_quality,
             image_max_count=image_max_count,
             video_max_count=video_max_count,
+            video_max_bytes=video_max_bytes,
         )
 
     @staticmethod
@@ -570,6 +622,29 @@ class ConfigService:
         except (TypeError, ValueError):
             return None
         return parsed if parsed > 0 else None
+
+    async def get_platform_cookie_string(
+        self,
+        platform: str,
+        *,
+        fresh: bool = False,
+        env_fallback: bool = True,
+    ) -> str | None:
+        from app.core.config import settings
+
+        platform_key = str(platform or "").strip().lower()
+        if not platform_key:
+            return None
+
+        setting_key = f"{platform_key}_cookie"
+        read = self.get_value_fresh if fresh else self.get_value
+        cookie_text = extract_secret_value(await read(setting_key))
+        if cookie_text:
+            return cookie_text
+
+        if not env_fallback or not hasattr(settings, setting_key):
+            return None
+        return extract_secret_value(getattr(settings, setting_key))
 
     def _sync_runtime_setting(self, key: str, value: Any) -> None:
         from app.core.config import settings

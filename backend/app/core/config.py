@@ -100,6 +100,14 @@ class Settings(BaseSettings):
     # 分发队列系统
     queue_worker_count: int = 3  # 队列Worker并发数
     parse_worker_count: int = 1  # 解析任务Worker并发数
+    distribution_mode: str = "auto"
+    ingest_mode: str = "parse"
+    enable_discovery_patrol: bool = True
+    enable_ai_scoring: bool = True
+    enable_cookie_keepalive: bool = True
+    enable_favorites_sync_scheduler: bool = True
+    allow_manual_favorites_sync_disabled_platform: bool = False
+    discovery_cleanup_mode: Literal["hard_delete", "expire_only", "archive"] = "hard_delete"
 
     # 事件总线
     enable_event_outbox_polling: bool = False  # 单实例部署时可关闭 outbox 轮询
@@ -113,8 +121,12 @@ class Settings(BaseSettings):
 
     # 媒体处理
     enable_archive_media_processing: bool = True
+    enable_archive_image_processing: bool = True
+    enable_archive_video_processing: bool = True
     archive_image_webp_quality: int = 80
     archive_image_max_count: Optional[int] = None
+    archive_video_max_count: Optional[int] = None
+    archive_video_max_bytes: Optional[int] = None
 
 
 settings = Settings()

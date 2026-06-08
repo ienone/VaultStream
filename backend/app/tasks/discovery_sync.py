@@ -40,6 +40,7 @@ from app.services.background_task_state import (
     record_task_started,
     record_task_success,
 )
+from app.services.automation_policy import AutomationPolicyService
 from app.services.config_service import ConfigService
 from app.services.settings_service import get_setting_value
 from app.utils.url_utils import normalize_url_for_dedup
@@ -136,6 +137,7 @@ class DiscoverySyncTask:
         *,
         run_id: str | None = None,
         trigger: str = "manual",
+        force: bool = False,
     ):
         """Manually trigger sync for a specific source, managing its own DB session."""
         async with AsyncSessionLocal() as db:
@@ -149,6 +151,22 @@ class DiscoverySyncTask:
             if run_id is None:
                 run = await self.create_run(source, trigger=trigger)
                 run_id = run["run_id"]
+            policy = await AutomationPolicyService().discovery_source_manual(
+                source_enabled=bool(source.enabled),
+                force=force,
+            )
+            if not policy.allowed:
+                await record_task_run_error(
+                    "discovery_sync",
+                    run_id,
+                    policy.reason,
+                    source_id=source.id,
+                    source_name=source.name,
+                    source_kind=_source_kind_value(source),
+                    trigger=trigger,
+                    policy=policy.as_dict(),
+                )
+                return
             await self._sync_single_source(db, source, run_id=run_id, trigger=trigger)
 
     async def _sync_single_source(
@@ -407,7 +425,7 @@ class DiscoverySyncTask:
     async def _archive_discovery_media(self, db, content_ids: list[int]):
         """Download and convert images to WebP for newly ingested discovery items."""
         archive_config = await ConfigService().get_archive_media_config()
-        if not archive_config.enabled:
+        if not archive_config.enabled or not archive_config.images_enabled:
             return
 
         if not content_ids:

@@ -516,6 +516,7 @@ async def store_archive_videos(
     namespace: str,
     timeout_seconds: float = 120.0,
     max_videos: Optional[int] = None,
+    max_bytes: Optional[int] = None,
 ) -> dict[str, Any]:
     """下载并存储存档中的视频，更新存档引用。
 
@@ -574,7 +575,7 @@ async def store_archive_videos(
                         client,
                         orig_url,
                         headers=_request_headers_for_url(orig_url),
-                        max_bytes=_MAX_ARCHIVE_VIDEO_BYTES,
+                        max_bytes=max_bytes or _MAX_ARCHIVE_VIDEO_BYTES,
                         allowed_content_type_prefixes=("video/",),
                     )
                     if resp.status_code >= 400:

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.logging import logger
 from app.models import Content
+from app.services.automation_policy import AutomationPolicyService
 from app.services import settings_service
 
 
@@ -109,6 +110,13 @@ class PostIngestService:
         asyncio.create_task(_run())
 
     async def score_discovery(self, session: AsyncSession) -> None:
+        decision = await AutomationPolicyService().discovery_scoring()
+        if not decision.allowed:
+            logger.bind(component="post_ingest", policy=decision.as_dict()).info(
+                "Discovery scoring skipped by automation policy"
+            )
+            return
+
         from app.services.patrol_service import PatrolService
 
         await PatrolService().score_pending(session)

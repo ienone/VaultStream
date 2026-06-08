@@ -2,6 +2,7 @@ import uuid
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from app.tasks.distribution_worker import DistributionQueueWorker
+from app.services.automation_policy import AutomationPolicyDecision
 from app.models import Content, ContentQueueItem, QueueItemStatus, ContentStatus, ReviewStatus, BotChat, DistributionRule, BotConfig, BotChatType, BotConfigPlatform, PushedRecord
 from app.core.time_utils import utcnow
 from app.services.background_task_state import get_recent_task_runs
@@ -247,6 +248,37 @@ async def test_poll_once_records_distribution_worker_run(db_session, monkeypatch
 
 
 # ── process_item_now — item not found ───────────────────
+
+@pytest.mark.asyncio
+async def test_poll_once_skips_claiming_when_distribution_paused(db_session, monkeypatch):
+    _, _, _, _, item = await _setup_full_chain(db_session)
+
+    from tests.conftest import TestingSessionLocal
+    monkeypatch.setattr("app.tasks.distribution_worker.AsyncSessionLocal", TestingSessionLocal)
+
+    async def fake_policy(self):
+        return AutomationPolicyDecision(
+            allowed=False,
+            code="distribution_paused",
+            reason="distribution worker polling is paused",
+            setting_key="distribution_mode",
+            setting_value="paused",
+        )
+
+    monkeypatch.setattr(
+        "app.services.automation_policy.AutomationPolicyService.distribution_worker_poll",
+        fake_policy,
+    )
+
+    worker = DistributionQueueWorker(worker_count=0)
+    result = await worker._poll_once("queue-worker-paused")
+
+    await db_session.refresh(item)
+    assert result["claimed_count"] == 0
+    assert result["policy_blocked"] is True
+    assert result["policy"]["code"] == "distribution_paused"
+    assert item.status == QueueItemStatus.SCHEDULED
+
 
 @pytest.mark.asyncio
 async def test_process_item_now_not_found(db_session, monkeypatch):

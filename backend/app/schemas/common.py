@@ -154,6 +154,7 @@ class FavoritesSyncTriggerRequest(BaseModel):
     """Manual favorites sync trigger payload."""
 
     platform: Optional[str] = None
+    force: bool = False
 
 
 class FavoritesSyncPreviewRequest(BaseModel):

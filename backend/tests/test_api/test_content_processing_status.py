@@ -19,6 +19,7 @@ from app.models import (
 from app.services.config_service import (
     AIConfig,
     AgentChatConfig,
+    ArchiveMediaConfig,
     EmbeddingAIConfig,
     LLMConfig,
     SummaryAIConfig,
@@ -54,9 +55,24 @@ async def test_processing_status_includes_failure_payloads(client, db_session, m
     async def _fake_ai_config(self):
         return _ai_config_without_runtime_keys()
 
+    async def _fake_archive_config(self):
+        return ArchiveMediaConfig(
+            enabled=True,
+            images_enabled=True,
+            videos_enabled=True,
+            image_webp_quality=80,
+            image_max_count=None,
+            video_max_count=2,
+            video_max_bytes=1024,
+        )
+
     monkeypatch.setattr(
         "app.routers.contents.ConfigService.get_ai_config",
         _fake_ai_config,
+    )
+    monkeypatch.setattr(
+        "app.routers.contents.ConfigService.get_archive_media_config",
+        _fake_archive_config,
     )
 
     suffix = uuid4().hex
@@ -123,6 +139,11 @@ async def test_processing_status_includes_failure_payloads(client, db_session, m
     stages = {stage["key"]: stage for stage in response.json()["stages"]}
     embedding_failures = stages["semantic_index"]["details"]["failures"]
     distribution_failures = stages["distribution"]["details"]["failures"]
+
+    assert stages["archive_media"]["status"] == "success"
+    assert stages["archive_media"]["details"]["enabled"] is True
+    assert stages["archive_media"]["details"]["video_max_count"] == 2
+    assert stages["archive_media"]["details"]["video_max_bytes"] == 1024
 
     assert stages["patrol"]["status"] == "disabled"
     assert stages["patrol"]["details"]["discovery_state"] is None

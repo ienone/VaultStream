@@ -59,7 +59,9 @@ def _status_counts(rows) -> dict[str, int]:
 
 
 async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
-    ai_config = await ConfigService().get_ai_config()
+    config_service = ConfigService()
+    ai_config = await config_service.get_ai_config()
+    archive_config = await config_service.get_archive_media_config()
     summary_enabled = ai_config.summary.enabled
     summary_key_ready = bool(ai_config.summary.api_key)
     embedding_key_ready = bool(ai_config.embedding.api_key)
@@ -86,6 +88,36 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
     else:
         summary_status = "pending"
         summary_message = "尚未生成摘要"
+
+    archive = {}
+    if isinstance(content.archive_metadata, dict):
+        archive = content.archive_metadata.get("archive") or {}
+        if not isinstance(archive, dict):
+            archive = {}
+    archive_images = archive.get("images") if isinstance(archive.get("images"), list) else []
+    archive_videos = archive.get("videos") if isinstance(archive.get("videos"), list) else []
+    stored_images = (
+        archive.get("stored_images") if isinstance(archive.get("stored_images"), list) else []
+    )
+    stored_videos = (
+        archive.get("stored_videos") if isinstance(archive.get("stored_videos"), list) else []
+    )
+    image_work_enabled = archive_config.enabled and archive_config.images_enabled
+    video_work_enabled = archive_config.enabled and archive_config.videos_enabled
+    image_pending = image_work_enabled and len(stored_images) < len(archive_images)
+    video_pending = video_work_enabled and len(stored_videos) < len(archive_videos)
+    if not archive_config.enabled:
+        archive_status = "disabled"
+        archive_message = "Remote media archiving is disabled"
+    elif not archive_images and not archive_videos:
+        archive_status = "success"
+        archive_message = "No remote archive media detected"
+    elif image_pending or video_pending:
+        archive_status = "pending"
+        archive_message = "Remote media archive work remains"
+    else:
+        archive_status = "success"
+        archive_message = "Remote media archived or skipped by policy"
 
     embedding_rows = (
         await db.execute(
@@ -222,6 +254,15 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
         else:
             patrol_actions.append("等待 discovery_patrol 后台任务或手动触发巡逻评分")
 
+    archive_issues: list[str] = []
+    archive_actions: list[str] = []
+    if archive_status == "pending":
+        archive_actions.append("Review archive media settings and re-parse if needed")
+    if archive_images and not image_work_enabled:
+        archive_issues.append("Image archiving disabled")
+    if archive_videos and not video_work_enabled:
+        archive_issues.append("Video archiving disabled")
+
     distribution_issues: list[str] = []
     distribution_actions: list[str] = []
     if distribution_status == "failed":
@@ -269,6 +310,26 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
                         }
                         for row in embedding_failures
                     ],
+                },
+            },
+            {
+                "key": "archive_media",
+                "label": "Media archive",
+                "status": archive_status,
+                "message": archive_message,
+                "issues": archive_issues,
+                "actions": archive_actions,
+                "details": {
+                    "enabled": archive_config.enabled,
+                    "images_enabled": archive_config.images_enabled,
+                    "videos_enabled": archive_config.videos_enabled,
+                    "image_count": len(archive_images),
+                    "stored_image_count": len(stored_images),
+                    "video_count": len(archive_videos),
+                    "stored_video_count": len(stored_videos),
+                    "image_max_count": archive_config.image_max_count,
+                    "video_max_count": archive_config.video_max_count,
+                    "video_max_bytes": archive_config.video_max_bytes,
                 },
             },
             {

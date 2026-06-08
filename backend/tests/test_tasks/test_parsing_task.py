@@ -24,16 +24,22 @@ def _patch_archive_config(
     monkeypatch,
     *,
     enabled: bool = True,
+    images_enabled: bool = True,
+    videos_enabled: bool = True,
     image_webp_quality: int = 80,
     image_max_count: int | None = None,
     video_max_count: int | None = None,
+    video_max_bytes: int | None = None,
 ):
     async def _config(self):
         return ArchiveMediaConfig(
             enabled=enabled,
+            images_enabled=enabled and images_enabled,
+            videos_enabled=enabled and videos_enabled,
             image_webp_quality=image_webp_quality,
             image_max_count=image_max_count,
             video_max_count=video_max_count,
+            video_max_bytes=video_max_bytes,
         )
 
     monkeypatch.setattr(
@@ -758,6 +764,37 @@ async def test_maybe_process_videos(monkeypatch):
         await parser._maybe_process_private_archive_media(parsed)
 
     mocks["store_videos"].assert_awaited_once()
+    assert "local://abc/vid.mp4" in parsed.media_urls
+
+
+@pytest.mark.asyncio
+async def test_archive_media_policy_splits_image_and_video_processing(monkeypatch):
+    archive_data = {
+        "images": [{"url": "https://example.com/img1.jpg"}],
+        "videos": [{"url": "https://example.com/vid.mp4"}],
+        "stored_videos": [{"key": "abc/vid.mp4"}],
+    }
+    parsed = _make_parsed()
+    parsed.archive_metadata = {"archive": archive_data}
+    parsed.media_urls = []
+
+    _patch_archive_config(
+        monkeypatch,
+        images_enabled=False,
+        videos_enabled=True,
+        video_max_count=1,
+        video_max_bytes=1024,
+    )
+    mocks = _patch_common(monkeypatch)
+
+    with mocks["factory"]:
+        parser = ContentParser()
+        await parser._maybe_process_private_archive_media(parsed)
+
+    mocks["store_images"].assert_not_awaited()
+    mocks["store_videos"].assert_awaited_once()
+    assert mocks["store_videos"].await_args.kwargs["max_videos"] == 1
+    assert mocks["store_videos"].await_args.kwargs["max_bytes"] == 1024
     assert "local://abc/vid.mp4" in parsed.media_urls
 
 

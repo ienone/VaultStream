@@ -41,6 +41,9 @@ class _FakeFavoritesConfigService:
             interval_minutes=kwargs["default_interval_minutes"],
             max_items=self.max_items,
             duplicate_strategy=strategy,
+            scope_strategy="all_favorites",
+            first_sync_strategy="latest_page",
+            unfavorite_strategy="keep_local",
             last_sync_at=None,
         )
 

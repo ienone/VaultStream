@@ -23,7 +23,6 @@ from app.adapters.zhihu import ZhihuAdapter
 from app.core.logging import logger
 from app.core.time_utils import utcnow
 from app.services.config_service import ConfigService
-from app.services.settings_service import get_setting_value
 
 
 class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
@@ -39,7 +38,10 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
         return "zhihu"
 
     async def _get_cookies(self) -> dict[str, str]:
-        cookie_str = await get_setting_value("zhihu_cookie")
+        cookie_str = await ConfigService().get_platform_cookie_string(
+            "zhihu",
+            fresh=True,
+        )
         if not cookie_str or not isinstance(cookie_str, str):
             return {}
         return PlatformAdapter.parse_cookie_str(cookie_str)

@@ -7,6 +7,7 @@ from app.services.background_task_state import (
     record_task_started,
     record_task_success,
 )
+from app.services.automation_policy import AutomationPolicyService
 
 
 async def _recorded_platform_check(task_name: str, label: str, check_coro):
@@ -97,11 +98,20 @@ def start_cookie_keepalive_tasks():
     启动用于 Cookie 维护的后台任务。
     应在 FastAPI 应用启动期间调用。
     """
-    try:
+    async def _start_if_allowed():
+        policy = await AutomationPolicyService().cookie_keepalive()
+        if not policy.allowed:
+            logger.bind(policy=policy.as_dict()).info(
+                "Cookie keepalive tasks skipped by automation policy"
+            )
+            return
         asyncio.create_task(zhihu_keepalive_loop())
         asyncio.create_task(xiaohongshu_keepalive_loop())
         asyncio.create_task(weibo_keepalive_loop())
         logger.info("Successfully launched cookie keepalive tasks.")
+
+    try:
+        asyncio.create_task(_start_if_allowed())
     except Exception as e:
         logger.error(f"Failed to start cookie keepalive tasks: {e}")
 
@@ -115,6 +125,18 @@ class CookieKeepAliveTask:
         try:
             if self._tasks and any(not t.done() for t in self._tasks):
                 return
+            asyncio.create_task(self._start_if_allowed())
+        except Exception as e:
+            logger.error(f"Failed to start cookie keepalive tasks: {e}")
+
+    async def _start_if_allowed(self):
+        policy = await AutomationPolicyService().cookie_keepalive()
+        if not policy.allowed:
+            logger.bind(policy=policy.as_dict()).info(
+                "Cookie keepalive task skipped by automation policy"
+            )
+            return
+        try:
             for task_name in (
                 "cookie_keepalive_zhihu",
                 "cookie_keepalive_xiaohongshu",

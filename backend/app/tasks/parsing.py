@@ -557,8 +557,6 @@ class ContentParser:
 
     async def _get_platform_cookies(self, platform: Platform) -> dict:
         """获取平台 cookies（优先从数据库 settings 读取，回退到 .env 配置）"""
-        from app.services.settings_service import get_setting_value_fresh
-
         if platform == Platform.BILIBILI:
             cookies = {}
             if settings.bilibili_sessdata:
@@ -572,13 +570,12 @@ class ContentParser:
         # 通过扫码登录保存的平台 cookie（存储在数据库 settings 表中）
         # 支持：知乎、微博、小红书等
         platform_name = platform.value  # 例如 "zhihu"、"weibo"、"xiaohongshu"
-        cookie_str = await get_setting_value_fresh(f"{platform_name}_cookie")
+        cookie_str = await ConfigService().get_platform_cookie_string(
+            platform_name,
+            fresh=True,
+        )
         if not cookie_str:
-            # 对于知乎，还可以回退到 .env 中的 ZHIHU_COOKIE
-            if platform == Platform.ZHIHU and settings.zhihu_cookie:
-                cookie_str = settings.zhihu_cookie.get_secret_value()
-            else:
-                return {}
+            return {}
 
         # 将 cookie 字符串解析为字典（复用基类工具）
         from app.adapters.base import PlatformAdapter
@@ -586,16 +583,11 @@ class ContentParser:
 
     async def _get_platform_cookie_string(self, platform: Platform) -> Optional[str]:
         """获取平台原始 cookie 串（用于需要直传 Cookie 头的平台）。"""
-        from app.services.settings_service import get_setting_value_fresh
-
         platform_name = platform.value
-        cookie_str = await get_setting_value_fresh(f"{platform_name}_cookie")
-        if cookie_str:
-            return cookie_str
-
-        if platform == Platform.ZHIHU and settings.zhihu_cookie:
-            return settings.zhihu_cookie.get_secret_value()
-        return None
+        return await ConfigService().get_platform_cookie_string(
+            platform_name,
+            fresh=True,
+        )
 
     async def _maybe_process_private_archive_media(self, parsed) -> None:
         """处理私有归档媒体"""
@@ -618,13 +610,14 @@ class ContentParser:
         archive_config = await ConfigService().get_archive_media_config()
 
         # 处理图片
-        await store_archive_images_as_webp(
-            archive=archive,
-            storage=storage,
-            namespace=namespace,
-            quality=archive_config.image_webp_quality,
-            max_images=archive_config.image_max_count,
-        )
+        if archive_config.images_enabled:
+            await store_archive_images_as_webp(
+                archive=archive,
+                storage=storage,
+                namespace=namespace,
+                quality=archive_config.image_webp_quality,
+                max_images=archive_config.image_max_count,
+            )
         
         # 更新 markdown 引用
         if archive.get("markdown"):
@@ -714,12 +707,13 @@ class ContentParser:
                         data["cover_url"] = url_mapping[data["cover_url"]]
         
         # 处理视频
-        if archive.get("videos"):
+        if archive_config.videos_enabled and archive.get("videos"):
             await store_archive_videos(
                 archive=archive,
                 storage=storage,
                 namespace=namespace,
                 max_videos=archive_config.video_max_count,
+                max_bytes=archive_config.video_max_bytes,
             )
             
             stored_videos = archive.get("stored_videos", [])

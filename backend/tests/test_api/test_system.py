@@ -43,7 +43,7 @@ class _FakeFavoritesSyncTask:
         return 5.0
 
     async def load_enabled_platforms(self) -> list[str]:
-        return []
+        return ["zhihu"]
 
     async def create_run(
         self,
@@ -86,6 +86,9 @@ class _FakeFavoritesConfigService:
             interval_minutes=kwargs["default_interval_minutes"],
             max_items=50,
             duplicate_strategy="skip",
+            scope_strategy="all_favorites",
+            first_sync_strategy="latest_page",
+            unfavorite_strategy="keep_local",
             last_sync_at=None,
         )
 
@@ -116,6 +119,11 @@ class _FakePlatformHealthFavoritesSyncTask(_FakeFavoritesSyncTask):
 
     async def load_enabled_platforms(self) -> list[str]:
         return ["zhihu"]
+
+
+class _DisabledFavoritesSyncTask(_FakeFavoritesSyncTask):
+    async def load_enabled_platforms(self) -> list[str]:
+        return []
 
 
 class TestSystemAPI:
@@ -198,6 +206,37 @@ class TestSystemAPI:
         assert "vaultstream_distribution_queue" in response.text
 
     @pytest.mark.asyncio
+    async def test_background_task_run_lookup_by_id(self, client: AsyncClient):
+        await record_task_run_started(
+            "platform_parse_test",
+            run_id="task-result-run",
+            trigger="manual",
+            platform="zhihu",
+            content_id=123,
+        )
+        await record_task_run_error(
+            "platform_parse_test",
+            "task-result-run",
+            "parse failed",
+            url="https://example.com/post",
+        )
+
+        response = await client.get("/api/v1/background-tasks/runs/task-result-run")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["run_id"] == "task-result-run"
+        assert data["task"] == "platform_parse_test"
+        assert data["status"] == "error"
+        assert data["platform"] == "zhihu"
+        assert data["content_id"] == 123
+        assert data["error"] == "parse failed"
+        assert data["result"]["url"] == "https://example.com/post"
+
+        missing = await client.get("/api/v1/background-tasks/runs/missing-run")
+        assert missing.status_code == 404
+        assert missing.json()["error_code"] == "background_task_run_not_found"
+
+    @pytest.mark.asyncio
     async def test_favorites_sync_trigger_returns_run_id_and_status_lists_recent_runs(
         self,
         client: AsyncClient,
@@ -214,10 +253,41 @@ class TestSystemAPI:
             status = await client.get("/api/v1/favorites-sync/status")
             assert status.status_code == 200
             assert status.json()["policies"]["duplicate_strategy"] in {"merge", "skip"}
+            assert status.json()["policies"]["scope_strategy"] == "all_favorites"
+            assert status.json()["policies"]["first_sync_strategy"] == "latest_page"
+            assert status.json()["policies"]["unfavorite_strategy"] == "keep_local"
             runs = status.json()["recent_runs"]
             assert runs
             assert runs[0]["run_id"] == "api-test-run"
             assert runs[0]["status"] in {"running", "success"}
+        finally:
+            if previous is None:
+                app.state._state.pop("favorites_sync_task", None)
+            else:
+                app.state.favorites_sync_task = previous
+
+    @pytest.mark.asyncio
+    async def test_favorites_sync_trigger_rejects_disabled_platform_by_default(
+        self,
+        client: AsyncClient,
+    ):
+        previous = getattr(app.state, "favorites_sync_task", None)
+        app.state.favorites_sync_task = _DisabledFavoritesSyncTask()
+        try:
+            response = await client.post(
+                "/api/v1/favorites-sync/sync",
+                json={"platform": "zhihu"},
+            )
+            assert response.status_code == 409
+            data = response.json()
+            assert data["error_code"] == "favorites_platform_disabled"
+            assert data["policy"]["allowed"] is False
+
+            forced = await client.post(
+                "/api/v1/favorites-sync/sync",
+                json={"platform": "zhihu", "force": True},
+            )
+            assert forced.status_code == 202
         finally:
             if previous is None:
                 app.state._state.pop("favorites_sync_task", None)
@@ -403,6 +473,16 @@ class TestSystemAPI:
             imported=2,
             skipped=1,
         )
+        await record_task_run_started(
+            "cookie_keepalive_zhihu",
+            run_id="cookie-health-run",
+            trigger="scheduled",
+        )
+        await record_task_run_success(
+            "cookie_keepalive_zhihu",
+            "cookie-health-run",
+            ok=True,
+        )
 
         async def _cookie_configured(platform: str) -> bool:
             return platform == "zhihu"
@@ -430,6 +510,8 @@ class TestSystemAPI:
             assert zhihu["favorites_sync"]["enabled"] is True
             assert zhihu["favorites_sync"]["authenticated"] is True
             assert zhihu["favorites_sync"]["last_run"]["run_id"] == "platform-health-run"
+            assert data["cookie_keepalive"]["enabled"] is True
+            assert data["cookie_keepalive"]["recent_run"]["run_id"] == "cookie-health-run"
         finally:
             if previous is None:
                 app.state._state.pop("favorites_sync_task", None)
@@ -475,6 +557,10 @@ class TestSystemAPI:
         }
 
         assert capabilities["content_understanding"]["status"] == "partial"
+        assert capabilities["text_llm"]["status"] == "available"
+        assert capabilities["vision_llm"]["status"] == "unavailable"
+        assert capabilities["discovery_patrol"]["status"] == "available"
+        assert capabilities["discovery_patrol"]["details"]["ai_scoring_enabled"] is True
         assert capabilities["summary_generation"]["status"] == "disabled"
         assert capabilities["semantic_search"]["status"] == "pending"
         assert capabilities["agent"]["status"] == "available"

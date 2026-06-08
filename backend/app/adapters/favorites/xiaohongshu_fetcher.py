@@ -24,7 +24,6 @@ from app.adapters.xiaohongshu_profile import (
 )
 from app.core.logging import logger
 from app.services.config_service import ConfigService
-from app.services.settings_service import get_setting_value
 
 _USER_AGENT = DEFAULT_XHS_USER_AGENT
 _EDITH_HOST = "https://edith.xiaohongshu.com"
@@ -46,7 +45,10 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
         return "xiaohongshu"
 
     async def _get_cookies(self) -> dict[str, str]:
-        cookie_str = await get_setting_value("xiaohongshu_cookie")
+        cookie_str = await ConfigService().get_platform_cookie_string(
+            "xiaohongshu",
+            fresh=True,
+        )
         if not cookie_str or not isinstance(cookie_str, str):
             return {}
         return PlatformAdapter.parse_cookie_str(cookie_str)

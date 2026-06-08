@@ -23,6 +23,7 @@ from app.adapters.xiaohongshu_profile import (
     build_xhs_crypto_config,
 )
 from app.core.config import settings
+from app.services.config_service import ConfigService
 
 # 导入parser
 from app.adapters.xiaohongshu_parser import parse_note, parse_user
@@ -165,8 +166,10 @@ class XiaohongshuAdapter(PlatformAdapter):
                 return url
     
     async def _refresh_cookie_from_settings(self) -> None:
-        from app.services.settings_service import get_setting_value
-        latest = await get_setting_value("xiaohongshu_cookie")
+        latest = await ConfigService().get_platform_cookie_string(
+            "xiaohongshu",
+            fresh=True,
+        )
         if latest and latest != self.cookie_str:
             self.cookie_str = latest
             self.cookies = self._parse_cookies(latest)

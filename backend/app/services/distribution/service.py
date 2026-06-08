@@ -23,6 +23,7 @@ from app.models import (
     ReviewStatus,
 )
 from app.repositories import ContentRepository, DistributionRepository
+from app.services.automation_policy import AutomationPolicyService
 from app.services.distribution.decision import (
     DECISION_FILTERED,
     check_match_conditions,
@@ -133,6 +134,15 @@ class DistributionService:
 
     async def enqueue_content(self, content_id: int, *, force: bool = False) -> int:
         """Create or update distribution queue items for content."""
+        policy = await AutomationPolicyService().distribution_enqueue(force=force)
+        if not policy.allowed:
+            logger.bind(
+                component="distribution",
+                content_id=content_id,
+                policy=policy.as_dict(),
+            ).info("Distribution enqueue skipped by automation policy")
+            return 0
+
         result = await self.db.execute(select(Content).where(Content.id == content_id))
         content = result.scalar_one_or_none()
 

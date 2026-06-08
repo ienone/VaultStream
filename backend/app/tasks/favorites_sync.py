@@ -26,6 +26,7 @@ from app.services.background_task_state import (
     record_task_success,
 )
 from app.services.content_service import ContentService
+from app.services.automation_policy import AutomationPolicyService
 from app.services.config_service import ConfigService
 
 
@@ -43,11 +44,16 @@ class FavoritesSyncTask:
         "twitter": 5.0,
     }
 
-    def __init__(self, config_service: ConfigService | None = None):
+    def __init__(
+        self,
+        config_service: ConfigService | None = None,
+        policy_service: AutomationPolicyService | None = None,
+    ):
         self._task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
         self._fetchers = self.get_fetcher_registry()
         self._config_service = config_service or ConfigService()
+        self._policy_service = policy_service or AutomationPolicyService(self._config_service)
 
     @staticmethod
     def get_fetcher_registry() -> dict[str, type[BaseFavoritesFetcher]]:
@@ -121,6 +127,18 @@ class FavoritesSyncTask:
                     fresh=True,
                 )
                 interval = config.interval_minutes
+                policy = await self._policy_service.favorites_scheduler()
+                if not policy.allowed:
+                    logger.bind(policy=policy.as_dict()).info(
+                        "Favorites sync scheduler skipped by automation policy"
+                    )
+                    await record_task_success(
+                        "favorites_sync",
+                        policy_blocked=True,
+                        policy=policy.as_dict(),
+                    )
+                    await asyncio.sleep(interval * 60)
+                    continue
                 await self.sync_all_platforms_once()
             except Exception as e:
                 logger.exception("Favorites sync loop failed: {}", e)

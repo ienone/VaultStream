@@ -32,6 +32,7 @@ from app.services.background_task_state import (
     record_task_started,
     record_task_success,
 )
+from app.services.automation_policy import AutomationPolicyService
 from app.tasks.distributor import ContentDistributor
 from app.core.events import event_bus
 
@@ -193,6 +194,25 @@ class DistributionQueueWorker:
 
     async def _poll_once(self, worker_name: str) -> dict:
         """领取并处理一批到期分发队列项。空轮询不创建运行记录。"""
+        policy = await AutomationPolicyService().distribution_worker_poll()
+        if not policy.allowed:
+            logger.bind(worker=worker_name, policy=policy.as_dict()).info(
+                "Distribution worker poll skipped by automation policy"
+            )
+            await record_task_success(
+                "distribution_worker",
+                worker=worker_name,
+                policy_blocked=True,
+                policy=policy.as_dict(),
+            )
+            return {
+                "trigger": "auto",
+                "worker": worker_name,
+                "claimed_count": 0,
+                "policy_blocked": True,
+                "policy": policy.as_dict(),
+            }
+
         async with AsyncSessionLocal() as session:
             items = await self._claim_items(session, worker_name)
             if not items:

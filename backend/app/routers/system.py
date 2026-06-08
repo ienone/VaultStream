@@ -35,6 +35,7 @@ from app.schemas import (
     FavoritesSyncItemsRetryRequest,
     FavoritesSyncPreviewRequest, FavoritesSyncPreviewResponse,
     FavoritesSyncTriggerRequest, BackgroundTaskDiagnosticsResponse,
+    BackgroundTaskRunResponse,
 )
 from app.core.logging import logger
 from app.core.dependencies import require_api_token
@@ -50,6 +51,7 @@ from app.services.background_task_state import (
     record_task_run_success,
 )
 from app.services.embedding_service import EmbeddingService
+from app.services.automation_policy import AutomationPolicyService
 from app.services.config_service import ConfigService
 from app.services.settings_service import get_setting_value
 from app.utils.sensitive_display import extract_secret_value
@@ -144,9 +146,75 @@ def _latest_favorites_run_for_platform(
     return None
 
 
+_BACKGROUND_RUN_TASK_NAMES = (
+    "bot_chats_sync",
+    "content_parse",
+    "content_reparse",
+    "content_embedding",
+    "content_summary",
+    "discovery_patrol",
+    "discovery_source_test",
+    "discovery_sync",
+    "distribution_push",
+    "distribution_schedule",
+    "distribution_worker_poll",
+    "distribution_target_test",
+    "distribution_target_send_test",
+    "favorites_sync",
+    "semantic_reindex",
+    "ai_connectivity_test",
+    "platform_parse_test",
+    "cookie_keepalive_zhihu",
+    "cookie_keepalive_xiaohongshu",
+    "cookie_keepalive_weibo",
+)
+
+
+async def _cookie_keepalive_status() -> dict[str, Any]:
+    runs: list[dict[str, Any]] = []
+    for task_name in (
+        "cookie_keepalive_zhihu",
+        "cookie_keepalive_xiaohongshu",
+        "cookie_keepalive_weibo",
+    ):
+        for run in await get_recent_task_runs(task_name, limit=5):
+            runs.append({"task": task_name, **run})
+    runs.sort(key=lambda item: str(item.get("started_at") or ""), reverse=True)
+    recent_failure = next(
+        (run for run in runs if str(run.get("status") or "") == "error"),
+        None,
+    )
+    enabled = _setting_bool(
+        await _get_configured_setting(
+            "enable_cookie_keepalive",
+            settings.enable_cookie_keepalive,
+        ),
+        settings.enable_cookie_keepalive,
+    )
+    return {
+        "enabled": enabled,
+        "recent_run": runs[0] if runs else None,
+        "recent_failure": recent_failure,
+    }
+
+
 def _is_configured_value(value: Any) -> bool:
     text = extract_secret_value(value)
     return isinstance(text, str) and bool(text.strip())
+
+
+def _setting_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+    return default
 
 
 async def _get_configured_setting(key: str, default: Any = None) -> Any:
@@ -185,7 +253,18 @@ async def _build_ai_capabilities(db: AsyncSession) -> list[dict[str, Any]]:
     text_ready = await _llm_key_configured("text_llm")
     vision_ready = await _llm_key_configured("vision_llm")
     summary_key_ready = _is_configured_value(await _get_configured_setting("summary_api_key"))
-    summary_enabled = bool(await _get_configured_setting("enable_auto_summary", settings.enable_auto_summary))
+    summary_enabled = _setting_bool(
+        await _get_configured_setting("enable_auto_summary", settings.enable_auto_summary),
+        settings.enable_auto_summary,
+    )
+    discovery_patrol_enabled = _setting_bool(
+        await _get_configured_setting("enable_discovery_patrol", settings.enable_discovery_patrol),
+        settings.enable_discovery_patrol,
+    )
+    ai_scoring_enabled = _setting_bool(
+        await _get_configured_setting("enable_ai_scoring", settings.enable_ai_scoring),
+        settings.enable_ai_scoring,
+    )
     embedding_ready = _is_configured_value(await _get_configured_setting("embedding_api_key"))
     agent_config = await ConfigService().get_agent_chat_config()
     agent_chat_ready = bool(agent_config.api_key)
@@ -196,6 +275,70 @@ async def _build_ai_capabilities(db: AsyncSession) -> list[dict[str, Any]]:
     connectivity = await _latest_ai_connectivity_by_target()
 
     capabilities: list[dict[str, Any]] = []
+    capabilities.append(
+        _capability_item(
+            "text_llm",
+            "文本模型",
+            "available" if text_ready else "unavailable",
+            "文本 LLM 可用于内容理解、摘要辅助与发现评分。"
+            if text_ready
+            else "未配置文本 LLM 密钥。",
+            issues=[] if text_ready else ["text_llm_api_key 未配置"],
+            actions=[] if text_ready else ["配置 text_llm_api_key"],
+            details={
+                "configured": text_ready,
+                "connectivity": connectivity.get("text_llm"),
+            },
+        )
+    )
+    capabilities.append(
+        _capability_item(
+            "vision_llm",
+            "视觉模型",
+            "available" if vision_ready else "unavailable",
+            "视觉 LLM 可用于图片理解和多模态内容增强。"
+            if vision_ready
+            else "未配置视觉 LLM 密钥。",
+            issues=[] if vision_ready else ["vision_llm_api_key 未配置"],
+            actions=[] if vision_ready else ["配置 vision_llm_api_key"],
+            details={
+                "configured": vision_ready,
+                "connectivity": connectivity.get("vision_llm"),
+            },
+        )
+    )
+    if not discovery_patrol_enabled:
+        patrol_status = "disabled"
+        patrol_summary = "发现巡逻已关闭。"
+        patrol_issues: list[str] = []
+    elif not ai_scoring_enabled:
+        patrol_status = "partial"
+        patrol_summary = "发现巡逻开启，但 AI 评分写入已关闭。"
+        patrol_issues = ["enable_ai_scoring 已关闭"]
+    elif text_ready or vision_ready:
+        patrol_status = "available"
+        patrol_summary = "发现巡逻可写入分数、理由、标签、摘要与可见性。"
+        patrol_issues = []
+    else:
+        patrol_status = "unavailable"
+        patrol_summary = "发现巡逻开启，但缺少可用于评分的文本或视觉 LLM。"
+        patrol_issues = ["text_llm_api_key 与 vision_llm_api_key 均未配置"]
+    capabilities.append(
+        _capability_item(
+            "discovery_patrol",
+            "发现巡逻评分",
+            patrol_status,
+            patrol_summary,
+            issues=patrol_issues,
+            actions=[] if patrol_status in {"available", "disabled"} else ["配置 LLM 或开启 AI 评分"],
+            details={
+                "enabled": discovery_patrol_enabled,
+                "ai_scoring_enabled": ai_scoring_enabled,
+                "text_llm": text_ready,
+                "vision_llm": vision_ready,
+            },
+        )
+    )
 
     if text_ready and vision_ready:
         capabilities.append(
@@ -611,25 +754,7 @@ async def _build_background_failure_details(
         for name, state in sorted(task_states_raw.items())
     ]
     recent_task_runs: list[dict[str, Any]] = []
-    for task_name in (
-        "bot_chats_sync",
-        "content_parse",
-        "content_reparse",
-        "content_embedding",
-        "content_summary",
-        "discovery_patrol",
-        "discovery_source_test",
-        "discovery_sync",
-        "distribution_push",
-        "distribution_schedule",
-        "distribution_worker_poll",
-        "distribution_target_test",
-        "distribution_target_send_test",
-        "favorites_sync",
-        "semantic_reindex",
-        "ai_connectivity_test",
-        "platform_parse_test",
-    ):
+    for task_name in _BACKGROUND_RUN_TASK_NAMES:
         recent_task_runs.extend(await get_recent_task_runs(task_name, limit=limit))
     recent_task_runs.sort(
         key=lambda run: str(run.get("started_at") or ""),
@@ -894,6 +1019,34 @@ async def get_background_task_diagnostics(
     return await _build_background_failure_details(db, limit=limit)
 
 
+@router.get("/background-tasks/runs/{run_id}", response_model=BackgroundTaskRunResponse)
+async def get_background_task_run(
+    run_id: str,
+    _: None = Depends(require_api_token),
+):
+    """Return one recent background task run by id for deep-linked result pages."""
+    needle = run_id.strip()
+    if not needle:
+        raise HTTPException(
+            status_code=400,
+            detail=build_error_payload(
+                message="run_id is required",
+                code="run_id_required",
+            ),
+        )
+    for task_name in _BACKGROUND_RUN_TASK_NAMES:
+        for run in await get_recent_task_runs(task_name, limit=50):
+            if str(run.get("run_id") or "") == needle:
+                return {"task": task_name, **run}
+    raise HTTPException(
+        status_code=404,
+        detail=build_error_payload(
+            message=f"Background task run not found: {needle}",
+            code="background_task_run_not_found",
+        ),
+    )
+
+
 @router.get("/background-tasks/metrics")
 async def get_background_task_metrics(
     db: AsyncSession = Depends(get_db),
@@ -1116,7 +1269,9 @@ async def get_favorites_sync_status(
         "recent_runs": await get_recent_task_runs("favorites_sync", limit=10),
         "policies": {
             "duplicate_strategy": config.duplicate_strategy,
-            "unfavorite_strategy": "keep_local",
+            "scope_strategy": config.scope_strategy,
+            "first_sync_strategy": config.first_sync_strategy,
+            "unfavorite_strategy": config.unfavorite_strategy,
         },
         "platforms": platforms,
     }
@@ -1257,6 +1412,7 @@ async def get_platform_health(
     return {
         "platforms": items,
         "recent_favorites_runs": recent_runs[:10],
+        "cookie_keepalive": await _cookie_keepalive_status(),
     }
 
 
@@ -1410,6 +1566,7 @@ async def trigger_favorites_sync(
         )
 
     platform = ((body.platform if body else "") or "").strip().lower()
+    force = bool(body.force) if body else False
     if platform:
         if platform not in sync_task.get_supported_platforms():
             raise HTTPException(
@@ -1419,6 +1576,22 @@ async def trigger_favorites_sync(
                     code="unsupported_platform",
                     hint="仅支持 zhihu / xiaohongshu / twitter",
                     request_id=getattr(request.state, "request_id", None),
+                ),
+            )
+        policy = await AutomationPolicyService().favorites_platform_manual(
+            platform,
+            enabled_platforms=await sync_task.load_enabled_platforms(),
+            force=force,
+        )
+        if not policy.allowed:
+            raise HTTPException(
+                status_code=409,
+                detail=build_error_payload(
+                    message=policy.reason,
+                    code=policy.code,
+                    hint="启用该收藏同步平台，或在请求中显式传入 force=true。",
+                    request_id=getattr(request.state, "request_id", None),
+                    extra={"policy": policy.as_dict()},
                 ),
             )
         run = await sync_task.create_run(platform=platform, trigger="manual")

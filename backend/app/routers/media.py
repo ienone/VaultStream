@@ -1,7 +1,7 @@
 """
 功能描述：媒体资源代理 API
 包含：本地媒体代理、远程图片代理
-调用方式：无需 API Token (方便前端直接加载)，但部分接口可能限制来源
+调用方式：本地媒体需要 API Token；远程图片代理不要求 Token，但会限制来源和目标 URL。
 """
 import os
 import mimetypes

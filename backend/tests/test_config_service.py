@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import SecretStr
 
 from app.services.config_service import ConfigService
 
@@ -36,6 +37,9 @@ async def test_get_favorites_sync_config_filters_and_normalizes_values():
             "favorites_sync_interval_minutes": "-1",
             "favorites_sync_max_items": "0",
             "favorites_sync_duplicate_strategy": "invalid",
+            "favorites_sync_scope_strategy": "invalid",
+            "favorites_sync_first_sync_strategy": "invalid",
+            "favorites_sync_unfavorite_strategy": "invalid",
             "favorites_sync_last_sync_at": "2026-06-06T00:00:00Z",
         }
     )
@@ -52,7 +56,36 @@ async def test_get_favorites_sync_config_filters_and_normalizes_values():
     assert config.interval_minutes == 360
     assert config.max_items == 50
     assert config.duplicate_strategy == "merge"
+    assert config.scope_strategy == "all_favorites"
+    assert config.first_sync_strategy == "latest_page"
+    assert config.unfavorite_strategy == "keep_local"
     assert config.last_sync_at == "2026-06-06T00:00:00Z"
+
+
+@pytest.mark.asyncio
+async def test_get_favorites_sync_config_accepts_product_policy_values():
+    service = _MemoryConfigService(
+        {
+            "favorites_sync_platforms": ["zhihu"],
+            "favorites_sync_duplicate_strategy": "skip",
+            "favorites_sync_scope_strategy": "collections_api_placeholder",
+            "favorites_sync_first_sync_strategy": "full_backfill_placeholder",
+            "favorites_sync_unfavorite_strategy": "mark_archived_placeholder",
+        }
+    )
+
+    config = await service.get_favorites_sync_config(
+        default_interval_minutes=360,
+        default_max_items=50,
+        default_duplicate_strategy="merge",
+        supported_platforms=["zhihu"],
+        allowed_duplicate_strategies={"merge", "skip"},
+    )
+
+    assert config.duplicate_strategy == "skip"
+    assert config.scope_strategy == "collections_api_placeholder"
+    assert config.first_sync_strategy == "full_backfill_placeholder"
+    assert config.unfavorite_strategy == "mark_archived_placeholder"
 
 
 @pytest.mark.asyncio
@@ -89,15 +122,29 @@ async def test_get_archive_media_config_normalizes_values():
     service = _MemoryConfigService(
         {
             "enable_archive_media_processing": "true",
+            "enable_archive_image_processing": "false",
+            "enable_archive_video_processing": "true",
             "archive_image_webp_quality": "180",
             "archive_image_max_count": "0",
             "archive_video_max_count": "4",
+            "archive_video_max_bytes": "1048576",
         }
     )
 
     config = await service.get_archive_media_config()
 
     assert config.enabled is True
+    assert config.images_enabled is False
+    assert config.videos_enabled is True
     assert config.image_webp_quality == 100
     assert config.image_max_count is None
     assert config.video_max_count == 4
+    assert config.video_max_bytes == 1048576
+
+
+@pytest.mark.asyncio
+async def test_get_platform_cookie_string_reads_setting_secret():
+    service = _MemoryConfigService({"zhihu_cookie": SecretStr("z_c0=abc")})
+
+    assert await service.get_platform_cookie_string("zhihu") == "z_c0=abc"
+    assert await service.get_platform_cookie_string("") is None
