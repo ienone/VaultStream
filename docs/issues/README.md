@@ -31,7 +31,6 @@ draft / active / in_progress / blocked / complete / archived
 
 ## 当前问题
 
-- `automation-review-doc-source-split.md`
 - `backend-agent-api-bridge-policy-bypass.md`
 - `backend-bot-config-router-side-effects.md`
 - `backend-current-issues-not-tracked.md`
@@ -40,16 +39,12 @@ draft / active / in_progress / blocked / complete / archived
 - `backend-system-router-boundary-pollution.md`
 - `collection-card-detail-transition.md`
 - `favorites-sync-retry-policy-gap.md`
-- `frontend-account-entry-responsibility-duplication.md`
 - `frontend-agent-page-build-and-controller-boundary.md`
 - `frontend-automation-page-responsibility-overload.md`
 - `frontend-control-policy-gaps.md`
 - `frontend-dashboard-scope-creep.md`
-- `frontend-discovery-detail-collection-renderer-coupling.md`
-- `frontend-discovery-placeholder-actions-leak.md`
 - `frontend-favorites-sync-placeholder-strategy-leak.md`
 - `frontend-material3-expressive-design-system-gap.md`
-- `frontend-navigation-utility-group-layout.md`
 - `frontend-post-processing-panel-side-effects.md`
 - `frontend-ui-layer-api-write-boundary.md`
 - `media-proxy-image-access.md`

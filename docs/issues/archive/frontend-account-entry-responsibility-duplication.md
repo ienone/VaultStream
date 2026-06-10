@@ -2,7 +2,13 @@
 
 ## 状态
 
-active
+archived
+
+## IA 处置结论
+
+- 处置类型：`resolved_by_removal`。
+- 处置说明：旧 `/accounts` 兼容路由和 `frontend/lib/features/accounts/account_center_page.dart` 已删除；设置页改为 Section Shell 的“账号与平台”分区，当前只保留平台健康只读摘要；自动化健康矩阵只跳转设置账号分区，不再提供账号连接/解绑主流程。因此“三处同时承担账号主流程”的重复职责问题已通过删除旧独立账号中心和旧兼容入口关闭。后续账号连接、检测、解绑能力需要按新设置分区重新实现，而不是恢复旧页面。
+- 最近更新：2026-06-11。
 
 ## 现象
 
@@ -34,7 +40,7 @@ active
 
 - `frontend/lib/features/accounts/account_center_page.dart`
 - `frontend/lib/features/settings/presentation/tabs/connection_tab.dart`
-- `frontend/lib/features/review/widgets/automation_health_matrix_panel.dart`
+- `frontend/lib/features/automation/widgets/automation_health_matrix_panel.dart`
 - `frontend/lib/features/settings/providers/platform_health_provider.dart`
 - `backend/app/routers/system.py`
 
@@ -48,12 +54,14 @@ active
 
 ## 修复建议
 
-- 最小修复：`/accounts` 保留账号连接、检测、解绑和修复主流程；设置页连接 tab 删除平台健康列表和登录/解绑主按钮，仅保留服务器/API/低频凭据配置与跳转账号中心。
-- 健康矩阵只展示平台账号状态摘要和“前往账号中心”跳转，不再提供检测登录、连接或解绑主流程。
+- 最小修复：按当前 IA 目标，账号连接、检测、解绑和修复主流程应进入设置 Section Shell 的“账号与平台”强子页；设置页其他分区和自动化健康矩阵只保留摘要或跳转，不重复执行账号主流程。
+- 健康矩阵只展示平台账号状态摘要和“前往账号与平台”跳转，不再提供检测登录、连接或解绑主流程。
 - 账号健康 API 可继续作为共享读取来源，但可执行账号动作必须由账号中心 controller/provider 统一封装。
 
 ## 验证方式
 
 - 自动测试：设置页和健康矩阵 widget 测试确认不再出现账号连接/解绑主按钮。
-- 手动验收：从设置页和自动化页遇到账号问题时，只能跳转账号中心处理。
-- 回归检查：`rg -n "InteractiveLoginDialog|browser-auth/.*/check|browser-auth/.*/logout|DELETE.*/browser-auth" frontend/lib/features/settings frontend/lib/features/review` 不应命中可执行账号主流程。
+- 手动验收：从设置页其他分区和自动化页遇到账号问题时，只能跳转“账号与平台”处理。
+- 回归检查：`rg -n "InteractiveLoginDialog|browser-auth/.*/check|browser-auth/.*/logout|DELETE.*/browser-auth" frontend/lib/features/settings frontend/lib/features/automation` 不应命中可执行账号主流程。
+
+本次关闭验证：`frontend/lib/routing/app_router.dart` 已无 `/accounts` 路由，`frontend/lib/features/accounts/account_center_page.dart` 已删除；设置和自动化侧只保留“账号与平台”分区入口。

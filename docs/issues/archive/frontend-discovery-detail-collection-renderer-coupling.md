@@ -2,7 +2,13 @@
 
 ## 状态
 
-active
+archived
+
+## IA 处置结论
+
+- 处置类型：`resolved_by_removal`。
+- 处置说明：旧 `/inbox`、`/discovery` 兼容路由已删除，旧 `DiscoveryPage`、`DiscoveryDetailPage`、候选卡片、批量操作 sheet 以及旧 discovery items/filter/action/selection provider 均已删除。原 Discovery 详情复用收藏详情渲染的耦合点已不存在；后续候选信息流应在动态页按新 view model 和 renderer 重建，而不是复用旧 Discovery 详情。
+- 归档时间：2026-06-11。
 
 ## 现象
 
@@ -57,3 +63,5 @@ active
 - 自动测试：Discovery detail widget 测试覆盖文章、图集、视频三类候选内容。
 - 手动验收：桌面嵌入详情和移动全页详情下，确认不出现正式收藏管理语义或后处理入口。
 - 截图/日志：保留 Discovery 详情在不同内容类型下的截图。
+
+本次关闭验证：`rg -n "DiscoveryPage|DiscoveryDetailPage|discovery_detail_page|discovery_page" frontend/lib` 不再命中旧页面实现。

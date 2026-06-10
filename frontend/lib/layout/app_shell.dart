@@ -113,13 +113,6 @@ class _MobileShell extends StatelessWidget {
           const _TopToolOverlay(),
         ],
       ),
-      floatingActionButton: navigationShell.currentIndex == 0
-          ? FloatingActionButton.small(
-              tooltip: '辅助入口',
-              onPressed: () => _showUtilityMenu(context),
-              child: const Icon(Icons.more_horiz_rounded),
-            )
-          : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: navigationShell.currentIndex,
         onDestinationSelected: onDestinationSelected,
@@ -133,11 +126,6 @@ class _MobileShell extends StatelessWidget {
             icon: Icon(Icons.perm_media_outlined),
             selectedIcon: Icon(Icons.perm_media_rounded),
             label: '收藏库',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.inbox_outlined),
-            selectedIcon: Icon(Icons.inbox_rounded),
-            label: '收件箱',
           ),
           NavigationDestination(
             icon: Icon(Icons.account_tree_outlined),
@@ -201,25 +189,11 @@ class _DesktopShell extends StatelessWidget {
                 label: Text('收藏库'),
               ),
               NavigationRailDestination(
-                icon: Icon(Icons.inbox_outlined),
-                selectedIcon: Icon(Icons.inbox_rounded),
-                label: Text('收件箱'),
-              ),
-              NavigationRailDestination(
                 icon: Icon(Icons.account_tree_outlined),
                 selectedIcon: Icon(Icons.account_tree_rounded),
                 label: Text('自动化'),
               ),
             ],
-            trailing: Expanded(
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 24, 8, 16),
-                  child: _UtilityRailActions(extended: extended),
-                ),
-              ),
-            ),
           ),
           VerticalDivider(
             thickness: 1,
@@ -255,15 +229,28 @@ class _TopToolOverlay extends StatelessWidget {
       end: 12,
       child: SafeArea(
         minimum: EdgeInsets.zero,
-        child: Tooltip(
-          message: '通知中心',
-          child: IconButton.filledTonal(
-            onPressed: () => _showNotificationCenterPlaceholder(context),
-            icon: Badge(
-              isLabelVisible: false,
-              child: const Icon(Icons.notifications_none_rounded),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Tooltip(
+              message: '通知中心',
+              child: IconButton.filledTonal(
+                onPressed: () => _showNotificationCenterPlaceholder(context),
+                icon: Badge(
+                  isLabelVisible: false,
+                  child: const Icon(Icons.notifications_none_rounded),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: 8),
+            Tooltip(
+              message: '设置',
+              child: IconButton.filledTonal(
+                onPressed: () => context.push('/settings'),
+                icon: const Icon(Icons.settings_outlined),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -308,126 +295,6 @@ void _showNotificationCenterPlaceholder(BuildContext context) {
       ),
     ),
   );
-}
-
-void _showUtilityMenu(BuildContext context) {
-  showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    builder: (sheetContext) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _UtilityMenuTile(
-            icon: Icons.smart_toy_outlined,
-            label: 'Agent 工作台',
-            onTap: () {
-              Navigator.of(sheetContext).pop();
-              context.push('/agent');
-            },
-          ),
-          _UtilityMenuTile(
-            icon: Icons.manage_accounts_outlined,
-            label: '账号中心',
-            onTap: () {
-              Navigator.of(sheetContext).pop();
-              context.push('/accounts');
-            },
-          ),
-          _UtilityMenuTile(
-            icon: Icons.settings_outlined,
-            label: '系统设置',
-            onTap: () {
-              Navigator.of(sheetContext).pop();
-              context.push('/settings');
-            },
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
-    ),
-  );
-}
-
-class _UtilityMenuTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _UtilityMenuTile({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(leading: Icon(icon), title: Text(label), onTap: onTap);
-  }
-}
-
-class _UtilityRailActions extends StatelessWidget {
-  final bool extended;
-
-  const _UtilityRailActions({required this.extended});
-
-  @override
-  Widget build(BuildContext context) {
-    final actions = [
-      _UtilityAction(
-        icon: Icons.smart_toy_outlined,
-        label: 'Agent',
-        route: '/agent',
-      ),
-      _UtilityAction(
-        icon: Icons.manage_accounts_outlined,
-        label: '账号',
-        route: '/accounts',
-      ),
-      _UtilityAction(
-        icon: Icons.settings_outlined,
-        label: '设置',
-        route: '/settings',
-      ),
-    ];
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Divider(color: Theme.of(context).colorScheme.outlineVariant),
-        const SizedBox(height: 8),
-        for (final action in actions)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Tooltip(
-              message: action.label,
-              child: extended
-                  ? TextButton.icon(
-                      onPressed: () => context.push(action.route),
-                      icon: Icon(action.icon, size: 18),
-                      label: Text(action.label),
-                    )
-                  : IconButton(
-                      onPressed: () => context.push(action.route),
-                      icon: Icon(action.icon),
-                    ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _UtilityAction {
-  final IconData icon;
-  final String label;
-  final String route;
-
-  const _UtilityAction({
-    required this.icon,
-    required this.label,
-    required this.route,
-  });
 }
 
 /// A wrapper that animates transitions between navigation branches.

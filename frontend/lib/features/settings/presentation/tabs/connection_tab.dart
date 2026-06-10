@@ -56,17 +56,7 @@ class ConnectionTab extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 32),
-        const SectionHeader(title: '链接与账号', icon: Icons.link_rounded),
-        SettingGroup(
-          children: [
-            SettingTile(
-              title: '账号中心',
-              subtitle: '集中查看平台登录、收藏同步和最近任务',
-              icon: Icons.manage_accounts_rounded,
-              onTap: () => context.push('/accounts'),
-            ),
-          ],
-        ),
+        const SectionHeader(title: '账号与平台健康', icon: Icons.link_rounded),
         const SizedBox(height: 12),
         _buildPlatformHealthSection(context, ref, platformHealthAsync),
         const SizedBox(height: 32),

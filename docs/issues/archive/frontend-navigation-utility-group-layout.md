@@ -2,7 +2,13 @@
 
 ## 状态
 
-active
+archived
+
+## IA 处置结论
+
+- 处置类型：`resolved_by_removal`。
+- 处置说明：在前端信息架构迁移中，Root Shell 不再保留 Agent、账号、设置 rail utility group；主导航只保留动态、收藏库、自动化，通知中心和设置改为内容区右上角顶部工具入口。因此原“utility group 未贴底、与主导航混排”的具体问题已通过删除该可见分组关闭，而不是按旧四主入口界面继续修补。
+- 归档时间：2026-06-11。
 
 ## 现象
 
@@ -45,8 +51,12 @@ active
 - 高度不足时，utility group 折叠为单个“更多/工具”按钮，打开与移动端一致的 utility menu。
 - 保留主导航只包含四个核心业务入口：动态、收藏库、收件箱、自动化。
 
+以上修复建议已被前端 IA 计划取代，不再按旧四主入口方案执行。
+
 ## 验证方式
 
 - 手动验收：桌面宽屏、窄桌面和低高度窗口下，Agent/账号/设置都不与主导航混成同组。
 - Widget 测试：构建桌面 shell，断言 utility group 位于主导航后独立区域或折叠菜单。
 - 截图：保留桌面 rail 高/低窗口两种截图。
+
+本次关闭验证：`frontend/lib/layout/app_shell.dart` 中已无 rail utility actions、移动端 utility FAB/Menu、账号中心和 Agent 可见工具入口；`frontend/lib/routing/app_router.dart` 中 Root Shell 分支已收敛为 3 个。

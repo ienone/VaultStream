@@ -6,24 +6,10 @@ import '../../core/widgets/frosted_app_bar.dart';
 import '../../core/widgets/section_header.dart';
 import '../../core/widgets/async_placeholders.dart';
 import '../discovery/providers/discovery_stats_provider.dart';
-import '../discovery/providers/discovery_filter_provider.dart';
 import 'widgets/discovery_overview_card.dart';
 
 class DashboardPage extends ConsumerWidget {
   const DashboardPage({super.key});
-
-  void _navigateToDiscovery(
-    BuildContext context,
-    WidgetRef ref, {
-    String? state,
-    bool showAll = false,
-  }) {
-    // 原子化设置筛选条件，避免 clearFilters+setFilters 两步触发双重请求导致空列表被覆盖
-    ref
-        .read(discoveryFilterProvider.notifier)
-        .resetToFilters(discoveryState: state, showAll: showAll);
-    context.go('/inbox');
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -61,22 +47,11 @@ class DashboardPage extends ConsumerWidget {
                       icon: Icons.auto_awesome_rounded,
                       padding: EdgeInsets.zero,
                       textStyle: sectionStyle,
-                      action: TextButton.icon(
-                        onPressed: () => _navigateToDiscovery(context, ref),
-                        icon: const Icon(Icons.arrow_forward_rounded, size: 16),
-                        label: const Text('查看候选'),
-                      ),
                     ),
                     const SizedBox(height: 16),
                     discoveryStatsAsync.when(
                       data: (s) => DiscoveryOverviewCard(
                         stats: s,
-                        onStateTap: (state, showAll) => _navigateToDiscovery(
-                          context,
-                          ref,
-                          state: state,
-                          showAll: showAll,
-                        ),
                       ),
                       loading: () => const LoadingPlaceholder(height: 260),
                       error: (e, _) => ErrorCard(message: '加载探索数据失败: $e'),

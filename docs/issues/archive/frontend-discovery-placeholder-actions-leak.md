@@ -2,7 +2,13 @@
 
 ## 状态
 
-active
+archived
+
+## IA 处置结论
+
+- 处置类型：`resolved_by_removal`。
+- 处置说明：本问题中的“加入规则候选”“请求分发”“修复失败”等未闭环 Discovery 操作已从前端 Discovery 菜单、详情和批量操作中移除；收件箱本身也在本轮 Root Shell 收敛中降级为旧路由回到动态页。后续不会按旧收件箱界面恢复这些动作，而是按前端 IA 计划把候选浏览和收藏/忽略/稍后能力吸收到动态信息流，真实分发/修复流程归入自动化域。
+- 归档时间：2026-06-11。
 
 ## 现象
 
@@ -58,3 +64,5 @@ active
 - 自动测试：前端 widget 测试确认 Discovery 操作菜单不展示未闭环动作；后端 API 测试确认 placeholder contract 明确。
 - 手动验收：桌面和移动进入 `/inbox`、详情页、批量操作 sheet，确认不再出现会误导为真实分发/修复的动作。
 - 截图/日志：保留操作菜单截图和后端 context 写入日志。
+
+本次关闭验证：`rg -n "加入规则候选|请求分发|修复失败|规则候选|分发请求|待修复" frontend/lib/features/discovery backend/app/routers/discovery.py` 仅命中 `parse_failure` 状态文案“待修复”，未命中用户可点击的未闭环动作入口。
