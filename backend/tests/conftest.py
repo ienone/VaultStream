@@ -45,18 +45,48 @@ TestingSessionLocal = sessionmaker(
     autoflush=False,
 )
 
+
+async def _ensure_test_schema() -> None:
+    """Ensure the shared file-backed test DB still has the application schema."""
+    async with engine.begin() as conn:
+        existing = await conn.execute(
+            text(
+                """
+                SELECT name
+                FROM sqlite_master
+                WHERE type = 'table'
+                  AND name IN (
+                    'contents',
+                    'system_settings',
+                    'bot_configs',
+                    'content_queue_items'
+                  )
+                """
+            )
+        )
+        table_names = {row[0] for row in existing.fetchall()}
+        if {
+            "contents",
+            "system_settings",
+            "bot_configs",
+            "content_queue_items",
+        } - table_names:
+            await conn.run_sync(Base.metadata.create_all)
+
+        await ensure_content_embeddings_schema(conn)
+        await ensure_content_fts(conn)
+        await ensure_schema_metadata(conn)
+
+
 async def override_get_db():
+    await _ensure_test_schema()
     async with TestingSessionLocal() as session:
         yield session
 
 @pytest.fixture(scope="session", autouse=True)
 async def setup_test_db():
     """Create a clean database for the test session."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await ensure_content_embeddings_schema(conn)
-        await ensure_content_fts(conn)
-        await ensure_schema_metadata(conn)
+    await _ensure_test_schema()
 
     app.dependency_overrides[get_db] = override_get_db
     
@@ -76,6 +106,7 @@ def event_loop():
 @pytest.fixture(scope="function")
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """Provide a transactional database session."""
+    await _ensure_test_schema()
     async with TestingSessionLocal() as session:
         yield session
         # No rollback here because we want to test against the persistent real DB state
