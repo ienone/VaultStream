@@ -11,9 +11,17 @@ from httpx import AsyncClient, ASGITransport
 TEST_DB_PATH = os.path.abspath("data/test_vaultstream.db")
 os.environ["SQLITE_DB_PATH"] = TEST_DB_PATH
 
+# Ensure the test database path is clean before app modules create engines.
+os.makedirs("data", exist_ok=True)
+if os.path.exists(TEST_DB_PATH):
+    try:
+        os.remove(TEST_DB_PATH)
+    except OSError:
+        pass
+
 from app.main import app
 from app.core.config import settings
-from app.core.database import ensure_content_embeddings_schema, ensure_content_fts
+from app.core.database import ensure_content_embeddings_schema, ensure_content_fts, get_db
 from app.core.db_adapter import engine as app_engine
 from app.core.schema_gate import ensure_schema_metadata
 from app.models import Base, Content
@@ -23,9 +31,6 @@ from sqlalchemy import select, text
 from sqlalchemy.pool import NullPool
 
 DB_URL = f"sqlite+aiosqlite:///{TEST_DB_PATH}"
-
-# Ensure data directory exists
-os.makedirs("data", exist_ok=True)
 
 engine = create_async_engine(
     DB_URL,
@@ -40,12 +45,9 @@ TestingSessionLocal = sessionmaker(
     autoflush=False,
 )
 
-# Ensure we start fresh globally
-if os.path.exists(TEST_DB_PATH):
-    try:
-        os.remove(TEST_DB_PATH)
-    except OSError:
-        pass
+async def override_get_db():
+    async with TestingSessionLocal() as session:
+        yield session
 
 @pytest.fixture(scope="session", autouse=True)
 async def setup_test_db():
@@ -55,9 +57,12 @@ async def setup_test_db():
         await ensure_content_embeddings_schema(conn)
         await ensure_content_fts(conn)
         await ensure_schema_metadata(conn)
+
+    app.dependency_overrides[get_db] = override_get_db
     
     yield
 
+    app.dependency_overrides.pop(get_db, None)
     await engine.dispose()
     await app_engine.dispose()
 
