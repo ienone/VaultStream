@@ -1,47 +1,420 @@
-# VaultStream 文档索引
+# VaultStream 文档入口
 
-> 最后整理：2026-06-06
-> 使用原则：当前状态以代码、测试和 `docs/audits/` 下最新审计为准。已确认完成的历史事项已从当前文档中移除；仍保留的历史状态描述需要按当前代码重新验证。
-> 当前实施边界：embedding/语义索引策略和 Agent 工具权限相关功能暂缓，不进入近期实现顺序；相关文档仅保留为架构风险记录。
+## 文档状态
+
+active
+
+本文档目录用于约束产品现状、实现计划、问题追踪和平台知识，避免把愿景、当前实现、缺陷和历史审计混在一起。
+
+## 目录边界
+
+- `frontend/`: 前端当前实现。记录页面职责、界面内容、交互关系、组件约束，以及明确不承担的职责。
+- `backend/`: 后端当前实现。记录模块职责、实现逻辑、测试覆盖、前端关联和 API 暴露。
+- `plans/`: 当前或未来计划。每个计划必须有一个同名 `*.process.md` 记录执行过程；完成后整体移入 `plans/archive/`。
+- `issues/`: 当前发现的问题、缺陷、污染点和整改建议。关闭后移入 `issues/archive/`。
+- `knowledges/`: 知识库材料，包括平台适配器文档、RAG 评估数据、外部平台行为等，不直接代表当前开发计划。
 
 ## 当前必读
 
-- [audits/2026-06-06-frontend-coordination-experience-audit.md](./audits/2026-06-06-frontend-coordination-experience-audit.md) - 前端体验、移动端弹窗、收藏详情转场、AI 自动化策略和前后端协同问题。
-- [design/implementation-steps-2026-06-06.md](./design/implementation-steps-2026-06-06.md) - 当前待完成内容的单线执行步骤、验收顺序和暂缓边界。
-- [audits/2026-06-05-current-product-security-audit.md](./audits/2026-06-05-current-product-security-audit.md) - 当前产品体验、功能缺口、前后端控制边界、测试可信度和安全扫描。
-- [design/product-navigation-and-automation.md](./design/product-navigation-and-automation.md) - 主导航、收藏同步、账号中心、Agent/RAG、时间线和自动化体验设计。
-- [architecture/ROADMAP_V2.md](./architecture/ROADMAP_V2.md) - 当前开发方向和风险排序。
-- [architecture/BACKEND.md](./architecture/BACKEND.md) - 后端架构、模块边界和主要数据流。
-- [API.md](./API.md) - API 端点和请求/响应约定。
-- [DATABASE.md](./DATABASE.md) - 数据库结构、FTS、语义索引和迁移说明。
-- [architecture/VECTOR_SEARCH_EVALUATION.md](./architecture/VECTOR_SEARCH_EVALUATION.md) - 语义检索当前方案与 sqlite-vec 试点阈值。
-- [validation/product-acceptance.md](./validation/product-acceptance.md) - 产品级冒烟检查、分层功能验收和测试结论口径。
+1. `frontend/README.md`: 前端页面职责总览。
+2. `frontend/navigation.md`: 导航层级和入口职责。
+3. `backend/README.md`: 后端模块总览。
+4. `issues/README.md`: 当前问题索引。
 
-## 平台适配器
+## 写作规则
 
-- [adapters/UNIVERSAL_ADAPTER.md](./adapters/UNIVERSAL_ADAPTER.md)
-- [adapters/BILIBILI_ADAPTER.md](./adapters/BILIBILI_ADAPTER.md)
-- [adapters/TWITTER_ADAPTER.md](./adapters/TWITTER_ADAPTER.md)
-- [adapters/WEIBO_ADAPTER.md](./adapters/WEIBO_ADAPTER.md)
-- [adapters/XIAOHONGSHU_ADAPTER.md](./adapters/XIAOHONGSHU_ADAPTER.md)
-- [adapters/ZHIHU_ADAPTER.md](./adapters/ZHIHU_ADAPTER.md)
+### 通用规则
 
-## 当前已知问题
+所有文档都必须先标明自己属于哪一类：现状、计划、过程、问题、知识库或归档。不同类型不得混写。
 
-- [known-issues/collection-card-detail-transition.md](./known-issues/collection-card-detail-transition.md) - 收藏卡片到详情页 shared transition 的当前剩余问题。
+- 现状文档只写当前代码真实行为，不写“希望如此”的设计。
+- 计划内容只能写在 `plans/`，或写在现状文档的“尚未实现 / 计划扩展”章节。
+- 问题必须进入 `issues/`，不要藏在页面或模块说明里。
+- 知识库材料只能解释背景、平台行为、字段含义和历史资料，不得直接写成待办清单。
+- 每个文档都要能回答“这是否已经实现”。如果答案不是明确的“是”，必须写清状态。
+- 引用代码时写具体路径；引用相关文档时写相对路径。
+- 不确定的结论必须标为“待验证”，不能写成事实。
 
-## 评估数据
+### 状态字段
 
-- [eval/rag_ground_truth.json](./eval/rag_ground_truth.json)
-- [eval/rag_recall_report.json](./eval/rag_recall_report.json)
+计划、问题、过程和知识库文档必须包含状态字段，取值限定为：
 
-## 归档
+- `draft`: 草稿，尚未确认。
+- `active`: 当前有效。
+- `in_progress`: 正在执行。
+- `blocked`: 被阻塞。
+- `complete`: 已完成。
+- `archived`: 已归档。
 
-历史审计、旧计划和已归档问题已浓缩到 [archive/](./archive/)。
+### 前端页面文档模板
 
-这些文件保留用于追溯上下文，不代表当前实现状态：
+适用于 `frontend/pages/*.md`。
 
-- [archive/architecture-audit-2026-04-summary.md](./archive/architecture-audit-2026-04-summary.md)
-- [archive/full-project-audit-2026-05-summary.md](./archive/full-project-audit-2026-05-summary.md)
-- [archive/historical-plans-summary.md](./archive/historical-plans-summary.md)
-- [archive/legacy-notes-summary.md](./archive/legacy-notes-summary.md)
+```md
+# 页面名称
+
+## 文档状态
+
+active
+
+## 当前代码
+
+- 页面：
+- 路由：
+- 主要 provider/controller：
+- 主要组件：
+
+## 当前界面内容
+
+- 页面首屏和主体区域：当前用户能看到哪些区域、控件、信息状态和操作入口。
+- 布局结构：说明 `Row` / `Column` / `Stack` / `Grid` / `Wrap` / `Expanded` / `Flexible` / `Sliver` 等布局方式，以及主要区域的伸缩关系、固定宽度/高度、滚动容器和断点。
+- 响应式变化：说明桌面、平板、手机、横屏/竖屏下的布局差异。
+- 弹出界面：列出该页面会打开的 dialog、bottom sheet、drawer、menu、snackbar、license page 等临时 surface，以及它们承载的内容和触发入口。
+- 临时状态：说明加载、空状态、错误、选择模式、批量模式、编辑态、禁用态等当前可见状态。
+- 动画和转场：只记录当前已经存在且影响界面结构或交互理解的动画、共享元素转场、展开/收起和拖拽行为。
+
+## 承担职责
+
+- 该页面应该负责的用户任务。
+
+## 不承担职责
+
+- 明确写出不属于该页面的任务，防止后续继续堆功能。
+
+## 与其他页面交互
+
+- 跳转来源：
+- 跳转目标：
+- 共享状态：
+- 深链接参数：
+
+## 后端/API 关联
+
+- 读取接口：
+- 写入接口：
+- 后台任务：
+
+## 当前问题
+
+- 只列已确认问题，并链接到 `issues/`。
+
+## 尚未实现 / 计划扩展
+
+- 只写计划或设想，不得混入“当前界面内容”。
+```
+
+### 前端组件文档模板
+
+适用于 `frontend/components/*.md`。
+
+```md
+# 组件/交互名称
+
+## 文档状态
+
+active
+
+## 当前代码
+
+- 文件：
+- 被哪些页面使用：
+
+## 当前职责
+
+- 组件负责的交互或展示边界。
+
+## 不承担职责
+
+- 组件不应持有或执行的业务逻辑。
+
+## 状态与输入输出
+
+- 输入：
+- 输出：
+- 副作用：
+
+## 响应式和失败态要求
+
+- 桌面：
+- 移动：
+- 加载：
+- 空状态：
+- 错误状态：
+
+## 当前问题
+
+- 链接到 `issues/`。
+```
+
+### 后端模块文档模板
+
+适用于 `backend/modules/*.md`。
+
+```md
+# 后端模块：模块名称
+
+## 文档状态
+
+active
+
+## 代码位置
+
+- Router：
+- Service：
+- Repository：
+- Task/Worker：
+- Model/Schema：
+
+## 功能
+
+- 当前模块对外提供的能力。
+
+## 不承担职责
+
+- 不属于本模块的逻辑，避免 router/service 继续膨胀。
+
+## 实现逻辑
+
+- 关键流程：
+- 数据写入：
+- 外部副作用：
+- 错误处理：
+
+## 测试
+
+- 单元测试：
+- API 测试：
+- 集成测试：
+- 尚缺测试：
+
+## 与其他模块交互
+
+- 上游：
+- 下游：
+- 共享数据：
+- 后台任务：
+
+## 对应前端
+
+- 页面：
+- 组件：
+
+## API 接口
+
+- `METHOD /api/v1/...`: 用途。
+
+## 配置与策略
+
+- 设置项：
+- 用户可见开关：
+- 后端强制策略：
+
+## 当前问题
+
+- 链接到 `issues/`。
+
+## 尚未实现 / 计划扩展
+
+- 只写未实现内容。
+```
+
+### Plan 文档模板
+
+适用于 `plans/*.plan.md`。每个 plan 必须有同名 process，例如：
+
+- `2026-06-09-example.plan.md`
+- `2026-06-09-example.process.md`
+
+```md
+# 计划标题
+
+## 状态
+
+draft / active / in_progress / blocked / complete / archived
+
+## 背景
+
+- 为什么要做。
+
+## 目标
+
+- 完成后应该达到什么结果。
+
+## 非目标
+
+- 明确本次不做什么。
+
+## 关联文档
+
+- 前端：
+- 后端：
+- 问题：
+- 知识库：
+
+## 变更范围
+
+- 会改哪些目录或模块。
+
+## 实施步骤
+
+1. 步骤。
+
+## 验收标准
+
+- 可检查、可复现的验收条件。
+
+## 风险
+
+- 技术风险：
+- 产品风险：
+- 回滚策略：
+```
+
+### Process 文档模板
+
+适用于 `plans/*.process.md`。
+
+```md
+# 计划标题执行记录
+
+## 状态
+
+in_progress / blocked / complete
+
+## 对应 Plan
+
+- `./xxx.plan.md`
+
+## 实际执行记录
+
+- 按时间或步骤记录实际做了什么。
+
+## 偏离计划
+
+- 计划外新增：
+- 计划内未完成：
+- 原因：
+
+## 验证结果
+
+- 命令：
+- 结果：
+- 未验证项：
+
+## 产出文件
+
+- 新增：
+- 修改：
+- 删除：
+
+## 后续问题
+
+- 需要进入 `issues/` 的内容。
+```
+
+### Issue 文档模板
+
+适用于 `issues/*.md`。
+
+```md
+# 问题标题
+
+## 状态
+
+draft / active / in_progress / blocked / complete / archived
+
+## 现象
+
+- 用户或开发者实际看到的问题。
+
+## 影响范围
+
+- 页面：
+- 后端模块：
+- 数据：
+- 用户影响：
+
+## 复现方式
+
+1. 步骤。
+
+## 根因分析
+
+- 已确认根因。
+- 未确认处标注“待验证”。
+
+## 关联代码
+
+- 路径：
+
+## 关联文档
+
+- 相关前端/后端/plan/knowledge 文档。
+
+## 修复建议
+
+- 最小修复：
+- 长期修复：
+
+## 验证方式
+
+- 自动测试：
+- 手动验收：
+- 截图/日志：
+```
+
+### Knowledge 文档模板
+
+适用于 `knowledges/**/*.md`。
+
+```md
+# 知识主题
+
+## 文档状态
+
+active / archived
+
+## 适用范围
+
+- 平台：
+- 模块：
+- 场景：
+
+## 背景
+
+- 解释外部平台、协议、数据格式或历史决策。
+
+## 当前事实
+
+- 稳定事实。
+- 易变事实必须标明更新时间。
+
+## 与代码的关系
+
+- 当前代码路径：
+- 当前测试路径：
+
+## 使用方式
+
+- 开发时如何参考。
+- 不得直接当成计划；需要实现时先建 `plans/`。
+
+## 已知限制
+
+- 哪些信息可能过期或需要重新验证。
+```
+
+### 归档规则
+
+- 完成的 plan 和 process 一起移动到 `plans/archive/`。
+- 关闭的 issue 移动到 `issues/archive/`，并保留修复摘要和验证结果。
+- 过期知识库内容可以移入对应 archive 或在文档状态中标为 `archived`。
+- 归档不等于删除；删除前必须确认信息已被新文档吸收，或可通过 git 历史接受追溯。
+
+### 禁止事项
+
+- 禁止在 `frontend/` 或 `backend/` 的现状章节写“未来应该”。
+- 禁止在 `knowledges/` 写执行步骤作为待办。
+- 禁止只有“优化”“完善”“增强”这类不可验收目标。
+- 禁止新增无 owner、无验收标准、无关联文档的 plan。
+- 禁止把同一个用户职责写进多个页面文档，除非明确主入口和只读/跳转入口。
