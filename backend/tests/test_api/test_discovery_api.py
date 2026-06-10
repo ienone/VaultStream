@@ -132,46 +132,6 @@ class TestDiscoveryAPI:
         assert main_item.discovery_state is None
 
     @pytest.mark.asyncio
-    async def test_inbox_placeholder_actions_keep_candidates_testable(
-        self,
-        client: AsyncClient,
-        db_session: AsyncSession,
-    ):
-        """Inbox-only actions should keep API/UI abstraction without requiring real distribution."""
-        item = Content(
-            platform=Platform.UNIVERSAL,
-            url="https://example.com/inbox-placeholder",
-            status=ContentStatus.PARSE_FAILED,
-            discovery_state=DiscoveryState.VISIBLE,
-            source_type="favorites_sync",
-            title="Needs Repair",
-        )
-        db_session.add(item)
-        await db_session.commit()
-        await db_session.refresh(item)
-
-        response = await client.patch(
-            f"/api/v1/discovery/items/{item.id}",
-            json={"state": "needs_repair"},
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["discovery_state"] == DiscoveryState.VISIBLE.value
-        assert data["context_data"]["repair_requested"] is True
-        assert data["context_data"]["inbox_action"]["status"] == "placeholder"
-
-        response = await client.post(
-            "/api/v1/discovery/items/bulk-action",
-            json={"ids": [item.id], "action": "queue"},
-        )
-
-        assert response.status_code == 200
-        assert response.json()["updated"] == 1
-        await db_session.refresh(item)
-        assert item.context_data["distribution_requested"] is True
-
-    @pytest.mark.asyncio
     async def test_list_discovery_items_tag_filter(self, client: AsyncClient, db_session: AsyncSession):
         """tag query param should filter by JSON tag arrays."""
         matched = Content(

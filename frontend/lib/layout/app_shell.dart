@@ -104,9 +104,14 @@ class _MobileShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _AnimatedBranchContainer(
-        currentIndex: navigationShell.currentIndex,
-        child: navigationShell,
+      body: Stack(
+        children: [
+          _AnimatedBranchContainer(
+            currentIndex: navigationShell.currentIndex,
+            child: navigationShell,
+          ),
+          const _TopToolOverlay(),
+        ],
       ),
       floatingActionButton: navigationShell.currentIndex == 0
           ? FloatingActionButton.small(
@@ -206,9 +211,14 @@ class _DesktopShell extends StatelessWidget {
                 label: Text('自动化'),
               ),
             ],
-            trailing: Padding(
-              padding: const EdgeInsets.only(top: 24),
-              child: _UtilityRailActions(extended: extended),
+            trailing: Expanded(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 24, 8, 16),
+                  child: _UtilityRailActions(extended: extended),
+                ),
+              ),
             ),
           ),
           VerticalDivider(
@@ -219,15 +229,85 @@ class _DesktopShell extends StatelessWidget {
             ).colorScheme.outlineVariant.withValues(alpha: 0.2),
           ),
           Expanded(
-            child: _AnimatedBranchContainer(
-              currentIndex: navigationShell.currentIndex,
-              child: navigationShell,
+            child: Stack(
+              children: [
+                _AnimatedBranchContainer(
+                  currentIndex: navigationShell.currentIndex,
+                  child: navigationShell,
+                ),
+                const _TopToolOverlay(),
+              ],
             ),
           ),
         ],
       ),
     );
   }
+}
+
+class _TopToolOverlay extends StatelessWidget {
+  const _TopToolOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return PositionedDirectional(
+      top: 8,
+      end: 12,
+      child: SafeArea(
+        minimum: EdgeInsets.zero,
+        child: Tooltip(
+          message: '通知中心',
+          child: IconButton.filledTonal(
+            onPressed: () => _showNotificationCenterPlaceholder(context),
+            icon: Badge(
+              isLabelVisible: false,
+              child: const Icon(Icons.notifications_none_rounded),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+void _showNotificationCenterPlaceholder(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.notifications_none_rounded,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '通知中心',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '后续这里会统一承载运行中任务、需要处理的问题和最近完成结果。当前阶段先作为 Root Shell 顶部工具入口预留。',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 void _showUtilityMenu(BuildContext context) {
@@ -314,6 +394,8 @@ class _UtilityRailActions extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        Divider(color: Theme.of(context).colorScheme.outlineVariant),
+        const SizedBox(height: 8),
         for (final action in actions)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),

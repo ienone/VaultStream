@@ -116,9 +116,7 @@ GoRouter goRouter(Ref ref) {
             routes: [
               GoRoute(
                 path: '/home',
-                builder: (context, state) => DashboardPage(
-                  highlightRunId: state.uri.queryParameters['run'],
-                ),
+                builder: (context, state) => const DashboardPage(),
               ),
               GoRoute(
                 path: '/dashboard',
@@ -130,7 +128,11 @@ GoRouter goRouter(Ref ref) {
             routes: [
               GoRoute(
                 path: '/collection',
-                builder: (context, state) => const CollectionPage(),
+                builder: (context, state) => CollectionPage(
+                  initialPlatforms: _queryList(state, 'platform'),
+                  initialStatuses: _queryList(state, 'status'),
+                  initialDateRange: _queryDateRange(state),
+                ),
                 routes: [
                   GoRoute(
                     path: ':id',
@@ -201,4 +203,21 @@ GoRouter goRouter(Ref ref) {
       ),
     ],
   );
+}
+
+List<String> _queryList(GoRouterState state, String key) {
+  final values = state.uri.queryParametersAll[key];
+  if (values == null || values.isEmpty) return const [];
+  return values
+      .expand((value) => value.split(','))
+      .map((value) => value.trim())
+      .where((value) => value.isNotEmpty)
+      .toList(growable: false);
+}
+
+DateTimeRange? _queryDateRange(GoRouterState state) {
+  final from = DateTime.tryParse(state.uri.queryParameters['from'] ?? '');
+  final to = DateTime.tryParse(state.uri.queryParameters['to'] ?? '');
+  if (from == null || to == null || to.isBefore(from)) return null;
+  return DateTimeRange(start: from, end: to);
 }

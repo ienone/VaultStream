@@ -125,17 +125,10 @@ def _apply_inbox_action(item: Content, action: str, now=None) -> None:
     context["inbox_action"] = {
         "action": action,
         "requested_at": now.isoformat(),
-        "status": "placeholder",
+        "status": "recorded",
     }
     if action == "snooze":
         item.discovery_state = DiscoveryState.INGESTED
-    elif action == "rule_candidate":
-        context["rule_candidate"] = True
-    elif action == "queue":
-        context["distribution_requested"] = True
-    elif action == "repair":
-        item.discovery_state = DiscoveryState.VISIBLE
-        context["repair_requested"] = True
     item.context_data = context
 
 
@@ -271,9 +264,6 @@ async def update_discovery_item(
         "promoted": "promote",
         "ignored": "ignore",
         "snoozed": "snooze",
-        "rule_candidate": "rule_candidate",
-        "queued": "queue",
-        "needs_repair": "repair",
     }
     _apply_inbox_action(item, action_map[body.state])
 

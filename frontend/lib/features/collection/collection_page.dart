@@ -16,7 +16,16 @@ import 'widgets/list/collection_skeleton.dart';
 import '../../core/utils/toast.dart';
 
 class CollectionPage extends ConsumerStatefulWidget {
-  const CollectionPage({super.key});
+  const CollectionPage({
+    super.key,
+    this.initialPlatforms = const [],
+    this.initialStatuses = const [],
+    this.initialDateRange,
+  });
+
+  final List<String> initialPlatforms;
+  final List<String> initialStatuses;
+  final DateTimeRange? initialDateRange;
 
   @override
   ConsumerState<CollectionPage> createState() => _CollectionPageState();
@@ -27,6 +36,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   final ValueNotifier<bool> _isFabExtended = ValueNotifier(true);
   final SearchController _searchController = SearchController();
   DateTime? _lastScrollTime;
+  String? _lastAppliedRouteFilterSignature;
 
   @override
   void initState() {
@@ -34,12 +44,45 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     _scrollController.addListener(_onScroll);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initFiltersFromUrl();
+      _applyRouteFilters();
     });
   }
 
-  void _initFiltersFromUrl() {
-    // Logic for deep linking if needed
+  @override
+  void didUpdateWidget(covariant CollectionPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _applyRouteFilters();
+    });
+  }
+
+  void _applyRouteFilters() {
+    if (!mounted) return;
+    final signature = _routeFilterSignature;
+    if (_lastAppliedRouteFilterSignature == signature) return;
+
+    final notifier = ref.read(collectionFilterProvider.notifier);
+    notifier.clearFilters();
+    if (widget.initialPlatforms.isNotEmpty ||
+        widget.initialStatuses.isNotEmpty ||
+        widget.initialDateRange != null) {
+      notifier.setFilters(
+        platforms: widget.initialPlatforms,
+        statuses: widget.initialStatuses,
+        dateRange: widget.initialDateRange,
+      );
+    }
+    _lastAppliedRouteFilterSignature = signature;
+  }
+
+  String get _routeFilterSignature {
+    final dateRange = widget.initialDateRange;
+    return [
+      widget.initialPlatforms.join(','),
+      widget.initialStatuses.join(','),
+      dateRange?.start.toIso8601String() ?? '',
+      dateRange?.end.toIso8601String() ?? '',
+    ].join('|');
   }
 
   @override

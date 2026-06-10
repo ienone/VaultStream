@@ -6,8 +6,6 @@ import '../../providers/settings_provider.dart';
 import '../../providers/platform_health_provider.dart';
 import '../../models/system_setting.dart';
 import '../widgets/setting_components.dart';
-import '../../../auth/presentation/widgets/interactive_login_dialog.dart';
-import '../../../../core/network/api_client.dart';
 
 class ConnectionTab extends ConsumerWidget {
   const ConnectionTab({super.key});
@@ -15,7 +13,6 @@ class ConnectionTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final localSettings = ref.watch(localSettingsProvider);
-    final settingsAsync = ref.watch(systemSettingsProvider);
     final platformHealthAsync = ref.watch(platformHealthProvider);
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -72,8 +69,6 @@ class ConnectionTab extends ConsumerWidget {
         ),
         const SizedBox(height: 12),
         _buildPlatformHealthSection(context, ref, platformHealthAsync),
-        const SizedBox(height: 12),
-        _buildPlatformSettingsSection(context, ref, settingsAsync),
         const SizedBox(height: 32),
         const SectionHeader(title: '高级连接设置', icon: Icons.tune_rounded),
         SettingGroup(
@@ -494,166 +489,6 @@ class ConnectionTab extends ConsumerWidget {
       },
       loading: () => const SizedBox.shrink(),
       error: (_, _) => const SizedBox.shrink(),
-    );
-  }
-
-  Widget _buildPlatformSettingsSection(
-    BuildContext context,
-    WidgetRef ref,
-    AsyncValue<List<SystemSetting>> settingsAsync,
-  ) {
-    return settingsAsync.when(
-      data: (settings) => _buildPlatformSettings(context, ref, settings),
-      loading: () => const LoadingGroup(),
-      error: (err, _) => SettingGroup(
-        children: [
-          SettingTile(
-            title: '配置同步失败',
-            subtitle: '点击重试获取服务端配置',
-            icon: Icons.sync_problem_rounded,
-            iconColor: Theme.of(context).colorScheme.error,
-            onTap: () => ref.invalidate(systemSettingsProvider),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 检测平台 Cookie 有效性
-  Future<void> _checkPlatformStatus(
-    BuildContext context,
-    WidgetRef ref,
-    String platformId,
-  ) async {
-    try {
-      showToast(context, '正在检测状态，请稍候...');
-      final dio = ref.read(apiClientProvider);
-      final res = await dio.post('/browser-auth/$platformId/check');
-      final isValid = res.data['is_valid'] == true;
-      if (context.mounted) {
-        showToast(context, isValid ? 'Cookie 有效，正常在线' : 'Cookie 已失效，请重新连接');
-      }
-    } catch (e) {
-      if (context.mounted) showToast(context, '状态检测失败: $e');
-    }
-  }
-
-  /// 刷新知乎的动态环境指纹
-  Future<void> _refreshZhihuZse(BuildContext context, WidgetRef ref) async {
-    try {
-      showToast(context, '正在后台启动无头浏览器刷新指纹，预计需要 5-10 秒...');
-      final dio = ref.read(apiClientProvider);
-      final res = await dio.post('/browser-auth/zhihu/refresh-zse');
-      if (context.mounted) {
-        showToast(
-          context,
-          res.data['status'] == 'success' ? '✅ 知乎指纹刷新合成成功！' : '⚠️ 操作完成，但状态未知',
-        );
-      }
-    } catch (e) {
-      if (context.mounted) showToast(context, '❌ 知乎指纹刷新失败: $e');
-    }
-  }
-
-  /// 解绑平台（删除 Cookie）
-  Future<void> _logoutPlatform(
-    BuildContext context,
-    WidgetRef ref,
-    String platformId,
-  ) async {
-    try {
-      final dio = ref.read(apiClientProvider);
-      await dio.delete('/browser-auth/$platformId');
-      ref.invalidate(systemSettingsProvider);
-      if (context.mounted) showToast(context, '已退出登录并清除 Cookie');
-    } catch (e) {
-      if (context.mounted) showToast(context, '退出失败: $e');
-    }
-  }
-
-  /// 弹出扫码登录对话框
-  Future<void> _showLoginDialog(
-    BuildContext context,
-    WidgetRef ref,
-    String platformId,
-    String platformLabel,
-  ) async {
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => InteractiveLoginDialog(
-        platform: platformId,
-        platformLabel: platformLabel,
-      ),
-    );
-
-    if (result == true) {
-      ref.invalidate(systemSettingsProvider);
-      if (context.mounted) showToast(context, '$platformLabel 连接成功！');
-    }
-  }
-
-  Widget _buildPlatformSettings(
-    BuildContext context,
-    WidgetRef ref,
-    List<SystemSetting> settings,
-  ) {
-    final platforms = [
-      {'id': 'weibo', 'name': '微博', 'icon': Icons.share_rounded},
-      {'id': 'xiaohongshu', 'name': '小红书', 'icon': Icons.explore_rounded},
-      {'id': 'zhihu', 'name': '知乎', 'icon': Icons.question_answer_rounded},
-    ];
-
-    return SettingGroup(
-      children: platforms.map((p) {
-        final platformId = p['id'] as String;
-        final platformLabel = p['name'] as String;
-        final icon = p['icon'] as IconData;
-        final setting = settings
-            .where((s) => s.key == '${platformId}_cookie')
-            .firstOrNull;
-        final isConfigured =
-            setting != null && setting.value.toString().isNotEmpty;
-
-        return SettingTile(
-          title: platformLabel,
-          subtitle: isConfigured ? 'Cookie 已配置 ✅' : '未连接',
-          icon: icon,
-          onTap: null,
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (isConfigured && platformId == 'zhihu')
-                TextButton(
-                  onPressed: () => _refreshZhihuZse(context, ref),
-                  child: const Text('刷新指纹'),
-                ),
-              if (isConfigured)
-                TextButton(
-                  onPressed: () =>
-                      _checkPlatformStatus(context, ref, platformId),
-                  child: const Text('检测状态'),
-                ),
-              const SizedBox(width: 4),
-              TextButton(
-                onPressed: () =>
-                    _showLoginDialog(context, ref, platformId, platformLabel),
-                child: Text(isConfigured ? '重新连接' : '扫码连接'),
-              ),
-              if (isConfigured)
-                IconButton(
-                  icon: const Icon(
-                    Icons.delete_outline,
-                    color: Colors.red,
-                    size: 20,
-                  ),
-                  tooltip: '解绑并注销',
-                  onPressed: () => _logoutPlatform(context, ref, platformId),
-                ),
-            ],
-          ),
-        );
-      }).toList(),
     );
   }
 

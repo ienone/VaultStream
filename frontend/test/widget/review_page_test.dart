@@ -508,8 +508,8 @@ void main() {
       expect(find.text('查看动态'), findsOneWidget);
       expect(find.text('配置'), findsOneWidget);
       expect(find.text('推送设置'), findsOneWidget);
-      expect(find.text('检测'), findsOneWidget);
-      expect(find.byTooltip('测试解析'), findsOneWidget);
+      expect(find.text('检测'), findsNothing);
+      expect(find.byTooltip('测试解析'), findsNothing);
       expect(find.byTooltip('测试推送目标'), findsOneWidget);
       expect(find.byTooltip('发送测试消息'), findsOneWidget);
       expect(find.byTooltip('刷新推送目标'), findsOneWidget);
@@ -553,20 +553,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('已刷新 Push Channel'), findsOneWidget);
-      expect(find.text('查看日志'), findsOneWidget);
-
-      await tester.tap(find.byTooltip('测试解析'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('知乎 解析测试'), findsOneWidget);
-      await tester.enterText(
-        find.byType(TextField),
-        'https://www.zhihu.com/question/1/answer/2',
-      );
-      await tester.tap(find.text('开始测试'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('知乎 解析测试通过：解析测试内容'), findsOneWidget);
       expect(find.text('查看日志'), findsOneWidget);
     });
   });

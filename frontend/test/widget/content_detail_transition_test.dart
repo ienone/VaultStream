@@ -11,7 +11,7 @@ import 'package:frontend/features/collection/providers/collection_provider.dart'
 import 'package:frontend/features/collection/widgets/list/collection_card_preview.dart';
 
 void main() {
-  testWidgets('ContentDetailPage loading state keeps preview Hero mounted', (
+  testWidgets('ContentDetailPage loading state keeps preview without Hero', (
     tester,
   ) async {
     final preview = ShareCard(
@@ -45,18 +45,12 @@ void main() {
 
     await tester.pump();
 
-    expect(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is Hero && widget.tag == collectionCardHeroTag(preview.id),
-      ),
-      findsOneWidget,
-    );
+    expect(find.byType(Hero), findsNothing);
     expect(find.byType(CollectionCardPreview), findsOneWidget);
     expect(find.text('Preview title'), findsOneWidget);
   });
 
-  testWidgets('ContentDetailPage data state uses a real detail Hero target', (
+  testWidgets('ContentDetailPage data state does not mount card Hero target', (
     tester,
   ) async {
     final preview = ShareCard(
@@ -101,15 +95,7 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    final hero = tester.widget<Hero>(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is Hero && widget.tag == collectionCardHeroTag(preview.id),
-      ),
-    );
-    expect(hero.flightShuttleBuilder, isNotNull);
-    expect(hero.child, isA<DetailHeroHeader>());
-    expect(find.byType(DetailHeroHeader), findsOneWidget);
+    expect(find.byType(Hero), findsNothing);
     expect(find.text('Loaded detail title'), findsWidgets);
     expect(find.text('Detail author'), findsWidgets);
     expect(find.text('transition'), findsWidgets);

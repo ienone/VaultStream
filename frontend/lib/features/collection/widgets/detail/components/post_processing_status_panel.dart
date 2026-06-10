@@ -389,9 +389,8 @@ class _StageRow extends ConsumerWidget {
           ? null
           : SnackBarAction(
               label: '查看日志',
-              onPressed: () => context.go(
-                Uri(path: '/home', queryParameters: {'run': runId}).toString(),
-              ),
+              onPressed: () =>
+                  context.go('/tasks/${Uri.encodeComponent(runId)}'),
             ),
     );
   }

@@ -93,6 +93,8 @@ backend/manual_tests/
 # 临时文件
 .codex-security-scans/
 experiments/
+reference-animeko/
+reference-gmail/
 *.tmp
 *.bak
 nohup.out

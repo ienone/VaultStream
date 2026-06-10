@@ -67,9 +67,6 @@ void main() {
     expect(find.text('批量收藏'), findsOneWidget);
     expect(find.text('批量忽略'), findsOneWidget);
     expect(find.text('批量稍后处理'), findsOneWidget);
-    expect(find.text('批量加入规则候选'), findsOneWidget);
-    expect(find.text('批量请求分发'), findsOneWidget);
-    expect(find.text('批量修复失败'), findsOneWidget);
   });
 }
 

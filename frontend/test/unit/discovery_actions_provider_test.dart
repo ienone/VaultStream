@@ -80,26 +80,26 @@ void main() {
     await expectLater(future, completes);
   });
 
-  test('inbox placeholder actions send explicit states', () async {
+  test('snooze and bulk actions send closed-loop states', () async {
     final dio = _RecordingDio();
     final container = ProviderContainer(
       overrides: [apiClientProvider.overrideWithValue(dio)],
     );
     addTearDown(container.dispose);
 
-    await container.read(discoveryActionsProvider.notifier).requestRepair(7);
+    await container.read(discoveryActionsProvider.notifier).snoozeItem(7);
 
     expect(dio.lastPath, '/discovery/items/7');
-    expect(dio.lastData, {'state': 'needs_repair'});
+    expect(dio.lastData, {'state': 'snoozed'});
 
     await container.read(discoveryActionsProvider.notifier).bulkAction({
       7,
-    }, 'queue');
+    }, 'snooze');
 
     expect(dio.lastPath, '/discovery/items/bulk-action');
     expect(dio.lastData, {
       'ids': [7],
-      'action': 'queue',
+      'action': 'snooze',
     });
   });
 }

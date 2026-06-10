@@ -252,25 +252,24 @@ class _HealthSection extends StatelessWidget {
   }
 }
 
-class _PlatformHealthList extends ConsumerWidget {
+class _PlatformHealthList extends StatelessWidget {
   const _PlatformHealthList({required this.platforms});
 
   final List<PlatformHealthStatus> platforms;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     if (platforms.isEmpty) return const _EmptyState(message: '暂无平台账号');
     return Column(
       children: [
         for (final platform in platforms.take(6))
-          _buildPlatformRow(context, ref, platform),
+          _buildPlatformRow(context, platform),
       ],
     );
   }
 
   Widget _buildPlatformRow(
     BuildContext context,
-    WidgetRef ref,
     PlatformHealthStatus platform,
   ) {
     final lastRunId = _lastFavoritesRunId(platform);
@@ -290,20 +289,6 @@ class _PlatformHealthList extends ConsumerWidget {
               icon: const Icon(Icons.receipt_long_rounded, size: 18),
               tooltip: '查看最近同步结果',
             ),
-          if (lastRunId != null) const SizedBox(width: 6),
-          IconButton.outlined(
-            onPressed: () => _testPlatformParse(context, ref, platform),
-            icon: const Icon(Icons.travel_explore_rounded, size: 18),
-            tooltip: '测试解析',
-          ),
-          const SizedBox(width: 6),
-          OutlinedButton.icon(
-            onPressed: platform.auth['browser_auth_supported'] == true
-                ? () => _checkPlatformLogin(context, ref, platform)
-                : null,
-            icon: const Icon(Icons.fact_check_rounded, size: 16),
-            label: const Text('检测'),
-          ),
         ],
       ),
     );
@@ -570,35 +555,6 @@ IconData _targetIcon(BotChat chat) {
   return Icons.outbox_rounded;
 }
 
-Future<void> _checkPlatformLogin(
-  BuildContext context,
-  WidgetRef ref,
-  PlatformHealthStatus platform,
-) async {
-  try {
-    final response = await ref
-        .read(apiClientProvider)
-        .post('/browser-auth/${platform.platform}/check');
-    ref.invalidate(platformHealthProvider);
-    final ok = response.data is Map && response.data['is_valid'] == true;
-    if (context.mounted) {
-      Toast.show(
-        context,
-        ok ? '${platform.label} 登录有效' : '${platform.label} 登录不可用',
-        isError: !ok,
-      );
-    }
-  } catch (e) {
-    if (context.mounted) {
-      Toast.show(
-        context,
-        formatApiErrorMessage(e, fallbackMessage: '检测登录失败'),
-        isError: true,
-      );
-    }
-  }
-}
-
 Future<void> _syncDiscoverySource(
   BuildContext context,
   WidgetRef ref,
@@ -813,118 +769,6 @@ Future<void> _sendPushTargetTest(
         isError: true,
       );
     }
-  }
-}
-
-Future<void> _testPlatformParse(
-  BuildContext context,
-  WidgetRef ref,
-  PlatformHealthStatus platform,
-) async {
-  final url = await _showParseTestDialog(context, platform);
-  if (url == null || url.trim().isEmpty) return;
-
-  try {
-    final response = await ref
-        .read(apiClientProvider)
-        .post(
-          '/platform-health/parse-test',
-          data: {'platform': platform.platform, 'url': url.trim()},
-        );
-    final data = response.data is Map
-        ? Map<String, dynamic>.from(response.data as Map)
-        : const <String, dynamic>{};
-    final ok = data['ok'] == true;
-    final runId = data['run_id']?.toString();
-    final title = data['title']?.toString();
-    final error = data['error']?.toString();
-    if (context.mounted) {
-      Toast.show(
-        context,
-        ok
-            ? '${platform.label} 解析测试通过${title == null || title.isEmpty ? '' : '：$title'}'
-            : (error == null || error.isEmpty
-                  ? '${platform.label} 解析测试失败'
-                  : error),
-        icon: ok ? Icons.check_circle_rounded : Icons.error_outline_rounded,
-        isError: !ok,
-        action: runId == null || runId.isEmpty
-            ? null
-            : SnackBarAction(
-                label: '查看日志',
-                onPressed: () => _openTaskRun(context, runId),
-              ),
-      );
-    }
-  } catch (e) {
-    if (context.mounted) {
-      Toast.show(
-        context,
-        formatApiErrorMessage(e, fallbackMessage: '解析测试失败'),
-        isError: true,
-      );
-    }
-  }
-}
-
-Future<String?> _showParseTestDialog(
-  BuildContext context,
-  PlatformHealthStatus platform,
-) {
-  return showDialog<String>(
-    context: context,
-    builder: (dialogContext) => _ParseTestDialog(platform: platform),
-  );
-}
-
-class _ParseTestDialog extends StatefulWidget {
-  const _ParseTestDialog({required this.platform});
-
-  final PlatformHealthStatus platform;
-
-  @override
-  State<_ParseTestDialog> createState() => _ParseTestDialogState();
-}
-
-class _ParseTestDialogState extends State<_ParseTestDialog> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('${widget.platform.label} 解析测试'),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        keyboardType: TextInputType.url,
-        decoration: const InputDecoration(
-          labelText: '测试 URL',
-          hintText: 'https://...',
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_controller.text),
-          child: const Text('开始测试'),
-        ),
-      ],
-    );
   }
 }
 

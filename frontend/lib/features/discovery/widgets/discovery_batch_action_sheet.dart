@@ -63,25 +63,6 @@ class DiscoveryBatchActionSheet extends ConsumerWidget {
               onTap: () => _runBatchAction(context, ref, 'snooze', '已标记稍后处理'),
             ),
             ListTile(
-              leading: Icon(Icons.rule_rounded, color: colorScheme.secondary),
-              title: const Text('批量加入规则候选'),
-              subtitle: const Text('记录规则创建意图，不自动改写分发规则'),
-              onTap: () =>
-                  _runBatchAction(context, ref, 'rule_candidate', '已加入规则候选'),
-            ),
-            ListTile(
-              leading: Icon(Icons.outbox_rounded, color: colorScheme.primary),
-              title: const Text('批量请求分发'),
-              subtitle: const Text('写入收件箱分发意图，真实队列由后续规则处理'),
-              onTap: () => _runBatchAction(context, ref, 'queue', '已记录分发请求'),
-            ),
-            ListTile(
-              leading: Icon(Icons.build_rounded, color: colorScheme.error),
-              title: const Text('批量修复失败'),
-              subtitle: const Text('标记为待修复候选，保留在收件箱中'),
-              onTap: () => _runBatchAction(context, ref, 'repair', '已标记待修复'),
-            ),
-            ListTile(
               leading: Icon(
                 Icons.visibility_off_rounded,
                 color: colorScheme.error,

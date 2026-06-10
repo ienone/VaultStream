@@ -79,12 +79,12 @@ class DiscoveryItemListResponse(BaseModel):
 
 
 class DiscoveryItemUpdate(BaseModel):
-    state: Literal["promoted", "ignored", "snoozed", "rule_candidate", "queued", "needs_repair"]
+    state: Literal["promoted", "ignored", "snoozed"]
 
 
 class DiscoveryBulkAction(BaseModel):
     ids: List[int]
-    action: Literal["promote", "ignore", "snooze", "rule_candidate", "queue", "repair"]
+    action: Literal["promote", "ignore", "snooze"]
 
 
 # --- Discovery Source ---

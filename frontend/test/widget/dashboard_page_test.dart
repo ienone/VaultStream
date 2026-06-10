@@ -1,257 +1,25 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/dashboard/dashboard_page.dart';
-import 'package:frontend/features/dashboard/providers/dashboard_provider.dart';
-import 'package:frontend/features/dashboard/models/stats.dart';
-import 'package:frontend/features/dashboard/widgets/background_diagnostics_card.dart';
 import 'package:frontend/features/discovery/models/discovery_models.dart';
 import 'package:frontend/features/discovery/providers/discovery_stats_provider.dart';
 
-// Create a mock for the provider state if needed, or better, override the provider with a known state.
-
 void main() {
-  testWidgets('DashboardPage renders stats correctly (Portrait Mobile)', (
-    WidgetTester tester,
+  testWidgets('DashboardPage renders content-focused feed transition', (
+    tester,
   ) async {
-    // Set screen size to portrait mobile
-    tester.view.physicalSize = const Size(1080, 2400); // Pixel 4 ish
-    tester.view.devicePixelRatio = 2.0;
-
-    // Mock data
-    final mockStats = DashboardStats(
-      platformCounts: {'twitter': 10, 'bilibili': 5},
-      dailyGrowth: [],
-      storageUsageBytes: 1024 * 1024 * 100, // 100 MB
-    );
-
-    final mockQueue = QueueOverviewStats(
-      parse: QueueStats(
-        unprocessed: 2,
-        processing: 1,
-        parseSuccess: 15,
-        parseFailed: 0,
-        total: 18,
-      ),
-      distribution: DistributionStats(
-        willPush: 3,
-        filtered: 2,
-        pushed: 12,
-        total: 18,
-      ),
-    );
-
-    final mockHealth = SystemHealth(
-      status: 'ok',
-      queueSize: 0,
-      components: {'db': 'ok'},
-    );
-    final mockDiscovery = DiscoveryStats(
-      total: 4,
-      byState: {'visible': 4},
-      bySource: {'rss': 4},
-    );
-    final mockDiagnostics = BackgroundTaskDiagnostics.fromJson({
-      'summary': {},
-      'task_states': [],
-      'failed_parse_tasks': [],
-      'failed_distribution_items': [],
-      'failed_discovery_sources': [],
-      'recent_task_runs': [
-        {
-          'run_id': 'run-1',
-          'task': 'favorites_sync',
-          'status': 'success',
-          'trigger': 'manual',
-          'result': {'platform': 'zhihu', 'imported': 3},
-        },
-      ],
-    });
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          dashboardStatsProvider.overrideWith((ref) => Future.value(mockStats)),
-          queueStatsProvider.overrideWith((ref) => Future.value(mockQueue)),
-          systemHealthProvider.overrideWith((ref) => Future.value(mockHealth)),
-          discoveryStatsProvider.overrideWith(
-            (ref) => Future.value(mockDiscovery),
-          ),
-          backgroundTaskDiagnosticsProvider.overrideWith(
-            (ref) => Future.value(mockDiagnostics),
-          ),
-        ],
-        child: const MaterialApp(home: DashboardPage()),
-      ),
-    );
-
-    // Pump to resolve futures
-    await tester.pumpAndSettle();
-
-    // Verify system overview
-    expect(find.text('系统概览'), findsOneWidget);
-    expect(find.text('待处理动态'), findsOneWidget);
-    expect(find.text('有 10 个待处理动态'), findsOneWidget);
-    expect(find.text('运行时间线'), findsOneWidget);
-    expect(find.text('最近后台运行'), findsWidgets);
-    expect(find.text('收藏同步'), findsOneWidget);
-    await tester.tap(find.text('查看'));
-    await tester.pumpAndSettle();
-    expect(find.text('运行详情'), findsOneWidget);
-    expect(find.text('run-1'), findsOneWidget);
-    expect(find.text('打开相关工作区'), findsOneWidget);
-    expect(find.textContaining('imported'), findsOneWidget);
-    expect(find.text('总内容'), findsWidgets);
-    expect(find.text('15'), findsWidgets); // Total content count
-
-    // Verify responsive layout
-    // In portrait, we expect 2 columns for grid
-    final gridFinder = find.byType(GridView);
-    final grid = tester.widget<GridView>(gridFinder);
-    final delegate =
-        grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
-    expect(delegate.crossAxisCount, 2);
-
-    // Reset view
-    addTearDown(tester.view.resetPhysicalSize);
-  });
-
-  testWidgets('DashboardPage renders stats correctly (Landscape Desktop)', (
-    WidgetTester tester,
-  ) async {
-    // Set screen size to landscape desktop
-    tester.view.physicalSize = const Size(3840, 2160);
-    tester.view.devicePixelRatio = 2.0;
-
-    // Mock data (same as above)
-    final mockStats = DashboardStats(
-      platformCounts: {'twitter': 10, 'bilibili': 5},
-      dailyGrowth: [],
-      storageUsageBytes: 1024 * 1024 * 100,
-    );
-
-    final mockQueue = QueueOverviewStats(
-      parse: QueueStats(
-        unprocessed: 2,
-        processing: 1,
-        parseSuccess: 15,
-        parseFailed: 0,
-        total: 18,
-      ),
-      distribution: DistributionStats(
-        willPush: 3,
-        filtered: 2,
-        pushed: 12,
-        total: 18,
-      ),
-    );
-
-    final mockHealth = SystemHealth(
-      status: 'ok',
-      queueSize: 0,
-      components: {'db': 'ok'},
-    );
-    final mockDiscovery = DiscoveryStats(
-      total: 4,
-      byState: {'visible': 4},
-      bySource: {'rss': 4},
-    );
-    final mockDiagnostics = BackgroundTaskDiagnostics.fromJson({
-      'summary': {},
-      'task_states': [
-        {'task': 'distribution_worker', 'status': 'error'},
-      ],
-      'failed_parse_tasks': [],
-      'failed_distribution_items': [],
-      'failed_discovery_sources': [],
-      'recent_task_runs': [],
-    });
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          dashboardStatsProvider.overrideWith((ref) => Future.value(mockStats)),
-          queueStatsProvider.overrideWith((ref) => Future.value(mockQueue)),
-          systemHealthProvider.overrideWith((ref) => Future.value(mockHealth)),
-          discoveryStatsProvider.overrideWith(
-            (ref) => Future.value(mockDiscovery),
-          ),
-          backgroundTaskDiagnosticsProvider.overrideWith(
-            (ref) => Future.value(mockDiagnostics),
-          ),
-        ],
-        child: const MaterialApp(home: DashboardPage()),
-      ),
-    );
-
-    await tester.pumpAndSettle();
-
-    expect(find.text('有 1 个异常需要处理'), findsOneWidget);
-
-    // Verify 4 columns for grid in desktop
-    final gridFinder = find.byType(GridView);
-    final grid = tester.widget<GridView>(gridFinder);
-    final delegate =
-        grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
-    expect(delegate.crossAxisCount, 4);
-
-    addTearDown(tester.view.resetPhysicalSize);
-  });
-
-  testWidgets('DashboardPage summary counts inbox candidate states', (
-    WidgetTester tester,
-  ) async {
-    final mockStats = DashboardStats(
-      platformCounts: {'rss': 1},
-      dailyGrowth: [],
-      storageUsageBytes: 1024,
-    );
-    final mockQueue = QueueOverviewStats(
-      parse: QueueStats(
-        unprocessed: 0,
-        processing: 0,
-        parseSuccess: 1,
-        parseFailed: 0,
-        total: 1,
-      ),
-      distribution: DistributionStats(
-        willPush: 0,
-        filtered: 0,
-        pushed: 0,
-        total: 0,
-      ),
-    );
-    final mockHealth = SystemHealth(
-      status: 'ok',
-      queueSize: 0,
-      components: {'db': 'ok'},
-    );
     final mockDiscovery = DiscoveryStats(
       total: 12,
       byState: {'ingested': 2, 'scored': 3, 'visible': 4, 'ignored': 3},
       bySource: {'rss': 9, 'favorites_sync': 3},
     );
-    final mockDiagnostics = BackgroundTaskDiagnostics.fromJson({
-      'summary': {},
-      'task_states': [],
-      'failed_parse_tasks': [],
-      'failed_distribution_items': [],
-      'failed_discovery_sources': [],
-      'recent_task_runs': [],
-    });
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          dashboardStatsProvider.overrideWith((ref) => Future.value(mockStats)),
-          queueStatsProvider.overrideWith((ref) => Future.value(mockQueue)),
-          systemHealthProvider.overrideWith((ref) => Future.value(mockHealth)),
           discoveryStatsProvider.overrideWith(
             (ref) => Future.value(mockDiscovery),
-          ),
-          backgroundTaskDiagnosticsProvider.overrideWith(
-            (ref) => Future.value(mockDiagnostics),
           ),
         ],
         child: const MaterialApp(home: DashboardPage()),
@@ -260,139 +28,19 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('有 9 个待处理动态'), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.widgetWithText(OutlinedButton, '收件箱'),
-        matching: find.text('9'),
-      ),
-      findsOneWidget,
-    );
-  });
+    expect(find.text('动态正在从系统仪表盘过渡为个人信息流'), findsOneWidget);
+    expect(find.text('推荐候选'), findsWidgets);
+    expect(find.text('查看候选'), findsOneWidget);
+    expect(find.text('总计'), findsOneWidget);
+    expect(find.text('12'), findsOneWidget);
 
-  testWidgets('DashboardPage opens highlighted run detail from query state', (
-    WidgetTester tester,
-  ) async {
-    final mockStats = DashboardStats(
-      platformCounts: {'rss': 1},
-      dailyGrowth: [],
-      storageUsageBytes: 1024,
-    );
-    final mockQueue = QueueOverviewStats(
-      parse: QueueStats(
-        unprocessed: 0,
-        processing: 0,
-        parseSuccess: 1,
-        parseFailed: 0,
-        total: 1,
-      ),
-      distribution: DistributionStats(
-        willPush: 0,
-        filtered: 0,
-        pushed: 1,
-        total: 1,
-      ),
-    );
-    final mockHealth = SystemHealth(
-      status: 'ok',
-      queueSize: 0,
-      components: {'db': 'ok'},
-    );
-    final mockDiscovery = DiscoveryStats(
-      total: 1,
-      byState: {'visible': 1},
-      bySource: {'rss': 1},
-    );
-    final mockDiagnostics = BackgroundTaskDiagnostics.fromJson({
-      'summary': {},
-      'task_states': [],
-      'failed_parse_tasks': [],
-      'failed_distribution_items': [],
-      'failed_discovery_sources': [],
-      'recent_task_runs': [
-        {
-          'run_id': 'highlight-run-1',
-          'task': 'discovery_patrol',
-          'status': 'success',
-          'trigger': 'manual',
-          'result': {'content_id': 7, 'scored_count': 1},
-        },
-      ],
-    });
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          dashboardStatsProvider.overrideWith((ref) => Future.value(mockStats)),
-          queueStatsProvider.overrideWith((ref) => Future.value(mockQueue)),
-          systemHealthProvider.overrideWith((ref) => Future.value(mockHealth)),
-          discoveryStatsProvider.overrideWith(
-            (ref) => Future.value(mockDiscovery),
-          ),
-          backgroundTaskDiagnosticsProvider.overrideWith(
-            (ref) => Future.value(mockDiagnostics),
-          ),
-        ],
-        child: const MaterialApp(
-          home: DashboardPage(highlightRunId: 'highlight-run-1'),
-        ),
-      ),
-    );
-
-    await tester.pumpAndSettle();
-
-    expect(find.text('运行详情'), findsOneWidget);
-    expect(find.text('highlight-run-1'), findsOneWidget);
-    expect(find.text('AI 巡逻'), findsWidgets);
-    expect(find.textContaining('scored_count'), findsOneWidget);
-  });
-
-  testWidgets('BackgroundDiagnosticsCard shows recent run details', (
-    WidgetTester tester,
-  ) async {
-    final diagnostics = BackgroundTaskDiagnostics.fromJson({
-      'summary': {},
-      'task_states': [],
-      'failed_parse_tasks': [],
-      'failed_distribution_items': [],
-      'failed_discovery_sources': [],
-      'recent_task_runs': [
-        {
-          'run_id': 'abcdef123456',
-          'task': 'content_parse',
-          'status': 'success',
-          'started_at': '2026-06-05T12:00:00Z',
-          'trigger': 'queue',
-          'result': {'content_id': 1, 'status': 'parse_success'},
-        },
-      ],
-    });
-
-    final router = GoRouter(
-      routes: [
-        GoRoute(
-          path: '/',
-          builder: (context, state) => Scaffold(
-            body: BackgroundDiagnosticsCard(diagnostics: diagnostics),
-          ),
-        ),
-        GoRoute(
-          path: '/tasks/:runId',
-          builder: (context, state) =>
-              Text('task route ${state.pathParameters['runId']}'),
-        ),
-      ],
-    );
-
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-
-    expect(find.text('最近运行'), findsOneWidget);
-    expect(find.text('content_parse'), findsOneWidget);
-    expect(find.text('success'), findsOneWidget);
-
-    await tester.tap(find.text('content_parse'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('task route abcdef123456'), findsOneWidget);
+    expect(find.text('待处理动态'), findsNothing);
+    expect(find.text('最近任务摘要'), findsNothing);
+    expect(find.text('最近后台运行'), findsNothing);
+    expect(find.text('系统概览'), findsNothing);
+    expect(find.text('队列状态'), findsNothing);
+    expect(find.text('平台分布'), findsNothing);
+    expect(find.text('最近 7 天增长'), findsNothing);
+    expect(find.byType(GridView), findsNothing);
   });
 }

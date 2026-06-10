@@ -4,12 +4,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/platform_constants.dart';
-import '../../core/network/image_headers.dart';
 import '../../core/network/sse_service.dart';
 import '../../core/utils/safe_url_launcher.dart';
 import '../../core/utils/toast.dart';
-import '../../core/widgets/network_thumbnail.dart';
-import '../../core/widgets/platform_badge.dart';
 import 'models/content.dart';
 import 'providers/collection_provider.dart';
 import 'utils/content_parser.dart';
@@ -40,213 +37,6 @@ class ContentDetailPage extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<ContentDetailPage> createState() => _ContentDetailPageState();
-}
-
-class DetailHeroHeader extends StatelessWidget {
-  final ContentDetail detail;
-  final ShareCard preview;
-  final String apiBaseUrl;
-  final String? apiToken;
-  final Color? contentColor;
-
-  const DetailHeroHeader({
-    super.key,
-    required this.detail,
-    required this.preview,
-    required this.apiBaseUrl,
-    this.apiToken,
-    this.contentColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final heroCard = preview.copyWith(
-      layoutType: detail.layoutType ?? preview.layoutType,
-      title: detail.title ?? preview.title,
-      authorName: detail.authorName ?? preview.authorName,
-      authorAvatarUrl: detail.authorAvatarUrl ?? preview.authorAvatarUrl,
-      coverUrl: detail.coverUrl ?? preview.coverUrl,
-      coverColor: detail.coverColor ?? preview.coverColor,
-      tags: detail.tags.isNotEmpty ? detail.tags : preview.tags,
-    );
-    final imageUrl = ContentParser.getDisplayImageUrl(heroCard, apiBaseUrl);
-    final imageHeaders = buildImageHeaders(
-      imageUrl: imageUrl,
-      baseUrl: apiBaseUrl,
-      apiToken: apiToken,
-    );
-    final accent = contentColor ?? colorScheme.primary;
-    final title = _pickText(detail.title, preview.title, 'Untitled content');
-    final author = _pickText(
-      detail.authorName,
-      preview.authorName,
-      'Unknown author',
-    );
-    final tags = detail.tags.isNotEmpty ? detail.tags : preview.tags;
-
-    return Material(
-      color: Colors.transparent,
-      child: Center(
-        child: Container(
-          margin: const EdgeInsets.fromLTRB(16, 88, 16, 0),
-          constraints: const BoxConstraints(maxWidth: 720),
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(
-              color: colorScheme.outlineVariant.withValues(alpha: 0.35),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: accent.withValues(alpha: 0.12),
-                blurRadius: 28,
-                offset: const Offset(0, 12),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              AspectRatio(
-                aspectRatio: 16 / 9,
-                child: imageUrl.isEmpty
-                    ? _DetailHeroFallback(accent: accent)
-                    : NetworkThumbnail(
-                        imageUrl: imageUrl,
-                        httpHeaders: imageHeaders,
-                        fit: BoxFit.cover,
-                        maxHeightDiskCache: 900,
-                        errorIcon: Icons.broken_image_rounded,
-                      ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        PlatformBadge(platform: detail.platform),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            author,
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      title,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        color: colorScheme.onSurface,
-                        fontWeight: FontWeight.w900,
-                        height: 1.15,
-                        letterSpacing: 0,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (tags.isNotEmpty) ...[
-                      const SizedBox(height: 14),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: tags
-                            .take(4)
-                            .map(
-                              (tag) =>
-                                  _DetailHeroTag(label: tag, accent: accent),
-                            )
-                            .toList(),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  static String _pickText(String? primary, String? fallback, String emptyText) {
-    final text = primary?.trim();
-    if (text != null && text.isNotEmpty && text != '-') return text;
-    final fallbackText = fallback?.trim();
-    if (fallbackText != null &&
-        fallbackText.isNotEmpty &&
-        fallbackText != '-') {
-      return fallbackText;
-    }
-    return emptyText;
-  }
-}
-
-class _DetailHeroFallback extends StatelessWidget {
-  final Color accent;
-
-  const _DetailHeroFallback({required this.accent});
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return ColoredBox(
-      color: Color.alphaBlend(
-        accent.withValues(alpha: 0.10),
-        colorScheme.surfaceContainerHighest,
-      ),
-      child: Center(
-        child: Icon(
-          Icons.article_outlined,
-          size: 42,
-          color: accent.withValues(alpha: 0.7),
-        ),
-      ),
-    );
-  }
-}
-
-class _DetailHeroTag extends StatelessWidget {
-  final String label;
-  final Color accent;
-
-  const _DetailHeroTag({required this.label, required this.accent});
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 180),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: accent.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: accent.withValues(alpha: 0.22)),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0,
-        ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-    );
-  }
 }
 
 class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
@@ -368,107 +158,54 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       data: (detail) {
         final customTheme = _getCustomTheme(detail, theme.brightness);
         final colorScheme = customTheme.colorScheme;
-        final heroPreview = widget.preview ?? _shareCardFromDetail(detail);
-
         return Theme(
           data: customTheme,
-          child: Stack(
-            children: [
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: IgnorePointer(
-                  child: Hero(
-                    tag: collectionCardHeroTag(widget.contentId),
-                    transitionOnUserGestures: true,
-                    flightShuttleBuilder: collectionCardFlightShuttleBuilder(
-                      content: heroPreview,
-                      isTinyCard: false,
-                    ),
-                    child: DetailHeroHeader(
-                      detail: detail,
-                      preview: heroPreview,
-                      apiBaseUrl: apiBaseUrl,
-                      apiToken: apiToken,
-                      contentColor: _contentColor,
-                    ),
-                  ),
+          child: Scaffold(
+            backgroundColor: colorScheme.surface,
+            appBar: AppBar(
+              title: Text(
+                detail.platform.isTwitter ? '推文详情' : '内容详情',
+                style: customTheme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.onSurface,
                 ),
               ),
-              Scaffold(
-                backgroundColor: Colors.transparent,
-                appBar: AppBar(
-                  title: Text(
-                    detail.platform.isTwitter ? '推文详情' : '内容详情',
-                    style: customTheme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                  backgroundColor: colorScheme.surface.withValues(alpha: 0.8),
-                  elevation: 0,
-                  scrolledUnderElevation: 0,
-                  flexibleSpace: ClipRect(
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                      child: Container(color: Colors.transparent),
-                    ),
-                  ),
-                  leading: Center(
-                    child: IconButton.filledTonal(
-                      icon: const Icon(Icons.arrow_back_rounded),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ),
-                  actions: [
-                    _buildActionButtons(detail, colorScheme),
-                    const SizedBox(width: 16),
-                  ],
-                ),
-                body: Material(
-                  color: Colors.transparent,
-                  child: SelectionArea(
-                    child: _buildResponsiveLayout(
-                      context,
-                      detail,
-                      apiBaseUrl,
-                      apiToken,
-                    ),
-                  ),
+              backgroundColor: colorScheme.surface.withValues(alpha: 0.8),
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              flexibleSpace: ClipRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                  child: Container(color: Colors.transparent),
                 ),
               ),
-            ],
+              leading: Center(
+                child: IconButton.filledTonal(
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+              actions: [
+                _buildActionButtons(detail, colorScheme),
+                const SizedBox(width: 16),
+              ],
+            ),
+            body: Material(
+              color: colorScheme.surface,
+              child: SelectionArea(
+                child: _buildResponsiveLayout(
+                  context,
+                  detail,
+                  apiBaseUrl,
+                  apiToken,
+                ),
+              ),
+            ),
           ),
         );
       },
       loading: () => _buildLoadingState(theme),
       error: (err, stack) => _buildErrorState(err),
-    );
-  }
-
-  ShareCard _shareCardFromDetail(ContentDetail detail) {
-    return ShareCard(
-      id: detail.id,
-      platform: detail.platform,
-      url: detail.url,
-      status: detail.status,
-      cleanUrl: detail.cleanUrl,
-      contentType: detail.contentType,
-      layoutType: detail.layoutType,
-      title: detail.title,
-      authorName: detail.authorName,
-      authorId: detail.authorId,
-      authorAvatarUrl: detail.authorAvatarUrl,
-      coverUrl: detail.coverUrl,
-      coverColor: detail.coverColor,
-      tags: detail.tags,
-      isNsfw: detail.isNsfw,
-      reviewStatus: detail.reviewStatus,
-      publishedAt: detail.publishedAt,
-      createdAt: detail.createdAt,
-      viewCount: detail.viewCount,
-      likeCount: detail.likeCount,
     );
   }
 
@@ -539,14 +276,10 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                   constraints: const BoxConstraints(maxWidth: 360),
                   child: AspectRatio(
                     aspectRatio: 0.92,
-                    child: Hero(
-                      tag: collectionCardHeroTag(preview.id),
-                      transitionOnUserGestures: true,
-                      child: CollectionCardPreview(
-                        content: preview,
-                        isTinyCardOverride: false,
-                        mode: CollectionCardPreviewMode.detailLoading,
-                      ),
+                    child: CollectionCardPreview(
+                      content: preview,
+                      isTinyCardOverride: false,
+                      mode: CollectionCardPreviewMode.detailLoading,
                     ),
                   ),
                 ),

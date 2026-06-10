@@ -81,15 +81,6 @@ class FavoritesSyncStatus {
     final duplicateStrategy = policies is Map
         ? policies['duplicate_strategy']?.toString()
         : null;
-    final scopeStrategy = policies is Map
-        ? policies['scope_strategy']?.toString()
-        : null;
-    final firstSyncStrategy = policies is Map
-        ? policies['first_sync_strategy']?.toString()
-        : null;
-    final unfavoriteStrategy = policies is Map
-        ? policies['unfavorite_strategy']?.toString()
-        : null;
 
     return FavoritesSyncStatus(
       running: json['running'] == true,
@@ -113,15 +104,9 @@ class FavoritesSyncStatus {
                 .toList()
           : const <FavoritesPlatformStatus>[],
       duplicateStrategy: duplicateStrategy == 'skip' ? 'skip' : 'merge',
-      scopeStrategy: scopeStrategy == 'collections_api_placeholder'
-          ? 'collections_api_placeholder'
-          : 'all_favorites',
-      firstSyncStrategy: firstSyncStrategy == 'full_backfill_placeholder'
-          ? 'full_backfill_placeholder'
-          : 'latest_page',
-      unfavoriteStrategy: unfavoriteStrategy == 'mark_archived_placeholder'
-          ? 'mark_archived_placeholder'
-          : 'keep_local',
+      scopeStrategy: 'all_favorites',
+      firstSyncStrategy: 'latest_page',
+      unfavoriteStrategy: 'keep_local',
     );
   }
 }

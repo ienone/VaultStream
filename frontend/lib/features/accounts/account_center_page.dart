@@ -52,7 +52,7 @@ class AccountCenterPage extends ConsumerWidget {
                       crossAxisCount: columns,
                       crossAxisSpacing: 12,
                       mainAxisSpacing: 12,
-                      mainAxisExtent: 280,
+                      mainAxisExtent: 340,
                     ),
                     itemBuilder: (context, index) =>
                         _PlatformHealthCard(platform: health.platforms[index]),
@@ -353,6 +353,18 @@ class _PlatformHealthCard extends ConsumerWidget {
                   icon: const Icon(Icons.qr_code_2_rounded),
                   label: Text(platform.hasCookie ? '重新连接' : '连接'),
                 ),
+                if (platform.platform == 'zhihu' && platform.hasCookie)
+                  OutlinedButton.icon(
+                    onPressed: () => _refreshZhihuZse(context, ref),
+                    icon: const Icon(Icons.fingerprint_rounded),
+                    label: const Text('刷新指纹'),
+                  ),
+                if (platform.hasCookie)
+                  OutlinedButton.icon(
+                    onPressed: () => _confirmLogout(context, ref),
+                    icon: const Icon(Icons.link_off_rounded),
+                    label: const Text('解绑'),
+                  ),
                 if (platform.favoritesSupported)
                   FilledButton.tonalIcon(
                     onPressed: () => _previewFavoritesSync(context, ref),
@@ -402,6 +414,70 @@ class _PlatformHealthCard extends ConsumerWidget {
       ref.invalidate(platformHealthProvider);
       if (context.mounted) {
         Toast.show(context, '${platform.label} 已连接');
+      }
+    }
+  }
+
+  Future<void> _refreshZhihuZse(BuildContext context, WidgetRef ref) async {
+    try {
+      Toast.show(context, '正在刷新知乎指纹...');
+      final dio = ref.read(apiClientProvider);
+      final response = await dio.post('/browser-auth/zhihu/refresh-zse');
+      final ok = response.data is Map && response.data['status'] == 'success';
+      ref.invalidate(platformHealthProvider);
+      if (context.mounted) {
+        Toast.show(context, ok ? '知乎指纹已刷新' : '知乎指纹刷新完成');
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Toast.show(
+          context,
+          formatApiErrorMessage(e, fallbackMessage: '知乎指纹刷新失败'),
+          isError: true,
+        );
+      }
+    }
+  }
+
+  Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('解绑 ${platform.label}'),
+        content: const Text('将清除该平台的本地登录凭据。解绑后需要重新连接才能继续使用相关能力。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton.tonalIcon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.link_off_rounded),
+            label: const Text('解绑'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      await _logoutPlatform(context, ref);
+    }
+  }
+
+  Future<void> _logoutPlatform(BuildContext context, WidgetRef ref) async {
+    try {
+      final dio = ref.read(apiClientProvider);
+      await dio.delete('/browser-auth/${platform.platform}');
+      ref.invalidate(platformHealthProvider);
+      if (context.mounted) {
+        Toast.show(context, '${platform.label} 已解绑');
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Toast.show(
+          context,
+          formatApiErrorMessage(e, fallbackMessage: '解绑失败'),
+          isError: true,
+        );
       }
     }
   }

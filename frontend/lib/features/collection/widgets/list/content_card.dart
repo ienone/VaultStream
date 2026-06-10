@@ -60,20 +60,12 @@ class _ContentCardState extends State<ContentCard> {
         curve: Curves.easeOutBack,
         child: AspectRatio(
           aspectRatio: cardAspectRatio,
-          child: Hero(
-            tag: collectionCardHeroTag(widget.content.id),
-            transitionOnUserGestures: true,
-            flightShuttleBuilder: collectionCardFlightShuttleBuilder(
-              content: widget.content,
-              isTinyCard: isTinyCard,
-            ),
-            child: CollectionCardPreview(
-              content: widget.content,
-              onTap: widget.onTap == null ? null : _handleTap,
-              isHovered: effectiveHover,
-              isTinyCardOverride: isTinyCard,
-              imageAspectRatioOverride: imageAspectRatio,
-            ),
+          child: CollectionCardPreview(
+            content: widget.content,
+            onTap: widget.onTap == null ? null : _handleTap,
+            isHovered: effectiveHover,
+            isTinyCardOverride: isTinyCard,
+            imageAspectRatioOverride: imageAspectRatio,
           ),
         ),
       ),
