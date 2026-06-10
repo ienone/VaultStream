@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mockito/mockito.dart';
 import 'package:dio/dio.dart';
 import 'package:frontend/core/network/api_client.dart';
-import 'package:frontend/features/review/models/distribution_target.dart';
-import 'package:frontend/features/review/providers/distribution_targets_provider.dart';
+import 'package:frontend/features/automation/models/distribution_target.dart';
+import 'package:frontend/features/automation/providers/distribution_targets_provider.dart';
 
 class MockDio extends Mock implements Dio {
   @override

@@ -73,7 +73,7 @@ active
 - `frontend/lib/features/dashboard/`: 动态页从 dashboard/今日状态转向动态信息流。
 - `frontend/lib/features/discovery/`: 收件箱能力并入动态流或降级为内部筛选视图。
 - `frontend/lib/features/collection/`: 收藏库筛选、详情、多媒体和转场增强。
-- `frontend/lib/features/review/`: 自动化页重构为概览和三大域。
+- `frontend/lib/features/automation/`: 自动化页重构为概览和三大域。
 - `frontend/lib/features/settings/`: 设置 Section Shell、账号与平台强子页。
 - `frontend/lib/features/dashboard/task_result_page.dart` 或后续任务模块：任务详情 renderer 与通知中心集成。
 

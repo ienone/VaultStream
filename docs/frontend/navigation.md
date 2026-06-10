@@ -8,28 +8,33 @@ active
 
 路由定义位于 `frontend/lib/routing/app_router.dart`，外壳位于 `frontend/lib/layout/app_shell.dart`。
 
-主导航分支：
+Root Shell 主导航分支：
 
-- `/home`、`/dashboard`: 动态页。
+- `/home`: 动态页。
 - `/collection`: 收藏库。
 - `/collection/:id`: 收藏内容详情。
-- `/inbox`、`/discovery`: 收件箱。
-- `/automation`、`/review`: 自动化页。
+- `/automation`: 自动化页。
+
+已删除旧路由：
+
+- `/dashboard`: 不再保留到 `/home` 的兼容 redirect。
+- `/inbox`、`/discovery`: 不再保留到 `/home` 的兼容 redirect。
+- `/accounts`: 不再保留到 `/settings?tab=accounts` 的兼容 redirect。
+- `/review`: 不再保留到 `/automation` 的兼容 redirect。
 
 工具入口：
 
 - `/connect`: 初始连接页，路由守卫在未初始化时可能跳转到这里。
 - `/onboarding`: 初始化/引导页，路由守卫在首次配置时可能跳转到这里。
-- `/agent`: Agent 工作台。
-- `/accounts`: 账号中心。
-- `/settings`: 设置。
+- `/settings`: 设置，当前由 Root Shell 顶部工具按钮进入。
 - `/tasks/:runId`: 后台任务结果。
+- `/agent`: Agent 工作台，当前保留深链路由但不作为 Root Shell 可见入口。
 
 ## 承担职责
 
-- 提供四个主业务入口：动态、收藏库、收件箱、自动化。
-- 提供工具入口：Agent、账号、设置。
-- 支持部分深链接，例如自动化 tab、设置 tab、任务详情。
+- 提供三个主业务入口：动态、收藏库、自动化。
+- 提供工具入口：通知中心、设置。
+- 支持部分深链接，例如自动化域入口、设置 tab、任务详情。
 
 ## 不承担职责
 
@@ -39,9 +44,8 @@ active
 
 ## 当前问题
 
-- 导航 utility 分组问题见 `../issues/frontend-navigation-utility-group-layout.md`。
-- `/automation` 与 `ReviewPage` 命名不一致问题见 `../issues/automation-review-doc-source-split.md`。
+- 收件箱能力尚未吸收到动态信息流，迁移过程见 `../plans/2026-06-10-frontend-information-architecture-redesign.plan.md`。
 
 ## 计划扩展
 
-- 无导航文档单独计划；规范 utility 分组以 `../issues/frontend-navigation-utility-group-layout.md` 为准，旧 `/review` 别名处理以 `../issues/automation-review-doc-source-split.md` 为准。
+- 无导航文档单独计划；Root Shell、收件箱降级、通知中心和设置入口迁移以 `../plans/2026-06-10-frontend-information-architecture-redesign.plan.md` 为准。

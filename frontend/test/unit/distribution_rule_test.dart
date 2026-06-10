@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:frontend/features/review/models/distribution_rule.dart';
+import 'package:frontend/features/automation/models/distribution_rule.dart';
 
 void main() {
   group('DistributionRule Model', () {

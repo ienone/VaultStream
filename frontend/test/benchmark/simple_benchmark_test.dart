@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:frontend/features/review/models/queue_item.dart';
-import 'package:frontend/features/review/widgets/queue_content_list.dart';
+import 'package:frontend/features/automation/models/queue_item.dart';
+import 'package:frontend/features/automation/widgets/queue_content_list.dart';
 
 void main() {
   testWidgets('QueueContentList renders and scrolls large lists', (

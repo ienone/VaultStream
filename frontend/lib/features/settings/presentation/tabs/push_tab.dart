@@ -4,9 +4,9 @@ import '../widgets/setting_components.dart';
 import '../../providers/settings_provider.dart';
 import '../../models/system_setting.dart';
 import '../../../../core/network/api_client.dart';
-import '../../../review/providers/bot_chats_provider.dart';
-import '../../../review/models/bot_chat.dart';
-import '../../../review/widgets/bot_chat_dialog.dart';
+import '../../../automation/providers/bot_chats_provider.dart';
+import '../../../automation/models/bot_chat.dart';
+import '../../../automation/widgets/bot_chat_dialog.dart';
 
 class PushTab extends ConsumerStatefulWidget {
   const PushTab({super.key});

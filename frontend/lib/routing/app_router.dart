@@ -8,11 +8,9 @@ import '../features/collection/content_detail_page.dart';
 import '../features/collection/models/content.dart';
 import '../features/dashboard/dashboard_page.dart';
 import '../features/dashboard/task_result_page.dart';
-import '../features/discovery/discovery_page.dart';
-import '../features/review/review_page.dart';
+import '../features/automation/automation_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/agent/agent_page.dart';
-import '../features/accounts/account_center_page.dart';
 import '../features/auth/presentation/connect_page.dart';
 import '../features/auth/presentation/onboarding_page.dart';
 import '../layout/app_shell.dart';
@@ -85,10 +83,6 @@ GoRouter goRouter(Ref ref) {
         builder: (context, state) => const OnboardingPage(),
       ),
       GoRoute(
-        path: '/accounts',
-        builder: (context, state) => const AccountCenterPage(),
-      ),
-      GoRoute(
         path: '/settings',
         builder: (context, state) =>
             SettingsPage(initialTab: state.uri.queryParameters['tab']),
@@ -110,17 +104,13 @@ GoRouter goRouter(Ref ref) {
         },
         branches: [
           // StatefulShellBranch 表示一个带有状态的主导航分支。
-          // 主导航只承载高频任务入口：动态、收藏库、收件箱、自动化。
+          // 主导航只承载高频任务入口：动态、收藏库、自动化。
           StatefulShellBranch(
             // routes参数定义该分支下的路由列表
             routes: [
               GoRoute(
                 path: '/home',
                 builder: (context, state) => const DashboardPage(),
-              ),
-              GoRoute(
-                path: '/dashboard',
-                redirect: (context, state) => '/home',
               ),
             ],
           ),
@@ -175,27 +165,11 @@ GoRouter goRouter(Ref ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/inbox',
-                builder: (context, state) => const DiscoveryPage(),
-              ),
-              GoRoute(
-                path: '/discovery',
-                redirect: (context, state) => '/inbox',
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
                 path: '/automation',
-                builder: (context, state) => ReviewPage(
+                builder: (context, state) => AutomationPage(
                   initialTab: state.uri.queryParameters['tab'],
                   highlightRunId: state.uri.queryParameters['run'],
                 ),
-              ),
-              GoRoute(
-                path: '/review',
-                redirect: (context, state) => '/automation',
               ),
             ],
           ),

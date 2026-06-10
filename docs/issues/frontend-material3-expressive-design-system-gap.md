@@ -49,7 +49,7 @@ VaultStream 前端已经具备 Material 3 基础：`ThemeData(useMaterial3: true
 - `frontend/lib/core/widgets/frosted_app_bar.dart`
 - `frontend/lib/layout/app_shell.dart`
 - `frontend/lib/features/dashboard/dashboard_page.dart`
-- `frontend/lib/features/review/review_page.dart`
+- `frontend/lib/features/automation/automation_page.dart`
 - `frontend/lib/features/collection/widgets/list/content_card.dart`
 - `frontend/lib/features/collection/widgets/list/collection_card_preview.dart`
 - `frontend/lib/features/collection/content_detail_page.dart`

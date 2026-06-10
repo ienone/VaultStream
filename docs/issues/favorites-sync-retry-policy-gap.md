@@ -37,7 +37,7 @@ active
 - `backend/app/services/automation_policy.py`
 - `backend/app/services/content_service.py`
 - `frontend/lib/features/settings/providers/favorites_sync_provider.dart`
-- `frontend/lib/features/review/widgets/favorites_sync_automation_panel.dart`
+- `frontend/lib/features/automation/widgets/favorites_sync_automation_panel.dart`
 
 ## 关联文档
 

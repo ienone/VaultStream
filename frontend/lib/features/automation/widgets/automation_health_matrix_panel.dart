@@ -42,8 +42,8 @@ class AutomationHealthMatrixPanel extends ConsumerWidget {
                 _HealthSection(
                   title: '平台账号',
                   icon: Icons.manage_accounts_rounded,
-                  actionLabel: '账号中心',
-                  onAction: () => context.push('/accounts'),
+                  actionLabel: '账号与平台',
+                  onAction: () => context.push('/settings?tab=accounts'),
                   child: platformAsync.when(
                     data: (health) =>
                         _PlatformHealthList(platforms: health.platforms),

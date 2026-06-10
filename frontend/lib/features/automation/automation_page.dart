@@ -16,6 +16,8 @@ import 'providers/distribution_rules_provider.dart';
 import 'providers/pushed_records_provider.dart';
 import 'providers/bot_chats_provider.dart';
 import 'providers/queue_provider.dart';
+import '../settings/providers/favorites_sync_provider.dart';
+import '../settings/providers/platform_health_provider.dart';
 import 'widgets/pushed_record_tile.dart';
 import 'widgets/distribution_rule_dialog.dart';
 import 'widgets/automation_health_matrix_panel.dart';
@@ -25,19 +27,293 @@ import 'widgets/queue_content_list.dart';
 import 'widgets/rule_list_tile.dart';
 import '../../core/utils/toast.dart';
 
-class ReviewPage extends ConsumerStatefulWidget {
-  const ReviewPage({super.key, this.initialTab, this.highlightRunId});
+class AutomationPage extends ConsumerStatefulWidget {
+  const AutomationPage({super.key, this.initialTab, this.highlightRunId});
 
   final String? initialTab;
   final String? highlightRunId;
 
   @override
-  ConsumerState<ReviewPage> createState() => _ReviewPageState();
+  ConsumerState<AutomationPage> createState() => _AutomationPageState();
 }
 
-class _ReviewPageState extends ConsumerState<ReviewPage>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
+enum _AutomationSection { overview, sync, distribution, processing }
+
+enum _DistributionDomainView { queue, history }
+
+class _MetricTile extends StatelessWidget {
+  const _MetricTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.urgent = false,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final bool urgent;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final color = urgent ? colorScheme.error : colorScheme.primary;
+
+    return Container(
+      width: 148,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.surface.withValues(alpha: 0.78),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(height: 10),
+          Text(
+            value,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AutomationDomainCard extends StatelessWidget {
+  const _AutomationDomainCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.primaryMetric,
+    required this.secondaryMetric,
+    required this.onOpen,
+    this.urgent = false,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final String primaryMetric;
+  final String secondaryMetric;
+  final VoidCallback onOpen;
+  final bool urgent;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final accent = urgent ? colorScheme.error : colorScheme.primary;
+
+    return Card(
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      color: colorScheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(28),
+        side: BorderSide(
+          color: urgent
+              ? colorScheme.error.withValues(alpha: 0.26)
+              : colorScheme.outlineVariant.withValues(alpha: 0.42),
+        ),
+      ),
+      child: InkWell(
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(icon, color: accent),
+                  ),
+                  const Spacer(),
+                  Icon(Icons.arrow_forward_rounded, color: accent),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Text(
+                title,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  Chip(
+                    label: Text(primaryMetric),
+                    avatar: Icon(Icons.insights_rounded, size: 18, color: accent),
+                    side: BorderSide.none,
+                    backgroundColor: accent.withValues(alpha: 0.10),
+                  ),
+                  Chip(
+                    label: Text(secondaryMetric),
+                    side: BorderSide.none,
+                    backgroundColor: colorScheme.surfaceContainerHighest,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AttentionPanel extends StatelessWidget {
+  const _AttentionPanel({
+    required this.failedPushes,
+    required this.syncFailures,
+    required this.platformIssues,
+    required this.onOpenDistribution,
+    required this.onOpenSync,
+    required this.onOpenProcessing,
+  });
+
+  final int failedPushes;
+  final int syncFailures;
+  final int platformIssues;
+  final VoidCallback onOpenDistribution;
+  final VoidCallback onOpenSync;
+  final VoidCallback onOpenProcessing;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final items = <Widget>[
+      if (failedPushes > 0)
+        _AttentionItem(
+          icon: Icons.outbox_rounded,
+          title: '推送失败',
+          description: '$failedPushes 条记录需要检查目标、网络或权限后再处理',
+          onTap: onOpenDistribution,
+        ),
+      if (syncFailures > 0)
+        _AttentionItem(
+          icon: Icons.bookmark_added_rounded,
+          title: '收藏同步失败',
+          description: '$syncFailures 个最近 run 失败，进入收藏同步域查看平台结果',
+          onTap: onOpenSync,
+        ),
+      if (platformIssues > 0)
+        _AttentionItem(
+          icon: Icons.health_and_safety_rounded,
+          title: '平台或后处理异常',
+          description: '$platformIssues 个平台或处理链路需要诊断',
+          onTap: onOpenProcessing,
+        ),
+    ];
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer.withValues(alpha: 0.30),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: colorScheme.error.withValues(alpha: 0.22)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.priority_high_rounded, color: colorScheme.error),
+                const SizedBox(width: 10),
+                Text(
+                  '需要处理',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ...items.expand((item) => [item, const SizedBox(height: 8)]),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AttentionItem extends StatelessWidget {
+  const _AttentionItem({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Material(
+      color: colorScheme.surface.withValues(alpha: 0.70),
+      borderRadius: BorderRadius.circular(18),
+      child: ListTile(
+        leading: Icon(icon, color: colorScheme.error),
+        title: Text(
+          title,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        subtitle: Text(description),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+String? _automationRunString(Map<String, dynamic> run, String key) {
+  final value = run[key];
+  return value == null ? null : value.toString();
+}
+
+class _AutomationPageState extends ConsumerState<AutomationPage> {
+  late _AutomationSection _section;
+  _DistributionDomainView _distributionView = _DistributionDomainView.queue;
   int? _selectedRuleId;
   bool _portraitRuleConfigExpanded = false;
   StreamSubscription<SseEvent>? _sseSub;
@@ -46,25 +322,24 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(
-      length: 4,
-      initialIndex: _tabIndex(widget.initialTab),
-      vsync: this,
-    );
+    _section = _sectionFromTab(widget.initialTab);
+    _distributionView = _distributionViewFromTab(widget.initialTab);
     _bindRealtimeEvents();
   }
 
   @override
-  void didUpdateWidget(ReviewPage oldWidget) {
+  void didUpdateWidget(AutomationPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialTab != widget.initialTab) {
-      _tabController.animateTo(_tabIndex(widget.initialTab));
+      setState(() {
+        _section = _sectionFromTab(widget.initialTab);
+        _distributionView = _distributionViewFromTab(widget.initialTab);
+      });
     }
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
     _sseSub?.cancel();
     super.dispose();
   }
@@ -107,48 +382,297 @@ class _ReviewPageState extends ConsumerState<ReviewPage>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
       appBar: FrostedAppBar(
-        title: const Text('自动化'),
-        bottom: TabBar(
-          controller: _tabController,
-          dividerColor: Colors.transparent,
-          indicatorSize: TabBarIndicatorSize.label,
-          indicatorWeight: 3,
-          labelStyle: theme.textTheme.labelLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-          unselectedLabelStyle: theme.textTheme.labelLarge,
-          tabs: const [
-            Tab(text: '分发队列'),
-            Tab(text: '收藏同步'),
-            Tab(text: '健康矩阵'),
-            Tab(text: '推送历史'),
-          ],
-        ),
+        title: Text(_section == _AutomationSection.overview ? '自动化' : _sectionTitle(_section)),
+        leading: _section == _AutomationSection.overview
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.arrow_back_rounded),
+                tooltip: '返回自动化总览',
+                onPressed: () => setState(() => _section = _AutomationSection.overview),
+              ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: _buildSectionBody().animate().fadeIn(duration: 240.ms),
+    );
+  }
+
+  _AutomationSection _sectionFromTab(String? tab) {
+    return switch (tab) {
+      'favorites' || 'favorites-sync' || 'sync' => _AutomationSection.sync,
+      'queue' || 'distribution' || 'history' || 'logs' || 'pushed' =>
+        _AutomationSection.distribution,
+      'health' || 'matrix' || 'processing' || 'diagnostics' =>
+        _AutomationSection.processing,
+      _ => _AutomationSection.overview,
+    };
+  }
+
+  _DistributionDomainView _distributionViewFromTab(String? tab) {
+    return switch (tab) {
+      'history' || 'logs' || 'pushed' => _DistributionDomainView.history,
+      _ => _DistributionDomainView.queue,
+    };
+  }
+
+  String _sectionTitle(_AutomationSection section) {
+    return switch (section) {
+      _AutomationSection.overview => '自动化',
+      _AutomationSection.sync => '收藏同步',
+      _AutomationSection.distribution => '分发',
+      _AutomationSection.processing => '解析 / 后处理',
+    };
+  }
+
+  Widget _buildSectionBody() {
+    return switch (_section) {
+      _AutomationSection.overview => _buildOverview(),
+      _AutomationSection.sync => FavoritesSyncAutomationPanel(
+        highlightRunId: widget.highlightRunId,
+      ),
+      _AutomationSection.distribution => _buildDistributionDomain(),
+      _AutomationSection.processing => const AutomationHealthMatrixPanel(),
+    };
+  }
+
+  Widget _buildOverview() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final queueStats = ref.watch(queueStatsProvider(null));
+    final syncStatus = ref.watch(favoritesSyncStatusProvider);
+    final pushedRecords = ref.watch(pushedRecordsProvider);
+    final platformHealth = ref.watch(platformHealthProvider);
+
+    final willPush = queueStats.value?['will_push'] ?? 0;
+    final filtered = queueStats.value?['filtered'] ?? 0;
+    final pushed = queueStats.value?['pushed'] ?? 0;
+    final failedPushes = pushedRecords.value
+            ?.where((record) => record.isFailed)
+            .length ??
+        0;
+    final syncRunning = syncStatus.value?.running ?? false;
+    final syncFailures = syncStatus.value?.recentRuns
+            .where((run) => _automationRunString(run, 'status') == 'error')
+            .length ??
+        0;
+    final platformIssues = platformHealth.value?.platforms
+            .where((platform) => platform.health == 'error')
+            .length ??
+        0;
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(queueStatsProvider(null));
+        ref.invalidate(favoritesSyncStatusProvider);
+        ref.invalidate(pushedRecordsProvider);
+        ref.invalidate(platformHealthProvider);
+      },
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
         children: [
-          _buildQueueTab(),
-          FavoritesSyncAutomationPanel(highlightRunId: widget.highlightRunId),
-          const AutomationHealthMatrixPanel(),
-          _buildHistoryTab(),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: colorScheme.primaryContainer.withValues(alpha: 0.34),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: colorScheme.primary.withValues(alpha: 0.16),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.auto_mode_rounded, color: colorScheme.primary),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          '自动化总览',
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    '这里只保留运行态、异常摘要和三大域入口；具体队列、历史、平台状态进入对应域处理。',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      _MetricTile(
+                        label: '待分发',
+                        value: willPush.toString(),
+                        icon: Icons.outbox_rounded,
+                      ),
+                      _MetricTile(
+                        label: '已过滤',
+                        value: filtered.toString(),
+                        icon: Icons.filter_list_off_rounded,
+                      ),
+                      _MetricTile(
+                        label: '已推送',
+                        value: pushed.toString(),
+                        icon: Icons.check_circle_rounded,
+                      ),
+                      _MetricTile(
+                        label: '需处理',
+                        value: (failedPushes + syncFailures + platformIssues).toString(),
+                        icon: Icons.priority_high_rounded,
+                        urgent: failedPushes + syncFailures + platformIssues > 0,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = constraints.maxWidth >= 900;
+              final cards = [
+                _AutomationDomainCard(
+                  title: '收藏同步',
+                  subtitle: syncRunning
+                      ? '同步任务运行中'
+                      : syncFailures > 0
+                          ? '$syncFailures 个同步失败需处理'
+                          : '平台收藏进入本地资产库',
+                  icon: Icons.bookmark_added_rounded,
+                  primaryMetric: syncStatus.when(
+                    data: (status) => '${status.enabledPlatforms.length} 个平台启用',
+                    loading: () => '加载中',
+                    error: (_, _) => '状态不可用',
+                  ),
+                  secondaryMetric: syncStatus.when(
+                    data: (status) => status.running ? '运行中' : '未运行',
+                    loading: () => '读取状态',
+                    error: (_, _) => '需检查',
+                  ),
+                  urgent: syncFailures > 0,
+                  onOpen: () => setState(() => _section = _AutomationSection.sync),
+                ),
+                _AutomationDomainCard(
+                  title: '分发',
+                  subtitle: failedPushes > 0
+                      ? '$failedPushes 条推送失败'
+                      : '队列、规则和推送历史',
+                  icon: Icons.send_rounded,
+                  primaryMetric: '待分发 $willPush',
+                  secondaryMetric: '历史 ${pushedRecords.value?.length ?? 0}',
+                  urgent: failedPushes > 0,
+                  onOpen: () => setState(() {
+                    _section = _AutomationSection.distribution;
+                    _distributionView = _DistributionDomainView.queue;
+                  }),
+                ),
+                _AutomationDomainCard(
+                  title: '解析 / 后处理',
+                  subtitle: platformIssues > 0
+                      ? '$platformIssues 个平台或处理链路异常'
+                      : '平台、发现源和推送目标健康',
+                  icon: Icons.health_and_safety_rounded,
+                  primaryMetric: platformHealth.when(
+                    data: (health) => '${health.platforms.length} 个平台',
+                    loading: () => '加载中',
+                    error: (_, _) => '状态不可用',
+                  ),
+                  secondaryMetric: platformIssues > 0 ? '需处理' : '状态摘要',
+                  urgent: platformIssues > 0,
+                  onOpen: () => setState(() => _section = _AutomationSection.processing),
+                ),
+              ];
+
+              if (!wide) {
+                return Column(
+                  children: [
+                    for (final card in cards) ...[
+                      card,
+                      const SizedBox(height: 12),
+                    ],
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final card in cards) ...[
+                    Expanded(child: card),
+                    if (card != cards.last) const SizedBox(width: 12),
+                  ],
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+          if (failedPushes + syncFailures + platformIssues > 0)
+            _AttentionPanel(
+              failedPushes: failedPushes,
+              syncFailures: syncFailures,
+              platformIssues: platformIssues,
+              onOpenDistribution: () => setState(() {
+                _section = _AutomationSection.distribution;
+                _distributionView = _DistributionDomainView.history;
+              }),
+              onOpenSync: () => setState(() => _section = _AutomationSection.sync),
+              onOpenProcessing: () =>
+                  setState(() => _section = _AutomationSection.processing),
+            ),
         ],
       ),
     );
   }
 
-  int _tabIndex(String? tab) {
-    return switch (tab) {
-      'queue' || 'distribution' => 0,
-      'favorites' || 'favorites-sync' || 'sync' => 1,
-      'health' || 'matrix' => 2,
-      'history' || 'logs' || 'pushed' => 3,
-      _ => 0,
-    };
+  Widget _buildDistributionDomain() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: SegmentedButton<_DistributionDomainView>(
+                  segments: const [
+                    ButtonSegment(
+                      value: _DistributionDomainView.queue,
+                      icon: Icon(Icons.format_list_bulleted_rounded, size: 18),
+                      label: Text('队列与规则'),
+                    ),
+                    ButtonSegment(
+                      value: _DistributionDomainView.history,
+                      icon: Icon(Icons.history_rounded, size: 18),
+                      label: Text('推送历史'),
+                    ),
+                  ],
+                  selected: {_distributionView},
+                  onSelectionChanged: (selection) {
+                    setState(() => _distributionView = selection.first);
+                  },
+                  showSelectedIcon: false,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: switch (_distributionView) {
+            _DistributionDomainView.queue => _buildQueueTab(),
+            _DistributionDomainView.history => _buildHistoryTab(),
+          },
+        ),
+      ],
+    );
   }
 
   Widget _buildQueueTab() {

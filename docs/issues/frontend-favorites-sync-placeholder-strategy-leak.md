@@ -32,7 +32,7 @@ active
 
 ## 关联代码
 
-- `frontend/lib/features/review/widgets/favorites_sync_automation_panel.dart`
+- `frontend/lib/features/automation/widgets/favorites_sync_automation_panel.dart`
 - `frontend/lib/features/settings/presentation/tabs/automation_tab.dart`
 - `frontend/lib/features/settings/providers/favorites_sync_provider.dart`
 - `backend/app/tasks/favorites_sync.py`
@@ -56,4 +56,4 @@ active
 
 - 自动测试：收藏同步面板和设置页 widget 测试确认不出现“接口预留”“placeholder”等文案。
 - 手动验收：用户只能选择当前真实生效的同步策略。
-- 回归检查：`rg -n "placeholder|接口预留" frontend/lib/features/review frontend/lib/features/settings` 不应命中用户可见文案。
+- 回归检查：`rg -n "placeholder|接口预留" frontend/lib/features/automation frontend/lib/features/settings` 不应命中用户可见文案。

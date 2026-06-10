@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:frontend/features/review/models/distribution_rule.dart';
-import 'package:frontend/features/review/widgets/distribution_rule_dialog.dart';
+import 'package:frontend/features/automation/models/distribution_rule.dart';
+import 'package:frontend/features/automation/widgets/distribution_rule_dialog.dart';
 
 void main() {
   group('DistributionRuleDialog Widget Tests', () {

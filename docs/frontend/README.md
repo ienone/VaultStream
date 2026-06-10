@@ -4,16 +4,14 @@
 
 active
 
-前端代码位于 `frontend/lib/`，以 Flutter + Riverpod + GoRouter 组织。当前主要入口包括动态、收藏库、收件箱、自动化，以及工具入口 Agent、账号中心、设置和任务结果页。
+前端代码位于 `frontend/lib/`，以 Flutter + Riverpod + GoRouter 组织。当前 Root Shell 主入口已收敛为动态、收藏库、自动化；通知中心和设置作为顶部工具入口，任务结果页作为深链详情页。
 
 ## 页面职责索引
 
 - `pages/dashboard.md`: 动态页 / 首页，当前承担全局统计、活动时间线和跨页面跳转。
 - `pages/collection.md`: 收藏库列表、搜索、筛选、批量操作。
 - `pages/content-detail.md`: 收藏内容详情、正文阅读、媒体展示、后处理状态。
-- `pages/discovery.md`: 收件箱 / 发现候选内容处理。
-- `pages/automation.md`: 自动化与分发队列、收藏同步、健康矩阵的当前聚合页。
-- `pages/accounts.md`: 平台账号中心。
+- `pages/automation.md`: 自动化总览、收藏同步、分发、解析 / 后处理三域入口和当前下钻内容。
 - `pages/settings.md`: 设置页。
 - `pages/agent.md`: Agent 工作台。
 - `pages/tasks.md`: 后台任务结果页。
@@ -47,4 +45,4 @@ active
 
 ## 尚未实现 / 计划扩展
 
-前端信息架构仍需重做：动态页的收藏统计应迁移到收藏页，账号中心入口应唯一化，自动化页需要从聚合页拆成更清晰的分发、同步和诊断边界。对应问题见 `../issues/frontend-dashboard-scope-creep.md`、`../issues/frontend-account-entry-responsibility-duplication.md` 和 `../issues/frontend-automation-page-responsibility-overload.md`。
+前端信息架构仍需继续迁移：动态页的收藏统计应迁移到收藏页，候选信息流能力需要在动态页重新实现，账号能力需要在设置“账号与平台”分区中按新职责重建，自动化页已完成三域入口首轮重组但仍需继续拆出更清晰的下钻页面、任务详情和通知中心落点。对应问题见 `../issues/frontend-dashboard-scope-creep.md` 和 `../issues/frontend-automation-page-responsibility-overload.md`。

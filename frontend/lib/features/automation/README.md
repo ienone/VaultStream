@@ -1,9 +1,11 @@
-# Review & Distribution 模块
+# 自动化模块说明
 
 ## 概述
-`review` 模块是 VaultStream 前端的核心功能之一，主要负责 内容审批、分发规则管理、Bot 群组配置 以及 推送历史追踪。为用户提供了一个集中的面板来控制已存档内容自动分发的流程。
+`frontend/lib/features/automation/` 是当前 `/automation` 页面实现目录，权威页面职责以 `docs/frontend/pages/automation.md` 为准。
 
-## 核心功能
+本目录不维护独立产品口径；后续自动化三域化时，应在当前自动化目录内继续拆分概览、收藏同步、分发、解析/后处理等边界，而不是恢复旧审核页面语义。
+
+## 当前能力
 1.  内容队列管理 (Content Queue):
     *   查看不同状态的内容（待推送、不推送、待审批、已推送）。
     *   支持审批流操作（通过/拒绝/重置内容状态）。
@@ -20,7 +22,7 @@
 ## 目录结构
 
 ### 核心文件
-*   `review_page.dart`: 模块主入口，实现了响应式的 Master-Detail 布局（宽屏显示侧边栏规则，窄屏显示折叠面板）。
+*   `automation_page.dart`: 模块主入口，实现了响应式的 Master-Detail 布局（宽屏显示侧边栏规则，窄屏显示折叠面板）。
 
 ### `models/` (数据模型)
 *   `queue_item.dart`: 队列中的内容条目，包含平台、作者、调度时间等信息。

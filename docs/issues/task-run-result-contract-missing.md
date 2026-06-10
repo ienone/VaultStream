@@ -35,7 +35,7 @@ active
 - `backend/app/routers/system.py`
 - `frontend/lib/features/dashboard/task_result_page.dart`
 - `frontend/lib/features/dashboard/widgets/activity_timeline_card.dart`
-- `frontend/lib/features/review/widgets/favorites_sync_automation_panel.dart`
+- `frontend/lib/features/automation/widgets/favorites_sync_automation_panel.dart`
 - `frontend/lib/features/collection/widgets/detail/components/post_processing_status_panel.dart`
 
 ## 关联文档

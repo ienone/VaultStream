@@ -4,13 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/discovery/models/discovery_models.dart';
 import 'package:frontend/features/discovery/providers/discovery_sources_provider.dart';
-import 'package:frontend/features/review/models/bot_chat.dart';
-import 'package:frontend/features/review/models/distribution_rule.dart';
-import 'package:frontend/features/review/models/queue_item.dart';
-import 'package:frontend/features/review/providers/bot_chats_provider.dart';
-import 'package:frontend/features/review/providers/distribution_rules_provider.dart';
-import 'package:frontend/features/review/providers/queue_provider.dart';
-import 'package:frontend/features/review/review_page.dart';
+import 'package:frontend/features/automation/models/bot_chat.dart';
+import 'package:frontend/features/automation/models/distribution_rule.dart';
+import 'package:frontend/features/automation/models/queue_item.dart';
+import 'package:frontend/features/automation/providers/bot_chats_provider.dart';
+import 'package:frontend/features/automation/providers/distribution_rules_provider.dart';
+import 'package:frontend/features/automation/providers/queue_provider.dart';
+import 'package:frontend/features/automation/automation_page.dart';
 import 'package:frontend/features/settings/providers/favorites_sync_provider.dart';
 import 'package:frontend/features/settings/providers/platform_health_provider.dart';
 import 'package:frontend/core/network/api_client.dart';
@@ -159,6 +159,15 @@ class MockDio extends Mock implements Dio {
     CancelToken? cancelToken,
     ProgressCallback? onReceiveProgress,
   }) {
+    if (path == '/pushed-records') {
+      return Future.value(
+        Response(
+          requestOptions: RequestOptions(path: path),
+          data: <Map<String, dynamic>>[] as T,
+          statusCode: 200,
+        ),
+      );
+    }
     return Future.value(
       Response(
         requestOptions: RequestOptions(path: path),
@@ -170,8 +179,8 @@ class MockDio extends Mock implements Dio {
 }
 
 void main() {
-  group('ReviewPage Widget Tests', () {
-    testWidgets('ReviewPage renders correctly with initial state', (
+  group('AutomationPage Widget Tests', () {
+    testWidgets('AutomationPage renders correctly with initial state', (
       WidgetTester tester,
     ) async {
       final mockDistributionRules = <DistributionRule>[];
@@ -202,18 +211,20 @@ void main() {
             botChatsProvider.overrideWith(() => MockBotChats(mockBotChats)),
             apiClientProvider.overrideWith((ref) => MockDio()),
           ],
-          child: const MaterialApp(home: ReviewPage()),
+          child: const MaterialApp(home: AutomationPage()),
         ),
       );
       await tester.pumpAndSettle();
 
       expect(find.text('自动化'), findsOneWidget);
-      expect(find.text('分发队列'), findsOneWidget);
+      expect(find.text('自动化总览'), findsOneWidget);
       expect(find.text('收藏同步'), findsOneWidget);
-      expect(find.byType(TabBar), findsOneWidget);
+      expect(find.text('分发'), findsOneWidget);
+      expect(find.text('解析 / 后处理'), findsOneWidget);
+      expect(find.byType(TabBar), findsNothing);
     });
 
-    testWidgets('ReviewPage fetches and displays data', (
+    testWidgets('AutomationPage fetches and displays data', (
       WidgetTester tester,
     ) async {
       tester.view.physicalSize = const Size(1080, 2400);
@@ -279,9 +290,12 @@ void main() {
             botChatsProvider.overrideWith(() => MockBotChats(mockBotChats)),
             apiClientProvider.overrideWith((ref) => MockDio()),
           ],
-          child: const MaterialApp(home: ReviewPage()),
+          child: const MaterialApp(home: AutomationPage()),
         ),
       );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('分发'));
       await tester.pumpAndSettle();
 
       expect(find.text('Item 1'), findsOneWidget);
@@ -293,7 +307,7 @@ void main() {
       expect(find.text('Rule 1').last, findsOneWidget);
     });
 
-    testWidgets('ReviewPage exposes favorites sync automation tab', (
+    testWidgets('AutomationPage exposes favorites sync automation tab', (
       WidgetTester tester,
     ) async {
       final mockDistributionRules = <DistributionRule>[];
@@ -324,7 +338,7 @@ void main() {
             botChatsProvider.overrideWith(() => MockBotChats(mockBotChats)),
             apiClientProvider.overrideWith((ref) => MockDio()),
           ],
-          child: const MaterialApp(home: ReviewPage()),
+          child: const MaterialApp(home: AutomationPage()),
         ),
       );
       await tester.pumpAndSettle();
@@ -350,7 +364,7 @@ void main() {
       expect(find.text('知乎'), findsWidgets);
     });
 
-    testWidgets('ReviewPage preview dialog shows favorites candidates', (
+    testWidgets('AutomationPage preview dialog shows favorites candidates', (
       WidgetTester tester,
     ) async {
       final mockDistributionRules = <DistributionRule>[];
@@ -381,7 +395,7 @@ void main() {
             botChatsProvider.overrideWith(() => MockBotChats(mockBotChats)),
             apiClientProvider.overrideWith((ref) => MockDio()),
           ],
-          child: const MaterialApp(home: ReviewPage(initialTab: 'favorites')),
+          child: const MaterialApp(home: AutomationPage(initialTab: 'favorites')),
         ),
       );
       await tester.pumpAndSettle();
@@ -399,7 +413,7 @@ void main() {
       expect(find.text('预览不会导入内容或推进 cursor。'), findsOneWidget);
     });
 
-    testWidgets('ReviewPage opens highlighted favorites sync run detail', (
+    testWidgets('AutomationPage opens highlighted favorites sync run detail', (
       WidgetTester tester,
     ) async {
       final mockDistributionRules = <DistributionRule>[];
@@ -431,7 +445,7 @@ void main() {
             apiClientProvider.overrideWith((ref) => MockDio()),
           ],
           child: const MaterialApp(
-            home: ReviewPage(
+            home: AutomationPage(
               initialTab: 'favorites',
               highlightRunId: 'abcdef123456',
             ),
@@ -448,7 +462,7 @@ void main() {
       expect(find.text('https://example.com/fail'), findsOneWidget);
     });
 
-    testWidgets('ReviewPage exposes automation health matrix', (
+    testWidgets('AutomationPage exposes automation health matrix', (
       WidgetTester tester,
     ) async {
       final mockDistributionRules = <DistributionRule>[];
@@ -493,7 +507,7 @@ void main() {
             botChatsProvider.overrideWith(() => MockBotChats(mockBotChats)),
             apiClientProvider.overrideWith((ref) => MockDio()),
           ],
-          child: const MaterialApp(home: ReviewPage(initialTab: 'health')),
+          child: const MaterialApp(home: AutomationPage(initialTab: 'health')),
         ),
       );
       await tester.pumpAndSettle();

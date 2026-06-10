@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../core/widgets/stat_row.dart';
-import '../../review/providers/bot_chats_provider.dart';
+import '../../automation/providers/bot_chats_provider.dart';
 
 class BotOverviewCard extends ConsumerWidget {
   const BotOverviewCard({super.key});

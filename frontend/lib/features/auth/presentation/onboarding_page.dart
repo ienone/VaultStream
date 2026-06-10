@@ -5,7 +5,7 @@ import '../../../core/providers/system_status_provider.dart';
 import '../../../core/utils/safe_url_launcher.dart';
 import '../../settings/presentation/widgets/setting_components.dart'
     as settings_ui;
-import '../../review/providers/bot_chats_provider.dart';
+import '../../automation/providers/bot_chats_provider.dart';
 import 'widgets/interactive_login_dialog.dart';
 
 class OnboardingPage extends ConsumerStatefulWidget {
