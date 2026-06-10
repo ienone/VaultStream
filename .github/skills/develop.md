@@ -44,7 +44,7 @@
 
 推荐同步目标：
 
-- 接口变更：`docs/API.md`
+- 接口变更：`docs/backend/api.md`
 - 架构/流程变更：`docs/ARCHITECTURE.md`、`docs/WORKFLOWS.md`、`docs/PUSH_LOGIC.md`
 - 分发相关专项：`docs/refactor-distribution-architecture.md`、`docs/DISTRIBUTION_WORKFLOW_OPTIMIZATION.md`
 

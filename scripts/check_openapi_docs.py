@@ -1,4 +1,4 @@
-"""Check that docs/API.md contains the current FastAPI endpoint inventory."""
+"""Check that docs/backend/api.md contains the current FastAPI endpoint inventory."""
 
 from __future__ import annotations
 
@@ -48,8 +48,8 @@ def main() -> int:
     parser.add_argument(
         "api_doc",
         nargs="?",
-        default=str(repo_root / "docs" / "API.md"),
-        help="Path to docs/API.md",
+        default=str(repo_root / "docs" / "backend" / "api.md"),
+        help="Path to docs/backend/api.md",
     )
     args = parser.parse_args()
 
@@ -71,15 +71,15 @@ def main() -> int:
         return 0
 
     if missing:
-        print("Missing endpoints in docs/API.md:")
+        print(f"Missing endpoints in {api_doc}:")
         for path in missing:
             print(f"  | `{expected[path]}` | `{path}` |")
     if stale:
-        print("Stale endpoints in docs/API.md:")
+        print(f"Stale endpoints in {api_doc}:")
         for path in stale:
             print(f"  | `{actual[path]}` | `{path}` |")
     if method_mismatch:
-        print("Method mismatches in docs/API.md:")
+        print(f"Method mismatches in {api_doc}:")
         for path in method_mismatch:
             print(f"  {path}: docs={actual[path]} openapi={expected[path]}")
 

@@ -36,7 +36,7 @@ class _TestSystemStatusNotifier extends SystemStatusNotifier {
 }
 
 void main() {
-  testWidgets('mobile shell keeps four primary destinations', (tester) async {
+  testWidgets('mobile shell keeps three primary destinations', (tester) async {
     configureRuntimeAssets();
     expect(GoogleFonts.config.allowRuntimeFetching, isFalse);
 
@@ -108,6 +108,13 @@ void main() {
 
     final navigationBar = find.byType(NavigationBar);
     expect(
+      find.descendant(
+        of: navigationBar,
+        matching: find.byType(NavigationDestination),
+      ),
+      findsNWidgets(3),
+    );
+    expect(
       find.descendant(of: navigationBar, matching: find.text('动态')),
       findsOneWidget,
     );
@@ -116,21 +123,23 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(of: navigationBar, matching: find.text('收件箱')),
-      findsOneWidget,
-    );
-    expect(
       find.descendant(of: navigationBar, matching: find.text('自动化')),
       findsOneWidget,
     );
+    expect(
+      find.descendant(of: navigationBar, matching: find.text('收件箱')),
+      findsNothing,
+    );
     expect(find.text('Settings'), findsNothing);
     expect(find.text('Agent'), findsNothing);
+    expect(find.byIcon(Icons.notifications_none_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.more_horiz_rounded));
+    await tester.tap(find.byIcon(Icons.notifications_none_rounded));
     await tester.pumpAndSettle();
 
-    expect(find.text('Agent 工作台'), findsOneWidget);
-    expect(find.text('账号中心'), findsOneWidget);
-    expect(find.text('系统设置'), findsOneWidget);
+    expect(find.text('通知中心'), findsWidgets);
+    expect(find.text('Agent 工作台'), findsNothing);
+    expect(find.text('账号中心'), findsNothing);
   });
 }

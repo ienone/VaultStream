@@ -307,8 +307,7 @@ class _AttentionItem extends StatelessWidget {
 }
 
 String? _automationRunString(Map<String, dynamic> run, String key) {
-  final value = run[key];
-  return value == null ? null : value.toString();
+  return run[key]?.toString();
 }
 
 class _AutomationPageState extends ConsumerState<AutomationPage> {

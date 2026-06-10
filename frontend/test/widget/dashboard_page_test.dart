@@ -30,7 +30,7 @@ void main() {
 
     expect(find.text('动态正在从系统仪表盘过渡为个人信息流'), findsOneWidget);
     expect(find.text('推荐候选'), findsWidgets);
-    expect(find.text('查看候选'), findsOneWidget);
+    expect(find.text('查看候选'), findsNothing);
     expect(find.text('总计'), findsOneWidget);
     expect(find.text('12'), findsOneWidget);
 

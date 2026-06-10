@@ -1447,7 +1447,7 @@ class AutomationTab extends ConsumerWidget {
             final connectivityText = _aiConnectivitySummary(connectivity);
             final subtitle = [
               issues.isEmpty ? summary : '${issues.first} · $summary',
-              if (connectivityText != null) connectivityText,
+              ?connectivityText,
             ].where((item) => item.isNotEmpty).join('\n');
             return SettingTile(
               title: capability['label']?.toString() ?? key,

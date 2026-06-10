@@ -12,6 +12,7 @@ alembic
 
 # HTTP clients
 httpx[socks]
+httpcore>=1,<2
 requests
 chardet>=5.2,<6
 
