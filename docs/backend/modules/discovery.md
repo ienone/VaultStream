@@ -44,7 +44,6 @@ active
 
 ## 对应前端
 
-- `../../frontend/pages/discovery.md`
 - `../../frontend/pages/dashboard.md`
 
 ## API 接口

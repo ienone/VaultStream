@@ -43,7 +43,6 @@ active
 
 ## 对应前端
 
-- `../../frontend/pages/accounts.md`
 - `../../frontend/pages/settings.md`
 - `../../frontend/pages/automation.md`
 

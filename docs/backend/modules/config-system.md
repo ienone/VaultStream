@@ -44,7 +44,6 @@ active
 
 - `../../frontend/pages/settings.md`
 - `../../frontend/pages/dashboard.md`
-- `../../frontend/pages/accounts.md`
 - `../../frontend/pages/automation.md`
 
 ## API 接口

@@ -1,11 +1,13 @@
-"""Check that docs/backend/api.md contains the current FastAPI endpoint inventory."""
+"""Check that the generated endpoint document matches the current FastAPI OpenAPI."""
 
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 
 ENDPOINT_ROW = re.compile(r"^\|\s*`(?P<methods>[^`]+)`\s*\|\s*`(?P<path>[^`]+)`\s*\|")
@@ -13,23 +15,24 @@ ENDPOINT_ROW = re.compile(r"^\|\s*`(?P<methods>[^`]+)`\s*\|\s*`(?P<path>[^`]+)`\
 
 def _bootstrap_backend_path() -> Path:
     repo_root = Path(__file__).resolve().parents[1]
-    backend_dir = repo_root / "backend"
-    sys.path.insert(0, str(backend_dir))
+    sys.path.insert(0, str(repo_root / "backend"))
     return repo_root
 
 
 def _openapi_inventory() -> dict[str, str]:
-    from loguru import logger
+    # Contract checks must not initialize a persistent runtime database.
+    os.environ["SQLITE_DB_PATH"] = ":memory:"
+    from app.core import logging as app_logging
 
-    logger.remove()
-    from app.main import app
+    app_logging.logger.remove()
+    with patch.object(app_logging, "setup_logging"):
+        from app.main import app
 
     inventory: dict[str, str] = {}
     for path, methods in sorted(app.openapi()["paths"].items()):
-        method_list = ", ".join(
+        inventory[path] = ", ".join(
             sorted(method.upper() for method in methods if method.lower() != "parameters")
         )
-        inventory[path] = method_list
     return inventory
 
 
@@ -48,8 +51,8 @@ def main() -> int:
     parser.add_argument(
         "api_doc",
         nargs="?",
-        default=str(repo_root / "docs" / "backend" / "api.md"),
-        help="Path to docs/backend/api.md",
+        default=str(repo_root / "docs" / "backend" / "api" / "endpoints.md"),
+        help="Path to the generated OpenAPI endpoint Markdown.",
     )
     args = parser.parse_args()
 
@@ -59,7 +62,6 @@ def main() -> int:
 
     expected = _openapi_inventory()
     actual = _docs_inventory(api_doc)
-
     missing = sorted(set(expected) - set(actual))
     stale = sorted(set(actual) - set(expected))
     method_mismatch = sorted(
@@ -82,7 +84,6 @@ def main() -> int:
         print(f"Method mismatches in {api_doc}:")
         for path in method_mismatch:
             print(f"  {path}: docs={actual[path]} openapi={expected[path]}")
-
     return 1
 
 

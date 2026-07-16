@@ -44,7 +44,6 @@ active
 
 ## 对应前端
 
-- `../../frontend/pages/accounts.md`
 - `../../frontend/pages/automation.md`
 - `../../frontend/pages/tasks.md`
 

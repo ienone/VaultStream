@@ -2,12 +2,16 @@
 
 ## 状态
 
-暂时不变更AI/agent/RAG相关内容，待其余部分完成后再回过头来细化和修复这个问题。
+active
+
+## 处置说明
+
+本轮暂不变更 AI、Agent 与 RAG 实现；该问题保留为活动 issue，待其他基础治理完成后单独设计和修复。
 
 ## 现象
 
 - AI connectivity、platform parse test、favorites sync trigger/retry、discovery source test/sync、distribution queue 多个动作 endpoint 返回 inline dict，缺少统一 response model。
-- `docs/backend/api.md` 能列出 endpoint 和字段说明，但当前 OpenAPI 文档检查主要证明路径覆盖，不能证明返回字段、错误 envelope、`run_id` 语义和前端一致。
+- `docs/backend/api/endpoints.md` 能列出 endpoint，领域分册能解释行为，但当前 OpenAPI 文档检查主要证明路径覆盖，不能证明返回字段、错误 envelope、`run_id` 语义和前端一致。
 - 前端多个位置只能用 `data['run_id']`、`status == "accepted"`、动态 map 或弹层各自解释动作结果。
 
 ## 影响范围
@@ -55,4 +59,4 @@
 
 - 自动测试：读取 OpenAPI schema，断言关键动作 endpoint 的 `response_model` 不为空且字段集合稳定。
 - API 测试：覆盖 AI connectivity、platform parse test、favorites sync retry、discovery sync、distribution push now 的成功和失败响应。
-- 文档校验：`.venv\Scripts\python.exe scripts\check_openapi_docs.py docs\backend\api.md` 并补充 response schema 校验。
+- 文档校验：`.venv\Scripts\python.exe scripts\check_openapi_docs.py docs\backend\api\endpoints.md` 并补充 response schema 校验。
