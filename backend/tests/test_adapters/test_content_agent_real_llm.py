@@ -5,6 +5,8 @@ import sqlite3
 from unittest.mock import patch, AsyncMock
 from pydantic import SecretStr
 
+pytestmark = pytest.mark.integration
+
 # 1. Force the correct DB path
 DB_PATH = "./backend/data/vaultstream.db"
 

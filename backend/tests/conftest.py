@@ -2,17 +2,36 @@
 Pytest Fixtures for Backend Tests
 """
 import os
+import shutil
+import sys
+import uuid
+from pathlib import Path
 import pytest
 import asyncio
 from typing import AsyncGenerator, Dict, List
 from httpx import AsyncClient, ASGITransport
+from loguru import logger
 
-# Set test database path in environment before importing app/settings
-TEST_DB_PATH = os.path.abspath("data/test_vaultstream.db")
+# Keep test runtime output in an ignored, isolated backend directory. The suite
+# is launched from the repository root, so cwd-relative paths would otherwise
+# recreate root-level data/ and logs/ directories.
+TEST_RUNTIME_PARENT = Path(__file__).resolve().parents[1] / ".test-runtime"
+TEST_RUNTIME_PARENT.mkdir(parents=True, exist_ok=True)
+TEST_RUNTIME_DIR = str(TEST_RUNTIME_PARENT / f"session-{uuid.uuid4().hex}")
+Path(TEST_RUNTIME_DIR).mkdir(parents=True, exist_ok=False)
+
+# Pytest may load this file as top-level ``conftest`` while older tests import
+# ``tests.conftest``. Alias both names so those imports do not execute this
+# module twice and silently create a second empty test database.
+sys.modules.setdefault("tests.conftest", sys.modules[__name__])
+
+TEST_DB_PATH = os.path.join(TEST_RUNTIME_DIR, "test_vaultstream.db")
 os.environ["SQLITE_DB_PATH"] = TEST_DB_PATH
+os.environ["STORAGE_LOCAL_ROOT"] = os.path.join(TEST_RUNTIME_DIR, "storage")
+os.environ["VAULTSTREAM_LOG_DIR"] = os.path.join(TEST_RUNTIME_DIR, "logs")
+os.environ["VAULTSTREAM_TEST_RUNTIME_DIR"] = TEST_RUNTIME_DIR
 
 # Ensure the test database path is clean before app modules create engines.
-os.makedirs("data", exist_ok=True)
 if os.path.exists(TEST_DB_PATH):
     try:
         os.remove(TEST_DB_PATH)
@@ -95,6 +114,13 @@ async def setup_test_db():
     app.dependency_overrides.pop(get_db, None)
     await engine.dispose()
     await app_engine.dispose()
+    logger.remove()
+    shutil.rmtree(TEST_RUNTIME_DIR, ignore_errors=True)
+    os.environ.pop("VAULTSTREAM_TEST_RUNTIME_DIR", None)
+    try:
+        TEST_RUNTIME_PARENT.rmdir()
+    except OSError:
+        pass
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -102,6 +128,16 @@ def event_loop():
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close()
+
+@pytest.fixture(scope="function")
+def tmp_path():
+    """Provide a writable temporary path under the repository test runtime."""
+    path = Path(TEST_RUNTIME_DIR) / f"tmp-{uuid.uuid4().hex}"
+    path.mkdir(parents=True, exist_ok=False)
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
 
 @pytest.fixture(scope="function")
 async def db_session() -> AsyncGenerator[AsyncSession, None]:

@@ -37,6 +37,7 @@ class TestSystemExtraAPI:
         assert "max_subscribers" in data
         assert "instance_id" in data
 
+    @pytest.mark.integration
     @pytest.mark.asyncio
     async def test_proxy_image_success(self, client: AsyncClient):
         """Test proxy image returns 200 with valid external URL."""

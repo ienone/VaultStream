@@ -26,9 +26,6 @@ from app.core.queue_adapter import TaskQueue
 
 # ── 隔离的测试数据库 ──────────────────────────────────
 
-_TEST_DB = os.path.abspath("data/test_queue_concurrency.db")
-_DB_URL = f"sqlite+aiosqlite:///{_TEST_DB}"
-
 
 @pytest.fixture(scope="module")
 def event_loop():
@@ -40,9 +37,12 @@ def event_loop():
 @pytest.fixture(scope="module", autouse=True)
 async def _setup_db():
     """为本模块创建独立的测试数据库。"""
-    os.makedirs(os.path.dirname(os.path.abspath(_TEST_DB)), exist_ok=True)
+    test_db = os.path.join(
+        os.environ["VAULTSTREAM_TEST_RUNTIME_DIR"], "test_queue_concurrency.db"
+    )
+    db_url = f"sqlite+aiosqlite:///{test_db}"
 
-    _engine = create_async_engine(_DB_URL, echo=False, poolclass=NullPool)
+    _engine = create_async_engine(db_url, echo=False, poolclass=NullPool)
 
     from sqlalchemy import event as sa_event
 
@@ -63,12 +63,6 @@ async def _setup_db():
     yield _engine, _session_factory
 
     await _engine.dispose()
-    if os.path.exists(_TEST_DB):
-        os.remove(_TEST_DB)
-    for suffix in ("-wal", "-shm"):
-        p = _TEST_DB + suffix
-        if os.path.exists(p):
-            os.remove(p)
 
 
 # ── Helpers ───────────────────────────────────────────

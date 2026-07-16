@@ -11,6 +11,7 @@ from __future__ import annotations
 import sys
 import uuid
 import os
+from pathlib import Path
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Iterator, Optional
@@ -78,8 +79,11 @@ def setup_logging(*, level: str = "INFO", fmt: str = "json", debug: bool = False
     """
     logger.remove()
     
-    # 确保日志目录存在
-    os.makedirs("logs", exist_ok=True)
+    # Anchor runtime logs to backend/ by default. Tests override this path
+    # so repository-root pytest runs do not recreate root-level logs/.
+    default_log_dir = Path(__file__).resolve().parents[2] / "logs"
+    log_dir = Path(os.getenv("VAULTSTREAM_LOG_DIR", str(default_log_dir)))
+    log_dir.mkdir(parents=True, exist_ok=True)
 
     if fmt.lower() == "json":
         # 终端 JSON 输出
@@ -92,7 +96,7 @@ def setup_logging(*, level: str = "INFO", fmt: str = "json", debug: bool = False
         )
         # JSON 格式的日志文件
         logger.add(
-            "logs/vaultstream.json.log",
+            log_dir / "vaultstream.json.log",
             level=level.upper(),
             serialize=True,
             rotation="10 MB",
@@ -133,7 +137,7 @@ def setup_logging(*, level: str = "INFO", fmt: str = "json", debug: bool = False
     )
     # 文本格式的日志文件
     logger.add(
-        "logs/vaultstream.log",
+        log_dir / "vaultstream.log",
         level=level.upper(),
         format=format_message,
         rotation="10 MB",
