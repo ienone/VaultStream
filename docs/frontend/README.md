@@ -4,45 +4,49 @@
 
 active
 
-前端代码位于 `frontend/lib/`，以 Flutter + Riverpod + GoRouter 组织。当前 Root Shell 主入口已收敛为动态、收藏库、自动化；通知中心和设置作为顶部工具入口，任务结果页作为深链详情页。
+前端代码位于 `frontend/lib/`，使用 Flutter、Riverpod 和 GoRouter。当前 Root Shell 主入口为动态、收藏库和自动化；设置、任务结果和 Agent 属于工具或深层工作区。
 
-## 页面职责索引
+## 页面索引
 
-- `pages/dashboard.md`: 动态页 / 首页，当前承担全局统计、活动时间线和跨页面跳转。
-- `pages/collection.md`: 收藏库列表、搜索、筛选、批量操作。
-- `pages/content-detail.md`: 收藏内容详情、正文阅读、媒体展示、后处理状态。
-- `pages/automation.md`: 自动化总览、收藏同步、分发、解析 / 后处理三域入口和当前下钻内容。
-- `pages/settings.md`: 设置页。
-- `pages/agent.md`: Agent 工作台。
-- `pages/tasks.md`: 后台任务结果页。
+- `pages/dashboard.md`：动态页当前仍以系统概览为主，目标职责是近期信息流。
+- `pages/collection.md`：收藏内容浏览、搜索、筛选和批量维护。
+- `pages/content-detail.md`：单条内容阅读、媒体和后处理状态。
+- `pages/automation.md`：收藏同步、分发、解析/后处理三类自动化。
+- `pages/settings.md`：全局低频配置和账号与平台分区。
+- `pages/agent.md`：受控 Agent 会话、工具过程与确认。
+- `pages/tasks.md`：后台运行结果统一详情。
 
-## 组件和交互文档
+## 组件与导航
 
-- `navigation.md`: 主导航、工具入口和深链接。
-- `components/navigation-shell.md`: `AppShell` 和导航容器。
-- `components/media-rendering.md`: 图片、代理、媒体详情和失败态。
-- `components/task-result.md`: 任务结果和 run detail 展示边界。
+- `navigation.md`：主导航、工具入口和深链接。
+- `components/navigation-shell.md`：Root/Section/Detail 导航容器。
+- `components/media-rendering.md`：媒体访问、展示与失败态。
+- `components/task-result.md`：任务结果表达边界。
 
 ## 页面文档口径
 
-`pages/*.md` 的 `## 当前界面内容` 必须写当前界面事实，而不是只写页面职责。该章节应覆盖：
+页面文档服务于职责判断、交互审查和回归验收，不充当 Widget 树的文字镜像。每份页面文档只记录：
 
-- 页面首屏、主体区域、工具栏、列表、卡片、表单、按钮、筛选器和状态提示。
-- 当前布局结构，包括 `Row`、`Column`、`Stack`、`Grid`、`Wrap`、`Expanded`、`Flexible`、`Sliver`、固定宽度/高度、滚动容器和主要断点。
-- 弹出界面和临时 surface，包括 dialog、bottom sheet、drawer、menu、snackbar、license page 等，以及触发入口和承载内容。
-- 加载、空状态、错误、选择模式、批量模式、编辑态、禁用态等用户可见状态。
-- 会影响界面理解的动画、转场、拖拽、展开/收起行为。
+- 用户来这里完成什么任务，以及明确不承担什么。
+- 首屏主要区域、关键动作和重要状态。
+- 手机、横屏、平板和桌面的结构性差异。
+- 会打开哪些有独立语义的详情页、dialog 或 bottom sheet。
+- 读取/写入哪些 API 领域，以及后台任务如何反馈。
+- 已确认问题及对应 issue。
 
-尚未实现的设想不得写进 `## 当前界面内容`，只能放入 `## 尚未实现 / 计划扩展`。已确认问题应链接到 `../issues/`，不要混在界面事实里。
+以下内容通常不写：具体 Widget 类名、flex 数值、像素宽度、provider 清单、装饰动画参数和内部私有组件名。只有它们构成稳定 contract 或已确认问题根因时才例外记录。
 
-## 当前重点约束
+## 当前约束
 
-1. 不允许多个页面同时承担账号中心职责。
-2. 不允许把计划中的策略占位项暴露为可配置项。
-3. 不允许页面 widget 直接堆叠大量 API 写操作；应收敛到 provider/controller。
-4. 复杂工作流优先使用独立页面或明确的 adaptive surface，不继续塞进弹窗。
-5. 收藏卡片到详情页的共享 `Hero` 转场当前被列为问题，修复前不应继续扩展。
+1. 一个用户职责只能有一个主入口。
+2. 不把未实现策略暴露为设置项。
+3. UI 不直接散落 API 写操作；由统一控制层编排。
+4. 复杂工作流使用独立页面或明确的 adaptive surface。
+5. 当前事实与未来计划分开；未来设计进入 `docs/plans/`。
 
-## 尚未实现 / 计划扩展
+## 当前重点
 
-前端信息架构仍需继续迁移：动态页的收藏统计应迁移到收藏页，候选信息流能力需要在动态页重新实现，账号能力需要在设置“账号与平台”分区中按新职责重建，自动化页已完成三域入口首轮重组但仍需继续拆出更清晰的下钻页面、任务详情和通知中心落点。对应问题见 `../issues/frontend-dashboard-scope-creep.md` 和 `../issues/frontend-automation-page-responsibility-overload.md`。
+- 动态页仍有 Dashboard 范围膨胀问题。
+- 自动化三域已形成，但详情层级仍需继续拆分。
+- 收藏详情转场与媒体失败态仍需整改。
+- 设置中的账号连接主流程尚待按新职责重建。
