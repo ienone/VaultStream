@@ -37,6 +37,7 @@ draft / active / in_progress / blocked / complete / archived
 - `backend-diagnostic-api-contract-is-inline.md`
 - `backend-schema-gate-database-doc-drift.md`
 - `backend-system-router-boundary-pollution.md`
+- `backend-test-suite-value-density.md`
 - `collection-card-detail-transition.md`
 - `favorites-sync-retry-policy-gap.md`
 - `frontend-agent-page-build-and-controller-boundary.md`

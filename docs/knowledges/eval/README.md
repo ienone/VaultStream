@@ -10,6 +10,7 @@ active
 
 - `rag_ground_truth.json`: RAG/语义检索评估基准。
 - `rag_recall_report.json`: RAG/语义检索召回结果。
+- `legacy-dataset-media-sample.md`: 旧数据库媒体抽样、保留范围与清理验证记录。
 
 ## 使用规则
 

@@ -13,8 +13,8 @@ from typing import Any
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate VaultStream hybrid RAG recall.")
     parser.add_argument("--db", default="backend/data_eval/vaultstream.db")
-    parser.add_argument("--ground-truth", default="docs/eval/rag_ground_truth.json")
-    parser.add_argument("--out", default="docs/eval/rag_recall_report.json")
+    parser.add_argument("--ground-truth", default="docs/knowledges/eval/rag_ground_truth.json")
+    parser.add_argument("--out", default="docs/knowledges/eval/rag_recall_report.json")
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--max-queries", type=int, default=20)
     return parser.parse_args()

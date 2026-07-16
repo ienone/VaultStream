@@ -20,7 +20,7 @@
 **存档管理**
 - SQLite 本地存储，FTS5 全文检索 + 标签筛选
 - 内容状态管理（待解析 / 成功 / 失败 / 已归档）
-- NSFW 标记与内容审批流
+- NSFW 标记、标签筛选和结构化内容状态
 
 **自动分发**
 - 基于规则的内容推送（按平台、标签匹配）
@@ -30,11 +30,11 @@
 **多端管理**
 - Flutter Web / Desktop / Mobile 客户端
 - 响应式布局，Material 3 主题
-- 收藏浏览、审批面板、仪表板、分发规则配置
+- 动态信息流、收藏库、自动化、通知与设置
 
 ## 架构
 
-flutter+fastapi+sqlite
+Flutter + FastAPI + SQLite；当前模块和职责以文档索引与代码为准。
 
 文档索引：[docs/README.md](./docs/README.md)
 
@@ -139,7 +139,7 @@ docker compose up -d
 ## 使用方式
 
 1. 访问前端页面，通过界面添加内容链接、管理标签、浏览存档；分享链接等内容时通过系统分享功能，接入应用
-2. 在前端「审批与分发」页面配置推送规则和目标群组，内容解析成功后自动推送
+2. 在前端「自动化 → 分发」中管理规则、目标和分发队列
 3. （可选）配置 Telegram Bot 或 QQ Bot，直接向 Bot 发送链接即可入库
 
 API 文档：启动后访问 `http://localhost:8000/docs`
@@ -175,7 +175,7 @@ QQ Bot 需要先在服务器上独立部署 [NapCatQQ](https://github.com/NapNek
 2. 选择平台为 **QQ (Napcat)**
 3. 填入 Napcat 的服务地址（如果是同一台服务器且端口为 3000，填 `http://127.0.0.1:3000` 或 `http://宿主机IP:3000`。由于 Docker 隔离，可能需要填写 `http://host.docker.internal:3000` 或直接填分配的局域网 IP）
 4. （可选）填写刚才在 Napcat 设置的 Token
-5. 保存后即可在「审批与分发 → Bot 群组」中同步 QQ 群列表
+5. 保存后在「自动化 → 分发」中同步目标并管理分发规则
 
 ---
 
@@ -186,12 +186,12 @@ QQ Bot 需要先在服务器上独立部署 [NapCatQQ](https://github.com/NapNek
 ### 规则工作流
 
 ```
-内容入库 → 匹配规则 → 进入推送队列 → 审批（可选）→ 推送至目标群组
+内容入库 → 匹配规则 → 进入分发队列 → 策略过滤/确认 → 推送至目标
 ```
 
 ### 配置步骤
 
-1. **进入「审批与分发」** → 点击「新建规则」
+1. **进入「自动化 → 分发」** → 打开规则管理
 2. **设置匹配条件**（可组合）：
    - 来源平台（Bilibili / 知乎 / 微博 等）
    - 标签（如 `技术`、`设计`）
@@ -218,41 +218,31 @@ QQ Bot 需要先在服务器上独立部署 [NapCatQQ](https://github.com/NapNek
 VaultStream/
 ├── backend/
 │   ├── app/
-│   │   ├── adapters/        # 平台解析器（bilibili, twitter, zhihu 等）
-│   │   ├── routers/         # API 路由
-│   │   ├── services/        # 业务逻辑
-│   │   ├── repositories/    # 数据访问层
-│   │   ├── distribution/    # 分发引擎 + 队列 Worker
-│   │   ├── worker/          # 后台任务处理
-│   │   ├── bot/             # Telegram Bot
-│   │   ├── push/            # 推送服务（Telegram / Napcat）
-│   │   ├── media/           # 媒体下载与转码
-│   │   ├── core/            # 配置、数据库、日志、存储、事件总线
-│   │   ├── models.py        # ORM 模型
-│   │   ├── schemas.py       # 请求/响应 Schema
-│   │   └── main.py          # FastAPI 入口
-│   ├── data/                # SQLite 数据库 + 媒体文件
-│   ├── migrations/          # 数据库迁移
-│   ├── systemd/             # Systemd 服务配置
-│   ├── Dockerfile
-│   └── docker-compose.yml
-├── frontend/                # Flutter 客户端
-│   └── lib/features/        # 收藏、审批、仪表板、设置
-└── docs/                    # API、架构、适配器文档
+│   │   ├── routers/         # FastAPI 路由
+│   │   ├── services/        # 业务编排
+│   │   ├── repositories/    # 数据访问
+│   │   ├── adapters/        # 平台、浏览器和存储适配
+│   │   ├── tasks/           # 后台任务
+│   │   ├── models/          # ORM 模型
+│   │   ├── schemas/         # 请求/响应 Schema
+│   │   ├── media/           # 媒体处理
+│   │   └── core/            # 配置、数据库、日志和事件
+│   ├── tests/               # 正式 pytest 测试
+│   ├── manual_tests/        # 本地平台探针（不进入 CI）
+│   ├── data/                # 本地运行数据（Git 忽略）
+│   └── migrations/          # 当前架构管理文件
+├── frontend/
+│   ├── lib/features/        # 动态、收藏库、自动化、Agent、设置等
+│   └── test/                # Flutter 单元与 Widget 测试
+├── docs/                    # 现状、计划、问题和知识资料
+└── scripts/                 # 可重复的仓库维护/验证脚本
 ```
 
 ---
 
-## Roadmap
+## 后续规划
 
-以下功能在计划中，尚未实现：
-
-- **预测性返回手势** — 预测用户返回手势，提前加载上一页，提升操作便利性
-- **RSS/Atom 订阅** — 支持 RSS 源自动抓取，全文入库，生成摘要
-- **多源自动同步** — 绑定平台账号，自动同步收藏夹和关注更新
-- **AI Agent 巡逻** — 基于用户偏好自动发现高价值内容，判断是否存档/推送
-- **RAG 语义检索** — 对存档内容进行向量化，支持自然语言问答
-- **Telegram 群组深度集成** — 全量存档群内链接，或由 LLM 筛选高价值内容
+当前计划与目标形态统一维护在 [docs/plans/](./docs/plans/README.md)。README 不再维护容易与代码漂移的独立 Roadmap；具体功能是否已经实现，以代码、现状文档和可重复验证结果为准。
 
 ---
 

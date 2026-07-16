@@ -33,3 +33,4 @@ active
 ## 当前计划
 
 - `2026-06-10-frontend-information-architecture-redesign.plan.md`
+- `2026-07-15-vaultstream-system-concept.plan.md`：系统级目标形态与长期演进蓝图（draft）。
