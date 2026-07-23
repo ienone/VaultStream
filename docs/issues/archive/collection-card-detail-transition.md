@@ -2,9 +2,13 @@
 
 ## 状态
 
-active
+archived
 
-## 现象
+## 关闭说明
+
+2026-07-24 复核确认，旧“整卡片 Hero + 透明详情页 Stack”路径已经删除：`ContentCard` 不再挂载卡片 Hero，`ContentDetailPage` 的 loading 与 data 状态均使用不透明 `Scaffold`，现有 widget 测试也明确验证两种状态不挂载卡片 Hero。当前仍需设计新的 shared container，但那属于前端 IA 的目标能力，不再把已经删除的旧缺陷保留为 active issue。
+
+## 原问题
 
 收藏卡片进入详情页时，首屏可能出现卡片飞行层、详情头图、正文和右侧信息卡互相重叠。该问题不是“目标 Hero 为空”的旧问题，而是共享转场、透明详情层和图片失败态叠加后的当前布局问题。
 

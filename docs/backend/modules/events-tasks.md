@@ -63,8 +63,8 @@ active
 
 ## 当前问题
 
-run 详情在多个前端组件重复展示。后端状态模型需要继续支持统一任务结果页。
+- 统一任务结果 contract：`../../issues/task-run-result-contract-missing.md`
 
 ## 尚未实现 / 计划扩展
 
-需要建立 task type 到前端 renderer 的稳定元数据约定。
+Task contract 和专用 renderer 属于总路线第零阶段，见 `../../plans/2026-07-17-vaultstream-development-roadmap.plan.md`。

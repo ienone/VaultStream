@@ -17,7 +17,7 @@ active
 ## 影响范围
 
 - 后端模块：agent、favorites-sync、distribution、accounts-auth、discovery、config-system。
-- 前端页面：Agent 工作台、自动化页、账号中心、设置页。
+- 前端页面：Agent 工作台、自动化页、设置中的账号与平台分区。
 - 数据：内容状态、分发队列、收藏同步 run、bot 配置、发现源。
 - 用户影响：用户关闭某项能力后，Agent 仍可能通过通用 mutation 入口触发同类副作用；单次确认不等同于用户级策略。
 

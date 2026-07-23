@@ -7,7 +7,6 @@ active
 ## 当前代码
 
 - `frontend/lib/features/dashboard/task_result_page.dart`
-- `frontend/lib/features/dashboard/widgets/activity_timeline_card.dart`
 - `frontend/lib/features/automation/widgets/favorites_sync_automation_panel.dart`
 
 ## 当前职责

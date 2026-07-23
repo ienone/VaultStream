@@ -41,5 +41,4 @@ active
 
 ## 当前问题
 
-- 与动态页的统计边界：`../../issues/frontend-dashboard-scope-creep.md`
-- 卡片到详情转场：`../../issues/collection-card-detail-transition.md`
+当前未单独记录页面级 issue；后续结构与转场目标见前端 IA plan。

@@ -66,10 +66,9 @@ VaultStream 前端已经具备 Material 3 基础：`ThemeData(useMaterial3: true
 - `../frontend/pages/automation.md`
 - `../frontend/pages/settings.md`
 - `../plans/2026-06-10-frontend-information-architecture-redesign.plan.md`
-- `collection-card-detail-transition.md`
 - `frontend-dashboard-scope-creep.md`
 - `frontend-automation-page-responsibility-overload.md`
-- `frontend-navigation-utility-group-layout.md`
+- `archive/frontend-navigation-utility-group-layout.md`
 
 ## 修复建议
 
@@ -101,7 +100,7 @@ VaultStream 前端已经具备 Material 3 基础：`ThemeData(useMaterial3: true
 
 - 收藏页已有 masonry grid、搜索、过滤容器转场、扩展 FAB、Hero 到详情、内容色生成局部主题，适合作为 content-aware expressive 示例页。
 - 修复已知 Hero 问题后，封面主色应从局部 `accent.withAlpha` 用法转为生成局部 `ColorScheme`，再使用 `primaryContainer`、`onPrimaryContainer`、`surfaceContainer*` 等语义颜色。
-- 卡片到正文转场应遵循 `collection-card-detail-transition.md` 中的 container transform 设计。
+- 卡片到正文转场应遵循前端 IA plan 中的单一 shared container 设计；旧 Hero/透明详情叠层问题已经归档。
 
 ### 6. 设置与 Agent surface 表达升级
 

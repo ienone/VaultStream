@@ -2,9 +2,13 @@
 
 ## 状态
 
-active
+archived
 
-## 现象
+## 关闭说明
+
+2026-07-24 复核确认，`frontend/lib/features/automation/` 与 `frontend/lib/features/settings/` 已无 `collections_api_placeholder`、`full_backfill_placeholder`、`mark_archived_placeholder` 或“接口预留”等用户可见选项。后端仍保留部分内部兼容值，但没有继续作为前端能力暴露，因此本问题关闭。
+
+## 原问题
 
 - 收藏同步面板向用户展示并允许选择“收藏夹/分组接口预留”“全量回填接口预留”“标记归档接口预留”等策略。
 - `favorites_sync_provider.dart` 明确将 `collections_api_placeholder`、`full_backfill_placeholder`、`mark_archived_placeholder` 作为可识别状态。

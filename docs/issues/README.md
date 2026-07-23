@@ -4,49 +4,30 @@
 
 active
 
-本目录记录当前问题、缺陷和污染点。关闭后移入 `archive/`。
+本目录保存跨会话仍未解决的问题。除 `README.md` 外，目录中的 Markdown 默认是当前问题；已解决或仅有历史价值的内容移入 `archive/`，没有长期价值的内容可以删除。
 
-## Issue 模板
+## 与其他文档的关系
 
-```md
-# 问题标题
+- 当前实现文档只链接 issue，不复制完整整改方案。
+- 总开发顺序由 `../plans/2026-07-17-vaultstream-development-roadmap.plan.md` 决定。
+- Issue 说明问题和关闭条件；需要多轮实施时再建立专项 plan。
+- 问题关闭后同步修正对应前端、后端和计划文档。
+
+## 最小结构
+
+- 状态。
+- 现象或当前代码证据。
+- 影响范围。
+- 期望结果或修复方向。
+- 验证方式。
+
+复现步骤、根因分析、详细方案和关联代码按问题性质选填。未知内容必须标记“待验证”，不能为了填模板编造结论。
 
 ## 状态
-draft / active / in_progress / blocked / complete / archived
 
-## 现象
+- `active`：已确认、尚未开始。
+- `in_progress`：正在修复。
+- `blocked`：存在明确阻塞。
+- `archived`：已解决、失效或被其他问题吸收。
 
-## 影响范围
-
-## 根因分析
-
-## 关联代码
-
-## 关联文档
-
-## 修复建议
-
-## 验证方式
-```
-
-## 当前问题
-
-- `backend-agent-api-bridge-policy-bypass.md`
-- `backend-bot-config-router-side-effects.md`
-- `backend-current-issues-not-tracked.md`
-- `backend-diagnostic-api-contract-is-inline.md`
-- `backend-schema-gate-database-doc-drift.md`
-- `backend-system-router-boundary-pollution.md`
-- `backend-test-suite-value-density.md`
-- `collection-card-detail-transition.md`
-- `favorites-sync-retry-policy-gap.md`
-- `frontend-agent-page-build-and-controller-boundary.md`
-- `frontend-automation-page-responsibility-overload.md`
-- `frontend-control-policy-gaps.md`
-- `frontend-dashboard-scope-creep.md`
-- `frontend-favorites-sync-placeholder-strategy-leak.md`
-- `frontend-material3-expressive-design-system-gap.md`
-- `frontend-post-processing-panel-side-effects.md`
-- `frontend-ui-layer-api-write-boundary.md`
-- `media-proxy-image-access.md`
-- `task-run-result-contract-missing.md`
+当前 issue 与路线阶段的映射见总开发路线，不在本索引重复维护文件清单。

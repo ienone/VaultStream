@@ -57,8 +57,9 @@ Agent service 构建上下文消息，注册内置工具，运行模型，记录
 
 ## 当前问题
 
-Agent 工具确认是单次确认，不等同于用户级策略。副作用工具必须受同一自动化策略约束，不能绕过前端控制面。
+- Agent API bridge 权限边界：`../../issues/backend-agent-api-bridge-policy-bypass.md`
+- 用户控制面与自动化策略缺口：`../../issues/frontend-control-policy-gaps.md`
 
 ## 尚未实现 / 计划扩展
 
-需要将 Agent 工具权限与统一自动化策略服务接通。
+Agent 安全编排属于总路线第零阶段 contract/策略基线和第六阶段 Agent 能力建设，见 `../../plans/2026-07-17-vaultstream-development-roadmap.plan.md`。

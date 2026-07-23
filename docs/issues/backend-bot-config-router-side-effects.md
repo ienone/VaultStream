@@ -13,7 +13,7 @@ active
 ## 影响范围
 
 - 后端模块：accounts-auth、distribution、events-tasks、config-system。
-- 前端页面：账号中心、设置页、自动化健康矩阵。
+- 前端页面：设置中的账号与平台分区、自动化健康矩阵。
 - 数据：BotConfig、BotChat、分发目标关联、bot 同步事件。
 - 用户影响：保存配置可能隐式重启进程或访问外部服务；这些动作没有统一 run 记录、策略检查和可见确认。
 
@@ -55,4 +55,4 @@ active
 
 - 自动测试：API 测试使用 fake service 验证 create/update/delete 不依赖 `PYTEST_CURRENT_TEST` 跳过副作用。
 - 单元测试：覆盖 QQ sync 成功/失败、事件发布、run 记录和策略拒绝。
-- 手动验收：账号中心配置 Telegram/QQ bot 时，用户可见地看到哪些动作会触发外部服务或进程控制。
+- 手动验收：在设置“账号与平台”中配置 Telegram/QQ bot 时，用户可见地看到哪些动作会触发外部服务或进程控制。

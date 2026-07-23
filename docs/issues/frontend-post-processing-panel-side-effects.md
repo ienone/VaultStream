@@ -8,7 +8,7 @@ active
 
 - `frontend/lib/features/collection/widgets/detail/components/post_processing_status_panel.dart` 是约 500 行的展示组件，但内部直接读取 `apiClientProvider` 并执行多类后端写操作。
 - 该组件根据 `stage['key']`、`stage['status']` 等动态字段推断动作，然后触发生成摘要、语义重建、分发重试/入队、巡逻评分、embedding retry 等接口。
-- 成功 toast 只从响应中猜测 `run_id` 字段，并跳转到 `/home?run=...`，而当前导航文档定义的统一任务结果入口是 `/tasks/:runId`。
+- 成功 toast 已从响应中提取 `run_id` 并跳转 `/tasks/:runId`，旧 `/home?run=...` 分流已经移除；但字段提取仍是组件内的动态 map 解析。
 
 ## 影响范围
 
@@ -22,13 +22,13 @@ active
 1. 打开任意收藏内容详情页。
 2. 进入后处理状态区域。
 3. 对失败或未完成 stage 点击“生成摘要”“重建索引”“重试分发”“巡逻评分”等操作。
-4. 观察组件内部直接调用对应 API，并在成功后通过 SnackBar action 跳转 `/home?run=...`。
+4. 观察组件内部直接调用对应 API，并在成功后自行解析 `run_id`、刷新 provider 和构造任务页跳转。
 
 ## 根因分析
 
 - 后处理状态展示、stage action 推导、跨模块写操作和 run 结果导航被堆在同一个 widget 文件中。
 - `processing-status` 返回值缺少前端 typed view model，组件只能用动态 map 猜字段。
-- 任务结果页 contract 未强制落地，导致各处继续用临时弹层或首页 query 展示 run。
+- 任务结果路由已经统一，但 action response 与 processing status 仍缺少可复用的 typed contract。
 
 ## 关联代码
 
@@ -50,12 +50,13 @@ active
 
 ## 修复建议
 
-- 最小修复：把成功后的 run 跳转改为 `/tasks/:runId`，避免继续分裂任务结果入口。
-- 中期修复：把 stage action 判定和 API 写操作移入详情页 controller/provider，组件只接收 typed status 与可执行 action view model。
-- 长期修复：为 `processing-status` 建立明确 response model；所有产生 run 的动作统一返回稳定 `run_id` 和任务类型元数据。
+- 第一阶段：把 stage action 判定和 API 写操作移入详情页 controller/provider，组件只接收 typed status 与可执行 action view model。
+- 第二阶段：为 `processing-status` 建立明确 response model；所有产生 run 的动作统一返回稳定 `run_id` 和任务类型元数据。
+- 收敛完成后删除组件内旧 API 调用与动态字段猜测，不保留双路径。
 
 ## 验证方式
 
-- 自动测试：`flutter analyze`；为后处理 action provider 增加单元测试；为 run 跳转增加 widget/router 测试。
+- 当前基线：`/tasks/:runId` 跳转已经实现，`flutter analyze` 与现有测试通过。
+- 自动测试：为后处理 action provider 增加单元测试，并保留 run 跳转 widget/router 覆盖。
 - 手动验收：分别触发摘要、语义重建、分发重试、巡逻评分，确认 UI 不直接拼接 API，成功后进入 `/tasks/:runId`。
 - 截图/日志：保留任务结果页展示 run 详情的截图。

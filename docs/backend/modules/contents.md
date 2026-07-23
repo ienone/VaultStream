@@ -61,8 +61,10 @@ active
 
 ## 当前问题
 
-详情页后处理状态已经前端化，但展示和任务页仍存在重复。媒体 URL 转换和代理失败也会直接影响详情页可用性。
+- 详情后处理面板副作用：`../../issues/frontend-post-processing-panel-side-effects.md`
+- 统一任务结果 contract：`../../issues/task-run-result-contract-missing.md`
+- 媒体代理与图片访问：`../../issues/media-proxy-image-access.md`
 
 ## 尚未实现 / 计划扩展
 
-后处理动作和任务结果应收敛到统一 task/run 结果模型。
+内容模板、任务结果和媒体体验分别按总路线第零、第一和第三阶段推进，见 `../../plans/2026-07-17-vaultstream-development-roadmap.plan.md`。

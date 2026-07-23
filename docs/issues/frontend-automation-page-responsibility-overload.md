@@ -51,7 +51,6 @@ in_progress
 - `../frontend/pages/automation.md`
 - `archive/automation-review-doc-source-split.md`
 - `archive/frontend-account-entry-responsibility-duplication.md`
-- `frontend-favorites-sync-placeholder-strategy-leak.md`
 - `task-run-result-contract-missing.md`
 - `frontend-control-policy-gaps.md`
 

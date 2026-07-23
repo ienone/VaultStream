@@ -13,7 +13,7 @@ active
 ## 影响范围
 
 - 后端模块：config-system、favorites-sync、accounts-auth、discovery、contents、search-rag、events-tasks。
-- 前端页面：动态页、自动化页、账号中心、设置页、任务结果页。
+- 前端页面：动态页、自动化页、设置中的账号与平台分区、任务结果页。
 - 数据：系统设置、平台健康、收藏同步 run、失败项重试结果、AI 连通性 run。
 - 用户影响：策略检查、错误处理、run 记录和 response contract 分散在 router 内，后续修改任何业务域都可能影响系统诊断接口。
 

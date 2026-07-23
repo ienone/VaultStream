@@ -41,6 +41,5 @@ active
 
 ## 当前问题
 
-- 首屏和共享转场重叠：`../../issues/collection-card-detail-transition.md`
 - 媒体访问与失败态：`../../issues/media-proxy-image-access.md`
 - 后处理动作边界：`../../issues/frontend-post-processing-panel-side-effects.md`

@@ -38,7 +38,7 @@ active
 ## 与其他模块交互
 
 - 几乎所有自动化模块都会读取系统配置。
-- 前端设置页、账号中心、动态页和自动化页都会调用 system API。
+- 前端设置页、动态页和自动化页都会调用 system API；账号相关操作归入设置“账号与平台”分区。
 
 ## 对应前端
 
@@ -65,8 +65,9 @@ active
 
 ## 当前问题
 
-`system.py` 过大，聚合了设置、健康、收藏同步、AI、诊断等多类职责。后续应按模块拆分 router/service。
+- System router 职责污染：`../../issues/backend-system-router-boundary-pollution.md`
+- 动作型 API contract 缺口：`../../issues/backend-diagnostic-api-contract-is-inline.md`
 
 ## 尚未实现 / 计划扩展
 
-需要从 `system.py` 中拆出 favorites-sync、platform-health、AI capabilities、background diagnostics 等 router/service。
+模块拆分和 contract 收敛属于总路线第零阶段，见 `../../plans/2026-07-17-vaultstream-development-roadmap.plan.md`。

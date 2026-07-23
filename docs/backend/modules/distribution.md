@@ -63,8 +63,10 @@ active
 
 ## 当前问题
 
-分发相关能力被自动化页、设置页和详情页多处触达，需要明确哪些是队列操作，哪些是配置，哪些只作为状态展示。
+- 自动化页面职责过载：`../../issues/frontend-automation-page-responsibility-overload.md`
+- 用户控制面与策略缺口：`../../issues/frontend-control-policy-gaps.md`
+- 统一任务结果 contract：`../../issues/task-run-result-contract-missing.md`
 
 ## 尚未实现 / 计划扩展
 
-需要将分发规则编辑、目标管理和队列操作在前端拆清边界。
+分发规则、目标、队列和运行结果的边界按前端 IA 与总路线第零阶段 contract 计划推进。

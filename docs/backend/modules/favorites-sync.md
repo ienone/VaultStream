@@ -63,8 +63,9 @@ active
 
 ## 当前问题
 
-收藏同步入口和详情展示被多个页面重复承载；部分重试入口可能绕过平台 enabled 策略，需要统一到自动化策略层。
+- 重试入口策略缺口：`../../issues/favorites-sync-retry-policy-gap.md`
+- 统一任务结果 contract：`../../issues/task-run-result-contract-missing.md`
 
 ## 尚未实现 / 计划扩展
 
-收藏同步 run 详情应迁移到统一任务结果页或注册专用 task renderer。
+收藏同步策略和 run renderer 按总路线第零阶段 contract 与策略计划推进。

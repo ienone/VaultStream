@@ -45,6 +45,5 @@ active
 ## 当前问题
 
 - 职责过宽：`../../issues/frontend-automation-page-responsibility-overload.md`
-- placeholder 策略：`../../issues/frontend-favorites-sync-placeholder-strategy-leak.md`
 - 控制面缺口：`../../issues/frontend-control-policy-gaps.md`
 - 任务结果重复：`../../issues/task-run-result-contract-missing.md`

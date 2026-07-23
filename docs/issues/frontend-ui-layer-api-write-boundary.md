@@ -39,7 +39,7 @@ active
 ## 关联文档
 
 - `../frontend/README.md`
-- `frontend-agent-page-build-and-controller-boundary.md`
+- `frontend-agent-page-controller-and-sse-boundary.md`
 - `frontend-post-processing-panel-side-effects.md`
 - `archive/frontend-account-entry-responsibility-duplication.md`
 - `archive/frontend-discovery-placeholder-actions-leak.md`
@@ -48,7 +48,7 @@ active
 ## 修复建议
 
 - 最小修复：禁止新增 page/widget 内直接写 API；新增写操作必须进入 provider/controller/action service。
-- 中期修复：为后处理、Agent、收藏同步、账号与平台新分区分别建立 typed action provider，统一 loading、错误、toast、刷新和路由结果。
+- 中期修复：为后处理、Agent、收藏同步和独立账号中心分别建立 typed action provider，统一 loading、错误、toast、刷新和路由结果。
 - 长期修复：前端 API client 返回 typed model；动作型 API 的 `run_id`、policy error 和 validation error 通过统一 contract 处理。
 
 ## 验证方式

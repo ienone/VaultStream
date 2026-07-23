@@ -7,7 +7,7 @@ active
 ## 现象
 
 - 前端任务页被定义为后台任务结果统一落点，但当前主要展示通用字段、metadata JSON 和 result JSON。
-- 动态页活动时间线、自动化收藏同步面板、内容详情后处理面板等位置仍各自展示 run 摘要、失败项和重试入口。
+- 自动化收藏同步面板等业务页仍各自展示 run 摘要、失败项和重试入口；内容详情后处理面板已经把完整结果跳转统一到 `/tasks/:runId`，动态页旧活动时间线已经删除。
 - 后端 `recent_task_runs` 已记录多类任务，但缺少稳定的 task type 到前端 renderer 的元数据 contract，例如 `display_summary`、`entity_links`、`allowed_actions`、`retry_policy`、`error_code`。
 
 ## 影响范围
@@ -20,13 +20,13 @@ active
 ## 复现方式
 
 1. 触发收藏同步、分发推送、发现源同步、内容后处理等任一后台任务。
-2. 分别从动态页、自动化页、内容详情页和 `/tasks/:runId` 查看结果。
+2. 分别从自动化页、内容详情页和 `/tasks/:runId` 查看结果。
 3. 观察不同入口展示字段、失败项和重试动作不一致，任务页本身缺少业务化 renderer。
 
 ## 根因分析
 
 - 后端 run model 记录了 metadata/result，但没有定义前端可稳定渲染的 task-type schema。
-- 前端先以多个业务页弹层解决局部展示，导致统一任务页只成为 raw JSON 落点。
+- 前端早期以多个业务页弹层解决局部展示；部分入口已经迁移到统一任务页，但业务化 renderer 尚未建立。
 - 现有污染总表提到“run 详情迁移到 `/tasks/:runId`”，但缺少跨端 contract 层面的独立 issue。
 
 ## 关联代码
@@ -34,7 +34,6 @@ active
 - `backend/app/services/background_task_state.py`
 - `backend/app/routers/system.py`
 - `frontend/lib/features/dashboard/task_result_page.dart`
-- `frontend/lib/features/dashboard/widgets/activity_timeline_card.dart`
 - `frontend/lib/features/automation/widgets/favorites_sync_automation_panel.dart`
 - `frontend/lib/features/collection/widgets/detail/components/post_processing_status_panel.dart`
 

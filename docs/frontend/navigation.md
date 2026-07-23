@@ -44,8 +44,8 @@ Root Shell 主导航分支：
 
 ## 当前问题
 
-- 收件箱能力尚未吸收到动态信息流，迁移过程见 `../plans/2026-06-10-frontend-information-architecture-redesign.plan.md`。
+- 动态页尚未形成完整的候选信息流，迁移过程见 `../plans/2026-06-10-frontend-information-architecture-redesign.plan.md`。
 
 ## 计划扩展
 
-- 无导航文档单独计划；Root Shell、收件箱降级、通知中心和设置入口迁移以 `../plans/2026-06-10-frontend-information-architecture-redesign.plan.md` 为准。
+- 无导航文档单独计划；Root Shell、动态候选信息流、通知中心和设置入口迁移以 `../plans/2026-06-10-frontend-information-architecture-redesign.plan.md` 为准。
