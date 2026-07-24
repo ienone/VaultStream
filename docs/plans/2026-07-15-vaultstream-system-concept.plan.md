@@ -270,11 +270,11 @@ VaultStream 首先服务单人自托管，不应过早堆叠多租户管理界�
 
 迁移应从一个边界清晰的 worker 或 sidecar 开始，用同一批样本和负载比较资源、延迟和维护成本；确认收益后删除旧路径，不让 Python 与 Rust 双实现无限并存。
 
-## 十六、实施路线
+## 十六、实施方式
 
-本文只定义理想产品形态，不再维护独立的开发阶段顺序。阶段优先级、前置依赖、当前第一批次和专项计划队列统一以 `./2026-07-17-vaultstream-development-roadmap.plan.md` 为准。
+本文只定义理想产品形态，不预设全局开发顺序。每次开发由用户从本构想和前端信息架构方案中选择一个具体部分，再以当前代码、API、数据、测试和相关 issue 为事实基础，形成可独立验收的功能切片。
 
-任何具体领域开始实现前，都应从总路线进入相应专项计划，并按可独立验收的垂直切片推进；不能把本蓝图直接交给 Agent 一次性实现。
+功能切片应同时处理完成目标所需的前端、后端、测试和文档。只有确实需要多轮或跨会话推进时才建立专项 plan；只有实际执行后需要交接时才记录 process。不能把本蓝图一次性交给 Agent 全量实现，也不能让 AI 预先生成的阶段安排替代当前判断。
 
 ## 十七、理想状态的判断标准
 
@@ -310,7 +310,6 @@ VaultStream 首先服务单人自托管，不应过早堆叠多租户管理界�
 - 后端内容：`../backend/modules/contents.md`
 - 搜索与 RAG：`../backend/modules/search-rag.md`
 - Agent：`../backend/modules/agent.md`
-- 开发总路线：`./2026-07-17-vaultstream-development-roadmap.plan.md`
 - 现有前端信息架构计划：`./2026-06-10-frontend-information-architecture-redesign.plan.md`
 
 ## 主要风险

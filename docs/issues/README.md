@@ -9,7 +9,7 @@ active
 ## 与其他文档的关系
 
 - 当前实现文档只链接 issue，不复制完整整改方案。
-- 总开发顺序由 `../plans/2026-07-17-vaultstream-development-roadmap.plan.md` 决定。
+- Issue 不决定开发顺序；进入用户当前选择的功能切片时，先结合代码重新验证相关 issue。
 - Issue 说明问题和关闭条件；需要多轮实施时再建立专项 plan。
 - 问题关闭后同步修正对应前端、后端和计划文档。
 

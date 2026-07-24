@@ -44,7 +44,7 @@ active
 ## 关联文档
 
 - 测试价值问题：`./backend-test-suite-value-density.md`
-- 测试与 CI 建设计划：`../plans/2026-07-17-test-and-ci-reliability.plan.md`
+- 测试套件价值问题：`./backend-test-suite-value-density.md`
 - 后端总览：`../backend/README.md`
 
 ## 修复建议

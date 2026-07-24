@@ -62,4 +62,4 @@ Agent service 构建上下文消息，注册内置工具，运行模型，记录
 
 ## 尚未实现 / 计划扩展
 
-Agent 安全编排属于总路线第零阶段 contract/策略基线和第六阶段 Agent 能力建设，见 `../../plans/2026-07-17-vaultstream-development-roadmap.plan.md`。
+Agent 安全编排和能力建设属于系统构想中的目标；开始该功能切片前，必须重新核对当前工具 contract、策略边界和相关 issue。

@@ -28,7 +28,7 @@ VaultStream 分为 Python 后端和 Flutter 前端：
    - 修改 router、service、repository、task、model 或 schema 前，读取对应的 `docs/backend/modules/*.md`。
    - 涉及 API 或数据库时，按需读取 `docs/backend/api.md`、`docs/backend/database.md`。
 4. 计划相关任务：
-   - 先读取相关 `docs/plans/*.plan.md`；只有同名 `*.process.md` 实际存在时才读取 process。概念、总路线、尚未启动的计划不要求创建 process。
+   - 先读取相关 `docs/plans/*.plan.md`；只有同名 `*.process.md` 实际存在时才读取 process。概念方案和尚未开始实际执行的计划不要求创建 process。
    - 如果计划已完成或归档，检查 `docs/plans/archive/`。
 5. 问题修复或审校任务：
    - 读取相关 `docs/issues/*.md`。

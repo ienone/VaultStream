@@ -68,4 +68,4 @@ active
 
 ## 尚未实现 / 计划扩展
 
-收藏同步策略和 run renderer 按总路线第零阶段 contract 与策略计划推进。
+收藏同步策略和 run renderer 尚未进入专项实施；选择该功能切片时，先复核相关 contract、策略 issue 和当前前端入口。

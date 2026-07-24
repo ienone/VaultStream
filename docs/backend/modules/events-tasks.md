@@ -67,4 +67,4 @@ active
 
 ## 尚未实现 / 计划扩展
 
-Task contract 和专用 renderer 属于总路线第零阶段，见 `../../plans/2026-07-17-vaultstream-development-roadmap.plan.md`。
+Task contract 和专用 renderer 尚未进入专项实施；相关问题见 `../../issues/task-run-result-contract-missing.md`，开始处理前需重新核对当前后端响应和前端任务页。

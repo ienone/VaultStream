@@ -70,4 +70,4 @@ active
 
 ## 尚未实现 / 计划扩展
 
-模块拆分和 contract 收敛属于总路线第零阶段，见 `../../plans/2026-07-17-vaultstream-development-roadmap.plan.md`。
+模块拆分和 contract 收敛尚未进入专项实施；选择该功能切片时，先依据当前 router、service、schema 和相关 issue 确定范围。

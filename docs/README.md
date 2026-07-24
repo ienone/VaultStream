@@ -44,9 +44,9 @@ active
 ### 计划与问题
 
 1. 理想产品形态：`plans/2026-07-15-vaultstream-system-concept.plan.md`
-2. 开发顺序与阶段出口：`plans/2026-07-17-vaultstream-development-roadmap.plan.md`
+2. 前端目标体验：`plans/2026-06-10-frontend-information-architecture-redesign.plan.md`
 3. 当前问题：`issues/README.md` 和相关 issue
-4. 进入具体领域后再读取对应专项 plan/process
+4. 开始具体功能切片后，再读取或建立该领域确有需要的专项 plan/process
 
 ## 文档类型与状态
 
@@ -169,4 +169,4 @@ Knowledge 解释背景，不直接承载待办或实施步骤。
 - `draft` plan 不配 `in_progress` process。
 - 每个 process 都能找到对应 plan。
 - 当前实现文档的“当前问题”只链接 issue，不复制整改方案。
-- 总路线是唯一开发顺序来源，专项计划不得另建冲突的全局顺序。
+- 不预先维护全局开发顺序；每次只根据用户当前目标、代码事实和相关 issue 选择一个可验收的功能切片。

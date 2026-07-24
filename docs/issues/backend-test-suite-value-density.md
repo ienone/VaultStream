@@ -13,7 +13,7 @@ active
 
 2026-07-16 的当前基线为：`763 passed, 4 skipped, 9 deselected`，覆盖率 64%，耗时约 228 秒，并出现 3 个资源释放警告。该结果能说明套件可运行，但不能直接证明关键用户流程受到同等强度保护。
 
-2026-07-17，最近一次远端 Quality Gates 又出现 `1 failed, 762 passed, 4 skipped, 9 deselected`，而同一失败用例在本地针对性复测通过。测试价值治理还必须与依赖和环境可复现性一起建设，不能只在当前虚拟环境中删减用例。具体环境问题见 `./backend-ci-environment-reproducibility.md`，系统性建设见 `../plans/2026-07-17-test-and-ci-reliability.plan.md`。
+2026-07-17，最近一次远端 Quality Gates 又出现 `1 failed, 762 passed, 4 skipped, 9 deselected`，而同一失败用例在本地针对性复测通过。测试价值治理还必须与依赖和环境可复现性一起建设，不能只在当前虚拟环境中删减用例。具体环境问题见 `./backend-ci-environment-reproducibility.md`；只有真正开始该切片时，才根据当时事实建立专项计划。
 
 ## 影响范围
 
@@ -67,5 +67,4 @@ active
 
 ## 关联计划
 
-- 测试体系与 CI 可复现性：`../plans/2026-07-17-test-and-ci-reliability.plan.md`
-- 开发总路线：`../plans/2026-07-17-vaultstream-development-roadmap.plan.md`
+- CI 环境可复现性：`./backend-ci-environment-reproducibility.md`
