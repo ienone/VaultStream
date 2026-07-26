@@ -143,6 +143,9 @@ GoRouter goRouter(Ref ref) {
                         reverseTransitionDuration: AppMotion.routeTransition,
                         transitionsBuilder:
                             (context, animation, secondaryAnimation, child) {
+                              // 有来源快照时由唯一共享容器承担主运动；深链接
+                              // 没有匹配源，才使用普通不透明淡入降级。
+                              if (preview != null) return child;
                               final curved = CurvedAnimation(
                                 parent: animation,
                                 curve: AppMotion.standardCurve,

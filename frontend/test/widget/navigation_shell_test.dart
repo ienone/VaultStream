@@ -132,10 +132,13 @@ void main() {
     );
     expect(find.text('Settings'), findsNothing);
     expect(find.text('Agent'), findsNothing);
-    expect(find.byIcon(Icons.notifications_none_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.notifications_none_rounded), findsNothing);
+    expect(find.byIcon(Icons.settings_outlined), findsNothing);
+    expect(find.byIcon(Icons.more_horiz_rounded), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.notifications_none_rounded));
+    await tester.tap(find.byIcon(Icons.more_horiz_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('通知中心'));
     await tester.pumpAndSettle();
 
     expect(find.text('通知中心'), findsWidgets);

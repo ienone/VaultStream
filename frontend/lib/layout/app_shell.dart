@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import '../core/layout/responsive_layout.dart';
 import '../features/collection/providers/collection_filter_provider.dart';
 import '../features/share_receiver/share_receiver_service.dart';
@@ -104,34 +103,34 @@ class _MobileShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
+      body: navigationShell,
+      bottomNavigationBar: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _AnimatedBranchContainer(
-            currentIndex: navigationShell.currentIndex,
-            child: navigationShell,
+          Expanded(
+            child: NavigationBar(
+              selectedIndex: navigationShell.currentIndex,
+              onDestinationSelected: onDestinationSelected,
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.dynamic_feed_outlined),
+                  selectedIcon: Icon(Icons.dynamic_feed_rounded),
+                  label: '动态',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.perm_media_outlined),
+                  selectedIcon: Icon(Icons.perm_media_rounded),
+                  label: '收藏库',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.account_tree_outlined),
+                  selectedIcon: Icon(Icons.account_tree_rounded),
+                  label: '自动化',
+                ),
+              ],
+            ),
           ),
-          const _TopToolOverlay(),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: navigationShell.currentIndex,
-        onDestinationSelected: onDestinationSelected,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dynamic_feed_outlined),
-            selectedIcon: Icon(Icons.dynamic_feed_rounded),
-            label: '动态',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.perm_media_outlined),
-            selectedIcon: Icon(Icons.perm_media_rounded),
-            label: '收藏库',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.account_tree_outlined),
-            selectedIcon: Icon(Icons.account_tree_rounded),
-            label: '自动化',
-          ),
+          const _MobileToolMenu(),
         ],
       ),
     );
@@ -164,7 +163,7 @@ class _DesktopShell extends StatelessWidget {
             leading: Padding(
               padding: const EdgeInsets.symmetric(vertical: 24),
               child: AnimatedContainer(
-                duration: 300.ms,
+                duration: const Duration(milliseconds: 300),
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
@@ -194,6 +193,7 @@ class _DesktopShell extends StatelessWidget {
                 label: Text('自动化'),
               ),
             ],
+            trailing: const Expanded(child: _DesktopToolRail()),
           ),
           VerticalDivider(
             thickness: 1,
@@ -202,15 +202,38 @@ class _DesktopShell extends StatelessWidget {
               context,
             ).colorScheme.outlineVariant.withValues(alpha: 0.2),
           ),
-          Expanded(
-            child: Stack(
-              children: [
-                _AnimatedBranchContainer(
-                  currentIndex: navigationShell.currentIndex,
-                  child: navigationShell,
-                ),
-                const _TopToolOverlay(),
-              ],
+          Expanded(child: navigationShell),
+        ],
+      ),
+    );
+  }
+}
+
+enum _GlobalTool { notifications, settings }
+
+class _DesktopToolRail extends StatelessWidget {
+  const _DesktopToolRail();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Tooltip(
+            message: '通知中心',
+            child: IconButton(
+              onPressed: () => _showNotificationCenterPlaceholder(context),
+              icon: const Icon(Icons.notifications_none_rounded),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Tooltip(
+            message: '设置',
+            child: IconButton(
+              onPressed: () => context.push('/settings'),
+              icon: const Icon(Icons.settings_outlined),
             ),
           ),
         ],
@@ -219,35 +242,47 @@ class _DesktopShell extends StatelessWidget {
   }
 }
 
-class _TopToolOverlay extends StatelessWidget {
-  const _TopToolOverlay();
+class _MobileToolMenu extends StatelessWidget {
+  const _MobileToolMenu();
 
   @override
   Widget build(BuildContext context) {
-    return PositionedDirectional(
-      top: 8,
-      end: 12,
-      child: SafeArea(
-        minimum: EdgeInsets.zero,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Tooltip(
-              message: '通知中心',
-              child: IconButton.filledTonal(
-                onPressed: () => _showNotificationCenterPlaceholder(context),
-                icon: Badge(
-                  isLabelVisible: false,
-                  child: const Icon(Icons.notifications_none_rounded),
-                ),
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainer,
+      child: SizedBox(
+        width: 56,
+        child: PopupMenuButton<_GlobalTool>(
+          tooltip: '更多工具',
+          icon: const Icon(Icons.more_horiz_rounded),
+          onSelected: (tool) {
+            switch (tool) {
+              case _GlobalTool.notifications:
+                _showNotificationCenterPlaceholder(context);
+                break;
+              case _GlobalTool.settings:
+                context.push('/settings');
+                break;
+            }
+          },
+          itemBuilder: (context) => const [
+            PopupMenuItem(
+              value: _GlobalTool.notifications,
+              child: Row(
+                children: [
+                  Icon(Icons.notifications_none_rounded),
+                  SizedBox(width: 12),
+                  Text('通知中心'),
+                ],
               ),
             ),
-            const SizedBox(width: 8),
-            Tooltip(
-              message: '设置',
-              child: IconButton.filledTonal(
-                onPressed: () => context.push('/settings'),
-                icon: const Icon(Icons.settings_outlined),
+            PopupMenuItem(
+              value: _GlobalTool.settings,
+              child: Row(
+                children: [
+                  Icon(Icons.settings_outlined),
+                  SizedBox(width: 12),
+                  Text('设置'),
+                ],
               ),
             ),
           ],
@@ -295,37 +330,4 @@ void _showNotificationCenterPlaceholder(BuildContext context) {
       ),
     ),
   );
-}
-
-/// A wrapper that animates transitions between navigation branches.
-class _AnimatedBranchContainer extends StatelessWidget {
-  final int currentIndex;
-  final Widget child;
-
-  const _AnimatedBranchContainer({
-    required this.currentIndex,
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedSwitcher(
-      duration: 400.ms,
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0.02, 0), // Subtle horizontal slide
-              end: Offset.zero,
-            ).animate(animation),
-            child: child,
-          ),
-        );
-      },
-      child: KeyedSubtree(key: ValueKey<int>(currentIndex), child: child),
-    );
-  }
 }

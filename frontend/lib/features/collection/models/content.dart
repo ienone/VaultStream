@@ -65,6 +65,10 @@ abstract class ContentDetail with _$ContentDetail {
     required String url,
     @JsonKey(name: 'clean_url') String? cleanUrl,
     required String status,
+    // 解析失败诊断（后端 ContentDetail schema 已提供）
+    @JsonKey(name: 'failure_count') @Default(0) int failureCount,
+    @JsonKey(name: 'last_error') String? lastError,
+    @JsonKey(name: 'last_error_type') String? lastErrorType,
     @JsonKey(name: 'review_status') String? reviewStatus,
     required List<String> tags,
     @JsonKey(name: 'is_nsfw') required bool isNsfw,

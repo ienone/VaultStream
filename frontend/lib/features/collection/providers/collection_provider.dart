@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/sse_service.dart';
 import '../models/content.dart';
+import '../models/processing_status.dart';
 import 'collection_filter_provider.dart';
 
 part 'collection_provider.g.dart';
@@ -305,6 +305,8 @@ class Collection extends _$Collection {
       coverUrl: row['cover_url'] as String?,
       reviewStatus: row['review_status'] as String?,
       discoveryState: row['discovery_state'] as String?,
+      contentType: row['content_type'] as String?,
+      layoutType: row['effective_layout_type'] as String?,
       semanticScore: (row['score'] as num?)?.toDouble(),
       semanticMatchSource: row['match_source'] as String?,
       semanticChunkTitle: row['chunk_title'] as String?,
@@ -363,9 +365,15 @@ Future<ContentDetail> contentDetail(Ref ref, int id) async {
   return ContentDetail.fromJson(response.data);
 }
 
-final contentProcessingStatusProvider =
-    FutureProvider.autoDispose.family<Map<String, dynamic>, int>((ref, id) async {
-      final dio = ref.watch(apiClientProvider);
-      final response = await dio.get('/contents/$id/processing-status');
-      return Map<String, dynamic>.from(response.data as Map);
-    });
+/// 内容后处理状态。
+///
+/// 返回后端 `/contents/{id}/processing-status` 的 typed contract，
+/// 调用方不再解析裸 Map，也不根据状态字符串推断可执行动作。
+@riverpod
+Future<ContentProcessingStatus> contentProcessingStatus(Ref ref, int id) async {
+  final dio = ref.watch(apiClientProvider);
+  final response = await dio.get('/contents/$id/processing-status');
+  return ContentProcessingStatus.fromJson(
+    Map<String, dynamic>.from(response.data as Map),
+  );
+}

@@ -115,6 +115,26 @@ class CollectionFilter extends _$CollectionFilter {
     state = const CollectionFilterState(searchQuery: '');
   }
 
+  /// 移除单个已生效筛选。供筛选摘要行的删除操作使用。
+  void removePlatform(String platform) => state = state.copyWith(
+    platforms: state.platforms.where((p) => p != platform).toList(),
+    clearPlatforms: state.platforms.length <= 1,
+  );
+
+  void removeStatus(String status) => state = state.copyWith(
+    statuses: state.statuses.where((s) => s != status).toList(),
+    clearStatuses: state.statuses.length <= 1,
+  );
+
+  void removeTag(String tag) => state = state.copyWith(
+    tags: state.tags.where((t) => t != tag).toList(),
+    clearTags: state.tags.length <= 1,
+  );
+
+  void clearAuthor() => state = state.copyWith(clearAuthor: true);
+
+  void clearDateRange() => state = state.copyWith(clearDateRange: true);
+
   void setSearchMode(String mode) {
     if (mode != 'keyword' && mode != 'semantic') return;
     state = state.copyWith(searchMode: mode);

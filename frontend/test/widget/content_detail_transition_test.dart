@@ -11,7 +11,50 @@ import 'package:frontend/features/collection/providers/collection_provider.dart'
 import 'package:frontend/features/collection/widgets/list/collection_card_preview.dart';
 
 void main() {
-  testWidgets('ContentDetailPage loading state keeps preview without Hero', (
+  testWidgets('card stays within constrained Hero flight dimensions', (
+    tester,
+  ) async {
+    final preview = ShareCard(
+      id: 41,
+      platform: 'twitter',
+      url: 'https://example.test/item/41',
+      status: 'parse_success',
+      layoutType: 'gallery',
+      contentType: 'tweet',
+      title:
+          'A card title that remains visible while the shared container flies',
+      authorName: 'Preview author',
+      tags: const ['transition'],
+      createdAt: DateTime(2026, 5, 25),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWith(
+            (ref) => Dio(BaseOptions(baseUrl: 'http://localhost')),
+          ),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 603,
+                height: 226,
+                child: CollectionCardPreview(content: preview),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('ContentDetailPage loading state mounts one shared container', (
     tester,
   ) async {
     final preview = ShareCard(
@@ -45,12 +88,21 @@ void main() {
 
     await tester.pump();
 
-    expect(find.byType(Hero), findsNothing);
+    // 只存在卡片外壳这一套共享视觉，正文和媒体不参与。
+    expect(find.byType(Hero), findsOneWidget);
+    // 卡片快照与顶栏标题共同保持卡片到详情的信息连续性。
     expect(find.byType(CollectionCardPreview), findsOneWidget);
-    expect(find.text('Preview title'), findsOneWidget);
+    expect(find.text('Preview title'), findsNWidgets(2));
+    expect(
+      find.descendant(
+        of: find.byType(AppBar),
+        matching: find.text('Preview title'),
+      ),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('ContentDetailPage data state does not mount card Hero target', (
+  testWidgets('ContentDetailPage data state keeps one opaque Hero target', (
     tester,
   ) async {
     final preview = ShareCard(
@@ -95,7 +147,11 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.byType(Hero), findsNothing);
+    expect(find.byType(Hero), findsOneWidget);
+    expect(
+      find.descendant(of: find.byType(Hero), matching: find.byType(Material)),
+      findsWidgets,
+    );
     expect(find.text('Loaded detail title'), findsWidgets);
     expect(find.text('Detail author'), findsWidgets);
     expect(find.text('transition'), findsWidgets);

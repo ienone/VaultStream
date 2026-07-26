@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/network/api_client.dart';
 import '../../models/content.dart';
-import '../../providers/collection_provider.dart';
+import '../../providers/content_actions_controller.dart';
 
 class EditContentDialog extends ConsumerStatefulWidget {
   final ContentDetail content;
@@ -28,9 +27,7 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.content.title);
-    _descriptionController = TextEditingController(
-      text: widget.content.body,
-    );
+    _descriptionController = TextEditingController(text: widget.content.body);
     _authorController = TextEditingController(text: widget.content.authorName);
     _tagsController = TextEditingController(
       text: widget.content.tags.join(' '),
@@ -56,16 +53,13 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
       _errorMessage = null;
     });
 
-    try {
-      final dio = ref.read(apiClientProvider);
-      final tags = _tagsController.text
-          .split(RegExp(r'[,\s，]'))
-          .where((t) => t.isNotEmpty)
-          .toList();
-
-      await dio.patch(
-        '/contents/${widget.content.id}',
-        data: {
+    final tags = _tagsController.text
+        .split(RegExp(r'[,\s，]'))
+        .where((t) => t.isNotEmpty)
+        .toList();
+    final result = await ref
+        .read(contentActionsProvider.notifier)
+        .updateContent(widget.content.id, {
           'title': _titleController.text.trim(),
           'body': _descriptionController.text.trim(),
           'author_name': _authorController.text.trim(),
@@ -73,19 +67,15 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
           'tags': tags,
           'is_nsfw': _isNsfw,
           'layout_type_override': _selectedLayout,
-        },
-      );
+        });
 
-      if (mounted) {
-        // 刷新详情和列表
-        ref.invalidate(contentDetailProvider(widget.content.id));
-        ref.invalidate(collectionProvider);
-        Navigator.of(context).pop(true);
-      }
-    } catch (e) {
+    if (!mounted) return;
+    if (result.ok) {
+      Navigator.of(context).pop(true);
+    } else {
       setState(() {
         _isLoading = false;
-        _errorMessage = '修改失败: $e';
+        _errorMessage = result.message;
       });
     }
   }
@@ -140,11 +130,19 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
                   isExpanded: true,
                   items: const [
                     DropdownMenuItem(value: null, child: Text('自动检测 (默认)')),
-                    DropdownMenuItem(value: 'article', child: Text('文章 (Article)')),
-                    DropdownMenuItem(value: 'gallery', child: Text('画廊 (Gallery)')),
+                    DropdownMenuItem(
+                      value: 'article',
+                      child: Text('文章 (Article)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'gallery',
+                      child: Text('画廊 (Gallery)'),
+                    ),
                     DropdownMenuItem(value: 'video', child: Text('视频 (Video)')),
                   ],
-                  onChanged: _isLoading ? null : (val) => setState(() => _selectedLayout = val),
+                  onChanged: _isLoading
+                      ? null
+                      : (val) => setState(() => _selectedLayout = val),
                 ),
               ),
             ),

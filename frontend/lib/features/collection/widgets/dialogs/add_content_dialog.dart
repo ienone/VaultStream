@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/network/api_client.dart';
-import '../../providers/collection_provider.dart';
+import '../../providers/content_actions_controller.dart';
 
 class AddContentDialog extends ConsumerStatefulWidget {
   const AddContentDialog({super.key});
@@ -59,29 +58,23 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
       _errorMessage = null;
     });
 
-    try {
-      final dio = ref.read(apiClientProvider);
-      
-      // 合并快捷标签和自定义标签
-      final customTags = _tagsController.text
-          .split(RegExp(r'[,\s，]'))
-          .where((t) => t.isNotEmpty)
-          .toList();
-      final allTags = {..._selectedTags, ...customTags}.toList();
+    // 合并快捷标签和自定义标签。
+    final customTags = _tagsController.text
+        .split(RegExp(r'[,\s，]'))
+        .where((t) => t.isNotEmpty)
+        .toList();
+    final allTags = {..._selectedTags, ...customTags}.toList();
+    final result = await ref
+        .read(contentActionsProvider.notifier)
+        .createShare(url: url, tags: allTags, isNsfw: _isNsfw);
 
-      await dio.post(
-        '/shares',
-        data: {'url': url, 'tags': allTags, 'is_nsfw': _isNsfw, 'source': 'app'},
-      );
-
-      if (mounted) {
-        ref.invalidate(collectionProvider);
-        Navigator.of(context).pop(true);
-      }
-    } catch (e) {
+    if (!mounted) return;
+    if (result.ok) {
+      Navigator.of(context).pop(true);
+    } else {
       setState(() {
         _isLoading = false;
-        _errorMessage = '添加失败: $e';
+        _errorMessage = result.message;
       });
     }
   }
@@ -206,7 +199,9 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
                 ),
               ),
               value: _isNsfw,
-              onChanged: _isLoading ? null : (val) => setState(() => _isNsfw = val),
+              onChanged: _isLoading
+                  ? null
+                  : (val) => setState(() => _isNsfw = val),
               contentPadding: EdgeInsets.zero,
             ),
 
@@ -221,7 +216,11 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.error_outline, color: colorScheme.error, size: 20),
+                    Icon(
+                      Icons.error_outline,
+                      color: colorScheme.error,
+                      size: 20,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -240,7 +239,9 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
+                    onPressed: _isLoading
+                        ? null
+                        : () => Navigator.of(context).pop(),
                     child: const Text('取消'),
                   ),
                 ),

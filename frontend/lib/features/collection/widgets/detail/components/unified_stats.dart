@@ -19,7 +19,6 @@ class UnifiedStats extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final stats = detail.extraStats;
-    final bool isBilibili = detail.platform.isBilibili;
     final bool isWeibo = detail.platform.isWeibo;
     final bool isZhihu = detail.platform.isZhihu;
     final bool isXiaohongshu = detail.platform.isXiaohongshu;
@@ -33,10 +32,12 @@ class UnifiedStats extends StatelessWidget {
       if (isXiaohongshu) {
         // 小红书用户统计
         final xhsStats = stats;
-        final followers = xhsStats['followers'] ?? xhsStats['follower_count'] ?? 0;
-        final following = xhsStats['following'] ?? xhsStats['following_count'] ?? 0;
+        final followers =
+            xhsStats['followers'] ?? xhsStats['follower_count'] ?? 0;
+        final following =
+            xhsStats['following'] ?? xhsStats['following_count'] ?? 0;
         final liked = xhsStats['liked'] ?? xhsStats['liked_count'] ?? 0;
-        
+
         if (followers is num && followers > 0) {
           items.add(
             UnifiedStatItem(
@@ -65,56 +66,70 @@ class UnifiedStats extends StatelessWidget {
           );
         }
       } else if (isWeibo) {
-        items.add(
-          UnifiedStatItem(
-            icon: Icons.people_outline,
-            label: '粉丝',
-            value: formatCount(detail.viewCount),
-          ),
-        );
-        items.add(
-          UnifiedStatItem(
-            icon: Icons.person_add_alt_1_outlined,
-            label: '关注',
-            value: formatCount(detail.shareCount),
-          ),
-        );
-        items.add(
-          UnifiedStatItem(
-            icon: Icons.article_outlined,
-            label: '微博',
-            value: formatCount(detail.commentCount),
-          ),
-        );
+        if (detail.viewCount > 0) {
+          items.add(
+            UnifiedStatItem(
+              icon: Icons.people_outline,
+              label: '粉丝',
+              value: formatCount(detail.viewCount),
+            ),
+          );
+        }
+        if (detail.shareCount > 0) {
+          items.add(
+            UnifiedStatItem(
+              icon: Icons.person_add_alt_1_outlined,
+              label: '关注',
+              value: formatCount(detail.shareCount),
+            ),
+          );
+        }
+        if (detail.commentCount > 0) {
+          items.add(
+            UnifiedStatItem(
+              icon: Icons.article_outlined,
+              label: '微博',
+              value: formatCount(detail.commentCount),
+            ),
+          );
+        }
       } else if (isZhihu) {
-        items.add(
-          UnifiedStatItem(
-            icon: Icons.people_outline,
-            label: '粉丝',
-            value: formatCount(detail.viewCount),
-          ),
-        );
-        items.add(
-          UnifiedStatItem(
-            icon: Icons.person_add_alt_1_outlined,
-            label: '关注',
-            value: formatCount(detail.shareCount),
-          ),
-        );
-        items.add(
-          UnifiedStatItem(
-            icon: Icons.thumb_up_alt_outlined,
-            label: '获赞',
-            value: formatCount(detail.likeCount),
-          ),
-        );
-        items.add(
-          UnifiedStatItem(
-            icon: Icons.star_border,
-            label: '收藏',
-            value: formatCount(detail.collectCount),
-          ),
-        );
+        if (detail.viewCount > 0) {
+          items.add(
+            UnifiedStatItem(
+              icon: Icons.people_outline,
+              label: '粉丝',
+              value: formatCount(detail.viewCount),
+            ),
+          );
+        }
+        if (detail.shareCount > 0) {
+          items.add(
+            UnifiedStatItem(
+              icon: Icons.person_add_alt_1_outlined,
+              label: '关注',
+              value: formatCount(detail.shareCount),
+            ),
+          );
+        }
+        if (detail.likeCount > 0) {
+          items.add(
+            UnifiedStatItem(
+              icon: Icons.thumb_up_alt_outlined,
+              label: '获赞',
+              value: formatCount(detail.likeCount),
+            ),
+          );
+        }
+        if (detail.collectCount > 0) {
+          items.add(
+            UnifiedStatItem(
+              icon: Icons.star_border,
+              label: '收藏',
+              value: formatCount(detail.collectCount),
+            ),
+          );
+        }
       }
 
       final Map<String, String> keyMap = {
@@ -147,20 +162,24 @@ class UnifiedStats extends StatelessWidget {
       }
     } else if (isColumn) {
       // 专栏统计
-      items.add(
-        UnifiedStatItem(
-          icon: Icons.people_outline,
-          label: '关注者',
-          value: formatCount(detail.viewCount),
-        ),
-      );
-      items.add(
-        UnifiedStatItem(
-          icon: Icons.article_outlined,
-          label: '文章数',
-          value: formatCount(detail.commentCount),
-        ),
-      );
+      if (detail.viewCount > 0) {
+        items.add(
+          UnifiedStatItem(
+            icon: Icons.people_outline,
+            label: '关注者',
+            value: formatCount(detail.viewCount),
+          ),
+        );
+      }
+      if (detail.commentCount > 0) {
+        items.add(
+          UnifiedStatItem(
+            icon: Icons.article_outlined,
+            label: '文章数',
+            value: formatCount(detail.commentCount),
+          ),
+        );
+      }
       if (detail.likeCount > 0) {
         items.add(
           UnifiedStatItem(
@@ -172,13 +191,15 @@ class UnifiedStats extends StatelessWidget {
       }
     } else if (isCollection) {
       // 收藏夹统计
-      items.add(
-        UnifiedStatItem(
-          icon: Icons.people_outline,
-          label: '关注者',
-          value: formatCount(detail.collectCount),
-        ),
-      );
+      if (detail.collectCount > 0) {
+        items.add(
+          UnifiedStatItem(
+            icon: Icons.people_outline,
+            label: '关注者',
+            value: formatCount(detail.collectCount),
+          ),
+        );
+      }
       if (stats['item_count'] != null) {
         items.add(
           UnifiedStatItem(
@@ -207,7 +228,7 @@ class UnifiedStats extends StatelessWidget {
         );
       }
     } else {
-      if (detail.viewCount > 0 || isBilibili) {
+      if (detail.viewCount > 0) {
         items.add(
           UnifiedStatItem(
             icon: Icons.remove_red_eye_outlined,
@@ -217,7 +238,7 @@ class UnifiedStats extends StatelessWidget {
         );
       }
 
-      if (detail.likeCount > 0 || isZhihu || isBilibili || isXiaohongshu) {
+      if (detail.likeCount > 0) {
         items.add(
           UnifiedStatItem(
             icon: isZhihu ? Icons.thumb_up_alt_outlined : Icons.favorite_border,
@@ -257,8 +278,7 @@ class UnifiedStats extends StatelessWidget {
           );
         }
       } else {
-        // 其他平台保持原有逻辑
-        if (detail.collectCount > 0 || isBilibili || isZhihu) {
+        if (detail.collectCount > 0) {
           items.add(
             UnifiedStatItem(
               icon: Icons.star_border,
@@ -268,7 +288,7 @@ class UnifiedStats extends StatelessWidget {
           );
         }
 
-        if (detail.commentCount > 0 || isBilibili || isWeibo || isZhihu) {
+        if (detail.commentCount > 0) {
           items.add(
             UnifiedStatItem(
               icon: Icons.chat_bubble_outline,
@@ -278,7 +298,7 @@ class UnifiedStats extends StatelessWidget {
           );
         }
 
-        if (detail.shareCount > 0 || isWeibo || isBilibili) {
+        if (detail.shareCount > 0) {
           items.add(
             UnifiedStatItem(
               icon: Icons.repeat_rounded,

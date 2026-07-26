@@ -2,89 +2,66 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../../core/network/api_client.dart';
 import '../../../../../core/utils/toast.dart';
+import '../../../../../theme/design_tokens.dart';
+import '../../../models/processing_status.dart';
 import '../../../providers/collection_provider.dart';
+import '../../../providers/content_actions_controller.dart';
 
+/// 内容后处理状态面板。
+///
+/// 只消费 `/contents/{id}/processing-status` 的 typed contract：
+/// 状态来自 [ProcessingStageState]，可执行动作来自 [ProcessingStageAction]。
+/// 面板不推断动作、不解析状态字符串，写操作全部经由
+/// [ContentActions] 控制层。
 class PostProcessingStatusPanel extends ConsumerWidget {
+  const PostProcessingStatusPanel({
+    super.key,
+    required this.contentId,
+    this.initiallyExpanded = false,
+  });
+
   final int contentId;
 
-  const PostProcessingStatusPanel({super.key, required this.contentId});
+  /// 默认是否展开全部阶段。窄屏默认折叠，只显示需要关注的阶段。
+  final bool initiallyExpanded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final statusAsync = ref.watch(contentProcessingStatusProvider(contentId));
-    final colorScheme = Theme.of(context).colorScheme;
 
     return statusAsync.when(
-      data: (status) {
-        final stages = (status['stages'] as List<dynamic>? ?? [])
-            .map((item) => Map<String, dynamic>.from(item as Map))
-            .toList();
-        if (stages.isEmpty) return const SizedBox.shrink();
-
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: colorScheme.outlineVariant.withValues(alpha: 0.45),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '处理状态',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 10),
-              for (final stage in stages)
-                _StageRow(contentId: contentId, stage: stage),
-            ],
-          ),
-        );
-      },
-      loading: () => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: const Row(
+      data: (status) => _StatusPanelBody(
+        status: status,
+        initiallyExpanded: initiallyExpanded,
+      ),
+      loading: () => const _PanelShell(
+        child: Row(
           children: [
             SizedBox(
               width: 16,
               height: 16,
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
-            SizedBox(width: 10),
+            SizedBox(width: AppSpacing.sm),
             Text('处理状态加载中'),
           ],
         ),
       ),
-      error: (_, _) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: colorScheme.errorContainer.withValues(alpha: 0.35),
-          borderRadius: BorderRadius.circular(16),
-        ),
+      error: (_, _) => _PanelShell(
         child: Row(
           children: [
-            Icon(Icons.error_outline_rounded, color: colorScheme.error),
-            const SizedBox(width: 10),
+            Icon(
+              Icons.error_outline_rounded,
+              size: 20,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(width: AppSpacing.sm),
             const Expanded(child: Text('处理状态加载失败')),
-            IconButton(
-              tooltip: '刷新',
-              icon: const Icon(Icons.refresh_rounded),
+            TextButton(
               onPressed: () =>
                   ref.invalidate(contentProcessingStatusProvider(contentId)),
+              child: const Text('重试'),
             ),
           ],
         ),
@@ -93,115 +70,267 @@ class PostProcessingStatusPanel extends ConsumerWidget {
   }
 }
 
-class _StageRow extends ConsumerWidget {
-  final int contentId;
-  final Map<String, dynamic> stage;
+class _PanelShell extends StatelessWidget {
+  const _PanelShell({required this.child});
 
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: AppShape.paneBorder,
+      ),
+      child: child,
+    );
+  }
+}
+
+class _StatusPanelBody extends StatefulWidget {
+  const _StatusPanelBody({
+    required this.status,
+    required this.initiallyExpanded,
+  });
+
+  final ContentProcessingStatus status;
+  final bool initiallyExpanded;
+
+  @override
+  State<_StatusPanelBody> createState() => _StatusPanelBodyState();
+}
+
+class _StatusPanelBodyState extends State<_StatusPanelBody> {
+  late bool _showAll = widget.initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final status = widget.status;
+
+    // 默认只显示与当前内容相关的阶段；不适用和已关闭的阶段折叠起来，
+    // 避免"暂未匹配分发规则"这类信息与真实问题同权。
+    final visible = _showAll ? status.stages : status.activeStages;
+    final hiddenCount = status.stages.length - visible.length;
+
+    return _PanelShell(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '处理状态',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              _StateChip(state: status.state),
+            ],
+          ),
+          if (visible.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.xs),
+              child: Text(
+                '该内容没有进行中的后处理',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          for (final stage in visible)
+            _StageRow(contentId: status.contentId, stage: stage),
+          if (hiddenCount > 0 || _showAll)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () => setState(() => _showAll = !_showAll),
+                child: Text(_showAll ? '收起不适用阶段' : '显示其余 $hiddenCount 个阶段'),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 规范化状态的视觉表达。
+///
+/// 状态不只依赖颜色：每个状态同时有图标和文字标签。
+class _StateChip extends StatelessWidget {
+  const _StateChip({required this.state});
+
+  final ProcessingStageState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = stateColor(theme.colorScheme, state);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(stateIcon(state), size: 16, color: color),
+        const SizedBox(width: AppSpacing.xxs),
+        Text(
+          stateLabel(state),
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 状态到颜色的映射。
+///
+/// 只使用 `ColorScheme` 角色：`error` 仅用于真实失败，`tertiary` 表达
+/// "部分完成 / 被阻塞"，成功保持安静，不适用使用 outline。
+Color stateColor(ColorScheme scheme, ProcessingStageState state) {
+  return switch (state) {
+    ProcessingStageState.failed => scheme.error,
+    ProcessingStageState.partial ||
+    ProcessingStageState.blocked => scheme.tertiary,
+    ProcessingStageState.running ||
+    ProcessingStageState.pending => scheme.primary,
+    ProcessingStageState.success => scheme.onSurfaceVariant,
+    ProcessingStageState.disabled ||
+    ProcessingStageState.notApplicable => scheme.outline,
+  };
+}
+
+IconData stateIcon(ProcessingStageState state) {
+  return switch (state) {
+    ProcessingStageState.failed => Icons.error_rounded,
+    ProcessingStageState.partial => Icons.incomplete_circle_rounded,
+    ProcessingStageState.blocked => Icons.lock_clock_rounded,
+    ProcessingStageState.running => Icons.autorenew_rounded,
+    ProcessingStageState.pending => Icons.schedule_rounded,
+    ProcessingStageState.success => Icons.check_circle_rounded,
+    ProcessingStageState.disabled => Icons.do_not_disturb_on_rounded,
+    ProcessingStageState.notApplicable => Icons.remove_circle_outline_rounded,
+  };
+}
+
+String stateLabel(ProcessingStageState state) {
+  return switch (state) {
+    ProcessingStageState.failed => '失败',
+    ProcessingStageState.partial => '部分完成',
+    ProcessingStageState.blocked => '受阻',
+    ProcessingStageState.running => '进行中',
+    ProcessingStageState.pending => '待处理',
+    ProcessingStageState.success => '完成',
+    ProcessingStageState.disabled => '已关闭',
+    ProcessingStageState.notApplicable => '不适用',
+  };
+}
+
+class _StageRow extends ConsumerWidget {
   const _StageRow({required this.contentId, required this.stage});
+
+  final int contentId;
+  final ProcessingStage stage;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final status = stage['status']?.toString() ?? 'unknown';
-    final color = _statusColor(context, status);
-    final label = stage['label']?.toString() ?? stage['key']?.toString() ?? '';
-    final message = stage['message']?.toString() ?? '';
-    final failures = _extractFailures(stage);
-    final issues = _extractStringList(stage['issues']);
-    final actions = _extractStringList(stage['actions']);
-    final action = _stageAction(stage, status);
+    final theme = Theme.of(context);
+    final pending = ref.watch(contentActionsProvider);
+    final progress = stage.progress;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(_statusIcon(status), size: 18, color: color),
-              const SizedBox(width: 10),
+              Icon(
+                stateIcon(stage.state),
+                size: 18,
+                color: stateColor(theme.colorScheme, stage.state),
+              ),
+              const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      label,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      stage.label,
+                      style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    if (message.isNotEmpty)
+                    if (stage.message.isNotEmpty)
                       Text(
-                        message,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        stage.message,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
-                    if (failures.isNotEmpty)
+                    if (progress != null && progress < 1)
                       Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          _failureSummary(failures),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: Theme.of(context).colorScheme.error,
-                              ),
+                        padding: const EdgeInsets.only(top: AppSpacing.xxs),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(AppRadius.pill),
+                          child: LinearProgressIndicator(
+                            value: progress,
+                            minHeight: 4,
+                          ),
                         ),
                       ),
-                    if (issues.isNotEmpty)
-                      _StageHintLine(
-                        label: '问题',
-                        values: issues,
-                        color: Theme.of(context).colorScheme.error,
+                    for (final issue in stage.issues)
+                      _HintLine(
+                        icon: Icons.report_problem_outlined,
+                        text: issue,
+                        color: theme.colorScheme.error,
                       ),
-                    if (actions.isNotEmpty)
-                      _StageHintLine(
-                        label: '建议',
-                        values: actions,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    for (final hint in stage.hints)
+                      _HintLine(
+                        icon: Icons.lightbulb_outline_rounded,
+                        text: hint,
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppSpacing.xs),
               Text(
-                _statusLabel(status),
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: color,
+                stateLabel(stage.state),
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: stateColor(theme.colorScheme, stage.state),
                   fontWeight: FontWeight.w700,
                 ),
               ),
             ],
           ),
-          if (action != null || failures.isNotEmpty)
+          if (stage.actions.isNotEmpty || stage.failures.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.only(left: 28, top: 6),
+              padding: const EdgeInsets.only(
+                left: AppSpacing.xl + AppSpacing.xxs,
+                top: AppSpacing.xs,
+              ),
               child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: AppSpacing.xs,
+                runSpacing: AppSpacing.xs,
                 children: [
-                  if (action != null)
-                    FilledButton.tonalIcon(
-                      onPressed: () => _runAction(context, ref, action),
-                      icon: Icon(action.icon, size: 16),
-                      label: Text(action.label),
+                  for (final action in stage.actions)
+                    _ActionButton(
+                      contentId: contentId,
+                      action: action,
+                      busy: pending.contains('$contentId:${action.kind.name}'),
                     ),
-                  if (failures.isNotEmpty)
+                  if (stage.failures.isNotEmpty)
                     TextButton.icon(
-                      onPressed: () => _showFailureDetails(context, failures),
+                      onPressed: () => _showFailures(context, stage),
                       icon: const Icon(Icons.receipt_long_rounded, size: 16),
-                      label: const Text('失败详情'),
+                      label: Text('失败详情 (${stage.failuresTotal})'),
                     ),
-                  if (_isSemanticStage)
-                    for (final failure in failures)
-                      if (failure['id'] != null)
-                        TextButton.icon(
-                          onPressed: () =>
-                              _retryEmbedding(context, ref, failure),
-                          icon: const Icon(Icons.replay_rounded, size: 16),
-                          label: Text(_retryEmbeddingLabel(failure)),
-                        ),
                 ],
               ),
             ),
@@ -210,217 +339,34 @@ class _StageRow extends ConsumerWidget {
     );
   }
 
-  List<Map<String, dynamic>> _extractFailures(Map<String, dynamic> stage) {
-    final details = stage['details'];
-    if (details is! Map) return const [];
-    final failures = details['failures'];
-    if (failures is! List) return const [];
-    return failures
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .toList();
-  }
-
-  List<String> _extractStringList(dynamic value) {
-    if (value is! List) return const [];
-    return value
-        .map((item) => item?.toString().trim() ?? '')
-        .where((item) => item.isNotEmpty)
-        .toList();
-  }
-
-  String _failureSummary(List<Map<String, dynamic>> failures) {
-    final first = failures.first;
-    final text =
-        first['last_error'] ??
-        first['failure_reason'] ??
-        first['last_error_type'] ??
-        '未知错误';
-    final suffix = failures.length > 1 ? ' 等 ${failures.length} 项' : '';
-    return '$text$suffix';
-  }
-
-  _StageAction? _stageAction(Map<String, dynamic> stage, String status) {
-    final key = stage['key']?.toString();
-    if (key == 'summary' &&
-        !{'success', 'waiting_parse', 'disabled'}.contains(status)) {
-      return const _StageAction(
-        label: '生成摘要',
-        icon: Icons.auto_awesome_rounded,
-        kind: _StageActionKind.summary,
-      );
-    }
-    if (key == 'semantic_index' && {'failed', 'not_indexed'}.contains(status)) {
-      return const _StageAction(
-        label: '重建索引',
-        icon: Icons.hub_rounded,
-        kind: _StageActionKind.semanticIndex,
-      );
-    }
-    if (key == 'distribution' && {'failed', 'not_matched'}.contains(status)) {
-      return _StageAction(
-        label: status == 'failed' ? '重试分发' : '重新匹配',
-        icon: Icons.outbox_rounded,
-        kind: _StageActionKind.distribution,
-      );
-    }
-    if (key == 'patrol' && {'pending', 'not_scored'}.contains(status)) {
-      return const _StageAction(
-        label: '触发评分',
-        icon: Icons.rate_review_rounded,
-        kind: _StageActionKind.patrol,
-      );
-    }
-    return null;
-  }
-
-  bool get _isSemanticStage => stage['key']?.toString() == 'semantic_index';
-
-  Future<void> _runAction(
-    BuildContext context,
-    WidgetRef ref,
-    _StageAction action,
-  ) async {
-    final dio = ref.read(apiClientProvider);
-    try {
-      String successMessage;
-      String? runId;
-      switch (action.kind) {
-        case _StageActionKind.summary:
-          final response = await dio.post(
-            '/contents/$contentId/generate-summary?force=true',
-          );
-          runId = _extractRunId(response.data);
-          ref.invalidate(contentDetailProvider(contentId));
-          successMessage = '已开始生成摘要';
-          break;
-        case _StageActionKind.semanticIndex:
-          final response = await dio.post(
-            '/search/semantic/reindex',
-            data: {
-              'scope': 'single',
-              'content_id': contentId,
-              'dry_run': false,
-            },
-          );
-          runId = _extractRunId(response.data);
-          successMessage = '已调度语义索引重建';
-          break;
-        case _StageActionKind.distribution:
-          final failures = _extractFailures(stage);
-          if (failures.isNotEmpty) {
-            for (final failure in failures) {
-              final id = failure['id'];
-              if (id == null) continue;
-              await dio.post(
-                '/distribution-queue/items/$id/retry',
-                data: {'reset_attempts': true},
-              );
-            }
-            successMessage = '已重试失败分发项';
-          } else {
-            await dio.post(
-              '/distribution-queue/enqueue/$contentId',
-              data: {'force': true},
-            );
-            successMessage = '已重新匹配分发规则';
-          }
-          break;
-        case _StageActionKind.patrol:
-          final response = await dio.post('/contents/$contentId/patrol-score');
-          runId = _extractRunId(response.data);
-          ref.invalidate(contentDetailProvider(contentId));
-          successMessage = '已触发巡逻评分';
-          break;
-      }
-      ref.invalidate(contentProcessingStatusProvider(contentId));
-      if (context.mounted) {
-        _showSuccessToast(context, successMessage, runId);
-      }
-    } catch (e) {
-      if (context.mounted) {
-        Toast.show(
-          context,
-          formatApiErrorMessage(e, fallbackMessage: '${action.label}失败'),
-          isError: true,
-        );
-      }
-    }
-  }
-
-  Future<void> _retryEmbedding(
-    BuildContext context,
-    WidgetRef ref,
-    Map<String, dynamic> failure,
-  ) async {
-    final id = failure['id'];
-    if (id == null) return;
-
-    final dio = ref.read(apiClientProvider);
-    try {
-      final response = await dio.post('/search/semantic/embeddings/$id/retry');
-      final runId = _extractRunId(response.data);
-      ref.invalidate(contentProcessingStatusProvider(contentId));
-      ref.invalidate(contentDetailProvider(contentId));
-      if (context.mounted) {
-        _showSuccessToast(context, '已重试语义分块', runId);
-      }
-    } catch (e) {
-      if (context.mounted) {
-        Toast.show(
-          context,
-          formatApiErrorMessage(e, fallbackMessage: '重试语义分块失败'),
-          isError: true,
-        );
-      }
-    }
-  }
-
-  String _retryEmbeddingLabel(Map<String, dynamic> failure) {
-    final chunk = failure['chunk_index'];
-    return chunk == null ? '重试分块' : '重试分块 $chunk';
-  }
-
-  void _showSuccessToast(BuildContext context, String message, String? runId) {
-    Toast.show(
-      context,
-      message,
-      action: runId == null
-          ? null
-          : SnackBarAction(
-              label: '查看日志',
-              onPressed: () =>
-                  context.go('/tasks/${Uri.encodeComponent(runId)}'),
-            ),
-    );
-  }
-
-  String? _extractRunId(dynamic data) {
-    if (data is! Map) return null;
-    final value = data['run_id']?.toString().trim();
-    return value == null || value.isEmpty ? null : value;
-  }
-
-  void _showFailureDetails(
-    BuildContext context,
-    List<Map<String, dynamic>> failures,
-  ) {
-    final detailsText = failures
-        .map(
-          (item) => item.entries
-              .where((entry) => entry.value != null)
-              .map((entry) => '${entry.key}: ${entry.value}')
-              .join('\n'),
-        )
-        .join('\n\n');
-
+  void _showFailures(BuildContext context, ProcessingStage stage) {
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('失败详情'),
+        title: Text('${stage.label} · 失败详情'),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppShape.sheet),
+        ),
         content: SizedBox(
-          width: 520,
-          child: SingleChildScrollView(child: SelectableText(detailsText)),
+          width: AppPane.formMaxWidth,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (stage.failuresTruncated)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                    child: Text(
+                      '共 ${stage.failuresTotal} 项失败，这里显示最近 ${stage.failures.length} 项。',
+                      style: Theme.of(dialogContext).textTheme.bodySmall,
+                    ),
+                  ),
+                for (final failure in stage.failures)
+                  _FailureTile(failure: failure),
+              ],
+            ),
+          ),
         ),
         actions: [
           TextButton(
@@ -431,117 +377,189 @@ class _StageRow extends ConsumerWidget {
       ),
     );
   }
-
-  IconData _statusIcon(String status) {
-    switch (status) {
-      case 'success':
-      case 'pushed':
-        return Icons.check_circle_rounded;
-      case 'queued':
-      case 'pending':
-        return Icons.schedule_rounded;
-      case 'failed':
-      case 'unavailable':
-        return Icons.error_rounded;
-      case 'disabled':
-      case 'not_matched':
-      case 'not_indexed':
-      case 'not_scored':
-      case 'waiting_parse':
-        return Icons.info_rounded;
-      default:
-        return Icons.help_rounded;
-    }
-  }
-
-  Color _statusColor(BuildContext context, String status) {
-    final colorScheme = Theme.of(context).colorScheme;
-    switch (status) {
-      case 'success':
-      case 'pushed':
-        return Colors.green;
-      case 'queued':
-      case 'pending':
-        return Colors.orange;
-      case 'failed':
-      case 'unavailable':
-        return colorScheme.error;
-      case 'disabled':
-      case 'not_matched':
-      case 'not_indexed':
-      case 'not_scored':
-      case 'waiting_parse':
-        return colorScheme.outline;
-      default:
-        return colorScheme.primary;
-    }
-  }
-
-  String _statusLabel(String status) {
-    switch (status) {
-      case 'success':
-        return '成功';
-      case 'pushed':
-        return '已推送';
-      case 'queued':
-        return '队列中';
-      case 'pending':
-        return '处理中';
-      case 'failed':
-        return '失败';
-      case 'unavailable':
-        return '不可用';
-      case 'disabled':
-        return '已关闭';
-      case 'not_matched':
-        return '未匹配';
-      case 'not_indexed':
-        return '未索引';
-      case 'not_scored':
-        return '未评分';
-      case 'waiting_parse':
-        return '等解析';
-      default:
-        return status;
-    }
-  }
 }
 
-class _StageHintLine extends StatelessWidget {
-  final String label;
-  final List<String> values;
-  final Color color;
+class _FailureTile extends StatelessWidget {
+  const _FailureTile({required this.failure});
 
-  const _StageHintLine({
-    required this.label,
-    required this.values,
-    required this.color,
-  });
+  final ProcessingStageFailure failure;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final attempts = failure.maxRetries == null
+        ? '已重试 ${failure.retryCount} 次'
+        : '已重试 ${failure.retryCount}/${failure.maxRetries} 次';
+
     return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Text(
-        '$label: ${values.join('；')}',
-        maxLines: 3,
-        overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: color),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            failure.reference ?? '未命名对象',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          SelectableText(
+            failure.reason ?? '未提供失败原因',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+            ),
+          ),
+          Text(
+            [
+              if (failure.errorType != null) failure.errorType!,
+              attempts,
+              failure.retryable ? '可重试' : '不可直接重试',
+              if (failure.occurredAt != null)
+                failure.occurredAt!.toLocal().toString(),
+            ].join(' · '),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-enum _StageActionKind { summary, semanticIndex, distribution, patrol }
-
-class _StageAction {
-  const _StageAction({
-    required this.label,
-    required this.icon,
-    required this.kind,
+class _ActionButton extends ConsumerWidget {
+  const _ActionButton({
+    required this.contentId,
+    required this.action,
+    required this.busy,
   });
 
-  final String label;
+  final int contentId;
+  final ProcessingStageAction action;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return FilledButton.tonalIcon(
+      onPressed: busy ? null : () => _run(context, ref),
+      icon: busy
+          ? const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(_iconFor(action.kind), size: 16),
+      label: Text(action.label),
+    );
+  }
+
+  Future<void> _run(BuildContext context, WidgetRef ref) async {
+    // 有外部副作用的动作（调用付费模型、向外部平台发送）必须显式确认。
+    if (action.externalEffect) {
+      final confirmed = await _confirm(context);
+      if (confirmed != true) return;
+    }
+    if (!context.mounted) return;
+
+    final result = await ref
+        .read(contentActionsProvider.notifier)
+        .runStageAction(contentId, action);
+
+    if (!context.mounted) return;
+    Toast.show(
+      context,
+      result.message,
+      isError: !result.ok,
+      action: result.runId == null
+          ? null
+          : SnackBarAction(
+              label: '查看日志',
+              onPressed: () =>
+                  context.push('/tasks/${Uri.encodeComponent(result.runId!)}'),
+            ),
+    );
+  }
+
+  Future<bool?> _confirm(BuildContext context) {
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppShape.sheet),
+        ),
+        title: Text(action.label),
+        content: Text(_confirmMessageFor(action)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('继续'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _confirmMessageFor(ProcessingStageAction action) {
+  final count = action.targetIds.length;
+  return switch (action.kind) {
+    ProcessingActionKind.generateSummary => '将调用摘要模型重新生成摘要、标签和语义分块，会产生模型调用成本。',
+    ProcessingActionKind.rebuildSemanticIndex =>
+      '将重新计算该内容的全部语义分块向量，会产生 Embedding 调用成本。',
+    ProcessingActionKind.retrySemanticChunk =>
+      '将重试 $count 个失败分块，会产生 Embedding 调用成本。',
+    ProcessingActionKind.retryDistributionItem =>
+      '将重新向外部平台发送 $count 条分发项。这是对外发送操作。',
+    ProcessingActionKind.rematchDistribution =>
+      '将按当前分发规则重新入队。匹配成功后内容会被发送到外部平台。',
+    ProcessingActionKind.patrolScore => '将调用模型对该内容重新评分，会产生模型调用成本。',
+  };
+}
+
+IconData _iconFor(ProcessingActionKind kind) {
+  return switch (kind) {
+    ProcessingActionKind.generateSummary => Icons.auto_awesome_rounded,
+    ProcessingActionKind.rebuildSemanticIndex => Icons.hub_rounded,
+    ProcessingActionKind.retrySemanticChunk => Icons.replay_rounded,
+    ProcessingActionKind.retryDistributionItem => Icons.outbox_rounded,
+    ProcessingActionKind.rematchDistribution => Icons.rule_rounded,
+    ProcessingActionKind.patrolScore => Icons.rate_review_rounded,
+  };
+}
+
+class _HintLine extends StatelessWidget {
+  const _HintLine({
+    required this.icon,
+    required this.text,
+    required this.color,
+  });
+
   final IconData icon;
-  final _StageActionKind kind;
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.xxs),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: AppSpacing.xxs),
+          Expanded(
+            child: Text(
+              text,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: color),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

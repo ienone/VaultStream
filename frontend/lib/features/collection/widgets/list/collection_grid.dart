@@ -1,21 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../../core/layout/responsive_layout.dart';
+import '../../../../theme/design_tokens.dart';
 import '../../models/content.dart';
 import 'content_card.dart';
 
+/// 收藏库内容网格。
+///
+/// 使用等节奏的自适应网格而不是瀑布流：混合内容需要稳定的阅读顺序
+/// 和视觉基线，瀑布流会让高度不断变化并导致重复布局测量。
+/// 列数依据组件自身可用宽度（见 [ResponsiveLayout.contentGridColumns]），
+/// 因此存在导航栏或侧栏时仍然正确。
 class CollectionGrid extends StatelessWidget {
-  final List<ShareCard> items;
-  final ScrollController scrollController;
-  final bool hasMore;
-  final bool isLoadingMore;
-  final RefreshCallback onRefresh;
-  final bool isSelectionMode;
-  final Set<int> selectedIds;
-  final ValueChanged<int>? onToggleSelection;
-  final ValueChanged<int>? onLongPress;
-
   const CollectionGrid({
     super.key,
     required this.items,
@@ -27,129 +24,130 @@ class CollectionGrid extends StatelessWidget {
     this.selectedIds = const {},
     this.onToggleSelection,
     this.onLongPress,
+    this.emptyState,
   });
+
+  final List<ShareCard> items;
+  final ScrollController scrollController;
+  final bool hasMore;
+  final bool isLoadingMore;
+  final RefreshCallback onRefresh;
+  final bool isSelectionMode;
+  final Set<int> selectedIds;
+  final ValueChanged<int>? onToggleSelection;
+  final ValueChanged<int>? onLongPress;
+  final Widget? emptyState;
 
   @override
   Widget build(BuildContext context) {
-    final topPadding = MediaQuery.of(context).padding.top + 15;
-    return RefreshIndicator(
-      onRefresh: onRefresh,
-      displacement: topPadding + 45,
-      child: CustomScrollView(
-        controller: scrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          if (items.isEmpty && !isLoadingMore)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.inbox_outlined,
-                      size: 64,
-                      color: Theme.of(context).colorScheme.outlineVariant,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      '这里空空如也',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '点击下方按钮添加新内容或修改筛选条件',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-            SliverPadding(
-              padding: EdgeInsets.fromLTRB(16, topPadding, 16, 20),
-              sliver: SliverMasonryGrid.count(
-                crossAxisCount: ResponsiveLayout.getColumnCount(context),
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                itemBuilder: (context, index) {
-                  final item = items[index];
-                  final isSelected = selectedIds.contains(item.id);
-                  return GestureDetector(
-                    onLongPress: onLongPress != null
-                        ? () => onLongPress!(item.id)
-                        : null,
-                    child: Stack(
-                      children: [
-                        ContentCard(
-                          content: item,
-                          index: index,
-                          onTap: isSelectionMode
-                              ? () => onToggleSelection?.call(item.id)
-                              : () {
-                                  final colorParam = item.coverColor != null
-                                      ? '?color=${Uri.encodeComponent(item.coverColor!)}'
-                                      : '';
-                                  context.push(
-                                    '/collection/${item.id}$colorParam',
-                                    extra: item,
-                                  );
-                                },
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final widthClass = ResponsiveLayout.widthClassFor(width);
+        final isCompact = widthClass.isCompact;
+
+        // 极窄屏收紧间距并弱化卡片边界；宽屏恢复正常呼吸感。
+        final gutter = isCompact ? AppSpacing.xs : AppSpacing.sm;
+        final horizontalPadding = isCompact ? AppSpacing.sm : AppSpacing.md;
+
+        final columns = ResponsiveLayout.contentGridColumns(width);
+        final itemWidth =
+            (width - horizontalPadding * 2 - gutter * (columns - 1)) / columns;
+        final isTiny = itemWidth < 200;
+        // 媒体区 16:9，文本区高度固定，保证每行基线一致。
+        final itemHeight = itemWidth * 9 / 16 + (isTiny ? 112 : 140);
+
+        return RefreshIndicator(
+          onRefresh: onRefresh,
+          child: CustomScrollView(
+            controller: scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              if (items.isEmpty && !isLoadingMore)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: emptyState ?? const _DefaultEmptyState(),
+                )
+              else
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    AppSpacing.xs,
+                    horizontalPadding,
+                    AppSpacing.md,
+                  ),
+                  sliver: SliverGrid.builder(
+                    gridDelegate:
+                        SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: columns,
+                          mainAxisSpacing: gutter,
+                          crossAxisSpacing: gutter,
+                          mainAxisExtent: itemHeight,
                         ),
-                        if (isSelectionMode)
-                          Positioned(
-                            top: 8,
-                            right: 8,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? Theme.of(context).colorScheme.primary
-                                    : Theme.of(context).colorScheme.surface
-                                          .withValues(alpha: 0.8),
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: Theme.of(context).colorScheme.primary,
-                                  width: 2,
-                                ),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(4),
-                                child: isSelected
-                                    ? Icon(
-                                        Icons.check,
-                                        size: 16,
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.onPrimary,
-                                      )
-                                    : const SizedBox(width: 16, height: 16),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  );
-                },
-                childCount: items.length,
-              ),
-            ),
-          if (hasMore || isLoadingMore)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 120, top: 20),
-                child: Center(
-                  child: isLoadingMore
-                      ? const CircularProgressIndicator()
-                      : const SizedBox.shrink(),
+                    itemCount: items.length,
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      return ContentCard(
+                        content: item,
+                        isSelectionMode: isSelectionMode,
+                        isSelected: selectedIds.contains(item.id),
+                        onLongPress: onLongPress == null
+                            ? null
+                            : () => onLongPress!(item.id),
+                        onTap: isSelectionMode
+                            ? () => onToggleSelection?.call(item.id)
+                            : () => _openDetail(context, item),
+                      );
+                    },
+                  ),
                 ),
-              ),
-            )
-          else
-            const SliverToBoxAdapter(child: SizedBox(height: 120)),
+              if (isLoadingMore)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                ),
+              // 为 FAB 与底部导航留出安全距离。
+              const SliverToBoxAdapter(child: SizedBox(height: 96)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _openDetail(BuildContext context, ShareCard item) {
+    final color = item.coverColor;
+    final query = color == null
+        ? ''
+        : '?color=${Uri.encodeComponent(color)}';
+    context.push('/collection/${item.id}$query', extra: item);
+  }
+}
+
+class _DefaultEmptyState extends StatelessWidget {
+  const _DefaultEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.inbox_outlined,
+            size: 48,
+            color: theme.colorScheme.outlineVariant,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            '这里空空如也',
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );

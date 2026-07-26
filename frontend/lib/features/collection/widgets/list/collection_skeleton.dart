@@ -1,45 +1,63 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
-import '../../../../core/layout/responsive_layout.dart';
 
+import '../../../../core/layout/responsive_layout.dart';
+import '../../../../theme/design_tokens.dart';
+
+/// 收藏库加载骨架。
+///
+/// 与 `CollectionGrid` 使用同一套列数和节奏，避免加载完成后布局跳动。
+/// 骨架只用于真实等待，不与内容同时显示。
 class CollectionSkeleton extends StatelessWidget {
   const CollectionSkeleton({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final topPadding = MediaQuery.of(context).padding.top + 15;
-    return MasonryGridView.count(
-      physics: const NeverScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(24, topPadding, 24, 100),
-      crossAxisCount: ResponsiveLayout.getColumnCount(context),
-      mainAxisSpacing: 20,
-      crossAxisSpacing: 20,
-      itemCount: 8,
-      itemBuilder: (context, index) => _SkeletonItem(index: index),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final isCompact = ResponsiveLayout.widthClassFor(width).isCompact;
+        final gutter = isCompact ? AppSpacing.xs : AppSpacing.sm;
+        final horizontalPadding = isCompact ? AppSpacing.sm : AppSpacing.md;
+        final columns = ResponsiveLayout.contentGridColumns(width);
+        final itemWidth =
+            (width - horizontalPadding * 2 - gutter * (columns - 1)) / columns;
+        final itemHeight = itemWidth * 9 / 16 + (itemWidth < 200 ? 112 : 140);
+
+        return GridView.builder(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            AppSpacing.xs,
+            horizontalPadding,
+            AppSpacing.md,
+          ),
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisSpacing: gutter,
+            crossAxisSpacing: gutter,
+            mainAxisExtent: itemHeight,
+          ),
+          itemCount: columns * 3,
+          itemBuilder: (context, index) => const _SkeletonCard(),
+        );
+      },
     );
   }
 }
 
-class _SkeletonItem extends StatefulWidget {
-  final int index;
-  const _SkeletonItem({required this.index});
+class _SkeletonCard extends StatefulWidget {
+  const _SkeletonCard();
 
   @override
-  State<_SkeletonItem> createState() => _SkeletonItemState();
+  State<_SkeletonCard> createState() => _SkeletonCardState();
 }
 
-class _SkeletonItemState extends State<_SkeletonItem>
+class _SkeletonCardState extends State<_SkeletonCard>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
-  }
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat(reverse: true);
 
   @override
   void dispose() {
@@ -49,16 +67,20 @@ class _SkeletonItemState extends State<_SkeletonItem>
 
   @override
   Widget build(BuildContext context) {
-    final height = 180.0 + (widget.index % 3) * 40;
-    return FadeTransition(
-      opacity: Tween(begin: 0.3, end: 0.6).animate(_controller),
-      child: Container(
-        height: height,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(16),
-        ),
+    final scheme = Theme.of(context).colorScheme;
+    final card = DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHigh,
+        borderRadius: AppShape.cardBorder,
       ),
+    );
+
+    // 减少动效开启时保持静态，不依赖闪烁传达"正在加载"。
+    if (MediaQuery.disableAnimationsOf(context)) return card;
+
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.4, end: 0.75).animate(_controller),
+      child: card,
     );
   }
 }

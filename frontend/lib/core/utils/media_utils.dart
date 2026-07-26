@@ -8,6 +8,45 @@ bool isVideo(String url) {
       lower.endsWith('.mkv');
 }
 
+/// 检查 URL 是否为浏览器和 video_player 可播放的常见音频格式。
+bool isAudio(String url) {
+  if (url.isEmpty) return false;
+  final lower = url.toLowerCase().split('?').first;
+  return lower.endsWith('.mp3') ||
+      lower.endsWith('.m4a') ||
+      lower.endsWith('.aac') ||
+      lower.endsWith('.ogg') ||
+      lower.endsWith('.oga') ||
+      lower.endsWith('.wav') ||
+      lower.endsWith('.flac') ||
+      lower.endsWith('.opus');
+}
+
+/// 映射可播放媒体 URL。
+///
+/// 与图片不同，远端音视频不能经过 `/proxy/image`；本地归档仍映射到
+/// 受鉴权的 `/api/v1/media/{key}`，普通 http(s) 地址保持原样。
+String mapPlayableUrl(String url, String apiBaseUrl) {
+  if (url.isEmpty) return url;
+  if (url.startsWith('//')) url = 'https:$url';
+
+  final uri = Uri.parse(apiBaseUrl);
+  final origin =
+      '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+
+  if (url.startsWith('local://')) {
+    final key = url.substring('local://'.length);
+    return key.isEmpty ? '' : '$origin/api/v1/media/$key';
+  }
+  if (url.contains('/api/v1/media/')) return url;
+  if (url.contains('blobs/sha256/')) {
+    final key = url.substring(url.indexOf('blobs/sha256/'));
+    return '$origin/api/v1/media/$key';
+  }
+  if (url.startsWith('/media/')) return '$origin/api/v1$url';
+  return url;
+}
+
 /// 映射 URL 到正确的 API 路径（处理代理、本地存储等）
 String mapUrl(String url, String apiBaseUrl) {
   if (url.isEmpty) return url;
@@ -18,7 +57,8 @@ String mapUrl(String url, String apiBaseUrl) {
     final key = url.substring('local://'.length);
     if (key.isEmpty) return '';
     final uri = Uri.parse(apiBaseUrl);
-    final origin = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+    final origin =
+        '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
     return '$origin/api/v1/media/$key';
   }
 
@@ -44,10 +84,11 @@ String mapUrl(String url, String apiBaseUrl) {
           : url;
       final cleanPath = path.startsWith('/') ? path : '/$path';
       if (cleanPath == '/media' || cleanPath == '/media/') return '';
-      
+
       // Ensure we use the root of the API base URL (remove /api/v1 suffix)
       final uri = Uri.parse(apiBaseUrl);
-      final origin = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+      final origin =
+          '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
       return '$origin/api/v1$cleanPath';
     }
     if (url.contains('/api/v1/')) {
@@ -55,9 +96,10 @@ String mapUrl(String url, String apiBaseUrl) {
     }
     final cleanKey = url.startsWith('/') ? url.substring(1) : url;
     if (cleanKey.isEmpty) return '';
-    
+
     final uri = Uri.parse(apiBaseUrl);
-    final origin = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+    final origin =
+        '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
     return '$origin/api/v1/media/$cleanKey';
   }
 
@@ -67,9 +109,10 @@ String mapUrl(String url, String apiBaseUrl) {
         : url;
     final cleanPath = path.startsWith('/') ? path : '/$path';
     if (cleanPath == '/media' || cleanPath == '/media/') return '';
-    
+
     final uri = Uri.parse(apiBaseUrl);
-    final origin = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+    final origin =
+        '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
     return '$origin/api/v1$cleanPath';
   }
 
