@@ -138,12 +138,53 @@ class TestContentsAPI:
         response = await client.get(f"/api/v1/contents/{content.id}/processing-status")
         assert response.status_code == 200
         data = response.json()
+        assert data["content_id"] == content.id
+        assert data["content_status"] == "parse_success"
+        # 规范化整体状态：只有摘要与索引成功、分发不适用时应为 success
+        assert data["state"] == "success"
+
         stages = {item["key"]: item for item in data["stages"]}
-        assert stages["summary"]["status"] == "success"
-        assert stages["semantic_index"]["status"] == "success"
+        assert stages["summary"]["state"] == "success"
+        assert stages["summary"]["detail_state"] == "success"
+
+        assert stages["semantic_index"]["state"] == "success"
         assert stages["semantic_index"]["details"]["counts"]["indexed"] == 1
-        assert stages["distribution"]["status"] == "not_matched"
-    
+        assert stages["semantic_index"]["completed_units"] == 1
+        assert stages["semantic_index"]["total_units"] == 1
+
+        # 未匹配分发规则属于"不适用"，不应被渲染成失败或待办
+        assert stages["distribution"]["state"] == "not_applicable"
+        assert stages["distribution"]["detail_state"] == "not_matched"
+
+        # 没有远端媒体时归档阶段不适用，而不是伪装成成功
+        assert stages["archive_media"]["state"] == "not_applicable"
+        assert stages["archive_media"]["detail_state"] == "no_media"
+
+    @pytest.mark.asyncio
+    async def test_content_detail_exposes_content_type(self, client: AsyncClient, db_session):
+        """详情必须暴露 content_type，前端模板细分依赖该字段。"""
+        from app.models import Content, Platform, ContentStatus, LayoutType
+
+        content = Content(
+            platform=Platform.ZHIHU,
+            url="https://www.zhihu.com/people/contenttypecase",
+            canonical_url="https://www.zhihu.com/people/contenttypecase",
+            status=ContentStatus.PARSE_SUCCESS,
+            content_type="user_profile",
+            layout_type=LayoutType.GALLERY,
+            title="Content type case",
+        )
+        db_session.add(content)
+        await db_session.commit()
+        await db_session.refresh(content)
+
+        response = await client.get(f"/api/v1/contents/{content.id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["content_type"] == "user_profile"
+        assert data["effective_layout_type"] == "gallery"
+
+
     @pytest.mark.asyncio
     async def test_delete_content(self, client: AsyncClient):
         """Test DELETE /api/v1/contents/{id}"""

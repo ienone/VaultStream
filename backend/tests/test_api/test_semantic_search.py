@@ -6,7 +6,14 @@ import pytest
 from httpx import AsyncClient
 
 from app.core.time_utils import utcnow
-from app.models import Content, ContentEmbedding, ContentStatus, Platform, ReviewStatus
+from app.models import (
+    Content,
+    ContentEmbedding,
+    ContentStatus,
+    LayoutType,
+    Platform,
+    ReviewStatus,
+)
 from app.services.config_service import EmbeddingAIConfig
 from app.services.embedding_service import EmbeddingService
 
@@ -35,7 +42,15 @@ async def test_semantic_search_returns_ranked_results(
     async def _fake_embed_query(self, query: str) -> list[float]:
         return [1.0, 0.0]
 
+    async def _fake_signature(self) -> str:
+        return "test-embedding-signature"
+
     monkeypatch.setattr(EmbeddingService, "embed_query", _fake_embed_query)
+    monkeypatch.setattr(
+        EmbeddingService,
+        "_get_document_embedding_signature",
+        _fake_signature,
+    )
 
     now = utcnow()
     item = Content(
@@ -46,6 +61,8 @@ async def test_semantic_search_returns_ranked_results(
         review_status=ReviewStatus.APPROVED,
         title="Rust 异步运行时对比",
         body="Tokio 和 async-std 在不同场景下的性能差异。",
+        content_type="video",
+        layout_type=LayoutType.GALLERY,
         created_at=now,
     )
     db_session.add(item)
@@ -54,7 +71,7 @@ async def test_semantic_search_returns_ranked_results(
         ContentEmbedding(
             content_id=item.id,
             embedding_model="gemini-embedding-2",
-            embedding_model_signature=await EmbeddingService()._get_document_embedding_signature(),
+            embedding_model_signature="test-embedding-signature",
             index_status="indexed",
             embedding=[1.0, 0.0],
             indexed_at=now,
@@ -78,6 +95,8 @@ async def test_semantic_search_returns_ranked_results(
     assert result["match_source"] in ("fts", "vector", "hybrid")
     assert isinstance(result["score"], float)
     assert result["status"] == "parse_success"
+    assert result["content_type"] == "video"
+    assert result["effective_layout_type"] == "gallery"
 
 
 @pytest.mark.asyncio

@@ -33,7 +33,7 @@ active
 
 ## 搜索与语义索引
 
-- `GET /api/v1/search/semantic` 执行语义/混合检索。
+- `GET /api/v1/search/semantic` 执行语义/混合检索；结果同时返回 `content_type` 与 `effective_layout_type`，保证搜索卡片和普通收藏卡片采用相同内容模板。
 - `GET /api/v1/search/semantic/index-status` 返回索引能力和当前状态。
 - `POST /api/v1/search/semantic/reindex` 在 `dry_run=true` 时只估算候选和调用量；实际执行时返回 `run_id`。
 - `POST /api/v1/search/semantic/embeddings/{embedding_id}/retry` 重试单个失败分块，并产生 `semantic_reindex` 运行记录。

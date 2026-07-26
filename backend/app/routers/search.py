@@ -19,6 +19,7 @@ from app.schemas import (
     SemanticSearchItem,
 )
 from app.services.embedding_service import EmbeddingService
+from app.services.content_presenter import compute_effective_layout_type
 from app.services.background_task_state import (
     record_task_run_error,
     record_task_run_started,
@@ -109,6 +110,8 @@ async def semantic_search(
             status=hit.content.status.value if hit.content.status else "",
             review_status=hit.content.review_status.value if hit.content.review_status else None,
             discovery_state=hit.content.discovery_state.value if hit.content.discovery_state else None,
+            content_type=hit.content.content_type,
+            effective_layout_type=compute_effective_layout_type(hit.content),
             title=hit.content.title,
             summary=hit.content.summary,
             author_name=hit.content.author_name,

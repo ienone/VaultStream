@@ -2,6 +2,7 @@
 内容相关 schemas
 """
 from datetime import datetime
+from enum import Enum
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 import json
@@ -94,6 +95,7 @@ class ContentDetail(BaseModel):
     reviewed_by: Optional[str] = None
     review_note: Optional[str] = None
 
+    content_type: Optional[str] = None  # 平台原生内容类型，模板细分依据
     layout_type: Optional[LayoutType] = None
     layout_type_override: Optional[LayoutType] = None
     effective_layout_type: Optional[str] = None  # 计算字段：frontend 读取此字段
@@ -215,6 +217,94 @@ class BatchDeleteRequest(BaseModel):
     ids: List[int]
     
     
+class ProcessingStageKey(str, Enum):
+    """后处理阶段标识。与 `_build_processing_status` 返回的阶段一一对应。"""
+    SUMMARY = "summary"
+    SEMANTIC_INDEX = "semantic_index"
+    ARCHIVE_MEDIA = "archive_media"
+    PATROL = "patrol"
+    DISTRIBUTION = "distribution"
+
+
+class ProcessingStageState(str, Enum):
+    """规范化阶段状态。
+
+    每个阶段仍有自己的具体条件（见 `ProcessingStage.detail_state`），
+    但 UI 只依据本枚举决定层级、颜色和是否提示用户处理。
+    """
+    PENDING = "pending"                  # 已排队/待开始，无需用户介入
+    RUNNING = "running"                  # 正在执行
+    SUCCESS = "success"                  # 全部完成
+    PARTIAL = "partial"                  # 部分完成，仍有未完成或失败单元
+    FAILED = "failed"                    # 失败，需要用户关注
+    BLOCKED = "blocked"                  # 依赖未满足（上游未成功、密钥缺失）
+    DISABLED = "disabled"                # 被用户配置关闭
+    NOT_APPLICABLE = "not_applicable"    # 该内容不适用此阶段
+
+
+class ProcessingActionKind(str, Enum):
+    """后处理可执行动作。前端按 kind 分发，不解析文案。"""
+    GENERATE_SUMMARY = "generate_summary"
+    REBUILD_SEMANTIC_INDEX = "rebuild_semantic_index"
+    RETRY_SEMANTIC_CHUNK = "retry_semantic_chunk"
+    RETRY_DISTRIBUTION_ITEM = "retry_distribution_item"
+    REMATCH_DISTRIBUTION = "rematch_distribution"
+    PATROL_SCORE = "patrol_score"
+
+
+class ProcessingStageAction(BaseModel):
+    """一个阶段当前允许执行的动作。
+
+    `external_effect=True` 表示该动作会调用付费模型或向外部平台发送内容，
+    前端必须显式确认后才执行。
+    """
+    kind: ProcessingActionKind
+    label: str
+    external_effect: bool = False
+    target_ids: List[int] = Field(default_factory=list)
+
+
+class ProcessingStageFailure(BaseModel):
+    """阶段内单个失败单元。"""
+    id: Optional[int] = None
+    reference: Optional[str] = None
+    reason: Optional[str] = None
+    error_type: Optional[str] = None
+    retry_count: int = 0
+    max_retries: Optional[int] = None
+    retryable: bool = False
+    occurred_at: OptionalUtcDatetime = None
+
+
+class ProcessingStage(BaseModel):
+    """单个后处理阶段的状态。"""
+    key: ProcessingStageKey
+    label: str
+    state: ProcessingStageState
+    detail_state: str
+    message: str
+    issues: List[str] = Field(default_factory=list)
+    hints: List[str] = Field(default_factory=list)
+    actions: List[ProcessingStageAction] = Field(default_factory=list)
+    failures: List[ProcessingStageFailure] = Field(default_factory=list)
+    failures_total: int = 0
+    failures_truncated: bool = False
+    completed_units: Optional[int] = None
+    total_units: Optional[int] = None
+    details: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ContentProcessingStatus(BaseModel):
+    """内容后处理状态汇总。
+
+    这不是第二套内容详情模型，只描述解析之后的派生处理链。
+    """
+    content_id: int
+    content_status: ContentStatus
+    state: ProcessingStageState
+    stages: List[ProcessingStage]
+
+
 class ContentPushPayload(BaseModel):
     """推送 payload — 供 push service 消费的内容数据。"""
     id: int

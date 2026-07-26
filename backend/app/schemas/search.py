@@ -20,6 +20,8 @@ class SemanticSearchItem(BaseModel):
     status: str
     review_status: Optional[str] = None
     discovery_state: Optional[str] = None
+    content_type: Optional[str] = None
+    effective_layout_type: Optional[str] = None
     title: Optional[str] = None
     summary: Optional[str] = None
     author_name: Optional[str] = None

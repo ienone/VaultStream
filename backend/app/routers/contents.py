@@ -26,7 +26,10 @@ from app.schemas import (
     ShareRequest, ShareResponse, ContentDetail,
     ShareCardListResponse, ContentListItemResponse, ContentListItem,
     ContentUpdate, ReviewAction, BatchReviewRequest,
-    PushedRecordResponse
+    PushedRecordResponse,
+    ContentProcessingStatus, ProcessingStage, ProcessingStageAction,
+    ProcessingStageFailure, ProcessingStageKey, ProcessingStageState,
+    ProcessingActionKind,
 )
 from app.core.logging import logger
 from app.core.config import settings
@@ -58,7 +61,29 @@ def _status_counts(rows) -> dict[str, int]:
     return counts
 
 
-async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
+# 汇总状态优先级：越靠前越需要用户注意
+_STAGE_STATE_PRIORITY: tuple[ProcessingStageState, ...] = (
+    ProcessingStageState.FAILED,
+    ProcessingStageState.PARTIAL,
+    ProcessingStageState.RUNNING,
+    ProcessingStageState.PENDING,
+    ProcessingStageState.BLOCKED,
+    ProcessingStageState.SUCCESS,
+    ProcessingStageState.DISABLED,
+    ProcessingStageState.NOT_APPLICABLE,
+)
+
+
+def _aggregate_state(stages: list[ProcessingStage]) -> ProcessingStageState:
+    """按优先级取最需要用户关注的阶段状态作为整体状态。"""
+    present = {stage.state for stage in stages}
+    for state in _STAGE_STATE_PRIORITY:
+        if state in present:
+            return state
+    return ProcessingStageState.NOT_APPLICABLE
+
+
+async def _build_processing_status(content: Content, db: AsyncSession) -> ContentProcessingStatus:
     config_service = ConfigService()
     ai_config = await config_service.get_ai_config()
     archive_config = await config_service.get_archive_media_config()
@@ -73,21 +98,26 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
         and content.rich_payload.get("chunks")
     )
 
-    if has_summary or has_chunks:
+    if has_summary:
         summary_status = "success"
-        summary_message = "摘要或 RAG 分块已生成"
+        summary_state = ProcessingStageState.SUCCESS
+        summary_message = "摘要已生成"
     elif content.status != ContentStatus.PARSE_SUCCESS:
         summary_status = "waiting_parse"
+        summary_state = ProcessingStageState.BLOCKED
         summary_message = "等待解析成功后生成摘要"
-    elif not summary_enabled:
-        summary_status = "disabled"
-        summary_message = "自动摘要已关闭"
     elif not summary_key_ready:
         summary_status = "unavailable"
+        summary_state = ProcessingStageState.BLOCKED
         summary_message = "摘要模型密钥未配置"
+    elif not summary_enabled:
+        summary_status = "disabled"
+        summary_state = ProcessingStageState.DISABLED
+        summary_message = "自动摘要已关闭，仍可手动生成"
     else:
         summary_status = "pending"
-        summary_message = "尚未生成摘要"
+        summary_state = ProcessingStageState.PENDING
+        summary_message = "摘要尚未生成（RAG 分块已存在）" if has_chunks else "尚未生成摘要"
 
     archive = {}
     if isinstance(content.archive_metadata, dict):
@@ -106,18 +136,29 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
     video_work_enabled = archive_config.enabled and archive_config.videos_enabled
     image_pending = image_work_enabled and len(stored_images) < len(archive_images)
     video_pending = video_work_enabled and len(stored_videos) < len(archive_videos)
+    archive_total = len(archive_images) + len(archive_videos)
+    archive_stored = len(stored_images) + len(stored_videos)
     if not archive_config.enabled:
         archive_status = "disabled"
-        archive_message = "Remote media archiving is disabled"
+        archive_state = ProcessingStageState.DISABLED
+        archive_message = "远端媒体归档已关闭"
     elif not archive_images and not archive_videos:
-        archive_status = "success"
-        archive_message = "No remote archive media detected"
+        archive_status = "no_media"
+        archive_state = ProcessingStageState.NOT_APPLICABLE
+        archive_message = "该内容没有需要归档的远端媒体"
     elif image_pending or video_pending:
-        archive_status = "pending"
-        archive_message = "Remote media archive work remains"
+        if archive_stored > 0:
+            archive_status = "partial"
+            archive_state = ProcessingStageState.PARTIAL
+            archive_message = f"已归档 {archive_stored}/{archive_total} 项远端媒体"
+        else:
+            archive_status = "pending"
+            archive_state = ProcessingStageState.PENDING
+            archive_message = "远端媒体归档尚未开始"
     else:
         archive_status = "success"
-        archive_message = "Remote media archived or skipped by policy"
+        archive_state = ProcessingStageState.SUCCESS
+        archive_message = "远端媒体已归档或按策略跳过"
 
     embedding_rows = (
         await db.execute(
@@ -144,20 +185,46 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
             .limit(5)
         )
     ).all()
-    if embedding_counts.get("indexed", 0) > 0:
+    indexed_count = embedding_counts.get("indexed", 0)
+    failed_count = embedding_counts.get("failed", 0)
+    queued_chunks = embedding_counts.get("pending", 0)
+    running_chunks = embedding_counts.get("processing", 0)
+    embedding_total = sum(embedding_counts.values())
+    if indexed_count > 0 and failed_count > 0:
+        embedding_status = "partial"
+        embedding_state = ProcessingStageState.PARTIAL
+        embedding_message = f"{indexed_count} 个分块已索引，{failed_count} 个失败"
+    elif indexed_count > 0 and (queued_chunks or running_chunks):
+        embedding_status = "partial"
+        embedding_state = ProcessingStageState.PARTIAL
+        embedding_message = f"{indexed_count}/{embedding_total} 个分块已进入语义索引"
+    elif indexed_count > 0:
         embedding_status = "success"
-        embedding_message = f"{embedding_counts['indexed']} 个分块已进入语义索引"
-    elif embedding_counts.get("failed", 0) > 0:
+        embedding_state = ProcessingStageState.SUCCESS
+        embedding_message = f"{indexed_count} 个分块已进入语义索引"
+    elif failed_count > 0:
         embedding_status = "failed"
+        embedding_state = ProcessingStageState.FAILED
         embedding_message = "语义索引生成失败"
-    elif embedding_counts.get("pending", 0) > 0 or embedding_counts.get("processing", 0) > 0:
+    elif running_chunks > 0:
+        embedding_status = "processing"
+        embedding_state = ProcessingStageState.RUNNING
+        embedding_message = "语义索引正在生成"
+    elif queued_chunks > 0:
         embedding_status = "pending"
-        embedding_message = "语义索引正在生成或排队"
+        embedding_state = ProcessingStageState.PENDING
+        embedding_message = "语义索引已排队"
     elif content.status != ContentStatus.PARSE_SUCCESS:
         embedding_status = "waiting_parse"
+        embedding_state = ProcessingStageState.BLOCKED
         embedding_message = "等待解析成功后进入语义索引"
+    elif not embedding_key_ready:
+        embedding_status = "unavailable"
+        embedding_state = ProcessingStageState.BLOCKED
+        embedding_message = "Embedding 密钥未配置，无法建立语义索引"
     else:
         embedding_status = "not_indexed"
+        embedding_state = ProcessingStageState.PENDING
         embedding_message = "尚未进入语义索引"
 
     queue_rows = (
@@ -190,6 +257,19 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
             .limit(5)
         )
     ).all()
+    permanent_distribution_errors = {
+        "content_not_eligible",
+        "already_pushed_dedupe",
+        "manual_canceled",
+        "manual_filtered",
+    }
+    retryable_queue_items = [
+        row
+        for row in failed_queue_items
+        if row.last_error_type not in permanent_distribution_errors
+        and (row.attempt_count or 0) < (row.max_attempts or 0)
+    ]
+    retryable_queue_item_ids = {row.id for row in retryable_queue_items}
     pushed_records = int(
         (
             await db.execute(
@@ -202,183 +282,281 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> dict:
         QueueItemStatus.PROCESSING.value,
         0,
     )
-    if queued_count > 0:
-        distribution_status = "queued"
-        distribution_message = f"{queued_count} 条分发队列项待处理"
-    elif queue_counts.get(QueueItemStatus.FAILED.value, 0) > 0:
+    distribution_failed = queue_counts.get(QueueItemStatus.FAILED.value, 0)
+    distribution_success = queue_counts.get(QueueItemStatus.SUCCESS.value, 0)
+    if distribution_failed > 0 and (distribution_success > 0 or pushed_records > 0):
+        distribution_status = "partial"
+        distribution_state = ProcessingStageState.PARTIAL
+        distribution_message = f"{distribution_failed} 条分发失败，其余已推送"
+    elif distribution_failed > 0:
         distribution_status = "failed"
+        distribution_state = ProcessingStageState.FAILED
         distribution_message = "存在失败或被过滤的分发队列项"
-    elif queue_counts.get(QueueItemStatus.SUCCESS.value, 0) > 0 or pushed_records > 0:
+    elif queue_counts.get(QueueItemStatus.PROCESSING.value, 0) > 0:
+        distribution_status = "processing"
+        distribution_state = ProcessingStageState.RUNNING
+        distribution_message = "分发正在执行"
+    elif queued_count > 0:
+        distribution_status = "queued"
+        distribution_state = ProcessingStageState.PENDING
+        distribution_message = f"{queued_count} 条分发队列项待处理"
+    elif distribution_success > 0 or pushed_records > 0:
         distribution_status = "pushed"
+        distribution_state = ProcessingStageState.SUCCESS
         distribution_message = "已有分发成功记录"
     else:
         distribution_status = "not_matched"
+        distribution_state = ProcessingStageState.NOT_APPLICABLE
         distribution_message = "暂未匹配分发规则"
 
     discovery_state = content.discovery_state.value if content.discovery_state else None
+    patrol_llm_ready = text_llm_ready or vision_llm_ready
     if content.ai_score is not None:
         patrol_status = "success"
+        patrol_state = ProcessingStageState.SUCCESS
         patrol_message = f"评分 {content.ai_score:.1f}"
+    elif content.discovery_state is None:
+        patrol_status = "not_discovery"
+        patrol_state = ProcessingStageState.NOT_APPLICABLE
+        patrol_message = "非发现流内容不需要巡逻评分"
+    elif not patrol_llm_ready:
+        patrol_status = "unavailable"
+        patrol_state = ProcessingStageState.BLOCKED
+        patrol_message = "未配置可用于巡逻评分的模型密钥"
     elif content.discovery_state == DiscoveryState.INGESTED:
         patrol_status = "pending"
+        patrol_state = ProcessingStageState.PENDING
         patrol_message = "等待巡逻评分"
-    elif content.discovery_state is None:
-        patrol_status = "disabled"
-        patrol_message = "非发现流内容不需要巡逻评分"
     else:
         patrol_status = "not_scored"
+        patrol_state = ProcessingStageState.PENDING
         patrol_message = "未记录巡逻评分"
 
+    # --- 每个阶段的问题、建议与可执行动作 ---
+    # issues 描述阻碍原因，hints 是需要用户去别处处理的建议，
+    # actions 是本面板可以直接执行的动作（typed，前端不解析文案）。
     summary_issues: list[str] = []
-    summary_actions: list[str] = []
-    if not summary_enabled:
-        summary_actions.append("开启自动摘要")
-    elif not summary_key_ready and not has_summary:
-        summary_issues.append("summary_api_key 未配置")
-        summary_actions.append("配置摘要模型密钥或关闭自动摘要")
+    summary_hints: list[str] = []
+    summary_actions: list[ProcessingStageAction] = []
+    if not summary_key_ready:
+        if not has_summary:
+            summary_issues.append("summary_api_key 未配置")
+        summary_hints.append("在设置中配置摘要模型密钥")
+    else:
+        if not summary_enabled:
+            summary_hints.append("自动摘要已关闭，可在设置中开启")
+        if content.status == ContentStatus.PARSE_SUCCESS:
+            summary_actions.append(
+                ProcessingStageAction(
+                    kind=ProcessingActionKind.GENERATE_SUMMARY,
+                    label="重新生成摘要" if has_summary else "生成摘要",
+                    external_effect=True,
+                )
+            )
 
     embedding_issues: list[str] = []
-    embedding_actions: list[str] = []
-    if not embedding_key_ready and embedding_status in {"failed", "not_indexed"}:
+    embedding_hints: list[str] = []
+    embedding_actions: list[ProcessingStageAction] = []
+    embedding_pendingish = embedding_status in {
+        "failed",
+        "partial",
+        "not_indexed",
+        "unavailable",
+    }
+    if not embedding_key_ready and embedding_pendingish:
         embedding_issues.append("embedding_api_key 未配置")
-        embedding_actions.append("配置 Embedding 密钥")
-    elif embedding_status in {"failed", "not_indexed"}:
-        embedding_actions.append("重建单条语义索引")
+        embedding_hints.append("配置 Embedding 密钥")
+    elif embedding_pendingish and content.status == ContentStatus.PARSE_SUCCESS:
+        embedding_actions.append(
+            ProcessingStageAction(
+                kind=ProcessingActionKind.REBUILD_SEMANTIC_INDEX,
+                label="重建语义索引",
+                external_effect=True,
+            )
+        )
+        if embedding_failures:
+            embedding_actions.append(
+                ProcessingStageAction(
+                    kind=ProcessingActionKind.RETRY_SEMANTIC_CHUNK,
+                    label="重试失败分块",
+                    external_effect=True,
+                    target_ids=[row.id for row in embedding_failures],
+                )
+            )
 
     patrol_issues: list[str] = []
-    patrol_actions: list[str] = []
-    if patrol_status in {"pending", "not_scored"}:
-        if not (text_llm_ready or vision_llm_ready):
-            patrol_issues.append("未配置可用于巡逻评分的 LLM 密钥")
-            patrol_actions.append("配置 text_llm_api_key 或 vision_llm_api_key")
-        else:
-            patrol_actions.append("等待 discovery_patrol 后台任务或手动触发巡逻评分")
+    patrol_hints: list[str] = []
+    patrol_actions: list[ProcessingStageAction] = []
+    if patrol_status == "unavailable":
+        patrol_issues.append("未配置可用于巡逻评分的 LLM 密钥")
+        patrol_hints.append("配置 text_llm_api_key 或 vision_llm_api_key")
+    elif patrol_status in {"pending", "not_scored"}:
+        patrol_actions.append(
+            ProcessingStageAction(
+                kind=ProcessingActionKind.PATROL_SCORE,
+                label="触发巡逻评分",
+                external_effect=True,
+            )
+        )
 
     archive_issues: list[str] = []
-    archive_actions: list[str] = []
-    if archive_status == "pending":
-        archive_actions.append("Review archive media settings and re-parse if needed")
+    archive_hints: list[str] = []
     if archive_images and not image_work_enabled:
-        archive_issues.append("Image archiving disabled")
+        archive_issues.append("图片归档已关闭")
     if archive_videos and not video_work_enabled:
-        archive_issues.append("Video archiving disabled")
+        archive_issues.append("视频归档已关闭")
+    if archive_status in {"pending", "partial"}:
+        archive_hints.append("检查归档媒体设置，必要时重新解析该内容")
 
     distribution_issues: list[str] = []
-    distribution_actions: list[str] = []
-    if distribution_status == "failed":
+    distribution_hints: list[str] = []
+    distribution_actions: list[ProcessingStageAction] = []
+    if distribution_status in {"failed", "partial"}:
         distribution_issues.append("存在失败或被过滤的分发队列项")
-        distribution_actions.append("查看失败详情并重试失败分发项")
+        if retryable_queue_items:
+            distribution_actions.append(
+                ProcessingStageAction(
+                    kind=ProcessingActionKind.RETRY_DISTRIBUTION_ITEM,
+                    label="重试可恢复的失败分发",
+                    external_effect=True,
+                    target_ids=[row.id for row in retryable_queue_items],
+                )
+            )
     elif distribution_status == "not_matched":
-        distribution_actions.append("检查分发规则匹配条件并重新匹配")
+        distribution_hints.append("检查分发规则匹配条件")
+        distribution_actions.append(
+            ProcessingStageAction(
+                kind=ProcessingActionKind.REMATCH_DISTRIBUTION,
+                label="重新匹配分发规则",
+                external_effect=True,
+            )
+        )
 
-    return {
-        "content_id": content.id,
-        "stages": [
-            {
-                "key": "summary",
-                "label": "摘要",
-                "status": summary_status,
-                "message": summary_message,
-                "issues": summary_issues,
-                "actions": summary_actions,
-                "details": {
-                    "summary_present": has_summary,
-                    "chunks_present": has_chunks,
-                    "auto_summary_enabled": summary_enabled,
-                    "summary_key_configured": summary_key_ready,
-                },
+    stages = [
+        ProcessingStage(
+            key=ProcessingStageKey.SUMMARY,
+            label="摘要",
+            state=summary_state,
+            detail_state=summary_status,
+            message=summary_message,
+            issues=summary_issues,
+            hints=summary_hints,
+            actions=summary_actions,
+            details={
+                "summary_present": has_summary,
+                "chunks_present": has_chunks,
+                "auto_summary_enabled": summary_enabled,
+                "summary_key_configured": summary_key_ready,
             },
-            {
-                "key": "semantic_index",
-                "label": "语义索引",
-                "status": embedding_status,
-                "message": embedding_message,
-                "issues": embedding_issues,
-                "actions": embedding_actions,
-                "details": {
-                    "counts": embedding_counts,
-                    "embedding_key_configured": embedding_key_ready,
-                    "failures": [
-                        {
-                            "id": row.id,
-                            "chunk_index": row.chunk_index,
-                            "failure_reason": row.failure_reason,
-                            "retry_count": row.retry_count,
-                            "last_attempted_at": row.last_attempted_at.isoformat()
-                            if row.last_attempted_at
-                            else None,
-                        }
-                        for row in embedding_failures
-                    ],
-                },
+        ),
+        ProcessingStage(
+            key=ProcessingStageKey.SEMANTIC_INDEX,
+            label="语义索引",
+            state=embedding_state,
+            detail_state=embedding_status,
+            message=embedding_message,
+            issues=embedding_issues,
+            hints=embedding_hints,
+            actions=embedding_actions,
+            failures=[
+                ProcessingStageFailure(
+                    id=row.id,
+                    reference=None if row.chunk_index is None else f"分块 {row.chunk_index}",
+                    reason=row.failure_reason,
+                    retry_count=row.retry_count or 0,
+                    retryable=True,
+                    occurred_at=row.last_attempted_at,
+                )
+                for row in embedding_failures
+            ],
+            failures_total=failed_count,
+            failures_truncated=failed_count > len(embedding_failures),
+            completed_units=indexed_count,
+            total_units=embedding_total or None,
+            details={
+                "counts": embedding_counts,
+                "embedding_key_configured": embedding_key_ready,
             },
-            {
-                "key": "archive_media",
-                "label": "Media archive",
-                "status": archive_status,
-                "message": archive_message,
-                "issues": archive_issues,
-                "actions": archive_actions,
-                "details": {
-                    "enabled": archive_config.enabled,
-                    "images_enabled": archive_config.images_enabled,
-                    "videos_enabled": archive_config.videos_enabled,
-                    "image_count": len(archive_images),
-                    "stored_image_count": len(stored_images),
-                    "video_count": len(archive_videos),
-                    "stored_video_count": len(stored_videos),
-                    "image_max_count": archive_config.image_max_count,
-                    "video_max_count": archive_config.video_max_count,
-                    "video_max_bytes": archive_config.video_max_bytes,
-                },
+        ),
+        ProcessingStage(
+            key=ProcessingStageKey.ARCHIVE_MEDIA,
+            label="媒体归档",
+            state=archive_state,
+            detail_state=archive_status,
+            message=archive_message,
+            issues=archive_issues,
+            hints=archive_hints,
+            completed_units=archive_stored,
+            total_units=archive_total or None,
+            details={
+                "enabled": archive_config.enabled,
+                "images_enabled": archive_config.images_enabled,
+                "videos_enabled": archive_config.videos_enabled,
+                "image_count": len(archive_images),
+                "stored_image_count": len(stored_images),
+                "video_count": len(archive_videos),
+                "stored_video_count": len(stored_videos),
+                "image_max_count": archive_config.image_max_count,
+                "video_max_count": archive_config.video_max_count,
+                "video_max_bytes": archive_config.video_max_bytes,
             },
-            {
-                "key": "patrol",
-                "label": "巡逻评分",
-                "status": patrol_status,
-                "message": patrol_message,
-                "issues": patrol_issues,
-                "actions": patrol_actions,
-                "details": {
-                    "ai_score": content.ai_score,
-                    "ai_reason": content.ai_reason,
-                    "ai_tags": content.ai_tags or [],
-                    "discovery_state": discovery_state,
-                    "text_llm_configured": text_llm_ready,
-                    "vision_llm_configured": vision_llm_ready,
-                },
+        ),
+        ProcessingStage(
+            key=ProcessingStageKey.PATROL,
+            label="巡逻评分",
+            state=patrol_state,
+            detail_state=patrol_status,
+            message=patrol_message,
+            issues=patrol_issues,
+            hints=patrol_hints,
+            actions=patrol_actions,
+            details={
+                "ai_score": content.ai_score,
+                "ai_reason": content.ai_reason,
+                "ai_tags": content.ai_tags or [],
+                "discovery_state": discovery_state,
+                "text_llm_configured": text_llm_ready,
+                "vision_llm_configured": vision_llm_ready,
             },
-            {
-                "key": "distribution",
-                "label": "分发",
-                "status": distribution_status,
-                "message": distribution_message,
-                "issues": distribution_issues,
-                "actions": distribution_actions,
-                "details": {
-                    "queue_counts": queue_counts,
-                    "pushed_records": pushed_records,
-                    "failures": [
-                        {
-                            "id": row.id,
-                            "rule_id": row.rule_id,
-                            "bot_chat_id": row.bot_chat_id,
-                            "target_platform": row.target_platform,
-                            "target_id": row.target_id,
-                            "attempt_count": row.attempt_count,
-                            "max_attempts": row.max_attempts,
-                            "last_error": row.last_error,
-                            "last_error_type": row.last_error_type,
-                            "last_error_at": row.last_error_at.isoformat()
-                            if row.last_error_at
-                            else None,
-                        }
-                        for row in failed_queue_items
-                    ],
-                },
+        ),
+        ProcessingStage(
+            key=ProcessingStageKey.DISTRIBUTION,
+            label="分发",
+            state=distribution_state,
+            detail_state=distribution_status,
+            message=distribution_message,
+            issues=distribution_issues,
+            hints=distribution_hints,
+            actions=distribution_actions,
+            failures=[
+                ProcessingStageFailure(
+                    id=row.id,
+                    reference=f"{row.target_platform}:{row.target_id}",
+                    reason=row.last_error,
+                    error_type=row.last_error_type,
+                    retry_count=row.attempt_count or 0,
+                    max_retries=row.max_attempts,
+                    retryable=row.id in retryable_queue_item_ids,
+                    occurred_at=row.last_error_at,
+                )
+                for row in failed_queue_items
+            ],
+            failures_total=distribution_failed,
+            failures_truncated=distribution_failed > len(failed_queue_items),
+            completed_units=distribution_success or pushed_records,
+            details={
+                "queue_counts": queue_counts,
+                "pushed_records": pushed_records,
             },
-        ],
-    }
+        ),
+    ]
+
+    return ContentProcessingStatus(
+        content_id=content.id,
+        content_status=content.status or ContentStatus.UNPROCESSED,
+        state=_aggregate_state(stages),
+        stages=stages,
+    )
 
 
 async def _run_reparse_job(content_id: int, run_id: str, *, force: bool) -> None:
@@ -526,13 +704,16 @@ async def get_content_detail(
     return transform_content_detail(ContentDetail.model_validate(content), base_url)
 
 
-@router.get("/contents/{content_id}/processing-status")
+@router.get(
+    "/contents/{content_id}/processing-status",
+    response_model=ContentProcessingStatus,
+)
 async def get_content_processing_status(
     content_id: int,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
-    """Expose post-ingest processing status for the content detail UI."""
+    """内容后处理状态。仅描述解析之后的派生处理链，不是第二套内容详情模型。"""
     result = await db.execute(select(Content).where(Content.id == content_id))
     content = result.scalar_one_or_none()
     if not content:
