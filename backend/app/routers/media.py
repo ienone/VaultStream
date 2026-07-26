@@ -26,6 +26,7 @@ _MAX_PROXY_IMAGE_BYTES = 10 * 1024 * 1024
 _MAX_PROXY_REDIRECTS = 5
 _MAX_PROXY_IMAGE_PIXELS = 40_000_000
 _MAX_PROXY_CACHE_BYTES = 512 * 1024 * 1024
+_PROXY_CONNECT_RETRIES = 2
 
 
 def _resolve_local_media_path(storage: LocalStorageBackend, key: str) -> Path:
@@ -318,7 +319,10 @@ async def proxy_image(
     proxy = await ConfigService().get_http_proxy()
     
     try:
-        transport = create_safe_async_transport(proxy=proxy) if proxy else create_safe_async_transport()
+        transport_kwargs = {"retries": _PROXY_CONNECT_RETRIES}
+        if proxy:
+            transport_kwargs["proxy"] = proxy
+        transport = create_safe_async_transport(**transport_kwargs)
         async with httpx.AsyncClient(
             transport=transport,
             timeout=httpx.Timeout(10.0, connect=5.0),

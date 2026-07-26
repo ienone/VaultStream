@@ -7,6 +7,7 @@ import pytest
 from app.core.safe_fetch import (
     SafeAsyncNetworkBackend,
     UnsafeUrlError,
+    _is_disallowed_ip,
     safe_client_get,
     validate_safe_url,
 )
@@ -26,6 +27,12 @@ def test_validate_safe_url_blocks_private_address(monkeypatch):
 
     with pytest.raises(UnsafeUrlError):
         validate_safe_url("http://private.test/data")
+
+
+def test_ipv4_mapped_fake_ip_is_allowed():
+    assert _is_disallowed_ip("198.18.0.1") is False
+    assert _is_disallowed_ip("::ffff:198.18.0.1") is False
+    assert _is_disallowed_ip("::ffff:127.0.0.1") is True
 
 
 @pytest.mark.asyncio

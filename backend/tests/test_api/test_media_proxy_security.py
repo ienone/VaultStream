@@ -19,6 +19,10 @@ def test_is_safe_url_blocks_private_ip_even_when_debug(monkeypatch):
     assert media._is_safe_url("http://example.test/image.png") is False
 
 
+def test_proxy_connect_retries_are_bounded():
+    assert media._PROXY_CONNECT_RETRIES == 2
+
+
 @pytest.mark.asyncio
 async def test_download_remote_image_blocks_redirect_to_private_host(monkeypatch):
     def is_safe_url(url: str) -> bool:

@@ -40,7 +40,8 @@ def _is_disallowed_ip(raw_ip: str) -> bool:
 
     # Fake-IP ranges are commonly used by local proxy stacks. They are not
     # routable private targets, and blocking them breaks otherwise safe proxy use.
-    if addr.version == 4 and addr in ipaddress.ip_network("198.18.0.0/15"):
+    fake_ipv4 = addr.ipv4_mapped if isinstance(addr, ipaddress.IPv6Address) else addr
+    if fake_ipv4.version == 4 and fake_ipv4 in ipaddress.ip_network("198.18.0.0/15"):
         return False
 
     return (
@@ -80,7 +81,7 @@ def _resolve_safe_host(host: str, port: int | None = None) -> str:
     for info in infos:
         ip = info[4][0]
         if _is_disallowed_ip(ip):
-            raise UnsafeUrlError("URL resolves to a disallowed address")
+            raise UnsafeUrlError(f"URL resolves to a disallowed address: {ip}")
         if ip not in candidates:
             candidates.append(ip)
 
