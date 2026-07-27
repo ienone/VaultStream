@@ -6,19 +6,16 @@
 
 from __future__ import annotations
 
-import json
-import random
-import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import StrEnum
 from http.cookies import SimpleCookie
-from urllib.parse import parse_qs, urlencode, urlparse
+from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import httpx
-from xhshow import SessionManager, Xhshow
 
-from app.adapters.xiaohongshu_profile import build_xhs_crypto_config
+from app.adapters.browser import browser_manager
 
 
 class QrLoginState(StrEnum):
@@ -241,7 +238,16 @@ class ZhihuQrLoginDriver(QrLoginDriver):
         self._client = httpx.AsyncClient(timeout=15, follow_redirects=True)
         await self._client.get(f"{self.base}/signin", headers=self._headers)
         self._update_xsrf()
-        await self._client.post(f"{self.base}/udid", json={}, headers=self._headers)
+        udid_response = await self._client.post(
+            f"{self.base}/udid", json={}, headers=self._headers
+        )
+        if udid_response.is_success and udid_response.text.strip():
+            self._headers["x-du-bid"] = udid_response.text.strip()
+        await self._client.get(
+            f"{self.base}/api/v3/oauth/captcha/v2",
+            params={"type": "captcha_sign_in"},
+            headers=self._headers,
+        )
 
     async def create_challenge(self) -> QrLoginChallenge:
         client = self._require_client()
@@ -272,15 +278,24 @@ class ZhihuQrLoginDriver(QrLoginDriver):
             f"{self.base}/api/v3/account/api/login/qrcode/{self._token}/scan_info",
             headers=headers,
         )
-        response.raise_for_status()
-        data = response.json()
+        try:
+            data = response.json()
+        except ValueError:
+            data = {}
         error = data.get("error") if isinstance(data.get("error"), dict) else {}
         if error.get("code") == 40352:
             return QrLoginPollResult(
                 QrLoginState.NEEDS_CAPTCHA,
-                "请先完成人机验证",
+                "知乎要求先完成安全验证，验证后将继续等待扫码",
                 captcha_url=str(error.get("redirect") or ""),
             )
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise RuntimeError(
+                f"知乎登录接口暂时拒绝请求（HTTP {response.status_code}），"
+                "请重新生成二维码后重试"
+            ) from exc
         status = str(data.get("login_status") or "").upper()
         if data.get("access_token") or data.get("user_id") or status in {"CONFIRMED", "SUCCESS"}:
             await client.get(f"{self.base}/api/v4/me", headers=headers)
@@ -310,145 +325,177 @@ class ZhihuQrLoginDriver(QrLoginDriver):
 
 
 class XiaohongshuQrLoginDriver(QrLoginDriver):
-    host = "https://edith.xiaohongshu.com"
-    home = "https://www.xiaohongshu.com"
+    """由真实浏览器页面驱动的小红书二维码登录。
 
-    def __init__(self) -> None:
-        self._client: httpx.AsyncClient | None = None
-        self._qr_id = ""
-        self._code = ""
-        self._ua = (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
-        )
-        config = build_xhs_crypto_config(self._ua)
-        self._signer = Xhshow(config)
-        self._session_manager = SessionManager(config)
-        self._cookies: dict[str, str] = {}
+    小红书的扫码状态接口依赖页面运行时生成的签名、指纹和会话上下文。
+    驱动只观察页面自身发出的响应和 Cookie 变化，不在 Python 中复刻该协议。
+    """
+
+    home = "https://www.xiaohongshu.com"
+    login_url = f"{home}/login"
+    qr_create_endpoint = "/api/sns/web/v1/login/qrcode/create"
+    qr_userinfo_endpoint = "/api/qrcode/userinfo"
+    qr_status_endpoint = "/api/sns/web/v1/login/qrcode/status"
+
+    def __init__(self, manager: Any | None = None) -> None:
+        self._browser_manager = manager or browser_manager
+        self._context: Any | None = None
+        self._page: Any | None = None
+        self._initial_web_session = ""
+        self._browser_qr_status = -1
+        self._browser_confirmed = False
+        self._browser_error = ""
 
     async def open(self) -> None:
-        self._client = httpx.AsyncClient(timeout=30, follow_redirects=True)
-        self._cookies = {
-            "a1": "".join(random.choices("0123456789abcdef", k=24))
-            + str(int(time.time() * 1000))
-            + "".join(random.choices("0123456789abcdef", k=15)),
-            "webId": "".join(random.choices("0123456789abcdef", k=32)),
-        }
-        try:
-            _, response = await self._api("POST", "/api/sns/web/v1/login/activate", {})
-            self._merge_response_cookies(response)
-        except Exception:
-            pass
+        async def _open() -> None:
+            browser = self._browser_manager.get_browser()
+            self._context = await browser.new_context(
+                user_agent=self._browser_manager.ua,
+                viewport=self._browser_manager.auth_viewport,
+            )
+            self._page = await self._context.new_page()
+            self._page.on("response", self._handle_browser_response)
+
+        await self._browser_manager.submit_coro(_open())
 
     async def create_challenge(self) -> QrLoginChallenge:
-        data, response = await self._api(
-            "POST", "/api/sns/web/v1/login/qrcode/create", {"qr_type": 1}
-        )
-        self._merge_response_cookies(response)
-        self._qr_id = str(data.get("qr_id") or "")
-        self._code = str(data.get("code") or "")
-        url = str(data.get("url") or "")
-        if not self._qr_id or not self._code or not url:
-            raise RuntimeError("小红书登录接口未返回有效二维码")
+        async def _create() -> str:
+            page = self._require_page()
+            try:
+                async with page.expect_response(
+                    lambda response: (
+                        self.qr_create_endpoint in response.url
+                        and response.request.method == "POST"
+                    ),
+                    timeout=30_000,
+                ) as response_info:
+                    await page.goto(
+                        self.login_url,
+                        wait_until="domcontentloaded",
+                        timeout=30_000,
+                    )
+                response = await response_info.value
+                if not response.ok:
+                    raise RuntimeError(
+                        f"小红书页面创建二维码失败（HTTP {response.status}）"
+                    )
+                data = self._response_data(await response.json())
+                url = str(data.get("url") or "")
+                if not url:
+                    raise RuntimeError("小红书登录页面未返回有效二维码")
+                cookies = self._cookie_map(await self._context.cookies())
+                self._initial_web_session = cookies.get("web_session", "")
+                return url
+            except RuntimeError:
+                raise
+            except Exception as exc:
+                raise RuntimeError("小红书登录页面加载失败，请重新生成二维码") from exc
+
+        url = await self._browser_manager.submit_coro(_create())
         return QrLoginChallenge(url, "请使用小红书 App 扫码")
 
     async def poll(self) -> QrLoginPollResult:
-        data, _ = await self._api(
-            "POST",
-            "/api/qrcode/userinfo",
-            {"qrId": self._qr_id, "code": self._code},
-            {"service-tag": "webcn"},
-        )
-        status = data.get("codeStatus", -1)
-        if status == 1:
-            return QrLoginPollResult(QrLoginState.SCANNED, "已扫码，等待确认")
-        if status != 2:
+        async def _poll() -> QrLoginPollResult:
+            page = self._require_page()
+            context = self._require_context()
+            if self._browser_error:
+                raise RuntimeError(self._browser_error)
+
+            cookies = self._cookie_map(await context.cookies())
+            current_session = cookies.get("web_session", "")
+            session_changed = bool(
+                current_session and current_session != self._initial_web_session
+            )
+            page_content = await page.content()
+            if "请通过验证" in page_content:
+                return QrLoginPollResult(
+                    QrLoginState.NEEDS_CAPTCHA,
+                    "小红书要求完成人机验证，请取消后重试或手动配置 Cookie",
+                )
+
+            if self._browser_confirmed or session_changed:
+                required = ("a1", "webId", "web_session")
+                missing = [name for name in required if not cookies.get(name)]
+                if missing:
+                    return QrLoginPollResult(
+                        QrLoginState.SCANNED,
+                        "已确认，正在等待浏览器完成登录",
+                    )
+                cookie = "; ".join(
+                    f"{name}={value}" for name, value in sorted(cookies.items()) if value
+                )
+                return QrLoginPollResult(QrLoginState.SUCCESS, "登录成功", cookie)
+            if self._browser_qr_status in {1, 2}:
+                return QrLoginPollResult(QrLoginState.SCANNED, "已扫码，等待确认")
             return QrLoginPollResult(QrLoginState.WAITING, "等待扫码")
 
-        confirmed, response = await self._api(
-            "GET",
-            "/api/sns/web/v1/login/qrcode/status",
-            {"qr_id": self._qr_id, "code": self._code},
-        )
-        login_info = confirmed.get("login_info") or {}
-        if isinstance(login_info, dict):
-            if login_info.get("session"):
-                self._cookies["web_session"] = str(login_info["session"])
-            if login_info.get("secure_session"):
-                self._cookies["web_session_sec"] = str(login_info["secure_session"])
-        self._merge_response_cookies(response)
-        cookie = "; ".join(f"{name}={value}" for name, value in self._cookies.items())
-        return QrLoginPollResult(QrLoginState.SUCCESS, "登录成功", cookie)
+        return await self._browser_manager.submit_coro(_poll())
 
-    async def _api(
-        self,
-        method: str,
-        uri: str,
-        payload: dict,
-        extra_headers: dict[str, str] | None = None,
-    ) -> tuple[dict, httpx.Response]:
-        client = self._require_client()
-        headers = self._headers()
-        if method == "POST":
-            headers.update(
-                self._signer.sign_headers_post(
-                    uri,
-                    self._cookies,
-                    payload=payload,
-                    session=self._session_manager,
+    async def _handle_browser_response(self, response: Any) -> None:
+        url = response.url
+        if (
+            self.qr_userinfo_endpoint not in url
+            and self.qr_status_endpoint not in url
+        ):
+            return
+        try:
+            payload = await response.json()
+            data = self._response_data(payload)
+        except Exception:
+            if not response.ok:
+                self._browser_error = (
+                    f"小红书登录页面请求失败（HTTP {response.status}），请重新生成二维码"
                 )
-            )
-            if extra_headers:
-                headers.update(extra_headers)
-            response = await client.post(
-                f"{self.host}{uri}",
-                headers=headers,
-                content=json.dumps(payload, separators=(",", ":")),
-            )
-        else:
-            headers.update(
-                self._signer.sign_headers_get(
-                    uri,
-                    self._cookies,
-                    params=payload,
-                    session=self._session_manager,
-                )
-            )
-            full_uri = f"{uri}?{urlencode(payload)}" if payload else uri
-            response = await client.get(f"{self.host}{full_uri}", headers=headers)
-        response.raise_for_status()
-        body = response.json()
-        if body.get("success") or body.get("code") == 0:
-            return body.get("data") or {}, response
-        raise RuntimeError(f"小红书接口失败: {json.dumps(body, ensure_ascii=False)[:200]}")
+            return
 
-    def _headers(self) -> dict[str, str]:
+        if self.qr_userinfo_endpoint in url:
+            try:
+                self._browser_qr_status = int(data.get("codeStatus", -1))
+            except (TypeError, ValueError):
+                self._browser_qr_status = -1
+            return
+
+        if response.ok and (payload.get("success") or payload.get("code") == 0):
+            self._browser_confirmed = True
+        elif not response.ok:
+            self._browser_error = (
+                f"小红书登录页面请求失败（HTTP {response.status}），请重新生成二维码"
+            )
+
+    @staticmethod
+    def _response_data(payload: Any) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            return {}
+        data = payload.get("data")
+        return data if isinstance(data, dict) else payload
+
+    @staticmethod
+    def _cookie_map(raw_cookies: list[dict[str, Any]]) -> dict[str, str]:
         return {
-            "user-agent": self._ua,
-            "content-type": "application/json;charset=UTF-8",
-            "cookie": "; ".join(f"{k}={v}" for k, v in self._cookies.items()),
-            "origin": self.home,
-            "referer": f"{self.home}/",
-            "sec-ch-ua": '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"macOS"',
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-site",
-            "accept": "application/json, text/plain, */*",
+            str(cookie.get("name")): str(cookie.get("value"))
+            for cookie in raw_cookies
+            if cookie.get("name") and cookie.get("value")
+            and str(cookie.get("domain", "")).endswith("xiaohongshu.com")
         }
 
-    def _merge_response_cookies(self, response: httpx.Response) -> None:
-        for name, value in response.cookies.items():
-            if value:
-                self._cookies[name] = value
+    def _require_page(self) -> Any:
+        if self._page is None:
+            raise RuntimeError("小红书浏览器登录驱动尚未初始化")
+        return self._page
 
-    def _require_client(self) -> httpx.AsyncClient:
-        if self._client is None:
-            raise RuntimeError("小红书登录驱动尚未初始化")
-        return self._client
+    def _require_context(self) -> Any:
+        if self._context is None:
+            raise RuntimeError("小红书浏览器登录驱动尚未初始化")
+        return self._context
 
     async def close(self) -> None:
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
+        if self._context is None:
+            return
+
+        async def _close() -> None:
+            if self._context is not None:
+                await self._context.close()
+            self._context = None
+            self._page = None
+
+        await self._browser_manager.submit_coro(_close())
