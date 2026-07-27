@@ -622,7 +622,8 @@ def _normalize_parse_test_platform(platform: str) -> str:
 
 
 async def _run_platform_parse_test(platform: str, url: str) -> dict[str, Any]:
-    from app.adapters import AdapterFactory, open_adapter
+    from app.adapters import AdapterFactory
+    from app.services.platform_parsing import open_configured_adapter
 
     text = (url or "").strip()
     if not text:
@@ -635,18 +636,36 @@ async def _run_platform_parse_test(platform: str, url: str) -> dict[str, Any]:
     if platform_enum != Platform.UNIVERSAL and detected != Platform.UNIVERSAL and detected != platform_enum:
         raise ValueError(f"url is detected as {detected.value}, not {platform}")
 
-    async with open_adapter(platform_enum) as adapter:
+    async with open_configured_adapter(platform_enum) as adapter:
         parsed = await adapter.parse(text)
+
+    archive_metadata = parsed.archive_metadata or {}
+    raw_api_response = archive_metadata.get("raw_api_response")
 
     return {
         "platform": platform,
         "url": text,
         "detected_platform": detected.value,
         "title": parsed.title,
+        "content_id": parsed.content_id,
+        "clean_url": parsed.clean_url,
         "content_type": parsed.content_type,
         "layout_type": parsed.layout_type.value if hasattr(parsed.layout_type, "value") else str(parsed.layout_type),
-        "author": parsed.author,
+        "author_name": parsed.author_name,
+        "author_id": parsed.author_id,
+        "author_avatar_url": parsed.author_avatar_url,
+        "author_url": parsed.author_url,
+        "cover_url": parsed.cover_url,
+        "media_urls": parsed.media_urls or [],
         "media_count": len(parsed.media_urls or []),
+        "body_length": len(parsed.body or ""),
+        "published_at": parsed.published_at.isoformat() if parsed.published_at else None,
+        "stats": parsed.stats or {},
+        "source_tags": parsed.source_tags or [],
+        "context_data_keys": sorted((parsed.context_data or {}).keys()),
+        "rich_payload_keys": sorted((parsed.rich_payload or {}).keys()),
+        "archive_metadata_keys": sorted(archive_metadata.keys()),
+        "archive_raw_keys": sorted(raw_api_response.keys()) if isinstance(raw_api_response, dict) else [],
     }
 
 

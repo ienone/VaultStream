@@ -673,8 +673,20 @@ class TestSystemAPI:
                 "title": "解析测试内容",
                 "content_type": "answer",
                 "layout_type": "article",
-                "author": "tester",
+                "author_name": "tester",
+                "author_id": "tester-id",
+                "author_avatar_url": None,
+                "author_url": None,
+                "cover_url": None,
+                "media_urls": [],
                 "media_count": 0,
+                "body_length": 12,
+                "published_at": None,
+                "stats": {"like": 3},
+                "source_tags": [],
+                "context_data_keys": [],
+                "rich_payload_keys": [],
+                "archive_metadata_keys": [],
             }
 
         monkeypatch.setattr("app.routers.system._run_platform_parse_test", fake_parse_test)
@@ -691,6 +703,8 @@ class TestSystemAPI:
         assert data["ok"] is True
         assert data["run_id"]
         assert data["title"] == "解析测试内容"
+        assert data["author_name"] == "tester"
+        assert data["stats"] == {"like": 3}
 
         diagnostics = await client.get("/api/v1/background-tasks/diagnostics")
         latest = next(

@@ -82,8 +82,12 @@ async def test_process_parse_task_success(db_session, monkeypatch, client):
     monkeypatch.setattr("app.tasks.parsing.AsyncSessionLocal", TestingSessionLocal)
     _disable_background_embedding(monkeypatch)
     
-    # Mock AdapterFactory
-    with patch("app.tasks.parsing.AdapterFactory.create", return_value=mock_adapter), \
+    # Mock the shared configured-adapter constructor.
+    with patch(
+        "app.tasks.parsing.create_configured_adapter",
+        new_callable=AsyncMock,
+        return_value=mock_adapter,
+    ), \
          patch("app.tasks.parsing.task_queue.mark_complete", new_callable=AsyncMock) as mock_mark_complete:
         
         parser = ContentParser()
@@ -134,7 +138,10 @@ async def test_process_parse_task_failure(db_session, monkeypatch):
     from tests.conftest import TestingSessionLocal
     monkeypatch.setattr("app.tasks.parsing.AsyncSessionLocal", TestingSessionLocal)
     
-    with patch("app.tasks.parsing.AdapterFactory.create") as mock_factory, \
+    with patch(
+        "app.tasks.parsing.create_configured_adapter",
+        new_callable=AsyncMock,
+    ) as mock_factory, \
          patch("app.tasks.parsing.task_queue.mark_complete", new_callable=AsyncMock):
         
         mock_adapter = AsyncMock()
@@ -193,7 +200,11 @@ def _patch_common(monkeypatch, mock_adapter=None, parsed=None,
             parsed = _make_parsed()
         mock_adapter.parse.return_value = parsed
     mocks["adapter"] = mock_adapter
-    mocks["factory"] = patch("app.tasks.parsing.AdapterFactory.create", return_value=mock_adapter)
+    mocks["factory"] = patch(
+        "app.tasks.parsing.create_configured_adapter",
+        new_callable=AsyncMock,
+        return_value=mock_adapter,
+    )
 
     # Queue helpers
     mocks["mark_complete"] = mark_complete or AsyncMock()
@@ -678,23 +689,6 @@ def test_truncate_archive_metadata_over_limit():
     archive = result.get("archive", {})
     assert "markdown" not in archive
     assert "html" not in archive
-
-
-@pytest.mark.asyncio
-async def test_get_platform_cookies_bilibili(monkeypatch):
-    from pydantic import SecretStr
-    monkeypatch.setattr("app.core.config.settings.bilibili_sessdata", SecretStr("sess123"))
-    monkeypatch.setattr("app.core.config.settings.bilibili_bili_jct", SecretStr("jct456"))
-    monkeypatch.setattr("app.core.config.settings.bilibili_buvid3", SecretStr("buv789"))
-    parser = ContentParser()
-    cookies = await parser._get_platform_cookies(Platform.BILIBILI)
-    assert cookies == {"SESSDATA": "sess123", "bili_jct": "jct456", "buvid3": "buv789"}
-
-
-@pytest.mark.asyncio
-async def test_get_platform_cookies_other():
-    parser = ContentParser()
-    assert await parser._get_platform_cookies(Platform.WEIBO) == {}
 
 
 # ===================================================================
