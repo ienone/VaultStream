@@ -20,6 +20,7 @@ class PlatformHealthStatus {
   final Map<String, dynamic> favoritesSync;
 
   bool get hasCookie => auth['cookie_configured'] == true;
+  bool get browserAuthSupported => auth['browser_auth_supported'] == true;
   bool? get browserAuthValid => auth['browser_auth_valid'] is bool
       ? auth['browser_auth_valid'] as bool
       : null;

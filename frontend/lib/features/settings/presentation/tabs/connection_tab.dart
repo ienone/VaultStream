@@ -1,8 +1,14 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/providers/local_settings_provider.dart';
+import '../../../../core/utils/safe_url_launcher.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/platform_auth_controller.dart';
 import '../../providers/platform_health_provider.dart';
 import '../../models/system_setting.dart';
 import '../widgets/setting_components.dart';
@@ -113,12 +119,12 @@ class ConnectionTab extends ConsumerWidget {
                 subtitle: _platformHealthSubtitle(platform),
                 icon: _platformHealthIcon(platform),
                 iconColor: _platformHealthColor(context, platform),
-                trailing: Text(
-                  _platformHealthLabel(platform.health),
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: _platformHealthColor(context, platform),
-                    fontWeight: FontWeight.w700,
-                  ),
+                trailing: _PlatformAccountActions(
+                  platform: platform,
+                  onLogin: () => _startPlatformLogin(context, ref, platform),
+                  onCheck: () => _checkPlatform(context, ref, platform),
+                  onLogout: () =>
+                      _confirmPlatformLogout(context, ref, platform),
                 ),
                 showArrow: false,
               ),
@@ -215,6 +221,74 @@ class ConnectionTab extends ConsumerWidget {
         return colors.outline;
       default:
         return null;
+    }
+  }
+
+  Future<void> _startPlatformLogin(
+    BuildContext context,
+    WidgetRef ref,
+    PlatformHealthStatus platform,
+  ) async {
+    final success = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _PlatformLoginDialog(
+        platform: platform.platform,
+        label: platform.label,
+      ),
+    );
+    if (success == true && context.mounted) {
+      ref.read(platformAuthActionsProvider.notifier).refreshHealth();
+      showToast(context, '${platform.label} 登录已更新');
+    }
+  }
+
+  Future<void> _checkPlatform(
+    BuildContext context,
+    WidgetRef ref,
+    PlatformHealthStatus platform,
+  ) async {
+    try {
+      final result = await ref
+          .read(platformAuthActionsProvider.notifier)
+          .check(platform.platform);
+      if (context.mounted) showToast(context, result.message);
+    } on PlatformAuthException catch (error) {
+      if (context.mounted) showToast(context, error.message);
+    }
+  }
+
+  Future<void> _confirmPlatformLogout(
+    BuildContext context,
+    WidgetRef ref,
+    PlatformHealthStatus platform,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('退出 ${platform.label}'),
+        content: const Text('将清除 VaultStream 保存的该平台登录信息；不会修改平台账号本身。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('清除登录'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      final result = await ref
+          .read(platformAuthActionsProvider.notifier)
+          .logout(platform.platform);
+      if (context.mounted) showToast(context, result.message);
+    } on PlatformAuthException catch (error) {
+      if (context.mounted) showToast(context, error.message);
     }
   }
 
@@ -537,4 +611,286 @@ class ConnectionTab extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _PlatformAccountActions extends ConsumerWidget {
+  const _PlatformAccountActions({
+    required this.platform,
+    required this.onLogin,
+    required this.onCheck,
+    required this.onLogout,
+  });
+
+  final PlatformHealthStatus platform;
+  final VoidCallback onLogin;
+  final VoidCallback onCheck;
+  final VoidCallback onLogout;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!platform.browserAuthSupported) {
+      return const Chip(label: Text('手动配置'));
+    }
+
+    final pending = ref.watch(platformAuthActionsProvider);
+    final loginPending = pending.contains('${platform.platform}:login');
+    final checkPending = pending.contains('${platform.platform}:check');
+    final logoutPending = pending.contains('${platform.platform}:logout');
+    final busy = loginPending || checkPending || logoutPending;
+    final loginLabel = !platform.hasCookie
+        ? '登录'
+        : platform.browserAuthValid == false
+        ? '重新登录'
+        : '更新登录';
+
+    return Wrap(
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        if (platform.hasCookie)
+          OutlinedButton.icon(
+            onPressed: busy ? null : onCheck,
+            icon: checkPending
+                ? const SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.health_and_safety_outlined, size: 18),
+            label: const Text('检测'),
+          ),
+        if (platform.hasCookie)
+          TextButton(
+            onPressed: busy ? null : onLogout,
+            child: const Text('退出'),
+          ),
+        FilledButton.tonalIcon(
+          onPressed: busy ? null : onLogin,
+          icon: loginPending
+              ? const SizedBox.square(
+                  dimension: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(
+                  platform.browserAuthValid == false
+                      ? Icons.refresh_rounded
+                      : Icons.qr_code_2_rounded,
+                  size: 18,
+                ),
+          label: Text(loginLabel),
+        ),
+      ],
+    );
+  }
+}
+
+class _PlatformLoginDialog extends ConsumerStatefulWidget {
+  const _PlatformLoginDialog({required this.platform, required this.label});
+
+  final String platform;
+  final String label;
+
+  @override
+  ConsumerState<_PlatformLoginDialog> createState() =>
+      _PlatformLoginDialogState();
+}
+
+class _PlatformLoginDialogState extends ConsumerState<_PlatformLoginDialog> {
+  PlatformAuthSession? _session;
+  String? _error;
+  bool _starting = true;
+  Timer? _pollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    Future<void>.microtask(_start);
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _start() async {
+    _pollTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        _starting = true;
+        _error = null;
+        _session = null;
+      });
+    }
+    try {
+      final session = await ref
+          .read(platformAuthActionsProvider.notifier)
+          .startSession(widget.platform);
+      _accept(session);
+    } on PlatformAuthException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _starting = false;
+        _error = error.message;
+      });
+    }
+  }
+
+  void _accept(PlatformAuthSession session) {
+    if (!mounted) return;
+    setState(() {
+      _starting = false;
+      _error = null;
+      _session = session;
+    });
+    if (session.succeeded) {
+      ref.read(platformAuthActionsProvider.notifier).refreshHealth();
+    } else if (!session.isTerminal) {
+      _pollTimer = Timer(const Duration(seconds: 2), _poll);
+    }
+  }
+
+  Future<void> _poll() async {
+    final sessionId = _session?.sessionId;
+    if (sessionId == null || sessionId.isEmpty || !mounted) return;
+    try {
+      final session = await ref
+          .read(platformAuthActionsProvider.notifier)
+          .readSession(sessionId);
+      _accept(session);
+    } on PlatformAuthException catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.message);
+    }
+  }
+
+  Future<void> _cancel() async {
+    _pollTimer?.cancel();
+    final sessionId = _session?.sessionId;
+    if (sessionId != null && sessionId.isNotEmpty && !_session!.isTerminal) {
+      try {
+        await ref
+            .read(platformAuthActionsProvider.notifier)
+            .cancelSession(sessionId);
+      } on PlatformAuthException {
+        // 关闭对话框仍应立即生效；服务端会按自身超时回收异常会话。
+      }
+    }
+    if (mounted) Navigator.pop(context, false);
+  }
+
+  Uint8List? _decodeQr(String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+    try {
+      final payload = value.contains(',') ? value.split(',').last : value;
+      return base64Decode(payload);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final session = _session;
+    final qrBytes = _decodeQr(session?.qrcodeB64);
+    final succeeded = session?.succeeded == true;
+    final failed = session?.isTerminal == true && !succeeded;
+
+    return AlertDialog(
+      icon: Icon(
+        succeeded
+            ? Icons.verified_rounded
+            : failed || _error != null
+            ? Icons.error_outline_rounded
+            : Icons.qr_code_2_rounded,
+        color: succeeded
+            ? scheme.primary
+            : failed || _error != null
+            ? scheme.error
+            : scheme.secondary,
+      ),
+      title: Text(succeeded ? '${widget.label} 登录成功' : '${widget.label} 扫码登录'),
+      content: SizedBox(
+        width: 360,
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_starting)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: CircularProgressIndicator(),
+                )
+              else if (qrBytes != null && !succeeded && !failed) ...[
+                Container(
+                  width: 220,
+                  height: 220,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Image.memory(
+                    qrBytes,
+                    fit: BoxFit.contain,
+                    gaplessPlayback: true,
+                    errorBuilder: (_, _, _) => const Icon(
+                      Icons.broken_image_outlined,
+                      color: Colors.black54,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (!_starting)
+                Text(
+                  _error ?? session?.message ?? _statusLabel(session?.status),
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: _error != null || failed
+                        ? scheme.error
+                        : scheme.onSurfaceVariant,
+                  ),
+                ),
+              if (session?.captchaUrl?.trim().isNotEmpty == true) ...[
+                const SizedBox(height: 12),
+                FilledButton.tonalIcon(
+                  onPressed: () => SafeUrlLauncher.openExternal(
+                    context,
+                    session!.captchaUrl,
+                  ),
+                  icon: const Icon(Icons.open_in_new_rounded),
+                  label: const Text('完成安全验证'),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        if (!succeeded) TextButton(onPressed: _cancel, child: const Text('取消')),
+        if (failed || _error != null)
+          FilledButton.tonal(onPressed: _start, child: const Text('重试')),
+        if (succeeded)
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('完成'),
+          ),
+      ],
+    );
+  }
+
+  String _statusLabel(String? status) => switch (status) {
+    'initializing' => '正在创建登录会话…',
+    'waiting_scan' => '请使用对应平台 App 扫码',
+    'needs_captcha' => '需要完成安全验证',
+    'timeout' => '二维码已过期，请重试',
+    'failed' => '登录失败，请重试',
+    _ => '正在等待平台确认…',
+  };
 }
