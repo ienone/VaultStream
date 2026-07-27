@@ -6,6 +6,8 @@ active
 
 ## 当前代码
 
+- 统一媒体 DTO：`frontend/lib/features/collection/models/media_asset.dart`
+- 候选执行器：`frontend/lib/core/media/media_candidate_resolver.dart`
 - 前端 URL 映射：`frontend/lib/core/utils/media_utils.dart`
 - 图片鉴权头：`frontend/lib/core/network/image_headers.dart`
 - 图片组件：`frontend/lib/core/widgets/network_thumbnail.dart`
@@ -13,10 +15,12 @@ active
 
 ## 当前职责
 
-- 将 `local://` 转为 `/api/v1/media/{key}`。
-- 对外链图片按规则转为 `/proxy/image?url=...`。
-- 为同源受保护媒体追加 `X-API-Token`。
-- 使用 `CachedNetworkImage` 渲染缩略图和失败态。
+- 卡片按后端返回的资产顺序选择代表图片；卡片用途下，后端会把有本地变体的图片排在仅远端的封面之前。
+- 图片组件按后端顺序逐一请求候选，去除空 URL 和重复 URL；当前候选加载或解码失败后才切换下一项。
+- 详情封面、头像、正文图片、媒体网格和全屏图集已贯通同一候选列表；Markdown 中与 `MediaSource` 精确匹配的原图 URL 会还原为该资产的完整候选顺序。
+- 视频和音频播放器按相同的候选状态机初始化，当前来源初始化失败后才尝试下一项。
+- 签名本地媒体、后端代理和允许直连的原图候选均不携带全局 API Token。
+- 旧 `local://` 映射、默认图片代理和鉴权头仍只服务尚未迁移的旧字段调用方，不得扩散到统一媒体路径。
 
 ## 不承担职责
 
@@ -26,8 +30,9 @@ active
 
 ## 状态与输入输出
 
-- 输入：原始媒体 URL、API base URL、API token、图片尺寸和 fit 参数。
-- 输出：可渲染的本地媒体 URL、代理 URL、同源鉴权头和图片/失败占位。
+- 新输入：后端排好序的 `MediaSource[]`、图片尺寸和 fit 参数。
+- 旧输入：原始媒体 URL、API base URL、API token；只在迁移窗口保留。
+- 输出：单个活动媒体请求；失败时切换下一候选，全部失败后显示稳定占位。
 - 副作用：前端映射本身不应产生后端副作用；访问 `/proxy/image` 目前会触发后端下载、转码和缓存，这是当前问题的一部分。
 
 ## 响应式和失败态要求
@@ -44,4 +49,6 @@ active
 
 ## 尚未实现 / 计划扩展
 
-无本组件单独计划；透明代理、后台归档和本地媒体读取的拆分边界以 `../../issues/media-proxy-image-access.md` 为准。
+- 签名过期后的 manifest 单次刷新、候选失败分类和资产修复上报尚未接入前端状态机。
+- `rich_payload` 内嵌的成员卡片、自动化队列预览和分发调用方仍使用旧媒体字段；这些调用方完成迁移前不删除旧映射函数。
+- 音视频 Range、播放恢复和后台播放仍按统一计划后续收敛。
