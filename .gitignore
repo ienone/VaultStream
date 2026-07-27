@@ -53,6 +53,7 @@ backend/.test-runtime/
 backend/tests/logs/
 backend/tests/outputs/
 backend/manual_tests/
+/.runtime/
 
 # Flutter generated state
 frontend/.dart_tool/
