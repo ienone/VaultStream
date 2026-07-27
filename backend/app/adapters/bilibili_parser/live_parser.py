@@ -4,9 +4,10 @@ B站直播间解析器
 负责解析B站直播间信息
 """
 import httpx
+from datetime import datetime
 from typing import Dict, Any
 from app.core.logging import logger
-from app.adapters.base import ParsedContent, LAYOUT_GALLERY
+from app.adapters.base import ParsedContent, LAYOUT_VIDEO
 from app.adapters.errors import (
     AuthRequiredAdapterError,
     NonRetryableAdapterError,
@@ -95,6 +96,23 @@ async def parse_live(
         
         # 提取主播信息
         author_uid = room_info.get('uid')
+        cover_url = room_info.get('cover') or room_info.get('background')
+        published_at = None
+        live_time = room_info.get('live_time')
+        if live_time and live_time != "0000-00-00 00:00:00":
+            try:
+                published_at = datetime.fromisoformat(live_time)
+            except (TypeError, ValueError):
+                pass
+
+        source_tags = [
+            room_info.get('parent_area_name'),
+            room_info.get('area_name'),
+        ]
+        source_tags.extend(
+            tag.strip() for tag in str(room_info.get('tags') or '').split(',') if tag.strip()
+        )
+        source_tags = list(dict.fromkeys(tag for tag in source_tags if tag))
         
         # 构建存档结构（用于媒体存档）
         archive = {
@@ -103,7 +121,7 @@ async def parse_live(
             "title": room_info.get('title', ''),
             "plain_text": room_info.get('description', ''),
             "markdown": room_info.get('description', ''),
-            "images": [{"url": room_info.get('cover')}] if room_info.get('cover') else [],
+            "images": [{"url": cover_url}] if cover_url else [],
             "links": [],
             "stored_images": []
         }
@@ -119,19 +137,20 @@ async def parse_live(
             content_type=BilibiliContentType.LIVE.value,
             content_id=str(room_info.get('room_id')),
             clean_url=url,
-            layout_type=LAYOUT_GALLERY,
+            layout_type=LAYOUT_VIDEO,
             title=room_info.get('title'),
             body=room_info.get('description'),
             author_name=room_info.get('uname'),
             author_id=str(author_uid) if author_uid else None,
             author_avatar_url=room_info.get('face'),
             author_url=f"https://space.bilibili.com/{author_uid}" if author_uid else None,
-            cover_url=room_info.get('cover'),
-            media_urls=[room_info.get('cover')] if room_info.get('cover') else [],
-            published_at=None,
+            cover_url=cover_url,
+            media_urls=[cover_url] if cover_url else [],
+            published_at=published_at,
             archive_metadata={
                 "raw_api_response": dict(room_info),
                 "archive": archive
             },
-            stats=stats
+            stats=stats,
+            source_tags=source_tags,
         )

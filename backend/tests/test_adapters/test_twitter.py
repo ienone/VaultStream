@@ -55,6 +55,65 @@ class TestTwitterAdapter(AdapterTestBase):
         assert result.platform == "twitter"
         assert result.author_name == "n-buna" or result.author_name is not None
         assert len(result.body) > 0
+        assert result.layout_type == "gallery"
+        assert result.cover_url != result.author_avatar_url
+        assert result.source_tags == ["ヨルシカ_千鳥", "ヨルシカ_二人称"]
+
+    def test_text_tweet_has_no_fake_avatar_cover(self, adapter):
+        result = adapter._parse_tweet_data(
+            {
+                "id": "123",
+                "text": "plain text post",
+                "author": {
+                    "name": "Tester",
+                    "screen_name": "tester",
+                    "avatar_url": "https://example.com/avatar.jpg",
+                },
+                "media": {},
+            },
+            "https://x.com/tester/status/123",
+        )
+
+        assert result.layout_type == "article"
+        assert result.cover_url is None
+        assert result.author_avatar_url == "https://example.com/avatar.jpg"
+
+    def test_video_quote_and_poll_are_mapped(self, adapter):
+        result = adapter._parse_tweet_data(
+            {
+                "id": "456",
+                "text": "video with quote #demo",
+                "author": {"name": "Tester", "screen_name": "tester"},
+                "media": {
+                    "all": [
+                        {
+                            "type": "video",
+                            "url": "https://video.example/demo.mp4",
+                            "thumbnail_url": "https://video.example/cover.jpg",
+                        }
+                    ]
+                },
+                "quote": {
+                    "url": "https://x.com/source/status/1",
+                    "text": "quoted text",
+                    "author": {"name": "Source"},
+                    "media": {"all": [{"type": "photo", "url": "https://img.example/q.jpg"}]},
+                },
+                "poll": {"choices": [{"label": "yes", "count": 2}]},
+            },
+            "https://x.com/tester/status/456",
+        )
+
+        assert result.layout_type == "video"
+        assert result.cover_url == "https://video.example/cover.jpg"
+        assert result.source_tags == ["demo"]
+        assert result.rich_payload["quoted_content"] == {
+            "author": "Source",
+            "text": "quoted text",
+            "url": "https://x.com/source/status/1",
+            "thumbnail": "https://img.example/q.jpg",
+        }
+        assert result.rich_payload["poll"]["choices"][0]["count"] == 2
 
     @pytest.mark.asyncio
     async def test_url_normalization(self, adapter):

@@ -58,6 +58,8 @@ class TestBilibiliAdapter(AdapterTestBase):
         assert result.content_id == "BV1GJ411x7h7"
         assert result.title == "【官方 MV】Never Gonna Give You Up - Rick Astley"
         assert result.author_name == "索尼音乐中国"
+        assert result.layout_type == "video"
+        assert result.stats["duration_seconds"] == 213
 
     @pytest.mark.asyncio
     async def test_parse_article_mocked(self, adapter, httpx_mock):
@@ -129,6 +131,10 @@ class TestBilibiliAdapter(AdapterTestBase):
         assert result.content_type == "live"
         assert result.content_id == "923833"
         assert result.author_name is not None
+        assert result.layout_type == "video"
+        assert result.published_at is not None
+        assert result.cover_url
+        assert "怀旧游戏" in result.source_tags
 
     @pytest.mark.asyncio
     async def test_parse_error_404(self, adapter, httpx_mock):

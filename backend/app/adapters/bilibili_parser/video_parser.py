@@ -8,7 +8,7 @@ import httpx
 from datetime import datetime
 from typing import Optional, Dict, Any
 from app.core.logging import logger
-from app.adapters.base import PlatformAdapter, ParsedContent, LAYOUT_GALLERY
+from app.adapters.base import PlatformAdapter, ParsedContent, LAYOUT_VIDEO
 from app.adapters.errors import (
     AuthRequiredAdapterError,
     NonRetryableAdapterError,
@@ -92,7 +92,8 @@ async def parse_video(
             'coin': stat.get('coin', 0),
             'share': stat.get('share', 0),
             'reply': stat.get('reply', 0),
-            'danmaku': stat.get('danmaku', 0)
+            'danmaku': stat.get('danmaku', 0),
+            'duration_seconds': item.get('duration', 0),
         }
 
         # 提取UP主信息
@@ -111,14 +112,13 @@ async def parse_video(
             author_avatar_url=author_avatar_url
         )
         
-        # 构建ParsedContent
-        # 视频当前只存封面不存视频，layout_type设为GALLERY
+        # 当前只归档视频封面；VIDEO 布局表达原生内容类型，播放源仍由后续媒体能力提供。
         return PlatformAdapter.create_parsed_content(
             platform='bilibili',
             content_type=BilibiliContentType.VIDEO.value,
             content_id=bvid or f"av{aid}",
             clean_url=url,
-            layout_type=LAYOUT_GALLERY,
+            layout_type=LAYOUT_VIDEO,
             title=item.get('title'),
             body=item.get('desc'),
             author_name=owner.get('name'),
@@ -129,5 +129,8 @@ async def parse_video(
             media_urls=[item.get('pic')] if item.get('pic') else [],
             published_at=datetime.fromtimestamp(item.get('pubdate')) if item.get('pubdate') else None,
             archive_metadata=archive_metadata,
-            stats=stats
+            stats=stats,
+            source_tags=list(dict.fromkeys(
+                tag for tag in (item.get('tname'), item.get('tname_v2')) if tag
+            )),
         )

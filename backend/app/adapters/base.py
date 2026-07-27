@@ -36,7 +36,7 @@ class ParsedContent:
     media_urls: list = field(default_factory=list)
     published_at: Optional[datetime] = None
     
-    stats: Dict[str, int] = field(default_factory=dict)  # 通用互动数据
+    stats: Dict[str, Any] = field(default_factory=dict)  # 通用互动数据及平台扩展数据
     source_tags: List[str] = field(default_factory=list)  # 平台原生标签
     
     # 结构化扩展组件
@@ -113,11 +113,34 @@ class PlatformAdapter(ABC):
 
     @staticmethod
     def _to_int(value: Any, default: int = 0) -> int:
-        """安全整数转换"""
+        """安全整数转换，支持平台常见的逗号与中英文数量单位。"""
         try:
             if value is None:
                 return default
-            return int(value)
+            if isinstance(value, bool):
+                return int(value)
+            if isinstance(value, (int, float)):
+                return int(value)
+
+            text = str(value).strip().replace(",", "")
+            if not text:
+                return default
+
+            import re
+
+            match = re.fullmatch(r"([+-]?\d+(?:\.\d+)?)\s*([万亿kKmM]?)", text)
+            if not match:
+                return default
+            multiplier = {
+                "": 1,
+                "k": 1_000,
+                "K": 1_000,
+                "m": 1_000_000,
+                "M": 1_000_000,
+                "万": 10_000,
+                "亿": 100_000_000,
+            }[match.group(2)]
+            return int(float(match.group(1)) * multiplier)
         except (TypeError, ValueError):
             return default
 
@@ -177,4 +200,3 @@ class PlatformAdapter(ABC):
         if "media_urls" in kwargs and kwargs["media_urls"]:
             kwargs["media_urls"] = [url for url in kwargs["media_urls"] if url]
         return ParsedContent(**kwargs)
-

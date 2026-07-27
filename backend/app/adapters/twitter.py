@@ -12,7 +12,13 @@ from urllib.parse import urlparse
 import httpx
 
 from app.core.logging import logger
-from app.adapters.base import PlatformAdapter, ParsedContent, LAYOUT_GALLERY
+from app.adapters.base import (
+    PlatformAdapter,
+    ParsedContent,
+    LAYOUT_ARTICLE,
+    LAYOUT_GALLERY,
+    LAYOUT_VIDEO,
+)
 from app.adapters.errors import (
     NonRetryableAdapterError,
     RetryableAdapterError,
@@ -229,6 +235,8 @@ class TwitterAdapter(PlatformAdapter):
                     "width": media.get("width"),
                     "height": media.get("height"),
                 })
+
+        external_media = tweet.get("media", {}).get("external") or {}
         
         # 解析时间 (Twitter 格式: "Sat Jan 03 02:37:01 +0000 2026")
         published_at = None
@@ -292,6 +300,7 @@ class TwitterAdapter(PlatformAdapter):
             "media": media_list,
             "poll": tweet.get("poll"),  # 如果是投票推文
             "quote": tweet.get("quote"),  # 如果是引用推文
+            "external_media": external_media or None,
             # "original_api_response": tweet,  # 移除冗余字段
             # 私有存档结构（用于媒体处理）
             "archive": {
@@ -310,6 +319,35 @@ class TwitterAdapter(PlatformAdapter):
         
         # 收集媒体URL
         media_urls = [m["url"] for m in media_list if m.get("url")]
+
+        has_video = any(media.get("type") == "video" for media in media_list)
+        has_image = any(media.get("type") == "image" for media in media_list)
+        layout_type = LAYOUT_VIDEO if has_video else (LAYOUT_GALLERY if has_image else LAYOUT_ARTICLE)
+
+        source_tags = []
+        for facet in (tweet.get("raw_text") or {}).get("facets", []):
+            if facet.get("type") == "hashtag" and facet.get("original"):
+                source_tags.append(str(facet["original"]).lstrip("#"))
+        source_tags.extend(re.findall(r"(?<!\w)#([^\s#]+)", text))
+        source_tags = list(dict.fromkeys(tag for tag in source_tags if tag))
+
+        rich_payload = {}
+        quote = tweet.get("quote")
+        if isinstance(quote, dict):
+            quote_author = quote.get("author") or {}
+            quote_media = (quote.get("media") or {}).get("all") or []
+            quote_thumbnail = None
+            if quote_media:
+                first_media = quote_media[0]
+                quote_thumbnail = first_media.get("thumbnail_url") or first_media.get("url")
+            rich_payload["quoted_content"] = {
+                "author": quote_author.get("name") or quote_author.get("screen_name"),
+                "text": quote.get("text") or "",
+                "url": quote.get("url"),
+                "thumbnail": quote_thumbnail,
+            }
+        if tweet.get("poll"):
+            rich_payload["poll"] = tweet["poll"]
         
         # 构建统计数据（使用通用键名）
         stats = {
@@ -332,18 +370,24 @@ class TwitterAdapter(PlatformAdapter):
             content_type=content_type.value,
             content_id=tweet_id,
             clean_url=original_url,
-            layout_type=LAYOUT_GALLERY,  # Twitter推文默认为Gallery布局
+            layout_type=layout_type,
             title=generate_title_from_text(text, max_len=60, fallback=f"@{screen_name or 'unknown'} 的推文"),
             body=text,
             author_name=author.get('name'),
             author_id=screen_name,  # 使用 screen_name 作为 author_id
             author_avatar_url=author.get('avatar_url'),  # 添加作者头像URL
             author_url=f"https://twitter.com/{screen_name}" if screen_name else None,
-            cover_url=media_list[0]["url"] if media_list else author.get("avatar_url"),
+            cover_url=(
+                media_list[0].get("thumbnail_url") or media_list[0].get("url")
+                if media_list
+                else external_media.get("thumbnail_url")
+            ),
             media_urls=media_urls,
             published_at=published_at,
             stats=stats,
-            archive_metadata=archive_metadata
+            source_tags=source_tags,
+            rich_payload=rich_payload or None,
+            archive_metadata=archive_metadata,
         )
 
     def map_stats_to_content(self, content, parsed: ParsedContent) -> None:

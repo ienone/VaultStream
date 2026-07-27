@@ -8,6 +8,16 @@ from typing import Any, Dict, List, Optional
 from app.core.logging import logger
 
 
+def extract_url(value: Any) -> Optional[str]:
+    """Return a URL from Weibo's string-or-object URL fields."""
+    if isinstance(value, str):
+        return value or None
+    if isinstance(value, dict):
+        url = value.get("url")
+        return url if isinstance(url, str) and url else None
+    return None
+
+
 def clean_html_text(html_text: str) -> str:
     """
     从HTML中提取纯文本
@@ -109,8 +119,12 @@ def extract_weibo_video(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     cover_url = None
     
     # 1. 检查page_info
-    if "page_info" in data and data["page_info"].get("type") == "video":
-        page_info = data["page_info"]
+    page_info = data.get("page_info") or {}
+    is_video_page = (
+        page_info.get("object_type") == "video"
+        or page_info.get("type") in {"video", "11", 11}
+    )
+    if is_video_page:
         media_info = page_info.get("media_info", {})
         
         # 优先选择高清视频
@@ -120,7 +134,7 @@ def extract_weibo_video(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             media_info.get("stream_url_hd") or 
             media_info.get("stream_url")
         )
-        cover_url = page_info.get("page_pic", {}).get("url")
+        cover_url = extract_url(page_info.get("page_pic"))
 
     # 2. 检查mix_media_info（较新的结构）
     if not video_url and "mix_media_info" in data:

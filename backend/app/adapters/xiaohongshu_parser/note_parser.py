@@ -10,7 +10,7 @@ import httpx
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from app.core.logging import logger
-from app.adapters.base import ParsedContent, LAYOUT_GALLERY
+from app.adapters.base import PlatformAdapter, ParsedContent, LAYOUT_GALLERY, LAYOUT_VIDEO
 from app.adapters.errors import (
     AuthRequiredAdapterError,
     NonRetryableAdapterError,
@@ -74,15 +74,19 @@ async def parse_note(
     
     # 提取封面（优先使用第一张图片，否则使用视频首帧）
     cover_url = None
-    if archive.get("images"):
-        cover_url = archive["images"][0].get("url")
+    content_images = [
+        image for image in archive.get("images", [])
+        if image.get("url") and image.get("type") != "avatar"
+    ]
+    if content_images:
+        cover_url = content_images[0].get("url")
     elif archive.get("videos"):
         cover_url = archive["videos"][0].get("cover")
     
     # 提取媒体URL列表
     media_urls = []
     for img in archive.get("images", []):
-        if img.get("url"):
+        if img.get("url") and img.get("type") != "avatar":
             media_urls.append(img["url"])
     for vid in archive.get("videos", []):
         if vid.get("url"):
@@ -93,10 +97,10 @@ async def parse_note(
     # 计算图片数量（与小红书CLI的normalize_note_detail对齐）
     image_list = note.get("image_list") or note.get("images_list") or note.get("imageList") or []
     stats = {
-        "like": interact.get("liked_count") or interact.get("likedCount") or 0,
-        "favorite": interact.get("collected_count") or interact.get("collectedCount") or 0,
-        "reply": interact.get("comment_count") or interact.get("commentCount") or 0,
-        "share": interact.get("share_count") or interact.get("shareCount") or 0,
+        "like": PlatformAdapter._to_int(interact.get("liked_count") or interact.get("likedCount")),
+        "favorite": PlatformAdapter._to_int(interact.get("collected_count") or interact.get("collectedCount")),
+        "reply": PlatformAdapter._to_int(interact.get("comment_count") or interact.get("commentCount")),
+        "share": PlatformAdapter._to_int(interact.get("share_count") or interact.get("shareCount")),
         "image_count": len(image_list),                                        # 图片张数
         "note_type": "video" if note.get("type") == "video" else "image",     # 笔记类型
     }
@@ -124,7 +128,7 @@ async def parse_note(
         content_type="note",
         content_id=note_id,
         clean_url=url,
-        layout_type=LAYOUT_GALLERY,  # 小红书笔记默认为Gallery布局
+        layout_type=LAYOUT_VIDEO if archive.get("videos") else LAYOUT_GALLERY,
         title=title,
         body=description,
         author_name=author_name or "未知用户",

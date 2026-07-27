@@ -3,18 +3,19 @@
 
 负责解析微博状态（推文）内容
 """
+import re
 import requests
 from datetime import datetime
 from typing import Dict, Any, List
 from app.core.logging import logger
-from app.adapters.base import ParsedContent, LAYOUT_GALLERY
+from app.adapters.base import ParsedContent, LAYOUT_ARTICLE, LAYOUT_GALLERY, LAYOUT_VIDEO
 from app.adapters.errors import (
     AuthRequiredAdapterError,
     NonRetryableAdapterError,
     RetryableAdapterError,
 )
 from app.core.config import settings
-from .base import clean_html_text, extract_weibo_images, extract_weibo_video
+from .base import clean_html_text, extract_url, extract_weibo_images, extract_weibo_video
 
 
 async def parse_weibo(
@@ -92,7 +93,7 @@ async def parse_weibo(
         cover_url = ""
         
         for img in archive.get("images", []):
-            if img.get("url"):
+            if img.get("url") and img.get("type") != "avatar":
                 media_urls.append(img["url"])
         
         if archive.get("videos"):
@@ -101,14 +102,18 @@ async def parse_weibo(
                     media_urls.append(vid["url"])
         
         # 封面选择逻辑：优先使用图片，其次使用视频封面
-        if archive.get("images"):
-            cover_url = archive["images"][0].get("url")
+        content_images = [
+            image for image in archive.get("images", [])
+            if image.get("url") and image.get("type") != "avatar"
+        ]
+        if content_images:
+            cover_url = content_images[0].get("url")
         elif archive.get("videos"):
             cover_url = archive["videos"][0].get("cover")
         
         # 如果仍未找到封面，使用page_info中的
         if not cover_url and "page_info" in data:
-            page_pic = data["page_info"].get("page_pic", {}).get("url")
+            page_pic = extract_url(data["page_info"].get("page_pic"))
             if page_pic:
                 cover_url = page_pic
                 if page_pic not in media_urls:
@@ -139,12 +144,31 @@ async def parse_weibo(
         archive_metadata = data
         archive_metadata["archive"] = archive
 
+        if archive.get("videos"):
+            layout_type = LAYOUT_VIDEO
+        elif content_images:
+            layout_type = LAYOUT_GALLERY
+        else:
+            layout_type = LAYOUT_ARTICLE
+
+        source_tags = []
+        for item in (data.get("tag_struct") or []):
+            tag_name = item.get("tag_name") or item.get("name")
+            if tag_name:
+                source_tags.append(str(tag_name).lstrip("#"))
+        for item in (data.get("topic_struct") or []):
+            topic_title = item.get("topic_title") or item.get("title")
+            if topic_title:
+                source_tags.append(str(topic_title).strip("#"))
+        source_tags.extend(re.findall(r"#([^#]+)#", description))
+        source_tags = list(dict.fromkeys(tag for tag in source_tags if tag))
+
         return ParsedContent(
             platform="weibo",
             content_type="status",
             content_id=bid,
             clean_url=url,
-            layout_type=LAYOUT_GALLERY,  # 微博默认为Gallery布局
+            layout_type=layout_type,
             title=title[:100], 
             body=description,
             author_name=author_name,
@@ -155,6 +179,7 @@ async def parse_weibo(
             media_urls=media_urls,
             published_at=published_at,
             archive_metadata=archive_metadata,
+            source_tags=source_tags,
             stats={
                 "repost": reposts_count,
                 "reply": comments_count,

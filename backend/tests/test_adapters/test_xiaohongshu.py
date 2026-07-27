@@ -66,6 +66,11 @@ class TestXiaohongshuAdapter(AdapterTestBase):
         # 验证 stats 中包含 image_count
         assert result.stats is not None
         assert "image_count" in result.stats
+        assert result.stats["like"] == 582
+        assert result.stats["favorite"] == 122
+        assert isinstance(result.stats["reply"], int)
+        assert len(result.media_urls) == result.stats["image_count"]
+        assert result.author_avatar_url not in result.media_urls
 
     @pytest.mark.asyncio
     async def test_parse_user_mocked(self, adapter, httpx_mock):
