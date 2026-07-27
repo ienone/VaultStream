@@ -11,6 +11,14 @@ from pathlib import Path
 from typing import Any
 
 
+def _configure_output_streams() -> None:
+    """Avoid Windows legacy-codepage crashes when child tools emit Unicode."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
@@ -109,6 +117,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _configure_output_streams()
     args = parse_args(argv)
     try:
         client = DevControllerClient(_repo_root() / ".runtime" / "dev-controller.json")
