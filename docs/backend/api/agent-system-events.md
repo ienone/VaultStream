@@ -29,7 +29,7 @@ Agent API 只提供受控编排能力，不代表 Agent 可以绕过收藏、同
 - 健康检查区分数据库、队列、FTS、worker、模型供应商和后台任务状态。
 - `GET /api/v1/ai/capabilities` 描述配置与能力，不执行真实模型请求。
 - `POST /api/v1/ai/connectivity-test` 执行真实连通性测试并记录 `run_id`。
-- `POST /api/v1/platform-health/parse-test` 执行只读真实解析测试，不创建收藏内容、不推进同步 cursor。
+- `POST /api/v1/platform-health/parse-test` 执行只读真实解析测试，不创建收藏内容、不推进同步 cursor。它与生产解析共用数据库平台凭据和适配器构造逻辑；成功结果包含内容/布局类型、作者字段、封面与媒体、正文长度、发布时间、统计、来源标签，以及结构化扩展和私有归档的键名，便于区分“请求成功”与“字段完整”。响应不返回 Cookie 或完整原始平台 payload。
 
 “已配置”“健康检查通过”“真实业务调用成功”是三个不同层级，界面不得合并为一个布尔状态。
 

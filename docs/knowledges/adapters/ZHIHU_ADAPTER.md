@@ -68,7 +68,7 @@ VaultStream 的知乎适配器支持解析知乎的专栏文章、问答、想�
 | Column（专栏） | ✅ API 优先 | ❌ 无 | 基础信息 API 可用 |
 | Collection（收藏夹） | ✅ API 优先 | ❌ 无 | 基础信息 API 可用 |
 | Article（文章） | ✅ API 优先 | HTML | 通过 zhuanlan.zhihu.com 端点绕过了主站风控 |
-| Question（问题） | ⚠️ HTML 直出 | - | API (`/api/v4/questions`) 和 HTML 均受严密风控限制（需 `x-zse-96` 签名） |
+| Question（问题） | API 尝试 | HTML、指纹刷新 | 当前真实样本中 API 返回 `10003`，HTML 返回 403；不得视为稳定可用 |
 | Pin（想法） | ⚠️ HTML 唯一方式 | - | 无公开 API，仅能解析 HTML |
 
 ### 2.2 详细说明
@@ -95,22 +95,19 @@ include=allow_message,answer_count,articles_count,follower_count,following_count
 - 返回结构化数据，易于解析
 - 包含完整的统计信息（点赞、评论等）
 
-#### ⚠️ HTML 直接解析类型（Question / Pin）
+#### ⚠️ 高风控类型（Question / Pin）
 
 原因：
 - 问题 API（`/api/v4/questions`）和甚至普通网页访问，自 2024 年底起强制要求 `x-zse-96` 动态 HMAC 签名 + 有效 Cookie
 - 即使提供 Cookie，缺少动态签名，API 仍会返回 `10003` 错误，HTML 请求则返回 `403 安全验证` 拦截。
 - 实现签名算法成本高且不稳定（知乎持续更新算法）
 
-HTML 解析机制：
+HTML 回退机制：
 1. 直接请求网页 URL（如 `https://zhuanlan.zhihu.com/p/676348421`）
 2. 从 HTML 中提取 `<script id=\"js-initialData\">` 标签
 3. 解析其中的 JSON 状态对象（与 API 返回的结构相同）
 
-优势：
-- 绕过 API 签名要求
-- 获取的数据与 API 完全一致
-- 只要网页可访问，数据就完整
+该回退只有在服务端 HTTP 请求实际获得包含 `js-initialData` 的页面时才成立。用户浏览器可打开页面，不等于后端 HTTP 客户端也能访问；不能把浏览器可见性当作解析成功证据。
 
 ---
 
@@ -126,7 +123,7 @@ graph TD
     E -->|否| G[回退 HTML 解析]
     
     C -->|否| H{是 Article/Question?}
-    H -->|是| I[直接 HTML 解析]
+    H -->|是| I[尝试 API 后回退 HTML]
     H -->|否| J{是 Pin?}
     J -->|是| I
     J -->|否| K[API 解析 Column/Collection]
@@ -145,6 +142,12 @@ graph TD
    - 403/401 → `AuthRequiredAdapterError`（需要 Cookie）
    - 404 → `NonRetryableAdapterError`（内容不存在）
    - 其他 → `RetryableAdapterError`（可重试）
+
+### 3.1 2026-07-28 真实验证
+
+- 回答、专栏文章、用户主页通过结构化 API 成功解析，标题、正文、作者、图片、发布时间和统计均存在。
+- 同一问题页在已配置登录 Cookie 下仍表现为：问题 API `403/code=10003`，普通 HTML `403`；自动刷新指纹后复验仍失败。因此本轮矩阵明确记为“不通过”，而不是添加未经验证的慢速浏览器兜底。
+- 当前问题页失败属于知乎请求签名/风控边界，不是 URL 识别或数据库字段映射问题。
 
 ---
 

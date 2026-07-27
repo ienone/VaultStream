@@ -29,6 +29,14 @@ active
 
 内容创建入口会规范化 URL，解析后写入 `contents`，并触发后处理：摘要、语义索引、媒体归档、分发队列刷新等。详情返回前会通过 presenter 转换 `local://` 媒体 URL，并补充有效布局类型。
 
+平台解析器统一输出 `ParsedContent`，写入边界位于 `tasks/parsing.py`：
+
+- 标题、正文、作者、封面、正文媒体、发布时间、平台 ID、原生类型和布局类型写入对应列。
+- `view/like/favorite/share/reply` 映射到五个通用统计列；平台独有统计写入 `extra_stats`。
+- 平台话题写入 `source_tags`；引用内容、投票等可展示结构写入 `rich_payload`；原始响应和归档处理输入写入私有 `archive_metadata`。
+- 头像可以进入私有归档供本地化，但不得作为正文 `media_urls` 或无媒体内容的封面。
+- 生产解析与 `/platform-health/parse-test` 共用 `services/platform_parsing.py` 创建适配器，均读取数据库中扫码登录保存的完整平台 Cookie；Bilibili 仅在数据库未配置时回退到旧环境变量分片。
+
 ## 测试
 
 - `backend/tests/test_api/test_contents.py`

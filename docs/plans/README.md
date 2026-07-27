@@ -20,6 +20,7 @@ active
 | 文档 | 状态 | 范围 |
 | --- | --- | --- |
 | `2026-07-26-unified-media-access.plan.md` | draft | 统一图片、视频、音频及附件的资产模型、访问授权、来源降级和迁移边界 |
+| `2026-07-28-platform-parser-reliability.plan.md` | active | 用真实平台样本验证解析可用性并修复内容字段链路缺口 |
 
 ## 开发方式
 

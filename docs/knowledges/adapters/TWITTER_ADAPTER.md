@@ -52,6 +52,14 @@ Twitter / X 页面结构、公开接口和访问限制变化频繁，适配器�
 - 需要代理时依赖 `settings.http_proxy` / `settings.https_proxy`。
 - 媒体归档是否执行取决于后端媒体配置。
 
+## 2026-07-28 真实验证与字段修正
+
+- 文本、图片、引用和视频四个真实样本均通过当前 FxTwitter 结构化接口解析。
+- 布局按媒体事实选择：纯文本/引用为 `article`，图片为 `gallery`，视频为 `video`；纯文本不再用作者头像伪造封面。
+- 引用推文映射为前端已有 contract `rich_payload.quoted_content`；投票原始结构保留在 `rich_payload.poll`。
+- 原生媒体之外的外链缩略图可作为封面候选，但不会被误认为正文图片。
+- hashtag 写入 `source_tags`；浏览、点赞、转发、回复进入通用统计，书签等平台统计保留在 `extra_stats`。
+
 ## 使用方式
 
 这是平台知识库文档，不是开发计划。修改 Twitter 解析策略前，应先在 `../../plans/` 建立 plan，并同步更新测试。

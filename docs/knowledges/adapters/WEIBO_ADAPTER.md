@@ -124,3 +124,11 @@ WEIBO_COOKIE=\"SUB=...; _s_tentry=...;\"
 
 ## 6 扩展建议
 - “超话”内容和“微栏目”等特殊识别有待实现。
+
+## 7. 2026-07-28 真实验证与字段修正
+
+- 文本、长图和视频三个真实样本均通过 `ajax/statuses/show` 解析。
+- 布局按内容事实选择：无正文媒体为 `article`，图片为 `gallery`，视频为 `video`。
+- 当前视频响应的 `page_info.type` 为字符串 `"11"`，同时提供 `object_type="video"`；`page_pic` 是 URL 字符串而非旧样本中的对象。解析器同时接受字符串/对象封面，并以 `object_type` 或已知类型值识别视频。
+- `tag_struct`、`topic_struct` 和正文 `#话题#` 汇总到 `source_tags`。
+- 作者头像只写入 `author_avatar_url` 和私有归档，不再混入正文媒体或充当封面。

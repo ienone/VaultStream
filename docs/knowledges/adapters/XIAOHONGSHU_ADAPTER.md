@@ -106,4 +106,12 @@ XIAOHONGSHU_COOKIE="webId=...; gid=...; a1=...; web_session=...;"
 - 核心代码: `backend/app/adapters/xiaohongshu.py`
 - 主要逻辑: 
     - `_fetch_note`: 优先 API，失败则回退至 SSR。
-    - `_build_note_archive`: 跨平台通用的归档模型构建流程。
+- `_build_note_archive`: 跨平台通用的归档模型构建流程。
+
+## 7. 2026-07-28 真实验证与字段修正
+
+- 两个带有效 `xsec_token` 的图文笔记样本均通过签名 API 解析。
+- 平台返回的 `4万`、`1.7万` 等紧凑计数在适配器边界转换为整数，避免数据库通用统计列落为 0。
+- 布局由实际媒体决定：存在视频为 `video`，否则为 `gallery`。
+- 作者头像只写入作者字段和私有归档，不再计入正文图片数量、正文媒体或封面。
+- 页面可见并不意味着去掉 `xsec_token` 后仍可稳定解析；真实样本必须保留分享 URL 中该参数。
