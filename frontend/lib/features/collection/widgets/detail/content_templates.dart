@@ -11,6 +11,7 @@ import '../../../../core/widgets/network_thumbnail.dart';
 import '../../../../theme/design_tokens.dart';
 import '../../models/content.dart';
 import '../../models/content_template.dart';
+import '../../models/header_line.dart';
 import '../../models/media_asset.dart';
 import '../../utils/content_parser.dart';
 import '../common/video_player_widget.dart';
@@ -689,12 +690,10 @@ class ContentSupportingSections extends StatelessWidget {
   const ContentSupportingSections({
     super.key,
     required this.detail,
-    required this.processingPanel,
     this.showStats = true,
   });
 
   final ContentDetail detail;
-  final Widget processingPanel;
   final bool showStats;
 
   @override
@@ -708,11 +707,7 @@ class ContentSupportingSections extends StatelessWidget {
           ContentSummaryBlock(detail: detail),
           const SizedBox(height: AppSpacing.md),
         ],
-        processingPanel,
-        if (showStats) ...[
-          const SizedBox(height: AppSpacing.md),
-          UnifiedStats(detail: detail, useContainer: false),
-        ],
+        if (showStats) ...[UnifiedStats(detail: detail, useContainer: false)],
         if (hasTags) ...[
           const SizedBox(height: AppSpacing.md),
           TagsSection(detail: detail),
@@ -737,53 +732,105 @@ class ContentOutline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final headers = ContentParser.extractHeaders(
       ContentParser.getMarkdownContent(detail),
     );
     if (headers.isEmpty) return const SizedBox.shrink();
+    final minimumLevel = headers
+        .map((header) => header.level)
+        .reduce((left, right) => left < right ? left : right);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const DetailSectionHeader(title: '目录'),
+        const SizedBox(height: AppSpacing.xs),
         for (final header in headers)
-          InkWell(
-            borderRadius: BorderRadius.circular(AppRadius.sm),
-            onTap: () {
-              final key = headerKeys[header.uniqueId];
-              final target = key?.currentContext;
-              if (target != null) {
-                Scrollable.ensureVisible(
-                  target,
-                  duration: AppMotion.contentSwap,
-                  curve: AppMotion.standardCurve,
-                );
-              }
-            },
-            child: Padding(
-              padding: EdgeInsets.only(
-                left: (header.level - 1) * AppSpacing.sm,
-                top: AppSpacing.xxs,
-                bottom: AppSpacing.xxs,
-              ),
-              child: Text(
-                header.text,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: activeHeader == header.uniqueId
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurfaceVariant,
-                  fontWeight: activeHeader == header.uniqueId
-                      ? FontWeight.w700
-                      : null,
-                ),
-              ),
-            ),
+          _OutlineEntry(
+            header: header,
+            depth: (header.level - minimumLevel).clamp(0, 3),
+            active: activeHeader == header.uniqueId,
+            onTap: () => _scrollTo(header.uniqueId),
           ),
         const SizedBox(height: AppSpacing.md),
       ],
+    );
+  }
+
+  void _scrollTo(String headerId) {
+    final target = headerKeys[headerId]?.currentContext;
+    if (target == null) return;
+    Scrollable.ensureVisible(
+      target,
+      duration: AppMotion.contentSwap,
+      curve: AppMotion.standardCurve,
+    );
+  }
+}
+
+class _OutlineEntry extends StatelessWidget {
+  const _OutlineEntry({
+    required this.header,
+    required this.depth,
+    required this.active,
+    required this.onTap,
+  });
+
+  final HeaderLine header;
+  final int depth;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final baseStyle = switch (depth) {
+      0 => theme.textTheme.bodyMedium,
+      1 => theme.textTheme.bodySmall,
+      _ => theme.textTheme.labelMedium,
+    };
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.xxs),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: AppMotion.stateChange,
+          curve: AppMotion.standardCurve,
+          width: double.infinity,
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.sm + depth * AppSpacing.sm,
+            depth == 0 ? AppSpacing.xs : 6,
+            AppSpacing.sm,
+            depth == 0 ? AppSpacing.xs : 6,
+          ),
+          decoration: BoxDecoration(
+            color: active
+                ? theme.colorScheme.secondaryContainer.withValues(alpha: 0.55)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+          ),
+          child: Text(
+            header.text,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: baseStyle?.copyWith(
+              height: 1.35,
+              color: active
+                  ? theme.colorScheme.onSecondaryContainer
+                  : depth == 0
+                  ? theme.colorScheme.onSurface
+                  : theme.colorScheme.onSurfaceVariant,
+              fontWeight: active || depth == 0
+                  ? FontWeight.w700
+                  : depth == 1
+                  ? FontWeight.w500
+                  : FontWeight.w400,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

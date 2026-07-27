@@ -139,22 +139,33 @@ GoRouter goRouter(Ref ref) {
                           initialColor: color,
                           preview: preview,
                         ),
-                        transitionDuration: AppMotion.routeTransition,
-                        reverseTransitionDuration: AppMotion.routeTransition,
+                        transitionDuration: preview == null
+                            ? AppMotion.routeTransition
+                            : AppMotion.containerTransform,
+                        reverseTransitionDuration: preview == null
+                            ? AppMotion.routeTransition
+                            : AppMotion.containerTransformBack,
                         transitionsBuilder:
                             (context, animation, secondaryAnimation, child) {
-                              // 有来源快照时由唯一共享容器承担主运动；深链接
-                              // 没有匹配源，才使用普通不透明淡入降级。
-                              if (preview != null) return child;
+                              // 共享容器先展开，页面内容从动画后半段渐入；
+                              // 返回时页面先淡出，再由容器收拢回源卡片。
                               final curved = CurvedAnimation(
                                 parent: animation,
-                                curve: AppMotion.standardCurve,
+                                curve: preview == null
+                                    ? AppMotion.standardCurve
+                                    : const Interval(
+                                        0.45,
+                                        1,
+                                        curve: AppMotion.standardCurve,
+                                      ),
                               );
                               return FadeTransition(
-                                opacity: Tween<double>(
-                                  begin: 0.96,
-                                  end: 1,
-                                ).animate(curved),
+                                opacity: preview == null
+                                    ? Tween<double>(
+                                        begin: 0.96,
+                                        end: 1,
+                                      ).animate(curved)
+                                    : curved,
                                 child: child,
                               );
                             },

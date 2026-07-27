@@ -13,13 +13,6 @@ import '../../models/content_template.dart';
 import '../../models/media_asset.dart';
 import '../../utils/content_parser.dart';
 
-/// 卡片渲染模式。
-///
-/// - [grid]：收藏库网格中的可选择对象。
-/// - [detailLoading]：详情页加载态占位，保持卡片到详情的视觉连续性。
-///   这是静态渲染，不响应 hover，但作为唯一共享容器目标。
-enum CollectionCardPreviewMode { grid, detailLoading }
-
 String contentSharedTransitionTag(int contentId) =>
     'collection-content-$contentId';
 
@@ -43,8 +36,37 @@ class ContentSharedTransition extends StatelessWidget {
     return Hero(
       tag: contentSharedTransitionTag(contentId),
       transitionOnUserGestures: true,
-      createRectTween: (begin, end) =>
-          MaterialRectArcTween(begin: begin, end: end),
+      createRectTween: (begin, end) => RectTween(begin: begin, end: end),
+      placeholderBuilder: (context, size, child) =>
+          SizedBox.fromSize(size: size),
+      flightShuttleBuilder:
+          (flightContext, animation, direction, fromContext, toContext) {
+            final fromHero = fromContext.widget as Hero;
+            final toHero = toContext.widget as Hero;
+            return AnimatedBuilder(
+              animation: animation,
+              builder: (context, _) {
+                final progress = direction == HeroFlightDirection.push
+                    ? animation.value
+                    : 1 - animation.value;
+                final destinationOpacity = const Interval(
+                  0.32,
+                  0.72,
+                  curve: Curves.easeOutCubic,
+                ).transform(progress.clamp(0, 1));
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Opacity(
+                      opacity: 1 - destinationOpacity,
+                      child: fromHero.child,
+                    ),
+                    Opacity(opacity: destinationOpacity, child: toHero.child),
+                  ],
+                );
+              },
+            );
+          },
       child: child,
     );
   }
@@ -66,7 +88,6 @@ class CollectionCardPreview extends ConsumerWidget {
     this.onTap,
     this.isHovered = false,
     this.isTinyCardOverride,
-    this.mode = CollectionCardPreviewMode.grid,
   });
 
   final ShareCard content;
@@ -75,7 +96,6 @@ class CollectionCardPreview extends ConsumerWidget {
 
   /// 强制紧凑模式。为 null 时由卡片自身可用宽度决定。
   final bool? isTinyCardOverride;
-  final CollectionCardPreviewMode mode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -137,7 +157,7 @@ class CollectionCardPreview extends ConsumerWidget {
                 ) ??
                 const <String, String>{},
             isTiny: tiny,
-            isHovered: isHovered && mode == CollectionCardPreviewMode.grid,
+            isHovered: isHovered,
           ),
         );
 

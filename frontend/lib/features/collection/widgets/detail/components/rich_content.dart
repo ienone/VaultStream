@@ -271,20 +271,17 @@ class RichContent extends StatelessWidget {
         fontWeight: FontWeight.bold,
       ),
       blockquote: theme.textTheme.bodyMedium?.copyWith(
-        color: theme.colorScheme.onSecondaryContainer,
-        height: 1.6,
+        color: theme.colorScheme.onSurfaceVariant,
+        height: 1.65,
         fontStyle: FontStyle.italic,
       ),
       blockquotePadding: const EdgeInsets.symmetric(
-        horizontal: 24,
-        vertical: 20,
+        horizontal: 16,
+        vertical: 14,
       ),
       blockquoteDecoration: BoxDecoration(
-        color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(24),
-        border: Border(
-          left: BorderSide(color: theme.colorScheme.secondary, width: 8),
-        ),
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
       ),
       code: theme.textTheme.bodyMedium?.copyWith(
         backgroundColor: Colors.transparent,

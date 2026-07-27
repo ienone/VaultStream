@@ -85,6 +85,9 @@ final class AppMotion {
   /// 容器转换：卡片到详情、搜索框到搜索页。
   static const Duration containerTransform = Duration(milliseconds: 450);
 
+  /// 容器反向收拢。返回应比展开更快，且不延迟源列表恢复。
+  static const Duration containerTransformBack = Duration(milliseconds: 360);
+
   static const Curve standardCurve = Curves.easeOutCubic;
   static const Curve emphasizedCurve = Curves.easeInOutCubic;
 

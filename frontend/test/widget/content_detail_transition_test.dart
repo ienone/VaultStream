@@ -88,10 +88,28 @@ void main() {
 
     await tester.pump();
 
-    // 只存在卡片外壳这一套共享视觉，正文和媒体不参与。
+    // 只存在详情头这一套共享视觉，正文和媒体不参与。
     expect(find.byType(Hero), findsOneWidget);
-    // 卡片快照与顶栏标题共同保持卡片到详情的信息连续性。
-    expect(find.byType(CollectionCardPreview), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('content-detail-shared-loading-header')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('content-detail-body-skeleton')),
+      findsOneWidget,
+    );
+    expect(find.byType(CollectionCardPreview), findsNothing);
+    final hero = tester.widget<Hero>(find.byType(Hero));
+    expect(hero.flightShuttleBuilder, isNotNull);
+    expect(hero.placeholderBuilder, isNotNull);
+    expect(
+      hero.createRectTween!(
+        const Rect.fromLTWH(0, 0, 240, 320),
+        const Rect.fromLTWH(24, 24, 720, 116),
+      ),
+      isA<RectTween>(),
+    );
+    // 已知标题贯穿目标详情头与顶栏，而不是居中再画一张完整卡片。
     expect(find.text('Preview title'), findsNWidgets(2));
     expect(
       find.descendant(
@@ -155,5 +173,6 @@ void main() {
     expect(find.text('Loaded detail title'), findsWidgets);
     expect(find.text('Detail author'), findsWidgets);
     expect(find.text('transition'), findsWidgets);
+    expect(find.text('处理状态'), findsNothing);
   });
 }

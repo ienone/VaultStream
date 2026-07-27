@@ -9,13 +9,13 @@ import '../../core/network/api_client.dart';
 import '../../core/network/sse_service.dart';
 import '../../core/utils/safe_url_launcher.dart';
 import '../../core/utils/toast.dart';
+import '../../core/widgets/platform_badge.dart';
 import '../../theme/design_tokens.dart';
 import 'models/content.dart';
 import 'models/content_template.dart';
 import 'providers/collection_provider.dart';
 import 'providers/content_actions_controller.dart';
 import 'utils/content_parser.dart';
-import 'widgets/detail/components/post_processing_status_panel.dart';
 import 'widgets/detail/content_templates.dart';
 import 'widgets/detail/detail_sections.dart';
 import 'widgets/detail/gallery/gallery_navigation.dart';
@@ -25,7 +25,7 @@ import 'widgets/list/collection_card_preview.dart';
 /// 内容详情页。
 ///
 /// 这是所有内容模板的唯一宿主。页面负责：来源证据、标题、动作层级、
-/// 断点布局和后处理状态；模板只负责主体结构（见 [ContentTemplateBody]）。
+/// 断点布局和阅读上下文；模板只负责主体结构（见 [ContentTemplateBody]）。
 ///
 /// 所有写操作经由 [ContentActions] 控制层，页面不直接调用 API。
 class ContentDetailPage extends ConsumerStatefulWidget {
@@ -71,7 +71,6 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       if (event.data['id'] != widget.contentId) return;
       // 只刷新受影响的对象，不触发整页重新入场。
       ref.invalidate(contentDetailProvider(widget.contentId));
-      ref.invalidate(contentProcessingStatusProvider(widget.contentId));
     });
   }
 
@@ -123,23 +122,70 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
   Widget _buildLoading() {
     final preview = widget.preview;
-    return Scaffold(
-      appBar: AppBar(title: Text(preview?.title ?? '加载中')),
-      body: preview == null
-          ? const Center(child: CircularProgressIndicator())
-          : Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 360),
-                child: AspectRatio(
-                  aspectRatio: 0.92,
-                  child: CollectionCardPreview(
-                    content: preview,
-                    isTinyCardOverride: false,
-                    mode: CollectionCardPreviewMode.detailLoading,
-                  ),
-                ),
-              ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final metrics = WindowMetrics.fromSize(
+          Size(constraints.maxWidth, constraints.maxHeight),
+        );
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(
+              (preview?.title ?? '').trim().isEmpty
+                  ? '正在打开内容'
+                  : preview!.title!.trim(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
+          ),
+          body: metrics.supportsSupportingPane
+              ? _buildLoadingTwoPane(preview)
+              : _buildLoadingSinglePane(preview, metrics),
+        );
+      },
+    );
+  }
+
+  Widget _buildLoadingSinglePane(ShareCard? preview, WindowMetrics metrics) {
+    return ListView(
+      key: const ValueKey('content-detail-loading-skeleton'),
+      padding: EdgeInsets.all(
+        metrics.isCompact ? AppSpacing.md : AppSpacing.lg,
+      ),
+      children: [
+        _LoadingSharedHeader(contentId: widget.contentId, preview: preview),
+        const SizedBox(height: AppSpacing.lg),
+        const _DetailBodySkeleton(),
+      ],
+    );
+  }
+
+  Widget _buildLoadingTwoPane(ShareCard? preview) {
+    return Row(
+      key: const ValueKey('content-detail-loading-skeleton'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            children: [
+              _LoadingSharedHeader(
+                contentId: widget.contentId,
+                preview: preview,
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              const _DetailBodySkeleton(),
+            ],
+          ),
+        ),
+        const VerticalDivider(width: 1),
+        const SizedBox(
+          width: AppPane.supportingWidth,
+          child: Padding(
+            padding: EdgeInsets.all(AppSpacing.md),
+            child: _DetailSideSkeleton(),
+          ),
+        ),
+      ],
     );
   }
 
@@ -245,25 +291,29 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       ),
       children: [
         _SharedDetailHeader(detail: ctx.detail),
-        const SizedBox(height: AppSpacing.md),
-        ParseStatusBanner(
-          detail: ctx.detail,
-          onReParse: () => _reParse(ctx.detail.id),
+        _DetailContentReveal(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: AppSpacing.md),
+              ParseStatusBanner(
+                detail: ctx.detail,
+                onReParse: () => _reParse(ctx.detail.id),
+              ),
+              if (ctx.detail.isParseFailed || ctx.detail.isParsePending)
+                const SizedBox(height: AppSpacing.md),
+              _ConstrainBody(
+                template: ctx.detail.template,
+                child: ContentTemplateBody(context_: ctx),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              const Divider(height: 1),
+              const SizedBox(height: AppSpacing.lg),
+              ContentSupportingSections(detail: ctx.detail),
+              const SizedBox(height: AppSpacing.xxl),
+            ],
+          ),
         ),
-        if (ctx.detail.isParseFailed || ctx.detail.isParsePending)
-          const SizedBox(height: AppSpacing.md),
-        _ConstrainBody(
-          template: ctx.detail.template,
-          child: ContentTemplateBody(context_: ctx),
-        ),
-        const SizedBox(height: AppSpacing.xl),
-        const Divider(height: 1),
-        const SizedBox(height: AppSpacing.lg),
-        ContentSupportingSections(
-          detail: ctx.detail,
-          processingPanel: PostProcessingStatusPanel(contentId: ctx.detail.id),
-        ),
-        const SizedBox(height: AppSpacing.xxl),
       ],
     );
   }
@@ -278,41 +328,44 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             padding: const EdgeInsets.all(AppSpacing.xl),
             children: [
               _SharedDetailHeader(detail: ctx.detail),
-              const SizedBox(height: AppSpacing.md),
-              ParseStatusBanner(
-                detail: ctx.detail,
-                onReParse: () => _reParse(ctx.detail.id),
+              _DetailContentReveal(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: AppSpacing.md),
+                    ParseStatusBanner(
+                      detail: ctx.detail,
+                      onReParse: () => _reParse(ctx.detail.id),
+                    ),
+                    if (ctx.detail.isParseFailed || ctx.detail.isParsePending)
+                      const SizedBox(height: AppSpacing.md),
+                    _ConstrainBody(
+                      template: ctx.detail.template,
+                      child: ContentTemplateBody(context_: ctx),
+                    ),
+                    const SizedBox(height: AppSpacing.xxl),
+                  ],
+                ),
               ),
-              if (ctx.detail.isParseFailed || ctx.detail.isParsePending)
-                const SizedBox(height: AppSpacing.md),
-              _ConstrainBody(
-                template: ctx.detail.template,
-                child: ContentTemplateBody(context_: ctx),
-              ),
-              const SizedBox(height: AppSpacing.xxl),
             ],
           ),
         ),
         const VerticalDivider(width: 1),
         SizedBox(
           width: AppPane.supportingWidth,
-          child: ListView(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            children: [
-              if (ctx.detail.template == ContentTemplate.article)
-                ContentOutline(
-                  detail: ctx.detail,
-                  activeHeader: _activeHeader,
-                  headerKeys: _headerKeys,
-                ),
-              ContentSupportingSections(
-                detail: ctx.detail,
-                processingPanel: PostProcessingStatusPanel(
-                  contentId: ctx.detail.id,
-                  initiallyExpanded: true,
-                ),
-              ),
-            ],
+          child: _DetailContentReveal(
+            child: ListView(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              children: [
+                if (ctx.detail.template == ContentTemplate.article)
+                  ContentOutline(
+                    detail: ctx.detail,
+                    activeHeader: _activeHeader,
+                    headerKeys: _headerKeys,
+                  ),
+                ContentSupportingSections(detail: ctx.detail),
+              ],
+            ),
           ),
         ),
       ],
@@ -421,6 +474,309 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       apiBaseUrl: dio.options.baseUrl,
       apiToken: dio.options.headers['X-API-Token']?.toString(),
       contentId: contentId,
+    );
+  }
+}
+
+/// 详情加载态的共享容器目标。它占据最终详情头的真实位置，而不是把
+/// 卡片副本移动到屏幕中央；已知的标题和来源在飞行结束前保持连续。
+class _LoadingSharedHeader extends StatelessWidget {
+  const _LoadingSharedHeader({required this.contentId, required this.preview});
+
+  final int contentId;
+  final ShareCard? preview;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final surface = Material(
+      key: const ValueKey('content-detail-shared-loading-header'),
+      color: scheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: AppShape.cardBorder,
+        side: BorderSide(color: scheme.outlineVariant),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 116),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: preview == null
+              ? const _LoadingHeaderPlaceholder()
+              : _PreviewHeader(preview: preview!),
+        ),
+      ),
+    );
+
+    if (preview == null) return surface;
+    return ContentSharedTransition(contentId: contentId, child: surface);
+  }
+}
+
+class _PreviewHeader extends StatelessWidget {
+  const _PreviewHeader({required this.preview});
+
+  final ShareCard preview;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final author = preview.authorName?.trim() ?? '';
+    final title = preview.title?.trim() ?? '';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Row(
+          children: [
+            PlatformBadge(platform: preview.platform),
+            if (author.isNotEmpty) ...[
+              const SizedBox(width: AppSpacing.xs),
+              Expanded(
+                child: Text(
+                  author,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ] else
+              const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.xs,
+                vertical: AppSpacing.xxs,
+              ),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(AppShape.pill),
+              ),
+              child: Text(
+                preview.template.label,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Text(
+          title.isEmpty ? '无标题' : title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            height: 1.25,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LoadingHeaderPlaceholder extends StatelessWidget {
+  const _LoadingHeaderPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _SkeletonBlock(widthFactor: 0.32, height: 16),
+        SizedBox(height: AppSpacing.md),
+        _SkeletonBlock(widthFactor: 0.78, height: 28),
+      ],
+    );
+  }
+}
+
+class _DetailBodySkeleton extends StatelessWidget {
+  const _DetailBodySkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _SkeletonPulse(
+      child: Column(
+        key: ValueKey('content-detail-body-skeleton'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SkeletonBlock(widthFactor: 0.44, height: 28),
+          SizedBox(height: AppSpacing.xl),
+          _SkeletonBlock(widthFactor: 0.96, height: 18),
+          SizedBox(height: AppSpacing.sm),
+          _SkeletonBlock(widthFactor: 0.88, height: 18),
+          SizedBox(height: AppSpacing.sm),
+          _SkeletonBlock(widthFactor: 0.93, height: 18),
+          SizedBox(height: AppSpacing.xxl),
+          _SkeletonBlock(widthFactor: 0.36, height: 24),
+          SizedBox(height: AppSpacing.lg),
+          _SkeletonBlock(widthFactor: 0.9, height: 18),
+          SizedBox(height: AppSpacing.sm),
+          _SkeletonBlock(widthFactor: 0.82, height: 18),
+          SizedBox(height: AppSpacing.sm),
+          _SkeletonBlock(widthFactor: 0.68, height: 18),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailSideSkeleton extends StatelessWidget {
+  const _DetailSideSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _SkeletonPulse(
+      child: Column(
+        key: ValueKey('content-detail-side-skeleton'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SkeletonBlock(widthFactor: 0.24, height: 20),
+          SizedBox(height: AppSpacing.md),
+          _SkeletonBlock(widthFactor: 0.82, height: 14),
+          SizedBox(height: AppSpacing.sm),
+          Padding(
+            padding: EdgeInsets.only(left: AppSpacing.sm),
+            child: _SkeletonBlock(widthFactor: 0.74, height: 14),
+          ),
+          SizedBox(height: AppSpacing.sm),
+          Padding(
+            padding: EdgeInsets.only(left: AppSpacing.xl),
+            child: _SkeletonBlock(widthFactor: 0.62, height: 14),
+          ),
+          SizedBox(height: AppSpacing.xxl),
+          _SkeletonBlock(widthFactor: 0.42, height: 18),
+          SizedBox(height: AppSpacing.md),
+          _SkeletonBlock(widthFactor: 0.7, height: 14),
+          SizedBox(height: AppSpacing.sm),
+          _SkeletonBlock(widthFactor: 0.56, height: 14),
+        ],
+      ),
+    );
+  }
+}
+
+class _SkeletonBlock extends StatelessWidget {
+  const _SkeletonBlock({required this.widthFactor, required this.height});
+
+  final double widthFactor;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return FractionallySizedBox(
+      widthFactor: widthFactor,
+      child: Container(
+        height: height,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+        ),
+      ),
+    );
+  }
+}
+
+class _SkeletonPulse extends StatefulWidget {
+  const _SkeletonPulse({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_SkeletonPulse> createState() => _SkeletonPulseState();
+}
+
+class _SkeletonPulseState extends State<_SkeletonPulse>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller
+        ..stop()
+        ..value = 1;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween<double>(
+        begin: 0.58,
+        end: 0.9,
+      ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)),
+      child: widget.child,
+    );
+  }
+}
+
+/// 真实内容在骨架之后轻微上移并渐入，不参与共享容器飞行。
+class _DetailContentReveal extends StatefulWidget {
+  const _DetailContentReveal({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_DetailContentReveal> createState() => _DetailContentRevealState();
+}
+
+class _DetailContentRevealState extends State<_DetailContentReveal>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: AppMotion.contentSwap,
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller.value = 1;
+    } else if (_controller.value == 0) {
+      _controller.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final curved = CurvedAnimation(
+      parent: _controller,
+      curve: AppMotion.standardCurve,
+    );
+    return FadeTransition(
+      opacity: curved,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.018),
+          end: Offset.zero,
+        ).animate(curved),
+        child: widget.child,
+      ),
     );
   }
 }

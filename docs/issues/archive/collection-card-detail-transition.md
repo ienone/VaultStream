@@ -6,7 +6,7 @@ archived
 
 ## 关闭说明
 
-2026-07-24 复核确认，旧“整卡片 Hero + 透明详情页 Stack”路径已经删除：`ContentCard` 不再挂载卡片 Hero，`ContentDetailPage` 的 loading 与 data 状态均使用不透明 `Scaffold`，现有 widget 测试也明确验证两种状态不挂载卡片 Hero。当前仍需设计新的 shared container，但那属于前端 IA 的目标能力，不再把已经删除的旧缺陷保留为 active issue。
+2026-07-24 已删除旧“整卡片 Hero + 透明详情页 Stack”路径。2026-07-27 进一步完成新的 shared container：收藏卡片外壳通过直线矩形插值展开到详情头真实位置，飞行层交叉过渡卡片快照与详情头；页面内容从转场后半段渐入，返回使用独立的较短时长。加载态新增与最终单双栏布局一致的骨架，深链接和减少动效场景保持普通转场。
 
 ## 原问题
 
