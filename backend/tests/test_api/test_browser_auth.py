@@ -78,12 +78,25 @@ class TestBrowserAuthAPI:
             mock_logout.assert_called_once_with("xiaohongshu")
 
     @pytest.mark.asyncio
+    async def test_cancel_auth_session(self, client: AsyncClient):
+        with patch(
+            "app.routers.browser_auth.browser_auth_service.cancel_session",
+            new_callable=AsyncMock,
+        ) as mock_cancel:
+            response = await client.delete(
+                "/api/v1/browser-auth/session/test-session-123"
+            )
+            assert response.status_code == 200
+            mock_cancel.assert_awaited_once_with("test-session-123")
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         ("method", "path"),
         [
             ("POST", "/api/v1/browser-auth/session/xiaohongshu"),
             ("GET", "/api/v1/browser-auth/session/test-session-123/status"),
             ("GET", "/api/v1/browser-auth/session/test-session-123/qrcode"),
+            ("DELETE", "/api/v1/browser-auth/session/test-session-123"),
             ("POST", "/api/v1/browser-auth/xiaohongshu/check"),
             ("POST", "/api/v1/browser-auth/xiaohongshu/logout"),
             ("DELETE", "/api/v1/browser-auth/xiaohongshu"),

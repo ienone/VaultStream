@@ -46,6 +46,7 @@ active
 | `GET` | `/api/v1/bot/runtime` |
 | `GET` | `/api/v1/bot/status` |
 | `POST` | `/api/v1/browser-auth/session/{platform}` |
+| `DELETE` | `/api/v1/browser-auth/session/{session_id}` |
 | `GET` | `/api/v1/browser-auth/session/{session_id}/qrcode` |
 | `GET` | `/api/v1/browser-auth/session/{session_id}/status` |
 | `POST` | `/api/v1/browser-auth/zhihu/refresh-zse` |

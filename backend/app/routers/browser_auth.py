@@ -48,6 +48,12 @@ async def get_session_status(session_id: str):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+@router.delete("/session/{session_id}")
+async def cancel_auth_session(session_id: str):
+    """取消二维码登录并释放对应平台网络资源。"""
+    await browser_auth_service.cancel_session(session_id)
+    return {"status": "success", "message": "登录会话已取消"}
+
 @router.post("/{platform}/check", response_model=CheckResponse)
 async def check_platform_status(platform: str):
     """
@@ -60,7 +66,7 @@ async def check_platform_status(platform: str):
 @router.delete("/{platform}")
 async def logout_platform(platform: str):
     """
-    删除本地 Cookie 并在平台侧彻底注销会话。
+    删除 VaultStream 本地保存的 Cookie，不修改平台账号本身。
     """
     await browser_auth_service.logout_platform(platform)
     return {"status": "success", "message": f"Successfully logged out of {platform}"}
