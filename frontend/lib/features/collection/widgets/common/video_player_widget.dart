@@ -2,16 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 
+import '../../../../core/media/media_candidate_resolver.dart';
 import '../../../../theme/design_tokens.dart';
 
 class VideoPlayerWidget extends StatefulWidget {
   final String videoUrl;
+  final List<String> fallbackUrls;
   final Map<String, String>? headers;
   final bool audioOnly;
 
   const VideoPlayerWidget({
     super.key,
     required this.videoUrl,
+    this.fallbackUrls = const [],
     this.headers,
     this.audioOnly = false,
   });
@@ -21,10 +24,11 @@ class VideoPlayerWidget extends StatefulWidget {
 }
 
 class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
-  late VideoPlayerController _videoPlayerController;
+  VideoPlayerController? _videoPlayerController;
   ChewieController? _chewieController;
   bool _initialized = false;
   String? _error;
+  int _initializationGeneration = 0;
 
   @override
   void initState() {
@@ -32,50 +36,82 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     _initializePlayer();
   }
 
+  @override
+  void didUpdateWidget(covariant VideoPlayerWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.videoUrl != widget.videoUrl ||
+        oldWidget.fallbackUrls != widget.fallbackUrls) {
+      _disposeControllers();
+      _initialized = false;
+      _error = null;
+      _initializePlayer();
+    }
+  }
+
   Future<void> _initializePlayer() async {
-    try {
-      _videoPlayerController = VideoPlayerController.networkUrl(
-        Uri.parse(widget.videoUrl),
-        httpHeaders: widget.headers ?? {},
-      );
+    final generation = ++_initializationGeneration;
+    final resolver = MediaCandidateResolver([
+      widget.videoUrl,
+      ...widget.fallbackUrls,
+    ]);
+    while (mounted &&
+        generation == _initializationGeneration &&
+        resolver.current != null) {
+      VideoPlayerController? candidate;
+      try {
+        candidate = VideoPlayerController.networkUrl(
+          Uri.parse(resolver.current!),
+          httpHeaders: resolver.index == 0 ? widget.headers ?? {} : const {},
+        );
 
-      await _videoPlayerController.initialize();
+        await candidate.initialize();
+        if (!mounted || generation != _initializationGeneration) {
+          await candidate.dispose();
+          return;
+        }
+        _videoPlayerController = candidate;
 
-      _chewieController = ChewieController(
-        videoPlayerController: _videoPlayerController,
-        autoPlay: false,
-        looping: !widget.audioOnly,
-        aspectRatio: widget.audioOnly
-            ? 16 / 3
-            : _videoPlayerController.value.aspectRatio,
-        errorBuilder: (context, errorMessage) {
-          return Center(
-            child: Text(
-              errorMessage,
-              style: const TextStyle(color: Colors.white),
-            ),
-          );
-        },
-      );
+        _chewieController = ChewieController(
+          videoPlayerController: candidate,
+          autoPlay: false,
+          looping: !widget.audioOnly,
+          aspectRatio: widget.audioOnly ? 16 / 3 : candidate.value.aspectRatio,
+          errorBuilder: (context, errorMessage) {
+            return Center(
+              child: Text(
+                errorMessage,
+                style: const TextStyle(color: Colors.white),
+              ),
+            );
+          },
+        );
 
-      if (mounted) {
         setState(() {
           _initialized = true;
         });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-        });
+        return;
+      } catch (error) {
+        await candidate?.dispose();
+        if (!mounted || generation != _initializationGeneration) return;
+        if (!resolver.moveNext()) {
+          if (mounted) setState(() => _error = error.toString());
+          return;
+        }
       }
     }
   }
 
+  void _disposeControllers() {
+    _chewieController?.dispose();
+    _chewieController = null;
+    _videoPlayerController?.dispose();
+    _videoPlayerController = null;
+  }
+
   @override
   void dispose() {
-    _videoPlayerController.dispose();
-    _chewieController?.dispose();
+    _initializationGeneration += 1;
+    _disposeControllers();
     super.dispose();
   }
 
@@ -110,20 +146,21 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     }
 
     if (widget.audioOnly) {
+      final videoPlayerController = _videoPlayerController!;
       return Material(
         color: Theme.of(context).colorScheme.surfaceContainerHigh,
         borderRadius: AppShape.cardBorder,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: ValueListenableBuilder<VideoPlayerValue>(
-            valueListenable: _videoPlayerController,
+            valueListenable: videoPlayerController,
             builder: (context, value, _) => Row(
               children: [
                 IconButton.filledTonal(
                   tooltip: value.isPlaying ? '暂停' : '播放',
                   onPressed: () => value.isPlaying
-                      ? _videoPlayerController.pause()
-                      : _videoPlayerController.play(),
+                      ? videoPlayerController.pause()
+                      : videoPlayerController.play(),
                   icon: Icon(
                     value.isPlaying
                         ? Icons.pause_rounded
@@ -133,7 +170,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: VideoProgressIndicator(
-                    _videoPlayerController,
+                    videoPlayerController,
                     allowScrubbing: true,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
@@ -148,7 +185,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     }
 
     return AspectRatio(
-      aspectRatio: _videoPlayerController.value.aspectRatio,
+      aspectRatio: _videoPlayerController!.value.aspectRatio,
       child: Chewie(controller: _chewieController!),
     );
   }

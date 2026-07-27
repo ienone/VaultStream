@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/network/api_client.dart';
 import 'package:frontend/core/widgets/network_thumbnail.dart';
 import 'package:frontend/features/collection/models/content.dart';
+import 'package:frontend/features/collection/models/media_asset.dart';
 import 'package:frontend/features/collection/widgets/detail/components/unified_stats.dart';
 import 'package:frontend/features/collection/widgets/list/collection_card_preview.dart';
 
@@ -132,6 +133,49 @@ void main() {
       'http://localhost/api/v1/media/'
       'vaultstream/blobs/sha256/aa/bb/cover.webp?size=thumb',
     );
+  });
+
+  testWidgets('封面不可用时继续尝试正文首图的统一候选', (tester) async {
+    const remoteCover = MediaAsset(
+      id: 10,
+      contentId: 1,
+      mediaType: MediaType.image,
+      role: MediaRole.cover,
+      sources: [
+        MediaSource(
+          url: 'https://origin.test/cover.jpg',
+          sourceKind: MediaSourceKind.remoteDirect,
+        ),
+      ],
+    );
+    const archivedBody = MediaAsset(
+      id: 11,
+      contentId: 1,
+      mediaType: MediaType.image,
+      role: MediaRole.body,
+      sources: [
+        MediaSource(
+          url: 'http://localhost/api/v1/media/blobs/body.webp?signature=x',
+          sourceKind: MediaSourceKind.localSigned,
+        ),
+      ],
+    );
+    final article = _card(
+      0,
+      _templates[0],
+    ).copyWith(mediaAssets: const [archivedBody, remoteCover]);
+
+    await tester.pumpWidget(_host([article]));
+    await tester.pump();
+
+    final thumbnail = tester.widget<NetworkThumbnail>(
+      find.byType(NetworkThumbnail).first,
+    );
+    expect(
+      thumbnail.imageUrl,
+      'http://localhost/api/v1/media/blobs/body.webp?signature=x',
+    );
+    expect(thumbnail.fallbackUrls, ['https://origin.test/cover.jpg']);
   });
 
   testWidgets('详情统计不因平台类型补出无数据的零值', (tester) async {

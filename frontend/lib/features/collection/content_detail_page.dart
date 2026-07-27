@@ -175,6 +175,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           Size(constraints.maxWidth, constraints.maxHeight),
         );
         final images = ContentParser.extractAllImages(detail, apiBaseUrl);
+        final imageFallbacks = ContentParser.extractImageFallbacks(detail);
 
         final templateContext = TemplateContext(
           detail: detail,
@@ -183,7 +184,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           apiToken: apiToken,
           headerKeys: _headerKeys,
           images: images,
-          onImageTap: (index) => _openGallery(images, index, detail.id),
+          imageFallbacks: imageFallbacks,
+          onImageTap: (index) =>
+              _openGallery(images, imageFallbacks, index, detail.id),
           onReParse: () => _reParse(detail.id),
         );
 
@@ -402,12 +405,18 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     );
   }
 
-  void _openGallery(List<String> images, int index, int contentId) {
+  void _openGallery(
+    List<String> images,
+    Map<String, List<String>> imageFallbacks,
+    int index,
+    int contentId,
+  ) {
     if (images.isEmpty) return;
     final dio = ref.read(apiClientProvider);
     pushFullScreenGallery(
       context: context,
       images: images,
+      fallbackUrlsByImage: imageFallbacks,
       initialIndex: index,
       apiBaseUrl: dio.options.baseUrl,
       apiToken: dio.options.headers['X-API-Token']?.toString(),

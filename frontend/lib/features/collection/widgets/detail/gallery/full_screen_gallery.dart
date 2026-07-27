@@ -1,13 +1,13 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:extended_image/extended_image.dart';
-import '../../../../../core/network/image_headers.dart';
+import '../../../../../core/widgets/network_thumbnail.dart';
 import '../../../../../core/utils/toast.dart';
 import '../../../../../theme/design_tokens.dart';
 
 class FullScreenGallery extends StatefulWidget {
   final List<String> images;
   final int initialIndex;
+  final Map<String, List<String>> fallbackUrlsByImage;
   final String apiBaseUrl;
   final String? apiToken;
   final int contentId;
@@ -19,6 +19,7 @@ class FullScreenGallery extends StatefulWidget {
     super.key,
     required this.images,
     required this.initialIndex,
+    this.fallbackUrlsByImage = const {},
     required this.apiBaseUrl,
     this.apiToken,
     required this.contentId,
@@ -177,45 +178,14 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                             quarterTurns: index == _currentIndex
                                 ? _rotationTurns
                                 : 0,
-                            child: ExtendedImage.network(
-                              widget.images[index],
-                              headers: buildImageHeaders(
-                                imageUrl: widget.images[index],
-                                baseUrl: widget.apiBaseUrl,
-                                apiToken: widget.apiToken,
-                              ),
+                            child: NetworkThumbnail(
+                              imageUrl: widget.images[index],
+                              fallbackUrls:
+                                  widget.fallbackUrlsByImage[widget
+                                      .images[index]] ??
+                                  const [],
                               fit: BoxFit.contain,
-                              cache: true,
-                              enableMemoryCache: true,
-                              clearMemoryCacheWhenDispose: false,
-                              loadStateChanged: (state) {
-                                switch (state.extendedImageLoadState) {
-                                  case LoadState.loading:
-                                    return Center(
-                                      child: CircularProgressIndicator(
-                                        value: state.loadingProgress != null
-                                            ? state
-                                                      .loadingProgress!
-                                                      .cumulativeBytesLoaded /
-                                                  (state
-                                                          .loadingProgress!
-                                                          .expectedTotalBytes ??
-                                                      1)
-                                            : null,
-                                      ),
-                                    );
-                                  case LoadState.failed:
-                                    return Container(
-                                      color: colorScheme.errorContainer,
-                                      child: Icon(
-                                        Icons.broken_image,
-                                        color: colorScheme.error,
-                                      ),
-                                    );
-                                  case LoadState.completed:
-                                    return state.completedWidget;
-                                }
-                              },
+                              errorIcon: Icons.broken_image,
                             ),
                           ),
                         ),

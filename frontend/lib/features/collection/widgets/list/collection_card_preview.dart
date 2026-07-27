@@ -10,6 +10,7 @@ import '../../../../core/widgets/platform_badge.dart';
 import '../../../../theme/design_tokens.dart';
 import '../../models/content.dart';
 import '../../models/content_template.dart';
+import '../../models/media_asset.dart';
 import '../../utils/content_parser.dart';
 
 /// 卡片渲染模式。
@@ -81,10 +82,27 @@ class CollectionCardPreview extends ConsumerWidget {
     final dio = ref.watch(apiClientProvider);
     final apiBaseUrl = dio.options.baseUrl;
     final apiToken = dio.options.headers['X-API-Token']?.toString();
+    final representativeAssets = content.mediaAssets
+        .where(
+          (asset) =>
+              asset.mediaType == MediaType.image &&
+              asset.role != MediaRole.avatar &&
+              asset.sources.isNotEmpty,
+        )
+        .toList();
+    final contractImageUrls = representativeAssets
+        .expand((asset) => asset.sources)
+        .map((source) => source.url)
+        .where((url) => url.trim().isNotEmpty)
+        .toSet()
+        .toList(growable: false);
     final rawThumbnailUrl = content.thumbnailUrl?.trim() ?? '';
-    final imageUrl = rawThumbnailUrl.isNotEmpty
+    final imageUrl = contractImageUrls.isNotEmpty
+        ? contractImageUrls.first
+        : rawThumbnailUrl.isNotEmpty
         ? media_utils.mapUrl(rawThumbnailUrl, apiBaseUrl)
         : ContentParser.getDisplayImageUrl(content, apiBaseUrl);
+    final imageFallbackUrls = contractImageUrls.skip(1).toList(growable: false);
     final rawAvatarUrl = content.authorAvatarUrl?.trim() ?? '';
     final avatarUrl = rawAvatarUrl.isEmpty
         ? ''
@@ -101,13 +119,15 @@ class CollectionCardPreview extends ConsumerWidget {
           child: _CardSurface(
             content: content,
             imageUrl: imageUrl,
-            imageHeaders:
-                buildImageHeaders(
-                  imageUrl: imageUrl,
-                  baseUrl: apiBaseUrl,
-                  apiToken: apiToken,
-                ) ??
-                const <String, String>{},
+            imageFallbackUrls: imageFallbackUrls,
+            imageHeaders: contractImageUrls.isNotEmpty
+                ? const <String, String>{}
+                : buildImageHeaders(
+                        imageUrl: imageUrl,
+                        baseUrl: apiBaseUrl,
+                        apiToken: apiToken,
+                      ) ??
+                      const <String, String>{},
             avatarUrl: avatarUrl,
             avatarHeaders:
                 buildImageHeaders(
@@ -138,6 +158,7 @@ class _CardSurface extends StatelessWidget {
   const _CardSurface({
     required this.content,
     required this.imageUrl,
+    required this.imageFallbackUrls,
     required this.imageHeaders,
     required this.avatarUrl,
     required this.avatarHeaders,
@@ -147,6 +168,7 @@ class _CardSurface extends StatelessWidget {
 
   final ShareCard content;
   final String imageUrl;
+  final List<String> imageFallbackUrls;
   final Map<String, String> imageHeaders;
   final String avatarUrl;
   final Map<String, String> avatarHeaders;
@@ -183,6 +205,7 @@ class _CardSurface extends StatelessWidget {
             child: _CardMedia(
               content: content,
               imageUrl: imageUrl,
+              imageFallbackUrls: imageFallbackUrls,
               imageHeaders: imageHeaders,
               avatarUrl: avatarUrl,
               avatarHeaders: avatarHeaders,
@@ -264,6 +287,7 @@ class _CardMedia extends StatelessWidget {
   const _CardMedia({
     required this.content,
     required this.imageUrl,
+    required this.imageFallbackUrls,
     required this.imageHeaders,
     required this.avatarUrl,
     required this.avatarHeaders,
@@ -271,6 +295,7 @@ class _CardMedia extends StatelessWidget {
 
   final ShareCard content;
   final String imageUrl;
+  final List<String> imageFallbackUrls;
   final Map<String, String> imageHeaders;
   final String avatarUrl;
   final Map<String, String> avatarHeaders;
@@ -290,7 +315,11 @@ class _CardMedia extends StatelessWidget {
     }
 
     if (template == ContentTemplate.audio) {
-      return _AudioMedia(imageUrl: imageUrl, imageHeaders: imageHeaders);
+      return _AudioMedia(
+        imageUrl: imageUrl,
+        imageFallbackUrls: imageFallbackUrls,
+        imageHeaders: imageHeaders,
+      );
     }
 
     if (imageUrl.isEmpty) {
@@ -327,6 +356,7 @@ class _CardMedia extends StatelessWidget {
         children: [
           NetworkThumbnail(
             imageUrl: imageUrl,
+            fallbackUrls: imageFallbackUrls,
             httpHeaders: imageHeaders,
             fit: BoxFit.cover,
             maxHeightDiskCache: 800,
@@ -401,9 +431,14 @@ class _IdentityMedia extends StatelessWidget {
 }
 
 class _AudioMedia extends StatelessWidget {
-  const _AudioMedia({required this.imageUrl, required this.imageHeaders});
+  const _AudioMedia({
+    required this.imageUrl,
+    required this.imageFallbackUrls,
+    required this.imageHeaders,
+  });
 
   final String imageUrl;
+  final List<String> imageFallbackUrls;
   final Map<String, String> imageHeaders;
 
   @override
@@ -432,6 +467,7 @@ class _AudioMedia extends StatelessWidget {
                     )
                   : NetworkThumbnail(
                       imageUrl: imageUrl,
+                      fallbackUrls: imageFallbackUrls,
                       httpHeaders: imageHeaders,
                       fit: BoxFit.cover,
                       maxHeightDiskCache: 256,

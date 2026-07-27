@@ -1,5 +1,7 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
+import 'media_asset.dart';
+
 part 'content.freezed.dart';
 part 'content.g.dart';
 
@@ -21,6 +23,7 @@ abstract class ShareCard with _$ShareCard {
     @JsonKey(name: 'author_avatar_url') String? authorAvatarUrl,
     @JsonKey(name: 'cover_url') String? coverUrl,
     @JsonKey(name: 'thumbnail_url') String? thumbnailUrl,
+    @JsonKey(name: 'media_assets') @Default([]) List<MediaAsset> mediaAssets,
     @JsonKey(name: 'cover_color') String? coverColor,
     @Default([]) List<String> tags,
     @JsonKey(name: 'is_nsfw') @Default(false) bool isNsfw,
@@ -85,6 +88,7 @@ abstract class ContentDetail with _$ContentDetail {
     @JsonKey(name: 'updated_at') required DateTime updatedAt,
     @JsonKey(name: 'published_at') DateTime? publishedAt,
     @JsonKey(name: 'media_urls') @Default([]) List<String> mediaUrls,
+    @JsonKey(name: 'media_assets') @Default([]) List<MediaAsset> mediaAssets,
     @JsonKey(name: 'source_tags') @Default([]) List<String> sourceTags,
     @JsonKey(name: 'view_count') @Default(0) int viewCount,
     @JsonKey(name: 'like_count') @Default(0) int likeCount,

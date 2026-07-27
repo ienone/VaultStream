@@ -6,6 +6,7 @@ import 'full_screen_gallery.dart';
 Future<void> pushFullScreenGallery({
   required BuildContext context,
   required List<String> images,
+  Map<String, List<String>> fallbackUrlsByImage = const {},
   required int initialIndex,
   required String apiBaseUrl,
   String? apiToken,
@@ -20,16 +21,18 @@ Future<void> pushFullScreenGallery({
       barrierColor: Colors.transparent,
       transitionDuration: AppMotion.fast,
       reverseTransitionDuration: AppMotion.fast,
-      pageBuilder: (context, animation, secondaryAnimation) => FullScreenGallery(
-        images: images,
-        initialIndex: initialIndex,
-        apiBaseUrl: apiBaseUrl,
-        apiToken: apiToken,
-        contentId: contentId,
-        contentColor: contentColor,
-        customHeroTag: customHeroTag,
-        onPageChanged: onPageChanged,
-      ),
+      pageBuilder: (context, animation, secondaryAnimation) =>
+          FullScreenGallery(
+            images: images,
+            fallbackUrlsByImage: fallbackUrlsByImage,
+            initialIndex: initialIndex,
+            apiBaseUrl: apiBaseUrl,
+            apiToken: apiToken,
+            contentId: contentId,
+            contentColor: contentColor,
+            customHeroTag: customHeroTag,
+            onPageChanged: onPageChanged,
+          ),
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         final curved = CurvedAnimation(
           parent: animation,

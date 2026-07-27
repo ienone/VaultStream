@@ -13,6 +13,7 @@ import 'media_gallery_item.dart';
 /// 符合 Material 3 Expressive Design 规范
 class MediaGrid extends StatelessWidget {
   final List<String> images;
+  final Map<String, List<String>> fallbackUrlsByImage;
   final String apiBaseUrl;
   final String? apiToken;
   final int contentId;
@@ -32,6 +33,7 @@ class MediaGrid extends StatelessWidget {
   const MediaGrid({
     super.key,
     required this.images,
+    this.fallbackUrlsByImage = const {},
     required this.apiBaseUrl,
     this.apiToken,
     required this.contentId,
@@ -76,6 +78,7 @@ class MediaGrid extends StatelessWidget {
                     child: MediaGalleryItem(
                       images: images,
                       index: index,
+                      fallbackUrlsByImage: fallbackUrlsByImage,
                       apiBaseUrl: apiBaseUrl,
                       apiToken: apiToken,
                       contentId: contentId,
@@ -211,6 +214,8 @@ class MediaGrid extends StatelessWidget {
                             )
                           : NetworkThumbnail(
                               imageUrl: img,
+                              fallbackUrls:
+                                  fallbackUrlsByImage[img] ?? const [],
                               httpHeaders: buildImageHeaders(
                                 imageUrl: img,
                                 baseUrl: apiBaseUrl,
@@ -262,6 +267,7 @@ class MediaGrid extends StatelessWidget {
               ? _buildVideoThumbnail(context, imageUrl)
               : NetworkThumbnail(
                   imageUrl: imageUrl,
+                  fallbackUrls: fallbackUrlsByImage[imageUrl] ?? const [],
                   httpHeaders: buildImageHeaders(
                     imageUrl: imageUrl,
                     baseUrl: apiBaseUrl,
@@ -289,6 +295,7 @@ class MediaGrid extends StatelessWidget {
                 ? _buildVideoThumbnail(context, imageUrl)
                 : NetworkThumbnail(
                     imageUrl: imageUrl,
+                    fallbackUrls: fallbackUrlsByImage[imageUrl] ?? const [],
                     httpHeaders: buildImageHeaders(
                       imageUrl: imageUrl,
                       baseUrl: apiBaseUrl,
@@ -332,6 +339,8 @@ class MediaGrid extends StatelessWidget {
                       ? _buildVideoThumbnail(context, images[index])
                       : NetworkThumbnail(
                           imageUrl: images[index],
+                          fallbackUrls:
+                              fallbackUrlsByImage[images[index]] ?? const [],
                           httpHeaders: buildImageHeaders(
                             imageUrl: images[index],
                             baseUrl: apiBaseUrl,

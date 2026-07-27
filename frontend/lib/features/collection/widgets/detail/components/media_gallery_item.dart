@@ -9,6 +9,7 @@ import '../../../../../core/utils/media_utils.dart';
 class MediaGalleryItem extends StatelessWidget {
   final List<String> images;
   final int index;
+  final Map<String, List<String>> fallbackUrlsByImage;
   final String apiBaseUrl;
   final String? apiToken;
   final int contentId;
@@ -25,6 +26,7 @@ class MediaGalleryItem extends StatelessWidget {
     super.key,
     required this.images,
     required this.index,
+    this.fallbackUrlsByImage = const {},
     required this.apiBaseUrl,
     this.apiToken,
     required this.contentId,
@@ -76,6 +78,7 @@ class MediaGalleryItem extends StatelessWidget {
             tag: heroTag,
             child: NetworkThumbnail(
               imageUrl: url,
+              fallbackUrls: fallbackUrlsByImage[url] ?? const [],
               httpHeaders: buildImageHeaders(
                 imageUrl: url,
                 baseUrl: apiBaseUrl,
@@ -96,6 +99,7 @@ class MediaGalleryItem extends StatelessWidget {
     pushFullScreenGallery(
       context: context,
       images: images,
+      fallbackUrlsByImage: fallbackUrlsByImage,
       initialIndex: index,
       apiBaseUrl: apiBaseUrl,
       apiToken: apiToken,

@@ -11,6 +11,7 @@ import '../../../../core/widgets/network_thumbnail.dart';
 import '../../../../theme/design_tokens.dart';
 import '../../models/content.dart';
 import '../../models/content_template.dart';
+import '../../models/media_asset.dart';
 import '../../utils/content_parser.dart';
 import '../common/video_player_widget.dart';
 import '../renderers/context_card_renderer.dart';
@@ -30,6 +31,7 @@ class TemplateContext {
     required this.apiToken,
     required this.headerKeys,
     required this.images,
+    required this.imageFallbacks,
     required this.onImageTap,
     required this.onReParse,
   });
@@ -42,6 +44,7 @@ class TemplateContext {
 
   /// 已解析并映射为可访问 URL 的图片列表。
   final List<String> images;
+  final Map<String, List<String>> imageFallbacks;
   final void Function(int index) onImageTap;
   final VoidCallback onReParse;
 
@@ -131,6 +134,7 @@ class _MediaBlock extends StatelessWidget {
 
     return MediaGrid(
       images: ctx.images,
+      fallbackUrlsByImage: ctx.imageFallbacks,
       apiBaseUrl: ctx.apiBaseUrl,
       apiToken: ctx.apiToken,
       contentId: ctx.detail.id,
@@ -149,8 +153,25 @@ class _CoverBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cover = ctx.detail.coverUrl;
-    if (cover == null || cover.isEmpty) {
+    final coverAsset =
+        ctx.detail.mediaAssets.firstFor(
+          role: MediaRole.cover,
+          type: MediaType.image,
+        ) ??
+        ctx.detail.mediaAssets.firstFor(
+          role: MediaRole.poster,
+          type: MediaType.image,
+        );
+    final candidates = coverAsset?.sources
+        .map((source) => source.url)
+        .toList(growable: false);
+    final legacyCover = ctx.detail.coverUrl;
+    final cover =
+        candidates?.firstOrNull ??
+        (legacyCover == null || legacyCover.isEmpty
+            ? null
+            : media_utils.mapUrl(legacyCover, ctx.apiBaseUrl));
+    if (cover == null) {
       return ContentEmptyState(
         icon: Icons.hide_image_outlined,
         message: '没有封面',
@@ -161,12 +182,15 @@ class _CoverBlock extends StatelessWidget {
       child: AspectRatio(
         aspectRatio: aspectRatio,
         child: NetworkThumbnail(
-          imageUrl: media_utils.mapUrl(cover, ctx.apiBaseUrl),
-          httpHeaders: buildImageHeaders(
-            imageUrl: media_utils.mapUrl(cover, ctx.apiBaseUrl),
-            baseUrl: ctx.apiBaseUrl,
-            apiToken: ctx.apiToken,
-          ),
+          imageUrl: cover,
+          fallbackUrls: candidates?.skip(1).toList(growable: false) ?? const [],
+          httpHeaders: candidates == null
+              ? buildImageHeaders(
+                  imageUrl: cover,
+                  baseUrl: ctx.apiBaseUrl,
+                  apiToken: ctx.apiToken,
+                )
+              : null,
           fit: BoxFit.cover,
         ),
       ),
@@ -175,14 +199,20 @@ class _CoverBlock extends StatelessWidget {
 }
 
 /// 从 media_urls 中挑出可播放的媒体。没有则返回 null。
-String? _playableMedia(TemplateContext ctx, {required bool audio}) {
+List<String> _playableMedia(TemplateContext ctx, {required bool audio}) {
+  final type = audio ? MediaType.audio : MediaType.video;
+  for (final asset in ctx.detail.mediaAssets) {
+    if (asset.mediaType == type && asset.sources.isNotEmpty) {
+      return asset.sources.map((source) => source.url).toList(growable: false);
+    }
+  }
   for (final url in ctx.detail.mediaUrls) {
     final matches = audio ? media_utils.isAudio(url) : media_utils.isVideo(url);
     if (matches) {
-      return media_utils.mapPlayableUrl(url, ctx.apiBaseUrl);
+      return [media_utils.mapPlayableUrl(url, ctx.apiBaseUrl)];
     }
   }
-  return null;
+  return const [];
 }
 
 // --- 模板主体 ---
@@ -358,13 +388,14 @@ class _VideoBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (playable != null)
+        if (playable.isNotEmpty)
           ClipRRect(
             borderRadius: AppShape.paneBorder,
             child: VideoPlayerWidget(
-              videoUrl: playable,
+              videoUrl: playable.first,
+              fallbackUrls: playable.skip(1).toList(growable: false),
               headers: buildImageHeaders(
-                imageUrl: playable,
+                imageUrl: playable.first,
                 baseUrl: ctx.apiBaseUrl,
                 apiToken: ctx.apiToken,
               ),
@@ -432,12 +463,13 @@ class _AudioBody extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.md),
-        if (playable != null)
+        if (playable.isNotEmpty)
           VideoPlayerWidget(
-            videoUrl: playable,
+            videoUrl: playable.first,
+            fallbackUrls: playable.skip(1).toList(growable: false),
             audioOnly: true,
             headers: buildImageHeaders(
-              imageUrl: playable,
+              imageUrl: playable.first,
               baseUrl: ctx.apiBaseUrl,
               apiToken: ctx.apiToken,
             ),
@@ -512,7 +544,19 @@ class _ProfileBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final detail = ctx.detail;
-    final avatar = detail.authorAvatarUrl;
+    final avatarAsset = detail.mediaAssets.firstFor(
+      role: MediaRole.avatar,
+      type: MediaType.image,
+    );
+    final avatarCandidates = avatarAsset?.sources
+        .map((source) => source.url)
+        .toList(growable: false);
+    final legacyAvatar = detail.authorAvatarUrl;
+    final avatar =
+        avatarCandidates?.firstOrNull ??
+        (legacyAvatar == null || legacyAvatar.isEmpty
+            ? null
+            : media_utils.mapUrl(legacyAvatar, ctx.apiBaseUrl));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -523,12 +567,17 @@ class _ProfileBody extends StatelessWidget {
             if (avatar != null && avatar.isNotEmpty)
               ClipOval(
                 child: NetworkThumbnail(
-                  imageUrl: media_utils.mapUrl(avatar, ctx.apiBaseUrl),
-                  httpHeaders: buildImageHeaders(
-                    imageUrl: media_utils.mapUrl(avatar, ctx.apiBaseUrl),
-                    baseUrl: ctx.apiBaseUrl,
-                    apiToken: ctx.apiToken,
-                  ),
+                  imageUrl: avatar,
+                  fallbackUrls:
+                      avatarCandidates?.skip(1).toList(growable: false) ??
+                      const [],
+                  httpHeaders: avatarCandidates == null
+                      ? buildImageHeaders(
+                          imageUrl: avatar,
+                          baseUrl: ctx.apiBaseUrl,
+                          apiToken: ctx.apiToken,
+                        )
+                      : null,
                   width: 72,
                   height: 72,
                 ),

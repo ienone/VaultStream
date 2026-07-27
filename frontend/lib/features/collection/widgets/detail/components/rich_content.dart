@@ -32,6 +32,7 @@ class RichContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final mediaUrls = ContentParser.extractAllMedia(detail, apiBaseUrl);
+    final mediaFallbacks = ContentParser.extractImageFallbacks(detail);
     final rawMarkdown = _getMarkdownContent(detail);
     final markdown = _preprocessMarkdown(rawMarkdown);
 
@@ -42,7 +43,16 @@ class RichContent extends StatelessWidget {
       final style = _getMarkdownStyle(theme);
       // 从 Markdown 文本中提取所有图片 URL（与 imageBuilder 收到的 URI 来源一致，
       // 避免与 detail.mediaUrls 的 URL 编码不匹配导致序号查找失败）
-      final inlineImageUrls = _extractInlineImageUrls(markdown, apiBaseUrl);
+      final inlineImageUrls = _extractInlineImageUrls(markdown, apiBaseUrl)
+          .map(
+            (url) => ContentParser.imageCandidatesForUrl(
+              detail,
+              url,
+              apiBaseUrl,
+            ).firstOrNull,
+          )
+          .whereType<String>()
+          .toList(growable: false);
 
       children.add(
         RepaintBoundary(
@@ -68,6 +78,7 @@ class RichContent extends StatelessWidget {
               apiBaseUrl,
               apiToken,
               galleryImages: inlineImageUrls,
+              fallbackUrlsByImage: mediaFallbacks,
               useHero: useHero,
               usedHeroTags: usedHeroTags,
             ),
@@ -116,6 +127,7 @@ class RichContent extends StatelessWidget {
           MediaGalleryItem(
             images: mediaUrls,
             index: 0,
+            fallbackUrlsByImage: mediaFallbacks,
             apiBaseUrl: apiBaseUrl,
             apiToken: apiToken,
             contentId: detail.id,
@@ -153,6 +165,7 @@ class RichContent extends StatelessWidget {
               return MediaGalleryItem(
                 images: mediaUrls,
                 index: index,
+                fallbackUrlsByImage: mediaFallbacks,
                 apiBaseUrl: apiBaseUrl,
                 apiToken: apiToken,
                 contentId: detail.id,
@@ -305,10 +318,21 @@ class RichContent extends StatelessWidget {
     String apiBaseUrl,
     String? apiToken, {
     List<String>? galleryImages,
+    Map<String, List<String>> fallbackUrlsByImage = const {},
     bool useHero = true,
     Set<String>? usedHeroTags,
   }) {
-    String url = mapUrl(uri.toString(), apiBaseUrl);
+    final candidates = ContentParser.imageCandidatesForUrl(
+      detail,
+      uri.toString(),
+      apiBaseUrl,
+    );
+    final url = candidates.firstOrNull ?? mapUrl(uri.toString(), apiBaseUrl);
+    final effectiveFallbacks = <String, List<String>>{
+      ...fallbackUrlsByImage,
+      if (candidates.isNotEmpty)
+        candidates.first: candidates.skip(1).toList(growable: false),
+    };
 
     // 优先使用从 Markdown 文本预提取的图片列表（URL 来源一致，精确匹配）
     List<String> effectiveMediaUrls;
@@ -324,8 +348,9 @@ class RichContent extends StatelessWidget {
       effectiveIndex = mediaUrls.indexOf(url);
       if (effectiveIndex == -1) {
         final cleanSearch = url.split('?').first;
-        effectiveIndex =
-            mediaUrls.indexWhere((m) => m.split('?').first == cleanSearch);
+        effectiveIndex = mediaUrls.indexWhere(
+          (m) => m.split('?').first == cleanSearch,
+        );
       }
       if (effectiveIndex == -1) {
         // 完全找不到：单张图片 gallery
@@ -359,6 +384,7 @@ class RichContent extends StatelessWidget {
           MediaGalleryItem(
             images: effectiveMediaUrls,
             index: effectiveIndex,
+            fallbackUrlsByImage: effectiveFallbacks,
             apiBaseUrl: apiBaseUrl,
             apiToken: apiToken,
             contentId: detail.id,
