@@ -26,7 +26,7 @@ active
 
 | 领域 | 表或结构 |
 | :--- | :--- |
-| 内容 | `contents`、`content_sources`、`discovery_sources`、`content_discovery_links` |
+| 内容与媒体 | `contents`、`content_sources`、`discovery_sources`、`content_discovery_links`、`media_assets`、`media_variants` |
 | 搜索 | `content_embeddings`、运行期 `contents_fts` |
 | 系统与任务 | `tasks`、`system_settings` |
 | 分发 | `distribution_rules`、`distribution_targets`、`content_queue_items`、`pushed_records` |

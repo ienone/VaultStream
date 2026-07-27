@@ -12,13 +12,25 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import logger
 from app.core.config import settings
+from app.core.api_errors import build_error_payload
 from app.core.dependencies import require_api_token
+from app.core.database import get_db
 from app.core.safe_fetch import create_safe_async_transport, is_safe_url
 from app.adapters.storage import get_storage_backend, LocalStorageBackend
+from app.models.media import MediaVariant, MediaVariantStatus
+from app.schemas.media import MediaAssetManifest, MediaPurpose
 from app.services.config_service import ConfigService
+from app.services.media_access import MediaSignatureError, verify_media_signature
+from app.services.media_manifest import (
+    build_media_manifest,
+    get_media_asset,
+    resolve_media_base_url,
+)
 
 router = APIRouter()
 
@@ -27,6 +39,10 @@ _MAX_PROXY_REDIRECTS = 5
 _MAX_PROXY_IMAGE_PIXELS = 40_000_000
 _MAX_PROXY_CACHE_BYTES = 512 * 1024 * 1024
 _PROXY_CONNECT_RETRIES = 2
+
+
+def _media_error(message: str, code: str) -> dict[str, object]:
+    return build_error_payload(message=message, code=code)
 
 
 def _resolve_local_media_path(storage: LocalStorageBackend, key: str) -> Path:
@@ -225,6 +241,84 @@ async def _enforce_proxy_cache_quota(storage: LocalStorageBackend) -> None:
     import asyncio
 
     await asyncio.to_thread(trim_cache)
+
+
+@router.get(
+    "/media/assets/{asset_id}/manifest",
+    response_model=MediaAssetManifest,
+    dependencies=[Depends(require_api_token)],
+)
+async def get_asset_manifest(
+    asset_id: int,
+    request: Request,
+    purpose: MediaPurpose = Query(MediaPurpose.DETAIL),
+    db: AsyncSession = Depends(get_db),
+):
+    """刷新一个资产的有序读取候选；该控制面请求需要 API Token。"""
+    asset = await get_media_asset(db, asset_id)
+    if asset is None:
+        raise HTTPException(
+            status_code=404,
+            detail=_media_error("Media asset not found", "media_asset_not_found"),
+        )
+    base_url = resolve_media_base_url(str(request.base_url))
+    return build_media_manifest(asset, purpose=purpose, base_url=base_url)
+
+
+@router.get("/media/blobs/{key:path}")
+async def get_signed_media_blob(
+    key: str,
+    variant_id: int = Query(..., ge=1),
+    expires: int = Query(..., ge=1),
+    signature: str = Query(..., min_length=64, max_length=64),
+    db: AsyncSession = Depends(get_db),
+    storage: LocalStorageBackend = Depends(get_storage_backend),
+):
+    """通过资源级签名读取本地媒体，不接收控制面 API Token。"""
+    if not isinstance(storage, LocalStorageBackend):
+        raise HTTPException(
+            status_code=400,
+            detail=_media_error("Unsupported storage backend", "unsupported_storage_backend"),
+        )
+    try:
+        verify_media_signature(key, variant_id, expires, signature)
+    except MediaSignatureError as exc:
+        status_code = 410 if exc.code == "media_signature_expired" else 403
+        message = "Media signature expired" if status_code == 410 else "Invalid media signature"
+        raise HTTPException(
+            status_code=status_code,
+            detail=_media_error(message, exc.code),
+        ) from exc
+
+    variant = (
+        await db.execute(select(MediaVariant).where(MediaVariant.id == variant_id))
+    ).scalar_one_or_none()
+    if (
+        variant is None
+        or variant.storage_key != key
+        or variant.status != MediaVariantStatus.READY
+    ):
+        raise HTTPException(
+            status_code=404,
+            detail=_media_error("Media variant not found", "media_variant_not_found"),
+        )
+
+    file_path = _resolve_local_media_path(storage, key)
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=_media_error("Media blob is missing", "media_blob_missing"),
+        )
+
+    mime_type = variant.mime_type or mimetypes.guess_type(str(file_path))[0]
+    return FileResponse(
+        str(file_path),
+        media_type=mime_type or "application/octet-stream",
+        headers={
+            "Cache-Control": "private, max-age=300",
+            "ETag": f'"{variant.checksum or key}"',
+        },
+    )
 
 
 @router.get("/media/{key:path}", dependencies=[Depends(require_api_token)])

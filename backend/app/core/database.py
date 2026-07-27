@@ -15,6 +15,7 @@ async def init_db():
     """初始化数据库基础结构。"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await ensure_media_schema(conn)
         await ensure_content_embeddings_schema(conn)
         await ensure_content_fts(conn)
         await ensure_schema_metadata(conn)
@@ -90,6 +91,16 @@ async def ensure_content_embeddings_schema(conn: AsyncConnection) -> None:
         text(
             "CREATE INDEX IF NOT EXISTS ix_content_embeddings_attempted_at "
             "ON content_embeddings (last_attempted_at)"
+        )
+    )
+
+
+async def ensure_media_schema(conn: AsyncConnection) -> None:
+    """Ensure existing databases enforce stable media asset identities."""
+    await conn.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_media_asset_content_role_position "
+            "ON media_assets (content_id, media_type, role, position)"
         )
     )
 

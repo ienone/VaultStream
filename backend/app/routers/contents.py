@@ -5,7 +5,7 @@
 """
 from typing import List, Optional
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Request
 from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,6 +49,11 @@ from app.services.background_task_state import (
 from app.media.extractor import sanitize_media_urls
 from app.adapters.utils import ensure_title
 from app.services.config_service import ConfigService
+from app.schemas.media import MediaPurpose
+from app.services.media_manifest import (
+    build_content_media_manifests,
+    resolve_media_base_url,
+)
 
 router = APIRouter()
 
@@ -682,6 +687,7 @@ async def list_contents(
 @router.get("/contents/{content_id}", response_model=ContentDetail)
 async def get_content_detail(
     content_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
@@ -700,8 +706,16 @@ async def get_content_detail(
         await db.commit()
         await db.refresh(content)
         
-    base_url = settings.base_url or "http://localhost:8000"
-    return transform_content_detail(ContentDetail.model_validate(content), base_url)
+    base_url = resolve_media_base_url(str(request.base_url))
+    detail = transform_content_detail(ContentDetail.model_validate(content), base_url)
+    manifests = await build_content_media_manifests(
+        db,
+        [content.id],
+        purpose=MediaPurpose.DETAIL,
+        base_url=base_url,
+    )
+    detail.media_assets = manifests.get(content.id, [])
+    return detail
 
 
 @router.get(
@@ -724,8 +738,10 @@ async def get_content_processing_status(
 @router.patch("/contents/{content_id}", response_model=ContentDetail)
 async def update_content(
     content_id: int,
+    raw_request: Request,
     request: ContentUpdate,
     service: ContentService = Depends(get_content_service),
+    db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """修改内容"""
@@ -741,8 +757,16 @@ async def update_content(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-    base_url = settings.base_url or "http://localhost:8000"
-    return transform_content_detail(ContentDetail.model_validate(content), base_url)
+    base_url = resolve_media_base_url(str(raw_request.base_url))
+    detail = transform_content_detail(ContentDetail.model_validate(content), base_url)
+    manifests = await build_content_media_manifests(
+        db,
+        [content.id],
+        purpose=MediaPurpose.DETAIL,
+        base_url=base_url,
+    )
+    detail.media_assets = manifests.get(content.id, [])
+    return detail
 
 @router.delete("/contents/{content_id}")
 async def delete_content(
@@ -986,6 +1010,7 @@ async def delete_pushed_record(
 
 @router.get("/cards", response_model=ShareCardListResponse)
 async def list_share_cards(
+    request: Request,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     platforms: Optional[List[str]] = Query(None, alias="platform"),
@@ -997,6 +1022,7 @@ async def list_share_cards(
     end_date: Optional[datetime] = Query(None),
     q: Optional[str] = Query(None),
     repo: ContentRepository = Depends(get_content_repo),
+    db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """轻量级分享卡片列表"""
@@ -1013,7 +1039,13 @@ async def list_share_cards(
         q=q
     )
 
-    base_url = settings.base_url or "http://localhost:8000"
+    base_url = resolve_media_base_url(str(request.base_url))
+    manifests = await build_content_media_manifests(
+        db,
+        [content.id for content in contents],
+        purpose=MediaPurpose.CARD,
+        base_url=base_url,
+    )
     items = []
     for c in contents:
         cover_url = transform_media_url(c.cover_url, base_url)
@@ -1035,6 +1067,7 @@ async def list_share_cards(
             "author_avatar_url": transform_media_url(compute_author_avatar_url(c), base_url),
             "cover_url": cover_url,
             "thumbnail_url": thumbnail_url,
+            "media_assets": manifests.get(c.id, []),
             "cover_color": c.cover_color,
             "tags": c.tags or [],
             "is_nsfw": c.is_nsfw or False,
@@ -1058,6 +1091,7 @@ async def list_share_cards(
 @router.get("/cards/{card_id}")
 async def get_share_card(
     card_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
@@ -1067,7 +1101,13 @@ async def get_share_card(
     if not c:
         raise HTTPException(status_code=404, detail="Card not found")
 
-    base_url = settings.base_url or "http://localhost:8000"
+    base_url = resolve_media_base_url(str(request.base_url))
+    manifests = await build_content_media_manifests(
+        db,
+        [c.id],
+        purpose=MediaPurpose.CARD,
+        base_url=base_url,
+    )
     cover_url = transform_media_url(c.cover_url, base_url)
     thumbnail_url = None
     if cover_url and "/api/v1/media/" in cover_url:
@@ -1087,6 +1127,7 @@ async def get_share_card(
         "author_avatar_url": transform_media_url(compute_author_avatar_url(c), base_url),
         "cover_url": cover_url,
         "thumbnail_url": thumbnail_url,
+        "media_assets": manifests.get(c.id, []),
         "cover_color": c.cover_color,
         "tags": c.tags or [],
         "is_nsfw": c.is_nsfw or False,

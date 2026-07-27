@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     # API 鉴权（简单 Token）
     api_token: SecretStr = SecretStr("")
 
+    # 媒体读取授权。与控制面 API Token 分离；生产环境必须显式配置。
+    media_signing_secret: SecretStr = SecretStr("")
+    media_url_ttl_seconds: int = 900
+
     # 日志配置
     log_level: str = "INFO"
     log_format: Literal["json", "text"] = "text"
@@ -145,5 +149,10 @@ def validate_settings() -> None:
             raise RuntimeError("CORS_ALLOWED_ORIGINS must not be '*' in production")
         if not settings.api_token.get_secret_value():
             raise RuntimeError("API_TOKEN must be set explicitly in production")
+        media_secret = settings.media_signing_secret.get_secret_value()
+        if not media_secret:
+            raise RuntimeError("MEDIA_SIGNING_SECRET must be set explicitly in production")
+        if media_secret == settings.api_token.get_secret_value():
+            raise RuntimeError("MEDIA_SIGNING_SECRET must be different from API_TOKEN")
 
     return None

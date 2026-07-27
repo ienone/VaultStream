@@ -32,6 +32,7 @@ from app.utils.url_utils import normalize_share_url_input
 from app.services.post_ingest import PostIngestService
 from app.services.config_service import ConfigService
 from app.services.settings_service import get_setting_value
+from app.services.media_backfill import replace_content_media_assets
 from app.services.background_task_state import (
     record_task_run_error,
     record_task_run_started,
@@ -279,6 +280,15 @@ class ContentParser:
         content.last_error_type = None
         content.last_error_detail = None
         content.last_error_at = None
+
+        # 解析结果是媒体事实的写入边界。每次完整解析后在同一事务内重建
+        # 该内容的资产/变体，避免继续双写旧 URL 与新表。
+        await replace_content_media_assets(
+            session,
+            content,
+            get_storage_backend(),
+            source="parse",
+        )
 
         await session.commit()
         logger.info("内容解析完成")

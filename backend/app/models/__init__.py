@@ -8,6 +8,15 @@ from app.models.distribution import DistributionRule, DistributionTarget
 from app.models.bot import BotChatType, BotConfigPlatform, BotConfig, BotChat, BotRuntime
 from app.models.system import Task, SystemSetting, PushedRecord, QueueItemStatus, ContentQueueItem
 from app.models.search import ContentEmbedding
+from app.models.media import (
+    MediaArchiveStatus,
+    MediaAsset,
+    MediaRole,
+    MediaType,
+    MediaVariant,
+    MediaVariantKind,
+    MediaVariantStatus,
+)
 from app.models.agent import (
     AgentSession,
     AgentMessage,
@@ -26,6 +35,8 @@ __all__ = [
     "BotChatType", "BotConfigPlatform", "BotConfig", "BotChat", "BotRuntime",
     "Task", "SystemSetting", "PushedRecord", "QueueItemStatus", "ContentQueueItem",
     "ContentEmbedding",
+    "MediaArchiveStatus", "MediaAsset", "MediaRole", "MediaType",
+    "MediaVariant", "MediaVariantKind", "MediaVariantStatus",
     "AgentSession", "AgentMessage", "AgentRun", "AgentToolCall",
     "AgentConfirmation", "AgentContextSummary",
 ]

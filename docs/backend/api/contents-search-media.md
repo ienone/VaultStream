@@ -42,9 +42,14 @@ active
 
 ## 媒体访问
 
-- `GET /api/v1/media/{key}` 读取受本地媒体存储管理的对象。
+- 内容详情与分享卡片现在都可返回 `media_assets`，每个资产包含按 `purpose` 排序的 `sources`；列表与详情不另建封面事实源。
+- `GET /api/v1/media/assets/{asset_id}/manifest` 使用控制面鉴权刷新一个资产的候选。
+- `GET /api/v1/media/blobs/{key}` 使用绑定 storage key、variant ID 和过期时间的资源级签名读取本地对象，不接收全局 API Token。
+- `GET /api/v1/media/{key}` 是迁移期间仍供旧 URL 字段使用的受保护端点；统一媒体调用方不得新增对此路径的依赖。
 - `GET /api/v1/proxy/image` 代理远程图片，必须遵守后端 URL 安全和缓存策略。
-- `local://` 是存档引用，不是前端可直接请求的 HTTP URL；前端应复用已有媒体 URL 转换逻辑。
+- `local://` 是旧存档引用，不是前端可直接请求的 HTTP URL。新调用方只执行后端返回的 `MediaSource`，不得自行拼接签名或代理 URL。
+
+生产环境必须配置与 `API_TOKEN` 不同的 `MEDIA_SIGNING_SECRET`。签名过期返回稳定错误码 `media_signature_expired`；签名错误、变体不存在和物理 blob 缺失使用各自错误码，前端不得解析错误文案。
 
 媒体失败态和代理访问问题见 `../../issues/media-proxy-image-access.md`。
 

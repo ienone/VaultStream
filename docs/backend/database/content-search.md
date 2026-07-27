@@ -26,6 +26,16 @@ active
 
 `layout_type` 是当前渲染分类，不应被解释为完整的长期模板体系；平台原生类型保留在 `content_type` 和结构化 payload 中。
 
+## `media_assets` 与 `media_variants`
+
+统一媒体模型已建立独立的资产与变体表：
+
+- `media_assets` 保存内容归属、媒体类型、业务角色、顺序、原始来源、归档状态和客户端直连策略。
+- `media_variants` 保存本地 storage key、变体类型、格式/编解码信息、尺寸、状态和校验值。
+- API 返回的短期签名 URL 与代理 URL 不入库，由 manifest service 按用途生成。
+
+现有内容数据尚未完成回填，`cover_url`、`author_avatar_url`、`media_urls` 和 `archive_metadata` 当前仍是迁移输入；不得在新代码中将这些旧字段当作媒体资产表的等价事实。
+
 ## 来源与发现
 
 - `content_sources` 保存每次分享或导入的来源、标签快照、备注和客户端上下文。一条内容可以有多个来源记录。

@@ -133,6 +133,12 @@ class Content(Base):
     sources = relationship("ContentSource", back_populates="content")
     discovery_links = relationship("ContentDiscoveryLink", back_populates="content")
     discovery_source = relationship("DiscoverySource", foreign_keys="[Content.discovery_source_id]")
+    media_assets = relationship(
+        "MediaAsset",
+        back_populates="content",
+        cascade="all, delete-orphan",
+        order_by="MediaAsset.position",
+    )
 
 
 class ContentSource(Base):

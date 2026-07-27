@@ -17,6 +17,7 @@ active
 
 - 服务本地 `local://` 媒体。
 - 提供 `/media/{key}` 本地媒体读取。
+- 提供统一媒体资产 manifest 与资源级签名 blob 读取。
 - 提供 `/proxy/image` 外链图片代理。
 - 处理归档图片 WebP 转码、缩略图、视频存储、封面主色提取。
 - 对远程抓取执行 SSRF 和 Content-Type 限制。
@@ -29,7 +30,9 @@ active
 
 ## 实现逻辑
 
-媒体归档任务会从 archive metadata 中提取图片/视频 URL，下载后写入本地 storage，并用 `local://` 或 `/api/v1/media/{key}` 供前端访问。图片代理当前还承担下载、像素校验、转码和缓存职责。
+媒体归档任务会从 archive metadata 中提取图片/视频 URL，下载后写入本地 storage，并同步创建统一资产与变体。内容列表、详情和 manifest 根据当前请求 origin（或显式 `storage_public_base_url`）生成资源级签名 URL，避免把实际运行在 `8008` 的媒体错误指向配置中的控制面 `8000`。
+
+卡片用途先返回存在 ready 本地变体的图片资产，再返回仅远端的封面；前端不需要等待不可达远端封面后才尝试已归档正文首图。
 
 ## 测试
 
@@ -54,6 +57,8 @@ active
 
 ## API 接口
 
+- `GET /api/v1/media/assets/{asset_id}/manifest`
+- `GET /api/v1/media/blobs/{key}`
 - `GET /api/v1/media/{key}`
 - `GET /api/v1/proxy/image?url=...`
 
@@ -70,6 +75,7 @@ active
 ## 当前问题
 
 - 图片代理与媒体访问不可达：`../../issues/media-proxy-image-access.md`
+- 统一资产表、签名访问、解析后写入和旧数据回填已建立；剩余前端/分发调用方迁移与旧路径删除尚未完成。
 
 ## 尚未实现 / 计划扩展
 

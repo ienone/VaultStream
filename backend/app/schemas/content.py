@@ -9,6 +9,7 @@ import json
 
 from app.models import Platform, ContentStatus, ReviewStatus, LayoutType
 from app.schemas.base import UtcDatetime, OptionalUtcDatetime
+from app.schemas.media import MediaAssetManifest
 
 NOTE_MAX_LENGTH = 2000 # 备注内容的最大长度
 CLIENT_CONTEXT_MAX_BYTES = 4096 # JSON序列化后最大4KB
@@ -88,6 +89,10 @@ class ContentDetail(BaseModel):
     
     cover_color: Optional[str] = None
     media_urls: List[str] = Field(default_factory=list)
+    media_assets: List[MediaAssetManifest] = Field(
+        default_factory=list,
+        validation_alias="media_asset_manifests",
+    )
     extra_stats: Dict[str, Any] = Field(default_factory=dict)
     
     review_status: ReviewStatus = ReviewStatus.PENDING
@@ -191,6 +196,10 @@ class ShareCard(BaseModel):
     author_avatar_url: Optional[str] = None
     cover_url: Optional[str] = None
     thumbnail_url: Optional[str] = None
+    media_assets: List[MediaAssetManifest] = Field(
+        default_factory=list,
+        validation_alias="media_asset_manifests",
+    )
     cover_color: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
     is_nsfw: bool = False
@@ -201,7 +210,7 @@ class ShareCard(BaseModel):
     view_count: int = 0
     like_count: int = 0
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class ShareCardListResponse(BaseModel):
