@@ -160,22 +160,6 @@ class _DesktopShell extends StatelessWidget {
             extended: extended,
             minWidth: 80,
             minExtendedWidth: 200,
-            leading: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.vape_free_rounded, // Replace with your logo icon
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                ),
-              ),
-            ),
             destinations: const [
               NavigationRailDestination(
                 icon: Icon(Icons.dynamic_feed_outlined),
