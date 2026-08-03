@@ -1,3 +1,4 @@
+import asyncio
 import re
 import httpx
 from typing import Optional, Dict, Any
@@ -94,6 +95,8 @@ class ZhihuAdapter(PlatformAdapter):
         # 使用 zhuanlan.zhihu.com/api 端点（api.zhihu.com 被风控40362）
         "article": "https://zhuanlan.zhihu.com/api/articles/{id}",
         "question": "https://www.zhihu.com/api/v4/questions/{id}",
+        "question_answers_meta": "https://www.zhihu.com/api/v4/questions/{id}/answers?limit=1",
+        "question_followers_meta": "https://www.zhihu.com/api/v4/questions/{id}/followers?limit=1",
         "user": "https://www.zhihu.com/api/v4/members/{id}",
         "column": "https://www.zhihu.com/api/v4/columns/{id}",
         "collection": "https://api.zhihu.com/collections/{id}",
@@ -263,7 +266,7 @@ class ZhihuAdapter(PlatformAdapter):
         # article 端点在 zhuanlan.zhihu.com，需要对应的 referer
         if content_type == "article":
             extra_headers["referer"] = f"https://zhuanlan.zhihu.com/p/{content_id}"
-        elif content_type == "question":
+        elif content_type.startswith("question"):
             extra_headers["referer"] = f"https://www.zhihu.com/question/{content_id}"
         if use_cookies and self.raw_cookie_str:
             extra_headers["cookie"] = normalize_cookie_header_value(
@@ -361,8 +364,40 @@ class ZhihuAdapter(PlatformAdapter):
         
         if not data or "_error" in data:
             return None
-        
+
+        await self._enrich_answer_question_stats(data)
         return self._build_answer_from_api(data, url)
+
+    async def _enrich_answer_question_stats(self, data: Dict[str, Any]) -> None:
+        """用低风控分页端点补齐回答所属问题的回答数和关注数。"""
+        question = data.get("question")
+        if not isinstance(question, dict):
+            return
+        question_id = question.get("id")
+        if not question_id:
+            return
+
+        async def fetch_total(endpoint: str) -> int:
+            response = await self._api_request(
+                endpoint,
+                str(question_id),
+                use_cookies=True,
+            )
+            if not isinstance(response, dict) or "_error" in response:
+                return 0
+            paging = response.get("paging")
+            if not isinstance(paging, dict):
+                return 0
+            return self._to_int(paging.get("totals", 0))
+
+        answer_count, follower_count = await asyncio.gather(
+            fetch_total("question_answers_meta"),
+            fetch_total("question_followers_meta"),
+        )
+        if answer_count > 0:
+            question["answer_count"] = answer_count
+        if follower_count > 0:
+            question["follower_count"] = follower_count
 
     async def _parse_article_via_api(self, article_id: str, url: str) -> Optional[ParsedContent]:
         """通过API解析文章"""

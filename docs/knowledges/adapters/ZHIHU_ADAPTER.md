@@ -94,6 +94,7 @@ include=allow_message,answer_count,articles_count,follower_count,following_count
 - 稳定性高，不受页面改版影响
 - 返回结构化数据，易于解析
 - 包含完整的统计信息（点赞、评论等）
+- 回答详情接口只返回关联问题的 ID 与标题，嵌套 `question.*` include 在真实请求中不会补全统计。适配器并行读取问题回答列表与关注者列表的 `paging.totals`，把回答数和关注数写入 `context_data.stats`；补充请求失败不影响回答正文入库。
 
 #### ⚠️ 高风控类型（Question / Pin）
 

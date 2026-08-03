@@ -110,6 +110,9 @@ class TestZhihuAdapter:
         assert result.content_id == "2015063270705365482"
         assert result.author_name
         assert _via_api(result), "answer 应优先走 API 解析"
+        question_stats = (result.context_data or {}).get("stats") or {}
+        assert question_stats.get("answer_count", 0) > 0
+        assert question_stats.get("follower_count", 0) > 0
 
     @pytest.mark.usefixtures("require_zhihu_cookie")
     async def test_parse_article(self, adapter):
