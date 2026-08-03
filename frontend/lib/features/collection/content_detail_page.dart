@@ -75,10 +75,13 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   }
 
   void _onScroll() {
-    if (!mounted || _headerKeys.isEmpty) return;
+    if (!mounted) return;
+
     final now = DateTime.now();
     if (now.difference(_lastScrollCheck).inMilliseconds < 100) return;
     _lastScrollCheck = now;
+
+    if (_headerKeys.isEmpty) return;
 
     String? visible;
     for (final entry in _headerKeys.entries) {
@@ -138,7 +141,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             ),
           ),
           body: metrics.supportsSupportingPane
-              ? _buildLoadingTwoPane(preview)
+              ? _previewUsesImmersiveMedia(preview)
+                    ? _buildLoadingImmersive(preview!)
+                    : _buildLoadingTwoPane(preview)
               : _buildLoadingSinglePane(preview, metrics),
         );
       },
@@ -189,6 +194,48 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     );
   }
 
+  bool _previewUsesImmersiveMedia(ShareCard? preview) {
+    return preview?.usesImmersiveMediaTransition ?? false;
+  }
+
+  Widget _buildLoadingImmersive(ShareCard preview) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      key: const ValueKey('content-detail-immersive-loading-skeleton'),
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      child: Material(
+        color: scheme.surfaceContainerLowest,
+        shape: RoundedRectangleBorder(borderRadius: AppShape.paneBorder),
+        clipBehavior: Clip.antiAlias,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Expanded(flex: 13, child: _ImmersiveMediaSkeleton()),
+            VerticalDivider(width: 1, color: scheme.outlineVariant),
+            Expanded(
+              flex: 8,
+              child: ColoredBox(
+                color: scheme.surface,
+                child: ListView(
+                  padding: const EdgeInsets.all(AppSpacing.xl),
+                  children: [
+                    _LoadingSharedHeader(
+                      contentId: widget.contentId,
+                      preview: preview,
+                      immersiveMedia: true,
+                    ),
+                    const SizedBox(height: AppSpacing.xl),
+                    const _DetailSideSkeleton(),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildError(Object error, StackTrace _) {
     return Scaffold(
       appBar: AppBar(title: const Text('内容详情')),
@@ -220,7 +267,11 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         final metrics = WindowMetrics.fromSize(
           Size(constraints.maxWidth, constraints.maxHeight),
         );
-        final images = ContentParser.extractAllImages(detail, apiBaseUrl);
+        final images = ContentParser.extractAllImages(
+          detail,
+          apiBaseUrl,
+          includeAvatarFallback: detail.template == ContentTemplate.profile,
+        );
         final imageFallbacks = ContentParser.extractImageFallbacks(detail);
 
         final templateContext = TemplateContext(
@@ -240,7 +291,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           appBar: _buildAppBar(detail, metrics),
           body: SelectionArea(
             child: metrics.supportsSupportingPane
-                ? _buildTwoPane(templateContext)
+                ? templateContext.usesImmersiveMediaLayout
+                      ? _buildImmersiveMediaPane(templateContext)
+                      : _buildTwoPane(templateContext)
                 : _buildSinglePane(templateContext),
           ),
         );
@@ -258,11 +311,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     return AppBar(
       // 手机横屏高度不足时压缩顶栏。
       toolbarHeight: metrics.isShortLandscape ? 48 : null,
-      title: Text(
-        (detail.title ?? '').trim().isEmpty ? '内容详情' : detail.title!.trim(),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      title: const Text('内容详情'),
       actions: [
         TextButton.icon(
           onPressed: () => SafeUrlLauncher.openExternal(context, detail.url),
@@ -285,12 +334,18 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
   Widget _buildSinglePane(TemplateContext ctx) {
     return ListView(
+      key: const ValueKey('content-detail-primary-scroll'),
       controller: _scrollController,
       padding: EdgeInsets.all(
         ctx.metrics.isCompact ? AppSpacing.md : AppSpacing.lg,
       ),
       children: [
-        _SharedDetailHeader(detail: ctx.detail),
+        _SharedDetailHeader(
+          detail: ctx.detail,
+          apiBaseUrl: ctx.apiBaseUrl,
+          apiToken: ctx.apiToken,
+          showSourceLine: true,
+        ),
         _DetailContentReveal(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -324,10 +379,16 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       children: [
         Expanded(
           child: ListView(
+            key: const ValueKey('content-detail-primary-scroll'),
             controller: _scrollController,
             padding: const EdgeInsets.all(AppSpacing.xl),
             children: [
-              _SharedDetailHeader(detail: ctx.detail),
+              _SharedDetailHeader(
+                detail: ctx.detail,
+                apiBaseUrl: ctx.apiBaseUrl,
+                apiToken: ctx.apiToken,
+                showSourceLine: false,
+              ),
               _DetailContentReveal(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -353,22 +414,79 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         const VerticalDivider(width: 1),
         SizedBox(
           width: AppPane.supportingWidth,
-          child: _DetailContentReveal(
-            child: ListView(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              children: [
-                if (ctx.detail.template == ContentTemplate.article)
-                  ContentOutline(
-                    detail: ctx.detail,
-                    activeHeader: _activeHeader,
-                    headerKeys: _headerKeys,
+          child: Column(
+            children: [
+              if (ctx.detail.template == ContentTemplate.article)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.md,
+                    AppSpacing.md,
+                    AppSpacing.md,
+                    0,
                   ),
-                ContentSupportingSections(detail: ctx.detail),
-              ],
-            ),
+                  child: AnimatedBuilder(
+                    animation: _scrollController,
+                    builder: (context, _) {
+                      final visible =
+                          _scrollController.hasClients &&
+                          _scrollController.offset >= 136;
+                      return _DockedArticleTitle(
+                        key: ValueKey(
+                          visible
+                              ? 'content-detail-docked-title-visible'
+                              : 'content-detail-docked-title-hidden',
+                        ),
+                        detail: ctx.detail,
+                        visible: visible,
+                      );
+                    },
+                  ),
+                ),
+              Expanded(
+                child: _DetailContentReveal(
+                  child: ListView(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    children: [
+                      ContentIdentityPanel(
+                        detail: ctx.detail,
+                        apiBaseUrl: ctx.apiBaseUrl,
+                        apiToken: ctx.apiToken,
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      if (ctx.detail.template == ContentTemplate.article)
+                        ContentOutline(
+                          detail: ctx.detail,
+                          activeHeader: _activeHeader,
+                          headerKeys: _headerKeys,
+                        ),
+                      ContentSupportingSections(detail: ctx.detail),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildImmersiveMediaPane(TemplateContext ctx) {
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      child: Material(
+        color: Theme.of(context).colorScheme.surfaceContainerLowest,
+        shape: RoundedRectangleBorder(borderRadius: AppShape.paneBorder),
+        clipBehavior: Clip.antiAlias,
+        child: ImmersiveMediaDetail(
+          context_: ctx,
+          sharedHeaderBuilder: (child) => ContentSharedTransition(
+            contentId: ctx.detail.id,
+            immersiveMedia: true,
+            child: child,
+          ),
+        ),
+      ),
     );
   }
 
@@ -481,10 +599,15 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 /// 详情加载态的共享容器目标。它占据最终详情头的真实位置，而不是把
 /// 卡片副本移动到屏幕中央；已知的标题和来源在飞行结束前保持连续。
 class _LoadingSharedHeader extends StatelessWidget {
-  const _LoadingSharedHeader({required this.contentId, required this.preview});
+  const _LoadingSharedHeader({
+    required this.contentId,
+    required this.preview,
+    this.immersiveMedia = false,
+  });
 
   final int contentId;
   final ShareCard? preview;
+  final bool immersiveMedia;
 
   @override
   Widget build(BuildContext context) {
@@ -492,10 +615,7 @@ class _LoadingSharedHeader extends StatelessWidget {
     final surface = Material(
       key: const ValueKey('content-detail-shared-loading-header'),
       color: scheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: AppShape.cardBorder,
-        side: BorderSide(color: scheme.outlineVariant),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 116),
@@ -509,7 +629,39 @@ class _LoadingSharedHeader extends StatelessWidget {
     );
 
     if (preview == null) return surface;
-    return ContentSharedTransition(contentId: contentId, child: surface);
+    return ContentSharedTransition(
+      contentId: contentId,
+      immersiveMedia: immersiveMedia,
+      child: surface,
+    );
+  }
+}
+
+class _ImmersiveMediaSkeleton extends StatelessWidget {
+  const _ImmersiveMediaSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ColoredBox(
+      color: scheme.surfaceContainerLowest,
+      child: Center(
+        child: FractionallySizedBox(
+          widthFactor: 0.78,
+          child: AspectRatio(
+            aspectRatio: 4 / 3,
+            child: _SkeletonPulse(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -783,23 +935,163 @@ class _DetailContentRevealState extends State<_DetailContentReveal>
 
 /// 详情头：来源、标题、模板标识。
 class _Header extends StatelessWidget {
-  const _Header({required this.detail});
+  const _Header({
+    required this.detail,
+    required this.apiBaseUrl,
+    required this.apiToken,
+    required this.showSourceLine,
+  });
 
   final ContentDetail detail;
+  final String apiBaseUrl;
+  final String? apiToken;
+  final bool showSourceLine;
 
   @override
   Widget build(BuildContext context) {
+    final contextData = detail.contextData;
+    final isShortPost = detail.template == ContentTemplate.shortPost;
+    final normalizedTitle = (detail.title ?? '').trim();
+    final normalizedBody = (detail.body ?? '').trim();
+    final titleRepeatsBody =
+        isShortPost &&
+        normalizedTitle.isNotEmpty &&
+        normalizedBody.isNotEmpty &&
+        (normalizedTitle == normalizedBody ||
+            normalizedBody.startsWith(normalizedTitle));
+    final isQuestionAnswer =
+        detail.contentType == 'answer' &&
+        contextData != null &&
+        contextData['type'] == 'question';
+    final questionTitle = isQuestionAnswer
+        ? contextData['title']?.toString().trim()
+        : null;
+    final statsRaw = isQuestionAnswer ? contextData['stats'] : null;
+    final stats = statsRaw is Map
+        ? Map<String, dynamic>.from(statsRaw)
+        : const <String, dynamic>{};
+    final answerCount = _metadataCount(stats['answer_count']);
+    final followerCount = _metadataCount(stats['follower_count']);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        Wrap(
+          spacing: AppSpacing.xs,
+          runSpacing: AppSpacing.xxs,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Expanded(child: ContentSourceLine(detail: detail)),
-            TemplateBadge(detail: detail),
+            PlatformBadge(platform: detail.platform),
+            _ContentKindBadge(label: _contentKindLabel(detail)),
           ],
         ),
-        const SizedBox(height: AppSpacing.sm),
-        ContentTitleBlock(detail: detail),
+        if (!titleRepeatsBody) ...[
+          const SizedBox(height: AppSpacing.sm),
+          ContentTitleBlock(
+            detail: detail,
+            titleOverride: questionTitle?.isNotEmpty == true
+                ? questionTitle
+                : null,
+            style: isShortPost ? Theme.of(context).textTheme.titleMedium : null,
+          ),
+        ],
+        if (showSourceLine) ...[
+          const SizedBox(height: AppSpacing.md),
+          ContentSourceLine(
+            detail: detail,
+            apiBaseUrl: apiBaseUrl,
+            apiToken: apiToken,
+            showPlatform: false,
+            showOriginalAction: false,
+          ),
+        ],
+        if (isQuestionAnswer && (answerCount > 0 || followerCount > 0)) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Wrap(
+            spacing: AppSpacing.md,
+            runSpacing: AppSpacing.xxs,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _QuestionStat(
+                icon: Icons.question_answer_outlined,
+                label: '$answerCount 回答',
+              ),
+              _QuestionStat(
+                icon: Icons.people_outline_rounded,
+                label: '$followerCount 关注',
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+int _metadataCount(Object? value) => switch (value) {
+  int count => count,
+  num count => count.toInt(),
+  String count => int.tryParse(count) ?? 0,
+  _ => 0,
+};
+
+String _contentKindLabel(ContentDetail detail) => switch (detail.contentType) {
+  'answer' => '回答',
+  'question' => '问题',
+  'article' => '文章',
+  'note' => '图文笔记',
+  'tweet' || 'status' || 'dynamic' => '短帖子',
+  'video' || 'live' || 'bangumi' => '视频',
+  'audio' => '音频',
+  'user_profile' => '主页',
+  _ => detail.template.label,
+};
+
+class _ContentKindBadge extends StatelessWidget {
+  const _ContentKindBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.xs,
+        vertical: AppSpacing.xxs,
+      ),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(AppShape.pill),
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: scheme.onSurfaceVariant,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _QuestionStat extends StatelessWidget {
+  const _QuestionStat({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = theme.colorScheme.onSurfaceVariant;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: AppSpacing.xxs),
+        Text(label, style: theme.textTheme.labelMedium?.copyWith(color: color)),
       ],
     );
   }
@@ -808,9 +1100,17 @@ class _Header extends StatelessWidget {
 /// 详情页唯一的共享容器目标。它始终拥有不透明 tonal surface，避免飞行
 /// 过程中透出正文；加载态与已加载态任一时刻也只会挂载一个同 tag Hero。
 class _SharedDetailHeader extends StatelessWidget {
-  const _SharedDetailHeader({required this.detail});
+  const _SharedDetailHeader({
+    required this.detail,
+    required this.apiBaseUrl,
+    required this.apiToken,
+    required this.showSourceLine,
+  });
 
   final ContentDetail detail;
+  final String apiBaseUrl;
+  final String? apiToken;
+  final bool showSourceLine;
 
   @override
   Widget build(BuildContext context) {
@@ -819,18 +1119,99 @@ class _SharedDetailHeader extends StatelessWidget {
       contentId: detail.id,
       child: Material(
         color: scheme.surfaceContainerLow,
-        shape: RoundedRectangleBorder(
-          borderRadius: AppShape.cardBorder,
-          side: BorderSide(color: scheme.outlineVariant),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
         clipBehavior: Clip.antiAlias,
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.md),
-          child: _Header(detail: detail),
+          child: _Header(
+            detail: detail,
+            apiBaseUrl: apiBaseUrl,
+            apiToken: apiToken,
+            showSourceLine: showSourceLine,
+          ),
         ),
       ),
     );
   }
+}
+
+class _DockedArticleTitle extends StatelessWidget {
+  const _DockedArticleTitle({
+    super.key,
+    required this.detail,
+    required this.visible,
+  });
+
+  final ContentDetail detail;
+  final bool visible;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final title = _displayDetailTitle(detail);
+    return AnimatedSize(
+      duration: AppMotion.contentSwap,
+      curve: AppMotion.standardCurve,
+      alignment: Alignment.topCenter,
+      child: visible
+          ? Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+              child: AnimatedSlide(
+                duration: AppMotion.contentSwap,
+                curve: AppMotion.standardCurve,
+                offset: visible ? Offset.zero : const Offset(0, -0.08),
+                child: AnimatedOpacity(
+                  duration: AppMotion.contentSwap,
+                  opacity: visible ? 1 : 0,
+                  child: Container(
+                    key: const ValueKey('content-detail-docked-title'),
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.secondaryContainer,
+                      borderRadius: AppShape.paneBorder,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '正在阅读',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSecondaryContainer,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.xxs),
+                        Text(
+                          title,
+                          maxLines: 4,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: theme.colorScheme.onSecondaryContainer,
+                            fontWeight: FontWeight.w700,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            )
+          : const SizedBox.shrink(),
+    );
+  }
+}
+
+String _displayDetailTitle(ContentDetail detail) {
+  final contextData = detail.contextData;
+  if (detail.contentType == 'answer' &&
+      contextData != null &&
+      contextData['type'] == 'question') {
+    final questionTitle = contextData['title']?.toString().trim() ?? '';
+    if (questionTitle.isNotEmpty) return questionTitle;
+  }
+  final title = detail.title?.trim() ?? '';
+  return title.isEmpty ? '无标题' : title;
 }
 
 /// 文章与图文笔记限制正文宽度，超宽屏不无限拉伸。

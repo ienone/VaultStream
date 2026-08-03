@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/core/utils/media_utils.dart';
 import '../../../../../core/constants/platform_constants.dart';
+import '../../../../../theme/design_tokens.dart';
 import '../../../models/content.dart';
 import 'unified_stat_item.dart';
 
@@ -370,10 +371,10 @@ class UnifiedStats extends StatelessWidget {
 
     final contentWidget = LayoutBuilder(
       builder: (context, constraints) {
-        final int crossAxisCount = constraints.maxWidth > 600
+        final int crossAxisCount = constraints.maxWidth > 680
             ? 4
-            : (constraints.maxWidth > 360 ? 3 : 2);
-        const double horizontalSpacing = 16.0;
+            : (constraints.maxWidth > 420 ? 3 : 2);
+        const double horizontalSpacing = AppSpacing.sm;
         final double itemWidth =
             (constraints.maxWidth -
                 (horizontalSpacing * (crossAxisCount - 1))) /
@@ -381,7 +382,7 @@ class UnifiedStats extends StatelessWidget {
 
         return Wrap(
           spacing: horizontalSpacing,
-          runSpacing: 24,
+          runSpacing: AppSpacing.md,
           children: items
               .map((item) => SizedBox(width: itemWidth, child: item))
               .toList(),
@@ -392,11 +393,12 @@ class UnifiedStats extends StatelessWidget {
     if (!useContainer) return contentWidget;
 
     return Container(
+      key: const ValueKey('detail-stats-module'),
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(28),
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: AppShape.paneBorder,
       ),
       child: contentWidget,
     );

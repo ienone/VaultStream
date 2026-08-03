@@ -115,6 +115,32 @@ void main() {
     expect(find.text('35'), findsOneWidget);
   });
 
+  testWidgets('普通内容卡片在作者行显示已解析头像', (tester) async {
+    final article = _card(0, _templates[0]).copyWith(
+      authorName: '示例作者',
+      authorAvatarUrl: 'https://example.test/avatar.webp',
+    );
+
+    await tester.pumpWidget(_host([article]));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('collection-card-author-avatar')),
+      findsOneWidget,
+    );
+    final thumbnail = tester.widget<NetworkThumbnail>(
+      find.descendant(
+        of: find.byKey(const ValueKey('collection-card-author-avatar')),
+        matching: find.byType(NetworkThumbnail),
+      ),
+    );
+    expect(
+      thumbnail.imageUrl,
+      'http://localhost/proxy/image?url='
+      'https%3A%2F%2Fexample.test%2Favatar.webp',
+    );
+  });
+
   testWidgets('本地缩略图在交给图片组件前映射为受保护媒体 URL', (tester) async {
     final article = _card(0, _templates[0]).copyWith(
       coverUrl: 'local://vaultstream/blobs/sha256/aa/bb/cover.webp',

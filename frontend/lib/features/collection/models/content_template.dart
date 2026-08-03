@@ -1,4 +1,5 @@
 import 'content.dart';
+import 'media_asset.dart';
 
 /// 内容模板。
 ///
@@ -154,4 +155,29 @@ extension ContentDetailTemplate on ContentDetail {
 extension ShareCardTemplate on ShareCard {
   ContentTemplate get template =>
       resolveContentTemplate(layoutType: layoutType, contentType: contentType);
+
+  /// 列表进入详情时，是否有足够证据把共享标题目标放进沉浸式右栏。
+  ///
+  /// 短帖的 `thumbnail_url` 可能只是链接预览图，不能证明详情正文会采用
+  /// 左媒体、右内容布局；只有结构化媒体资产或明确封面才能改变转场目标。
+  /// 图文笔记和图集本身以媒体为主，允许缩略图作为加载态证据。
+  bool get usesImmersiveMediaTransition {
+    final hasVisualAsset = mediaAssets.any(
+      (asset) =>
+          asset.role != MediaRole.avatar &&
+          (asset.mediaType == MediaType.image ||
+              asset.mediaType == MediaType.video) &&
+          asset.sources.isNotEmpty,
+    );
+    final hasCover = (coverUrl ?? '').trim().isNotEmpty;
+
+    return switch (template) {
+      ContentTemplate.imageNote || ContentTemplate.gallery =>
+        hasVisualAsset || hasCover || (thumbnailUrl ?? '').trim().isNotEmpty,
+      ContentTemplate.shortPost => hasVisualAsset || hasCover,
+      ContentTemplate.profile =>
+        hasVisualAsset || (authorAvatarUrl ?? '').trim().isNotEmpty,
+      _ => false,
+    };
+  }
 }

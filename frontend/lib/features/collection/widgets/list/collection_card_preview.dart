@@ -25,10 +25,12 @@ class ContentSharedTransition extends StatelessWidget {
     super.key,
     required this.contentId,
     required this.child,
+    this.immersiveMedia = false,
   });
 
   final int contentId;
   final Widget child;
+  final bool immersiveMedia;
 
   @override
   Widget build(BuildContext context) {
@@ -49,9 +51,9 @@ class ContentSharedTransition extends StatelessWidget {
                 final progress = direction == HeroFlightDirection.push
                     ? animation.value
                     : 1 - animation.value;
-                final destinationOpacity = const Interval(
-                  0.32,
-                  0.72,
+                final destinationOpacity = Interval(
+                  immersiveMedia ? 0.5 : 0.32,
+                  immersiveMedia ? 0.9 : 0.72,
                   curve: Curves.easeOutCubic,
                 ).transform(progress.clamp(0, 1));
                 return Stack(
@@ -136,6 +138,7 @@ class CollectionCardPreview extends ConsumerWidget {
 
         final surface = ContentSharedTransition(
           contentId: content.id,
+          immersiveMedia: content.usesImmersiveMediaTransition,
           child: _CardSurface(
             content: content,
             imageUrl: imageUrl,
@@ -258,7 +261,12 @@ class _CardSurface extends StatelessWidget {
                   ),
                   const SizedBox(height: AppSpacing.xxs),
                   // 第二层：来源、作者、时间
-                  _CardMeta(content: content, isTiny: isTiny),
+                  _CardMeta(
+                    content: content,
+                    isTiny: isTiny,
+                    avatarUrl: avatarUrl,
+                    avatarHeaders: avatarHeaders,
+                  ),
                   if (!isTiny &&
                       _statusLabel == null &&
                       (content.viewCount > 0 || content.likeCount > 0)) ...[
@@ -326,7 +334,7 @@ class _CardMedia extends StatelessWidget {
     final template = content.template;
 
     if (template == ContentTemplate.profile ||
-        template == ContentTemplate.shortPost) {
+        (template == ContentTemplate.shortPost && imageUrl.isEmpty)) {
       return _IdentityMedia(
         template: template,
         avatarUrl: avatarUrl,
@@ -551,10 +559,17 @@ class _TypeBadge extends StatelessWidget {
 }
 
 class _CardMeta extends StatelessWidget {
-  const _CardMeta({required this.content, required this.isTiny});
+  const _CardMeta({
+    required this.content,
+    required this.isTiny,
+    required this.avatarUrl,
+    required this.avatarHeaders,
+  });
 
   final ShareCard content;
   final bool isTiny;
+  final String avatarUrl;
+  final Map<String, String> avatarHeaders;
 
   @override
   Widget build(BuildContext context) {
@@ -566,6 +581,22 @@ class _CardMeta extends StatelessWidget {
     return Row(
       children: [
         PlatformBadge(platform: content.platform),
+        if (avatarUrl.isNotEmpty) ...[
+          const SizedBox(width: AppSpacing.xs),
+          SizedBox.square(
+            key: const ValueKey('collection-card-author-avatar'),
+            dimension: isTiny ? 18 : 20,
+            child: ClipOval(
+              child: NetworkThumbnail(
+                imageUrl: avatarUrl,
+                httpHeaders: avatarHeaders,
+                fit: BoxFit.cover,
+                maxHeightDiskCache: 96,
+                errorIcon: Icons.person_rounded,
+              ),
+            ),
+          ),
+        ],
         const SizedBox(width: AppSpacing.xs),
         if (author.isNotEmpty) ...[
           Expanded(

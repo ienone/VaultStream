@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/network/image_headers.dart';
+import '../../../../core/utils/media_utils.dart' as media_utils;
 import '../../../../core/utils/safe_url_launcher.dart';
+import '../../../../core/widgets/network_thumbnail.dart';
 import '../../../../core/widgets/platform_badge.dart';
 import '../../../../theme/design_tokens.dart';
 import '../../models/content.dart';
 import '../../models/content_template.dart';
+import '../../models/media_asset.dart';
 
 /// 内容详情的共享区块。
 ///
@@ -16,10 +20,22 @@ import '../../models/content_template.dart';
 ///
 /// 来源身份必须始终可见——这是判断"这条内容是什么、来自哪里"的依据。
 class ContentSourceLine extends StatelessWidget {
-  const ContentSourceLine({super.key, required this.detail, this.compact = false});
+  const ContentSourceLine({
+    super.key,
+    required this.detail,
+    required this.apiBaseUrl,
+    required this.apiToken,
+    this.compact = false,
+    this.showPlatform = true,
+    this.showOriginalAction = true,
+  });
 
   final ContentDetail detail;
+  final String apiBaseUrl;
+  final String? apiToken;
   final bool compact;
+  final bool showPlatform;
+  final bool showOriginalAction;
 
   @override
   Widget build(BuildContext context) {
@@ -27,13 +43,50 @@ class ContentSourceLine extends StatelessWidget {
     final scheme = theme.colorScheme;
     final author = (detail.authorName ?? '').trim();
     final published = detail.publishedAt ?? detail.createdAt;
+    final avatarAsset = detail.mediaAssets.firstFor(
+      role: MediaRole.avatar,
+      type: MediaType.image,
+    );
+    final avatarCandidates = avatarAsset?.sources
+        .map((source) => source.url)
+        .where((url) => url.isNotEmpty)
+        .toList(growable: false);
+    final legacyAvatar = detail.authorAvatarUrl?.trim() ?? '';
+    final avatarUrl =
+        avatarCandidates?.firstOrNull ??
+        (legacyAvatar.isEmpty
+            ? null
+            : media_utils.mapUrl(legacyAvatar, apiBaseUrl));
 
     return Wrap(
       spacing: AppSpacing.xs,
       runSpacing: AppSpacing.xxs,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        PlatformBadge(platform: detail.platform),
+        if (showPlatform) PlatformBadge(platform: detail.platform),
+        if (avatarUrl != null && avatarUrl.isNotEmpty)
+          SizedBox.square(
+            key: const ValueKey('content-detail-author-avatar'),
+            dimension: compact ? 20 : 24,
+            child: ClipOval(
+              child: NetworkThumbnail(
+                imageUrl: avatarUrl,
+                fallbackUrls:
+                    avatarCandidates?.skip(1).toList(growable: false) ??
+                    const [],
+                httpHeaders: avatarCandidates == null
+                    ? buildImageHeaders(
+                        imageUrl: avatarUrl,
+                        baseUrl: apiBaseUrl,
+                        apiToken: apiToken,
+                      )
+                    : null,
+                fit: BoxFit.cover,
+                maxHeightDiskCache: 128,
+                errorIcon: Icons.person_rounded,
+              ),
+            ),
+          ),
         Text(
           author.isEmpty ? '未知作者' : author,
           style: theme.textTheme.labelLarge?.copyWith(
@@ -47,10 +100,9 @@ class ContentSourceLine extends StatelessWidget {
             color: scheme.onSurfaceVariant,
           ),
         ),
-        if (!compact)
+        if (!compact && showOriginalAction)
           TextButton.icon(
-            onPressed: () =>
-                SafeUrlLauncher.openExternal(context, detail.url),
+            onPressed: () => SafeUrlLauncher.openExternal(context, detail.url),
             icon: const Icon(Icons.open_in_new_rounded, size: 16),
             label: const Text('原文'),
             style: TextButton.styleFrom(
@@ -63,21 +115,67 @@ class ContentSourceLine extends StatelessWidget {
   }
 }
 
+/// 宽屏辅助栏中的作者与来源信息。
+///
+/// 主详情头只承担内容身份；作者、时间等阅读上下文移到这里，避免标题区横向拥挤。
+class ContentIdentityPanel extends StatelessWidget {
+  const ContentIdentityPanel({
+    super.key,
+    required this.detail,
+    required this.apiBaseUrl,
+    required this.apiToken,
+  });
+
+  final ContentDetail detail;
+  final String apiBaseUrl;
+  final String? apiToken;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      key: const ValueKey('content-detail-identity-panel'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: AppShape.paneBorder,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          PlatformBadge(platform: detail.platform),
+          const SizedBox(height: AppSpacing.md),
+          ContentSourceLine(
+            detail: detail,
+            apiBaseUrl: apiBaseUrl,
+            apiToken: apiToken,
+            showPlatform: false,
+            showOriginalAction: false,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// 标题区块。标题缺失时显式说明，不用 URL 或正文片段冒充标题。
 class ContentTitleBlock extends StatelessWidget {
   const ContentTitleBlock({
     super.key,
     required this.detail,
+    this.titleOverride,
     this.style,
   });
 
   final ContentDetail detail;
+  final String? titleOverride;
   final TextStyle? style;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final title = (detail.title ?? '').trim();
+    final title = (titleOverride ?? detail.title ?? '').trim();
 
     if (title.isEmpty || title == '-') {
       return Text(
@@ -283,9 +381,7 @@ class ContentSummaryBlock extends StatelessWidget {
       title: 'AI 摘要',
       child: SelectableText(
         detail.summary!.trim(),
-        style: Theme.of(
-          context,
-        ).textTheme.bodyMedium?.copyWith(height: 1.6),
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.6),
       ),
     );
   }

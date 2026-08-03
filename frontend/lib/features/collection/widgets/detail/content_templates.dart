@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +8,7 @@ import '../../../../core/network/image_headers.dart';
 import '../../../../core/utils/media_utils.dart' as media_utils;
 import '../../../../core/utils/safe_url_launcher.dart';
 import '../../../../core/widgets/network_thumbnail.dart';
+import '../../../../core/widgets/platform_badge.dart';
 import '../../../../theme/design_tokens.dart';
 import '../../models/content.dart';
 import '../../models/content_template.dart';
@@ -15,7 +16,6 @@ import '../../models/header_line.dart';
 import '../../models/media_asset.dart';
 import '../../utils/content_parser.dart';
 import '../common/video_player_widget.dart';
-import '../renderers/context_card_renderer.dart';
 import '../renderers/payload_block_renderer.dart';
 import 'components/media_grid.dart';
 import 'components/rich_content.dart';
@@ -50,6 +50,20 @@ class TemplateContext {
   final VoidCallback onReParse;
 
   bool get isCompact => metrics.isCompact;
+
+  bool get usesImmersiveMediaLayout {
+    if (isCompact) return false;
+    final hasVisualMedia =
+        images.isNotEmpty || _playableMedia(this, audio: false).isNotEmpty;
+    if (!hasVisualMedia) return false;
+    return switch (detail.template) {
+      ContentTemplate.imageNote ||
+      ContentTemplate.shortPost ||
+      ContentTemplate.gallery ||
+      ContentTemplate.profile => true,
+      _ => false,
+    };
+  }
 }
 
 /// 模板主体分发。
@@ -73,6 +87,480 @@ class ContentTemplateBody extends StatelessWidget {
       ContentTemplate.profile => _ProfileBody(ctx: context_),
       ContentTemplate.bookmark => _BookmarkBody(ctx: context_),
     };
+  }
+}
+
+/// 媒体型内容的桌面阅读器：媒体占据左侧主舞台，右侧集中承载身份、
+/// 标题、正文、统计和标签，避免再叠加第三列辅助栏。
+class ImmersiveMediaDetail extends StatefulWidget {
+  const ImmersiveMediaDetail({
+    super.key,
+    required this.context_,
+    required this.sharedHeaderBuilder,
+  });
+
+  final TemplateContext context_;
+  final Widget Function(Widget child) sharedHeaderBuilder;
+
+  @override
+  State<ImmersiveMediaDetail> createState() => _ImmersiveMediaDetailState();
+}
+
+class _ImmersiveMediaDetailState extends State<ImmersiveMediaDetail>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _entryController = AnimationController(
+    vsync: this,
+    duration: AppMotion.containerTransform,
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _entryController.value = 1;
+    } else if (!_entryController.isAnimating && _entryController.value == 0) {
+      _entryController.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _entryController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ctx = widget.context_;
+    final scheme = Theme.of(context).colorScheme;
+    final normalizedTitle = (ctx.detail.title ?? '').trim();
+    final normalizedBody = (ctx.detail.body ?? '').trim();
+    final titleRepeatsBody =
+        ctx.detail.template == ContentTemplate.shortPost &&
+        normalizedTitle.isNotEmpty &&
+        normalizedBody.isNotEmpty &&
+        (normalizedTitle == normalizedBody ||
+            normalizedBody.startsWith(normalizedTitle));
+    return Row(
+      key: const ValueKey('immersive-media-detail'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(flex: 13, child: _ImmersiveMediaViewer(ctx: ctx)),
+        VerticalDivider(width: 1, color: scheme.outlineVariant),
+        Expanded(
+          flex: 8,
+          child: FadeTransition(
+            key: const ValueKey('immersive-media-side-reveal'),
+            opacity: CurvedAnimation(
+              parent: _entryController,
+              curve: const Interval(0.48, 1, curve: Curves.easeOutCubic),
+            ),
+            child: SlideTransition(
+              position:
+                  Tween<Offset>(
+                    begin: const Offset(0.045, 0),
+                    end: Offset.zero,
+                  ).animate(
+                    CurvedAnimation(
+                      parent: _entryController,
+                      curve: const Interval(
+                        0.42,
+                        1,
+                        curve: Curves.easeOutCubic,
+                      ),
+                    ),
+                  ),
+              child: ColoredBox(
+                color: scheme.surface,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(AppSpacing.xl),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      widget.sharedHeaderBuilder(
+                        Material(
+                          key: const ValueKey('immersive-media-shared-header'),
+                          color: scheme.surfaceContainerLow,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: AppShape.cardBorder,
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: Padding(
+                            padding: const EdgeInsets.all(AppSpacing.md),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                PlatformBadge(platform: ctx.detail.platform),
+                                const SizedBox(height: AppSpacing.md),
+                                ContentSourceLine(
+                                  detail: ctx.detail,
+                                  apiBaseUrl: ctx.apiBaseUrl,
+                                  apiToken: ctx.apiToken,
+                                  showPlatform: false,
+                                  showOriginalAction: false,
+                                ),
+                                if (!titleRepeatsBody) ...[
+                                  const SizedBox(height: AppSpacing.lg),
+                                  ContentTitleBlock(
+                                    detail: ctx.detail,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleLarge
+                                        ?.copyWith(fontWeight: FontWeight.w600),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      _ImmersiveTextBody(ctx: ctx),
+                      const SizedBox(height: AppSpacing.xl),
+                      ContentSupportingSections(detail: ctx.detail),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ImmersiveTextBody extends StatelessWidget {
+  const _ImmersiveTextBody({required this.ctx});
+
+  final TemplateContext ctx;
+
+  @override
+  Widget build(BuildContext context) {
+    final quoted = ctx.detail.richPayload?['quoted_content'];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _BodyText(
+          ctx: ctx,
+          hideMedia: true,
+          emptyMessage: ctx.detail.template == ContentTemplate.profile
+              ? '这个主页没有简介'
+              : '这条内容没有文字说明',
+        ),
+        if (quoted != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          _QuotedContent(raw: quoted),
+        ],
+      ],
+    );
+  }
+}
+
+class _ImmersiveMediaViewer extends StatefulWidget {
+  const _ImmersiveMediaViewer({required this.ctx});
+
+  final TemplateContext ctx;
+
+  @override
+  State<_ImmersiveMediaViewer> createState() => _ImmersiveMediaViewerState();
+}
+
+class _ImmersiveMediaViewerState extends State<_ImmersiveMediaViewer> {
+  late final PageController _controller = PageController();
+  int _index = 0;
+  bool _hovered = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _goTo(int index) {
+    _controller.animateToPage(
+      index,
+      duration: AppMotion.contentSwap,
+      curve: AppMotion.standardCurve,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ctx = widget.ctx;
+    final scheme = Theme.of(context).colorScheme;
+    final playableVideo = _playableMedia(ctx, audio: false);
+    if (ctx.images.isEmpty && playableVideo.isNotEmpty) {
+      return ColoredBox(
+        key: const ValueKey('immersive-video-viewer'),
+        color: scheme.surfaceContainerLowest,
+        child: Center(
+          child: AspectRatio(
+            aspectRatio: 16 / 9,
+            child: VideoPlayerWidget(
+              videoUrl: playableVideo.first,
+              fallbackUrls: playableVideo.skip(1).toList(growable: false),
+              headers: buildImageHeaders(
+                imageUrl: playableVideo.first,
+                baseUrl: ctx.apiBaseUrl,
+                apiToken: ctx.apiToken,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return MouseRegion(
+      key: const ValueKey('immersive-media-viewer'),
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: ColoredBox(
+        color: scheme.surfaceContainerLowest,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            PageView.builder(
+              controller: _controller,
+              itemCount: ctx.images.length,
+              onPageChanged: (index) => setState(() => _index = index),
+              itemBuilder: (context, index) {
+                final image = ctx.images[index];
+                return GestureDetector(
+                  onTap: () => ctx.onImageTap(index),
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      AppSpacing.md,
+                      AppSpacing.md,
+                      AppSpacing.md,
+                      ctx.images.length > 1 ? 92 : AppSpacing.md,
+                    ),
+                    child: NetworkThumbnail(
+                      imageUrl: image,
+                      fallbackUrls: ctx.imageFallbacks[image] ?? const [],
+                      httpHeaders: buildImageHeaders(
+                        imageUrl: image,
+                        baseUrl: ctx.apiBaseUrl,
+                        apiToken: ctx.apiToken,
+                      ),
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                );
+              },
+            ),
+            if (ctx.images.length > 1) ...[
+              Positioned(
+                top: AppSpacing.md,
+                right: AppSpacing.md,
+                child: _PageCounter(index: _index, total: ctx.images.length),
+              ),
+              _HoverPageButton(
+                key: const ValueKey('immersive-media-previous'),
+                alignment: Alignment.centerLeft,
+                icon: Icons.chevron_left_rounded,
+                visible: _hovered && _index > 0,
+                onPressed: () => _goTo(_index - 1),
+              ),
+              _HoverPageButton(
+                key: const ValueKey('immersive-media-next'),
+                alignment: Alignment.centerRight,
+                icon: Icons.chevron_right_rounded,
+                visible: _hovered && _index < ctx.images.length - 1,
+                onPressed: () => _goTo(_index + 1),
+              ),
+              Positioned(
+                left: 64,
+                right: 64,
+                bottom: AppSpacing.md,
+                child: Center(
+                  child: _ImmersiveThumbnailStrip(
+                    images: ctx.images,
+                    fallbacks: ctx.imageFallbacks,
+                    apiBaseUrl: ctx.apiBaseUrl,
+                    apiToken: ctx.apiToken,
+                    selectedIndex: _index,
+                    onSelected: _goTo,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PageCounter extends StatelessWidget {
+  const _PageCounter({required this.index, required this.total});
+
+  final int index;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return _GlassMediaSurface(
+      borderRadius: BorderRadius.circular(AppShape.pill),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xxs,
+        ),
+        child: Text(
+          '${index + 1} / $total',
+          style: Theme.of(
+            context,
+          ).textTheme.labelMedium?.copyWith(color: scheme.onPrimaryContainer),
+        ),
+      ),
+    );
+  }
+}
+
+class _HoverPageButton extends StatelessWidget {
+  const _HoverPageButton({
+    super.key,
+    required this.alignment,
+    required this.icon,
+    required this.visible,
+    required this.onPressed,
+  });
+
+  final Alignment alignment;
+  final IconData icon;
+  final bool visible;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: alignment,
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: IgnorePointer(
+          ignoring: !visible,
+          child: AnimatedOpacity(
+            duration: AppMotion.stateChange,
+            opacity: visible ? 1 : 0,
+            child: _GlassMediaSurface(
+              borderRadius: BorderRadius.circular(AppRadius.xl),
+              child: IconButton(
+                tooltip: icon == Icons.chevron_left_rounded ? '上一张' : '下一张',
+                onPressed: onPressed,
+                color: Theme.of(context).colorScheme.onPrimaryContainer,
+                icon: Icon(icon),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ImmersiveThumbnailStrip extends StatelessWidget {
+  const _ImmersiveThumbnailStrip({
+    required this.images,
+    required this.fallbacks,
+    required this.apiBaseUrl,
+    required this.apiToken,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  final List<String> images;
+  final Map<String, List<String>> fallbacks;
+  final String apiBaseUrl;
+  final String? apiToken;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return _GlassMediaSurface(
+      key: const ValueKey('immersive-media-thumbnails'),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 68),
+        child: ListView.separated(
+          shrinkWrap: true,
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.all(AppSpacing.xs),
+          itemCount: images.length,
+          separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.xs),
+          itemBuilder: (context, index) {
+            final image = images[index];
+            final selected = selectedIndex == index;
+            return Tooltip(
+              message: '第 ${index + 1} 张',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+                onTap: () => onSelected(index),
+                child: AnimatedContainer(
+                  duration: AppMotion.stateChange,
+                  width: selected ? 58 : 48,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                    border: Border.all(
+                      color: selected
+                          ? scheme.primary
+                          : scheme.onPrimaryContainer.withValues(alpha: 0.16),
+                      width: selected ? 2 : 0.5,
+                    ),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: NetworkThumbnail(
+                    imageUrl: image,
+                    fallbackUrls: fallbacks[image] ?? const [],
+                    httpHeaders: buildImageHeaders(
+                      imageUrl: image,
+                      baseUrl: apiBaseUrl,
+                      apiToken: apiToken,
+                    ),
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _GlassMediaSurface extends StatelessWidget {
+  const _GlassMediaSurface({
+    super.key,
+    required this.child,
+    required this.borderRadius,
+  });
+
+  final Widget child;
+  final BorderRadius borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: scheme.primaryContainer.withValues(alpha: 0.35),
+            borderRadius: borderRadius,
+            border: Border.all(
+              color: scheme.onPrimaryContainer.withValues(alpha: 0.15),
+              width: 0.5,
+            ),
+          ),
+          child: child,
+        ),
+      ),
+    );
   }
 }
 
@@ -229,12 +717,141 @@ class _ArticleBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ContextCardRenderer(content: ctx.detail),
         _BodyText(ctx: ctx, hideMedia: false),
         if (ctx.images.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.xl),
           const DetailSectionHeader(title: '文内媒体'),
           _MediaBlock(ctx: ctx),
+        ],
+      ],
+    );
+  }
+}
+
+class _ImageNoteMediaViewer extends StatefulWidget {
+  const _ImageNoteMediaViewer({required this.ctx});
+
+  final TemplateContext ctx;
+
+  @override
+  State<_ImageNoteMediaViewer> createState() => _ImageNoteMediaViewerState();
+}
+
+class _ImageNoteMediaViewerState extends State<_ImageNoteMediaViewer> {
+  late final PageController _controller = PageController();
+  int _index = 0;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ctx = widget.ctx;
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        AspectRatio(
+          aspectRatio: 4 / 5,
+          child: ClipRRect(
+            borderRadius: AppShape.paneBorder,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                PageView.builder(
+                  controller: _controller,
+                  itemCount: ctx.images.length,
+                  onPageChanged: (index) => setState(() => _index = index),
+                  itemBuilder: (context, index) {
+                    final image = ctx.images[index];
+                    return GestureDetector(
+                      onTap: () => ctx.onImageTap(index),
+                      child: NetworkThumbnail(
+                        imageUrl: image,
+                        fallbackUrls: ctx.imageFallbacks[image] ?? const [],
+                        httpHeaders: buildImageHeaders(
+                          imageUrl: image,
+                          baseUrl: ctx.apiBaseUrl,
+                          apiToken: ctx.apiToken,
+                        ),
+                        fit: BoxFit.contain,
+                      ),
+                    );
+                  },
+                ),
+                if (ctx.images.length > 1)
+                  Positioned(
+                    top: AppSpacing.sm,
+                    right: AppSpacing.sm,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.xs,
+                        vertical: AppSpacing.xxs,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.inverseSurface.withValues(alpha: 0.72),
+                        borderRadius: BorderRadius.circular(AppShape.pill),
+                      ),
+                      child: Text(
+                        '${_index + 1} / ${ctx.images.length}',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: scheme.onInverseSurface,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (ctx.images.length > 1) ...[
+          const SizedBox(height: AppSpacing.sm),
+          SizedBox(
+            height: 64,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: ctx.images.length,
+              separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.xs),
+              itemBuilder: (context, index) {
+                final image = ctx.images[index];
+                final selected = index == _index;
+                return InkWell(
+                  borderRadius: AppShape.cardMediaBorder,
+                  onTap: () => _controller.animateToPage(
+                    index,
+                    duration: AppMotion.contentSwap,
+                    curve: AppMotion.standardCurve,
+                  ),
+                  child: AnimatedContainer(
+                    duration: AppMotion.stateChange,
+                    width: selected ? 76 : 58,
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: selected
+                            ? scheme.primary
+                            : scheme.outlineVariant,
+                        width: selected ? 2 : 1,
+                      ),
+                      borderRadius: AppShape.cardMediaBorder,
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: NetworkThumbnail(
+                      imageUrl: image,
+                      fallbackUrls: ctx.imageFallbacks[image] ?? const [],
+                      httpHeaders: buildImageHeaders(
+                        imageUrl: image,
+                        baseUrl: ctx.apiBaseUrl,
+                        apiToken: ctx.apiToken,
+                      ),
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
         ],
       ],
     );
@@ -249,10 +866,48 @@ class _ImageNoteBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!ctx.isCompact && ctx.images.isNotEmpty) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth >= 720) {
+            return Row(
+              key: const ValueKey('image-note-split-layout'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(flex: 6, child: _ImageNoteMediaViewer(ctx: ctx)),
+                const SizedBox(width: AppSpacing.xl),
+                Expanded(
+                  flex: 4,
+                  child: Container(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerLow,
+                      borderRadius: AppShape.paneBorder,
+                    ),
+                    child: _BodyText(ctx: ctx, emptyMessage: '这条笔记没有文字说明'),
+                  ),
+                ),
+              ],
+            );
+          }
+          return _ImageNoteStack(ctx: ctx);
+        },
+      );
+    }
+    return _ImageNoteStack(ctx: ctx);
+  }
+}
+
+class _ImageNoteStack extends StatelessWidget {
+  const _ImageNoteStack({required this.ctx});
+
+  final TemplateContext ctx;
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ContextCardRenderer(content: ctx.detail),
         _MediaBlock(ctx: ctx, emptyMessage: '这条笔记没有归档图片'),
         const SizedBox(height: AppSpacing.lg),
         _BodyText(ctx: ctx, emptyMessage: '这条笔记没有文字说明'),
@@ -270,21 +925,37 @@ class _ShortPostBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final quoted = ctx.detail.richPayload?['quoted_content'];
+    final scheme = Theme.of(context).colorScheme;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ContextCardRenderer(content: ctx.detail),
-        _BodyText(ctx: ctx, emptyMessage: '这条帖子没有文字内容'),
-        if (quoted != null) ...[
-          const SizedBox(height: AppSpacing.md),
-          _QuotedContent(raw: quoted),
-        ],
-        if (ctx.images.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.md),
-          _MediaBlock(ctx: ctx),
-        ],
-      ],
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: DecoratedBox(
+          key: const ValueKey('short-post-compact-body'),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            borderRadius: AppShape.paneBorder,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _BodyText(ctx: ctx, emptyMessage: '这条帖子没有文字内容'),
+                if (quoted != null) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  _QuotedContent(raw: quoted),
+                ],
+                if (ctx.images.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  _MediaBlock(ctx: ctx),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -299,56 +970,96 @@ class _QuotedContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final text = _formatQuotedContent(raw);
+    final quote = _quoteData(raw);
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.sm),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
+        color: scheme.surfaceContainer,
         borderRadius: AppShape.paneBorder,
-        border: Border(left: BorderSide(color: scheme.outline, width: 3)),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.7)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '引用内容',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
+          Row(
+            children: [
+              Icon(
+                Icons.format_quote_rounded,
+                size: 18,
+                color: scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: AppSpacing.xxs),
+              Text(
+                '引用内容',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: AppSpacing.xxs),
-          SelectableText(text, style: theme.textTheme.bodyMedium),
+          if (quote.author.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              quote.author,
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          if (quote.body.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.xs),
+            SelectableText(
+              quote.body,
+              style: theme.textTheme.bodyMedium?.copyWith(height: 1.55),
+            ),
+          ],
+          if (quote.url.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            ActionChip(
+              avatar: const Icon(Icons.open_in_new_rounded, size: 16),
+              label: const Text('查看引用原文'),
+              onPressed: () => SafeUrlLauncher.openExternal(context, quote.url),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  String _formatQuotedContent(Object? value) {
-    if (value is String) return value;
+  _QuoteData _quoteData(Object? value) {
+    if (value is String) return _QuoteData(body: value.trim());
     if (value is Map) {
       final author =
           value['author_name'] ?? value['author'] ?? value['username'];
       final body =
           value['text'] ?? value['body'] ?? value['content'] ?? value['title'];
       final url = value['url'];
-      final parts = <String>[
-        if (author != null && author.toString().trim().isNotEmpty)
-          author.toString().trim(),
-        if (body != null && body.toString().trim().isNotEmpty)
-          body.toString().trim(),
-        if (url != null && url.toString().trim().isNotEmpty)
-          url.toString().trim(),
-      ];
-      if (parts.isNotEmpty) return parts.join('\n\n');
-      return const JsonEncoder.withIndent('  ').convert(value);
+      return _QuoteData(
+        author: author?.toString().trim() ?? '',
+        body: body?.toString().trim() ?? '',
+        url: url?.toString().trim() ?? '',
+      );
     }
     if (value is List) {
-      return value.map((item) => _formatQuotedContent(item)).join('\n\n');
+      return _QuoteData(
+        body: value
+            .map((item) => _quoteData(item).body)
+            .where((text) => text.isNotEmpty)
+            .join('\n\n'),
+      );
     }
-    return value?.toString() ?? '';
+    return _QuoteData(body: value?.toString().trim() ?? '');
   }
+}
+
+class _QuoteData {
+  const _QuoteData({this.author = '', this.body = '', this.url = ''});
+
+  final String author;
+  final String body;
+  final String url;
 }
 
 /// 图集：媒体本身是主体，文字是补充。
@@ -457,7 +1168,12 @@ class _AudioBody extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: AppSpacing.xs),
-                  ContentSourceLine(detail: ctx.detail, compact: true),
+                  ContentSourceLine(
+                    detail: ctx.detail,
+                    apiBaseUrl: ctx.apiBaseUrl,
+                    apiToken: ctx.apiToken,
+                    compact: true,
+                  ),
                 ],
               ),
             ),
@@ -509,7 +1225,6 @@ class _CollectionIndexBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ContextCardRenderer(content: ctx.detail),
         if (ctx.detail.hasBody) ...[
           _BodyText(ctx: ctx),
           const SizedBox(height: AppSpacing.lg),
@@ -600,8 +1315,6 @@ class _ProfileBody extends StatelessWidget {
                     detail: detail,
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
-                  const SizedBox(height: AppSpacing.xs),
-                  UnifiedStats(detail: detail, useContainer: false),
                 ],
               ),
             ),
@@ -707,7 +1420,7 @@ class ContentSupportingSections extends StatelessWidget {
           ContentSummaryBlock(detail: detail),
           const SizedBox(height: AppSpacing.md),
         ],
-        if (showStats) ...[UnifiedStats(detail: detail, useContainer: false)],
+        if (showStats) ...[UnifiedStats(detail: detail)],
         if (hasTags) ...[
           const SizedBox(height: AppSpacing.md),
           TagsSection(detail: detail),
@@ -740,20 +1453,29 @@ class ContentOutline extends StatelessWidget {
         .map((header) => header.level)
         .reduce((left, right) => left < right ? left : right);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const DetailSectionHeader(title: '目录'),
-        const SizedBox(height: AppSpacing.xs),
-        for (final header in headers)
-          _OutlineEntry(
-            header: header,
-            depth: (header.level - minimumLevel).clamp(0, 3),
-            active: activeHeader == header.uniqueId,
-            onTap: () => _scrollTo(header.uniqueId),
-          ),
-        const SizedBox(height: AppSpacing.md),
-      ],
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      key: const ValueKey('content-detail-outline-surface'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: AppShape.paneBorder,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const DetailSectionHeader(title: '目录'),
+          const SizedBox(height: AppSpacing.xs),
+          for (final header in headers)
+            _OutlineEntry(
+              header: header,
+              depth: (header.level - minimumLevel).clamp(0, 3),
+              active: activeHeader == header.uniqueId,
+              onTap: () => _scrollTo(header.uniqueId),
+            ),
+        ],
+      ),
     );
   }
 

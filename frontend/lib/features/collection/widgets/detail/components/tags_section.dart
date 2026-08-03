@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../../theme/design_tokens.dart';
 import '../../../models/content.dart';
 
 class TagsSection extends StatelessWidget {
@@ -10,15 +11,15 @@ class TagsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     final bool hasUserTags = detail.tags.isNotEmpty;
     final bool hasSourceTags = detail.sourceTags.isNotEmpty;
-    
+
     if (!hasUserTags && !hasSourceTags) {
       return const SizedBox.shrink();
     }
-    
-    return Column(
+
+    final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // 平台原生标签（source_tags）
@@ -51,10 +52,10 @@ class TagsSection extends StatelessWidget {
                 .toList(),
           ),
         ],
-        
+
         // 间隔
         if (hasSourceTags && hasUserTags) const SizedBox(height: 16),
-        
+
         // 用户自定义标签
         if (hasUserTags) ...[
           if (hasSourceTags)
@@ -83,6 +84,17 @@ class TagsSection extends StatelessWidget {
           ),
         ],
       ],
+    );
+
+    return Container(
+      key: const ValueKey('detail-tags-module'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: AppShape.paneBorder,
+      ),
+      child: content,
     );
   }
 }
