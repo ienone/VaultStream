@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/network/api_client.dart';
 import '../../../core/providers/system_status_provider.dart';
 import '../../../core/utils/safe_url_launcher.dart';
+import '../../automation/providers/bot_chats_provider.dart';
 import '../../settings/presentation/widgets/setting_components.dart'
     as settings_ui;
-import '../../automation/providers/bot_chats_provider.dart';
 import 'widgets/interactive_login_dialog.dart';
 
 class OnboardingPage extends ConsumerStatefulWidget {
@@ -19,35 +20,45 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   int _currentStep = 0;
   bool _isLoading = false;
   String? _error;
-
-  // 步骤0: 文字LLM
+  final _scrollController = ScrollController();
+  final _textFeatureKey = GlobalKey();
+  final _summaryFeatureKey = GlobalKey();
+  final _embeddingFeatureKey = GlobalKey();
+  final _visionFeatureKey = GlobalKey();
+  final _telegramKey = GlobalKey();
+  final _qqKey = GlobalKey();
+  final _accountsKey = GlobalKey();
+  bool _enableTextLlm = false;
+  bool _enableAutoSummary = false;
+  bool _enableEmbedding = false;
+  bool _enableVisionLlm = false;
   final _llmBaseUrlController = TextEditingController(
     text: 'https://api.deepseek.com',
   );
   final _llmKeyController = TextEditingController();
   final _llmModelController = TextEditingController(text: 'deepseek-chat');
-
-  // 步骤0: 视觉LLM（可选子区）
-  bool _enableVisionLlm = false;
-  final _visionBaseUrlController = TextEditingController();
-  final _visionKeyController = TextEditingController();
-  final _visionModelController = TextEditingController(text: 'qwen-vl-max');
-  bool _enableEmbedding = false;
+  final _summaryKeyController = TextEditingController();
+  final _summaryModelController = TextEditingController(
+    text: 'gemini-2.5-flash',
+  );
   final _embeddingKeyController = TextEditingController();
   final _embeddingModelController = TextEditingController(
     text: 'gemini-embedding-2',
   );
   final _embeddingDimController = TextEditingController(text: '1536');
+  final _visionBaseUrlController = TextEditingController();
+  final _visionKeyController = TextEditingController();
+  final _visionModelController = TextEditingController(text: 'qwen-vl-max');
+  List<String> _textModels = const [];
+  List<String> _visionModels = const [];
 
-  // 步骤1: Bot
-  bool _enableBot = false;
-  String _botPlatform = 'telegram';
+  bool _enableTelegramBot = false;
+  bool _enableQqBot = false;
   final _tgTokenController = TextEditingController();
   final _tgAdminIdController = TextEditingController();
   final _qqUrlController = TextEditingController(text: 'http://127.0.0.1:3000');
   final _qqAdminIdController = TextEditingController();
 
-  // 步骤2/3/4: 平台Cookie
   final _weiboController = TextEditingController();
   final _xhsController = TextEditingController();
   final _zhihuController = TextEditingController();
@@ -55,687 +66,1058 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   bool _xhsIsConnected = false;
   bool _zhihuIsConnected = false;
 
-  // 步骤5: 功能
-  bool _enableAutoSummary = true;
-
-  static const int _totalSteps = 6;
+  static const int _totalSteps = 4;
+  static const int _botStep = 1;
+  static const int _accountStep = 2;
+  static const int _finishStep = 3;
 
   @override
   void dispose() {
-    _llmBaseUrlController.dispose();
-    _llmKeyController.dispose();
-    _llmModelController.dispose();
-    _visionBaseUrlController.dispose();
-    _visionKeyController.dispose();
-    _visionModelController.dispose();
-    _embeddingKeyController.dispose();
-    _embeddingModelController.dispose();
-    _embeddingDimController.dispose();
-    _tgTokenController.dispose();
-    _tgAdminIdController.dispose();
-    _qqUrlController.dispose();
-    _qqAdminIdController.dispose();
-    _weiboController.dispose();
-    _xhsController.dispose();
-    _zhihuController.dispose();
+    for (final controller in [
+      _llmBaseUrlController,
+      _llmKeyController,
+      _llmModelController,
+      _summaryKeyController,
+      _summaryModelController,
+      _embeddingKeyController,
+      _embeddingModelController,
+      _embeddingDimController,
+      _visionBaseUrlController,
+      _visionKeyController,
+      _visionModelController,
+      _tgTokenController,
+      _tgAdminIdController,
+      _qqUrlController,
+      _qqAdminIdController,
+      _weiboController,
+      _xhsController,
+      _zhihuController,
+    ]) {
+      controller.dispose();
+    }
+    _scrollController.dispose();
     super.dispose();
   }
 
-  Future<void> _handleComplete() async {
-    if (_llmKeyController.text.trim().isEmpty) {
-      setState(() {
-        _currentStep = 0;
-        _error = '请输入 AI 的 API Key';
-      });
-      return;
-    }
-    if (_enableBot) {
-      if (_botPlatform == 'telegram' &&
-          _tgTokenController.text.trim().isEmpty) {
-        setState(() {
-          _currentStep = 1;
-          _error = '启用 Telegram 推送时，必须输入 Bot Token';
-        });
-        return;
-      }
-      if (_botPlatform == 'qq' && _qqUrlController.text.trim().isEmpty) {
-        setState(() {
-          _currentStep = 1;
-          _error = '启用 QQ推送 时，必须输入 Napcat API 地址';
-        });
-        return;
-      }
-    }
+  Future<void> _put(String key, Object value) =>
+      ref.read(apiClientProvider).put('/settings/$key', data: {'value': value});
 
+  Future<void> _saveProvider(String target) async {
+    final isText = target == 'text_llm';
+    final base = isText
+        ? _llmBaseUrlController.text.trim()
+        : _visionBaseUrlController.text.trim();
+    final key = isText
+        ? _llmKeyController.text.trim()
+        : _visionKeyController.text.trim();
+    final model = isText
+        ? _llmModelController.text.trim()
+        : _visionModelController.text.trim();
+    if (base.isEmpty || key.isEmpty) {
+      throw StateError('请先填写 API Base URL 和 API Key');
+    }
+    await _put('${target}_api_base', base);
+    await _put('${target}_api_key', key);
+    if (model.isNotEmpty) await _put('${target}_model', model);
+  }
+
+  Future<void> _discoverModels(String target) async {
     setState(() {
       _isLoading = true;
       _error = null;
     });
-
     try {
-      final dio = ref.read(apiClientProvider);
-
-      // 1. 文字LLM配置
-      await dio.put(
-        '/settings/text_llm_api_base',
-        data: {'value': _llmBaseUrlController.text.trim()},
+      await _saveProvider(target);
+      final response = await ref
+          .read(apiClientProvider)
+          .post('/ai/models', data: {'target': target});
+      final models = List<String>.from(
+        (response.data['models'] as List<dynamic>).map(
+          (item) => item.toString(),
+        ),
       );
-      await dio.put(
-        '/settings/text_llm_api_key',
-        data: {'value': _llmKeyController.text.trim()},
-      );
-      if (_llmModelController.text.trim().isNotEmpty) {
-        await dio.put(
-          '/settings/text_llm_model',
-          data: {'value': _llmModelController.text.trim()},
-        );
-      }
-
-      // 1c. Gemini Embedding 配置（可选）
-      if (_enableEmbedding && _embeddingKeyController.text.trim().isNotEmpty) {
-        await dio.put(
-          '/settings/embedding_api_key',
-          data: {'value': _embeddingKeyController.text.trim()},
-        );
-        if (_embeddingModelController.text.trim().isNotEmpty) {
-          await dio.put(
-            '/settings/embedding_model',
-            data: {'value': _embeddingModelController.text.trim()},
-          );
-        }
-        final dim = int.tryParse(_embeddingDimController.text.trim());
-        if (dim != null) {
-          await dio.put(
-            '/settings/embedding_output_dimensionality',
-            data: {'value': dim},
-          );
-        }
-      }
-
-      // 1b. 视觉模型配置（可选）
-      if (_enableVisionLlm && _visionKeyController.text.trim().isNotEmpty) {
-        if (_visionBaseUrlController.text.trim().isNotEmpty) {
-          await dio.put(
-            '/settings/vision_llm_api_base',
-            data: {'value': _visionBaseUrlController.text.trim()},
-          );
-        }
-        await dio.put(
-          '/settings/vision_llm_api_key',
-          data: {'value': _visionKeyController.text.trim()},
-        );
-        if (_visionModelController.text.trim().isNotEmpty) {
-          await dio.put(
-            '/settings/vision_llm_model',
-            data: {'value': _visionModelController.text.trim()},
-          );
-        }
-      }
-
-      // 2. Bot配置
-      if (_enableBot) {
-        if (_botPlatform == 'telegram') {
-          await dio.post(
-            '/bot-config',
-            data: {
-              'platform': 'telegram',
-              'name': 'Main Telegram Bot',
-              'bot_token': _tgTokenController.text.trim(),
-              'enabled': true,
-            },
-          );
-          if (_tgAdminIdController.text.isNotEmpty) {
-            await dio.put(
-              '/settings/telegram_admin_ids',
-              data: {'value': _tgAdminIdController.text.trim()},
-            );
-          }
-        } else {
-          await dio.post(
-            '/bot-config',
-            data: {
-              'platform': 'qq',
-              'name': 'Main QQ Bot',
-              'napcat_http_url': _qqUrlController.text.trim(),
-              'enabled': true,
-            },
-          );
-          if (_qqAdminIdController.text.trim().isNotEmpty) {
-            await dio.put(
-              '/settings/qq_admin_ids',
-              data: {'value': _qqAdminIdController.text.trim()},
-            );
-          }
-        }
-      }
-
-      // 3. Cookie配置（非空才保存）
-      if (_weiboController.text.trim().isNotEmpty) {
-        await dio.put(
-          '/settings/weibo_cookie',
-          data: {'value': _weiboController.text.trim()},
-        );
-      }
-      if (_xhsController.text.trim().isNotEmpty) {
-        await dio.put(
-          '/settings/xiaohongshu_cookie',
-          data: {'value': _xhsController.text.trim()},
-        );
-      }
-      if (_zhihuController.text.trim().isNotEmpty) {
-        await dio.put(
-          '/settings/zhihu_cookie',
-          data: {'value': _zhihuController.text.trim()},
-        );
-      }
-
-      // 4. 功能配置
-      await dio.put(
-        '/settings/enable_auto_summary',
-        data: {'value': _enableAutoSummary.toString()},
-      );
-
-      if (mounted) {
-        settings_ui.showToast(context, '配置完成！');
-        ref.read(systemStatusProvider.notifier).refresh();
-        ref.invalidate(botChatsProvider);
-      }
-    } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _error = '保存失败: $e';
+        if (target == 'text_llm') {
+          _textModels = models;
+        } else {
+          _visionModels = models;
+        }
       });
+      settings_ui.showToast(context, '已发现 ${models.length} 个可用模型');
+    } catch (e) {
+      if (mounted) setState(() => _error = '模型探测失败：$e');
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleComplete() async {
+    if (_enableTextLlm &&
+        (_llmKeyController.text.trim().isEmpty ||
+            _llmBaseUrlController.text.trim().isEmpty)) {
+      setState(() {
+        _currentStep = 0;
+        _error = '请填写内容理解的 API 地址和密钥';
+      });
+      return;
+    }
+    if (_enableAutoSummary && _summaryKeyController.text.trim().isEmpty) {
+      setState(() {
+        _currentStep = 0;
+        _error = '请填写自动摘要的 API Key';
+      });
+      return;
+    }
+    if (_enableEmbedding && _embeddingKeyController.text.trim().isEmpty) {
+      setState(() {
+        _currentStep = 0;
+        _error = '请填写语义搜索的 API Key';
+      });
+      return;
+    }
+    if (_enableVisionLlm &&
+        (_visionKeyController.text.trim().isEmpty ||
+            _visionBaseUrlController.text.trim().isEmpty)) {
+      setState(() {
+        _currentStep = 0;
+        _error = '请填写图像理解的 API 地址和密钥';
+      });
+      return;
+    }
+    if (_enableTelegramBot && _tgTokenController.text.trim().isEmpty) {
+      setState(() {
+        _currentStep = _botStep;
+        _error = '请填写 Telegram Bot Token';
+      });
+      return;
+    }
+    if (_enableQqBot && _qqUrlController.text.trim().isEmpty) {
+      setState(() {
+        _currentStep = _botStep;
+        _error = '请填写 Napcat API 地址';
+      });
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      if (_enableTextLlm) await _saveProvider('text_llm');
+      await _put('enable_auto_summary', _enableAutoSummary.toString());
+      if (_enableAutoSummary) {
+        await _put('summary_api_key', _summaryKeyController.text.trim());
+        await _put('summary_model', _summaryModelController.text.trim());
+      }
+      if (_enableEmbedding) {
+        await _put('embedding_api_key', _embeddingKeyController.text.trim());
+        await _put('embedding_model', _embeddingModelController.text.trim());
+        final dimension = int.tryParse(_embeddingDimController.text.trim());
+        if (dimension != null) {
+          await _put('embedding_output_dimensionality', dimension);
+        }
+      }
+      if (_enableVisionLlm) await _saveProvider('vision_llm');
+      if (_enableTelegramBot || _enableQqBot) await _saveBots();
+      await _saveAccounts();
+      await _put('onboarding_completed', 'true');
+      if (!mounted) return;
+      settings_ui.showToast(context, '配置完成！可随时在设置中修改。');
+      ref.read(systemStatusProvider.notifier).refresh();
+      ref.invalidate(botChatsProvider);
+    } catch (e) {
+      if (mounted) setState(() => _error = '保存失败：$e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _saveBots() async {
+    final dio = ref.read(apiClientProvider);
+    if (_enableTelegramBot) {
+      await dio.post(
+        '/bot-config',
+        data: {
+          'platform': 'telegram',
+          'name': 'Main Telegram Bot',
+          'bot_token': _tgTokenController.text.trim(),
+          'enabled': true,
+        },
+      );
+      if (_tgAdminIdController.text.trim().isNotEmpty) {
+        await _put('telegram_admin_ids', _tgAdminIdController.text.trim());
+      }
+    }
+    if (_enableQqBot) {
+      await dio.post(
+        '/bot-config',
+        data: {
+          'platform': 'qq',
+          'name': 'Main QQ Bot',
+          'napcat_http_url': _qqUrlController.text.trim(),
+          'enabled': true,
+        },
+      );
+      if (_qqAdminIdController.text.trim().isNotEmpty) {
+        await _put('qq_admin_ids', _qqAdminIdController.text.trim());
       }
     }
   }
 
-  Future<void> _showLoginDialog(String platform, String platformLabel) async {
-    final result = await showDialog<bool>(
+  Future<void> _saveAccounts() async {
+    if (_weiboController.text.trim().isNotEmpty) {
+      await _put('weibo_cookie', _weiboController.text.trim());
+    }
+    if (_xhsController.text.trim().isNotEmpty) {
+      await _put('xiaohongshu_cookie', _xhsController.text.trim());
+    }
+    if (_zhihuController.text.trim().isNotEmpty) {
+      await _put('zhihu_cookie', _zhihuController.text.trim());
+    }
+  }
+
+  Future<void> _showLoginDialog(String platform, String label) async {
+    final connected = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => InteractiveLoginDialog(
-        platform: platform,
-        platformLabel: platformLabel,
-      ),
+      builder: (_) =>
+          InteractiveLoginDialog(platform: platform, platformLabel: label),
     );
-
-    if (result == true) {
+    if (connected == true && mounted) {
       setState(() {
         if (platform == 'weibo') _weiboIsConnected = true;
         if (platform == 'xiaohongshu') _xhsIsConnected = true;
         if (platform == 'zhihu') _zhihuIsConnected = true;
       });
-      if (!mounted) return;
-      settings_ui.showToast(context, '$platformLabel 连接成功！');
     }
   }
 
-  /// 构建平台Cookie步骤的通用内容
-  Widget _buildCookieStep({
-    required String platform,
-    required String platformId,
-    required bool isConnected,
-    required String url,
-    required IconData icon,
-    required TextEditingController controller,
+  Widget _providerFields({
+    required String target,
+    required TextEditingController base,
+    required TextEditingController key,
+    required TextEditingController model,
+    required List<String> models,
   }) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (isConnected) ...[
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.green.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.green),
-                const SizedBox(width: 12),
-                Text(
-                  '$platform 已成功连接',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ],
-            ),
+        TextField(
+          controller: base,
+          decoration: const InputDecoration(
+            labelText: 'API Base URL',
+            border: OutlineInputBorder(),
           ),
-        ] else ...[
-          Text('连接 $platform 后，系统可以自动保持登录状态并获取受保护的内容。'),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: () => _showLoginDialog(platformId, platform),
-            icon: const Icon(Icons.qr_code_scanner, size: 18),
-            label: Text('扫码连接 (推荐)'),
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: key,
+          obscureText: true,
+          decoration: const InputDecoration(
+            labelText: 'API Key',
+            border: OutlineInputBorder(),
           ),
-        ],
-        const SizedBox(height: 24),
-        ExpansionTile(
-          title: const Text('高级与手动配置'),
-          collapsedIconColor: Colors.grey,
-          collapsedTextColor: Colors.grey,
-          childrenPadding: const EdgeInsets.all(16),
-          children: [
-            OutlinedButton.icon(
-              onPressed: () => SafeUrlLauncher.openExternal(context, url),
-              icon: Icon(icon, size: 18),
-              label: Text('在浏览器中打开 $platform'),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
-              ),
+        ),
+        const SizedBox(height: 12),
+        if (models.isEmpty)
+          TextField(
+            controller: model,
+            decoration: const InputDecoration(
+              labelText: '模型',
+              border: OutlineInputBorder(),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: '$platform Cookie',
-                hintText: '如果扫码失败，可在此手动粘贴 Cookie 字符串',
-                border: const OutlineInputBorder(),
-              ),
+          )
+        else
+          DropdownButtonFormField<String>(
+            initialValue: models.contains(model.text) ? model.text : null,
+            decoration: const InputDecoration(
+              labelText: '模型',
+              border: OutlineInputBorder(),
             ),
-          ],
+            items: models
+                .map((item) => DropdownMenuItem(value: item, child: Text(item)))
+                .toList(),
+            onChanged: (value) => model.text = value ?? model.text,
+          ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerRight,
+          child: OutlinedButton.icon(
+            onPressed: _isLoading ? null : () => _discoverModels(target),
+            icon: const Icon(Icons.travel_explore),
+            label: const Text('探测模型'),
+          ),
         ),
       ],
     );
   }
 
-  List<Step> _buildSteps(ColorScheme colorScheme) {
-    return [
-      // ── 步骤 0: AI 引擎 ──
-      Step(
-        title: const Text('AI 引擎配置'),
-        subtitle: const Text('必填'),
-        isActive: _currentStep >= 0,
-        state: _currentStep > 0 ? StepState.complete : StepState.indexed,
-        content: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _featureCard({
+    required GlobalKey cardKey,
+    required String title,
+    required IconData icon,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+    required Widget configuration,
+  }) {
+    return Card(
+      key: cardKey,
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          SwitchListTile(
+            secondary: Icon(icon),
+            title: Text(title),
+            value: value,
+            onChanged: onChanged,
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            child: value
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: configuration,
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _responsiveCardWrap({
+    required List<Widget> children,
+    required int maxColumns,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = maxColumns >= 3 && constraints.maxWidth >= 1040
+            ? 3
+            : maxColumns >= 2 && constraints.maxWidth >= 680
+            ? 2
+            : 1;
+        const spacing = 12.0;
+        final itemWidth =
+            (constraints.maxWidth - spacing * (columns - 1)) / columns;
+        return AnimatedSize(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: Wrap(
+            spacing: spacing,
+            runSpacing: spacing,
+            crossAxisAlignment: WrapCrossAlignment.start,
+            children: children
+                .map(
+                  (child) => AnimatedContainer(
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOutCubic,
+                    width: itemWidth,
+                    child: child,
+                  ),
+                )
+                .toList(),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _featureStep() {
+    final cards = [
+      _featureCard(
+        cardKey: _textFeatureKey,
+        title: '内容理解',
+        icon: Icons.text_snippet_outlined,
+        value: _enableTextLlm,
+        onChanged: (value) => setState(() => _enableTextLlm = value),
+        configuration: _providerFields(
+          target: 'text_llm',
+          base: _llmBaseUrlController,
+          key: _llmKeyController,
+          model: _llmModelController,
+          models: _textModels,
+        ),
+      ),
+      _featureCard(
+        cardKey: _summaryFeatureKey,
+        title: '自动摘要',
+        icon: Icons.auto_awesome_outlined,
+        value: _enableAutoSummary,
+        onChanged: (value) => setState(() => _enableAutoSummary = value),
+        configuration: Column(
           children: [
-            const Text('AI 引擎用于自动清洗网页、提取正文并生成摘要。推荐使用 DeepSeek。'),
-            const SizedBox(height: 16),
             TextField(
-              controller: _llmBaseUrlController,
-              decoration: const InputDecoration(
-                labelText: 'API Base URL',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _llmKeyController,
+              controller: _summaryKeyController,
               obscureText: true,
               decoration: const InputDecoration(
-                labelText: 'API Key *',
+                labelText: 'Gemini API Key',
                 border: OutlineInputBorder(),
-                suffixIcon: Icon(Icons.password),
               ),
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: _llmModelController,
+              controller: _summaryModelController,
               decoration: const InputDecoration(
-                labelText: '模型名称 (Model)',
-                hintText: 'deepseek-chat',
+                labelText: '模型',
                 border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: colorScheme.outlineVariant),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: [
-                  SwitchListTile(
-                    title: const Text('配置 Gemini Embedding'),
-                    subtitle: const Text('用于语义检索与向量搜索（可选，推荐开启）'),
-                    secondary: const Icon(Icons.hub_rounded),
-                    value: _enableEmbedding,
-                    onChanged: (v) => setState(() => _enableEmbedding = v),
-                  ),
-                  if (_enableEmbedding) ...[
-                    const Divider(height: 1),
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        children: [
-                          TextField(
-                            controller: _embeddingKeyController,
-                            obscureText: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Embedding API Key',
-                              border: OutlineInputBorder(),
-                              suffixIcon: Icon(Icons.password),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _embeddingModelController,
-                            decoration: const InputDecoration(
-                              labelText: 'Embedding 模型名称',
-                              hintText: 'gemini-embedding-2',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _embeddingDimController,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: '输出维度',
-                              hintText: '1536',
-                              helperText: '官方推荐维度之一：768 / 1536 / 3072',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            // Vision LLM 子区域
-            Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: colorScheme.outlineVariant),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: [
-                  SwitchListTile(
-                    title: const Text('配置视觉模型 (Vision LLM)'),
-                    subtitle: const Text('用于理解图片内容，支持 Qwen-VL 等多模态模型（可选）'),
-                    secondary: const Icon(Icons.remove_red_eye_outlined),
-                    value: _enableVisionLlm,
-                    onChanged: (v) => setState(() => _enableVisionLlm = v),
-                  ),
-                  if (_enableVisionLlm) ...[
-                    const Divider(height: 1),
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        children: [
-                          TextField(
-                            controller: _visionBaseUrlController,
-                            decoration: const InputDecoration(
-                              labelText: 'Vision API Base URL',
-                              hintText:
-                                  'https://dashscope.aliyuncs.com/compatible-mode/v1',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _visionKeyController,
-                            obscureText: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Vision API Key',
-                              border: OutlineInputBorder(),
-                              suffixIcon: Icon(Icons.password),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _visionModelController,
-                            decoration: const InputDecoration(
-                              labelText: '视觉模型名称',
-                              hintText: 'qwen-vl-max',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
               ),
             ),
           ],
         ),
       ),
-
-      // ── 步骤 1: Bot 设置 ──
-      Step(
-        title: const Text('通知机器人设置'),
-        subtitle: const Text('可选'),
-        isActive: _currentStep >= 1,
-        state: _currentStep > 1 ? StepState.complete : StepState.indexed,
-        content: Column(
+      _featureCard(
+        cardKey: _embeddingFeatureKey,
+        title: '语义搜索',
+        icon: Icons.manage_search_outlined,
+        value: _enableEmbedding,
+        onChanged: (value) => setState(() => _enableEmbedding = value),
+        configuration: Column(
           children: [
-            SwitchListTile(
-              title: const Text('启用推送机器人'),
-              subtitle: const Text('开启后可以通过 Telegram 或 QQ 接收并管理收藏。'),
-              value: _enableBot,
-              onChanged: (v) => setState(() => _enableBot = v),
-            ),
-            if (_enableBot) ...[
-              const Divider(),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(
-                    value: 'telegram',
-                    label: Text('Telegram'),
-                    icon: Icon(Icons.send),
-                  ),
-                  ButtonSegment(
-                    value: 'qq',
-                    label: Text('QQ (Napcat)'),
-                    icon: Icon(Icons.alternate_email),
-                  ),
-                ],
-                selected: {_botPlatform},
-                onSelectionChanged: (s) =>
-                    setState(() => _botPlatform = s.first),
+            TextField(
+              controller: _embeddingKeyController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Embedding API Key',
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 16),
-              if (_botPlatform == 'telegram') ...[
-                TextField(
-                  controller: _tgTokenController,
-                  decoration: const InputDecoration(
-                    labelText: 'Bot Token',
-                    hintText: '12345678:ABC...',
-                    border: OutlineInputBorder(),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: TextField(
+                    controller: _embeddingModelController,
+                    decoration: const InputDecoration(
+                      labelText: '模型',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _tgAdminIdController,
-                  decoration: const InputDecoration(
-                    labelText: '管理员 ID (您的 TG 用户 ID)',
-                    hintText: 'e.g. 12345678',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ] else ...[
-                TextField(
-                  controller: _qqUrlController,
-                  decoration: const InputDecoration(
-                    labelText: 'Napcat API 地址',
-                    hintText: 'http://127.0.0.1:3000',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _qqAdminIdController,
-                  decoration: const InputDecoration(
-                    labelText: '管理员 QQ 号',
-                    hintText: 'e.g. 123456789',
-                    border: OutlineInputBorder(),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _embeddingDimController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: '维度',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                 ),
               ],
-            ],
+            ),
           ],
         ),
       ),
-
-      // ── 步骤 2: 微博 ──
-      Step(
-        title: const Text('微博 Cookie'),
-        subtitle: const Text('可跳过'),
-        isActive: _currentStep >= 2,
-        state: _currentStep > 2 ? StepState.complete : StepState.indexed,
-        content: _buildCookieStep(
-          platform: '微博',
-          platformId: 'weibo',
-          isConnected: _weiboIsConnected,
-          url: 'https://weibo.com',
-          icon: Icons.share_rounded,
-          controller: _weiboController,
+      _featureCard(
+        cardKey: _visionFeatureKey,
+        title: '图像理解',
+        icon: Icons.image_search_outlined,
+        value: _enableVisionLlm,
+        onChanged: (value) => setState(() => _enableVisionLlm = value),
+        configuration: _providerFields(
+          target: 'vision_llm',
+          base: _visionBaseUrlController,
+          key: _visionKeyController,
+          model: _visionModelController,
+          models: _visionModels,
         ),
       ),
+    ];
+    return _responsiveCardWrap(
+      children: [cards[0], cards[3], cards[1], cards[2]],
+      maxColumns: 2,
+    );
+  }
 
-      // ── 步骤 3: 小红书 ──
-      Step(
-        title: const Text('小红书 Cookie'),
-        subtitle: const Text('可跳过'),
-        isActive: _currentStep >= 3,
-        state: _currentStep > 3 ? StepState.complete : StepState.indexed,
-        content: _buildCookieStep(
-          platform: '小红书',
-          platformId: 'xiaohongshu',
-          isConnected: _xhsIsConnected,
-          url: 'https://www.xiaohongshu.com',
-          icon: Icons.explore_rounded,
-          controller: _xhsController,
-        ),
-      ),
-
-      // ── 步骤 4: 知乎 ──
-      Step(
-        title: const Text('知乎 Cookie'),
-        subtitle: const Text('可跳过'),
-        isActive: _currentStep >= 4,
-        state: _currentStep > 4 ? StepState.complete : StepState.indexed,
-        content: _buildCookieStep(
-          platform: '知乎',
-          platformId: 'zhihu',
-          isConnected: _zhihuIsConnected,
-          url: 'https://www.zhihu.com',
-          icon: Icons.question_answer_rounded,
-          controller: _zhihuController,
-        ),
-      ),
-
-      // ── 步骤 5: 智能摘要 ──
-      Step(
-        title: const Text('AI 智能摘要'),
-        isActive: _currentStep >= 5,
-        state: _currentStep == 5 ? StepState.editing : StepState.indexed,
-        content: Column(
-          children: [
-            SwitchListTile(
-              title: const Text('启用 AI 自动摘要'),
-              subtitle: const Text(
-                '收藏时自动使用 AI 读取并生成结构化摘要。\n仅适用于文章、知乎回答等长文内容，推文等简短内容不触发。',
-              ),
-              value: _enableAutoSummary,
-              onChanged: (v) => setState(() => _enableAutoSummary = v),
-              secondary: const Icon(Icons.auto_awesome),
+  Widget _botConfigCard({required bool telegram}) {
+    final enabled = telegram ? _enableTelegramBot : _enableQqBot;
+    return Card(
+      key: telegram ? _telegramKey : _qqKey,
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          SwitchListTile(
+            secondary: Icon(
+              telegram ? Icons.send_outlined : Icons.chat_outlined,
             ),
-            if (_error != null) ...[
-              const SizedBox(height: 16),
-              Row(
+            title: Text(telegram ? 'Telegram' : 'QQ'),
+            value: enabled,
+            onChanged: (value) => setState(() {
+              if (telegram) {
+                _enableTelegramBot = value;
+              } else {
+                _enableQqBot = value;
+              }
+            }),
+          ),
+          if (enabled)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
                 children: [
-                  Icon(Icons.error, color: colorScheme.error),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _error!,
-                      style: TextStyle(color: colorScheme.error),
+                  TextField(
+                    controller: telegram
+                        ? _tgTokenController
+                        : _qqUrlController,
+                    decoration: InputDecoration(
+                      labelText: telegram ? 'Bot Token' : 'Napcat API 地址',
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: telegram
+                        ? _tgAdminIdController
+                        : _qqAdminIdController,
+                    decoration: InputDecoration(
+                      labelText: telegram ? '管理员 ID（可选）' : '管理员 QQ 号（可选）',
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                 ],
               ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _botStepContent() {
+    return _responsiveCardWrap(
+      children: [
+        _botConfigCard(telegram: true),
+        _botConfigCard(telegram: false),
+      ],
+      maxColumns: 2,
+    );
+  }
+
+  Widget _accountCard(
+    String label,
+    String id,
+    bool connected,
+    TextEditingController controller,
+    String url,
+  ) {
+    return Card.outlined(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          ListTile(
+            leading: Icon(
+              connected ? Icons.check_circle : Icons.account_circle_outlined,
+              color: connected ? Colors.green : null,
+            ),
+            title: Text(label),
+            subtitle: Text(connected ? '已连接' : '未连接'),
+            trailing: connected
+                ? null
+                : FilledButton.tonalIcon(
+                    onPressed: () => _showLoginDialog(id, label),
+                    icon: const Icon(Icons.qr_code_scanner),
+                    label: const Text('扫码连接'),
+                  ),
+          ),
+          ExpansionTile(
+            shape: const Border(),
+            collapsedShape: const Border(),
+            title: const Text('手动 Cookie'),
+            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: [
+              TextField(
+                controller: controller,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Cookie',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () => SafeUrlLauncher.openExternal(context, url),
+                  icon: const Icon(Icons.open_in_new),
+                  label: const Text('浏览器打开'),
+                ),
+              ),
             ],
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _accountStepContent() {
+    return KeyedSubtree(
+      key: _accountsKey,
+      child: _responsiveCardWrap(
+        children: [
+          _accountCard(
+            '微博',
+            'weibo',
+            _weiboIsConnected,
+            _weiboController,
+            'https://weibo.com',
+          ),
+          _accountCard(
+            '小红书',
+            'xiaohongshu',
+            _xhsIsConnected,
+            _xhsController,
+            'https://www.xiaohongshu.com',
+          ),
+          _accountCard(
+            '知乎',
+            'zhihu',
+            _zhihuIsConnected,
+            _zhihuController,
+            'https://www.zhihu.com',
+          ),
+        ],
+        maxColumns: 3,
+      ),
+    );
+  }
+
+  void _jumpToConfiguration(int step, GlobalKey key) {
+    setState(() => _currentStep = step);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final targetContext = key.currentContext;
+      if (targetContext == null) return;
+      Scrollable.ensureVisible(
+        targetContext,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+        alignment: 0.08,
+      );
+    });
+  }
+
+  Widget _reviewCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 2),
+                    Text(subtitle),
+                  ],
+                ),
+              ),
+              const Icon(Icons.edit_outlined),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _finishStepContent() {
+    final hasConfiguredAccounts =
+        _weiboIsConnected ||
+        _xhsIsConnected ||
+        _zhihuIsConnected ||
+        _weiboController.text.trim().isNotEmpty ||
+        _xhsController.text.trim().isNotEmpty ||
+        _zhihuController.text.trim().isNotEmpty;
+    final cards = <Widget>[
+      if (_enableTextLlm)
+        _reviewCard(
+          title: '内容理解',
+          subtitle: _llmModelController.text.trim(),
+          icon: Icons.text_snippet_outlined,
+          onTap: () => _jumpToConfiguration(0, _textFeatureKey),
+        ),
+      if (_enableAutoSummary)
+        _reviewCard(
+          title: '自动摘要',
+          subtitle: _summaryModelController.text.trim(),
+          icon: Icons.auto_awesome_outlined,
+          onTap: () => _jumpToConfiguration(0, _summaryFeatureKey),
+        ),
+      if (_enableEmbedding)
+        _reviewCard(
+          title: '语义搜索',
+          subtitle: _embeddingModelController.text.trim(),
+          icon: Icons.manage_search_outlined,
+          onTap: () => _jumpToConfiguration(0, _embeddingFeatureKey),
+        ),
+      if (_enableVisionLlm)
+        _reviewCard(
+          title: '图像理解',
+          subtitle: _visionModelController.text.trim(),
+          icon: Icons.image_search_outlined,
+          onTap: () => _jumpToConfiguration(0, _visionFeatureKey),
+        ),
+      if (_enableTelegramBot)
+        _reviewCard(
+          title: 'Telegram',
+          subtitle: '推送已启用',
+          icon: Icons.send_outlined,
+          onTap: () => _jumpToConfiguration(_botStep, _telegramKey),
+        ),
+      if (_enableQqBot)
+        _reviewCard(
+          title: 'QQ',
+          subtitle: '推送已启用',
+          icon: Icons.chat_outlined,
+          onTap: () => _jumpToConfiguration(_botStep, _qqKey),
+        ),
+      if (hasConfiguredAccounts)
+        _reviewCard(
+          title: '平台账户',
+          subtitle: '检查登录状态',
+          icon: Icons.account_circle_outlined,
+          onTap: () => _jumpToConfiguration(_accountStep, _accountsKey),
+        ),
     ];
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 28),
+      child: Column(
+        children: [
+          Text('确认配置', style: Theme.of(context).textTheme.headlineMedium),
+          const SizedBox(height: 6),
+          Text(
+            cards.isEmpty ? '没有需要确认的可选配置' : '点击卡片可返回修改',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          if (cards.isNotEmpty) ...[
+            const SizedBox(height: 32),
+            _responsiveCardWrap(children: cards, maxColumns: 3),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _currentStepContent() {
+    return switch (_currentStep) {
+      0 => _featureStep(),
+      _botStep => _botStepContent(),
+      _accountStep => _accountStepContent(),
+      _ => _finishStepContent(),
+    };
   }
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    // 步骤2/3/4 可跳过
-    final bool isSkippable = _currentStep >= 2 && _currentStep <= 4;
-    final bool isLastStep = _currentStep == _totalSteps - 1;
-
     return Scaffold(
       appBar: AppBar(title: const Text('初始化向导')),
       body: SafeArea(
-        child: Stepper(
-          type: StepperType.vertical,
-          currentStep: _currentStep,
-          onStepTapped: (i) => setState(() => _currentStep = i),
-          onStepContinue: () {
-            if (_currentStep < _totalSteps - 1) {
-              setState(() => _currentStep += 1);
-            } else {
-              _handleComplete();
-            }
-          },
-          onStepCancel: () {
-            if (_currentStep > 0) setState(() => _currentStep -= 1);
-          },
-          controlsBuilder: (context, details) {
-            return Padding(
-              padding: const EdgeInsets.only(top: 24),
-              child: Row(
-                children: [
-                  FilledButton.icon(
-                    onPressed: _isLoading ? null : details.onStepContinue,
-                    icon: _isLoading
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(isLastStep ? Icons.check : Icons.arrow_forward),
-                    label: Text(isLastStep ? '完成' : '下一步'),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final wide = constraints.maxWidth >= 720;
+            return Column(
+              children: [
+                _OnboardingProgress(
+                  currentStep: _currentStep,
+                  onStepTapped: (step) => setState(() => _currentStep = step),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: _scrollController,
+                    padding: EdgeInsets.fromLTRB(
+                      wide ? 32 : 16,
+                      24,
+                      wide ? 32 : 16,
+                      32,
+                    ),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 1180),
+                        child: _currentStepContent(),
+                      ),
+                    ),
                   ),
-                  if (_currentStep > 0) ...[
-                    const SizedBox(width: 12),
-                    OutlinedButton(
-                      onPressed: _isLoading ? null : details.onStepCancel,
-                      child: const Text('上一步'),
+                ),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Text(
+                      _error!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
                     ),
-                  ],
-                  // 步骤2/3/4 提供跳过按钮
-                  if (isSkippable) ...[
-                    const SizedBox(width: 12),
-                    TextButton(
-                      onPressed: _isLoading
-                          ? null
-                          : () => setState(() => _currentStep += 1),
-                      child: const Text('跳过'),
+                  ),
+                _OnboardingNavigation(
+                  currentStep: _currentStep,
+                  totalSteps: _totalSteps,
+                  isLoading: _isLoading,
+                  onBack: _currentStep == 0
+                      ? null
+                      : () => setState(() => _currentStep -= 1),
+                  onNext: () {
+                    if (_currentStep < _finishStep) {
+                      setState(() => _currentStep += 1);
+                    } else {
+                      _handleComplete();
+                    }
+                  },
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _OnboardingProgress extends StatelessWidget {
+  const _OnboardingProgress({
+    required this.currentStep,
+    required this.onStepTapped,
+  });
+
+  final int currentStep;
+  final ValueChanged<int> onStepTapped;
+
+  static const _labels = ['功能与 AI', '通知', '账户', '完成'];
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Material(
+      color: colorScheme.surface,
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final edge = constraints.maxWidth / (_labels.length * 2);
+            final progress = currentStep / (_labels.length - 1);
+            return SizedBox(
+              height: 64,
+              child: Stack(
+                children: [
+                  Positioned(
+                    top: 16,
+                    left: edge,
+                    right: edge,
+                    child: ClipRect(
+                      child: Stack(
+                        children: [
+                          Container(
+                            key: const ValueKey('onboarding-progress-line'),
+                            height: 2,
+                            color: colorScheme.outlineVariant,
+                          ),
+                          FractionallySizedBox(
+                            widthFactor: progress,
+                            alignment: Alignment.centerLeft,
+                            child: Container(
+                              height: 2,
+                              color: colorScheme.primary,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
+                  ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (var index = 0; index < _labels.length; index++)
+                        Expanded(
+                          child: _ProgressItem(
+                            label: _labels[index],
+                            index: index,
+                            currentStep: currentStep,
+                            onTap: () => onStepTapped(index),
+                          ),
+                        ),
+                    ],
+                  ),
                 ],
               ),
             );
           },
-          steps: _buildSteps(colorScheme),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProgressItem extends StatelessWidget {
+  const _ProgressItem({
+    required this.label,
+    required this.index,
+    required this.currentStep,
+    required this.onTap,
+  });
+
+  final String label;
+  final int index;
+  final int currentStep;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final active = index == currentStep;
+    final complete = index < currentStep;
+    return Semantics(
+      button: true,
+      selected: active,
+      label: label,
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            hoverColor: colorScheme.primary.withValues(alpha: 0.08),
+            splashColor: colorScheme.primary.withValues(alpha: 0.14),
+            highlightColor: colorScheme.primary.withValues(alpha: 0.05),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: active
+                          ? colorScheme.primary
+                          : complete
+                          ? colorScheme.primaryContainer
+                          : colorScheme.surface,
+                      border: Border.all(
+                        color: active || complete
+                            ? colorScheme.primary
+                            : colorScheme.outline,
+                      ),
+                    ),
+                    child: Center(
+                      child: complete
+                          ? Icon(
+                              Icons.check_rounded,
+                              size: 15,
+                              color: colorScheme.onPrimaryContainer,
+                            )
+                          : Text(
+                              '${index + 1}',
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: active
+                                        ? colorScheme.onPrimary
+                                        : colorScheme.onSurface,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: active ? colorScheme.primary : null,
+                      fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OnboardingNavigation extends StatelessWidget {
+  const _OnboardingNavigation({
+    required this.currentStep,
+    required this.totalSteps,
+    required this.isLoading,
+    required this.onBack,
+    required this.onNext,
+  });
+
+  final int currentStep;
+  final int totalSteps;
+  final bool isLoading;
+  final VoidCallback? onBack;
+  final VoidCallback onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      elevation: 8,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              OutlinedButton(
+                onPressed: isLoading ? null : onBack,
+                child: const Text('上一步'),
+              ),
+              const Spacer(),
+              FilledButton.icon(
+                onPressed: isLoading ? null : onNext,
+                icon: isLoading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        currentStep == totalSteps - 1
+                            ? Icons.check
+                            : Icons.arrow_forward,
+                      ),
+                label: Text(currentStep == totalSteps - 1 ? '完成' : '下一步'),
+              ),
+            ],
+          ),
         ),
       ),
     );
