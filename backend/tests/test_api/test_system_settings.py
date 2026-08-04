@@ -87,6 +87,23 @@ class TestSystemSettingsAPI:
         assert verify_resp.status_code == 404
 
     @pytest.mark.asyncio
+    async def test_ai_model_discovery_returns_configured_provider_models(
+        self,
+        client: AsyncClient,
+        monkeypatch,
+    ):
+        async def fake_discovery(target: str):
+            assert target == "text_llm"
+            return ["model-a", "model-b"]
+
+        monkeypatch.setattr(
+            "app.routers.system._discover_openai_compatible_models",
+            fake_discovery,
+        )
+        response = await client.post("/api/v1/ai/models", json={"target": "text_llm"})
+        assert response.status_code == 200
+        assert response.json() == {"target": "text_llm", "models": ["model-a", "model-b"]}
+    @pytest.mark.asyncio
     async def test_render_config_presets(self, client: AsyncClient):
         # List presets
         list_resp = await client.get("/api/v1/render-config-presets")

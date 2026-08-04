@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 import asyncio
 import os
 import time
+from urllib.parse import urlparse
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Body, Response
 from pydantic import BaseModel
 from sqlalchemy import Integer, select, and_, func, or_
@@ -64,6 +66,10 @@ _STORAGE_CACHE_TTL = 300  # 5 minutes
 
 
 class AIConnectivityTestRequest(BaseModel):
+    target: str
+
+
+class AIModelDiscoveryRequest(BaseModel):
     target: str
 
 
@@ -607,6 +613,24 @@ async def _run_ai_connectivity_target(target: str) -> dict[str, Any]:
     }
 
 
+async def _discover_openai_compatible_models(target: str) -> list[str]:
+    if target not in {"text_llm", "vision_llm"}:
+        raise ValueError("target must be text_llm or vision_llm")
+    config = await ConfigService().get_text_llm_config() if target == "text_llm" else await ConfigService().get_vision_llm_config()
+    if not config.api_key or not config.base_url:
+        raise ValueError(f"{target} requires an API Base URL and API Key")
+    base_url = config.base_url.rstrip("/")
+    parsed = urlparse(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("API Base URL must be a valid http(s) URL")
+    async with httpx.AsyncClient(timeout=12.0, follow_redirects=False) as client:
+        response = await client.get(f"{base_url}/models", headers={"Authorization": f"Bearer {config.api_key}"})
+        response.raise_for_status()
+        payload = response.json()
+    models = sorted({item.get("id", "").strip() for item in payload.get("data", []) if isinstance(item, dict) and isinstance(item.get("id"), str)}) if isinstance(payload, dict) else []
+    if not models:
+        raise RuntimeError("provider returned no usable models")
+    return models
 def _normalize_parse_test_platform(platform: str) -> str:
     normalized = (platform or "").strip().lower()
     aliases = {
@@ -952,18 +976,18 @@ async def get_init_status(
     """获取初始化状态（无需 Token）"""
     from app.models import BotConfig, SystemSetting
     
-    # 检查数据库中是否已配置核心 AI Key (忽略 .env 环境变量以便强制在前端走一遍引导流程)
+    # 引导完成状态与模型配置解耦：LLM 功能是可选项，不能再用 API Key 判断。
     setting_result = await db.execute(
-        select(SystemSetting.value).where(SystemSetting.key == "text_llm_api_key")
+        select(SystemSetting.value).where(SystemSetting.key == "onboarding_completed")
     )
-    llm_key_in_db = setting_result.scalar_one_or_none()
+    onboarding_completed = str(setting_result.scalar_one_or_none() or "").lower() == "true"
     
     # 检查是否有 Bot 配置
     bot_result = await db.execute(select(func.count()).select_from(BotConfig))
     bot_count = bot_result.scalar() or 0
     
     return {
-        "needs_setup": not bool(llm_key_in_db),
+        "needs_setup": not onboarding_completed,
         "has_bot": bot_count > 0,
         "version": "0.1.0"
     }
@@ -1498,6 +1522,16 @@ async def test_ai_connectivity(
         }
 
 
+@router.post("/ai/models")
+async def discover_ai_models(payload: AIModelDiscoveryRequest, _: None = Depends(require_api_token)):
+    """Discover models exposed by a configured OpenAI-compatible provider."""
+    try:
+        target = (payload.target or "").strip().lower()
+        return {"target": target, "models": await _discover_openai_compatible_models(target)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"model discovery failed: {exc}")
 @router.post("/platform-health/parse-test")
 async def test_platform_parse(
     payload: PlatformParseTestRequest,
