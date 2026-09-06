@@ -1,9 +1,21 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
-import 'media_asset.dart';
+import '../../../core/media/media_asset.dart';
+import '../../../core/media/media_segment.dart';
 
 part 'content.freezed.dart';
 part 'content.g.dart';
+
+@freezed
+abstract class ParseCandidate with _$ParseCandidate {
+  const factory ParseCandidate({
+    @JsonKey(name: 'created_at') required DateTime createdAt,
+    @Default({}) Map<String, String?> fields,
+  }) = _ParseCandidate;
+
+  factory ParseCandidate.fromJson(Map<String, dynamic> json) =>
+      _$ParseCandidateFromJson(json);
+}
 
 @freezed
 abstract class ShareCard with _$ShareCard {
@@ -89,6 +101,9 @@ abstract class ContentDetail with _$ContentDetail {
     @JsonKey(name: 'published_at') DateTime? publishedAt,
     @JsonKey(name: 'media_urls') @Default([]) List<String> mediaUrls,
     @JsonKey(name: 'media_assets') @Default([]) List<MediaAsset> mediaAssets,
+    @JsonKey(name: 'media_segments')
+    @Default([])
+    List<MediaSegment> mediaSegments,
     @JsonKey(name: 'source_tags') @Default([]) List<String> sourceTags,
     @JsonKey(name: 'view_count') @Default(0) int viewCount,
     @JsonKey(name: 'like_count') @Default(0) int likeCount,
@@ -100,10 +115,19 @@ abstract class ContentDetail with _$ContentDetail {
     // 结构化扩展组件
     @JsonKey(name: 'context_data') Map<String, dynamic>? contextData,
     @JsonKey(name: 'rich_payload') Map<String, dynamic>? richPayload,
+    @JsonKey(name: 'manual_edit_fields')
+    @Default([])
+    List<String> manualEditFields,
+    @JsonKey(name: 'parse_candidate') ParseCandidate? parseCandidate,
   }) = _ContentDetail;
 
   factory ContentDetail.fromJson(Map<String, dynamic> json) =>
       _$ContentDetailFromJson(json);
+
+  bool get hasExternalOriginal {
+    final uri = Uri.tryParse(url.trim());
+    return uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
+  }
 }
 
 @freezed

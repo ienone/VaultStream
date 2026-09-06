@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../../theme/design_tokens.dart';
+
 class UnifiedStatItem extends StatelessWidget {
   final IconData icon;
   final String? emoji;
@@ -26,10 +28,10 @@ class UnifiedStatItem extends StatelessWidget {
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: colorScheme.primaryContainer.withValues(alpha: 0.3),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppShape.cardMediaBorder,
           ),
           child: emoji != null && emoji!.isNotEmpty
-              ? Text(emoji!, style: const TextStyle(fontSize: 16))
+              ? Text(emoji!, style: theme.textTheme.titleMedium)
               : Icon(icon, size: 18, color: colorScheme.onPrimaryContainer),
         ),
         const SizedBox(width: 10),
@@ -42,7 +44,6 @@ class UnifiedStatItem extends StatelessWidget {
                 value,
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w900,
-                  fontSize: 14,
                   color: colorScheme.onSurface,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -51,7 +52,6 @@ class UnifiedStatItem extends StatelessWidget {
                 label,
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: colorScheme.outline,
-                  fontSize: 10,
                   fontWeight: FontWeight.bold,
                 ),
                 overflow: TextOverflow.ellipsis,

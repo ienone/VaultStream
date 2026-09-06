@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:frontend/core/widgets/network_thumbnail.dart';
 import 'package:frontend/core/utils/media_utils.dart';
-import '../../../../../core/network/image_headers.dart';
+import 'package:frontend/core/widgets/network_thumbnail.dart';
+
+import '../../../../../core/media/media_asset.dart';
+import '../../../../../theme/design_tokens.dart';
 import 'media_gallery_item.dart';
 
 /// 通用媒体网格组件
@@ -14,8 +16,7 @@ import 'media_gallery_item.dart';
 class MediaGrid extends StatelessWidget {
   final List<String> images;
   final Map<String, List<String>> fallbackUrlsByImage;
-  final String apiBaseUrl;
-  final String? apiToken;
+  final Map<String, MediaAsset> mediaAssetsByImage;
   final int contentId;
   final Color? contentColor;
   final Function(int index)? onImageTap;
@@ -34,8 +35,7 @@ class MediaGrid extends StatelessWidget {
     super.key,
     required this.images,
     this.fallbackUrlsByImage = const {},
-    required this.apiBaseUrl,
-    this.apiToken,
+    this.mediaAssetsByImage = const {},
     required this.contentId,
     this.contentColor,
     this.onImageTap,
@@ -79,8 +79,7 @@ class MediaGrid extends StatelessWidget {
                       images: images,
                       index: index,
                       fallbackUrlsByImage: fallbackUrlsByImage,
-                      apiBaseUrl: apiBaseUrl,
-                      apiToken: apiToken,
+                      mediaAssetsByImage: mediaAssetsByImage,
                       contentId: contentId,
                       contentColor: contentColor,
                       heroTag: _getHeroTag(index),
@@ -102,8 +101,8 @@ class MediaGrid extends StatelessWidget {
                         icon: const Icon(Icons.chevron_left),
                         onPressed: () {
                           pageController?.previousPage(
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
+                            duration: AppMotion.contentSwap,
+                            curve: AppMotion.emphasizedCurve,
                           );
                         },
                       ),
@@ -119,8 +118,8 @@ class MediaGrid extends StatelessWidget {
                         icon: const Icon(Icons.chevron_right),
                         onPressed: () {
                           pageController?.nextPage(
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
+                            duration: AppMotion.contentSwap,
+                            curve: AppMotion.emphasizedCurve,
                           );
                         },
                       ),
@@ -138,12 +137,16 @@ class MediaGrid extends StatelessWidget {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(20),
+                      color: colorScheme.inverseSurface.withValues(alpha: 0.72),
+                      borderRadius: const BorderRadius.all(
+                        Radius.circular(AppShape.pill),
+                      ),
                     ),
                     child: Text(
                       '${currentIndex + 1} / ${images.length}',
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: colorScheme.onInverseSurface,
+                      ),
                     ),
                   ),
                 ),
@@ -166,16 +169,20 @@ class MediaGrid extends StatelessWidget {
                   onTap: () {
                     pageController?.animateToPage(
                       index,
-                      duration: const Duration(milliseconds: 400),
-                      curve: Curves.fastOutSlowIn,
+                      duration: AppMotion.contentSwap,
+                      curve: AppMotion.emphasizedCurve,
                     );
                   },
                   child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
+                    duration: AppMotion.stateChange,
+                    curve: AppMotion.standardCurve,
                     width: isSelected ? 120 : 64,
                     height: 64,
                     margin: const EdgeInsets.only(right: 12),
                     decoration: BoxDecoration(
+                      color: isSelected
+                          ? colorScheme.primaryContainer
+                          : colorScheme.surfaceContainerLow,
                       border: isSelected
                           ? Border.all(
                               color: contentColor ?? colorScheme.primary,
@@ -187,40 +194,27 @@ class MediaGrid extends StatelessWidget {
                               ),
                               width: 1,
                             ),
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: isSelected
-                          ? [
-                              BoxShadow(
-                                color: (contentColor ?? colorScheme.primary)
-                                    .withValues(alpha: 0.2),
-                                blurRadius: 8,
-                                spreadRadius: 2,
-                              ),
-                            ]
-                          : null,
+                      borderRadius: AppShape.cardBorder,
                     ),
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(13),
+                      borderRadius: AppShape.cardMediaBorder,
                       child: isVideo(img)
                           ? Container(
-                              color: Colors.black,
-                              child: const Center(
+                              color: colorScheme.inverseSurface,
+                              child: Center(
                                 child: Icon(
                                   Icons.play_circle_fill,
-                                  color: Colors.white,
+                                  color: colorScheme.onInverseSurface,
                                   size: 24,
                                 ),
                               ),
                             )
                           : NetworkThumbnail(
                               imageUrl: img,
+                              mediaAsset: mediaAssetsByImage[img],
+                              purpose: MediaPurpose.detail,
                               fallbackUrls:
                                   fallbackUrlsByImage[img] ?? const [],
-                              httpHeaders: buildImageHeaders(
-                                imageUrl: img,
-                                baseUrl: apiBaseUrl,
-                                apiToken: apiToken,
-                              ),
                               fit: BoxFit.cover,
                             ),
                     ),
@@ -260,19 +254,16 @@ class MediaGrid extends StatelessWidget {
     return GestureDetector(
       onTap: () => onImageTap?.call(index),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppShape.cardBorder,
         child: Hero(
           tag: _getHeroTag(index),
           child: isVideo(imageUrl)
               ? _buildVideoThumbnail(context, imageUrl)
               : NetworkThumbnail(
                   imageUrl: imageUrl,
+                  mediaAsset: mediaAssetsByImage[imageUrl],
+                  purpose: MediaPurpose.detail,
                   fallbackUrls: fallbackUrlsByImage[imageUrl] ?? const [],
-                  httpHeaders: buildImageHeaders(
-                    imageUrl: imageUrl,
-                    baseUrl: apiBaseUrl,
-                    apiToken: apiToken,
-                  ),
                   fit: BoxFit.cover,
                   width: double.infinity,
                 ),
@@ -288,19 +279,16 @@ class MediaGrid extends StatelessWidget {
       child: AspectRatio(
         aspectRatio: 1,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppShape.cardMediaBorder,
           child: Hero(
             tag: _getHeroTag(index),
             child: isVideo(imageUrl)
                 ? _buildVideoThumbnail(context, imageUrl)
                 : NetworkThumbnail(
                     imageUrl: imageUrl,
+                    mediaAsset: mediaAssetsByImage[imageUrl],
+                    purpose: MediaPurpose.detail,
                     fallbackUrls: fallbackUrlsByImage[imageUrl] ?? const [],
-                    httpHeaders: buildImageHeaders(
-                      imageUrl: imageUrl,
-                      baseUrl: apiBaseUrl,
-                      apiToken: apiToken,
-                    ),
                     fit: BoxFit.cover,
                   ),
           ),
@@ -329,7 +317,7 @@ class MediaGrid extends StatelessWidget {
         return GestureDetector(
           onTap: () => onImageTap?.call(index),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: AppShape.cardMediaBorder,
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -339,26 +327,23 @@ class MediaGrid extends StatelessWidget {
                       ? _buildVideoThumbnail(context, images[index])
                       : NetworkThumbnail(
                           imageUrl: images[index],
+                          mediaAsset: mediaAssetsByImage[images[index]],
+                          purpose: MediaPurpose.detail,
                           fallbackUrls:
                               fallbackUrlsByImage[images[index]] ?? const [],
-                          httpHeaders: buildImageHeaders(
-                            imageUrl: images[index],
-                            baseUrl: apiBaseUrl,
-                            apiToken: apiToken,
-                          ),
                           fit: BoxFit.cover,
                         ),
                 ),
                 if (isLast)
                   Container(
-                    color: Colors.black.withValues(alpha: 0.6),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.inverseSurface.withValues(alpha: 0.76),
                     child: Center(
                       child: Text(
                         '+${images.length - 9}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: Theme.of(context).colorScheme.onInverseSurface,
                         ),
                       ),
                     ),
@@ -373,13 +358,14 @@ class MediaGrid extends StatelessWidget {
 
   /// 视频缩略图占位
   Widget _buildVideoThumbnail(BuildContext context, String videoUrl) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      color: Colors.black,
+      color: colorScheme.inverseSurface,
       child: Center(
         child: Icon(
           Icons.play_circle_outline,
           size: 48,
-          color: Colors.white.withValues(alpha: 0.8),
+          color: colorScheme.onInverseSurface.withValues(alpha: 0.8),
         ),
       ),
     );

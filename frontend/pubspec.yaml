@@ -53,7 +53,6 @@ dependencies:
   shared_preferences: ^2.5.4
   flutter_secure_storage: ^9.2.4
   video_player: ^2.10.1
-  chewie: ^1.13.0
   flutter_math_fork: ^0.7.4
   flutter_highlight: ^0.7.0
   google_fonts: ^7.0.0
@@ -63,10 +62,12 @@ dependencies:
   timeago: ^3.7.0
   package_info_plus: ^9.0.0
   animations: ^2.1.1
+  file_selector: ^1.1.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  video_player_platform_interface: ^6.6.0
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -78,7 +79,6 @@ dev_dependencies:
   riverpod_generator: ^4.0.0+1
   freezed: ^3.2.3
   json_serializable: ^6.11.2
-  mockito: ^5.6.3
   flutter_launcher_icons: ^0.14.3
 
 # For information on the generic Dart part of this file, see the

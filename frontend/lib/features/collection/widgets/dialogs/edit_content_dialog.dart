@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/content.dart';
 import '../../providers/content_actions_controller.dart';
@@ -57,17 +58,40 @@ class _EditContentDialogState extends ConsumerState<EditContentDialog> {
         .split(RegExp(r'[,\s，]'))
         .where((t) => t.isNotEmpty)
         .toList();
+    final patch = <String, dynamic>{};
+    void addTextChange(String key, String value, String? original) {
+      final normalized = value.trim();
+      if (normalized != (original ?? '').trim()) patch[key] = normalized;
+    }
+
+    addTextChange('title', _titleController.text, widget.content.title);
+    addTextChange('body', _descriptionController.text, widget.content.body);
+    addTextChange(
+      'author_name',
+      _authorController.text,
+      widget.content.authorName,
+    );
+    addTextChange(
+      'cover_url',
+      _coverUrlController.text,
+      widget.content.coverUrl,
+    );
+    if (!listEquals(tags, widget.content.tags)) patch['tags'] = tags;
+    if (_isNsfw != widget.content.isNsfw) patch['is_nsfw'] = _isNsfw;
+    if (_selectedLayout != widget.content.layoutTypeOverride) {
+      patch['layout_type_override'] = _selectedLayout;
+    }
+
+    if (patch.isEmpty) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = '没有需要保存的修改';
+      });
+      return;
+    }
     final result = await ref
         .read(contentActionsProvider.notifier)
-        .updateContent(widget.content.id, {
-          'title': _titleController.text.trim(),
-          'body': _descriptionController.text.trim(),
-          'author_name': _authorController.text.trim(),
-          'cover_url': _coverUrlController.text.trim(),
-          'tags': tags,
-          'is_nsfw': _isNsfw,
-          'layout_type_override': _selectedLayout,
-        });
+        .updateContent(widget.content.id, patch);
 
     if (!mounted) return;
     if (result.ok) {

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import '../../../../../core/network/image_headers.dart';
+import '../../../../../core/media/media_asset.dart';
 import '../../../../../core/widgets/network_thumbnail.dart';
-import '../../common/video_player_widget.dart';
+import '../../../../player/global_playback_controller.dart';
+import '../../../../player/global_player_widgets.dart';
 import '../../../../../theme/design_tokens.dart';
 import '../gallery/gallery_navigation.dart';
 import '../../../../../core/utils/media_utils.dart';
@@ -10,8 +11,7 @@ class MediaGalleryItem extends StatelessWidget {
   final List<String> images;
   final int index;
   final Map<String, List<String>> fallbackUrlsByImage;
-  final String apiBaseUrl;
-  final String? apiToken;
+  final Map<String, MediaAsset> mediaAssetsByImage;
   final int contentId;
   final Color? contentColor;
   final bool isVideoItem;
@@ -27,8 +27,7 @@ class MediaGalleryItem extends StatelessWidget {
     required this.images,
     required this.index,
     this.fallbackUrlsByImage = const {},
-    required this.apiBaseUrl,
-    this.apiToken,
+    this.mediaAssetsByImage = const {},
     required this.contentId,
     this.contentColor,
     this.isVideoItem = false,
@@ -44,24 +43,24 @@ class MediaGalleryItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveBorderRadius =
-        borderRadius ?? BorderRadius.circular(AppRadius.xxl);
+    final effectiveBorderRadius = borderRadius ?? AppShape.sheetBorder;
+    final mediaAsset = mediaAssetsByImage[url];
 
-    if (isVideoItem || isVideo(url)) {
+    if (isVideoItem ||
+        mediaAsset?.mediaType == MediaType.video ||
+        isVideo(url)) {
       return ClipRRect(
         borderRadius: effectiveBorderRadius,
-        child: Stack(
-          children: [
-            VideoPlayerWidget(
-              videoUrl: url,
-              headers: buildImageHeaders(
-                imageUrl: url,
-                baseUrl: apiBaseUrl,
-                apiToken: apiToken,
-              ),
-            ),
-            // We can add a play overlay here if needed for grid view
-          ],
+        child: GlobalPlaybackSurface(
+          activateOnMount: false,
+          request: PlaybackRequest(
+            contentId: contentId,
+            title:
+                mediaAsset?.caption ?? mediaAsset?.altText ?? '视频 ${index + 1}',
+            urls: [url, ...?fallbackUrlsByImage[url]],
+            audioOnly: false,
+            mediaAsset: mediaAsset,
+          ),
         ),
       );
     }
@@ -78,12 +77,9 @@ class MediaGalleryItem extends StatelessWidget {
             tag: heroTag,
             child: NetworkThumbnail(
               imageUrl: url,
+              mediaAsset: mediaAssetsByImage[url],
+              purpose: MediaPurpose.detail,
               fallbackUrls: fallbackUrlsByImage[url] ?? const [],
-              httpHeaders: buildImageHeaders(
-                imageUrl: url,
-                baseUrl: apiBaseUrl,
-                apiToken: apiToken,
-              ),
               width: width,
               height: height,
               fit: fit,
@@ -100,9 +96,8 @@ class MediaGalleryItem extends StatelessWidget {
       context: context,
       images: images,
       fallbackUrlsByImage: fallbackUrlsByImage,
+      mediaAssetsByImage: mediaAssetsByImage,
       initialIndex: index,
-      apiBaseUrl: apiBaseUrl,
-      apiToken: apiToken,
       contentId: contentId,
       contentColor: contentColor,
       customHeroTag: heroTag,

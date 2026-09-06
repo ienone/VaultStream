@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../../../../theme/design_tokens.dart';
 import '../../../models/content.dart';
 
 class TagsSection extends StatelessWidget {
@@ -86,14 +85,8 @@ class TagsSection extends StatelessWidget {
       ],
     );
 
-    return Container(
+    return KeyedSubtree(
       key: const ValueKey('detail-tags-module'),
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: AppShape.paneBorder,
-      ),
       child: content,
     );
   }

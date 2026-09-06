@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../core/network/api_client.dart';
@@ -15,10 +19,22 @@ class ContentActionResult {
     required this.ok,
     required this.message,
     this.runId,
+    this.contentId,
+    this.needsAttention = false,
   });
 
-  const ContentActionResult.success(String message, {String? runId})
-    : this._(ok: true, message: message, runId: runId);
+  const ContentActionResult.success(
+    String message, {
+    String? runId,
+    int? contentId,
+    bool needsAttention = false,
+  }) : this._(
+         ok: true,
+         message: message,
+         runId: runId,
+         contentId: contentId,
+         needsAttention: needsAttention,
+       );
 
   const ContentActionResult.failure(String message)
     : this._(ok: false, message: message);
@@ -26,6 +42,8 @@ class ContentActionResult {
   final bool ok;
   final String message;
   final String? runId;
+  final int? contentId;
+  final bool needsAttention;
 }
 
 /// 正在执行的内容写操作集合。
@@ -66,6 +84,9 @@ class ContentActions extends _$ContentActions {
     try {
       return await body();
     } catch (error) {
+      if (error is FormatException) {
+        return ContentActionResult.failure('服务响应无效：${error.message}');
+      }
       return ContentActionResult.failure(
         formatApiErrorMessage(error, fallbackMessage: '操作失败'),
       );
@@ -80,6 +101,26 @@ class ContentActions extends _$ContentActions {
     return (value == null || value.isEmpty) ? null : value;
   }
 
+  String _requiredRunIdOf(Object? data) {
+    final runId = _runIdOf(data);
+    if (runId == null) {
+      throw const FormatException('动作响应缺少 run_id');
+    }
+    return runId;
+  }
+
+  int? _contentIdOf(Object? data) {
+    if (data is! Map) return null;
+    final value = data['content_id'] ?? data['id'];
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  int? _contentIdFromError(Object error) {
+    if (error is! DioException || error.response?.data is! Map) return null;
+    return _contentIdOf(error.response!.data);
+  }
+
   void _invalidateDetail(int contentId) {
     ref.invalidate(contentDetailProvider(contentId));
     ref.invalidate(contentProcessingStatusProvider(contentId));
@@ -92,21 +133,179 @@ class ContentActions extends _$ContentActions {
     required String url,
     required List<String> tags,
     required bool isNsfw,
+    String? tagsText,
+    String source = 'app',
+    String? layoutTypeOverride,
+    String? note,
+    Map<String, dynamic>? clientContext,
   }) {
     return _run(0, 'create_share', () async {
-      await ref
+      try {
+        final response = await ref
+            .read(apiClientProvider)
+            .post(
+              '/shares',
+              data: {
+                'url': url,
+                'tags': tags,
+                'tags_text': tagsText,
+                'is_nsfw': isNsfw,
+                'source': source,
+                'layout_type_override': layoutTypeOverride,
+                'note': note,
+                'client_context': clientContext,
+              },
+            );
+        ref.invalidate(collectionProvider);
+        return ContentActionResult.success(
+          '已保存内容，后台将继续解析',
+          contentId: _contentIdOf(response.data),
+        );
+      } catch (error) {
+        final info = parseApiErrorInfo(error);
+        final contentId = _contentIdFromError(error);
+        if (info.code == 'parse_queue_unavailable' && contentId != null) {
+          ref.invalidate(collectionProvider);
+          return ContentActionResult.success(
+            '内容已保存，但解析任务暂未入队',
+            contentId: contentId,
+            needsAttention: true,
+          );
+        }
+        rethrow;
+      }
+    });
+  }
+
+  /// 直接保存用户提供的原始文本，不经过网页解析。
+  Future<ContentActionResult> createText({
+    required String text,
+    required List<String> tags,
+    required bool isNsfw,
+    String? title,
+    String? tagsText,
+    String source = 'manual_text',
+    String? note,
+    Map<String, dynamic>? clientContext,
+  }) {
+    return _run(0, 'create_text', () async {
+      final response = await ref
           .read(apiClientProvider)
           .post(
-            '/shares',
+            '/captures/text',
             data: {
-              'url': url,
+              'text': text,
+              'title': title,
               'tags': tags,
+              'tags_text': tagsText,
+              'source': source,
+              'note': note,
+              'client_context': clientContext,
               'is_nsfw': isNsfw,
-              'source': 'app',
             },
           );
       ref.invalidate(collectionProvider);
-      return const ContentActionResult.success('已保存内容，后台将继续解析');
+      return ContentActionResult.success(
+        '已保存文本，可在收藏库中继续整理',
+        contentId: _contentIdOf(response.data),
+      );
+    });
+  }
+
+  /// 上传并归档用户选择的原始文件。
+  Future<ContentActionResult> createFile({
+    required XFile file,
+    required List<String> tags,
+    required bool isNsfw,
+    String? title,
+    String source = 'manual_upload',
+    String? note,
+  }) {
+    return _run(0, 'create_file', () async {
+      final length = await file.length();
+      final response = await ref
+          .read(apiClientProvider)
+          .post(
+            '/captures/file',
+            data: FormData.fromMap({
+              'upload': MultipartFile.fromStream(
+                () => file.openRead(),
+                length,
+                filename: file.name,
+                contentType: file.mimeType == null
+                    ? null
+                    : DioMediaType.parse(file.mimeType!),
+              ),
+              if (title != null && title.trim().isNotEmpty)
+                'title': title.trim(),
+              if (tags.isNotEmpty) 'tags_text': tags.join(','),
+              'source': source,
+              if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+              'is_nsfw': isNsfw,
+            }),
+          );
+      ref.invalidate(collectionProvider);
+      return ContentActionResult.success(
+        '已归档原始文件',
+        contentId: _contentIdOf(response.data),
+      );
+    });
+  }
+
+  /// 把一次系统分享中的多个文件作为同一个内容对象归档。
+  Future<ContentActionResult> createFiles({
+    required List<XFile> files,
+    required List<String> tags,
+    required bool isNsfw,
+    String? title,
+    String source = 'manual_upload',
+    String? note,
+    Map<String, dynamic>? clientContext,
+  }) {
+    if (files.isEmpty) {
+      return Future.value(const ContentActionResult.failure('请选择要归档的文件'));
+    }
+    return _run(0, 'create_files', () async {
+      final uploads = <MultipartFile>[];
+      for (final file in files) {
+        final length = await file.length();
+        uploads.add(
+          MultipartFile.fromStream(
+            () => file.openRead(),
+            length,
+            filename: file.name,
+            contentType: file.mimeType == null
+                ? null
+                : DioMediaType.parse(file.mimeType!),
+          ),
+        );
+      }
+      final form = FormData();
+      form.files.addAll(uploads.map((upload) => MapEntry('uploads', upload)));
+      if (title != null && title.trim().isNotEmpty) {
+        form.fields.add(MapEntry('title', title.trim()));
+      }
+      if (tags.isNotEmpty) {
+        form.fields.add(MapEntry('tags_text', tags.join(',')));
+      }
+      form.fields.add(MapEntry('source', source));
+      if (note != null && note.trim().isNotEmpty) {
+        form.fields.add(MapEntry('note', note.trim()));
+      }
+      if (clientContext != null) {
+        form.fields.add(
+          MapEntry('client_context_json', jsonEncode(clientContext)),
+        );
+      }
+      form.fields.add(MapEntry('is_nsfw', isNsfw.toString()));
+      final response = await ref
+          .read(apiClientProvider)
+          .post('/captures/files', data: form);
+      ref.invalidate(collectionProvider);
+      return ContentActionResult.success(
+        files.length == 1 ? '已归档原始文件' : '已归档 ${files.length} 个共享文件',
+        contentId: _contentIdOf(response.data),
+      );
     });
   }
 
@@ -119,7 +318,7 @@ class ContentActions extends _$ContentActions {
       _invalidateDetail(contentId);
       return ContentActionResult.success(
         '已触发重新解析',
-        runId: _runIdOf(response.data),
+        runId: _requiredRunIdOf(response.data),
       );
     });
   }
@@ -147,6 +346,34 @@ class ContentActions extends _$ContentActions {
       _invalidateDetail(contentId);
       ref.invalidate(collectionProvider);
       return const ContentActionResult.success('内容已更新');
+    });
+  }
+
+  /// 逐字段处理重新解析与人工修订之间的冲突。
+  Future<ContentActionResult> resolveParseCandidate(
+    int contentId, {
+    required String field,
+    required String action,
+    String? mergedValue,
+  }) {
+    return _run(contentId, 'resolve_parse_candidate_$field', () async {
+      await ref
+          .read(apiClientProvider)
+          .post(
+            '/contents/$contentId/parse-candidate/resolve',
+            data: {
+              'field': field,
+              'action': action,
+              if (action == 'merge') 'merged_value': mergedValue,
+            },
+          );
+      _invalidateDetail(contentId);
+      ref.invalidate(collectionProvider);
+      return ContentActionResult.success(switch (action) {
+        'accept_parsed' => '已采用新解析结果',
+        'keep_current' => '已保留人工版本',
+        _ => '已保存合并版本',
+      });
     });
   }
 
@@ -192,8 +419,8 @@ class ContentActions extends _$ContentActions {
           );
           _invalidateDetail(contentId);
           return ContentActionResult.success(
-            '已开始生成摘要',
-            runId: _runIdOf(response.data),
+            '摘要已生成',
+            runId: _requiredRunIdOf(response.data),
           );
 
         case ProcessingActionKind.rebuildSemanticIndex:
@@ -220,7 +447,7 @@ class ContentActions extends _$ContentActions {
             final response = await dio.post(
               '/search/semantic/embeddings/$id/retry',
             );
-            lastRunId = _runIdOf(response.data) ?? lastRunId;
+            lastRunId = _requiredRunIdOf(response.data);
           }
           _invalidateDetail(contentId);
           return ContentActionResult.success(
@@ -253,8 +480,8 @@ class ContentActions extends _$ContentActions {
           final response = await dio.post('/contents/$contentId/patrol-score');
           _invalidateDetail(contentId);
           return ContentActionResult.success(
-            '已触发巡逻评分',
-            runId: _runIdOf(response.data),
+            '巡逻评分已完成',
+            runId: _requiredRunIdOf(response.data),
           );
       }
     });

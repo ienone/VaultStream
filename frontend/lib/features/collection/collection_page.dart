@@ -1,18 +1,17 @@
+import '../../layout/root_page_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/layout/responsive_layout.dart';
-import '../../core/utils/toast.dart';
 import '../../theme/design_tokens.dart';
 import 'providers/batch_selection_provider.dart';
 import 'providers/collection_filter_provider.dart';
 import 'providers/collection_provider.dart';
 import 'providers/search_history_provider.dart';
 import 'widgets/detail/detail_sections.dart';
-import 'widgets/dialogs/add_content_dialog.dart';
 import 'widgets/dialogs/batch_action_sheet.dart';
-import 'widgets/dialogs/filter_dialog.dart';
+import 'widgets/dialogs/collection_filter_form.dart';
 import 'widgets/list/collection_grid.dart';
 import 'widgets/list/collection_skeleton.dart';
 
@@ -26,11 +25,15 @@ class CollectionPage extends ConsumerStatefulWidget {
     super.key,
     this.initialPlatforms = const [],
     this.initialStatuses = const [],
+    this.initialAuthor,
+    this.initialTags = const [],
     this.initialDateRange,
   });
 
   final List<String> initialPlatforms;
   final List<String> initialStatuses;
+  final String? initialAuthor;
+  final List<String> initialTags;
   final DateTimeRange? initialDateRange;
 
   @override
@@ -46,7 +49,12 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _applyRouteFilters());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _applyRouteFilters();
+      if (mounted) {
+        _syncSearchText(ref.read(collectionFilterProvider).searchQuery);
+      }
+    });
   }
 
   @override
@@ -65,6 +73,8 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     final hasRouteFilter =
         widget.initialPlatforms.isNotEmpty ||
         widget.initialStatuses.isNotEmpty ||
+        widget.initialAuthor?.trim().isNotEmpty == true ||
+        widget.initialTags.isNotEmpty ||
         widget.initialDateRange != null;
     if (!hasRouteFilter) return;
 
@@ -73,6 +83,8 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
         .setFilters(
           platforms: widget.initialPlatforms,
           statuses: widget.initialStatuses,
+          author: widget.initialAuthor,
+          tags: widget.initialTags,
           dateRange: widget.initialDateRange,
         );
   }
@@ -80,6 +92,8 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   String get _routeFilterSignature => [
     widget.initialPlatforms.join(','),
     widget.initialStatuses.join(','),
+    widget.initialAuthor ?? '',
+    widget.initialTags.join(','),
     widget.initialDateRange?.start.toIso8601String() ?? '',
     widget.initialDateRange?.end.toIso8601String() ?? '',
   ].join('|');
@@ -114,9 +128,24 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     if (_searchController.isOpen) _searchController.closeView(trimmed);
   }
 
+  void _syncSearchText(String query) {
+    if (_searchController.text == query) return;
+    _searchController.value = TextEditingValue(
+      text: query,
+      selection: TextSelection.collapsed(offset: query.length),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final filter = ref.watch(collectionFilterProvider);
+    ref.listen<String>(
+      collectionFilterProvider.select((state) => state.searchQuery),
+      (_, query) => _syncSearchText(query),
+    );
+    if (_searchController.isAttached && !_searchController.isOpen) {
+      _syncSearchText(filter.searchQuery);
+    }
     final collectionAsync = ref.watch(collectionProvider);
     final selection = ref.watch(batchSelectionProvider);
     final compact = MediaQuery.sizeOf(context).width < 600;
@@ -203,11 +232,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
               icon: const Icon(Icons.checklist_rounded),
               label: Text('操作 (${selection.count})'),
             )
-          : FloatingActionButton.extended(
-              onPressed: _addContent,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('添加内容'),
-            ),
+          : null,
     );
   }
 
@@ -218,8 +243,8 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
         padding: const EdgeInsets.all(AppSpacing.xl),
         child: ContentEmptyState(
           icon: filtered ? Icons.search_off_rounded : Icons.inbox_outlined,
-          message: filtered ? '没有符合条件的内容' : '收藏库还是空的',
-          hint: filtered ? '试着放宽筛选条件或换一个关键词。' : '保存第一条内容后，它会出现在这里。',
+          message: filtered ? '没有符合条件的内容' : '尚未保存内容',
+          hint: filtered ? null : '点击“保存”添加内容。',
           action: filtered
               ? TextButton(
                   onPressed: () => ref
@@ -227,20 +252,10 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
                       .clearFilters(),
                   child: const Text('清除全部筛选'),
                 )
-              : FilledButton.tonal(
-                  onPressed: _addContent,
-                  child: const Text('添加内容'),
-                ),
+              : null,
         ),
       ),
     );
-  }
-
-  Future<void> _addContent() async {
-    final added = await AddContentDialog.show(context);
-    if (added == true && mounted) {
-      Toast.show(context, '内容已添加到队列', icon: Icons.check_circle_outline_rounded);
-    }
   }
 
   // --- 顶栏 ---
@@ -285,7 +300,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
           selectedIcon: const Icon(Icons.tune_rounded),
           onPressed: _openFilters,
         ),
-        const SizedBox(width: AppSpacing.xs),
+        const RootPageActions(),
       ],
     );
   }
@@ -324,7 +339,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
       for (final item in items) ...item.tags,
     }.toList();
 
-    final dialog = FilterDialog(
+    final dialog = CollectionFilterForm(
       initialPlatforms: filter.platforms,
       initialStatuses: filter.statuses,
       initialAuthor: filter.author,
@@ -359,8 +374,15 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
             shape: const RoundedRectangleBorder(
               borderRadius: AppShape.sheetTopBorder,
             ),
-            constraints: const BoxConstraints(maxHeight: 720),
-            builder: (_) => dialog,
+            builder: (context) => Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.viewInsetsOf(context).bottom,
+              ),
+              child: SizedBox(
+                height: MediaQuery.sizeOf(context).height * .85,
+                child: dialog,
+              ),
+            ),
           );
 
     if (result == null || !mounted) return;

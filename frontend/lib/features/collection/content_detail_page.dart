@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/layout/responsive_layout.dart';
+import '../../core/media/media_asset.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/sse_service.dart';
 import '../../core/utils/safe_url_launcher.dart';
@@ -21,6 +22,9 @@ import 'widgets/detail/detail_sections.dart';
 import 'widgets/detail/gallery/gallery_navigation.dart';
 import 'widgets/dialogs/edit_content_dialog.dart';
 import 'widgets/list/collection_card_preview.dart';
+import '../events/models/knowledge_event.dart';
+import '../events/widgets/add_to_event_dialog.dart';
+import '../events/widgets/content_event_links.dart';
 
 /// 内容详情页。
 ///
@@ -34,6 +38,8 @@ class ContentDetailPage extends ConsumerStatefulWidget {
     required this.contentId,
     this.initialColor,
     this.preview,
+    this.initialPlaybackSeconds,
+    this.initialMediaAssetId,
   });
 
   final int contentId;
@@ -43,6 +49,10 @@ class ContentDetailPage extends ConsumerStatefulWidget {
 
   /// 来源卡片快照，用于加载态立即显示已知信息。
   final ShareCard? preview;
+
+  /// 搜索时间点深链；只在显式秒数非负且目标媒体存在时生效。
+  final double? initialPlaybackSeconds;
+  final int? initialMediaAssetId;
 
   @override
   ConsumerState<ContentDetailPage> createState() => _ContentDetailPageState();
@@ -258,10 +268,6 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   }
 
   Widget _buildLoaded(ContentDetail detail) {
-    final dio = ref.watch(apiClientProvider);
-    final apiBaseUrl = dio.options.baseUrl;
-    final apiToken = dio.options.headers['X-API-Token']?.toString();
-
     return LayoutBuilder(
       builder: (context, constraints) {
         final metrics = WindowMetrics.fromSize(
@@ -269,28 +275,46 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         );
         final images = ContentParser.extractAllImages(
           detail,
-          apiBaseUrl,
           includeAvatarFallback: detail.template == ContentTemplate.profile,
         );
         final imageFallbacks = ContentParser.extractImageFallbacks(detail);
+        final imageAssets = {
+          for (final asset in ContentParser.extractImageAssets(detail))
+            asset.sources.first.url: asset,
+        };
 
         final templateContext = TemplateContext(
           detail: detail,
           metrics: metrics,
-          apiBaseUrl: apiBaseUrl,
-          apiToken: apiToken,
           headerKeys: _headerKeys,
           images: images,
           imageFallbacks: imageFallbacks,
-          onImageTap: (index) =>
-              _openGallery(images, imageFallbacks, index, detail.id),
-          onReParse: () => _reParse(detail.id),
+          imageAssets: imageAssets,
+          onImageTap: (index) => _openGallery(
+            images,
+            imageFallbacks,
+            imageAssets,
+            index,
+            detail.id,
+          ),
+          onReParse: () => _reParse(detail),
+          onResolveParseCandidate: (field, action, mergedValue) =>
+              _resolveParseCandidate(detail.id, field, action, mergedValue),
+          initialPlaybackPosition:
+              widget.initialPlaybackSeconds != null &&
+                  widget.initialPlaybackSeconds!.isFinite &&
+                  widget.initialPlaybackSeconds! >= 0
+              ? Duration(
+                  milliseconds: (widget.initialPlaybackSeconds! * 1000).round(),
+                )
+              : null,
+          initialMediaAssetId: widget.initialMediaAssetId,
         );
 
         return Scaffold(
           appBar: _buildAppBar(detail, metrics),
           body: SelectionArea(
-            child: metrics.supportsSupportingPane
+            child: metrics.supportsSupportingPane && detail.hasExternalOriginal
                 ? templateContext.usesImmersiveMediaLayout
                       ? _buildImmersiveMediaPane(templateContext)
                       : _buildTwoPane(templateContext)
@@ -313,15 +337,17 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       toolbarHeight: metrics.isShortLandscape ? 48 : null,
       title: const Text('内容详情'),
       actions: [
-        TextButton.icon(
-          onPressed: () => SafeUrlLauncher.openExternal(context, detail.url),
-          icon: const Icon(Icons.open_in_new_rounded, size: 18),
-          label: const Text('原文'),
-        ),
+        if (detail.hasExternalOriginal)
+          TextButton.icon(
+            onPressed: () => SafeUrlLauncher.openExternal(context, detail.url),
+            icon: const Icon(Icons.open_in_new_rounded, size: 18),
+            label: const Text('原文'),
+          ),
         _MoreMenu(
           detail: detail,
           onEdit: () => _edit(detail),
-          onReParse: () => _reParse(detail.id),
+          onAddToEvent: () => _addToEvent(detail),
+          onReParse: () => _reParse(detail),
           onDelete: () => _confirmDelete(detail),
           onChangeTemplate: () => _changeTemplate(detail),
         ),
@@ -333,43 +359,45 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   // --- 布局 ---
 
   Widget _buildSinglePane(TemplateContext ctx) {
-    return ListView(
-      key: const ValueKey('content-detail-primary-scroll'),
-      controller: _scrollController,
-      padding: EdgeInsets.all(
-        ctx.metrics.isCompact ? AppSpacing.md : AppSpacing.lg,
-      ),
-      children: [
-        _SharedDetailHeader(
-          detail: ctx.detail,
-          apiBaseUrl: ctx.apiBaseUrl,
-          apiToken: ctx.apiToken,
-          showSourceLine: true,
-        ),
-        _DetailContentReveal(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: AppSpacing.md),
-              ParseStatusBanner(
-                detail: ctx.detail,
-                onReParse: () => _reParse(ctx.detail.id),
-              ),
-              if (ctx.detail.isParseFailed || ctx.detail.isParsePending)
-                const SizedBox(height: AppSpacing.md),
-              _ConstrainBody(
-                template: ctx.detail.template,
-                child: ContentTemplateBody(context_: ctx),
-              ),
-              const SizedBox(height: AppSpacing.xl),
-              const Divider(height: 1),
-              const SizedBox(height: AppSpacing.lg),
-              ContentSupportingSections(detail: ctx.detail),
-              const SizedBox(height: AppSpacing.xxl),
-            ],
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
+        child: ListView(
+          key: const ValueKey('content-detail-primary-scroll'),
+          controller: _scrollController,
+          padding: EdgeInsets.all(
+            ctx.metrics.isCompact ? AppSpacing.md : AppSpacing.lg,
           ),
+          children: [
+            _SharedDetailHeader(detail: ctx.detail, showSourceLine: true),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: AppSpacing.md),
+                ParseStatusBanner(
+                  detail: ctx.detail,
+                  onReParse: () => _reParse(ctx.detail),
+                ),
+                if (ctx.detail.isParseFailed || ctx.detail.isParsePending)
+                  const SizedBox(height: AppSpacing.md),
+                _ConstrainBody(
+                  template: ctx.detail.template,
+                  child: ContentTemplateBody(context_: ctx),
+                ),
+                const SizedBox(height: AppSpacing.xl),
+                const Divider(height: 1),
+                const SizedBox(height: AppSpacing.lg),
+                ContentEventLinks(contentId: ctx.detail.id),
+                ContentSupportingSections(
+                  detail: ctx.detail,
+                  onResolveParseCandidate: ctx.onResolveParseCandidate,
+                ),
+                const SizedBox(height: AppSpacing.xxl),
+              ],
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -383,30 +411,23 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             controller: _scrollController,
             padding: const EdgeInsets.all(AppSpacing.xl),
             children: [
-              _SharedDetailHeader(
-                detail: ctx.detail,
-                apiBaseUrl: ctx.apiBaseUrl,
-                apiToken: ctx.apiToken,
-                showSourceLine: false,
-              ),
-              _DetailContentReveal(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+              _SharedDetailHeader(detail: ctx.detail, showSourceLine: false),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: AppSpacing.md),
+                  ParseStatusBanner(
+                    detail: ctx.detail,
+                    onReParse: () => _reParse(ctx.detail),
+                  ),
+                  if (ctx.detail.isParseFailed || ctx.detail.isParsePending)
                     const SizedBox(height: AppSpacing.md),
-                    ParseStatusBanner(
-                      detail: ctx.detail,
-                      onReParse: () => _reParse(ctx.detail.id),
-                    ),
-                    if (ctx.detail.isParseFailed || ctx.detail.isParsePending)
-                      const SizedBox(height: AppSpacing.md),
-                    _ConstrainBody(
-                      template: ctx.detail.template,
-                      child: ContentTemplateBody(context_: ctx),
-                    ),
-                    const SizedBox(height: AppSpacing.xxl),
-                  ],
-                ),
+                  _ConstrainBody(
+                    template: ctx.detail.template,
+                    child: ContentTemplateBody(context_: ctx),
+                  ),
+                  const SizedBox(height: AppSpacing.xxl),
+                ],
               ),
             ],
           ),
@@ -443,25 +464,23 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                   ),
                 ),
               Expanded(
-                child: _DetailContentReveal(
-                  child: ListView(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    children: [
-                      ContentIdentityPanel(
+                child: ListView(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  children: [
+                    ContentIdentityPanel(detail: ctx.detail),
+                    const SizedBox(height: AppSpacing.md),
+                    if (ctx.detail.template == ContentTemplate.article)
+                      ContentOutline(
                         detail: ctx.detail,
-                        apiBaseUrl: ctx.apiBaseUrl,
-                        apiToken: ctx.apiToken,
+                        activeHeader: _activeHeader,
+                        headerKeys: _headerKeys,
                       ),
-                      const SizedBox(height: AppSpacing.md),
-                      if (ctx.detail.template == ContentTemplate.article)
-                        ContentOutline(
-                          detail: ctx.detail,
-                          activeHeader: _activeHeader,
-                          headerKeys: _headerKeys,
-                        ),
-                      ContentSupportingSections(detail: ctx.detail),
-                    ],
-                  ),
+                    ContentEventLinks(contentId: ctx.detail.id),
+                    ContentSupportingSections(
+                      detail: ctx.detail,
+                      onResolveParseCandidate: ctx.onResolveParseCandidate,
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -492,10 +511,51 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
   // --- 动作。全部经由控制层。---
 
-  Future<void> _reParse(int contentId) async {
+  Future<void> _reParse(ContentDetail detail) async {
+    if (detail.manualEditFields.isNotEmpty) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('重新解析并保留人工修改？'),
+          content: Text(
+            detail.parseCandidate == null
+                ? '人工修改的字段不会被覆盖；有差异的新解析结果会出现在详情页供你比较。'
+                : '人工修改的字段不会被覆盖；本次结果会替换尚未处理的解析候选。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('继续解析'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
     final result = await ref
         .read(contentActionsProvider.notifier)
-        .reParse(contentId);
+        .reParse(detail.id);
+    _report(result);
+  }
+
+  Future<void> _resolveParseCandidate(
+    int contentId,
+    String field,
+    String action,
+    String? mergedValue,
+  ) async {
+    final result = await ref
+        .read(contentActionsProvider.notifier)
+        .resolveParseCandidate(
+          contentId,
+          field: field,
+          action: action,
+          mergedValue: mergedValue,
+        );
     _report(result);
   }
 
@@ -508,6 +568,25 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       Toast.show(context, '内容已更新');
       ref.invalidate(contentDetailProvider(detail.id));
     }
+  }
+
+  Future<void> _addToEvent(ContentDetail detail) async {
+    final event = await showDialog<KnowledgeEventDetail>(
+      context: context,
+      builder: (_) => AddToEventDialog(
+        contentId: detail.id,
+        suggestedTitle: _displayDetailTitle(detail),
+      ),
+    );
+    if (event == null || !mounted) return;
+    Toast.show(
+      context,
+      '已加入事件',
+      action: SnackBarAction(
+        label: '查看',
+        onPressed: () => context.push('/events/${event.id}'),
+      ),
+    );
   }
 
   Future<void> _changeTemplate(ContentDetail detail) async {
@@ -579,18 +658,17 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   void _openGallery(
     List<String> images,
     Map<String, List<String>> imageFallbacks,
+    Map<String, MediaAsset> imageAssets,
     int index,
     int contentId,
   ) {
     if (images.isEmpty) return;
-    final dio = ref.read(apiClientProvider);
     pushFullScreenGallery(
       context: context,
       images: images,
       fallbackUrlsByImage: imageFallbacks,
+      mediaAssetsByImage: imageAssets,
       initialIndex: index,
-      apiBaseUrl: dio.options.baseUrl,
-      apiToken: dio.options.headers['X-API-Token']?.toString(),
       contentId: contentId,
     );
   }
@@ -848,7 +926,7 @@ class _SkeletonPulseState extends State<_SkeletonPulse>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1100),
+    duration: AppMotion.skeletonPulse,
   );
 
   @override
@@ -872,79 +950,20 @@ class _SkeletonPulseState extends State<_SkeletonPulse>
   @override
   Widget build(BuildContext context) {
     return FadeTransition(
-      opacity: Tween<double>(
-        begin: 0.58,
-        end: 0.9,
-      ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)),
+      opacity: Tween<double>(begin: 0.58, end: 0.9).animate(
+        CurvedAnimation(parent: _controller, curve: AppMotion.ambientCurve),
+      ),
       child: widget.child,
     );
   }
 }
 
 /// 真实内容在骨架之后轻微上移并渐入，不参与共享容器飞行。
-class _DetailContentReveal extends StatefulWidget {
-  const _DetailContentReveal({required this.child});
-
-  final Widget child;
-
-  @override
-  State<_DetailContentReveal> createState() => _DetailContentRevealState();
-}
-
-class _DetailContentRevealState extends State<_DetailContentReveal>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: AppMotion.contentSwap,
-  );
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _controller.value = 1;
-    } else if (_controller.value == 0) {
-      _controller.forward();
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final curved = CurvedAnimation(
-      parent: _controller,
-      curve: AppMotion.standardCurve,
-    );
-    return FadeTransition(
-      opacity: curved,
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0, 0.018),
-          end: Offset.zero,
-        ).animate(curved),
-        child: widget.child,
-      ),
-    );
-  }
-}
-
 /// 详情头：来源、标题、模板标识。
 class _Header extends StatelessWidget {
-  const _Header({
-    required this.detail,
-    required this.apiBaseUrl,
-    required this.apiToken,
-    required this.showSourceLine,
-  });
+  const _Header({required this.detail, required this.showSourceLine});
 
   final ContentDetail detail;
-  final String apiBaseUrl;
-  final String? apiToken;
   final bool showSourceLine;
 
   @override
@@ -981,7 +1000,8 @@ class _Header extends StatelessWidget {
           runSpacing: AppSpacing.xxs,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            PlatformBadge(platform: detail.platform),
+            if (detail.hasExternalOriginal)
+              PlatformBadge(platform: detail.platform),
             _ContentKindBadge(label: _contentKindLabel(detail)),
           ],
         ),
@@ -999,8 +1019,6 @@ class _Header extends StatelessWidget {
           const SizedBox(height: AppSpacing.md),
           ContentSourceLine(
             detail: detail,
-            apiBaseUrl: apiBaseUrl,
-            apiToken: apiToken,
             showPlatform: false,
             showOriginalAction: false,
           ),
@@ -1102,14 +1120,10 @@ class _QuestionStat extends StatelessWidget {
 class _SharedDetailHeader extends StatelessWidget {
   const _SharedDetailHeader({
     required this.detail,
-    required this.apiBaseUrl,
-    required this.apiToken,
     required this.showSourceLine,
   });
 
   final ContentDetail detail;
-  final String apiBaseUrl;
-  final String? apiToken;
   final bool showSourceLine;
 
   @override
@@ -1123,12 +1137,7 @@ class _SharedDetailHeader extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.md),
-          child: _Header(
-            detail: detail,
-            apiBaseUrl: apiBaseUrl,
-            apiToken: apiToken,
-            showSourceLine: showSourceLine,
-          ),
+          child: _Header(detail: detail, showSourceLine: showSourceLine),
         ),
       ),
     );
@@ -1239,6 +1248,7 @@ class _MoreMenu extends StatelessWidget {
   const _MoreMenu({
     required this.detail,
     required this.onEdit,
+    required this.onAddToEvent,
     required this.onReParse,
     required this.onDelete,
     required this.onChangeTemplate,
@@ -1246,6 +1256,7 @@ class _MoreMenu extends StatelessWidget {
 
   final ContentDetail detail;
   final VoidCallback onEdit;
+  final VoidCallback onAddToEvent;
   final VoidCallback onReParse;
   final VoidCallback onDelete;
   final VoidCallback onChangeTemplate;
@@ -1260,6 +1271,8 @@ class _MoreMenu extends StatelessWidget {
         switch (value) {
           case 'edit':
             onEdit();
+          case 'event':
+            onAddToEvent();
           case 'reparse':
             onReParse();
           case 'template':
@@ -1276,6 +1289,15 @@ class _MoreMenu extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.edit_outlined),
             title: Text('编辑内容'),
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'event',
+          child: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.hub_outlined),
+            title: Text('加入事件'),
           ),
         ),
         PopupMenuItem(

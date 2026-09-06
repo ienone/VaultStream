@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:markdown/markdown.dart' as md;
+
 import '../../../../../core/utils/toast.dart';
+import '../../../../../theme/design_tokens.dart';
 
 class HeaderBuilder extends MarkdownElementBuilder {
   final Map<String, GlobalKey> keys;
@@ -45,7 +47,6 @@ class CodeElementBuilder extends MarkdownElementBuilder {
       }
     }
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final appTheme = Theme.of(context);
     final textContent = element.textContent.trim();
     final isMultiLine = element.textContent.contains('\n');
@@ -57,15 +58,13 @@ class CodeElementBuilder extends MarkdownElementBuilder {
       final latex = Uri.decodeComponent(encoded);
       return Math.tex(
         latex,
-        textStyle: preferredStyle?.copyWith(
-          fontSize: 16,
+        textStyle: (preferredStyle ?? appTheme.textTheme.bodyLarge)?.copyWith(
           color: appTheme.colorScheme.onSurface,
         ),
         onErrorFallback: (err) => Text(
           '\$$latex\$',
-          style: preferredStyle?.copyWith(
+          style: (preferredStyle ?? appTheme.textTheme.bodyMedium)?.copyWith(
             color: appTheme.colorScheme.error,
-            fontSize: 14,
           ),
         ),
       );
@@ -80,7 +79,7 @@ class CodeElementBuilder extends MarkdownElementBuilder {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: appTheme.colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppShape.cardBorder,
           border: Border.all(
             color: appTheme.colorScheme.outlineVariant.withValues(alpha: 0.3),
           ),
@@ -89,10 +88,8 @@ class CodeElementBuilder extends MarkdownElementBuilder {
           scrollDirection: Axis.horizontal,
           child: Math.tex(
             textContent,
-            textStyle: preferredStyle?.copyWith(
-              fontSize: 20,
-              color: appTheme.colorScheme.onSurface,
-            ),
+            textStyle: (preferredStyle ?? appTheme.textTheme.titleMedium)
+                ?.copyWith(color: appTheme.colorScheme.onSurface),
             onErrorFallback: (err) => Text(
               textContent,
               style: preferredStyle?.copyWith(
@@ -111,21 +108,14 @@ class CodeElementBuilder extends MarkdownElementBuilder {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
-          color: isDark
-              ? appTheme.colorScheme.surfaceContainerHighest
-              : appTheme.colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(6),
+          color: appTheme.colorScheme.surfaceContainerHigh,
+          borderRadius: AppShape.cardMediaBorder,
         ),
         child: Text(
           textContent,
           style: GoogleFonts.firaCode(
-            textStyle: TextStyle(
-              fontSize: 13,
-              color: isDark
-                  ? appTheme
-                        .colorScheme
-                        .tertiary // 暗色模式用 tertiary（通常是高对比度色）
-                  : appTheme.colorScheme.primary,
+            textStyle: appTheme.textTheme.bodySmall?.copyWith(
+              color: appTheme.colorScheme.primary,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -135,18 +125,14 @@ class CodeElementBuilder extends MarkdownElementBuilder {
 
     // Block code - 使用 ClipRRect 确保内容不溢出
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: AppShape.cardBorder,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 16),
         width: double.infinity,
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF9F9F9),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.1)
-                : Colors.black.withValues(alpha: 0.05),
-          ),
+          color: appTheme.colorScheme.surfaceContainerLow,
+          borderRadius: AppShape.cardBorder,
+          border: Border.all(color: appTheme.colorScheme.outlineVariant),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -155,9 +141,7 @@ class CodeElementBuilder extends MarkdownElementBuilder {
             Container(
               padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
               decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.03)
-                    : Colors.black.withValues(alpha: 0.02),
+                color: appTheme.colorScheme.surfaceContainer,
               ),
               child: Row(
                 children: [
@@ -172,8 +156,6 @@ class CodeElementBuilder extends MarkdownElementBuilder {
                       language.toUpperCase(),
                       style: appTheme.textTheme.labelSmall?.copyWith(
                         fontWeight: FontWeight.w900,
-                        letterSpacing: 1.0,
-                        fontSize: 10,
                         color: appTheme.colorScheme.onSurfaceVariant.withValues(
                           alpha: 0.7,
                         ),
@@ -193,7 +175,7 @@ class CodeElementBuilder extends MarkdownElementBuilder {
                           icon: Icons.check_circle_outline_rounded,
                         );
                       },
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: AppShape.cardMediaBorder,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
@@ -209,8 +191,7 @@ class CodeElementBuilder extends MarkdownElementBuilder {
                             const SizedBox(width: 4),
                             Text(
                               '复制',
-                              style: TextStyle(
-                                fontSize: 11,
+                              style: appTheme.textTheme.labelSmall?.copyWith(
                                 fontWeight: FontWeight.bold,
                                 color: appTheme.colorScheme.primary,
                               ),
@@ -230,12 +211,9 @@ class CodeElementBuilder extends MarkdownElementBuilder {
                 child: Text(
                   element.textContent.trim(),
                   style: GoogleFonts.firaCode(
-                    textStyle: TextStyle(
-                      fontSize: 13,
+                    textStyle: appTheme.textTheme.bodyMedium?.copyWith(
                       height: 1.6,
-                      color: isDark
-                          ? const Color(0xFFE0E0E0)
-                          : const Color(0xFF2D2D2D),
+                      color: appTheme.colorScheme.onSurface,
                     ),
                   ),
                 ),

@@ -15,13 +15,19 @@ class CollectionSkeleton extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final isCompact = ResponsiveLayout.widthClassFor(width).isCompact;
+        final isCompact =
+            ResponsiveLayout.widthClassFor(width).isCompact ||
+            WindowMetrics.of(context).isShortLandscape;
         final gutter = isCompact ? AppSpacing.xs : AppSpacing.sm;
         final horizontalPadding = isCompact ? AppSpacing.sm : AppSpacing.md;
-        final columns = ResponsiveLayout.contentGridColumns(width);
+        final columns = isCompact
+            ? 1
+            : ResponsiveLayout.contentGridColumns(width);
         final itemWidth =
             (width - horizontalPadding * 2 - gutter * (columns - 1)) / columns;
-        final itemHeight = itemWidth * 9 / 16 + (itemWidth < 200 ? 112 : 140);
+        final itemHeight = isCompact
+            ? 116.0
+            : itemWidth * 9 / 16 + (itemWidth < 200 ? 112 : 140);
 
         return GridView.builder(
           padding: EdgeInsets.fromLTRB(
@@ -56,7 +62,7 @@ class _SkeletonCardState extends State<_SkeletonCard>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1200),
+    duration: AppMotion.skeletonPulse,
   )..repeat(reverse: true);
 
   @override
@@ -79,7 +85,9 @@ class _SkeletonCardState extends State<_SkeletonCard>
     if (MediaQuery.disableAnimationsOf(context)) return card;
 
     return FadeTransition(
-      opacity: Tween<double>(begin: 0.4, end: 0.75).animate(_controller),
+      opacity: Tween<double>(begin: 0.4, end: 0.75).animate(
+        CurvedAnimation(parent: _controller, curve: AppMotion.ambientCurve),
+      ),
       child: card,
     );
   }

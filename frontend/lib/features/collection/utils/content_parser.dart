@@ -4,77 +4,65 @@ import '../../../core/utils/media_utils.dart' as media_utils;
 import '../../../core/constants/platform_constants.dart';
 import '../models/content.dart';
 import '../models/header_line.dart';
-import '../models/media_asset.dart';
+import '../../../core/media/media_asset.dart';
 
 class ContentParser {
   static List<String> extractAllImages(
-    ContentDetail detail,
-    String apiBaseUrl, {
+    ContentDetail detail, {
     bool includeAvatarFallback = false,
   }) {
-    final list = <String>{};
-
-    final archivedImages =
-        detail.mediaAssets
-            .where(
-              (asset) =>
-                  asset.mediaType == MediaType.image &&
-                  asset.role != MediaRole.avatar &&
-                  asset.sources.isNotEmpty,
-            )
-            .toList()
-          ..sort((a, b) {
-            final roleOrder = {
-              MediaRole.cover: 0,
-              MediaRole.poster: 1,
-              MediaRole.body: 2,
-              MediaRole.gallery: 3,
-              MediaRole.attachment: 4,
-              MediaRole.avatar: 5,
-            };
-            final byRole = roleOrder[a.role]!.compareTo(roleOrder[b.role]!);
-            return byRole != 0 ? byRole : a.position.compareTo(b.position);
-          });
+    final archivedImages = extractImageAssets(detail);
     if (archivedImages.isNotEmpty) {
       return archivedImages
           .map((asset) => asset.sources.first.url)
           .toSet()
           .toList(growable: false);
     }
+    if (!includeAvatarFallback) return const [];
+    final avatar = detail.mediaAssets.firstFor(
+      role: MediaRole.avatar,
+      type: MediaType.image,
+    );
+    final source = avatar?.sources.firstOrNull;
+    return source == null ? const [] : [source.url];
+  }
 
-    // 获取作者头像以便过滤
-    final authorAvatar = detail.authorAvatarUrl;
+  static List<MediaAsset> extractImageAssets(ContentDetail detail) {
+    final assets = detail.mediaAssets
+        .where(
+          (asset) =>
+              asset.mediaType == MediaType.image &&
+              asset.role != MediaRole.avatar &&
+              asset.sources.isNotEmpty,
+        )
+        .toList();
+    const roleOrder = {
+      MediaRole.cover: 0,
+      MediaRole.poster: 1,
+      MediaRole.body: 2,
+      MediaRole.gallery: 3,
+      MediaRole.attachment: 4,
+      MediaRole.avatar: 5,
+    };
+    assets.sort((a, b) {
+      final byRole = roleOrder[a.role]!.compareTo(roleOrder[b.role]!);
+      return byRole != 0 ? byRole : a.position.compareTo(b.position);
+    });
+    return assets;
+  }
 
-    // 1. 优先添加封面图 (如果不是视频)
-    if (detail.coverUrl != null &&
-        detail.coverUrl!.isNotEmpty &&
-        !media_utils.isVideo(detail.coverUrl!)) {
-      final url = detail.coverUrl!;
-      // 过滤头像
-      if (authorAvatar == null || !url.contains(authorAvatar)) {
-        list.add(media_utils.mapUrl(url, apiBaseUrl));
+  static MediaAsset? imageAssetForUrl(ContentDetail detail, String rawUrl) {
+    final asset = mediaAssetForUrl(detail, rawUrl);
+    return asset?.mediaType == MediaType.image ? asset : null;
+  }
+
+  static MediaAsset? mediaAssetForUrl(ContentDetail detail, String rawUrl) {
+    for (final asset in detail.mediaAssets) {
+      if (asset.sources.any((source) => source.url == rawUrl)) {
+        return asset;
       }
     }
-
-    // 2. 添加媒体列表中的图片
-    if (detail.mediaUrls.isNotEmpty) {
-      for (var item in detail.mediaUrls) {
-        final String url = item.toString();
-        if (url.isEmpty || media_utils.isVideo(url)) continue;
-
-        // 过滤头像
-        if (authorAvatar != null && url.contains(authorAvatar)) continue;
-
-        list.add(media_utils.mapUrl(url, apiBaseUrl));
-      }
-    }
-
-    // 无图时使用头像补充
-    if (list.isEmpty && includeAvatarFallback && authorAvatar != null) {
-      list.add(media_utils.mapUrl(authorAvatar, apiBaseUrl));
-    }
-
-    return list.toList();
+    return null;
   }
 
   /// 以每项首选 URL 为键，保留后端给出的后续候选顺序。
@@ -95,25 +83,19 @@ class ContentParser {
   static List<String> imageCandidatesForUrl(
     ContentDetail detail,
     String rawUrl,
-    String apiBaseUrl,
   ) {
-    final mappedUrl = media_utils.mapUrl(rawUrl, apiBaseUrl);
     for (final asset in detail.mediaAssets) {
       if (asset.mediaType != MediaType.image || asset.sources.isEmpty) continue;
-      if (asset.sources.any(
-        (source) => source.url == rawUrl || source.url == mappedUrl,
-      )) {
+      if (asset.sources.any((source) => source.url == rawUrl)) {
         return asset.sources
             .map((source) => source.url)
             .toList(growable: false);
       }
     }
-    return mappedUrl.isEmpty ? const [] : [mappedUrl];
+    return const [];
   }
 
-  static List<String> extractAllMedia(ContentDetail detail, String apiBaseUrl) {
-    final list = <String>{};
-
+  static List<String> extractAllMedia(ContentDetail detail) {
     final archivedMedia = detail.mediaAssets.where(
       (asset) =>
           asset.role != MediaRole.avatar &&
@@ -121,32 +103,10 @@ class ContentParser {
           asset.role != MediaRole.poster &&
           asset.sources.isNotEmpty,
     );
-    if (archivedMedia.isNotEmpty) {
-      return archivedMedia
-          .map((asset) => asset.sources.first.url)
-          .toSet()
-          .toList(growable: false);
-    }
-
-    // 获取作者头像 URL 和封面图，用于排除
-    final authorAvatar = detail.authorAvatarUrl;
-    final coverUrl = detail.coverUrl;
-
-    if (detail.mediaUrls.isNotEmpty) {
-      for (var item in detail.mediaUrls) {
-        final String url = item.toString();
-        if (url.isEmpty) continue;
-
-        // 如果该媒体是作者头像，则跳过
-        if (authorAvatar != null && url.contains(authorAvatar)) continue;
-
-        // 如果该媒体明细是封面图，则跳过（避免在 Grid/Gallery 中重复显示）
-        if (coverUrl != null && url.contains(coverUrl)) continue;
-
-        list.add(media_utils.mapUrl(url, apiBaseUrl));
-      }
-    }
-    return list.toList();
+    return archivedMedia
+        .map((asset) => asset.sources.first.url)
+        .toSet()
+        .toList(growable: false);
   }
 
   static bool hasMarkdown(ContentDetail detail) {
@@ -165,8 +125,7 @@ class ContentParser {
     final lt = detail.layoutType ?? 'article';
     if (lt == 'gallery' || lt == 'video') return lt;
     // Infer gallery when there are media attachments but no text body
-    if ((detail.mediaAssets.isNotEmpty || detail.mediaUrls.isNotEmpty) &&
-        getMarkdownContent(detail).isEmpty) {
+    if (detail.mediaAssets.isNotEmpty && getMarkdownContent(detail).isEmpty) {
       return 'gallery';
     }
     return lt;
@@ -220,27 +179,6 @@ class ContentParser {
       default:
         return Icon(Icons.link, size: size);
     }
-  }
-
-  /// 获取卡片显示的封面图 URL
-  /// 后端已返回优化后的coverUrl，直接使用即可
-  static String getDisplayImageUrl(ShareCard content, String apiBaseUrl) {
-    String url = '';
-    // 封面优先
-    if (content.coverUrl != null &&
-        content.coverUrl!.isNotEmpty &&
-        !media_utils.isVideo(content.coverUrl!)) {
-      url = content.coverUrl!;
-    }
-
-    // 无封面时，使用作者头像
-    if (url.isEmpty &&
-        content.authorAvatarUrl != null &&
-        content.authorAvatarUrl!.isNotEmpty) {
-      url = content.authorAvatarUrl!;
-    }
-
-    return url.isEmpty ? '' : media_utils.mapUrl(url, apiBaseUrl);
   }
 
   /// 格式化数字显示

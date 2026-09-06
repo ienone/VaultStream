@@ -8,8 +8,7 @@ import 'content_card.dart';
 
 /// 收藏库内容网格。
 ///
-/// 使用等节奏的自适应网格而不是瀑布流：混合内容需要稳定的阅读顺序
-/// 和视觉基线，瀑布流会让高度不断变化并导致重复布局测量。
+/// 手机使用自然高度列表，宽屏按行组织卡片；无封面不制造媒体占位。
 /// 列数依据组件自身可用宽度（见 [ResponsiveLayout.contentGridColumns]），
 /// 因此存在导航栏或侧栏时仍然正确。
 class CollectionGrid extends StatelessWidget {
@@ -44,18 +43,16 @@ class CollectionGrid extends StatelessWidget {
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final widthClass = ResponsiveLayout.widthClassFor(width);
-        final isCompact = widthClass.isCompact;
+        final isCompact =
+            widthClass.isCompact || WindowMetrics.of(context).isShortLandscape;
 
         // 极窄屏收紧间距并弱化卡片边界；宽屏恢复正常呼吸感。
         final gutter = isCompact ? AppSpacing.xs : AppSpacing.sm;
         final horizontalPadding = isCompact ? AppSpacing.sm : AppSpacing.md;
 
-        final columns = ResponsiveLayout.contentGridColumns(width);
-        final itemWidth =
-            (width - horizontalPadding * 2 - gutter * (columns - 1)) / columns;
-        final isTiny = itemWidth < 200;
-        // 媒体区 16:9，文本区高度固定，保证每行基线一致。
-        final itemHeight = itemWidth * 9 / 16 + (isTiny ? 112 : 140);
+        final columns = isCompact
+            ? 1
+            : ResponsiveLayout.contentGridColumns(width);
 
         return RefreshIndicator(
           onRefresh: onRefresh,
@@ -74,32 +71,40 @@ class CollectionGrid extends StatelessWidget {
                     horizontalPadding,
                     AppSpacing.xs,
                     horizontalPadding,
-                    AppSpacing.md,
+                    isSelectionMode ? 96 : AppSpacing.md,
                   ),
-                  sliver: SliverGrid.builder(
-                    gridDelegate:
-                        SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: columns,
-                          mainAxisSpacing: gutter,
-                          crossAxisSpacing: gutter,
-                          mainAxisExtent: itemHeight,
+                  sliver: isCompact
+                      ? SliverList.separated(
+                          itemCount: items.length,
+                          separatorBuilder: (_, _) => const Divider(height: 1),
+                          itemBuilder: (context, index) =>
+                              _buildCard(context, items[index], true),
+                        )
+                      : SliverList.separated(
+                          itemCount: (items.length / columns).ceil(),
+                          separatorBuilder: (_, _) => SizedBox(height: gutter),
+                          itemBuilder: (context, row) => Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              for (
+                                var column = 0;
+                                column < columns;
+                                column++
+                              ) ...[
+                                if (column > 0) SizedBox(width: gutter),
+                                Expanded(
+                                  child: row * columns + column < items.length
+                                      ? _buildCard(
+                                          context,
+                                          items[row * columns + column],
+                                          false,
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
-                    itemCount: items.length,
-                    itemBuilder: (context, index) {
-                      final item = items[index];
-                      return ContentCard(
-                        content: item,
-                        isSelectionMode: isSelectionMode,
-                        isSelected: selectedIds.contains(item.id),
-                        onLongPress: onLongPress == null
-                            ? null
-                            : () => onLongPress!(item.id),
-                        onTap: isSelectionMode
-                            ? () => onToggleSelection?.call(item.id)
-                            : () => _openDetail(context, item),
-                      );
-                    },
-                  ),
                 ),
               if (isLoadingMore)
                 const SliverToBoxAdapter(
@@ -108,8 +113,6 @@ class CollectionGrid extends StatelessWidget {
                     child: Center(child: CircularProgressIndicator()),
                   ),
                 ),
-              // 为 FAB 与底部导航留出安全距离。
-              const SliverToBoxAdapter(child: SizedBox(height: 96)),
             ],
           ),
         );
@@ -117,11 +120,22 @@ class CollectionGrid extends StatelessWidget {
     );
   }
 
+  Widget _buildCard(BuildContext context, ShareCard item, bool isList) =>
+      ContentCard(
+        key: ValueKey(item.id),
+        content: item,
+        isList: isList,
+        isSelectionMode: isSelectionMode,
+        isSelected: selectedIds.contains(item.id),
+        onLongPress: onLongPress == null ? null : () => onLongPress!(item.id),
+        onTap: isSelectionMode
+            ? () => onToggleSelection?.call(item.id)
+            : () => _openDetail(context, item),
+      );
+
   void _openDetail(BuildContext context, ShareCard item) {
     final color = item.coverColor;
-    final query = color == null
-        ? ''
-        : '?color=${Uri.encodeComponent(color)}';
+    final query = color == null ? '' : '?color=${Uri.encodeComponent(color)}';
     context.push('/collection/${item.id}$query', extra: item);
   }
 }
@@ -143,7 +157,7 @@ class _DefaultEmptyState extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           Text(
-            '这里空空如也',
+            '没有内容',
             style: theme.textTheme.titleMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),

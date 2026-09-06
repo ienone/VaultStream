@@ -17,6 +17,7 @@ class ContentCard extends StatefulWidget {
     this.onLongPress,
     this.isSelectionMode = false,
     this.isSelected = false,
+    this.isList = false,
   });
 
   final ShareCard content;
@@ -24,6 +25,7 @@ class ContentCard extends StatefulWidget {
   final VoidCallback? onLongPress;
   final bool isSelectionMode;
   final bool isSelected;
+  final bool isList;
 
   @override
   State<ContentCard> createState() => _ContentCardState();
@@ -61,10 +63,14 @@ class _ContentCardState extends State<ContentCard> {
         onLongPress: widget.onLongPress,
         child: Stack(
           children: [
-            CollectionCardPreview(
-              content: widget.content,
-              onTap: widget.onTap == null ? null : _handleTap,
-              isHovered: effectiveHover,
+            Padding(
+              padding: EdgeInsets.only(right: widget.isSelectionMode ? 40 : 0),
+              child: CollectionCardPreview(
+                content: widget.content,
+                onTap: widget.onTap == null ? null : _handleTap,
+                isHovered: effectiveHover,
+                isList: widget.isList,
+              ),
             ),
             if (widget.isSelectionMode)
               Positioned(

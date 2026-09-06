@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../../core/media/media_asset.dart';
 import '../../../../../theme/design_tokens.dart';
 import 'full_screen_gallery.dart';
 
@@ -7,9 +8,8 @@ Future<void> pushFullScreenGallery({
   required BuildContext context,
   required List<String> images,
   Map<String, List<String>> fallbackUrlsByImage = const {},
+  Map<String, MediaAsset> mediaAssetsByImage = const {},
   required int initialIndex,
-  required String apiBaseUrl,
-  String? apiToken,
   required int contentId,
   Color? contentColor,
   String? customHeroTag,
@@ -25,9 +25,8 @@ Future<void> pushFullScreenGallery({
           FullScreenGallery(
             images: images,
             fallbackUrlsByImage: fallbackUrlsByImage,
+            mediaAssetsByImage: mediaAssetsByImage,
             initialIndex: initialIndex,
-            apiBaseUrl: apiBaseUrl,
-            apiToken: apiToken,
             contentId: contentId,
             contentColor: contentColor,
             customHeroTag: customHeroTag,

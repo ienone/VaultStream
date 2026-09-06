@@ -1,25 +1,25 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/utils/safe_url_launcher.dart';
-import 'package:frontend/core/network/api_client.dart';
-import 'package:frontend/core/network/image_headers.dart';
-import 'package:frontend/core/utils/media_utils.dart' as media_utils;
+import 'package:frontend/core/media/media_asset.dart';
 import 'package:frontend/core/widgets/network_thumbnail.dart';
+import 'package:frontend/theme/design_tokens.dart';
 import '../../models/content.dart';
+import '../../utils/content_parser.dart';
 
-class PayloadBlockRenderer extends ConsumerWidget {
+class PayloadBlockRenderer extends StatelessWidget {
   final ContentDetail content;
 
   const PayloadBlockRenderer({super.key, required this.content});
 
+  List<String> _imageCandidates(String? rawUrl) {
+    if (rawUrl == null || rawUrl.trim().isEmpty) return const [];
+    return ContentParser.imageCandidatesForUrl(content, rawUrl);
+  }
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final payload = content.richPayload;
     if (payload == null) return const SizedBox.shrink();
-
-    final dio = ref.read(apiClientProvider);
-    final apiBaseUrl = dio.options.baseUrl;
-    final apiToken = dio.options.headers['X-API-Token']?.toString();
 
     final List<Widget> children = [];
 
@@ -27,9 +27,7 @@ class PayloadBlockRenderer extends ConsumerWidget {
     final quotedRaw = payload['quoted_content'];
     if (quotedRaw is Map) {
       final quoteMap = Map<String, dynamic>.from(quotedRaw);
-      children.add(
-        _buildQuotedContent(context, quoteMap, apiBaseUrl, apiToken),
-      );
+      children.add(_buildQuotedContent(context, quoteMap));
     }
 
     // 2. 渲染动态 Blocks (Zhihu Top Answers 等)
@@ -43,7 +41,7 @@ class PayloadBlockRenderer extends ConsumerWidget {
         final data = dataRaw is Map ? Map<String, dynamic>.from(dataRaw) : null;
 
         if (type == 'sub_item' && data != null) {
-          children.add(_buildSubItem(context, data, apiBaseUrl, apiToken));
+          children.add(_buildSubItem(context, data));
         }
       }
     }
@@ -56,27 +54,21 @@ class PayloadBlockRenderer extends ConsumerWidget {
     );
   }
 
-  Widget _buildQuotedContent(
-    BuildContext context,
-    Map<String, dynamic> quote,
-    String apiBaseUrl,
-    String? apiToken,
-  ) {
+  Widget _buildQuotedContent(BuildContext context, Map<String, dynamic> quote) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final quoteUrl = quote['url']?.toString();
     final author = quote['author']?.toString();
     final text = quote['text']?.toString() ?? '';
     final thumbnail = quote['thumbnail']?.toString();
-    final mappedThumbnail = (thumbnail != null && thumbnail.isNotEmpty)
-        ? media_utils.mapUrl(thumbnail, apiBaseUrl)
-        : null;
+    final thumbnailCandidates = _imageCandidates(thumbnail);
+    final mappedThumbnail = thumbnailCandidates.firstOrNull;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppShape.cardMediaBorder,
         border: Border(left: BorderSide(color: colorScheme.primary, width: 4)),
       ),
       child: Material(
@@ -87,7 +79,7 @@ class PayloadBlockRenderer extends ConsumerWidget {
               SafeUrlLauncher.openExternal(context, quoteUrl);
             }
           },
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppShape.cardMediaBorder,
           child: Padding(
             padding: const EdgeInsets.all(12.0),
             child: Row(
@@ -120,14 +112,17 @@ class PayloadBlockRenderer extends ConsumerWidget {
                   const SizedBox(width: 12),
                   NetworkThumbnail(
                     imageUrl: mappedThumbnail,
+                    mediaAsset: ContentParser.imageAssetForUrl(
+                      content,
+                      thumbnail!,
+                    ),
+                    purpose: MediaPurpose.detail,
+                    fallbackUrls: thumbnailCandidates
+                        .skip(1)
+                        .toList(growable: false),
                     width: 60,
                     height: 60,
-                    borderRadius: BorderRadius.circular(6),
-                    httpHeaders: buildImageHeaders(
-                      imageUrl: mappedThumbnail,
-                      baseUrl: apiBaseUrl,
-                      apiToken: apiToken,
-                    ),
+                    borderRadius: AppShape.cardMediaBorder,
                   ),
                 ],
               ],
@@ -138,12 +133,7 @@ class PayloadBlockRenderer extends ConsumerWidget {
     );
   }
 
-  Widget _buildSubItem(
-    BuildContext context,
-    Map<String, dynamic> data,
-    String apiBaseUrl,
-    String? apiToken,
-  ) {
+  Widget _buildSubItem(BuildContext context, Map<String, dynamic> data) {
     final title = data['title'] as String?;
     final authorName = data['author_name'] as String?;
     final authorAvatarUrl = data['author_avatar_url'] as String?;
@@ -160,20 +150,16 @@ class PayloadBlockRenderer extends ConsumerWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    // Helper to map URLs
-    String? mapUrl(String? url, String apiBaseUrl) {
-      if (url == null || url.trim().isEmpty) return null;
-      return media_utils.mapUrl(url, apiBaseUrl);
-    }
-
-    final mappedAvatarUrl = mapUrl(authorAvatarUrl, apiBaseUrl);
-    final mappedCoverUrl = mapUrl(coverUrl, apiBaseUrl);
+    final avatarCandidates = _imageCandidates(authorAvatarUrl);
+    final coverCandidates = _imageCandidates(coverUrl);
+    final mappedAvatarUrl = avatarCandidates.firstOrNull;
+    final mappedCoverUrl = coverCandidates.firstOrNull;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppShape.cardBorder,
         side: BorderSide(
           color: colorScheme.outlineVariant.withValues(alpha: 0.3),
         ),
@@ -184,7 +170,7 @@ class PayloadBlockRenderer extends ConsumerWidget {
                 await SafeUrlLauncher.openExternal(context, url);
               }
             : null,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppShape.cardBorder,
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
@@ -200,13 +186,16 @@ class PayloadBlockRenderer extends ConsumerWidget {
                         ClipOval(
                           child: NetworkThumbnail(
                             imageUrl: mappedAvatarUrl,
+                            mediaAsset: ContentParser.imageAssetForUrl(
+                              content,
+                              authorAvatarUrl!,
+                            ),
+                            purpose: MediaPurpose.detail,
+                            fallbackUrls: avatarCandidates
+                                .skip(1)
+                                .toList(growable: false),
                             width: 24,
                             height: 24,
-                            httpHeaders: buildImageHeaders(
-                              imageUrl: mappedAvatarUrl,
-                              baseUrl: apiBaseUrl,
-                              apiToken: apiToken,
-                            ),
                             errorIcon: Icons.person_outline_rounded,
                           ),
                         )
@@ -218,8 +207,7 @@ class PayloadBlockRenderer extends ConsumerWidget {
                             (authorName?.isNotEmpty == true ? authorName! : '?')
                                 .substring(0, 1)
                                 .toUpperCase(),
-                            style: TextStyle(
-                              fontSize: 10,
+                            style: theme.textTheme.labelSmall?.copyWith(
                               color: colorScheme.primary,
                               fontWeight: FontWeight.bold,
                             ),
@@ -245,7 +233,7 @@ class PayloadBlockRenderer extends ConsumerWidget {
                           ),
                           decoration: BoxDecoration(
                             color: colorScheme.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(AppShape.pill),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -308,14 +296,17 @@ class PayloadBlockRenderer extends ConsumerWidget {
                   if (mappedCoverUrl != null)
                     NetworkThumbnail(
                       imageUrl: mappedCoverUrl,
+                      mediaAsset: ContentParser.imageAssetForUrl(
+                        content,
+                        coverUrl!,
+                      ),
+                      purpose: MediaPurpose.detail,
+                      fallbackUrls: coverCandidates
+                          .skip(1)
+                          .toList(growable: false),
                       width: 80,
                       height: 60,
-                      borderRadius: BorderRadius.circular(8),
-                      httpHeaders: buildImageHeaders(
-                        imageUrl: mappedCoverUrl,
-                        baseUrl: apiBaseUrl,
-                        apiToken: apiToken,
-                      ),
+                      borderRadius: AppShape.cardMediaBorder,
                     ),
                 ],
               ),

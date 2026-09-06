@@ -4,18 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/layout/responsive_layout.dart';
-import '../../../../core/network/image_headers.dart';
-import '../../../../core/utils/media_utils.dart' as media_utils;
 import '../../../../core/utils/safe_url_launcher.dart';
+import '../../../../core/media/media_manifest_client.dart';
+import '../../../../core/media/media_source_session.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/widgets/network_thumbnail.dart';
 import '../../../../core/widgets/platform_badge.dart';
 import '../../../../theme/design_tokens.dart';
 import '../../models/content.dart';
 import '../../models/content_template.dart';
 import '../../models/header_line.dart';
-import '../../models/media_asset.dart';
+import '../../../../core/media/media_asset.dart';
+import '../../../player/global_playback_controller.dart';
+import '../../../player/global_player_widgets.dart';
 import '../../utils/content_parser.dart';
-import '../common/video_player_widget.dart';
 import '../renderers/payload_block_renderer.dart';
 import 'components/media_grid.dart';
 import 'components/rich_content.dart';
@@ -28,33 +30,38 @@ class TemplateContext {
   const TemplateContext({
     required this.detail,
     required this.metrics,
-    required this.apiBaseUrl,
-    required this.apiToken,
     required this.headerKeys,
     required this.images,
     required this.imageFallbacks,
+    required this.imageAssets,
     required this.onImageTap,
     required this.onReParse,
+    this.onResolveParseCandidate,
+    this.initialPlaybackPosition,
+    this.initialMediaAssetId,
   });
 
   final ContentDetail detail;
   final WindowMetrics metrics;
-  final String apiBaseUrl;
-  final String? apiToken;
   final Map<String, GlobalKey> headerKeys;
 
   /// 已解析并映射为可访问 URL 的图片列表。
   final List<String> images;
   final Map<String, List<String>> imageFallbacks;
+  final Map<String, MediaAsset> imageAssets;
   final void Function(int index) onImageTap;
   final VoidCallback onReParse;
+  final Future<void> Function(String field, String action, String? mergedValue)?
+  onResolveParseCandidate;
+  final Duration? initialPlaybackPosition;
+  final int? initialMediaAssetId;
 
   bool get isCompact => metrics.isCompact;
 
   bool get usesImmersiveMediaLayout {
     if (isCompact) return false;
     final hasVisualMedia =
-        images.isNotEmpty || _playableMedia(this, audio: false).isNotEmpty;
+        images.isNotEmpty || _playableMedia(this, audio: false).urls.isNotEmpty;
     if (!hasVisualMedia) return false;
     return switch (detail.template) {
       ContentTemplate.imageNote ||
@@ -83,6 +90,7 @@ class ContentTemplateBody extends StatelessWidget {
       ContentTemplate.gallery => _GalleryBody(ctx: context_),
       ContentTemplate.video => _VideoBody(ctx: context_),
       ContentTemplate.audio => _AudioBody(ctx: context_),
+      ContentTemplate.document => _DocumentBody(ctx: context_),
       ContentTemplate.collectionIndex => _CollectionIndexBody(ctx: context_),
       ContentTemplate.profile => _ProfileBody(ctx: context_),
       ContentTemplate.bookmark => _BookmarkBody(ctx: context_),
@@ -153,7 +161,7 @@ class _ImmersiveMediaDetailState extends State<ImmersiveMediaDetail>
             key: const ValueKey('immersive-media-side-reveal'),
             opacity: CurvedAnimation(
               parent: _entryController,
-              curve: const Interval(0.48, 1, curve: Curves.easeOutCubic),
+              curve: const Interval(0.48, 1, curve: AppMotion.standardCurve),
             ),
             child: SlideTransition(
               position:
@@ -166,7 +174,7 @@ class _ImmersiveMediaDetailState extends State<ImmersiveMediaDetail>
                       curve: const Interval(
                         0.42,
                         1,
-                        curve: Curves.easeOutCubic,
+                        curve: AppMotion.standardCurve,
                       ),
                     ),
                   ),
@@ -194,8 +202,6 @@ class _ImmersiveMediaDetailState extends State<ImmersiveMediaDetail>
                                 const SizedBox(height: AppSpacing.md),
                                 ContentSourceLine(
                                   detail: ctx.detail,
-                                  apiBaseUrl: ctx.apiBaseUrl,
-                                  apiToken: ctx.apiToken,
                                   showPlatform: false,
                                   showOriginalAction: false,
                                 ),
@@ -217,7 +223,10 @@ class _ImmersiveMediaDetailState extends State<ImmersiveMediaDetail>
                       const SizedBox(height: AppSpacing.md),
                       _ImmersiveTextBody(ctx: ctx),
                       const SizedBox(height: AppSpacing.xl),
-                      ContentSupportingSections(detail: ctx.detail),
+                      ContentSupportingSections(
+                        detail: ctx.detail,
+                        onResolveParseCandidate: ctx.onResolveParseCandidate,
+                      ),
                     ],
                   ),
                 ),
@@ -241,13 +250,7 @@ class _ImmersiveTextBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _BodyText(
-          ctx: ctx,
-          hideMedia: true,
-          emptyMessage: ctx.detail.template == ContentTemplate.profile
-              ? '这个主页没有简介'
-              : '这条内容没有文字说明',
-        ),
+        if (ctx.detail.hasBody) _BodyText(ctx: ctx, hideMedia: true),
         if (quoted != null) ...[
           const SizedBox(height: AppSpacing.md),
           _QuotedContent(raw: quoted),
@@ -290,21 +293,16 @@ class _ImmersiveMediaViewerState extends State<_ImmersiveMediaViewer> {
     final ctx = widget.ctx;
     final scheme = Theme.of(context).colorScheme;
     final playableVideo = _playableMedia(ctx, audio: false);
-    if (ctx.images.isEmpty && playableVideo.isNotEmpty) {
+    if (ctx.images.isEmpty && playableVideo.urls.isNotEmpty) {
       return ColoredBox(
         key: const ValueKey('immersive-video-viewer'),
         color: scheme.surfaceContainerLowest,
         child: Center(
           child: AspectRatio(
             aspectRatio: 16 / 9,
-            child: VideoPlayerWidget(
-              videoUrl: playableVideo.first,
-              fallbackUrls: playableVideo.skip(1).toList(growable: false),
-              headers: buildImageHeaders(
-                imageUrl: playableVideo.first,
-                baseUrl: ctx.apiBaseUrl,
-                apiToken: ctx.apiToken,
-              ),
+            child: GlobalPlaybackSurface(
+              request: _playbackRequest(ctx, playableVideo, audioOnly: false),
+              initialPosition: ctx.initialPlaybackPosition,
             ),
           ),
         ),
@@ -337,11 +335,8 @@ class _ImmersiveMediaViewerState extends State<_ImmersiveMediaViewer> {
                     child: NetworkThumbnail(
                       imageUrl: image,
                       fallbackUrls: ctx.imageFallbacks[image] ?? const [],
-                      httpHeaders: buildImageHeaders(
-                        imageUrl: image,
-                        baseUrl: ctx.apiBaseUrl,
-                        apiToken: ctx.apiToken,
-                      ),
+                      mediaAsset: ctx.imageAssets[image],
+                      purpose: MediaPurpose.detail,
                       fit: BoxFit.contain,
                     ),
                   ),
@@ -376,8 +371,7 @@ class _ImmersiveMediaViewerState extends State<_ImmersiveMediaViewer> {
                   child: _ImmersiveThumbnailStrip(
                     images: ctx.images,
                     fallbacks: ctx.imageFallbacks,
-                    apiBaseUrl: ctx.apiBaseUrl,
-                    apiToken: ctx.apiToken,
+                    mediaAssets: ctx.imageAssets,
                     selectedIndex: _index,
                     onSelected: _goTo,
                   ),
@@ -463,16 +457,14 @@ class _ImmersiveThumbnailStrip extends StatelessWidget {
   const _ImmersiveThumbnailStrip({
     required this.images,
     required this.fallbacks,
-    required this.apiBaseUrl,
-    required this.apiToken,
+    required this.mediaAssets,
     required this.selectedIndex,
     required this.onSelected,
   });
 
   final List<String> images;
   final Map<String, List<String>> fallbacks;
-  final String apiBaseUrl;
-  final String? apiToken;
+  final Map<String, MediaAsset> mediaAssets;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
 
@@ -514,11 +506,8 @@ class _ImmersiveThumbnailStrip extends StatelessWidget {
                   child: NetworkThumbnail(
                     imageUrl: image,
                     fallbackUrls: fallbacks[image] ?? const [],
-                    httpHeaders: buildImageHeaders(
-                      imageUrl: image,
-                      baseUrl: apiBaseUrl,
-                      apiToken: apiToken,
-                    ),
+                    mediaAsset: mediaAssets[image],
+                    purpose: MediaPurpose.detail,
                     fit: BoxFit.cover,
                   ),
                 ),
@@ -589,14 +578,11 @@ class _BodyText extends StatelessWidget {
       return ContentEmptyState(
         icon: Icons.notes_rounded,
         message: emptyMessage ?? '这条内容没有正文',
-        hint: detail.hasSummary ? '下方的 AI 摘要是生成结果，不是原文。' : null,
       );
     }
 
     return RichContent(
       detail: detail,
-      apiBaseUrl: ctx.apiBaseUrl,
-      apiToken: ctx.apiToken,
       headerKeys: ctx.headerKeys,
       useHero: false,
       hideMedia: hideMedia,
@@ -604,7 +590,7 @@ class _BodyText extends StatelessWidget {
   }
 }
 
-/// 媒体网格。空态说明"没有媒体"而不是留白。
+/// 媒体网格。仅主要媒体缺失时显示空态。
 class _MediaBlock extends StatelessWidget {
   const _MediaBlock({required this.ctx, this.emptyMessage});
 
@@ -617,15 +603,13 @@ class _MediaBlock extends StatelessWidget {
       return ContentEmptyState(
         icon: Icons.image_not_supported_outlined,
         message: emptyMessage ?? '没有归档的图片',
-        hint: '媒体可能未被抓取，或按归档策略被跳过。',
       );
     }
 
     return MediaGrid(
       images: ctx.images,
       fallbackUrlsByImage: ctx.imageFallbacks,
-      apiBaseUrl: ctx.apiBaseUrl,
-      apiToken: ctx.apiToken,
+      mediaAssetsByImage: ctx.imageAssets,
       contentId: ctx.detail.id,
       onImageTap: ctx.onImageTap,
       isLandscape: false,
@@ -633,75 +617,69 @@ class _MediaBlock extends StatelessWidget {
   }
 }
 
-/// 封面。用于视频与音频模板——多数平台只归档了封面。
+/// 可选封面只在有可访问资产时占据空间。
 class _CoverBlock extends StatelessWidget {
-  const _CoverBlock({required this.ctx, this.aspectRatio = 16 / 9});
+  const _CoverBlock({required this.ctx, this.aspectRatio = 16 / 9, this.width});
 
   final TemplateContext ctx;
   final double aspectRatio;
+  final double? width;
 
   @override
   Widget build(BuildContext context) {
-    final coverAsset =
-        ctx.detail.mediaAssets.firstFor(
-          role: MediaRole.cover,
-          type: MediaType.image,
-        ) ??
-        ctx.detail.mediaAssets.firstFor(
-          role: MediaRole.poster,
-          type: MediaType.image,
-        );
-    final candidates = coverAsset?.sources
-        .map((source) => source.url)
-        .toList(growable: false);
-    final legacyCover = ctx.detail.coverUrl;
-    final cover =
-        candidates?.firstOrNull ??
-        (legacyCover == null || legacyCover.isEmpty
-            ? null
-            : media_utils.mapUrl(legacyCover, ctx.apiBaseUrl));
-    if (cover == null) {
-      return ContentEmptyState(
-        icon: Icons.hide_image_outlined,
-        message: '没有封面',
-      );
-    }
-    return ClipRRect(
-      borderRadius: AppShape.paneBorder,
-      child: AspectRatio(
-        aspectRatio: aspectRatio,
-        child: NetworkThumbnail(
-          imageUrl: cover,
-          fallbackUrls: candidates?.skip(1).toList(growable: false) ?? const [],
-          httpHeaders: candidates == null
-              ? buildImageHeaders(
-                  imageUrl: cover,
-                  baseUrl: ctx.apiBaseUrl,
-                  apiToken: ctx.apiToken,
-                )
-              : null,
-          fit: BoxFit.cover,
+    final asset = ctx.detail.mediaAssets
+        .where(
+          (asset) =>
+              asset.mediaType == MediaType.image &&
+              (asset.role == MediaRole.cover ||
+                  asset.role == MediaRole.poster) &&
+              asset.sources.isNotEmpty,
+        )
+        .firstOrNull;
+    if (asset == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: SizedBox(
+        width: width,
+        child: ClipRRect(
+          borderRadius: AppShape.paneBorder,
+          child: AspectRatio(
+            aspectRatio: aspectRatio,
+            child: NetworkThumbnail(
+              imageUrl: asset.sources.first.url,
+              fallbackUrls: asset.sources
+                  .skip(1)
+                  .map((source) => source.url)
+                  .toList(),
+              mediaAsset: asset,
+              purpose: MediaPurpose.detail,
+              fit: BoxFit.cover,
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-/// 从 media_urls 中挑出可播放的媒体。没有则返回 null。
-List<String> _playableMedia(TemplateContext ctx, {required bool audio}) {
+/// 从统一媒体资产中挑出可播放的媒体。没有则返回空列表。
+({MediaAsset? asset, List<String> urls}) _playableMedia(
+  TemplateContext ctx, {
+  required bool audio,
+}) {
   final type = audio ? MediaType.audio : MediaType.video;
   for (final asset in ctx.detail.mediaAssets) {
-    if (asset.mediaType == type && asset.sources.isNotEmpty) {
-      return asset.sources.map((source) => source.url).toList(growable: false);
+    if (asset.mediaType == type &&
+        asset.sources.isNotEmpty &&
+        (ctx.initialMediaAssetId == null ||
+            asset.id == ctx.initialMediaAssetId)) {
+      return (
+        asset: asset,
+        urls: asset.sources.map((source) => source.url).toList(growable: false),
+      );
     }
   }
-  for (final url in ctx.detail.mediaUrls) {
-    final matches = audio ? media_utils.isAudio(url) : media_utils.isVideo(url);
-    if (matches) {
-      return [media_utils.mapPlayableUrl(url, ctx.apiBaseUrl)];
-    }
-  }
-  return const [];
+  return (asset: null, urls: const []);
 }
 
 // --- 模板主体 ---
@@ -726,6 +704,169 @@ class _ArticleBody extends StatelessWidget {
       ],
     );
   }
+}
+
+/// 用户上传的原始文档或附件。这里不伪装成已经完成 OCR 的正文，
+/// 只展示保存说明并提供签名原文件入口。
+class _DocumentBody extends StatelessWidget {
+  const _DocumentBody({required this.ctx});
+
+  final TemplateContext ctx;
+
+  @override
+  Widget build(BuildContext context) {
+    final attachments = ctx.detail.mediaAssets
+        .where(
+          (asset) =>
+              (asset.mediaType == MediaType.document ||
+                  asset.mediaType == MediaType.other) &&
+              asset.sources.isNotEmpty,
+        )
+        .toList(growable: false);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (ctx.detail.hasBody) ...[
+          const DetailSectionHeader(title: '保存说明'),
+          _BodyText(ctx: ctx),
+          const SizedBox(height: AppSpacing.lg),
+        ],
+        const DetailSectionHeader(title: '原始文件'),
+        if (attachments.isEmpty)
+          const ContentEmptyState(
+            icon: Icons.file_present_outlined,
+            message: '没有可打开的归档文件',
+            hint: '文件可能仍在处理，或归档未成功。',
+          )
+        else
+          ...attachments.map(
+            (asset) => _DocumentAttachmentTile(
+              key: ValueKey('document-attachment-${asset.id}'),
+              asset: asset,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _DocumentAttachmentTile extends ConsumerStatefulWidget {
+  const _DocumentAttachmentTile({super.key, required this.asset});
+
+  final MediaAsset asset;
+
+  @override
+  ConsumerState<_DocumentAttachmentTile> createState() =>
+      _DocumentAttachmentTileState();
+}
+
+class _DocumentAttachmentTileState
+    extends ConsumerState<_DocumentAttachmentTile> {
+  late MediaSourceSession _session;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _session = MediaSourceSession.fromAsset(widget.asset);
+  }
+
+  @override
+  void didUpdateWidget(covariant _DocumentAttachmentTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.asset != widget.asset) {
+      _session = MediaSourceSession.fromAsset(widget.asset);
+      _busy = false;
+      _error = null;
+    }
+  }
+
+  Future<void> _open() async {
+    if (_busy) return;
+    if (_error != null) _session.resetForManualRetry();
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    try {
+      if (_session.currentSignatureExpired()) {
+        _session.markAutomaticRefreshAttempted();
+        try {
+          final refreshed = await refreshMediaManifest(
+            ref.read(apiClientProvider),
+            assetId: widget.asset.id,
+            purpose: MediaPurpose.detail,
+          );
+          if (!mounted) return;
+          _session.replaceManifest(refreshed);
+        } catch (_) {
+          if (!_session.moveNext()) {
+            if (mounted) setState(() => _error = '媒体授权刷新失败');
+            return;
+          }
+        }
+      }
+
+      final source = _session.current;
+      if (source == null) {
+        if (mounted) setState(() => _error = '归档文件当前不可用');
+        return;
+      }
+      await SafeUrlLauncher.openExternal(context, source.url);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final firstSource = widget.asset.sources.firstOrNull;
+    final rawName = widget.asset.metadata['filename']?.toString().trim();
+    final name = rawName == null || rawName.isEmpty ? '归档文件' : rawName;
+    final size =
+        firstSource?.sizeBytes ??
+        (widget.asset.metadata['size_bytes'] as num?)?.toInt();
+    final metadata = [
+      if (firstSource?.mimeType != null) firstSource!.mimeType!,
+      if (size != null) _formatFileSize(size),
+    ].join(' · ');
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: ListTile(
+        leading: const Icon(Icons.description_outlined),
+        title: Text(name),
+        subtitle: Text(
+          [
+            if (metadata.isNotEmpty) metadata,
+            if (_error != null) _error!,
+          ].join('\n'),
+        ),
+        trailing: _busy
+            ? const SizedBox.square(
+                dimension: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(
+                _error == null
+                    ? Icons.open_in_new_rounded
+                    : Icons.error_outline_rounded,
+              ),
+        onTap: _busy ? null : _open,
+      ),
+    );
+  }
+}
+
+String _formatFileSize(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  final kib = bytes / 1024;
+  if (kib < 1024) return '${kib.toStringAsFixed(kib < 10 ? 1 : 0)} KB';
+  final mib = kib / 1024;
+  return '${mib.toStringAsFixed(mib < 10 ? 1 : 0)} MB';
 }
 
 class _ImageNoteMediaViewer extends StatefulWidget {
@@ -771,11 +912,8 @@ class _ImageNoteMediaViewerState extends State<_ImageNoteMediaViewer> {
                       child: NetworkThumbnail(
                         imageUrl: image,
                         fallbackUrls: ctx.imageFallbacks[image] ?? const [],
-                        httpHeaders: buildImageHeaders(
-                          imageUrl: image,
-                          baseUrl: ctx.apiBaseUrl,
-                          apiToken: ctx.apiToken,
-                        ),
+                        mediaAsset: ctx.imageAssets[image],
+                        purpose: MediaPurpose.detail,
                         fit: BoxFit.contain,
                       ),
                     );
@@ -840,11 +978,8 @@ class _ImageNoteMediaViewerState extends State<_ImageNoteMediaViewer> {
                     child: NetworkThumbnail(
                       imageUrl: image,
                       fallbackUrls: ctx.imageFallbacks[image] ?? const [],
-                      httpHeaders: buildImageHeaders(
-                        imageUrl: image,
-                        baseUrl: ctx.apiBaseUrl,
-                        apiToken: ctx.apiToken,
-                      ),
+                      mediaAsset: ctx.imageAssets[image],
+                      purpose: MediaPurpose.detail,
                       fit: BoxFit.cover,
                     ),
                   ),
@@ -866,7 +1001,7 @@ class _ImageNoteBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!ctx.isCompact && ctx.images.isNotEmpty) {
+    if (!ctx.isCompact && ctx.images.isNotEmpty && ctx.detail.hasBody) {
       return LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth >= 720) {
@@ -908,9 +1043,12 @@ class _ImageNoteStack extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _MediaBlock(ctx: ctx, emptyMessage: '这条笔记没有归档图片'),
-        const SizedBox(height: AppSpacing.lg),
-        _BodyText(ctx: ctx, emptyMessage: '这条笔记没有文字说明'),
+        if (ctx.images.isNotEmpty) ...[
+          _MediaBlock(ctx: ctx),
+          if (ctx.detail.hasBody) const SizedBox(height: AppSpacing.lg),
+        ],
+        if (ctx.detail.hasBody || ctx.images.isEmpty)
+          _BodyText(ctx: ctx, emptyMessage: '没有归档的笔记内容'),
       ],
     );
   }
@@ -942,7 +1080,9 @@ class _ShortPostBody extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _BodyText(ctx: ctx, emptyMessage: '这条帖子没有文字内容'),
+                if (ctx.detail.hasBody ||
+                    (quoted == null && ctx.images.isEmpty))
+                  _BodyText(ctx: ctx, emptyMessage: '没有归档的帖子内容'),
                 if (quoted != null) ...[
                   const SizedBox(height: AppSpacing.md),
                   _QuotedContent(raw: quoted),
@@ -1096,41 +1236,43 @@ class _VideoBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final playable = _playableMedia(ctx, audio: false);
+    final playbackRequest = playable.urls.isEmpty
+        ? null
+        : _playbackRequest(ctx, playable, audioOnly: false);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (playable.isNotEmpty)
+        if (playbackRequest != null) ...[
           ClipRRect(
             borderRadius: AppShape.paneBorder,
-            child: VideoPlayerWidget(
-              videoUrl: playable.first,
-              fallbackUrls: playable.skip(1).toList(growable: false),
-              headers: buildImageHeaders(
-                imageUrl: playable.first,
-                baseUrl: ctx.apiBaseUrl,
-                apiToken: ctx.apiToken,
-              ),
+            child: GlobalPlaybackSurface(
+              request: playbackRequest,
+              initialPosition: ctx.initialPlaybackPosition,
             ),
-          )
-        else ...[
+          ),
+          const SizedBox(height: AppSpacing.md),
+          PlaybackSegmentList(request: playbackRequest),
+        ] else ...[
           _CoverBlock(ctx: ctx),
-          const SizedBox(height: AppSpacing.sm),
           ContentEmptyState(
             icon: Icons.smart_display_outlined,
             message: '没有归档视频文件',
-            hint: '该来源只保存了封面与元数据。',
-            action: FilledButton.tonalIcon(
-              onPressed: () =>
-                  SafeUrlLauncher.openExternal(context, ctx.detail.url),
-              icon: const Icon(Icons.open_in_new_rounded, size: 18),
-              label: const Text('到来源观看'),
-            ),
+            action: ctx.detail.hasExternalOriginal
+                ? FilledButton.tonalIcon(
+                    onPressed: () =>
+                        SafeUrlLauncher.openExternal(context, ctx.detail.url),
+                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                    label: const Text('到来源观看'),
+                  )
+                : null,
           ),
         ],
-        const SizedBox(height: AppSpacing.lg),
-        const DetailSectionHeader(title: '简介'),
-        _BodyText(ctx: ctx, emptyMessage: '这个视频没有简介'),
+        if (ContentParser.getMarkdownContent(ctx.detail).trim().isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.lg),
+          const DetailSectionHeader(title: '简介'),
+          _BodyText(ctx: ctx),
+        ],
       ],
     );
   }
@@ -1138,7 +1280,7 @@ class _VideoBody extends StatelessWidget {
 
 /// 音频与播客。
 ///
-/// 全局播放会话不在本切片范围内，这里只提供详情内播放与来源入口。
+/// 播放由全局会话持有；离开详情后由 Root Shell 的 mini player 继续承接。
 class _AudioBody extends StatelessWidget {
   const _AudioBody({required this.ctx});
 
@@ -1147,69 +1289,58 @@ class _AudioBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final playable = _playableMedia(ctx, audio: true);
+    final playbackRequest = playable.urls.isEmpty
+        ? null
+        : _playbackRequest(ctx, playable, audioOnly: true);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: ctx.isCompact ? 120 : 160,
-              child: _CoverBlock(ctx: ctx, aspectRatio: 1),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ContentTitleBlock(
-                    detail: ctx.detail,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  ContentSourceLine(
-                    detail: ctx.detail,
-                    apiBaseUrl: ctx.apiBaseUrl,
-                    apiToken: ctx.apiToken,
-                    compact: true,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.md),
-        if (playable.isNotEmpty)
-          VideoPlayerWidget(
-            videoUrl: playable.first,
-            fallbackUrls: playable.skip(1).toList(growable: false),
-            audioOnly: true,
-            headers: buildImageHeaders(
-              imageUrl: playable.first,
-              baseUrl: ctx.apiBaseUrl,
-              apiToken: ctx.apiToken,
-            ),
-          )
-        else
+        _CoverBlock(ctx: ctx, aspectRatio: 1, width: ctx.isCompact ? 120 : 160),
+        if (playbackRequest != null) ...[
+          GlobalPlaybackSurface(
+            request: playbackRequest,
+            initialPosition: ctx.initialPlaybackPosition,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          PlaybackSegmentList(request: playbackRequest),
+        ] else
           ContentEmptyState(
             icon: Icons.music_off_outlined,
             message: '没有归档音频文件',
-            hint: '该来源只保存了封面与元数据。',
-            action: FilledButton.tonalIcon(
-              onPressed: () =>
-                  SafeUrlLauncher.openExternal(context, ctx.detail.url),
-              icon: const Icon(Icons.open_in_new_rounded, size: 18),
-              label: const Text('到来源收听'),
-            ),
+            action: ctx.detail.hasExternalOriginal
+                ? FilledButton.tonalIcon(
+                    onPressed: () =>
+                        SafeUrlLauncher.openExternal(context, ctx.detail.url),
+                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                    label: const Text('到来源收听'),
+                  )
+                : null,
           ),
-        const SizedBox(height: AppSpacing.lg),
-        const DetailSectionHeader(title: 'Show Notes'),
-        _BodyText(ctx: ctx, emptyMessage: '这条音频没有文字说明'),
+        if (ContentParser.getMarkdownContent(ctx.detail).trim().isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.lg),
+          const DetailSectionHeader(title: '内容说明'),
+          _BodyText(ctx: ctx),
+        ],
       ],
     );
   }
 }
+
+PlaybackRequest _playbackRequest(
+  TemplateContext ctx,
+  ({List<String> urls, MediaAsset? asset}) playable, {
+  required bool audioOnly,
+}) => PlaybackRequest(
+  contentId: ctx.detail.id,
+  title: (ctx.detail.title ?? '').trim().isEmpty
+      ? '内容 ${ctx.detail.id}'
+      : ctx.detail.title!.trim(),
+  urls: playable.urls,
+  audioOnly: audioOnly,
+  mediaAsset: playable.asset,
+  segments: ctx.detail.mediaSegments,
+);
 
 /// 聚合页：知乎问题、收藏夹等，成员条目是主体。
 class _CollectionIndexBody extends StatelessWidget {
@@ -1244,7 +1375,6 @@ class _CollectionIndexBody extends StatelessWidget {
           const ContentEmptyState(
             icon: Icons.list_alt_rounded,
             message: '没有归档的成员条目',
-            hint: '来源页可能需要登录，或成员在解析时不可见。',
           ),
       ],
     );
@@ -1259,72 +1389,15 @@ class _ProfileBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final detail = ctx.detail;
-    final avatarAsset = detail.mediaAssets.firstFor(
-      role: MediaRole.avatar,
-      type: MediaType.image,
-    );
-    final avatarCandidates = avatarAsset?.sources
-        .map((source) => source.url)
-        .toList(growable: false);
-    final legacyAvatar = detail.authorAvatarUrl;
-    final avatar =
-        avatarCandidates?.firstOrNull ??
-        (legacyAvatar == null || legacyAvatar.isEmpty
-            ? null
-            : media_utils.mapUrl(legacyAvatar, ctx.apiBaseUrl));
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (avatar != null && avatar.isNotEmpty)
-              ClipOval(
-                child: NetworkThumbnail(
-                  imageUrl: avatar,
-                  fallbackUrls:
-                      avatarCandidates?.skip(1).toList(growable: false) ??
-                      const [],
-                  httpHeaders: avatarCandidates == null
-                      ? buildImageHeaders(
-                          imageUrl: avatar,
-                          baseUrl: ctx.apiBaseUrl,
-                          apiToken: ctx.apiToken,
-                        )
-                      : null,
-                  width: 72,
-                  height: 72,
-                ),
-              )
-            else
-              CircleAvatar(
-                radius: 36,
-                backgroundColor: Theme.of(
-                  context,
-                ).colorScheme.surfaceContainerHighest,
-                child: const Icon(Icons.person_outline_rounded),
-              ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ContentTitleBlock(
-                    detail: detail,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        const DetailSectionHeader(title: '简介'),
-        _BodyText(ctx: ctx, emptyMessage: '这个主页没有简介'),
+        if (ctx.detail.hasBody) ...[
+          const DetailSectionHeader(title: '简介'),
+          _BodyText(ctx: ctx),
+        ],
         if (ctx.images.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.lg),
+          if (ctx.detail.hasBody) const SizedBox(height: AppSpacing.lg),
           const DetailSectionHeader(title: '主页媒体'),
           _MediaBlock(ctx: ctx),
         ],
@@ -1403,10 +1476,13 @@ class ContentSupportingSections extends StatelessWidget {
   const ContentSupportingSections({
     super.key,
     required this.detail,
+    this.onResolveParseCandidate,
     this.showStats = true,
   });
 
   final ContentDetail detail;
+  final Future<void> Function(String field, String action, String? mergedValue)?
+  onResolveParseCandidate;
   final bool showStats;
 
   @override
@@ -1416,6 +1492,13 @@ class ContentSupportingSections extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        ParseCandidatePanel(
+          detail: detail,
+          onResolve:
+              onResolveParseCandidate ?? (field, action, mergedValue) async {},
+        ),
+        if (detail.manualEditFields.isNotEmpty)
+          const SizedBox(height: AppSpacing.md),
         if (detail.hasSummary) ...[
           ContentSummaryBlock(detail: detail),
           const SizedBox(height: AppSpacing.md),

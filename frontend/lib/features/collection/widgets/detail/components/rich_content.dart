@@ -1,17 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
-import 'package:frontend/core/utils/media_utils.dart';
 import 'package:frontend/core/utils/safe_url_launcher.dart';
+
+import '../../../../../theme/design_tokens.dart';
 import '../../../models/content.dart';
 import '../../../utils/content_parser.dart';
-
 import '../markdown/markdown_config.dart';
 import 'media_gallery_item.dart';
 
 class RichContent extends StatelessWidget {
   final ContentDetail detail;
-  final String apiBaseUrl;
-  final String? apiToken;
   final Map<String, GlobalKey> headerKeys;
   final bool useHero;
   final bool hideMedia;
@@ -20,8 +18,6 @@ class RichContent extends StatelessWidget {
   const RichContent({
     super.key,
     required this.detail,
-    required this.apiBaseUrl,
-    this.apiToken,
     required this.headerKeys,
     this.useHero = true,
     this.hideMedia = false,
@@ -31,8 +27,12 @@ class RichContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final mediaUrls = ContentParser.extractAllMedia(detail, apiBaseUrl);
+    final mediaUrls = ContentParser.extractAllMedia(detail);
     final mediaFallbacks = ContentParser.extractImageFallbacks(detail);
+    final mediaAssetsByImage = {
+      for (final asset in detail.mediaAssets)
+        if (asset.sources.isNotEmpty) asset.sources.first.url: asset,
+    };
     final rawMarkdown = _getMarkdownContent(detail);
     final markdown = _preprocessMarkdown(rawMarkdown);
 
@@ -41,15 +41,11 @@ class RichContent extends StatelessWidget {
 
     if (markdown.isNotEmpty) {
       final style = _getMarkdownStyle(theme);
-      // 从 Markdown 文本中提取所有图片 URL（与 imageBuilder 收到的 URI 来源一致，
-      // 避免与 detail.mediaUrls 的 URL 编码不匹配导致序号查找失败）
-      final inlineImageUrls = _extractInlineImageUrls(markdown, apiBaseUrl)
+      // 从 Markdown 文本中提取图片标识，只保留能匹配统一媒体资产的条目。
+      final inlineImageUrls = _extractInlineImageUrls(markdown)
           .map(
-            (url) => ContentParser.imageCandidatesForUrl(
-              detail,
-              url,
-              apiBaseUrl,
-            ).firstOrNull,
+            (url) =>
+                ContentParser.imageCandidatesForUrl(detail, url).firstOrNull,
           )
           .whereType<String>()
           .toList(growable: false);
@@ -75,8 +71,6 @@ class RichContent extends StatelessWidget {
               detail,
               uri,
               alt,
-              apiBaseUrl,
-              apiToken,
               galleryImages: inlineImageUrls,
               fallbackUrlsByImage: mediaFallbacks,
               useHero: useHero,
@@ -93,7 +87,7 @@ class RichContent extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: AppShape.paneBorder,
             ),
             child: Text(
               detail.body!,
@@ -128,8 +122,7 @@ class RichContent extends StatelessWidget {
             images: mediaUrls,
             index: 0,
             fallbackUrlsByImage: mediaFallbacks,
-            apiBaseUrl: apiBaseUrl,
-            apiToken: apiToken,
+            mediaAssetsByImage: mediaAssetsByImage,
             contentId: detail.id,
             contentColor: contentColor,
             heroTag: 'content-image-${detail.id}',
@@ -166,8 +159,7 @@ class RichContent extends StatelessWidget {
                 images: mediaUrls,
                 index: index,
                 fallbackUrlsByImage: mediaFallbacks,
-                apiBaseUrl: apiBaseUrl,
-                apiToken: apiToken,
+                mediaAssetsByImage: mediaAssetsByImage,
                 contentId: detail.id,
                 contentColor: contentColor,
                 heroTag: finalHeroTag,
@@ -238,34 +230,25 @@ class RichContent extends StatelessWidget {
     return processed;
   }
 
-  static final Map<Brightness, MarkdownStyleSheet> _styleCache = {};
-
   MarkdownStyleSheet _getMarkdownStyle(ThemeData theme) {
-    if (_styleCache.containsKey(theme.brightness)) {
-      return _styleCache[theme.brightness]!;
-    }
-
-    final style = MarkdownStyleSheet.fromTheme(theme).copyWith(
+    return MarkdownStyleSheet.fromTheme(theme).copyWith(
       p: theme.textTheme.bodyLarge?.copyWith(
-        height: 1.8,
-        fontSize: 18,
-        color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+        height: 1.7,
+        color: theme.colorScheme.onSurface,
       ),
       h1: theme.textTheme.headlineMedium?.copyWith(
-        fontWeight: FontWeight.w900,
-        color: theme.colorScheme.primary,
-        letterSpacing: -0.5,
+        fontWeight: FontWeight.w700,
+        color: theme.colorScheme.onSurface,
       ),
       h2: theme.textTheme.headlineSmall?.copyWith(
-        fontWeight: FontWeight.w900,
-        color: theme.colorScheme.secondary,
-        letterSpacing: -0.3,
+        fontWeight: FontWeight.w700,
+        color: theme.colorScheme.onSurface,
       ),
       h3: theme.textTheme.titleLarge?.copyWith(
         fontWeight: FontWeight.bold,
-        color: theme.colorScheme.tertiary,
+        color: theme.colorScheme.onSurface,
       ),
-      blockSpacing: 32,
+      blockSpacing: AppSpacing.md,
       listBullet: theme.textTheme.bodyLarge?.copyWith(
         color: theme.colorScheme.primary,
         fontWeight: FontWeight.bold,
@@ -281,7 +264,7 @@ class RichContent extends StatelessWidget {
       ),
       blockquoteDecoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppShape.cardMediaBorder,
       ),
       code: theme.textTheme.bodyMedium?.copyWith(
         backgroundColor: Colors.transparent,
@@ -290,30 +273,21 @@ class RichContent extends StatelessWidget {
       codeblockPadding: EdgeInsets.zero,
       codeblockDecoration: const BoxDecoration(),
     );
-
-    _styleCache[theme.brightness] = style;
-    return style;
   }
 
-  /// 从 Markdown 文本中按顺序提取所有 inline 图片 URL（已经过 mapUrl 处理）。
-  /// 这样提取出的 URL 与 imageBuilder 回调收到的 uri.toString() 来源相同，
-  /// 保证后续 indexOf 可以精确匹配，不会出现编码不一致的问题。
-  List<String> _extractInlineImageUrls(String markdown, String apiBaseUrl) {
+  /// 从 Markdown 文本中按顺序提取 inline 图片标识。
+  /// 这里只用于匹配已经归档的媒体资产，不直接请求正文里的原始 URL。
+  List<String> _extractInlineImageUrls(String markdown) {
     if (markdown.isEmpty) return const [];
     final regex = RegExp(r'!\[.*?\]\(([^)]+)\)');
-    return regex
-        .allMatches(markdown)
-        .map((m) => mapUrl(m.group(1)!.trim(), apiBaseUrl))
-        .toList();
+    return regex.allMatches(markdown).map((m) => m.group(1)!.trim()).toList();
   }
 
   Widget _buildMarkdownImage(
     BuildContext context,
     ContentDetail detail,
     Uri uri,
-    String? alt,
-    String apiBaseUrl,
-    String? apiToken, {
+    String? alt, {
     List<String>? galleryImages,
     Map<String, List<String>> fallbackUrlsByImage = const {},
     bool useHero = true,
@@ -322,9 +296,48 @@ class RichContent extends StatelessWidget {
     final candidates = ContentParser.imageCandidatesForUrl(
       detail,
       uri.toString(),
-      apiBaseUrl,
     );
-    final url = candidates.firstOrNull ?? mapUrl(uri.toString(), apiBaseUrl);
+    if (candidates.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Semantics(
+          label: alt?.trim().isNotEmpty == true ? alt!.trim() : '媒体资产不可用',
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+              borderRadius: AppShape.paneBorder,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.hide_image_outlined,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '图片尚未归档',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                if (alt != null && alt.trim().isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    alt.trim(),
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    final url = candidates.first;
     final effectiveFallbacks = <String, List<String>>{
       ...fallbackUrlsByImage,
       if (candidates.isNotEmpty)
@@ -340,8 +353,8 @@ class RichContent extends StatelessWidget {
       effectiveIndex = galleryImages.indexOf(url);
       if (effectiveIndex == -1) effectiveIndex = 0; // 保底：至少显示第一张
     } else {
-      // 兜底：从 media_urls 查找（可能因 URL 编码差异匹配失败）
-      final mediaUrls = ContentParser.extractAllMedia(detail, apiBaseUrl);
+      // 从统一媒体资产列表中查找；找不到时仅展示当前已匹配资产。
+      final mediaUrls = ContentParser.extractAllMedia(detail);
       effectiveIndex = mediaUrls.indexOf(url);
       if (effectiveIndex == -1) {
         final cleanSearch = url.split('?').first;
@@ -382,13 +395,15 @@ class RichContent extends StatelessWidget {
             images: effectiveMediaUrls,
             index: effectiveIndex,
             fallbackUrlsByImage: effectiveFallbacks,
-            apiBaseUrl: apiBaseUrl,
-            apiToken: apiToken,
+            mediaAssetsByImage: {
+              for (final asset in detail.mediaAssets)
+                if (asset.sources.isNotEmpty) asset.sources.first.url: asset,
+            },
             contentId: detail.id,
             contentColor: contentColor,
             heroTag: finalHeroTag,
             fit: BoxFit.fitWidth,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: AppShape.paneBorder,
           ),
           if (alt != null && alt.trim().isNotEmpty)
             Padding(
@@ -399,7 +414,6 @@ class RichContent extends StatelessWidget {
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontStyle: FontStyle.italic,
-                  letterSpacing: 0.5,
                 ),
               ),
             ),

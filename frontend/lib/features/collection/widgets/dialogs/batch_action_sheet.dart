@@ -30,7 +30,9 @@ class BatchActionSheet extends ConsumerWidget {
                   const Spacer(),
                   TextButton(
                     onPressed: () {
-                      ref.read(batchSelectionProvider.notifier).clearSelection();
+                      ref
+                          .read(batchSelectionProvider.notifier)
+                          .clearSelection();
                       Navigator.pop(context);
                     },
                     child: const Text('取消选择'),
@@ -46,19 +48,25 @@ class BatchActionSheet extends ConsumerWidget {
               onTap: () => _showTagEditor(context, ref),
             ),
             ListTile(
-              leading: const Icon(Icons.eighteen_up_rating, color: Colors.orange),
+              leading: const Icon(
+                Icons.eighteen_up_rating,
+                color: Colors.orange,
+              ),
               title: const Text('标记为 NSFW'),
               onTap: () => _batchSetNsfw(context, ref, true),
             ),
             ListTile(
-              leading: const Icon(Icons.check_circle, color: Colors.green),
+              leading: Icon(
+                Icons.check_circle,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               title: const Text('标记为安全'),
               onTap: () => _batchSetNsfw(context, ref, false),
             ),
             ListTile(
               leading: Icon(Icons.refresh, color: colorScheme.tertiary),
               title: const Text('重新解析'),
-              subtitle: const Text('重新获取内容元数据'),
+              subtitle: const Text('重新抓取并解析内容'),
               onTap: () => _batchReParse(context, ref),
             ),
             ListTile(
@@ -104,7 +112,9 @@ class BatchActionSheet extends ConsumerWidget {
                   .where((t) => t.isNotEmpty)
                   .toList();
 
-              await ref.read(batchSelectionProvider.notifier).batchUpdateTags(tags);
+              await ref
+                  .read(batchSelectionProvider.notifier)
+                  .batchUpdateTags(tags);
 
               if (context.mounted) {
                 Toast.show(context, '标签已更新');
@@ -117,7 +127,11 @@ class BatchActionSheet extends ConsumerWidget {
     );
   }
 
-  Future<void> _batchSetNsfw(BuildContext context, WidgetRef ref, bool isNsfw) async {
+  Future<void> _batchSetNsfw(
+    BuildContext context,
+    WidgetRef ref,
+    bool isNsfw,
+  ) async {
     Navigator.pop(context);
 
     await ref.read(batchSelectionProvider.notifier).batchSetNsfw(isNsfw);

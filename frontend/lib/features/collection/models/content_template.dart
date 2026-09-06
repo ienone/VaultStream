@@ -1,5 +1,5 @@
 import 'content.dart';
-import 'media_asset.dart';
+import '../../../core/media/media_asset.dart';
 
 /// 内容模板。
 ///
@@ -11,9 +11,8 @@ import 'media_asset.dart';
 ///   优先级为 用户覆盖 > 系统检测 > 平台推断）
 /// - `content_type`：平台原生类型字符串（`String(50)`，由各 adapter 写入）
 ///
-/// 这里不推断后端没有产出的类型。当前代码中没有任何 adapter 产出
-/// 文档（PDF/幻灯片）类内容，也没有产出帖子串（`TwitterContentType.THREAD`
-/// 已定义但从未被赋值），因此不提供对应模板。
+/// 这里不推断后端没有产出的类型。文件捕获会明确产出 `document`；帖子串
+/// （`TwitterContentType.THREAD` 已定义但从未被赋值）仍不单独提供模板。
 enum ContentTemplate {
   /// 文章、专栏、知乎回答、RSS 条目、普通网页。连续阅读为主。
   article,
@@ -33,6 +32,9 @@ enum ContentTemplate {
   /// 音频与播客。
   audio,
 
+  /// 用户上传并归档的 PDF、文本或其他附件。
+  document,
+
   /// 聚合页：知乎问题、收藏夹等，成员条目是主体。
   collectionIndex,
 
@@ -49,6 +51,7 @@ enum ContentTemplate {
     ContentTemplate.gallery => '图集',
     ContentTemplate.video => '视频',
     ContentTemplate.audio => '音频',
+    ContentTemplate.document => '文档',
     ContentTemplate.collectionIndex => '聚合页',
     ContentTemplate.profile => '主页',
     ContentTemplate.bookmark => '书签',
@@ -97,6 +100,8 @@ ContentTemplate resolveContentTemplate({
 }) {
   final layout = layoutType?.trim().toLowerCase();
   final type = contentType?.trim().toLowerCase();
+
+  if (type == 'document') return ContentTemplate.document;
 
   // 账号主页优先于布局：主页的消费方式与图集完全不同。
   if (type == 'user_profile') return ContentTemplate.profile;
@@ -169,14 +174,9 @@ extension ShareCardTemplate on ShareCard {
               asset.mediaType == MediaType.video) &&
           asset.sources.isNotEmpty,
     );
-    final hasCover = (coverUrl ?? '').trim().isNotEmpty;
-
     return switch (template) {
-      ContentTemplate.imageNote || ContentTemplate.gallery =>
-        hasVisualAsset || hasCover || (thumbnailUrl ?? '').trim().isNotEmpty,
-      ContentTemplate.shortPost => hasVisualAsset || hasCover,
-      ContentTemplate.profile =>
-        hasVisualAsset || (authorAvatarUrl ?? '').trim().isNotEmpty,
+      ContentTemplate.imageNote || ContentTemplate.gallery => hasVisualAsset,
+      ContentTemplate.shortPost || ContentTemplate.profile => hasVisualAsset,
       _ => false,
     };
   }

@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../../../../../core/media/media_asset.dart';
 import '../../../../../core/widgets/network_thumbnail.dart';
 import '../../../../../core/utils/toast.dart';
 import '../../../../../theme/design_tokens.dart';
@@ -8,8 +9,7 @@ class FullScreenGallery extends StatefulWidget {
   final List<String> images;
   final int initialIndex;
   final Map<String, List<String>> fallbackUrlsByImage;
-  final String apiBaseUrl;
-  final String? apiToken;
+  final Map<String, MediaAsset> mediaAssetsByImage;
   final int contentId;
   final Color? contentColor;
   final String? customHeroTag;
@@ -20,8 +20,7 @@ class FullScreenGallery extends StatefulWidget {
     required this.images,
     required this.initialIndex,
     this.fallbackUrlsByImage = const {},
-    required this.apiBaseUrl,
-    this.apiToken,
+    this.mediaAssetsByImage = const {},
     required this.contentId,
     this.contentColor,
     this.customHeroTag,
@@ -180,6 +179,9 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                                 : 0,
                             child: NetworkThumbnail(
                               imageUrl: widget.images[index],
+                              mediaAsset: widget
+                                  .mediaAssetsByImage[widget.images[index]],
+                              purpose: MediaPurpose.detail,
                               fallbackUrls:
                                   widget.fallbackUrlsByImage[widget
                                       .images[index]] ??
@@ -204,7 +206,7 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
             right: 0,
             child: Center(
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(AppRadius.lg),
+                borderRadius: AppShape.paneBorder,
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                   child: Container(
@@ -216,7 +218,7 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                       color: colorScheme.primaryContainer.withValues(
                         alpha: 0.35,
                       ),
-                      borderRadius: BorderRadius.circular(AppRadius.lg),
+                      borderRadius: AppShape.paneBorder,
                       border: Border.all(
                         color: colorScheme.onPrimaryContainer.withValues(
                           alpha: 0.15,
@@ -229,12 +231,11 @@ class _FullScreenGalleryState extends State<FullScreenGallery> {
                       children: [
                         Text(
                           '${_currentIndex + 1} / ${widget.images.length}',
-                          style: TextStyle(
-                            color: colorScheme.onPrimaryContainer,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                            letterSpacing: 0.5,
-                          ),
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(
+                                color: colorScheme.onPrimaryContainer,
+                                fontWeight: FontWeight.w700,
+                              ),
                         ),
                         const SizedBox(width: AppSpacing.xs),
                         Container(
