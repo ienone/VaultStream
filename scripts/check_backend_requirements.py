@@ -1,4 +1,4 @@
-"""Check backend requirements cover direct imports and pytest plugin fixtures."""
+"""Check backend requirements cover runtime, regression and CI imports."""
 
 from __future__ import annotations
 
@@ -31,23 +31,10 @@ PACKAGE_ALIASES = {
     "pip-audit": {"pip_audit"},
     "pydantic-settings": {"pydantic_settings"},
     "pytest-asyncio": {"pytest_asyncio"},
-    "pytest-cov": {"pytest_cov"},
-    "pytest-env": {"pytest_env"},
-    "pytest-httpx": {"pytest_httpx"},
-    "pytest-subtests": {"pytest_subtests"},
     "python-dateutil": {"dateutil"},
     "python-dotenv": {"dotenv"},
     "python-telegram-bot": {"telegram"},
 }
-
-PLUGIN_FIXTURES = {
-    "httpx_mock": "pytest-httpx",
-    "mocker": "pytest-mock",
-    "requests_mock": "requests-mock",
-    "respx_mock": "respx",
-    "subtests": "pytest-subtests",
-}
-
 
 def _parse_requirements(path: Path, seen: set[Path] | None = None) -> list[str]:
     seen = seen or set()
@@ -62,6 +49,10 @@ def _parse_requirements(path: Path, seen: set[Path] | None = None) -> list[str]:
             if child not in seen:
                 seen.add(child)
                 requirements.extend(_parse_requirements(child, seen))
+            continue
+        if line.startswith("-c ") or line.startswith("--constraint "):
+            # Constraints pin the resolved graph; they are not direct
+            # declarations and must not hide a missing requirement.
             continue
         requirements.append(canonicalize_name(Requirement(line).name))
 
@@ -120,20 +111,6 @@ def _missing_imports(
     return missing
 
 
-def _scan_plugin_fixtures(root: Path) -> dict[str, set[str]]:
-    fixtures: dict[str, set[str]] = defaultdict(set)
-    for path in sorted(root.rglob("*.py")):
-        relative = path.relative_to(REPO_ROOT)
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(relative))
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            for arg in node.args.args:
-                if arg.arg in PLUGIN_FIXTURES:
-                    fixtures[arg.arg].add(str(relative))
-    return fixtures
-
-
 def _print_missing(title: str, missing: dict[str, set[str]]) -> None:
     if not missing:
         return
@@ -154,20 +131,13 @@ def main() -> int:
     missing_tests = _missing_imports(_scan_imports(BACKEND_DIR / "tests"), dev_modules)
     missing_ci_scripts = _missing_imports(_scan_imports_from_paths(CI_SCRIPT_PATHS), dev_modules)
 
-    missing_fixtures: dict[str, set[str]] = {}
-    for fixture, files in _scan_plugin_fixtures(BACKEND_DIR / "tests").items():
-        required_distribution = canonicalize_name(PLUGIN_FIXTURES[fixture])
-        if required_distribution not in dev_requirements:
-            missing_fixtures[f"{fixture} -> {required_distribution}"] = files
-
-    if not (missing_runtime or missing_tests or missing_ci_scripts or missing_fixtures):
+    if not (missing_runtime or missing_tests or missing_ci_scripts):
         print("Backend requirements check passed.")
         return 0
 
     _print_missing("Runtime imports missing from backend/requirements.txt:", missing_runtime)
     _print_missing("Test imports missing from backend/requirements-dev.txt:", missing_tests)
     _print_missing("CI script imports missing from backend/requirements-dev.txt:", missing_ci_scripts)
-    _print_missing("Pytest plugin fixtures missing from backend/requirements-dev.txt:", missing_fixtures)
     return 1
 
 

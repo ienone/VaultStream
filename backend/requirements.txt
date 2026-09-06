@@ -1,9 +1,13 @@
+# Keep every install path on the reviewed transitive dependency baseline.
+-c constraints.txt
+
 # FastAPI and async support
 fastapi
 starlette
 uvicorn[standard]
 pydantic
 pydantic-settings
+python-multipart
 
 # Database (SQLite mode)
 aiosqlite  # SQLite async driver

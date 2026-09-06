@@ -20,30 +20,40 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: backend/requirements-dev.txt
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+            backend/constraints.txt
 
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
 
       - name: Check backend requirement coverage
+        if: always()
         run: python ../scripts/check_backend_requirements.py
 
-      - name: Run pytest
-        run: python -m pytest tests -q -m "not integration"
+      - name: Run critical regressions
+        if: always()
+        run: python -m pytest tests -q
 
       - name: Audit Python dependencies
+        if: always()
         run: python -m pip_audit -r requirements.txt
 
       - name: Run Bandit high severity scan
+        if: always()
         run: python -m bandit -r app --severity-level high --confidence-level high
 
       - name: Check OpenAPI docs inventory
+        if: always()
         run: python ../scripts/check_openapi_docs.py ../docs/backend/api/endpoints.md
 
       - name: Check SQLite schema gate
+        if: always()
         run: python ../scripts/check_database_schema.py
 
       - name: Scan for committed secrets
+        if: always()
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -73,5 +83,5 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
-      - name: Test
+      - name: Run critical regressions
         run: flutter test

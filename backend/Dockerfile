@@ -26,7 +26,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制依赖文件
-COPY requirements.txt .
+COPY requirements.txt constraints.txt ./
 
 # 安装 Python 依赖 + Playwright WebKit
 RUN pip install --no-cache-dir --upgrade pip \

@@ -45,6 +45,7 @@ Desktop.ini
 .gemini/
 
 # Backend runtime and local evaluation data
+/data/
 backend/data/
 backend/data_eval/
 backend/logs/
