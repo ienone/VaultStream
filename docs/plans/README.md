@@ -4,7 +4,7 @@
 
 active
 
-本目录保存已经确认的产品构想，以及为真实开发任务建立的成规模实施计划。计划不是当前实现；当前事实仍以代码、可重复验证结果和 `docs/frontend/`、`docs/backend/` 为准。
+本目录保存产品构想和具体实施计划。用户于 2026-09-05 明确确认下列两份构想基本覆盖产品真实期望和功能需求，以两者为目标依据；功能目标确认不等于当前已实现或本次全量实施。当前实现事实仍以代码、可重复验证结果和 `docs/frontend/`、`docs/backend/` 为准。
 
 ## 当前构想
 
@@ -19,8 +19,9 @@ active
 
 | 文档 | 状态 | 范围 |
 | --- | --- | --- |
-| `2026-07-26-unified-media-access.plan.md` | draft | 统一图片、视频、音频及附件的资产模型、访问授权、来源降级和迁移边界 |
-| `2026-07-28-platform-parser-reliability.plan.md` | active | 用真实平台样本验证解析可用性并修复内容字段链路缺口 |
+| `2026-07-26-unified-media-access.plan.md` | active | 已建立资产/变体与部分客户端迁移；manifest 刷新、分发迁移和旧字段退出仍未完成 |
+| `2026-07-28-platform-parser-reliability.plan.md` | completed-with-known-limit | 2026-07-28 的 16 个历史样本验收；不代表当前全部平台持续可用 |
+| `simplification-and-ux.plan.md` | completed-with-known-limit | 2026-09-05 已完成 In scope；原生端、真实平台、部署和 CI Python 3.13 未验证 |
 
 ## 开发方式
 

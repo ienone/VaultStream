@@ -12,20 +12,20 @@ active
 ## 当前职责
 
 - 动态时间线展示近期 run。
-- `/tasks/:runId` 展示通用 run 详情。
-- 收藏同步面板自带同步 run 详情弹窗。
+- `/tasks/:runId` 展示任务业务摘要、结果 section、关联对象、允许入口和折叠诊断信息。
+- 收藏同步失败项在统一任务页调用现有单项/批量/run retry contract；自动化面板只保留最近运行列表并跳转任务页。
 
 ## 不承担职责
 
-- 不执行业务重试、推送或同步动作。
+- 不提供猜测参数的通用重试、推送或同步动作。
 - 不重复持有各业务域的完整运行详情状态。
 - 不替代收藏同步、分发队列或内容后处理页面。
 
 ## 状态与输入输出
 
-- 输入：run id、run summary、task metadata。
-- 输出：任务详情展示和跳转。
-- 副作用：默认无；业务操作应由专用 renderer 或来源页面提供。
+- 输入：run id、run summary、明确的 `metadata` 与 `result`。
+- 输出：任务详情展示、实体/领域跳转，以及专用 renderer 明确定义的业务动作。
+- 副作用：通用展示默认无；当前只有收藏同步 renderer 复用已存在且受领域策略约束的 retry API。
 
 ## 响应式和失败态要求
 
@@ -35,10 +35,8 @@ active
 - 空状态：run 不存在时显示明确提示。
 - 错误状态：显示后端错误码和可追踪 run id。
 
-## 当前问题
+## 当前边界
 
-同一类后台 run 被多个组件重复展示的问题见 `../../issues/task-run-result-contract-missing.md`。
-
-## 尚未实现 / 计划扩展
-
-- 无本组件单独计划；统一 run detail 和 task renderer 的边界以 `../../issues/task-run-result-contract-missing.md` 为准。
+- 原始 `metadata/result` 默认折叠到“技术详情”，不再与业务结果同权展示。
+- 后端只为真实 producer 生成展示投影；未知任务保持通用状态，不自动获得重试能力。
+- 其他任务若需要 mutation，先固定对应领域 contract，再在专用 renderer 接入。

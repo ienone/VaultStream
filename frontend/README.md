@@ -417,27 +417,16 @@ flutter build linux --release
 # 输出: build/linux/x64/release/bundle/
 ```
 
-## 测试
+## 验证
 
-### 运行单元测试
-
-```bash
-dart run build_runner build --delete-conflicting-outputs
-flutter analyze
-flutter test
-```
-
-### 运行集成测试
+日常改动按实际流程做针对性验收，临时脚本验证后删除；布局、文案和平台行为不建立长期 widget/mock 套件。长期回归只保护分页竞态、播放器持久恢复和日志脱敏。
 
 ```bash
-flutter test integration_test/
+flutter analyze --no-pub
+flutter test --no-pub
 ```
 
-### 代码覆盖率
-
-```bash
-flutter test --coverage
-```
+修改需要生成的模型后先运行代码生成。Codex 沙盒中的 Flutter/Dart 命令必须按根目录 AGENTS.md 提权执行。真实浏览器/设备验收记录必要结果和截图，不以测试数量或覆盖率代替。
 
 ## 调试
 
