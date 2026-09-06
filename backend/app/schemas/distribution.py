@@ -124,6 +124,18 @@ class DistributionRuleResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class DistributionRuleDeleteResponse(BaseModel):
+    status: Literal["deleted"]
+    id: int
+
+
+class DistributionTriggerResponse(BaseModel):
+    """人工分发扫描已同步完成；只表示新增队列项数量。"""
+
+    status: Literal["triggered"]
+    enqueued_count: int
+
+
 class RulePreviewStats(BaseModel):
     """规则级别的分发预览统计（基于24h未来展望+现有内容）"""
     rule_id: int

@@ -2,7 +2,7 @@
 机器人相关的 schemas 
 """
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from pydantic import BaseModel, Field, ConfigDict
 
 from app.models.bot import BotChatType, BotConfigPlatform
@@ -77,6 +77,16 @@ class BotChatResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class BotChatDeleteResponse(BaseModel):
+    status: Literal["deleted"]
+    bot_chat_id: str
+
+
+class BotChatToggleResponse(BaseModel):
+    status: Literal["enabled", "disabled"]
+    enabled: bool
+
+
 class BotConfigCreate(BaseModel):
     platform: BotConfigPlatform
     name: str
@@ -122,6 +132,26 @@ class BotConfigResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class BotConfigMutationResponse(BotConfigResponse):
+    """配置写入结果及随后运行的可观察引用。"""
+
+    follow_up_kind: Optional[Literal["bot_runtime_control", "bot_chats_sync"]] = None
+    follow_up_run_id: Optional[str] = None
+    follow_up_status: Optional[str] = None
+    follow_up_error: Optional[str] = None
+
+
+class BotConfigDeleteResponse(BaseModel):
+    """配置删除结果及随后运行的可观察引用。"""
+
+    status: Literal["deleted"] = "deleted"
+    config_id: int
+    follow_up_kind: Optional[Literal["bot_runtime_control"]] = None
+    follow_up_run_id: Optional[str] = None
+    follow_up_status: Optional[str] = None
+    follow_up_error: Optional[str] = None
+
+
 class BotRuntimeResponse(BaseModel):
     platform: Optional[BotConfigPlatform] = None
     bot_id: Optional[str]
@@ -137,6 +167,18 @@ class BotRuntimeResponse(BaseModel):
     updated_at: OptionalUtcDatetime = None
     
     model_config = ConfigDict(from_attributes=True)
+
+
+class BotRuntimeActionResponse(BaseModel):
+    """Telegram Bot 进程控制结果。"""
+
+    status: str
+    run_id: str
+    reason: Optional[str] = None
+    pid: Optional[int] = None
+    error: Optional[str] = None
+    stopped: Optional[Dict[str, Any]] = None
+    started: Optional[Dict[str, Any]] = None
 
 
 class TelegramChatSyncResponse(BaseModel):
@@ -193,6 +235,11 @@ class BotHeartbeat(BaseModel):
     error: Optional[str] = None
 
 
+class BotHeartbeatResponse(BaseModel):
+    status: Literal["ok"]
+    heartbeat_at: str
+
+
 class BotSyncResult(BaseModel):
     """Bot 群组同步结果"""
     total: int
@@ -237,6 +284,7 @@ class BotConfigBase(BaseModel):
 class BotConfigSyncChatsResponse(BaseModel):
     """Bot 配置同步群组响应"""
     bot_config_id: int
+    run_id: str
     total: int = 0
     updated: int = 0
     created: int = 0

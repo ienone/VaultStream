@@ -25,8 +25,18 @@ def coerce_setting_value(value: Any) -> Any:
     return value
 
 
-def coerce_bool(value: Any) -> bool:
-    return bool(coerce_setting_value(value))
+def coerce_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+    return default
 
 
 def coerce_int(value: Any, default: int) -> int:

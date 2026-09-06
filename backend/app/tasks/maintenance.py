@@ -1,5 +1,7 @@
 import asyncio
 import random
+from collections.abc import Awaitable, Callable
+
 from loguru import logger
 from app.services.browser_auth_service import browser_auth_service
 from app.services.background_task_state import (
@@ -8,21 +10,50 @@ from app.services.background_task_state import (
     record_task_success,
 )
 from app.services.automation_policy import AutomationPolicyService
+from app.services.notification_inbox import safely_sync_account_auth_notification
 
 
-async def _recorded_platform_check(task_name: str, label: str, check_coro):
+async def _recorded_platform_check(
+    task_name: str,
+    label: str,
+    platform: str,
+    check_coro,
+):
     try:
         success = await check_coro
     except Exception as e:
         logger.warning("{} keepalive raised: {}", label, e)
         await record_task_error(task_name, e)
+        await safely_sync_account_auth_notification(platform, is_valid=False)
         return False
 
     if success:
         await record_task_success(task_name)
     else:
         await record_task_error(task_name, f"{label} keepalive check failed")
+    await safely_sync_account_auth_notification(platform, is_valid=success)
     return success
+
+
+async def _run_platform_keepalive_if_allowed(
+    task_name: str,
+    label: str,
+    platform: str,
+    check_factory: Callable[[], Awaitable[bool]],
+) -> bool | None:
+    """Run one scheduled platform check only while the live policy allows it."""
+    policy = await AutomationPolicyService().cookie_keepalive()
+    if not policy.allowed:
+        logger.bind(platform=platform, policy=policy.as_dict()).debug(
+            "Cookie keepalive check skipped by automation policy"
+        )
+        return None
+    return await _recorded_platform_check(
+        task_name,
+        label,
+        platform,
+        check_factory(),
+    )
 
 async def zhihu_keepalive_loop():
     """
@@ -37,11 +68,14 @@ async def zhihu_keepalive_loop():
         await asyncio.sleep(sleep_hours * 3600)
         
         logger.info("Running Zhihu zse cookie refresh...")
-        success = await _recorded_platform_check(
+        success = await _run_platform_keepalive_if_allowed(
             "cookie_keepalive_zhihu",
             "Zhihu",
-            browser_auth_service.refresh_zhihu_zse_cookie(),
+            "zhihu",
+            browser_auth_service.refresh_zhihu_zse_cookie,
         )
+        if success is None:
+            continue
         if not success:
             logger.warning("Zhihu zse refresh failed. The primary cookie might be invalid.")
         else:
@@ -60,11 +94,14 @@ async def weibo_keepalive_loop():
         await asyncio.sleep(sleep_hours * 3600)
         
         logger.info("Running Weibo keepalive check...")
-        is_valid = await _recorded_platform_check(
+        is_valid = await _run_platform_keepalive_if_allowed(
             "cookie_keepalive_weibo",
             "Weibo",
-            browser_auth_service.check_platform_status("weibo"),
+            "weibo",
+            lambda: browser_auth_service.check_platform_status("weibo"),
         )
+        if is_valid is None:
+            continue
         if not is_valid:
             logger.warning("Weibo keepalive check failed.")
         else:
@@ -83,37 +120,18 @@ async def xiaohongshu_keepalive_loop():
         await asyncio.sleep(sleep_hours * 3600)
         
         logger.info("Running Xiaohongshu keepalive check...")
-        is_valid = await _recorded_platform_check(
+        is_valid = await _run_platform_keepalive_if_allowed(
             "cookie_keepalive_xiaohongshu",
             "Xiaohongshu",
-            browser_auth_service.check_platform_status("xiaohongshu"),
+            "xiaohongshu",
+            lambda: browser_auth_service.check_platform_status("xiaohongshu"),
         )
+        if is_valid is None:
+            continue
         if not is_valid:
             logger.warning("Xiaohongshu keepalive check failed.")
         else:
             logger.info("Xiaohongshu keepalive check succeeded.")
-
-def start_cookie_keepalive_tasks():
-    """
-    启动用于 Cookie 维护的后台任务。
-    应在 FastAPI 应用启动期间调用。
-    """
-    async def _start_if_allowed():
-        policy = await AutomationPolicyService().cookie_keepalive()
-        if not policy.allowed:
-            logger.bind(policy=policy.as_dict()).info(
-                "Cookie keepalive tasks skipped by automation policy"
-            )
-            return
-        asyncio.create_task(zhihu_keepalive_loop())
-        asyncio.create_task(xiaohongshu_keepalive_loop())
-        asyncio.create_task(weibo_keepalive_loop())
-        logger.info("Successfully launched cookie keepalive tasks.")
-
-    try:
-        asyncio.create_task(_start_if_allowed())
-    except Exception as e:
-        logger.error(f"Failed to start cookie keepalive tasks: {e}")
 
 class CookieKeepAliveTask:
     """包装类，用于统一启动接口"""
@@ -125,24 +143,20 @@ class CookieKeepAliveTask:
         try:
             if self._tasks and any(not t.done() for t in self._tasks):
                 return
-            asyncio.create_task(self._start_if_allowed())
+            asyncio.create_task(self._start())
         except Exception as e:
             logger.error(f"Failed to start cookie keepalive tasks: {e}")
 
-    async def _start_if_allowed(self):
-        policy = await AutomationPolicyService().cookie_keepalive()
-        if not policy.allowed:
-            logger.bind(policy=policy.as_dict()).info(
-                "Cookie keepalive task skipped by automation policy"
-            )
-            return
+    async def _start(self):
         try:
-            for task_name in (
-                "cookie_keepalive_zhihu",
-                "cookie_keepalive_xiaohongshu",
-                "cookie_keepalive_weibo",
-            ):
-                asyncio.create_task(record_task_started(task_name))
+            policy = await AutomationPolicyService().cookie_keepalive()
+            if policy.allowed:
+                for task_name in (
+                    "cookie_keepalive_zhihu",
+                    "cookie_keepalive_xiaohongshu",
+                    "cookie_keepalive_weibo",
+                ):
+                    asyncio.create_task(record_task_started(task_name))
             self._tasks = [
                 asyncio.create_task(zhihu_keepalive_loop()),
                 asyncio.create_task(xiaohongshu_keepalive_loop()),

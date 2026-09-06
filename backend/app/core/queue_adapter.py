@@ -2,11 +2,20 @@
 任务队列 - 基于 SQLite 任务表
 """
 import asyncio
+from dataclasses import dataclass
 from typing import Optional, Dict, Any
 from sqlalchemy import select, update, and_
 
 from app.core.logging import logger, log_context, ensure_task_id
 from app.core.time_utils import utcnow
+
+
+@dataclass(frozen=True)
+class ClaimedTask:
+    """A claimed database row plus its external task payload."""
+
+    db_id: int
+    payload: Dict[str, Any]
 
 
 class TaskQueue:
@@ -69,7 +78,7 @@ class TaskQueue:
             logger.error(f"任务入队失败: {e}")
             return False
     
-    async def dequeue(self, timeout: int = 5) -> Optional[Dict[str, Any]]:
+    async def dequeue(self, timeout: int = 5) -> Optional[ClaimedTask]:
         """从队列取出任务（CAS 原子性获取，兼容 SQLite）"""
         from app.models import Task, TaskStatus
         
@@ -115,7 +124,7 @@ class TaskQueue:
                         select(Task).where(Task.id == candidate_id)
                     )).scalar_one()
                     
-                    return task.payload
+                    return ClaimedTask(db_id=task.id, payload=dict(task.payload or {}))
                     
             except Exception as e:
                 logger.error(f"任务出队失败: {e}")
@@ -123,49 +132,51 @@ class TaskQueue:
         
         return None
     
-    async def mark_complete(self, content_id: int):
+    async def mark_complete(self, task_db_id: int) -> bool:
         try:
             from app.models import Task, TaskStatus
-            from sqlalchemy import cast, String
-            
+
             async with self._session_maker() as session:
                 stmt = (
                     update(Task)
                     .where(
                         and_(
-                            cast(Task.payload['content_id'], String) == str(content_id),
-                            Task.status == TaskStatus.RUNNING
+                            Task.id == task_db_id,
+                            Task.status == TaskStatus.RUNNING,
                         )
                     )
                     .values(status=TaskStatus.COMPLETED, completed_at=utcnow())
                 )
-                await session.execute(stmt)
+                result = await session.execute(stmt)
                 await session.commit()
-                logger.debug(f"任务已完成: {content_id}")
+                changed = result.rowcount == 1
+                logger.debug(f"任务已完成: task_db_id={task_db_id}, changed={changed}")
+                return changed
         except Exception as e:
             logger.error(f"标记任务完成失败: {e}")
-    
-    async def push_dead_letter(self, task_data: Dict[str, Any], *, reason: str):
+            return False
+
+    async def mark_failed(self, task_db_id: int, *, reason: str) -> bool:
         try:
             from app.models import Task, TaskStatus
-            from sqlalchemy import cast, String
-            content_id = task_data.get("content_id")
-            
+
             async with self._session_maker() as session:
                 stmt = (
                     update(Task)
                     .where(
                         and_(
-                            cast(Task.payload['content_id'], String) == str(content_id),
-                            Task.status == TaskStatus.RUNNING
+                            Task.id == task_db_id,
+                            Task.status == TaskStatus.RUNNING,
                         )
                     )
                     .values(status=TaskStatus.FAILED, last_error=reason, completed_at=utcnow())
                 )
-                await session.execute(stmt)
+                result = await session.execute(stmt)
                 await session.commit()
+                return result.rowcount == 1
         except Exception as e:
-            logger.error(f"写入死信队列失败: {e}")
+            logger.error(f"标记任务失败: {e}")
+            return False
     
     async def is_processing(self, content_id: int) -> bool:
         try:
@@ -173,14 +184,14 @@ class TaskQueue:
             from sqlalchemy import cast, String
             
             async with self._session_maker() as session:
-                stmt = select(Task).where(
+                stmt = select(Task.id).where(
                     and_(
                         cast(Task.payload['content_id'], String) == str(content_id),
                         Task.status == TaskStatus.RUNNING
                     )
-                )
+                ).limit(1)
                 result = await session.execute(stmt)
-                return result.scalar_one_or_none() is not None
+                return result.first() is not None
         except Exception as e:
             logger.error(f"检查任务状态失败: {e}")
             return False

@@ -2,10 +2,8 @@
 Distribution business entrypoint.
 
 This service owns rule matching, auto-approval, rule refresh, and queue
-enqueue decisions. Legacy modules keep thin wrappers for API compatibility.
+enqueue decisions.
 """
-from typing import List
-
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,27 +37,21 @@ class DistributionService:
         self.content_repo = ContentRepository(db)
         self.dist_repo = DistributionRepository(db)
 
-    async def match_rules(self, content: Content) -> List[DistributionRule]:
-        """Return enabled rules whose base conditions match the content."""
-        all_rules = await self.dist_repo.list_rules(enabled=True)
-
-        logger.debug(
-            f"Matching rules for content {content.id}, total {len(all_rules)} enabled"
-        )
-
-        matched_rules = []
-        for rule in all_rules:
-            if self._check_match(content, rule):
-                matched_rules.append(rule)
-
-        return matched_rules
-
     def _check_match(self, content: Content, rule: DistributionRule) -> bool:
         decision = check_match_conditions(content, rule.match_conditions or {})
         return decision.bucket != DECISION_FILTERED
 
     async def auto_approve_if_eligible(self, content: Content) -> bool:
         """Auto-approve content when it matches any non-approval-required rule."""
+        policy = await AutomationPolicyService().distribution_enqueue(force=False)
+        if not policy.allowed:
+            logger.bind(
+                component="distribution",
+                content_id=content.id,
+                policy=policy.as_dict(),
+            ).info("Content auto-approval skipped by automation policy")
+            return False
+
         result = await self.db.execute(
             select(DistributionRule).where(DistributionRule.enabled == True)
         )
@@ -92,6 +84,8 @@ class DistributionService:
 
     async def refresh_queue_by_rules(self) -> None:
         """Refresh auto-approval status after rule changes."""
+        policy = await AutomationPolicyService().distribution_enqueue(force=False)
+        allow_auto_approval = policy.allowed
         contents = await self.content_repo.list_parsed_contents()
         enabled_rules = await self.dist_repo.list_rules(enabled=True)
 
@@ -114,7 +108,7 @@ class DistributionService:
                     content.review_note = "Rule update requires manual review"
                     changes += 1
 
-            elif content.review_status == ReviewStatus.PENDING:
+            elif allow_auto_approval and content.review_status == ReviewStatus.PENDING:
                 if matches_any_auto_approve_rule(content):
                     content.review_status = ReviewStatus.AUTO_APPROVED
                     content.reviewed_at = utcnow()
@@ -125,6 +119,12 @@ class DistributionService:
         if changes > 0:
             await self.db.commit()
             logger.info("Rules updated: %s content status changes", changes)
+
+        if not allow_auto_approval:
+            logger.bind(
+                component="distribution",
+                policy=policy.as_dict(),
+            ).info("Rule refresh auto-approval skipped by automation policy")
 
         for content_id in auto_approved_ids:
             try:

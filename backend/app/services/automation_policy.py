@@ -31,12 +31,9 @@ class AutomationPolicyService:
     def __init__(self, config_service: ConfigService | None = None) -> None:
         self._config = config_service or ConfigService()
 
-    async def _fresh_value(self, key: str, default: Any) -> Any:
-        return await self._config.get_value_fresh(key, default)
-
     async def favorites_scheduler(self) -> AutomationPolicyDecision:
         enabled = coerce_bool(
-            await self._fresh_value(
+            await self._config.get_value_fresh(
                 "enable_favorites_sync_scheduler",
                 getattr(settings, "enable_favorites_sync_scheduler", True),
             )
@@ -66,7 +63,7 @@ class AutomationPolicyService:
             return AutomationPolicyDecision(True, "forced", "manual override requested")
 
         allow_disabled = coerce_bool(
-            await self._fresh_value(
+            await self._config.get_value_fresh(
                 "allow_manual_favorites_sync_disabled_platform",
                 getattr(settings, "allow_manual_favorites_sync_disabled_platform", False),
             )
@@ -107,13 +104,13 @@ class AutomationPolicyService:
 
     async def discovery_scoring(self) -> AutomationPolicyDecision:
         patrol_enabled = coerce_bool(
-            await self._fresh_value(
+            await self._config.get_value_fresh(
                 "enable_discovery_patrol",
                 getattr(settings, "enable_discovery_patrol", True),
             )
         )
         scoring_enabled = coerce_bool(
-            await self._fresh_value(
+            await self._config.get_value_fresh(
                 "enable_ai_scoring",
                 getattr(settings, "enable_ai_scoring", True),
             )
@@ -130,13 +127,51 @@ class AutomationPolicyService:
             value,
         )
 
+    async def automatic_semantic_indexing(self) -> AutomationPolicyDecision:
+        enabled = coerce_bool(
+            await self._config.get_value_fresh(
+                "enable_auto_semantic_indexing",
+                getattr(settings, "enable_auto_semantic_indexing", True),
+            )
+        )
+        if enabled:
+            return AutomationPolicyDecision(
+                True,
+                "allowed",
+                "automatic semantic indexing enabled",
+            )
+        return AutomationPolicyDecision(
+            False,
+            "automatic_semantic_indexing_disabled",
+            "automatic semantic indexing is disabled",
+            "enable_auto_semantic_indexing",
+            enabled,
+        )
+
+    async def parse_worker_poll(self) -> AutomationPolicyDecision:
+        enabled = coerce_bool(
+            await self._config.get_value_fresh(
+                "enable_parse_worker",
+                getattr(settings, "enable_parse_worker", True),
+            )
+        )
+        if enabled:
+            return AutomationPolicyDecision(True, "allowed", "parse worker enabled")
+        return AutomationPolicyDecision(
+            False,
+            "parse_worker_disabled",
+            "parse worker polling is disabled",
+            "enable_parse_worker",
+            enabled,
+        )
+
     async def distribution_enqueue(
         self,
         *,
         force: bool = False,
     ) -> AutomationPolicyDecision:
         mode = str(
-            await self._fresh_value(
+            await self._config.get_value_fresh(
                 "distribution_mode",
                 getattr(settings, "distribution_mode", "auto"),
             )
@@ -154,7 +189,7 @@ class AutomationPolicyService:
 
     async def distribution_worker_poll(self) -> AutomationPolicyDecision:
         mode = str(
-            await self._fresh_value(
+            await self._config.get_value_fresh(
                 "distribution_mode",
                 getattr(settings, "distribution_mode", "auto"),
             )
@@ -172,7 +207,7 @@ class AutomationPolicyService:
 
     async def cookie_keepalive(self) -> AutomationPolicyDecision:
         enabled = coerce_bool(
-            await self._fresh_value(
+            await self._config.get_value_fresh(
                 "enable_cookie_keepalive",
                 getattr(settings, "enable_cookie_keepalive", True),
             )
@@ -189,6 +224,6 @@ class AutomationPolicyService:
 
     async def ingest_mode(self) -> str:
         return str(
-            await self._fresh_value("ingest_mode", getattr(settings, "ingest_mode", "parse"))
+            await self._config.get_value_fresh("ingest_mode", getattr(settings, "ingest_mode", "parse"))
             or "parse"
         ).strip().lower()

@@ -1,17 +1,28 @@
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from app.core.dependencies import require_api_token
 from app.services.browser_auth_service import browser_auth_service, AuthSessionStatus
+from app.services.notification_inbox import safely_sync_account_auth_notification
 
 router = APIRouter(dependencies=[Depends(require_api_token)])
+
 
 class QRResponse(BaseModel):
     qrcode_b64: str
 
+
 class CheckResponse(BaseModel):
     is_valid: bool
     platform: str
+
+
+class AuthActionResponse(BaseModel):
+    status: Literal["success"]
+    message: str
+
 
 @router.post("/session/{platform}", response_model=AuthSessionStatus)
 async def start_auth_session(platform: str):
@@ -21,8 +32,9 @@ async def start_auth_session(platform: str):
     """
     try:
         return await browser_auth_service.start_auth_session(platform)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
 
 @router.get("/session/{session_id}/qrcode", response_model=QRResponse)
 async def get_session_qrcode(session_id: str):
@@ -35,8 +47,9 @@ async def get_session_qrcode(session_id: str):
         if not b64:
             raise HTTPException(status_code=404, detail="QR code not ready")
         return QRResponse(qrcode_b64=b64)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
 
 @router.get("/session/{session_id}/status", response_model=AuthSessionStatus)
 async def get_session_status(session_id: str):
@@ -45,14 +58,16 @@ async def get_session_status(session_id: str):
     """
     try:
         return await browser_auth_service.get_session_status(session_id)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-@router.delete("/session/{session_id}")
+
+@router.delete("/session/{session_id}", response_model=AuthActionResponse)
 async def cancel_auth_session(session_id: str):
     """取消二维码登录并释放对应平台网络资源。"""
     await browser_auth_service.cancel_session(session_id)
     return {"status": "success", "message": "登录会话已取消"}
+
 
 @router.post("/{platform}/check", response_model=CheckResponse)
 async def check_platform_status(platform: str):
@@ -60,24 +75,35 @@ async def check_platform_status(platform: str):
     检查此平台当前存储的 Cookie 是否有效。
     """
     is_valid = await browser_auth_service.check_platform_status(platform)
+    await safely_sync_account_auth_notification(platform, is_valid=is_valid)
     return CheckResponse(is_valid=is_valid, platform=platform)
 
-@router.post("/{platform}/logout")
-@router.delete("/{platform}")
+
+@router.post("/{platform}/logout", response_model=AuthActionResponse)
+@router.delete("/{platform}", response_model=AuthActionResponse)
 async def logout_platform(platform: str):
     """
     删除 VaultStream 本地保存的 Cookie，不修改平台账号本身。
     """
     await browser_auth_service.logout_platform(platform)
+    await safely_sync_account_auth_notification(
+        platform,
+        is_valid=False,
+        configured=False,
+    )
     return {"status": "success", "message": f"Successfully logged out of {platform}"}
 
-@router.post("/zhihu/refresh-zse")
+
+@router.post("/zhihu/refresh-zse", response_model=AuthActionResponse)
 async def refresh_zhihu_zse():
     """
     手动刷新知乎 __zse_ck 风控指纹
     """
     success = await browser_auth_service.refresh_zhihu_zse_cookie()
+    await safely_sync_account_auth_notification("zhihu", is_valid=success)
     if success:
         return {"status": "success", "message": "刷新成功"}
-    else:
-        raise HTTPException(status_code=503, detail="刷新失败，可能 Cookie 已过期、未配置或浏览器服务暂不可用")
+    raise HTTPException(
+        status_code=503,
+        detail="刷新失败，可能 Cookie 已过期、未配置或浏览器服务暂不可用",
+    )

@@ -1,11 +1,12 @@
 """
 队列与任务运行态相关的 schemas
 """
-from typing import Optional, List
+from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.system import QueueItemStatus
 from app.schemas.base import UtcDatetime, OptionalUtcDatetime
+from app.schemas.media import MediaAssetManifest
 
 
 class ContentQueueItemResponse(BaseModel):
@@ -16,6 +17,7 @@ class ContentQueueItemResponse(BaseModel):
     is_nsfw: bool = False
     cover_url: Optional[str] = None
     author_name: Optional[str] = None
+    media_assets: List[MediaAssetManifest] = Field(default_factory=list)
 
     rule_id: int
     bot_chat_id: int
@@ -80,6 +82,50 @@ class QueueStatsResponse(BaseModel):
     pushed: int
     total: int
     due_now: int
+
+
+class QueueEnqueueResponse(BaseModel):
+    status: Literal["ok"]
+    enqueued_count: int
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class QueueCancelResponse(BaseModel):
+    status: Literal["filtered"]
+    id: int
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class BatchQueueRetryResponse(BaseModel):
+    retried_count: int
+    item_ids: List[int] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class QueueChangedResponse(BaseModel):
+    status: Literal["ok"]
+    changed: int
+    run_id: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class QueueMovedResponse(BaseModel):
+    status: Literal["ok"]
+    moved: int
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class QueueRepushResponse(BaseModel):
+    status: Literal["ok"]
+    changed: int
+    deleted_records: int
+
+    model_config = ConfigDict(extra="forbid")
 
 
 # 为了向后兼容路由中的名称

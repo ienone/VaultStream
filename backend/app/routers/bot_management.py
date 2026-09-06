@@ -27,6 +27,7 @@ from app.models import (
 )
 from app.schemas import (
     BotChatCreate, BotChatUpdate, BotChatResponse,
+    BotChatDeleteResponse, BotChatToggleResponse, BotHeartbeatResponse,
     BotStatusResponse, BotSyncRequest, StorageStatsResponse,
     BotChatUpsert, BotHeartbeat, BotRuntimeResponse, BotSyncResult,
     BotChatRulesResponse, BotChatRuleAssignRequest, ChatRuleBindingInfo,
@@ -279,7 +280,10 @@ async def update_bot_chat(
     return _chat_to_response(db_chat)
 
 
-@router.delete("/bot/chats/{bot_chat_id}")
+@router.delete(
+    "/bot/chats/{bot_chat_id}",
+    response_model=BotChatDeleteResponse,
+)
 async def delete_bot_chat(
     bot_chat_id: str,
     db: AsyncSession = Depends(get_db),
@@ -309,7 +313,10 @@ async def delete_bot_chat(
     return {"status": "deleted", "bot_chat_id": bot_chat_id}
 
 
-@router.post("/bot/chats/{bot_chat_id}/toggle")
+@router.post(
+    "/bot/chats/{bot_chat_id}/toggle",
+    response_model=BotChatToggleResponse,
+)
 async def toggle_bot_chat(
     bot_chat_id: str,
     db: AsyncSession = Depends(get_db),
@@ -393,7 +400,7 @@ async def upsert_bot_chat(
 
 # ========== Bot Heartbeat ==========
 
-@router.post("/bot/heartbeat")
+@router.post("/bot/heartbeat", response_model=BotHeartbeatResponse)
 async def bot_heartbeat(
     heartbeat: BotHeartbeat,
     db: AsyncSession = Depends(get_db),

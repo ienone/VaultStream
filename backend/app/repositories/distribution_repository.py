@@ -1,9 +1,8 @@
-from typing import List, Optional, Tuple, Dict, Any
-from sqlalchemy import select, and_, update, desc, delete
+from typing import List, Optional
+from sqlalchemy import select, desc
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.distribution import DistributionRule, DistributionTarget
-from app.models.bot import BotChat
 
 class DistributionRepository:
     def __init__(self, db: AsyncSession):
@@ -44,33 +43,6 @@ class DistributionRepository:
             query = query.where(DistributionRule.enabled == enabled)
         result = await self.db.execute(query)
         return list(result.scalars().all())
-
-    async def list_active_rules_with_targets(self) -> List[DistributionRule]:
-        """获取所有启用的规则及其关联的目标（预加载）"""
-        stmt = (
-            select(DistributionRule)
-            .options(
-                selectinload(DistributionRule.distribution_targets)
-                .selectinload(DistributionTarget.bot_chat)
-            )
-            .where(DistributionRule.enabled == True)
-            .order_by(desc(DistributionRule.priority))
-        )
-        result = await self.db.execute(stmt)
-        return list(result.scalars().all())
-
-    async def get_rule_with_targets(self, rule_id: int) -> Optional[DistributionRule]:
-        """按 ID 获取规则及其关联的目标"""
-        stmt = (
-            select(DistributionRule)
-            .options(
-                selectinload(DistributionRule.distribution_targets)
-                .selectinload(DistributionTarget.bot_chat)
-            )
-            .where(DistributionRule.id == rule_id)
-        )
-        result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
 
     async def create_rule(self, **kwargs) -> DistributionRule:
         db_rule = DistributionRule(**kwargs)
@@ -120,23 +92,3 @@ class DistributionRepository:
 
     async def delete_target(self, db_target: DistributionTarget) -> None:
         await self.db.delete(db_target)
-
-    async def batch_update_targets_by_chat(
-        self, 
-        rule_ids: List[int], 
-        bot_chat_id: int, 
-        update_values: Dict[str, Any]
-    ) -> int:
-        """根据 BotChat ID 批量更新多个规则下的目标配置"""
-        stmt = (
-            update(DistributionTarget)
-            .where(
-                and_(
-                    DistributionTarget.rule_id.in_(rule_ids),
-                    DistributionTarget.bot_chat_id == bot_chat_id
-                )
-            )
-            .values(**update_values)
-        )
-        result = await self.db.execute(stmt)
-        return result.rowcount

@@ -1,4 +1,4 @@
-"""Compatibility wrappers for distribution queue enqueueing."""
+"""Public distribution queue enqueueing helpers."""
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,15 +34,6 @@ async def enqueue_content(
         return await DistributionService(session).enqueue_content(content_id, force=force)
 
 
-async def _enqueue_content_impl(
-    content_id: int,
-    session: AsyncSession,
-    force: bool,
-) -> int:
-    """Backward-compatible test seam for enqueue implementation."""
-    return await DistributionService(session).enqueue_content(content_id, force=force)
-
-
 async def enqueue_content_background(content_id: int) -> None:
     """
     后台入队包装器（fire-and-forget）。
@@ -51,6 +42,6 @@ async def enqueue_content_background(content_id: int) -> None:
     """
     try:
         async with AsyncSessionLocal() as session:
-            await _enqueue_content_impl(content_id, session, force=False)
+            await DistributionService(session).enqueue_content(content_id, force=False)
     except Exception:
         logger.exception(f"Background enqueue failed: content_id={content_id}")

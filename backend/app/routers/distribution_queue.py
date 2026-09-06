@@ -4,7 +4,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,23 +14,36 @@ from app.core.events import event_bus
 from app.core.logging import logger
 from app.core.time_utils import utcnow
 from app.models import Content, ContentQueueItem, QueueItemStatus, PushedRecord
+from app.schemas import (
+    BatchQueueRetryResponse,
+    BatchQueueRetryRequest,
+    ContentQueueItemListResponse,
+    ContentQueueItemResponse,
+    EnqueueContentRequest,
+    QueueCancelResponse,
+    QueueChangedResponse,
+    QueueEnqueueResponse,
+    QueueItemRetryRequest,
+    QueueMovedResponse,
+    QueueRepushResponse,
+    QueueStatsResponse,
+)
+from app.schemas.media import MediaAssetManifest, MediaPurpose
 from app.services.background_task_state import (
     record_task_run_error,
     record_task_run_started,
     record_task_run_success,
 )
+from app.services.media_manifest import (
+    build_content_media_manifests,
+    resolve_media_base_url,
+)
 from app.tasks import DistributionQueueWorker
+
 
 def get_queue_worker():
     return DistributionQueueWorker()
-from app.schemas import (
-    BatchQueueRetryRequest,
-    ContentQueueItemListResponse,
-    ContentQueueItemResponse,
-    EnqueueContentRequest,
-    QueueItemRetryRequest,
-    QueueStatsResponse,
-)
+
 
 router = APIRouter(prefix="/distribution-queue", tags=["distribution-queue"])
 
@@ -43,7 +56,12 @@ def _as_utc(dt: Optional[datetime]) -> Optional[datetime]:
     return dt.astimezone(timezone.utc)
 
 
-def _to_queue_item_response(item: ContentQueueItem, content: Optional[Content] = None) -> ContentQueueItemResponse:
+def _to_queue_item_response(
+    item: ContentQueueItem,
+    content: Optional[Content] = None,
+    *,
+    media_assets: list[MediaAssetManifest] | None = None,
+) -> ContentQueueItemResponse:
     return ContentQueueItemResponse(
         id=item.id,
         content_id=item.content_id,
@@ -52,6 +70,7 @@ def _to_queue_item_response(item: ContentQueueItem, content: Optional[Content] =
         is_nsfw=bool(content.is_nsfw) if content else False,
         cover_url=(content.cover_url if content else None),
         author_name=(content.author_name if content else None),
+        media_assets=media_assets or [],
         rule_id=item.rule_id,
         bot_chat_id=item.bot_chat_id,
         source_platform=(content.platform.value if content and content.platform else None),
@@ -73,6 +92,33 @@ def _to_queue_item_response(item: ContentQueueItem, content: Optional[Content] =
         completed_at=_as_utc(item.completed_at),
         created_at=_as_utc(item.created_at) or datetime.now(timezone.utc),
         updated_at=_as_utc(item.updated_at) or datetime.now(timezone.utc),
+    )
+
+
+async def _queue_media_assets(
+    db: AsyncSession,
+    content_ids: list[int],
+    request: Request,
+) -> dict[int, list[MediaAssetManifest]]:
+    return await build_content_media_manifests(
+        db,
+        content_ids,
+        purpose=MediaPurpose.CARD,
+        base_url=resolve_media_base_url(str(request.base_url)),
+    )
+
+
+async def _queue_item_response_with_media(
+    db: AsyncSession,
+    item: ContentQueueItem,
+    content: Optional[Content],
+    request: Request,
+) -> ContentQueueItemResponse:
+    manifests = await _queue_media_assets(db, [item.content_id], request)
+    return _to_queue_item_response(
+        item,
+        content,
+        media_assets=manifests.get(item.content_id, []),
     )
 
 
@@ -197,6 +243,7 @@ async def get_queue_stats(
 
 @router.get("/items", response_model=ContentQueueItemListResponse)
 async def list_queue_items(
+    request: Request,
     status: Optional[str] = Query(None, description="状态过滤（支持别名 will_push/filtered/pushed）"),
     content_id: Optional[int] = Query(None, description="按内容ID过滤"),
     rule_id: Optional[int] = Query(None, description="按规则ID过滤"),
@@ -235,9 +282,21 @@ async def list_queue_items(
         .limit(size)
     )
     rows = result.all()
+    media_assets = await _queue_media_assets(
+        db,
+        list({item.content_id for item, _content in rows}),
+        request,
+    )
 
     return ContentQueueItemListResponse(
-        items=[_to_queue_item_response(item, content) for item, content in rows],
+        items=[
+            _to_queue_item_response(
+                item,
+                content,
+                media_assets=media_assets.get(item.content_id, []),
+            )
+            for item, content in rows
+        ],
         total=total,
         page=page,
         size=size,
@@ -248,6 +307,7 @@ async def list_queue_items(
 @router.get("/items/{item_id}", response_model=ContentQueueItemResponse)
 async def get_queue_item(
     item_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
@@ -262,12 +322,13 @@ async def get_queue_item(
     content = row[1] if row else None
     if not item:
         raise HTTPException(status_code=404, detail="Queue item not found")
-    return _to_queue_item_response(item, content)
+    return await _queue_item_response_with_media(db, item, content, request)
 
 
 @router.post("/items/{item_id}/push-now", response_model=ContentQueueItemResponse)
 async def push_queue_item_now(
     item_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
@@ -353,10 +414,11 @@ async def push_queue_item_now(
             attempt_count=item.attempt_count,
             trigger="manual",
         )
-    return _with_run_id(_to_queue_item_response(item, content), run["run_id"])
+    response = await _queue_item_response_with_media(db, item, content, request)
+    return _with_run_id(response, run["run_id"])
 
 
-@router.post("/enqueue/{content_id}")
+@router.post("/enqueue/{content_id}", response_model=QueueEnqueueResponse)
 async def enqueue_content_endpoint(
     content_id: int,
     request: EnqueueContentRequest,
@@ -387,6 +449,7 @@ async def enqueue_content_endpoint(
 @router.post("/items/{item_id}/retry", response_model=ContentQueueItemResponse)
 async def retry_queue_item(
     item_id: int,
+    http_request: Request,
     request: QueueItemRetryRequest,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
@@ -423,9 +486,9 @@ async def retry_queue_item(
         "status": item.status.value,
         "timestamp": utcnow().isoformat(),
     })
-    return _to_queue_item_response(item, content)
+    return await _queue_item_response_with_media(db, item, content, http_request)
 
-@router.post("/items/{item_id}/cancel")
+@router.post("/items/{item_id}/cancel", response_model=QueueCancelResponse)
 async def cancel_queue_item(
     item_id: int,
     db: AsyncSession = Depends(get_db),
@@ -458,6 +521,7 @@ async def cancel_queue_item(
 @router.post("/items/{item_id}/status", response_model=ContentQueueItemResponse)
 async def set_queue_item_status(
     item_id: int,
+    request: Request,
     payload: dict = Body(default={}),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
@@ -507,12 +571,13 @@ async def set_queue_item_status(
         "status": item.status.value,
         "timestamp": now.isoformat(),
     })
-    return _to_queue_item_response(item, content)
+    return await _queue_item_response_with_media(db, item, content, request)
 
 
 @router.post("/items/{item_id}/schedule", response_model=ContentQueueItemResponse)
 async def schedule_queue_item(
     item_id: int,
+    request: Request,
     payload: dict = Body(default={}),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
@@ -553,12 +618,13 @@ async def schedule_queue_item(
         "scheduled_at": _as_utc(scheduled_at).isoformat() if _as_utc(scheduled_at) else None,
         "timestamp": utcnow().isoformat(),
     })
-    return _to_queue_item_response(item, content)
+    return await _queue_item_response_with_media(db, item, content, request)
 
 
 @router.post("/items/{item_id}/reorder", response_model=ContentQueueItemResponse)
 async def reorder_queue_item(
     item_id: int,
+    request: Request,
     payload: dict = Body(default={}),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
@@ -588,10 +654,10 @@ async def reorder_queue_item(
             "timestamp": utcnow().isoformat(),
         })
 
-    return _to_queue_item_response(item, content)
+    return await _queue_item_response_with_media(db, item, content, request)
 
 
-@router.post("/batch-retry")
+@router.post("/batch-retry", response_model=BatchQueueRetryResponse)
 async def batch_retry_queue_items(
     request: BatchQueueRetryRequest,
     db: AsyncSession = Depends(get_db),
@@ -635,7 +701,11 @@ async def batch_retry_queue_items(
     return {"retried_count": len(retried_ids), "item_ids": retried_ids}
 
 
-@router.post("/items/batch-push-now")
+@router.post(
+    "/items/batch-push-now",
+    response_model=QueueChangedResponse,
+    response_model_exclude_none=True,
+)
 async def batch_push_now_queue_items(
     payload: dict = Body(default={}),
     db: AsyncSession = Depends(get_db),
@@ -692,7 +762,11 @@ async def batch_push_now_queue_items(
     return {"status": "ok", "changed": changed, "run_id": run["run_id"]}
 
 
-@router.post("/items/batch-schedule")
+@router.post(
+    "/items/batch-schedule",
+    response_model=QueueChangedResponse,
+    response_model_exclude_none=True,
+)
 async def batch_schedule_queue_items(
     payload: dict = Body(default={}),
     db: AsyncSession = Depends(get_db),
@@ -742,7 +816,7 @@ async def batch_schedule_queue_items(
     return {"status": "ok", "changed": changed}
 
 
-@router.post("/content/{content_id}/status")
+@router.post("/content/{content_id}/status", response_model=QueueMovedResponse)
 async def set_content_queue_status(
     content_id: int,
     payload: dict = Body(default={}),
@@ -804,7 +878,10 @@ async def set_content_queue_status(
     raise HTTPException(status_code=400, detail="Unsupported status")
 
 
-@router.post("/content/{content_id}/repush-now")
+@router.post(
+    "/content/{content_id}/repush-now",
+    response_model=QueueRepushResponse,
+)
 async def repush_now_content_queue(
     content_id: int,
     target_id: Optional[str] = Query(None, description="仅重推指定目标ID"),
@@ -863,7 +940,10 @@ async def repush_now_content_queue(
     }
 
 
-@router.post("/content/batch-repush-now")
+@router.post(
+    "/content/batch-repush-now",
+    response_model=QueueRepushResponse,
+)
 async def batch_repush_now_content_queue(
     payload: dict = Body(default={}),
     db: AsyncSession = Depends(get_db),
@@ -922,7 +1002,11 @@ async def batch_repush_now_content_queue(
     }
 
 
-@router.post("/content/{content_id}/reorder")
+@router.post(
+    "/content/{content_id}/reorder",
+    response_model=QueueChangedResponse,
+    response_model_exclude_none=True,
+)
 async def reorder_content_queue(
     content_id: int,
     payload: dict = Body(default={}),
@@ -956,7 +1040,11 @@ async def reorder_content_queue(
     return {"status": "ok", "changed": changed}
 
 
-@router.post("/content/{content_id}/push-now")
+@router.post(
+    "/content/{content_id}/push-now",
+    response_model=QueueChangedResponse,
+    response_model_exclude_none=True,
+)
 async def push_now_content_queue(
     content_id: int,
     db: AsyncSession = Depends(get_db),
@@ -1005,7 +1093,11 @@ async def push_now_content_queue(
     return {"status": "ok", "changed": changed, "run_id": run["run_id"]}
 
 
-@router.post("/content/{content_id}/schedule")
+@router.post(
+    "/content/{content_id}/schedule",
+    response_model=QueueChangedResponse,
+    response_model_exclude_none=True,
+)
 async def schedule_content_queue(
     content_id: int,
     payload: dict = Body(default={}),
@@ -1045,7 +1137,11 @@ async def schedule_content_queue(
     return {"status": "ok", "changed": changed}
 
 
-@router.post("/content/batch-push-now")
+@router.post(
+    "/content/batch-push-now",
+    response_model=QueueChangedResponse,
+    response_model_exclude_none=True,
+)
 async def batch_push_now_content_queue(
     payload: dict = Body(default={}),
     db: AsyncSession = Depends(get_db),
@@ -1100,7 +1196,11 @@ async def batch_push_now_content_queue(
     return {"status": "ok", "changed": changed, "run_id": run["run_id"]}
 
 
-@router.post("/content/batch-reschedule")
+@router.post(
+    "/content/batch-reschedule",
+    response_model=QueueChangedResponse,
+    response_model_exclude_none=True,
+)
 async def batch_reschedule_content_queue(
     payload: dict = Body(default={}),
     db: AsyncSession = Depends(get_db),

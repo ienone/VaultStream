@@ -21,6 +21,7 @@ from app.adapters.browser import browser_manager
 from app.adapters.utils.cookie_utils import strip_cookie_wrapper_quotes
 from app.adapters.xiaohongshu_profile import build_xhs_crypto_config
 from app.services.config_service import ConfigService
+from app.services.notification_inbox import safely_sync_account_auth_notification
 from app.services.platform_auth import (
     BilibiliQrLoginDriver,
     QrLoginDriver,
@@ -178,6 +179,11 @@ class BrowserAuthService:
             description=f"{session.platform} 自动化登录 Cookie",
         )
         logger.info("[{}] Cookie 已持久化", session.platform)
+        await safely_sync_account_auth_notification(
+            session.platform,
+            is_valid=True,
+            configured=True,
+        )
 
     async def _run_qr_flow(self, session: AuthSession, driver: QrLoginDriver) -> None:
         try:

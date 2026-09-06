@@ -9,6 +9,7 @@ from typing import Optional, List
 
 from sqlalchemy import select, and_, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import AsyncSessionLocal
 from app.core.logging import logger
@@ -20,6 +21,7 @@ from app.models import (
     ContentStatus,
     DistributionRule,
     BotChat,
+    MediaAsset,
     PushedRecord,
     ReviewStatus,
 )
@@ -117,6 +119,7 @@ class DistributionQueueWorker:
         self.worker_count = worker_count
         self.running = False
         self._tasks: list[asyncio.Task] = []
+        self._startup_task: asyncio.Task | None = None
         self._distributor = ContentDistributor()
 
     def start(self):
@@ -124,7 +127,9 @@ class DistributionQueueWorker:
         if self.running:
             return
         self.running = True
-        asyncio.create_task(record_task_started("distribution_worker"))
+        self._startup_task = asyncio.create_task(
+            record_task_started("distribution_worker")
+        )
         for i in range(self.worker_count):
             task = asyncio.create_task(
                 self._worker_loop(f"queue-worker-{i}"),
@@ -144,6 +149,12 @@ class DistributionQueueWorker:
             except asyncio.CancelledError:
                 pass
         self._tasks.clear()
+        if self._startup_task is not None:
+            try:
+                await self._startup_task
+            except asyncio.CancelledError:
+                pass
+            self._startup_task = None
         logger.info("分发队列Worker停止")
 
     async def process_item_now(self, item_id: int, worker_name: str = "api-manual"):
@@ -482,7 +493,11 @@ class DistributionQueueWorker:
         """处理单个队列项：校验 → 去重 → 构建 → 推送 → 记录。"""
         # 1. 加载关联数据
         content_result = await session.execute(
-            select(Content).where(Content.id == item.content_id)
+            select(Content)
+            .where(Content.id == item.content_id)
+            .options(
+                selectinload(Content.media_assets).selectinload(MediaAsset.variants)
+            )
         )
         content = content_result.scalar_one_or_none()
 
@@ -558,7 +573,12 @@ class DistributionQueueWorker:
                 actual_target_id = routed_id
 
         # 5. 构建推送 payload
-        content_dict = await self._distributor._build_content_payload(content, rule)
+        content_dict = await self._distributor._build_content_payload(
+            content,
+            rule,
+            media_assets=content.media_assets,
+            target_platform=item.target_platform,
+        )
 
         # 6. 推送
         try:

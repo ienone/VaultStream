@@ -24,6 +24,8 @@ from app.schemas import (
     DistributionTargetCreate,
     DistributionTargetUpdate,
     DistributionTargetResponse,
+    DistributionRuleDeleteResponse,
+    DistributionTriggerResponse,
 )
 from app.core.logging import logger
 from app.core.dependencies import require_api_token
@@ -150,7 +152,10 @@ async def update_distribution_rule(
     logger.info(f"分发规则已更新并刷新队列: {db_rule.name} (ID: {db_rule.id})")
     return db_rule
 
-@router.delete("/distribution-rules/{rule_id}")
+@router.delete(
+    "/distribution-rules/{rule_id}",
+    response_model=DistributionRuleDeleteResponse,
+)
 async def delete_distribution_rule(
     rule_id: int,
     db: AsyncSession = Depends(get_db),
@@ -191,7 +196,10 @@ async def get_all_rules_preview_stats(
     return await DistributionRuleService(db).get_all_rules_preview_stats()
 
 
-@router.post("/distribution/trigger-run")
+@router.post(
+    "/distribution/trigger-run",
+    response_model=DistributionTriggerResponse,
+)
 async def trigger_distribution_run(
     _: None = Depends(require_api_token),
 ):

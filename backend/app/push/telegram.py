@@ -17,7 +17,6 @@ from app.adapters.storage import get_storage_backend
 from app.services.bot_config_runtime import get_primary_telegram_token_from_db
 from app.services.config_service import ConfigService
 from app.utils.text_formatters import format_content_for_tg, format_content_with_render_config
-from app.media.extractor import extract_media_urls
 from .base import BasePushService
 
 
@@ -104,7 +103,7 @@ class TelegramPushService(BasePushService):
         构建 Telegram 发送载荷
         
         Args:
-            content: 内容数据（包含 title, archive_metadata 等）
+            content: 内容数据（媒体已由分发器按资产契约选出）
         
         Returns:
             Tuple[str, List[Dict]]: (格式化后的文本, 媒体项列表)
@@ -120,11 +119,7 @@ class TelegramPushService(BasePushService):
         else:
             text = format_content_for_tg(content)
         
-        cover_url = content.get('cover_url')
-        media_items = content.get('media_items') or []
-        if not media_items:
-            archive_metadata = content.get('archive_metadata', {})
-            media_items = extract_media_urls(archive_metadata, cover_url)
+        media_items = list(content.get('media_items') or [])
 
         media_mode = self._get_media_mode(render_config)
         if media_mode == "none":
@@ -166,8 +161,9 @@ class TelegramPushService(BasePushService):
         
         with ExitStack() as stack:
             media_group = []
-            for idx, item in enumerate(media_items[:MAX_MEDIA_GROUP_SIZE]):
-                media = item['url']
+            resolved_items = []
+            for item in media_items[:MAX_MEDIA_GROUP_SIZE]:
+                media = item.get('url')
                 # 尝试使用本地文件
                 if item.get('stored_key'):
                      local_path = backend.get_local_path(key=item['stored_key'])
@@ -178,6 +174,9 @@ class TelegramPushService(BasePushService):
                          except Exception as e:
                              logger.warning(f"无法打开本地文件 {local_path}: {e}")
 
+                if media is None:
+                    continue
+                idx = len(media_group)
                 if item['type'] == 'photo':
                     if idx == 0:
                         media_group.append(InputMediaPhoto(media=media, caption=text, parse_mode='HTML'))
@@ -188,6 +187,26 @@ class TelegramPushService(BasePushService):
                         media_group.append(InputMediaVideo(media=media, caption=text, parse_mode='HTML'))
                     else:
                         media_group.append(InputMediaVideo(media=media))
+                else:
+                    continue
+                resolved_items.append(item)
+
+            if not media_group:
+                return await bot.send_message(
+                    chat_id=chat_id,
+                    text=text,
+                    parse_mode='HTML',
+                    disable_web_page_preview=False,
+                    reply_markup=reply_markup,
+                )
+            if len(media_group) == 1:
+                return await self._send_single_media(
+                    bot,
+                    chat_id,
+                    resolved_items[0],
+                    text,
+                    reply_markup,
+                )
             
             try:
                 messages = await bot.send_media_group(
@@ -210,7 +229,13 @@ class TelegramPushService(BasePushService):
             except TelegramError as e:
                 logger.warning(f"发送媒体组失败，降级为单个媒体: {e}")
                 # 降级处理：只发送第一个媒体
-                return await self._send_single_media(bot, chat_id, media_items[0], text, reply_markup)
+                return await self._send_single_media(
+                    bot,
+                    chat_id,
+                    resolved_items[0],
+                    text,
+                    reply_markup,
+                )
     
     async def _send_single_media(
         self,
@@ -234,7 +259,7 @@ class TelegramPushService(BasePushService):
             消息对象，失败返回None
         """
         backend = get_storage_backend()
-        media = media_item['url']
+        media = media_item.get('url')
         file_handle = None
         
         # 尝试使用本地文件
@@ -247,6 +272,19 @@ class TelegramPushService(BasePushService):
                      logger.debug(f"使用本地媒体文件: {local_path}")
                  except Exception as e:
                      logger.warning(f"无法打开本地文件 {local_path}: {e}")
+
+        if media is None:
+            logger.warning(
+                "媒体资产没有可读取的本地变体或远端来源: asset_id=%s",
+                media_item.get("asset_id"),
+            )
+            return await bot.send_message(
+                chat_id=chat_id,
+                text=caption,
+                parse_mode='HTML',
+                disable_web_page_preview=False,
+                reply_markup=reply_markup,
+            )
 
         try:
             if media_item['type'] == 'photo':

@@ -24,12 +24,21 @@ from app.services.bot_config_runtime import get_primary_telegram_runtime
 from .permissions import PermissionManager
 from .commands import (
     start_command, help_command, status_command,
-    get_command, get_tag_command, get_twitter_command, get_bilibili_command, list_tags_command, ai_command
+    get_command, get_tag_command, get_twitter_command, get_bilibili_command,
+    list_tags_command, save_command, ai_command, handle_natural_capture_message,
+    remember_media_group_message,
 )
 from .callbacks import button_callback
 from .monitoring import handle_monitored_message
 
 BOT_VERSION = "0.2.0"
+
+
+async def handle_text_message(update: Update, context) -> None:
+    """Handle explicit direct-chat capture intent, else preserve discovery monitoring."""
+    if await handle_natural_capture_message(update, context):
+        return
+    await handle_monitored_message(update, context)
 
 
 class VaultStreamBot:
@@ -193,6 +202,7 @@ class VaultStreamBot:
                 BotCommand("get_twitter", "获取 Twitter 推文"),
                 BotCommand("get_bilibili", "获取 B站内容"),
                 BotCommand("list_tags", "查看所有标签"),
+                BotCommand("save", "保存链接、文字或回复附件"),
                 BotCommand("ai", "自然语言调用 Agent"),
                 BotCommand("status", "查看系统状态"),
                 BotCommand("help", "显示帮助信息"),
@@ -282,6 +292,12 @@ class VaultStreamBot:
         builder.post_shutdown(self.post_shutdown)
         
         application = builder.build()
+
+        # 只在内存中短期记住相册成员；明确保存前不下载也不落库。
+        application.add_handler(
+            MessageHandler(filters.ATTACHMENT, remember_media_group_message),
+            group=-1,
+        )
         
         # 注册处理器
         application.add_handler(CommandHandler("start", start_command))
@@ -291,6 +307,7 @@ class VaultStreamBot:
         application.add_handler(CommandHandler("get_twitter", get_twitter_command))
         application.add_handler(CommandHandler("get_bilibili", get_bilibili_command))
         application.add_handler(CommandHandler("list_tags", list_tags_command))
+        application.add_handler(CommandHandler("save", save_command))
         application.add_handler(CommandHandler("ai", ai_command))
         application.add_handler(CommandHandler("status", status_command))
         
@@ -299,7 +316,7 @@ class VaultStreamBot:
         # 注册群组消息监控处理器（被动监听 URL）
         application.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND,
-            handle_monitored_message,
+            handle_text_message,
         ))
         
         # 注册群组成员变更处理器（用于自动发现群组）

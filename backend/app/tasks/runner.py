@@ -6,11 +6,13 @@
 import asyncio
 from app.core.logging import logger, ensure_task_id
 from app.core.queue import task_queue
+from app.core.queue_adapter import ClaimedTask
 from app.services.background_task_state import (
     record_task_error,
     record_task_started,
     record_task_success,
 )
+from app.services.automation_policy import AutomationPolicyService
 
 from .parsing import ContentParser
 
@@ -30,11 +32,20 @@ class TaskWorker:
         
         while self.running:
             try:
+                decision = await AutomationPolicyService().parse_worker_poll()
+                if not decision.allowed:
+                    logger.bind(
+                        component="parse_worker",
+                        policy=decision.as_dict(),
+                    ).debug("Parse worker polling skipped by automation policy")
+                    await asyncio.sleep(1)
+                    continue
+
                 # 从队列获取任务
-                task_data = await task_queue.dequeue(timeout=5)
+                claimed_task = await task_queue.dequeue(timeout=5)
                 
-                if task_data:
-                    await self.process_task(task_data)
+                if claimed_task:
+                    await self.process_task(claimed_task)
                     await record_task_success("parse_worker")
                     
             except Exception as e:
@@ -47,21 +58,30 @@ class TaskWorker:
         self.running = False
         logger.info("Task worker stopped")
     
-    async def process_task(self, task_data: dict):
+    async def process_task(self, claimed_task: ClaimedTask):
         """
         处理单个任务
         
         Args:
-            task_data: 任务数据，包含 content_id 和可选的 action 字段
+            claimed_task: 已领取的数据库任务行及其外部 payload
         """
+        task_data = claimed_task.payload
         content_id = task_data.get('content_id')
         task_id = ensure_task_id(task_data.get("task_id"))
         
         if not content_id:
             logger.warning("任务数据缺少 content_id")
+            await task_queue.mark_failed(
+                claimed_task.db_id,
+                reason="missing_content_id",
+            )
             return
         
-        await self.parser.process_parse_task(task_data, task_id)
+        await self.parser.process_parse_task(
+            task_data,
+            task_id,
+            task_db_id=claimed_task.db_id,
+        )
 
     async def retry_parse(self, content_id: int, max_retries: int = 3, force: bool = False):
         """

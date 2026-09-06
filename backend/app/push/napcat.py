@@ -17,7 +17,6 @@ from app.core.logging import logger
 from app.adapters.storage import get_storage_backend
 from app.services.bot_config_runtime import get_primary_qq_runtime_from_db
 from app.utils.text_formatters import format_content_with_render_config, strip_markdown
-from app.media.extractor import extract_media_urls
 from .base import BasePushService
 
 MAX_FORWARD_NODES = 99
@@ -99,11 +98,7 @@ class NapcatPushService(BasePushService):
         if media_mode == "none":
             return []
 
-        cover_url = content.get("cover_url")
-        media_items = content.get("media_items") or []
-        if not media_items:
-            archive_metadata = content.get("archive_metadata") or {}
-            media_items = extract_media_urls(archive_metadata, cover_url)
+        media_items = list(content.get("media_items") or [])
 
         if media_mode == "cover" and media_items:
             photos = [m for m in media_items if m["type"] == "photo"]
@@ -139,6 +134,8 @@ class NapcatPushService(BasePushService):
                 segments.append(_build_image_segment(url))
             elif item["type"] == "video":
                 segments.append(_build_video_segment(url))
+            elif item["type"] == "audio":
+                segments.append(_build_record_segment(url))
 
         return segments
 

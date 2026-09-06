@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ActionInfo(BaseModel):
@@ -17,8 +17,9 @@ class ActionInfo(BaseModel):
 
 class ActionInvokeRequest(BaseModel):
     input: Dict[str, Any] = Field(default_factory=dict)
-    confirmed: bool = False
     session_id: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class ActionInvokeResponse(BaseModel):

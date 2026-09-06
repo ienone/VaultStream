@@ -40,10 +40,25 @@ from app.services.background_task_state import (
 )
 
 
+@dataclass(frozen=True)
+class ParseExecutionResult:
+    found: bool
+    skipped: bool
+    reason: str | None = None
+    status: str | None = None
+    title: str | None = None
+
+
 class ContentParser:
     """内容解析器"""
 
-    async def process_parse_task(self, task_data: dict, task_id: str):
+    async def process_parse_task(
+        self,
+        task_data: dict,
+        task_id: str,
+        *,
+        task_db_id: int,
+    ) -> None:
         """处理解析任务"""
         schema_version = int(task_data.get("schema_version") or 1)
         action = task_data.get("action") or "parse"
@@ -53,6 +68,7 @@ class ContentParser:
         
         if not content_id:
             logger.warning("任务数据缺少 content_id")
+            await task_queue.mark_failed(task_db_id, reason="missing_content_id")
             return
 
         run = await record_task_run_started(
@@ -67,96 +83,134 @@ class ContentParser:
         )
         run_id = run["run_id"]
         
+        with log_context(task_id=task_id, content_id=content_id):
+            try:
+                logger.info(
+                    f"开始处理任务: schema={schema_version}, action={action}, "
+                    f"attempt={attempt}/{max_attempts}"
+                )
+                result = await self.execute_parse(
+                    content_id,
+                    action=action,
+                    current_attempt=attempt,
+                    max_attempts=max_attempts,
+                    force=False,
+                )
+                if not await task_queue.mark_complete(task_db_id):
+                    raise RuntimeError(
+                        f"parse task settlement failed: task_db_id={task_db_id}"
+                    )
+                await record_task_run_success(
+                    "content_parse",
+                    run_id,
+                    trigger="queue",
+                    content_id=content_id,
+                    task_id=task_id,
+                    task_db_id=task_db_id,
+                    action=action,
+                    skipped=result.skipped,
+                    reason=result.reason,
+                    status=result.status,
+                    title=result.title,
+                )
+            except asyncio.CancelledError:
+                await task_queue.mark_failed(task_db_id, reason="cancelled")
+                await record_task_run_error(
+                    "content_parse",
+                    run_id,
+                    "Parsing cancelled",
+                    trigger="queue",
+                    content_id=content_id,
+                    task_id=task_id,
+                    task_db_id=task_db_id,
+                    action=action,
+                    error_type="CancelledError",
+                )
+                raise
+            except Exception as e:
+                reason = self._task_failure_reason(e)
+                await task_queue.mark_failed(
+                    task_db_id,
+                    reason=f"{reason}: {type(e).__name__}: {e}",
+                )
+                await record_task_run_error(
+                    "content_parse",
+                    run_id,
+                    e,
+                    trigger="queue",
+                    content_id=content_id,
+                    task_id=task_id,
+                    task_db_id=task_db_id,
+                    action=action,
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    error_type=type(e).__name__,
+                    reason=reason,
+                )
+
+    async def execute_parse(
+        self,
+        content_id: int,
+        *,
+        action: str = "parse",
+        current_attempt: int = 0,
+        max_attempts: int = 3,
+        force: bool = False,
+    ) -> ParseExecutionResult:
+        """Execute the single parse/retry path without queue settlement."""
         async with AsyncSessionLocal() as session:
-            content = None
-            with log_context(task_id=task_id, content_id=content_id):
-                try:
-                    logger.info(f"开始处理任务: schema={schema_version}, action={action}, attempt={attempt}/{max_attempts}")
-                    # 获取内容记录
-                    result = await session.execute(
-                        select(Content).where(Content.id == content_id)
-                    )
-                    content = result.scalar_one_or_none()
+            result = await session.execute(select(Content).where(Content.id == content_id))
+            content = result.scalar_one_or_none()
+            if content is None:
+                logger.warning(f"内容不存在: {content_id}")
+                return ParseExecutionResult(
+                    found=False,
+                    skipped=True,
+                    reason="content_not_found",
+                )
 
-                    if not content:
-                        logger.warning(f"内容不存在: {content_id}")
-                        await task_queue.mark_complete(content_id)
-                        await record_task_run_success(
-                            "content_parse",
-                            run_id,
-                            trigger="queue",
-                            content_id=content_id,
-                            task_id=task_id,
-                            action=action,
-                            skipped=True,
-                            reason="content_not_found",
-                        )
-                        return
+            if not force and action == "parse" and content.status == ContentStatus.PARSE_SUCCESS:
+                await self._handle_archived_media_fix(session, content)
+                logger.info("内容已解析完成，跳过解析")
+                return ParseExecutionResult(
+                    found=True,
+                    skipped=True,
+                    reason="already_parse_success",
+                    status=content.status.value,
+                    title=content.title,
+                )
 
-                    # 幂等处理
-                    if action == "parse" and content.status == ContentStatus.PARSE_SUCCESS:
-                        await self._handle_archived_media_fix(session, content)
-                        logger.info("内容已解析完成，跳过解析")
-                        await task_queue.mark_complete(content_id)
-                        await record_task_run_success(
-                            "content_parse",
-                            run_id,
-                            trigger="queue",
-                            content_id=content_id,
-                            task_id=task_id,
-                            action=action,
-                            skipped=True,
-                            reason="already_parse_success",
-                            status=content.status.value,
-                        )
-                        return
+            content.status = ContentStatus.PROCESSING
+            await session.commit()
 
-                    # 更新状态为处理中
-                    content.status = ContentStatus.PROCESSING
-                    await session.commit()
+            adapter = None
+            try:
+                parsed, adapter = await self._execute_parse_with_retry(
+                    content,
+                    current_attempt,
+                    max_attempts,
+                )
+                await self._update_content(session, content, parsed, adapter)
+                await self._check_auto_approval(session, content)
+            except asyncio.CancelledError:
+                await self._record_parse_error(
+                    session,
+                    content,
+                    RuntimeError("Parsing cancelled"),
+                )
+                raise
+            except Exception as error:
+                await self._record_parse_error(session, content, error)
+                raise
+            finally:
+                await close_adapter(adapter)
 
-                    # 执行解析（带重试）
-                    adapter = None
-                    try:
-                        parsed, adapter = await self._execute_parse_with_retry(content, attempt, max_attempts)
-
-                        # 更新数据库
-                        await self._update_content(session, content, parsed, adapter)
-                    finally:
-                        await close_adapter(adapter)
-                    
-                    # 自动审批检查
-                    await self._check_auto_approval(session, content)
-                    await record_task_run_success(
-                        "content_parse",
-                        run_id,
-                        trigger="queue",
-                        content_id=content_id,
-                        task_id=task_id,
-                        action=action,
-                        skipped=False,
-                        status=content.status.value if content.status else None,
-                        title=content.title,
-                    )
-
-                except Exception as e:
-                    await self._handle_parse_error(session, content, task_data, e, attempt, max_attempts)
-                    await record_task_run_error(
-                        "content_parse",
-                        run_id,
-                        e,
-                        trigger="queue",
-                        content_id=content_id,
-                        task_id=task_id,
-                        action=action,
-                        attempt=attempt,
-                        max_attempts=max_attempts,
-                        error_type=type(e).__name__,
-                    )
-                
-                finally:
-                    # 标记任务完成
-                    await task_queue.mark_complete(content_id)
+            return ParseExecutionResult(
+                found=True,
+                skipped=False,
+                status=content.status.value if content.status else None,
+                title=content.title,
+            )
 
     async def _execute_parse_with_retry(self, content: Content, current_attempt: int, max_attempts: int) -> tuple[Any, Any]:
         """执行解析逻辑，包含重试机制"""
@@ -205,8 +259,6 @@ class ContentParser:
         content.clean_url = parsed.clean_url
         content.content_type = parsed.content_type
         content.layout_type = parsed.layout_type  # 新增: 保存布局类型
-        content.title = parsed.title
-        content.author_name = parsed.author_name
         content.author_id = parsed.author_id
         content.author_avatar_url = parsed.author_avatar_url
         content.author_url = parsed.author_url
@@ -236,13 +288,35 @@ class ContentParser:
             parsed.cover_color = await extract_cover_color(parsed.cover_url)
 
         # 同步回内容记录（在媒体处理之后，确保拿到更新后的值）
-        content.body = parsed.body
         # P2-4: 防止超大正文导致单行数据膨胀
         _MAX_BODY_LEN = 200_000  # 200KB 字符上限
-        if content.body and len(content.body) > _MAX_BODY_LEN:
-            content.body = content.body[:_MAX_BODY_LEN]
+        parsed_body = parsed.body
+        if parsed_body and len(parsed_body) > _MAX_BODY_LEN:
+            parsed_body = parsed_body[:_MAX_BODY_LEN]
             logger.warning(f"正文超长截断: content_id={content.id}, original_len={len(parsed.body)}")
-        content.cover_url = parsed.cover_url
+
+        parsed_fields = {
+            "title": parsed.title,
+            "body": parsed_body,
+            "author_name": parsed.author_name,
+            "cover_url": parsed.cover_url,
+        }
+        manual_fields = set(content.manual_edit_fields or [])
+        conflicting_fields: dict[str, Any] = {}
+        for field_name, parsed_value in parsed_fields.items():
+            if field_name in manual_fields and getattr(content, field_name) != parsed_value:
+                conflicting_fields[field_name] = parsed_value
+            else:
+                setattr(content, field_name, parsed_value)
+        content.parse_candidate = (
+            {
+                "created_at": utcnow().isoformat(),
+                "fields": conflicting_fields,
+            }
+            if conflicting_fields
+            else None
+        )
+
         content.media_urls = sanitize_media_urls(
             parsed.media_urls,
             author_avatar_url=parsed.author_avatar_url,
@@ -253,7 +327,8 @@ class ContentParser:
             content.id,
         )
         
-        content.cover_color = getattr(parsed, "cover_color", None)
+        if "cover_url" not in conflicting_fields:
+            content.cover_color = getattr(parsed, "cover_color", None)
         archive = self._extract_archive_blob(content.archive_metadata)
         if not content.cover_color and isinstance(archive, dict):
             content.cover_color = archive.get("dominant_color")
@@ -305,45 +380,41 @@ class ContentParser:
     def _schedule_embedding_index(self, content_id: int) -> None:
         PostIngestService().schedule_embedding_index(content_id)
 
-    async def _handle_parse_error(self, session, content, task_data, error, attempt, max_attempts):
-        """处理解析错误"""
-        logger.error(f"处理任务失败: {task_data.get('content_id')}, 错误: {error}")
+    async def _record_parse_error(self, session, content, error) -> None:
+        """Record content failure; queue settlement is owned by the caller."""
+        logger.error(f"处理任务失败: content_id={content.id}, 错误: {error}")
         
         # 更新数据库中的失败状态
-        if content:
-            content.status = ContentStatus.PARSE_FAILED
-            content.failure_count = (content.failure_count or 0) + 1
-            content.last_error = str(error)
-            content.last_error_type = type(error).__name__
-            content.last_error_detail = {
-                "message": str(error),
-                "traceback": traceback.format_exc(limit=50),
-            }
-            content.last_error_at = utcnow()
-            await session.commit()
-            
-            # 广播失败事件
-            try:
-                from app.core.events import event_bus
-                await event_bus.publish("content_updated", {
-                    "id": content.id,
-                    "status": ContentStatus.PARSE_FAILED.value,
-                    "error": str(error)
-                })
-            except Exception:
-                pass
+        content.status = ContentStatus.PARSE_FAILED
+        content.failure_count = (content.failure_count or 0) + 1
+        content.last_error = str(error)
+        content.last_error_type = type(error).__name__
+        content.last_error_detail = {
+            "message": str(error),
+            "traceback": traceback.format_exc(limit=50),
+        }
+        content.last_error_at = utcnow()
+        await session.commit()
 
-        # 判断是否进入死信队列
-        reason = "failed"
+        try:
+            from app.core.events import event_bus
+            await event_bus.publish("content_updated", {
+                "id": content.id,
+                "status": ContentStatus.PARSE_FAILED.value,
+                "error": str(error)
+            })
+        except Exception:
+            pass
+
+    @staticmethod
+    def _task_failure_reason(error: Exception) -> str:
         if isinstance(error, AdapterError) and error.auth_required:
-            reason = "auth_required"
-        elif isinstance(error, AdapterError) and not error.retryable:
-            reason = "non_retryable"
-        elif attempt + 1 >= max_attempts:
-            reason = "max_attempts_reached"
-
-        if reason != "failed":
-            await task_queue.push_dead_letter(task_data, reason=reason)
+            return "auth_required"
+        if isinstance(error, AdapterError) and not error.retryable:
+            return "non_retryable"
+        if isinstance(error, RetryableAdapterError):
+            return "max_attempts_reached"
+        return "failed"
 
     async def _check_auto_approval(self, session, content):
         """M4: 解析完成后尝试自动审批"""
@@ -697,13 +768,19 @@ class ContentParser:
         meta = content.archive_metadata
         archive = self._extract_archive_blob(meta)
         images = archive.get("images") if isinstance(archive, dict) else None
-        
-        need_media = False
-        if isinstance(images, list) and images:
-            for img in images:
-                if isinstance(img, dict) and img.get("url") and not img.get("stored_key"):
-                    need_media = True
-                    break
+        videos = archive.get("videos") if isinstance(archive, dict) else None
+
+        def _has_unstored_media(items: Any) -> bool:
+            return isinstance(items, list) and any(
+                isinstance(item, dict)
+                and item.get("url")
+                and not item.get("stored_key")
+                for item in items
+            )
+
+        need_images = archive_config.images_enabled and _has_unstored_media(images)
+        need_videos = archive_config.videos_enabled and _has_unstored_media(videos)
+        need_media = need_images or need_videos
 
         need_reference_fix = False
         if isinstance(archive, dict):
@@ -722,7 +799,8 @@ class ContentParser:
 
         if need_media or need_reference_fix:
             if need_media:
-                logger.info("内容已解析完成，但存在未处理图片；开始补处理归档媒体")
+                media_types = "图片和视频" if need_images and need_videos else "图片" if need_images else "视频"
+                logger.info("内容已解析完成，但存在未处理{}；开始补处理归档媒体", media_types)
             else:
                 logger.info("内容已解析完成，检测到历史远程引用；开始回写本地映射")
             try:
@@ -751,6 +829,7 @@ class ContentParser:
                     self._apply_stored_mapping_to_record(parsed_like, archive)
                 
                 content.archive_metadata = meta
+                flag_modified(content, "archive_metadata")
                 if parsed_like.body:
                     content.body = parsed_like.body
                 if parsed_like.cover_url:
@@ -772,62 +851,22 @@ class ContentParser:
             except Exception as e:
                 logger.warning("补处理归档媒体失败，跳过: {}", f"{type(e).__name__}: {e}")
 
-    async def retry_parse(self, content_id: int, max_retries: int = 3, delay_seconds: float = 1.0, backoff_factor: float = 2.0, force: bool = False):
-        """对外接口：手动触发重试解析"""
-        attempt = 0
-        wait = delay_seconds
-
-        while attempt < max_retries:
-            attempt += 1
-            try:
-                async with AsyncSessionLocal() as session:
-                    result = await session.execute(
-                        select(Content).where(Content.id == content_id)
-                    )
-                    content = result.scalar_one_or_none()
-
-                    if not content:
-                        logger.warning(f"重试解析：内容不存在 {content_id}")
-                        return False
-
-                    if not force and content.status == ContentStatus.PARSE_SUCCESS:
-                        logger.info(f"重试解析：内容已解析完成 {content_id}")
-                        return True
-
-                    content.status = ContentStatus.PROCESSING
-                    await session.commit()
-
-                    # 复用内部执行逻辑
-                    adapter = None
-                    try:
-                        parsed, adapter = await self._execute_parse_with_retry(content, 0, 1)
-                        await self._update_content(session, content, parsed, adapter)
-                    finally:
-                        await close_adapter(adapter)
-                    
-                    logger.info(f"重试解析成功: {content_id} (attempt={attempt})")
-                    return True
-
-            except Exception as e:
-                logger.warning(f"重试解析第 {attempt} 次失败: {content_id}, err: {e}")
-                # 记录错误 (简化版逻辑)
-                try:
-                    async with AsyncSessionLocal() as session:
-                         result = await session.execute(
-                            select(Content).where(Content.id == content_id)
-                        )
-                         content = result.scalar_one_or_none()
-                         if content:
-                            content.status = ContentStatus.PARSE_FAILED
-                            content.last_error = str(e)
-                            await session.commit()
-                except:
-                    pass
-
-                if attempt >= max_retries:
-                    return False
-
-                await asyncio.sleep(wait)
-                wait = wait * backoff_factor
-
-        return False
+    async def retry_parse(
+        self,
+        content_id: int,
+        max_retries: int = 3,
+        force: bool = False,
+    ) -> bool:
+        """Manual transport for the same parser and retry classifier as the queue."""
+        try:
+            result = await self.execute_parse(
+                content_id,
+                action="parse",
+                current_attempt=0,
+                max_attempts=max_retries,
+                force=force,
+            )
+            return result.found
+        except Exception as error:
+            logger.warning(f"重试解析失败: {content_id}, err: {error}")
+            return False

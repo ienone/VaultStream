@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     # 媒体读取授权。与控制面 API Token 分离；生产环境必须显式配置。
     media_signing_secret: SecretStr = SecretStr("")
     media_url_ttl_seconds: int = 900
+    capture_upload_max_bytes: int = 512 * 1024 * 1024
 
     # 日志配置
     log_level: str = "INFO"
@@ -108,6 +109,8 @@ class Settings(BaseSettings):
     ingest_mode: str = "parse"
     enable_discovery_patrol: bool = True
     enable_ai_scoring: bool = True
+    enable_auto_semantic_indexing: bool = True
+    enable_parse_worker: bool = True
     enable_cookie_keepalive: bool = True
     enable_favorites_sync_scheduler: bool = True
     allow_manual_favorites_sync_disabled_platform: bool = False

@@ -62,7 +62,6 @@ async def invoke_action(
         result = await service.invoke_tool(
             tool_name=action_name,
             args=payload.input,
-            confirmed=payload.confirmed,
             session_id=payload.session_id,
         )
     except AgentToolError as exc:

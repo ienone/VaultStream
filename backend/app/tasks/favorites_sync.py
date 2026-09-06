@@ -8,6 +8,7 @@ from sqlalchemy import and_, or_, select
 from app.adapters import AdapterFactory, open_adapter
 from app.adapters.favorites import (
     BaseFavoritesFetcher,
+    FavoriteItem,
     TwitterFavoritesFetcher,
     XiaohongshuFavoritesFetcher,
     ZhihuFavoritesFetcher,
@@ -475,6 +476,133 @@ class FavoritesSyncTask:
         stmt = select(Content.id).where(or_(*filters)).limit(1)
         return (await session.execute(stmt)).scalar_one_or_none() is not None
 
+    async def import_items(
+        self,
+        session,
+        *,
+        platform: str,
+        items: list[FavoriteItem],
+        source_name: str,
+        duplicate_strategy: str = "merge",
+        source_run_id: str | None = None,
+        retry_run_id: str | None = None,
+        retry_mode: str | None = None,
+        include_item_note: bool = False,
+        delay: float = 0,
+    ) -> dict[str, Any]:
+        """Import favorites through the canonical ContentService ingestion path."""
+        svc = ContentService(session)
+        imported = 0
+        skipped = 0
+        duplicate_skipped = 0
+        failed = 0
+        item_results: list[dict[str, Any]] = []
+        failed_items: list[dict[str, Any]] = []
+        seen_urls: set[str] = set()
+
+        for item in items:
+            url = (item.url or "").strip()
+            base_result = {
+                "url": item.url,
+                "title": item.title,
+                "item_id": item.item_id,
+            }
+            if not url or url in seen_urls:
+                skipped += 1
+                item_results.append(
+                    {
+                        **base_result,
+                        "status": "skipped",
+                        "error": "URL is required" if not url else "Duplicate URL",
+                    }
+                )
+                continue
+            seen_urls.add(url)
+
+            try:
+                if duplicate_strategy == "skip" and await self._favorite_item_exists(
+                    session,
+                    url,
+                ):
+                    skipped += 1
+                    duplicate_skipped += 1
+                    item_results.append({**base_result, "status": "skipped"})
+                    continue
+
+                client_context = None
+                if retry_run_id is not None:
+                    client_context = {
+                        "platform": platform,
+                        "item_id": item.item_id,
+                        "source_run_id": source_run_id,
+                        "retry_run_id": retry_run_id,
+                    }
+                    if retry_mode is not None:
+                        client_context["retry_mode"] = retry_mode
+
+                create_kwargs: dict[str, Any] = {
+                    "url": url,
+                    "tags": [],
+                    "source_name": source_name,
+                }
+                if include_item_note:
+                    create_kwargs["note"] = item.title
+                if client_context is not None:
+                    create_kwargs["client_context"] = client_context
+                content = await svc.create_share(**create_kwargs)
+                imported += 1
+                success_result = {
+                    **base_result,
+                    "url": url,
+                    "status": "success",
+                }
+                content_id = getattr(content, "id", None)
+                if content_id is not None:
+                    success_result["content_id"] = content_id
+                item_results.append(success_result)
+            except ValueError as exc:
+                skipped += 1
+                item_results.append(
+                    {
+                        **base_result,
+                        "url": url,
+                        "status": "skipped",
+                        "error": str(exc)[:500],
+                        "error_code": exc.__class__.__name__,
+                    }
+                )
+            except Exception as exc:
+                failed += 1
+                failed_item = {
+                    **base_result,
+                    "url": url,
+                    "status": "failed",
+                    "error": str(exc)[:500],
+                    "error_code": exc.__class__.__name__,
+                }
+                item_results.append(failed_item)
+                if len(failed_items) < self._FAILED_ITEMS_RECORD_LIMIT:
+                    failed_items.append(failed_item)
+                logger.bind(
+                    event="favorites_import_failed",
+                    platform=platform,
+                    item_url=url,
+                ).exception("Favorites import failed: {}", exc)
+
+            if delay > 0:
+                await asyncio.sleep(delay)
+
+        return {
+            "imported": imported,
+            "skipped": skipped,
+            "duplicate_skipped": duplicate_skipped,
+            "failed": failed,
+            "items": item_results,
+            "failed_items": failed_items,
+            "failed_items_total": failed,
+            "failed_items_truncated": failed > len(failed_items),
+        }
+
     @staticmethod
     def _build_preview_failure(
         platform: str,
@@ -602,74 +730,34 @@ class FavoritesSyncTask:
             )
         logger.info("[{} favorites] fetched {}", platform, len(items))
 
-        imported = 0
-        skipped = 0
-        duplicate_skipped = 0
-        failed = 0
-        failed_items: list[dict[str, Any]] = []
-        seen_urls: set[str] = set()
-
         async with AsyncSessionLocal() as session:
-            svc = ContentService(session)
-            for item in items:
-                if not item.url:
-                    skipped += 1
-                    continue
-                if item.url in seen_urls:
-                    skipped += 1
-                    continue
-                seen_urls.add(item.url)
-
-                try:
-                    if duplicate_strategy == "skip" and await self._favorite_item_exists(
-                        session,
-                        item.url,
-                    ):
-                        skipped += 1
-                        duplicate_skipped += 1
-                        continue
-                    await svc.create_share(
-                        url=item.url,
-                        tags=[],
-                        source_name=f"favorites_sync:{platform}",
-                    )
-                    imported += 1
-                except ValueError:
-                    skipped += 1
-                except Exception as e:
-                    failed += 1
-                    if len(failed_items) < self._FAILED_ITEMS_RECORD_LIMIT:
-                        failed_items.append(
-                            {
-                                "url": item.url,
-                                "title": item.title,
-                                "item_id": item.item_id,
-                                "error": str(e)[:500],
-                                "error_code": e.__class__.__name__,
-                            }
-                        )
-                    logger.bind(
-                        event="favorites_import_failed",
-                        platform=platform,
-                        item_url=item.url,
-                    ).exception("Favorites import failed: {}", e)
-                await asyncio.sleep(delay)
+            import_result = await self.import_items(
+                session,
+                platform=platform,
+                items=items,
+                source_name=f"favorites_sync:{platform}",
+                duplicate_strategy=duplicate_strategy,
+                delay=delay,
+            )
 
         if next_cursor is not None:
             await self._config_service.set_favorites_sync_cursor(platform, next_cursor)
 
         result = {
             "platform": platform,
-            "status": "success" if failed == 0 else "partial_success",
+            "status": "success" if import_result["failed"] == 0 else "partial_success",
             "authenticated": True,
             "fetched": len(items),
-            "imported": imported,
-            "failed": failed,
-            "failed_items": failed_items,
-            "failed_items_total": failed,
-            "failed_items_truncated": failed > len(failed_items),
-            "skipped": skipped,
-            "duplicate_skipped": duplicate_skipped,
+            "imported": import_result["imported"],
+            "failed": import_result["failed"],
+            "failed_items": [
+                {key: value for key, value in item.items() if key != "status"}
+                for item in import_result["failed_items"]
+            ],
+            "failed_items_total": import_result["failed_items_total"],
+            "failed_items_truncated": import_result["failed_items_truncated"],
+            "skipped": import_result["skipped"],
+            "duplicate_skipped": import_result["duplicate_skipped"],
             "duplicate_strategy": duplicate_strategy,
             "next_cursor": next_cursor,
             "error": None,
@@ -683,10 +771,10 @@ class FavoritesSyncTask:
         logger.info(
             "[{} favorites] imported {}/{} (failed={}, skipped={})",
             platform,
-            imported,
+            import_result["imported"],
             len(items),
-            failed,
-            skipped,
+            import_result["failed"],
+            import_result["skipped"],
         )
         return result
 
