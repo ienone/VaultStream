@@ -18,6 +18,7 @@ active
 | `GET, POST` | `/api/v1/agent/sessions` |
 | `DELETE, PATCH` | `/api/v1/agent/sessions/{session_id}` |
 | `POST` | `/api/v1/agent/sessions/{session_id}/clear` |
+| `GET` | `/api/v1/agent/sessions/{session_id}/confirmations` |
 | `GET` | `/api/v1/agent/sessions/{session_id}/messages` |
 | `POST` | `/api/v1/agent/sessions/{session_id}/redo` |
 | `GET` | `/api/v1/agent/sse` |
@@ -25,6 +26,7 @@ active
 | `POST` | `/api/v1/agent/tools/{tool_name}/invoke` |
 | `GET` | `/api/v1/ai/capabilities` |
 | `POST` | `/api/v1/ai/connectivity-test` |
+| `POST` | `/api/v1/ai/models` |
 | `GET` | `/api/v1/background-tasks/diagnostics` |
 | `GET` | `/api/v1/background-tasks/metrics` |
 | `GET` | `/api/v1/background-tasks/runs/{run_id}` |
@@ -53,6 +55,9 @@ active
 | `DELETE` | `/api/v1/browser-auth/{platform}` |
 | `POST` | `/api/v1/browser-auth/{platform}/check` |
 | `POST` | `/api/v1/browser-auth/{platform}/logout` |
+| `POST` | `/api/v1/captures/file` |
+| `POST` | `/api/v1/captures/files` |
+| `POST` | `/api/v1/captures/text` |
 | `GET` | `/api/v1/cards` |
 | `POST` | `/api/v1/cards/batch-review` |
 | `GET` | `/api/v1/cards/{card_id}` |
@@ -60,6 +65,9 @@ active
 | `GET` | `/api/v1/contents` |
 | `DELETE, GET, PATCH` | `/api/v1/contents/{content_id}` |
 | `POST` | `/api/v1/contents/{content_id}/generate-summary` |
+| `GET, POST` | `/api/v1/contents/{content_id}/media-bookmarks` |
+| `DELETE, PATCH` | `/api/v1/contents/{content_id}/media-bookmarks/{bookmark_id}` |
+| `POST` | `/api/v1/contents/{content_id}/parse-candidate/resolve` |
 | `POST` | `/api/v1/contents/{content_id}/patrol-score` |
 | `GET` | `/api/v1/contents/{content_id}/processing-status` |
 | `POST` | `/api/v1/contents/{content_id}/re-parse` |
@@ -114,9 +122,18 @@ active
 | `POST` | `/api/v1/favorites-sync/sync` |
 | `GET` | `/api/v1/health` |
 | `GET` | `/api/v1/init-status` |
+| `GET, POST` | `/api/v1/knowledge-events` |
+| `GET, PATCH` | `/api/v1/knowledge-events/{event_id}` |
+| `POST` | `/api/v1/knowledge-events/{event_id}/members` |
+| `DELETE, PATCH` | `/api/v1/knowledge-events/{event_id}/members/{content_id}` |
+| `POST` | `/api/v1/media/assets/{asset_id}/failures` |
 | `GET` | `/api/v1/media/assets/{asset_id}/manifest` |
 | `GET` | `/api/v1/media/blobs/{key}` |
 | `GET` | `/api/v1/media/{key}` |
+| `GET` | `/api/v1/notifications` |
+| `POST` | `/api/v1/notifications/digest` |
+| `POST` | `/api/v1/notifications/read-all` |
+| `POST` | `/api/v1/notifications/{notification_id}/actions` |
 | `GET` | `/api/v1/platform-health` |
 | `POST` | `/api/v1/platform-health/parse-test` |
 | `GET` | `/api/v1/proxy/image` |
@@ -128,6 +145,7 @@ active
 | `POST` | `/api/v1/search/semantic/embeddings/{embedding_id}/retry` |
 | `GET` | `/api/v1/search/semantic/index-status` |
 | `POST` | `/api/v1/search/semantic/reindex` |
+| `GET` | `/api/v1/search/unified` |
 | `GET` | `/api/v1/settings` |
 | `DELETE, GET, PUT` | `/api/v1/settings/{key}` |
 | `POST` | `/api/v1/shares` |

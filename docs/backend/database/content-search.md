@@ -8,6 +8,7 @@ active
 
 - `backend/app/models/content.py`
 - `backend/app/models/search.py`
+- `backend/app/models/knowledge_event.py`
 
 ## `contents`
 
@@ -32,6 +33,7 @@ active
 
 - `media_assets` 保存内容归属、媒体类型、业务角色、顺序、原始来源、归档状态和客户端直连策略。
 - `media_variants` 保存本地 storage key、变体类型、格式/编解码信息、尺寸、状态和校验值。
+- `media_bookmarks` 保存用户对明确 audio/video 资产创建的毫秒级播放位置和可选笔记；内容与资产外键都使用级联删除，同一资产同一位置唯一。
 - API 返回的短期签名 URL 与代理 URL 不入库，由 manifest service 按用途生成。
 
 现有内容数据尚未完成回填，`cover_url`、`author_avatar_url`、`media_urls` 和 `archive_metadata` 当前仍是迁移输入；不得在新代码中将这些旧字段当作媒体资产表的等价事实。
@@ -41,8 +43,16 @@ active
 - `content_sources` 保存每次分享或导入的来源、标签快照、备注和客户端上下文。一条内容可以有多个来源记录。
 - `discovery_sources` 保存来源类型、配置、启用状态、同步间隔、cursor 和最近错误。
 - `content_discovery_links` 记录内容与发现源之间的关联，不替代内容的规范 URL。
+- `contents.discovery_state` 中的 `snoozed` 表示用户明确移入稍后处理；它不同于等待评分的 `ingested`，恢复时写回 `visible`。
 
 重复内容合并时应保留新的来源记录，不能因为主体内容已存在就丢失转发说明或捕获渠道。
+
+## 知识事件
+
+- `knowledge_events` 保存事件标题、说明、进行中/已解决/已归档状态和更新时间。
+- `knowledge_event_members` 以事件与内容的唯一组合保存角色、证据状态、关系说明、人工加入来源和时间。
+- 成员外键指向真实 `contents`，删除事件或内容时由外键级联清理关系。
+- `contents.parent_id` 与 `is_synthesis` 是内容自身的历史关系字段，不等价于产品事件，也不能表达角色、证据状态或可逆成员边界。
 
 ## `content_embeddings`
 
@@ -63,5 +73,5 @@ active
 ## 关键一致性
 
 - 内容删除时，来源、发现关联、语义索引和分发引用必须按各自外键/服务规则处理。
-- 本地媒体引用删除前必须检查是否仍被其他内容使用。
+- 本地媒体引用必须同时覆盖旧 `local://` 字段和 `media_variants.storage_key`；删除内容后只清理没有其他内容/变体引用的物理对象。
 - FTS 行数和内容表活跃记录数出现异常差异时，应先修复索引而不是在查询侧静默兼容。

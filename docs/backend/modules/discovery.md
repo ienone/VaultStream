@@ -26,15 +26,15 @@ active
 
 ## 实现逻辑
 
-发现源同步把外部来源内容写入 discovery/contents 相关状态字段。巡逻评分根据兴趣配置对候选项赋分，并决定是否可见或忽略。
+发现源同步把外部来源内容写入 discovery/contents 相关状态字段，并用 `ContentDiscoveryLink` 保留一个内容与多个发现源的关系。候选列表返回来源正文预览、全部关联来源名称和类型；预览只是来源材料，不伪装成 AI 摘要。巡逻评分根据兴趣配置对候选项赋分，并决定是否可见或忽略。
+
+单条候选动作支持收录、忽略、稍后处理和恢复为可见。`snoozed` 是独立持久状态，默认动态流不返回，只有稍后列表显式请求该状态；恢复是明确的 `visible` 状态转换，不通过本地假恢复掩盖后端状态。批量动作复用同一状态机。
+
+发现源质量测试返回具名诊断 contract；前端 provider 将 `run_id/status/ok/elapsed_ms` 与候选统计解析为 typed result，页面不再直接读取动态 map。来源同步、删除和候选批量动作也已有命名响应并进入 OpenAPI 门禁。
 
 ## 测试
 
-- `backend/tests/test_api/test_discovery_api.py`
-- `backend/tests/test_api/test_discovery_sources.py`
-- `backend/tests/test_tasks/test_discovery_tasks.py`
-- `backend/tests/test_patrol_service.py`
-- `backend/tests/test_discovery_models.py`
+长期回归与临时验收边界见 [验证策略](../testing.md)。本模块其余行为在变更时针对性验收，不保留逐方法测试清单。
 
 ## 与其他模块交互
 
@@ -57,9 +57,9 @@ active
 
 ## 当前问题
 
-- 用户控制面与后端策略缺口：`../../issues/frontend-control-policy-gaps.md`
-- 动态页职责膨胀与候选信息流边界：`../../issues/frontend-dashboard-scope-creep.md`
+- 用户控制面与后端策略修复记录：`../../issues/archive/frontend-control-policy-gaps.md`
+- 已归档的动态页迁移说明与统计概览问题：`../../issues/archive/frontend-dashboard-scope-creep.md`
 
 ## 尚未实现 / 计划扩展
 
-候选浏览和轻量处理的目标入口是动态信息流，不恢复独立收件箱。主动探索的完整能力何时实施由用户选择的功能切片决定。
+候选浏览、收录、忽略、稍后处理、恢复和两个列表的分页读取已经进入动态信息流，不恢复独立收件箱。事件变化、来源偏好和更完整的主动探索仍待后续功能切片。

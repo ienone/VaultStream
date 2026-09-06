@@ -14,8 +14,10 @@ active
 
 - `tasks` 保存解析等持久化任务的类型、载荷、状态、优先级、重试与时间戳。
 - `system_settings` 以 key 和 JSON value 保存持久化配置，并记录分类、说明和更新时间。
+- `background_task_runs` 以全局 `run_id` 保存一次可观察运行；`notification_messages` 保存从可靠运行结果产生的去重消息和用户已读、静默、稍后、移除状态。
 
 任务表与 recent run 诊断不是同一概念：前者承担队列/持久化执行，后者面向用户观察一次具体运行。
+消息表也不替代运行账本：它只保存值得进入用户收件箱的回执或异常，并通过 `source_type`、`source_id` 和 payload 关联事实资源。
 
 ## 分发规则与目标
 

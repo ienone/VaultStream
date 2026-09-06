@@ -11,7 +11,7 @@ active
 - `api/endpoints.md`：由当前 FastAPI OpenAPI 生成的完整端点清单。
 - `api/contents-search-media.md`：分享、内容、后处理、搜索和媒体访问。
 - `api/automation-delivery.md`：发现、收藏同步、分发、目标和 Bot。
-- `api/agent-system-events.md`：Agent、后台运行、健康检查和 SSE。
+- `api/agent-system-events.md`：Agent、后台运行、消息盒子、健康检查和 SSE。
 
 请求字段、枚举、响应模型和状态码以 router、schema、service 返回值及 OpenAPI 为最终事实来源。文档与代码冲突时必须修正文档或 contract，不允许调用方猜测兼容。
 
@@ -37,6 +37,7 @@ active
 - 长耗时或外部副作用动作通常返回 `run_id`。
 - 返回 `run_id` 只表示已经受理或调度，除非 contract 明确说明同步执行完成。
 - 最终状态通过任务结果、领域资源或事件提示后的重新读取获得。
+- 所有写动作的 2xx 成功响应必须使用命名 response model，或像目标删除一样明确声明 bodyless `204`；不得以 inline dict 绕过 OpenAPI contract。当前文档门禁除 148 条端点覆盖外，还固定校验 56 个动作的成功状态码、schema 名称或无响应体约束。
 
 ### 错误
 
@@ -67,6 +68,8 @@ active
 .venv\Scripts\python.exe scripts\check_openapi_docs.py docs\backend\api\endpoints.md
 ```
 
+校验通过时同时报告 endpoint 覆盖数与 action contract 数；两者分别证明路径清单和关键成功响应没有漂移，不能互相替代。
+
 ## 常见状态码
 
 - `200 OK`：成功读取或同步完成。
@@ -77,3 +80,10 @@ active
 - `404 Not Found`：资源不存在。
 - `409 Conflict`：状态或唯一性冲突。
 - `503 Service Unavailable`：所需 worker、平台或供应商当前不可用。
+
+`POST /api/v1/shares` 以及把内容状态重置为 `unprocessed` 的更新在解析队列写入失败时返回 `503`，稳定错误码为 `parse_queue_unavailable`，并返回已保存的 `content_id`。这表示内容/来源已保留但解析任务未受理；客户端应明确展示“已保存、解析待处理”并允许用户进入内容详情重试，不能误报为完全成功或完全失败。
+
+
+## 同步状态的时间契约（2026-09-06）
+
+`GET /favorites-sync/status` 使用 `FavoritesSyncStatusResponse`，`last_sync_at` 沿用已有 `OptionalUtcDatetime`。运行账本在所有出口用同一 UTC 序列化器生成 `started_at` / `finished_at`，避免同一次同步在状态页与任务详情相差本地时区偏移。历史数据库中的无时区时间按仓库既有 UTC 约定解释；响应明确携带时区，客户端只作本地时间展示。

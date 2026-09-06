@@ -17,6 +17,7 @@ active
 - `database/content-search.md`：内容、来源、搜索与 FTS。
 - `database/automation-delivery.md`：任务、设置、分发与 Bot。
 - `database/agent.md`：Agent 持久化。
+- `testing.md`：最小长期回归、临时验收与默认网络边界。
 
 ## 模块文档
 
@@ -30,6 +31,8 @@ active
 - `modules/config-system.md`：系统配置、能力状态和后台诊断。
 - `modules/agent.md`：Agent 服务和工具。
 - `modules/events-tasks.md`：SSE、后台任务状态和运行结果。
+- `modules/notification-inbox.md`：持久化消息、去重和用户消息状态。
+- `modules/knowledge-events.md`：跨内容事件、成员角色和证据状态。
 
 ## 阅读规则
 
@@ -46,7 +49,10 @@ active
 
 ## 验证命令
 
+后端安装入口统一读取 `backend/constraints.txt` 的完整版本基线；升级直接或传递依赖时，应同步更新该文件，并在干净 Python 3.13 环境重新执行测试与质量门。不要只更新当前虚拟环境后提交未约束的解析结果。
+
 ```powershell
+.venv\Scripts\python.exe -m pip install -r backend\requirements-dev.txt
 .venv\Scripts\python.exe -m pytest backend/tests -q -m "not integration"
 .venv\Scripts\python.exe scripts\check_openapi_docs.py docs\backend\api\endpoints.md
 ```

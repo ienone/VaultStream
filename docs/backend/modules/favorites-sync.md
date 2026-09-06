@@ -7,6 +7,7 @@ active
 ## 代码位置
 
 - Router: `backend/app/routers/system.py`
+- Service: `backend/app/services/favorites_sync_service.py`
 - Fetchers: `backend/app/adapters/favorites/*`
 - Task: `backend/app/tasks/favorites_sync.py`
 - Config: `backend/app/services/config_service.py`
@@ -26,14 +27,13 @@ active
 
 ## 实现逻辑
 
-系统配置决定启用平台和同步策略。同步任务调用平台 fetcher 获取收藏项，再按重复策略写入内容库。失败项进入可重试记录。
+系统配置决定启用平台和同步策略。同步任务调用平台 fetcher 获取收藏项，再按重复策略写入内容库。正常同步、单项重试和批量重试共用 `FavoritesSyncTask.import_items`，最终均通过 `ContentService` 的 canonical URL 去重与 `ContentSource` 流水写入；部分失败仍保留逐项结果。
+
+同步状态、手动策略、预览、trigger、run retry、单项 retry 和批量 retry 由 `FavoritesSyncService` 统一编排；router 不再直接创建协程、检查平台认证或调用内容导入。动作使用命名响应且所有执行路径稳定返回 `run_id`。`202` 只表示任务已受理，单项/批量同步执行的 `200` 则同时返回导入、跳过和失败统计。
 
 ## 测试
 
-- `backend/tests/test_tasks/test_favorites_sync_task.py`
-- `backend/tests/test_api/test_favorites_sync_preview.py`
-- `backend/tests/test_config_service.py`
-- `backend/tests/test_automation_policy.py`
+长期回归与临时验收边界见 [验证策略](../testing.md)。本模块其余行为在变更时针对性验收，不保留逐方法测试清单。
 
 ## 与其他模块交互
 
@@ -59,13 +59,14 @@ active
 ## 配置与策略
 
 - 平台 enabled、同步范围、重复策略、取消收藏策略和手动触发策略来自系统配置。
-- 定时、手动、重试和 Agent 入口都应通过同一自动化策略检查。
+- 定时入口检查 scheduler policy；单平台手动、run retry、item retry 和 batch retry 在创建执行性 run 或导入前检查 `favorites_platform_manual`。默认禁用返回统一 `409`；已有 `force`/允许禁用平台手动同步配置只沿原 contract 生效。
+- `scope=all` 每次只读取当前启用平台，不从历史 run 恢复已禁用平台。
 
 ## 当前问题
 
-- 重试入口策略缺口：`../../issues/favorites-sync-retry-policy-gap.md`
-- 统一任务结果 contract：`../../issues/task-run-result-contract-missing.md`
+- 统一任务结果 contract 解决记录：`../../issues/archive/task-run-result-contract-missing.md`
+- System router 职责收敛记录：`../../issues/archive/backend-system-router-boundary-pollution.md`
 
 ## 尚未实现 / 计划扩展
 
-收藏同步策略和 run renderer 尚未进入专项实施；选择该功能切片时，先复核相关 contract、策略 issue 和当前前端入口。
+收藏同步 run 的摘要、平台结果和失败项处理已迁入统一任务页；自动化页只保留发起、策略、平台状态和最近运行入口。

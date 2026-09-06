@@ -8,6 +8,9 @@ active
 
 - Router: `backend/app/routers/system.py`
 - Config service: `backend/app/services/config_service.py`
+- AI diagnostics service: `backend/app/services/ai_diagnostics.py`
+- Platform health service: `backend/app/services/platform_health_service.py`
+- System diagnostics service: `backend/app/services/system_diagnostics_service.py`
 - Core config: `backend/app/core/config.py`
 
 ## 功能
@@ -25,20 +28,18 @@ active
 
 ## 实现逻辑
 
-系统配置来自环境变量和持久化 setting。`ConfigService` 提供类型转换和业务配置读取。`system.py` 聚合多个模块状态供前端显示。
+系统配置来自环境变量和持久化 setting。`ConfigService` 提供类型转换和业务配置读取。AI capability、模型连通性、模型发现和平台解析由 `AIDiagnosticsService` 聚合；平台认证与后台任务诊断分别由专用 service 承担，system router 只负责 contract、依赖注入和 HTTP 错误映射。
+
+布尔开关统一通过 `coerce_bool` 读取，识别布尔值、数字和 `true/false`、`1/0`、`yes/no`、`on/off` 字符串；空值或未知值采用调用方默认值。诊断与自动化策略不再维护各自的转换规则。AI 能力的各状态共用响应组装，保留状态、原因、修复动作和实际连通性结果。
 
 ## 测试
 
-- `backend/tests/test_config_service.py`
-- `backend/tests/test_core_config.py`
-- `backend/tests/test_api/test_system.py`
-- `backend/tests/test_api/test_system_settings.py`
-- `backend/tests/test_api/test_system_extra.py`
+长期回归与临时验收边界见 [验证策略](../testing.md)。本模块其余行为在变更时针对性验收，不保留逐方法测试清单。
 
 ## 与其他模块交互
 
 - 几乎所有自动化模块都会读取系统配置。
-- 前端设置页、动态页和自动化页都会调用 system API；账号相关操作归入设置“账号与平台”分区。
+- 前端设置页、动态页和自动化页都会调用 system API；账号相关操作归入独立账号中心。
 
 ## 对应前端
 
@@ -65,9 +66,9 @@ active
 
 ## 当前问题
 
-- System router 职责污染：`../../issues/backend-system-router-boundary-pollution.md`
-- 动作型 API contract 缺口：`../../issues/backend-diagnostic-api-contract-is-inline.md`
+- System router 职责收敛记录：`../../issues/archive/backend-system-router-boundary-pollution.md`
+- 当前写动作的成功响应已全部进入命名 JSON response 或显式 bodyless 204 门禁，修复记录见 `../../issues/archive/backend-diagnostic-api-contract-is-inline.md`。
 
 ## 尚未实现 / 计划扩展
 
-模块拆分和 contract 收敛尚未进入专项实施；选择该功能切片时，先依据当前 router、service、schema 和相关 issue 确定范围。
+System router 的跨域副作用、后台诊断账本和 AI capability 聚合均已下沉。dashboard、tags 与 settings 继续作为 system/config 自身的短查询 contract；除非出现新的 owner、策略或测试收益，不再仅为缩短文件拆分同一 URL router。

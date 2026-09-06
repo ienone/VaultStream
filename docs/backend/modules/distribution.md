@@ -8,7 +8,8 @@ active
 
 - Router: `backend/app/routers/distribution.py`
 - Queue router: `backend/app/routers/distribution_queue.py`
-- Service: `backend/app/services/distribution/*`
+- Service: `backend/app/services/distribution/service.py`
+- Enqueue helpers: `backend/app/services/distribution/scheduler.py`
 - Rule service: `backend/app/services/distribution_rule_service.py`
 - Push: `backend/app/push/*`
 - Tasks: `backend/app/tasks/distribution_worker.py`
@@ -28,17 +29,17 @@ active
 
 ## 实现逻辑
 
-内容入库或规则刷新后，分发服务根据条件匹配规则，生成 `content_queue_items`。worker 消费队列并调用 push service，将结果记录到 pushed records。
+内容入库或规则刷新后，`DistributionService` 根据条件匹配规则，生成 `content_queue_items`。`enqueue_content_background` 只负责创建/关闭独立 session 和记录后台异常；旧空 `DistributionEngine` 别名与测试透传函数已删除。worker 消费队列并调用 push service，将结果记录到 pushed records。
+
+队列列表和单项响应批量/按项附带卡片用途的统一 `media_assets`，签名 URL 使用当前请求 origin。前端队列预览不再自行猜测或改写封面 URL。worker 推送前会连同变体一次性加载媒体资产；`ContentDistributor` 按 Telegram/QQ 能力选择本地可上传变体，并只把后端明确允许直连的远端原址作为兜底。Telegram 与 NapCat push service 只消费该 `media_items`，不再读取旧 archive metadata 或 `cover_url`；QQ 音频映射为 OneBot record 段。
+
+分发队列的 enqueue、cancel、batch retry、push/schedule/reorder/status/repush，以及规则删除与人工扫描动作已从匿名响应收敛为命名 response model，并纳入 OpenAPI schema gate。数量字段表达当前请求已完成的数据库状态变更；`run_id` 仅在确实创建后台运行时出现。规则目标删除保持 `204 No Content`，同样由门禁固定。
+
+仓库实验数据库已通过“真实队列/资产/本地 storage → worker → Telegram 适配器 → 队列与 pushed record 持久化”探针；网络边界由只记录上传字节的 Bot 替身截断，确认没有外部请求。真实 Telegram/QQ 账号发送与平台接受的媒体规格仍需在用户授权配置下验收，不能由本地探针外推。
 
 ## 测试
 
-- `backend/tests/test_distribution_engine.py`
-- `backend/tests/test_distribution_decision.py`
-- `backend/tests/test_distribution_scheduler.py`
-- `backend/tests/test_distribution_rule_service.py`
-- `backend/tests/test_api/test_distribution.py`
-- `backend/tests/test_api/test_distribution_queue_extra.py`
-- `backend/tests/test_push_services.py`
+长期回归与临时验收边界见 [验证策略](../testing.md)。本模块其余行为在变更时针对性验收，不保留逐方法测试清单。
 
 ## 与其他模块交互
 
@@ -58,14 +59,15 @@ active
 
 ## 配置与策略
 
-- 自动审批、队列 worker、重试和立即推送都应受自动化策略约束。
+- `distribution_mode=paused` 会阻止自动审批、规则刷新产生的新自动审批、enqueue、队列 worker 和 Agent 批量推送；规则刷新仍可把已失效的 `AUTO_APPROVED` 安全降回 `PENDING`。
+- 人工审核仍是显式用户操作，不因暂停自动分发而被隐藏；重新启用后，后续规则刷新或新内容处理可以继续自动审批。
 - 分发目标和规则必须通过后端校验，不能只依赖前端禁用按钮。
 
 ## 当前问题
 
-- 自动化页面职责过载：`../../issues/frontend-automation-page-responsibility-overload.md`
-- 用户控制面与策略缺口：`../../issues/frontend-control-policy-gaps.md`
-- 统一任务结果 contract：`../../issues/task-run-result-contract-missing.md`
+- 自动化页面职责拆分记录：`../../issues/archive/frontend-automation-page-responsibility-overload.md`
+- 用户控制面与策略修复记录：`../../issues/archive/frontend-control-policy-gaps.md`
+- 统一任务结果 contract 解决记录：`../../issues/archive/task-run-result-contract-missing.md`
 
 ## 尚未实现 / 计划扩展
 
