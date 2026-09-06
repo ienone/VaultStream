@@ -4,6 +4,17 @@
 
 active
 
+## 2026-09-06 进展
+
+- 新增 `backend/constraints.txt`，锁定当前运行与开发依赖的完整闭包；`requirements.txt`、`requirements-dev.txt`、Docker 构建、Quality Gates 与 Release 缓存键现在共用这一基线。
+- `scripts/check_backend_requirements.py` 明确把 constraint 指令视为版本约束而不是直接依赖声明，避免完整约束文件掩盖代码漏声明直接依赖。
+- 在全新的本机 Python 3.13.15 虚拟环境完成约束安装，`pip check` 与无网络 dry-run 均通过；非 integration 套件为 `1020 passed, 4 skipped, 8 deselected`，并在 `ResourceWarning` 提升为错误时再次通过。
+- Quality Gates 的 requirements、pytest、pip-audit、Bandit、OpenAPI、schema 与 gitleaks 步骤改为独立产出结果，pytest 失败不再遮蔽后续质量信号。
+- Quality Gates 输出最慢 20 项；pytest 默认把 `ResourceWarning` 视为失败，并通过 `pytest-socket` 禁止非回环网络。真实平台测试必须显式使用 `integration` 与 `enable_socket`。
+- 本机 `pip-audit` 未发现已知漏洞；Bandit high/high 无问题；OpenAPI 为 148 个端点、56 个动作 contract；仓库实验数据库 schema 33、integrity `ok`、foreign key 无异常。
+- 历史 Agent catalog 失败在同一依赖基线和完整测试顺序中没有复现；本轮实际发现并修复的是裸后台任务、测试数据库引擎和测试伪 Bot 网络请求的资源生命周期与隔离问题。
+- 尚未完成的外部验收只有 Linux：本机 Docker daemon 当前未运行，且本轮没有提交或手动触发 GitHub Actions，因此不能把 macOS Python 3.13 结果声明为 Linux 已通过。该项完成前保持 active。
+
 ## 现象
 
 - 2026-07-17 最近一次远端 Quality Gates 在后端 pytest 阶段出现 `1 failed, 762 passed, 4 skipped, 9 deselected`，失败用例为 `test_agent_api_catalog_lists_client_api_surface`。
@@ -30,7 +41,8 @@ active
 
 - 已确认：本地和 CI 没有共享锁定或约束后的 Python 依赖集合。
 - 已确认：当前失败在不同环境中结果不一致，说明测试或其应用装载过程依赖未被显式控制的环境条件。
-- 待验证：直接原因可能是依赖版本变化、Linux 与 Windows 差异、测试顺序、应用全局状态或它们的组合；在干净 Linux 环境复现前不能把原因归结为某一个库。
+- 已验证：在干净 macOS Python 3.13 环境和完整测试顺序中，Agent catalog 失败不复现；此前未约束依赖和串行 fail-fast 是确定的环境与诊断缺口，但没有证据把那一次失败归因于某一个库。
+- 待验证：同一约束集合在 GitHub Actions Linux runner 的安装与完整质量门结果。
 - 已确认：质量门的串行 fail-fast 结构降低了一次运行能够提供的诊断信息量。
 
 ## 关联代码
@@ -43,8 +55,7 @@ active
 
 ## 关联文档
 
-- 测试价值问题：`./backend-test-suite-value-density.md`
-- 测试套件价值问题：`./backend-test-suite-value-density.md`
+- 测试套件治理记录：`./archive/backend-test-suite-value-density.md`
 - 后端总览：`../backend/README.md`
 
 ## 修复建议
@@ -56,7 +67,7 @@ active
 
 ## 验证方式
 
-- 在全新 Windows 开发环境和 GitHub Actions Linux 环境安装同一依赖集合，核心测试结果一致。
+- 在全新 Python 3.13 开发环境和 GitHub Actions Linux 环境安装同一依赖集合，核心测试结果一致。
 - 手动触发 Quality Gates 后，后端测试、依赖审计、Bandit、OpenAPI、schema gate 和敏感信息检查都能给出独立结果。
 - 依赖升级通过明确的更新提交完成，提交中包含完整测试和兼容性结果。
 - 不以重新启用普通 push 自动触发作为修复手段。
