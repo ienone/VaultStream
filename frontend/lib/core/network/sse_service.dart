@@ -95,6 +95,7 @@ class SseEventBus {
 @Riverpod(keepAlive: true)
 class SseService extends _$SseService {
   http.Client? _httpClient;
+  Completer<void>? _abortRequest;
   Timer? _reconnectTimer;
   Timer? _idleTimer;
 
@@ -144,6 +145,8 @@ class SseService extends _$SseService {
     _reconnectTimer = null;
     _idleTimer?.cancel();
     _idleTimer = null;
+    _abortRequest?.complete();
+    _abortRequest = null;
     _httpClient?.close();
     _httpClient = null;
     _eventBus.updateState(SseConnectionState.disconnected);
@@ -152,13 +155,7 @@ class SseService extends _$SseService {
   void _connect() {
     if (_disposed) return;
 
-    // 关闭旧连接和定时器
-    _reconnectTimer?.cancel();
-    _reconnectTimer = null;
-    _idleTimer?.cancel();
-    _idleTimer = null;
-    _httpClient?.close();
-    _httpClient = null;
+    _cleanup();
 
     final settings = ref.read(localSettingsProvider);
 
@@ -185,11 +182,18 @@ class SseService extends _$SseService {
 
     final client = http.Client();
     _httpClient = client;
+    final abort = Completer<void>();
+    _abortRequest = abort;
 
     try {
-      final request = http.Request('GET', url)..headers.addAll(headers);
+      final request = http.AbortableRequest(
+        'GET',
+        url,
+        abortTrigger: abort.future,
+      )..headers.addAll(headers);
       final response = await client.send(request);
 
+      if (_disposed || !identical(_httpClient, client)) return;
       if (response.statusCode != 200) {
         debugPrint('[SSE] 连接失败，HTTP ${response.statusCode}');
         _handleError(isServerError: response.statusCode >= 500);
@@ -212,7 +216,7 @@ class SseService extends _$SseService {
           .transform(const LineSplitter());
 
       await for (final line in textStream) {
-        if (_disposed) break;
+        if (_disposed || !identical(_httpClient, client)) break;
 
         // 重置 idle 超时计时器（每收到任意数据都刷新）
         _resetIdleTimer();
@@ -265,17 +269,17 @@ class SseService extends _$SseService {
       }
 
       // 流正常结束（后端主动关闭）
-      if (!_disposed) {
+      if (!_disposed && identical(_httpClient, client)) {
         debugPrint('[SSE] 流正常结束，将按关闭策略重连');
         _handleClose();
       }
     } on http.ClientException catch (e) {
-      if (!_disposed) {
+      if (!_disposed && identical(_httpClient, client)) {
         debugPrint('[SSE] ClientException: $e');
         _handleError();
       }
     } catch (e) {
-      if (!_disposed) {
+      if (!_disposed && identical(_httpClient, client)) {
         debugPrint('[SSE] 连接异常: $e');
         _handleError();
       }

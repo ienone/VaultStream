@@ -95,8 +95,8 @@ class EventBus:
         try:
             while True:
                 try:
-                    # 超时检查，避免死连接
-                    data = await asyncio.wait_for(queue.get(), timeout=300.0)
+                    # 空闲时每 30 秒发送心跳，早于客户端 90 秒失活阈值
+                    data = await asyncio.wait_for(queue.get(), timeout=30.0)
                     yield data
                 except asyncio.TimeoutError:
                     # 发送心跳包
