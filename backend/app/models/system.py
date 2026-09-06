@@ -41,6 +41,59 @@ class SystemSetting(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class BackgroundTaskRun(Base):
+    """Persistent ledger entry for one observable background operation."""
+
+    __tablename__ = "background_task_runs"
+    __table_args__ = (
+        Index("ix_background_task_runs_task_started", "task", "started_at"),
+        Index("ix_background_task_runs_status_started", "status", "started_at"),
+    )
+
+    run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    task: Mapped[str] = mapped_column(String(100), index=True)
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    error: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    run_metadata: Mapped[Any] = mapped_column("metadata", JSON, default=dict)
+    result: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class NotificationMessage(Base):
+    """Persistent inbox item derived from an observable system occurrence."""
+
+    __tablename__ = "notification_messages"
+    __table_args__ = (
+        UniqueConstraint("dedupe_key", name="uq_notification_messages_dedupe_key"),
+        Index("ix_notification_messages_last_occurred", "last_occurred_at"),
+        Index("ix_notification_messages_category_state", "category", "read_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    dedupe_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(32), index=True)
+    severity: Mapped[str] = mapped_column(String(32), index=True)
+    title: Mapped[str] = mapped_column(String(240))
+    body: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    route: Mapped[Optional[str]] = mapped_column(String(500), default=None)
+    source_type: Mapped[str] = mapped_column(String(64), index=True)
+    source_id: Mapped[Optional[str]] = mapped_column(String(128), default=None)
+    payload: Mapped[Any] = mapped_column(JSON, default=dict)
+    occurrence_count: Mapped[int] = mapped_column(Integer, default=1)
+    first_occurred_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_occurred_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    read_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    muted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    snoozed_until: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    dismissed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
 class PushedRecord(Base):
     """推送记录表（M4 扩展：记录 message_id 和 target_id）"""
     __tablename__ = "pushed_records"

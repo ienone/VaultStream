@@ -2,8 +2,8 @@
 通用的 schema 定义与基类模型
 """
 from datetime import datetime
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Any, Dict, List, Literal, Optional
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from app.models import Platform, ContentStatus, ReviewStatus, LayoutType
 from app.schemas.base import OptionalUtcDatetime, UtcDatetime
 
@@ -12,6 +12,11 @@ class APIResponse(BaseModel):
     code: int = 200
     message: str = "success"
     data: Optional[Any] = None
+
+
+class SystemSettingDeleteResponse(BaseModel):
+    status: Literal["deleted"]
+    key: str
 
 class TagStats(BaseModel):
     """标签统计"""
@@ -104,6 +109,40 @@ class FailedDiscoverySourceResponse(BaseModel):
     last_error: Optional[str] = None
 
 
+class TaskRunPresentationItem(BaseModel):
+    label: str
+    value: str
+    tone: str = "neutral"
+
+
+class TaskRunPresentationSection(BaseModel):
+    title: str
+    items: List[TaskRunPresentationItem] = Field(default_factory=list)
+
+
+class TaskRunEntityLink(BaseModel):
+    kind: str
+    label: str
+    href: str
+
+
+class TaskRunAllowedAction(BaseModel):
+    id: str
+    label: str
+    href: str
+    emphasis: str = "secondary"
+
+
+class TaskRunPresentation(BaseModel):
+    kind: str
+    title: str
+    summary: str
+    error_code: Optional[str] = None
+    entity_links: List[TaskRunEntityLink] = Field(default_factory=list)
+    allowed_actions: List[TaskRunAllowedAction] = Field(default_factory=list)
+    result_sections: List[TaskRunPresentationSection] = Field(default_factory=list)
+
+
 class BackgroundTaskRunResponse(BaseModel):
     """Recent background task run with task-specific metadata."""
 
@@ -113,9 +152,36 @@ class BackgroundTaskRunResponse(BaseModel):
     started_at: OptionalUtcDatetime = None
     finished_at: OptionalUtcDatetime = None
     error: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
     result: Optional[Dict[str, Any]] = None
+    presentation: TaskRunPresentation
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def collect_task_metadata(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        metadata = data.get("metadata")
+        collected = dict(metadata) if isinstance(metadata, dict) else {}
+        known = {
+            "run_id",
+            "task",
+            "status",
+            "started_at",
+            "finished_at",
+            "error",
+            "metadata",
+            "result",
+            "presentation",
+        }
+        for key in tuple(data):
+            if key not in known:
+                collected[key] = data.pop(key)
+        data["metadata"] = collected
+        return data
 
 
 class BackgroundTaskDiagnosticsResponse(BaseModel):
@@ -150,11 +216,97 @@ class SystemSettingResponse(SystemSettingBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AIConnectivityTestResponse(BaseModel):
+    """Result of one synchronous AI provider connectivity probe."""
+
+    run_id: str
+    target: str
+    status: Literal["success", "error"]
+    ok: bool
+    elapsed_ms: float
+    response_present: Optional[bool] = None
+    preview: Optional[str] = None
+    dimension: Optional[int] = None
+    model: Optional[str] = None
+    api_version: Optional[str] = None
+    error: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AIModelDiscoveryResponse(BaseModel):
+    """Models returned by one configured OpenAI-compatible provider."""
+
+    target: str
+    models: List[str]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class PlatformParseTestResponse(BaseModel):
+    """Synchronous parser probe result without importing the content."""
+
+    run_id: str
+    platform: str
+    status: Literal["success", "error"]
+    ok: bool
+    elapsed_ms: float
+    error: Optional[str] = None
+    url: Optional[str] = None
+    detected_platform: Optional[str] = None
+    title: Optional[str] = None
+    content_id: Optional[str] = None
+    clean_url: Optional[str] = None
+    content_type: Optional[str] = None
+    layout_type: Optional[str] = None
+    author_name: Optional[str] = None
+    author_id: Optional[str] = None
+    author_avatar_url: Optional[str] = None
+    author_url: Optional[str] = None
+    cover_url: Optional[str] = None
+    media_urls: List[str] = Field(default_factory=list)
+    media_count: Optional[int] = None
+    body_length: Optional[int] = None
+    published_at: Optional[str] = None
+    stats: Dict[str, Any] = Field(default_factory=dict)
+    source_tags: List[str] = Field(default_factory=list)
+    context_data_keys: List[str] = Field(default_factory=list)
+    rich_payload_keys: List[str] = Field(default_factory=list)
+    archive_metadata_keys: List[str] = Field(default_factory=list)
+    archive_raw_keys: List[str] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class FavoritesSyncStatusResponse(BaseModel):
+    """Scheduler state; timestamps follow the shared UTC response contract."""
+
+    running: bool
+    interval_minutes: int
+    max_items: int
+    enabled_platforms: List[str]
+    last_sync_at: OptionalUtcDatetime = None
+    recent_runs: List[Dict[str, Any]]
+    policies: Dict[str, str]
+    platforms: List[Dict[str, Any]]
+
+
 class FavoritesSyncTriggerRequest(BaseModel):
     """Manual favorites sync trigger payload."""
 
     platform: Optional[str] = None
     force: bool = False
+
+
+class FavoritesSyncAcceptedResponse(BaseModel):
+    """Accepted favorites synchronization run."""
+
+    status: Literal["accepted"]
+    platform: str
+    run_id: str
+    retry_of: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class FavoritesSyncPreviewRequest(BaseModel):
@@ -184,6 +336,33 @@ class FavoritesSyncItemsRetryRequest(BaseModel):
     platform: str = Field(..., min_length=1)
     source_run_id: Optional[str] = None
     items: List[FavoritesSyncItemRetryEntry] = Field(..., min_length=1, max_length=50)
+
+
+class FavoritesSyncItemRetryResponse(BaseModel):
+    """Completed retry of one failed favorites item."""
+
+    status: Literal["success"]
+    platform: str
+    run_id: str
+    content_id: int
+    source_run_id: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class FavoritesSyncItemsRetryResponse(BaseModel):
+    """Completed retry of multiple failed favorites items."""
+
+    status: Literal["success", "partial_success"]
+    platform: str
+    run_id: str
+    source_run_id: Optional[str] = None
+    imported: int
+    skipped: int
+    failed: int
+    items: List[Dict[str, Any]] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class FavoritesSyncPlatformPreview(BaseModel):

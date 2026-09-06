@@ -62,6 +62,7 @@ class DiscoveryState(str, Enum):
     INGESTED = "ingested"    # 刚采集，等待 AI 评分
     SCORED = "scored"        # 已评分，低于阈值的自动标记 ignored
     VISIBLE = "visible"      # 通过阈值，可在探索界面展示
+    SNOOZED = "snoozed"      # 用户稍后处理，保留在独立列表
     PROMOTED = "promoted"    # 用户已收藏至主库
     IGNORED = "ignored"      # 用户手动忽略或低分自动忽略
     MERGED = "merged"        # 被合并入另一条内容，不再独立展示

@@ -114,6 +114,12 @@ class MediaAsset(Base):
         cascade="all, delete-orphan",
         order_by="MediaVariant.id",
     )
+    bookmarks = relationship(
+        "MediaBookmark",
+        back_populates="asset",
+        cascade="all, delete-orphan",
+        order_by="MediaBookmark.position_ms",
+    )
 
 
 class MediaVariant(Base):
@@ -152,3 +158,44 @@ class MediaVariant(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     asset = relationship("MediaAsset", back_populates="variants")
+
+
+class MediaBookmark(Base):
+    """A user-created playback position, optionally carrying a note."""
+
+    __tablename__ = "media_bookmarks"
+    __table_args__ = (
+        UniqueConstraint(
+            "media_asset_id",
+            "position_ms",
+            name="uq_media_bookmark_asset_position",
+        ),
+        Index(
+            "ix_media_bookmarks_content_asset_position",
+            "content_id",
+            "media_asset_id",
+            "position_ms",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    content_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("contents.id", ondelete="CASCADE"),
+        index=True,
+    )
+    media_asset_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("media_assets.id", ondelete="CASCADE"),
+        index=True,
+    )
+    position_ms: Mapped[int] = mapped_column(Integer)
+    note: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=utcnow,
+        onupdate=utcnow,
+    )
+
+    asset = relationship("MediaAsset", back_populates="bookmarks")

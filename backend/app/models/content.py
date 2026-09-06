@@ -122,6 +122,11 @@ class Content(Base):
     context_data: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
     rich_payload: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
     archive_metadata: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
+
+    # 人工修订与后续解析结果分离存储。解析器不得静默覆盖这些字段；
+    # 有冲突时把最新解析值写入 parse_candidate，交由用户逐字段决策。
+    manual_edit_fields: Mapped[Optional[Any]] = mapped_column(JSON, default=list)
+    parse_candidate: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
     
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
     

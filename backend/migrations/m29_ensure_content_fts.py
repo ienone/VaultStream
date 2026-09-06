@@ -3,13 +3,13 @@ import asyncio
 
 from app.core.database import ensure_content_fts
 from app.core.db_adapter import engine
-from app.core.schema_gate import ensure_schema_metadata
+from app.core.schema_gate import record_schema_version
 
 
 async def migrate() -> None:
     async with engine.begin() as conn:
         await ensure_content_fts(conn)
-        await ensure_schema_metadata(conn)
+        await record_schema_version(conn, 29)
     print("Migration complete: m29_ensure_content_fts")
 
 
