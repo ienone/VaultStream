@@ -1,65 +1,34 @@
-from __future__ import annotations
+"""A user-disabled policy must block the real orchestration entrypoints."""
+from unittest.mock import AsyncMock
 
-import pytest
-
-from app.services.automation_policy import AutomationPolicyService
 from app.services.config_service import ConfigService
+from app.services.automation_policy import AutomationPolicyService
+from app.services.post_ingest import PostIngestService
 
 
-class _MemoryConfigService(ConfigService):
-    def __init__(self, values: dict[str, object]):
-        super().__init__(cache={})
-        self.values = values
-
-    async def get_value_fresh(self, key: str, default=None):
-        return self.values.get(key, default)
-
-
-@pytest.mark.asyncio
-async def test_policy_defaults_keep_existing_automation_enabled():
-    policy = AutomationPolicyService(_MemoryConfigService({}))
-
-    assert (await policy.favorites_scheduler()).allowed is True
-    assert (await policy.discovery_scoring()).allowed is True
-    assert (await policy.distribution_enqueue()).allowed is True
-    assert (await policy.cookie_keepalive()).allowed is True
+async def test_disabled_indexing_never_calls_the_model(db_session, monkeypatch):
+    await ConfigService().set_value('enable_auto_semantic_indexing', False)
+    index = AsyncMock(side_effect=AssertionError('disabled model was called'))
+    monkeypatch.setattr('app.services.embedding_service.EmbeddingService.index_content', index)
+    await PostIngestService().schedule_embedding_index(42, source='regression')
+    index.assert_not_awaited()
 
 
-@pytest.mark.asyncio
-async def test_policy_blocks_disabled_favorites_platform_without_force():
-    policy = AutomationPolicyService(_MemoryConfigService({}))
-
-    blocked = await policy.favorites_platform_manual(
-        "zhihu",
-        enabled_platforms=[],
-    )
-    forced = await policy.favorites_platform_manual(
-        "zhihu",
-        enabled_platforms=[],
-        force=True,
-    )
-
-    assert blocked.allowed is False
-    assert blocked.code == "favorites_platform_disabled"
-    assert forced.allowed is True
-    assert forced.code == "forced"
+async def test_paused_distribution_blocks_agent_after_confirmation(client, db_session):
+    await ConfigService().set_value('distribution_mode', 'paused')
+    pending = await client.post('/api/v1/agent/tools/push_batch/invoke', json={
+        'args': {'content_ids': [987654321]},
+    })
+    assert pending.status_code == 200
+    confirmation = pending.json()['confirmation']['id']
+    response = await client.post(f'/api/v1/agent/confirmations/{confirmation}/decide',
+                                 json={'approved': True})
+    assert response.status_code == 400
+    assert response.json()['error_code'] == 'distribution_paused'
 
 
-@pytest.mark.asyncio
-async def test_policy_blocks_paused_distribution_and_disabled_workers():
-    policy = AutomationPolicyService(
-        _MemoryConfigService(
-            {
-                "distribution_mode": "paused",
-                "enable_cookie_keepalive": "false",
-                "enable_favorites_sync_scheduler": False,
-                "enable_discovery_patrol": False,
-            }
-        )
-    )
-
-    assert (await policy.distribution_enqueue()).code == "distribution_paused"
-    assert (await policy.distribution_worker_poll()).code == "distribution_paused"
-    assert (await policy.cookie_keepalive()).code == "cookie_keepalive_disabled"
-    assert (await policy.favorites_scheduler()).code == "favorites_scheduler_disabled"
-    assert (await policy.discovery_scoring()).code == "discovery_scoring_disabled"
+async def test_disabled_favorites_requires_explicit_override(db_session):
+    await ConfigService().set_value('allow_manual_favorites_sync_disabled_platform', False)
+    policy = AutomationPolicyService(ConfigService())
+    assert not (await policy.favorites_platform_manual('zhihu', enabled_platforms=[])).allowed
+    assert (await policy.favorites_platform_manual('zhihu', enabled_platforms=[], force=True)).allowed

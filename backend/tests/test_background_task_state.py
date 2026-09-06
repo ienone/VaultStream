@@ -1,64 +1,25 @@
-import pytest
-
+from datetime import timedelta
+from uuid import uuid4
+from app.models import BackgroundTaskRun, NotificationMessage
+from app.core.time_utils import utcnow
 from app.services import background_task_state as state
 
 
-class _FakeConfigService:
-    def __init__(self) -> None:
-        self.values: dict[str, object] = {}
-        self.set_calls: list[dict[str, object]] = []
-
-    async def get_value_fresh(self, key: str, default=None):
-        return self.values.get(key, default)
-
-    async def set_value(self, key: str, value, *, category: str = "general", description=None):
-        self.values[key] = value
-        self.set_calls.append(
-            {
-                "key": key,
-                "value": value,
-                "category": category,
-                "description": description,
-            }
-        )
-
-
-@pytest.mark.asyncio
-async def test_background_task_state_uses_config_service(monkeypatch):
-    config = _FakeConfigService()
-    monkeypatch.setattr(state, "_config_service", lambda: config)
-
-    saved = await state.record_task_success("demo_task", indexed=True)
-
-    key = "background_task_state:demo_task"
-    assert config.values[key] == saved
-    assert saved["task"] == "demo_task"
-    assert saved["status"] == "ok"
-    assert saved["run_count"] == 1
-    assert saved["indexed"] is True
-    assert config.set_calls[-1]["category"] == "background_tasks"
-
-
-@pytest.mark.asyncio
-async def test_recent_task_runs_use_config_service(monkeypatch):
-    config = _FakeConfigService()
-    monkeypatch.setattr(state, "_config_service", lambda: config)
-
-    started = await state.record_task_run_started(
-        "demo_runs",
-        run_id="run-1",
-        trigger="manual",
-    )
-    finished = await state.record_task_run_success(
-        "demo_runs",
-        "run-1",
-        indexed=2,
-    )
-    runs = await state.get_recent_task_runs("demo_runs")
-
-    key = "background_task_runs:demo_runs"
-    assert runs == [finished]
-    assert config.values[key] == [finished]
-    assert started["trigger"] == "manual"
-    assert finished["status"] == "success"
-    assert finished["result"] == {"indexed": 2}
+async def test_history_prunes_only_unreferenced_finished_runs(db_session):
+    task = f'retention-{uuid4().hex}'
+    now = utcnow()
+    running = BackgroundTaskRun(run_id=f'{task}-running', task=task, status='running',
+                                started_at=now - timedelta(days=10), run_metadata={'original': True})
+    terminal = [BackgroundTaskRun(run_id=f'{task}-{index}', task=task, status='success',
+                                 started_at=now - timedelta(days=5) + timedelta(seconds=index))
+                for index in range(202)]
+    db_session.add_all([running, *terminal])
+    db_session.add(NotificationMessage(dedupe_key=task, category='task', severity='info',
+                                      title='结果回执', source_type='background_task_run',
+                                      source_id=terminal[0].run_id, route=f'/tasks/{terminal[0].run_id}'))
+    await db_session.commit()
+    await state._upsert_run(task, {'run_id': f'{task}-new', 'status': 'running'}, terminal=False)
+    assert (await state.get_task_run(running.run_id))['original'] is True
+    assert await state.get_task_run(terminal[0].run_id) is not None
+    assert await state.get_task_run(terminal[1].run_id) is None
+    assert await state.get_task_run(terminal[-1].run_id) is not None

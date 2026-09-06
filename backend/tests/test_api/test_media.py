@@ -15,12 +15,6 @@ from app.routers.media import _resolve_local_media_path
 class TestMediaAPI:
     """Test suite for media endpoints"""
     
-    @pytest.mark.asyncio
-    async def test_stored_media_not_found(self, client: AsyncClient):
-        """Test that accessing a non-existent stored media file returns 404."""
-        response = await client.get("/api/v1/media/nonexistent_file_12345.jpg")
-        assert response.status_code == 404
-        assert response.json()["detail"] == "Media not found"
 
     @pytest.mark.asyncio
     async def test_stored_media_path_traversal_blocked(self, client: AsyncClient):

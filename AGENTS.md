@@ -5,9 +5,9 @@
 VaultStream 分为 Python 后端和 Flutter 前端：
 
 - `backend/app/`: FastAPI 应用代码，包括 `routers/`、`services/`、`repositories/`、`adapters/`、`tasks/`、`core/`。
-- `backend/tests/`: 后端 pytest 测试，包括 `test_api/`、`test_adapters/`、`test_tasks/` 等。
+- `backend/tests/`: 少量长期 pytest 回归，保护权限、外部副作用和数据完整性。
 - `frontend/lib/`: Flutter 应用代码，按功能模块 `features/` 和共享层 `core/`、`routing/`、`theme/` 组织。
-- `frontend/test/`: Flutter 单元测试和 widget 测试。
+- `frontend/test/`: 少量长期回归，保护关键竞态、持久恢复和敏感信息边界。
 - `docs/`: 当前文档体系，包括前端、后端、计划、问题和知识库文档。
 - `scripts/`: 工具脚本。
 
@@ -80,13 +80,14 @@ VaultStream 分为 Python 后端和 Flutter 前端：
 
 ## 测试规则
 
-- 后端使用 `pytest`，默认启用覆盖率配置（`backend/pytest.ini`、`.coveragerc`）。
+- 默认采用针对当前变更的临时验收；脚本完成验证后删除，只记录必要结果和截图。不把一次性验收整体搬入正式测试。
+- 长期回归仅保留权限、外部副作用、数据完整性及难以人工复现的关键竞态，不要求每次改动补测试，不设置数量或覆盖率目标。
+- 后端使用 `pytest`，不默认生成覆盖率报告。
 - 后端测试必须使用仓库根目录的虚拟环境 Python，不使用全局或系统解释器。
   - Windows 示例：`.venv\Scripts\python.exe -m pytest backend/tests -q`
   - 这样可以避免环境漂移。
-- 外部平台或集成测试必须标记 `@pytest.mark.integration`。
-- 测试应放在变更附近。例如新增 API 路由时，应在 `backend/tests/test_api/` 下补测试。
-- Flutter 变更应在 `frontend/test/unit` 或 `frontend/test/widget` 中补充 `flutter test` 覆盖。
+- 外部平台和账号态验收按需执行，不进入默认回归；需要真实副作用时先确认用户授权。
+- 必须长期保留的回归放在对应模块附近；数据库、文件和状态转换尽量运行真实实现，外部平台或模型只替换边界。
 - 正式、可重复的后端测试必须放在 `backend/tests/` 下，确保新测试文件默认能被 Git 追踪。
 - 本地探针、真实平台调试脚本、依赖 cookie/数据库的检查和捕获输出应放在 `backend/manual_tests/`。该目录被忽略，不得作为 CI 或常规验收依据。
 - 不要把单个后端测试文件名加入 `.gitignore`。如果文件不适合常规收集，应移出 `backend/tests/`，或改成带显式 skip/marker 的可重复测试。
