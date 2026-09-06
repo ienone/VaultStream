@@ -24,6 +24,7 @@ from app.schemas import (
     AgentRunRequest,
     AgentRunResponse,
     AgentSessionCreateRequest,
+    AgentSessionActionResponse,
     AgentSessionItem,
     AgentSessionListResponse,
     AgentSessionUpdateRequest,
@@ -118,7 +119,6 @@ async def invoke_agent_tool(
         result = await service.invoke_tool(
             tool_name=tool_name,
             args=payload.args,
-            confirmed=payload.confirmed,
         )
     except AgentToolError as exc:
         status = 404 if exc.error_code == "agent_tool_not_found" else 400
@@ -170,7 +170,10 @@ async def rename_agent_session(
     return AgentSessionItem.model_validate(session)
 
 
-@router.delete("/agent/sessions/{session_id}")
+@router.delete(
+    "/agent/sessions/{session_id}",
+    response_model=AgentSessionActionResponse,
+)
 async def delete_agent_session(
     session_id: str,
     db: AsyncSession = Depends(get_db),
@@ -183,7 +186,10 @@ async def delete_agent_session(
     return {"ok": True, "session_id": session_id}
 
 
-@router.post("/agent/sessions/{session_id}/clear")
+@router.post(
+    "/agent/sessions/{session_id}/clear",
+    response_model=AgentSessionActionResponse,
+)
 async def clear_agent_session(
     session_id: str,
     db: AsyncSession = Depends(get_db),
@@ -213,6 +219,31 @@ async def list_agent_messages(
     except AgentToolError as exc:
         _raise_agent_error(exc, status_code=404)
     return AgentMessageListResponse(messages=messages, next_before_id=next_before_id)
+
+
+@router.get(
+    "/agent/sessions/{session_id}/confirmations",
+    response_model=list[AgentConfirmationResponse],
+)
+async def list_agent_confirmations(
+    session_id: str,
+    status: str | None = Query(
+        "pending",
+        pattern="^(pending|approved|rejected|failed|cancelled)$",
+    ),
+    limit: int = Query(50, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    try:
+        confirmations = await AgentService(db).list_confirmations(
+            session_id,
+            status=status,
+            limit=limit,
+        )
+    except AgentToolError as exc:
+        _raise_agent_error(exc, status_code=404)
+    return [AgentConfirmationResponse.model_validate(item) for item in confirmations]
 
 
 @router.post("/agent/run", response_model=AgentRunResponse)
@@ -376,7 +407,6 @@ async def agent_ws(websocket: WebSocket):
             tool_name = payload.get("tool")
             args = payload.get("args") if isinstance(payload.get("args"), dict) else {}
             message = payload.get("message")
-            confirmed = bool(payload.get("confirmed", False))
 
             from app.core.database import AsyncSessionLocal
 
@@ -387,7 +417,6 @@ async def agent_ws(websocket: WebSocket):
                         result = await service.invoke_tool(
                             tool_name=tool_name.strip(),
                             args=args,
-                            confirmed=confirmed,
                             session_id=session_id,
                         )
                     else:

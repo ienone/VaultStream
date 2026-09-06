@@ -7,7 +7,12 @@ from sqlalchemy import select
 
 from app.core.time_utils import utcnow
 from app.models import ContentQueueItem, QueueItemStatus
-from app.services.agent.tool_registry import AgentToolContext, AgentToolRegistry
+from app.services.agent.tool_registry import (
+    AgentToolContext,
+    AgentToolError,
+    AgentToolRegistry,
+)
+from app.services.automation_policy import AutomationPolicyService
 from app.services.distribution import DistributionService
 
 
@@ -42,6 +47,16 @@ def register_push_tool(registry: AgentToolRegistry) -> None:
 
 
 async def _push_batch_tool(args: Dict[str, Any], context: AgentToolContext) -> Dict[str, Any]:
+    policy = await AutomationPolicyService().distribution_enqueue(force=False)
+    if not policy.allowed:
+        raise AgentToolError(
+            error_code=policy.code,
+            message=policy.reason,
+            retryable=False,
+            details={"policy": policy.as_dict()},
+            suggested_fix="Resume distribution before scheduling content from Agent.",
+        )
+
     raw_content_ids = args.get("content_ids")
     if not isinstance(raw_content_ids, list) or not raw_content_ids:
         raise ValueError("content_ids is required")

@@ -141,7 +141,13 @@ class AgentToolRegistry:
                 error_code="agent_tool_invalid_args",
                 message="Tool arguments failed schema validation",
                 retryable=True,
-                details={"validation_errors": exc.errors()},
+                details={
+                    "validation_errors": exc.errors(
+                        include_url=False,
+                        include_context=False,
+                        include_input=False,
+                    )
+                },
                 suggested_fix="Regenerate arguments from the tool JSON schema and required fields.",
             ) from exc
 

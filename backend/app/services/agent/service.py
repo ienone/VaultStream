@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, Iterable, Optional
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.tools import StructuredTool
 from langgraph.prebuilt import create_react_agent
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.llm_factory import LLMFactory
@@ -29,6 +29,10 @@ from app.services.agent.tool_registry import (
     AgentToolRegistry,
 )
 from app.services.agent.tools import register_builtin_tools
+from app.services.notification_inbox import (
+    record_agent_confirmation_notification,
+    resolve_agent_confirmation_notification,
+)
 from app.services.settings_service import get_setting_value
 
 _REGISTRY: AgentToolRegistry | None = None
@@ -168,12 +172,15 @@ class AgentService:
 
     async def delete_session(self, session_id: str) -> None:
         session = await self._require_session(session_id)
+        cancelled = await self._cancel_pending_confirmations(session_id=session_id)
         session.deleted_at = utcnow()
         session.status = "deleted"
         await self.db.commit()
+        await self._resolve_confirmation_notifications(cancelled, status="cancelled")
 
     async def clear_session(self, session_id: str) -> None:
         session = await self._require_session(session_id)
+        cancelled = await self._cancel_pending_confirmations(session_id=session_id)
         for model in (AgentMessage, AgentContextSummary):
             rows = (await self.db.execute(select(model).where(model.session_id == session_id))).scalars().all()
             for row in rows:
@@ -181,6 +188,7 @@ class AgentService:
         session.last_message_at = None
         session.updated_at = utcnow()
         await self.db.commit()
+        await self._resolve_confirmation_notifications(cancelled, status="cancelled")
 
     async def list_messages(
         self,
@@ -202,6 +210,29 @@ class AgentService:
         rows = rows[:limit]
         rows.reverse()
         return rows, next_before
+
+    async def list_confirmations(
+        self,
+        session_id: str,
+        *,
+        status: str | None = "pending",
+        limit: int = 50,
+    ) -> list[AgentConfirmation]:
+        await self._require_session(session_id)
+        statement = select(AgentConfirmation).where(
+            AgentConfirmation.session_id == session_id
+        )
+        if status is not None:
+            statement = statement.where(AgentConfirmation.status == status)
+        return list(
+            (
+                await self.db.execute(
+                    statement.order_by(desc(AgentConfirmation.created_at)).limit(
+                        max(1, min(limit, 100))
+                    )
+                )
+            ).scalars().all()
+        )
 
     async def run_message(
         self,
@@ -316,6 +347,8 @@ class AgentService:
                 run.usage = usage
                 run.updated_at = utcnow()
                 await self.db.commit()
+                if pending is not None:
+                    await self._record_confirmation_notification(pending)
                 emit_event(
                     {
                         "type": "final",
@@ -395,7 +428,6 @@ class AgentService:
         *,
         tool_name: str,
         args: Dict[str, Any],
-        confirmed: bool = False,
         session_id: str | None = None,
     ) -> AgentRunResult:
         spec = self.registry.get(tool_name)
@@ -413,7 +445,7 @@ class AgentService:
         emit_event = _event_collector(events)
         emit_event({"type": "start", "session_id": session.id, "run_id": run.id})
 
-        if spec.requires_confirmation and not confirmed:
+        if spec.requires_confirmation:
             call = await self._record_tool_call(
                 run=run,
                 session=session,
@@ -424,6 +456,7 @@ class AgentService:
             confirmation = await self._create_confirmation(run=run, session=session, call=call, args=args)
             await self.db.commit()
             payload = self._confirmation_payload(confirmation)
+            await self._record_confirmation_notification(confirmation)
             emit_event({"type": "confirmation_required", "confirmation": payload})
             return AgentRunResult(
                 session_id=session.id,
@@ -452,15 +485,8 @@ class AgentService:
             call=call,
             emit_event=emit_event,
         )
-        if isinstance(result, dict) and result.get("ok") is False and isinstance(result.get("error"), dict):
-            error_payload = result["error"]
-            error = AgentToolError(
-                error_code=str(error_payload.get("error_code") or "agent_tool_execution_failed"),
-                message=str(error_payload.get("message") or "Tool execution failed"),
-                retryable=bool(error_payload.get("retryable", False)),
-                details=error_payload.get("details") if isinstance(error_payload.get("details"), dict) else {},
-                suggested_fix=error_payload.get("suggested_fix"),
-            )
+        error = self._tool_result_error(result)
+        if error is not None:
             await self._fail_run(run, error)
             await self.db.commit()
             raise error
@@ -479,13 +505,27 @@ class AgentService:
         )
 
     async def decide_confirmation(self, confirmation_id: str, *, approved: bool) -> AgentRunResult:
-        confirmation = await self.db.get(AgentConfirmation, confirmation_id)
-        if confirmation is None or confirmation.status != "pending":
+        # Claim in the database, including when this session has a stale ORM
+        # object. Approval and rejection compete for the same pending state.
+        claimed = await self.db.execute(
+            update(AgentConfirmation)
+            .where(
+                AgentConfirmation.id == confirmation_id,
+                AgentConfirmation.status == "pending",
+            )
+            .values(status="approved" if approved else "rejected", decided_at=utcnow())
+            .execution_options(synchronize_session=False)
+        )
+        if claimed.rowcount != 1:
+            await self.db.rollback()
             raise AgentToolError(
                 error_code="agent_confirmation_not_found",
                 message="Pending confirmation not found",
                 retryable=False,
             )
+        confirmation = await self.db.get(
+            AgentConfirmation, confirmation_id, populate_existing=True
+        )
         run = await self.db.get(AgentRun, confirmation.run_id)
         session = await self.db.get(AgentSession, confirmation.session_id)
         call = await self.db.get(AgentToolCall, confirmation.tool_call_id)
@@ -493,6 +533,21 @@ class AgentService:
             raise AgentToolError(
                 error_code="agent_confirmation_corrupt",
                 message="Confirmation references a missing run, session or tool call",
+                retryable=False,
+            )
+        if run.status != "waiting_confirmation" or session.deleted_at is not None:
+            confirmation.status = "cancelled"
+            confirmation.decided_at = utcnow()
+            call.status = "cancelled"
+            call.completed_at = confirmation.decided_at
+            await self.db.commit()
+            await self._resolve_confirmation_notifications(
+                [confirmation.id],
+                status="cancelled",
+            )
+            raise AgentToolError(
+                error_code="agent_confirmation_not_found",
+                message="Pending confirmation not found",
                 retryable=False,
             )
 
@@ -503,6 +558,7 @@ class AgentService:
         if not approved:
             confirmation.status = "rejected"
             call.status = "denied"
+            call.completed_at = confirmation.decided_at
             run.status = "completed"
             run.output_message = "已拒绝执行该操作。"
             run.completed_at = utcnow()
@@ -516,6 +572,10 @@ class AgentService:
                 )
             )
             await self.db.commit()
+            await self._resolve_confirmation_notifications(
+                [confirmation.id],
+                status="rejected",
+            )
             emit_event({"type": "final", "status": run.status, "message": run.output_message})
             return AgentRunResult(
                 session_id=session.id,
@@ -526,10 +586,13 @@ class AgentService:
                 events=events,
             )
 
-        confirmation.status = "approved"
         call.status = "running"
-        spec = self.registry.get(confirmation.tool_name)
+        run.status = "running"
+        # Release SQLite's write lock and persist ownership before any external
+        # effect. A crash cannot turn this decision back into a pending retry.
+        await self.db.commit()
         try:
+            spec = self.registry.get(confirmation.tool_name)
             result = await self._execute_tool_call(
                 spec.name,
                 confirmation.args or {},
@@ -539,19 +602,13 @@ class AgentService:
                 emit_event=emit_event,
                 confirmed=True,
             )
+            error = self._tool_result_error(result)
+            if error is not None:
+                raise error
             confirmation.result = _jsonable(result)
             run.status = "completed"
             run.output_message = f"已执行 {confirmation.tool_name}。"
             run.completed_at = utcnow()
-            self.db.add(
-                AgentMessage(
-                    session_id=session.id,
-                    run_id=run.id,
-                    role="tool",
-                    content=json.dumps(result, ensure_ascii=False, default=str),
-                    payload={"tool": confirmation.tool_name, "tool_call_id": call.id},
-                )
-            )
             self.db.add(
                 AgentMessage(
                     session_id=session.id,
@@ -562,6 +619,10 @@ class AgentService:
                 )
             )
             await self.db.commit()
+            await self._resolve_confirmation_notifications(
+                [confirmation.id],
+                status="approved",
+            )
             emit_event(
                 {
                     "type": "final",
@@ -586,6 +647,10 @@ class AgentService:
             confirmation.error = exc.to_payload()
             await self._fail_run(run, exc)
             await self.db.commit()
+            await self._resolve_confirmation_notifications(
+                [confirmation.id],
+                status="failed",
+            )
             emit_event({"type": "error", **exc.to_payload()})
             raise
 
@@ -593,12 +658,20 @@ class AgentService:
         run = await self.db.get(AgentRun, run_id)
         if run is None:
             raise AgentToolError(error_code="agent_run_not_found", message="Agent run not found")
-        if run.status in {"running", "waiting_confirmation"}:
+        cancelled: list[str] = []
+        if run.status == "waiting_confirmation":
+            cancelled = await self._cancel_pending_confirmations(run_id=run_id)
+        elif run.status == "running":
             run.status = "stopped"
             run.completed_at = utcnow()
             run.updated_at = run.completed_at
+        if run.status == "stopped":
             await self.db.commit()
             await self.db.refresh(run)
+            await self._resolve_confirmation_notifications(
+                cancelled,
+                status="cancelled",
+            )
         return run
 
     async def redo_last(self, session_id: str) -> AgentRunResult:
@@ -704,7 +777,21 @@ class AgentService:
             call.completed_at = utcnow()
             await self.db.flush()
             payload = {"ok": False, "error": exc.to_payload()}
-            emit_event({"type": "tool_result", "tool_call_id": call.id, "tool": tool_name, **payload})
+            self._persist_tool_message(
+                run=run,
+                session=session,
+                call=call,
+                tool_name=tool_name,
+                payload=payload,
+            )
+            emit_event(
+                {
+                    "type": "tool_result",
+                    "tool_call_id": call.id,
+                    "tool": tool_name,
+                    **payload,
+                }
+            )
             return payload
         except Exception as exc:
             error = AgentToolError(
@@ -719,16 +806,68 @@ class AgentService:
             call.completed_at = utcnow()
             await self.db.flush()
             payload = {"ok": False, "error": error.to_payload()}
-            emit_event({"type": "tool_result", "tool_call_id": call.id, "tool": tool_name, **payload})
+            self._persist_tool_message(
+                run=run,
+                session=session,
+                call=call,
+                tool_name=tool_name,
+                payload=payload,
+            )
+            emit_event(
+                {
+                    "type": "tool_result",
+                    "tool_call_id": call.id,
+                    "tool": tool_name,
+                    **payload,
+                }
+            )
             return payload
 
         call.status = "completed"
         call.result = _jsonable(result)
         call.completed_at = utcnow()
+        self._persist_tool_message(
+            run=run,
+            session=session,
+            call=call,
+            tool_name=tool_name,
+            payload={"ok": True, "result": result},
+        )
         await self.db.flush()
         payload = {"ok": True, "result": result}
-        emit_event({"type": "tool_result", "tool_call_id": call.id, "tool": tool_name, **payload})
+        emit_event(
+            {
+                "type": "tool_result",
+                "tool_call_id": call.id,
+                "tool": tool_name,
+                **payload,
+            }
+        )
         return result
+
+    def _persist_tool_message(
+        self,
+        *,
+        run: AgentRun,
+        session: AgentSession,
+        call: AgentToolCall,
+        tool_name: str,
+        payload: Dict[str, Any],
+    ) -> None:
+        json_payload = _jsonable(payload)
+        self.db.add(
+            AgentMessage(
+                session_id=session.id,
+                run_id=run.id,
+                role="tool",
+                content=json.dumps(json_payload, ensure_ascii=False, default=str),
+                payload={
+                    "tool": tool_name,
+                    "tool_call_id": call.id,
+                    **json_payload,
+                },
+            )
+        )
 
     async def _record_tool_call(
         self,
@@ -850,6 +989,97 @@ class AgentService:
         run.completed_at = utcnow()
         run.updated_at = run.completed_at
 
+    def _tool_result_error(self, result: Any) -> AgentToolError | None:
+        if not (
+            isinstance(result, dict)
+            and result.get("ok") is False
+            and isinstance(result.get("error"), dict)
+        ):
+            return None
+        payload = result["error"]
+        return AgentToolError(
+            error_code=str(
+                payload.get("error_code") or "agent_tool_execution_failed"
+            ),
+            message=str(payload.get("message") or "Tool execution failed"),
+            retryable=bool(payload.get("retryable", False)),
+            details=(
+                payload.get("details")
+                if isinstance(payload.get("details"), dict)
+                else {}
+            ),
+            suggested_fix=payload.get("suggested_fix"),
+        )
+
+    async def _record_confirmation_notification(
+        self,
+        confirmation: AgentConfirmation,
+    ) -> None:
+        try:
+            await record_agent_confirmation_notification(
+                self._confirmation_payload(confirmation) or {}
+            )
+        except Exception as error:
+            logger.bind(
+                component="agent",
+                confirmation_id=confirmation.id,
+            ).warning("Agent 确认提醒写入失败: {}", error)
+
+    async def _resolve_confirmation_notifications(
+        self,
+        confirmation_ids: Iterable[str],
+        *,
+        status: str,
+    ) -> None:
+        for confirmation_id in confirmation_ids:
+            try:
+                await resolve_agent_confirmation_notification(
+                    confirmation_id,
+                    status=status,
+                )
+            except Exception as error:
+                logger.bind(
+                    component="agent",
+                    confirmation_id=confirmation_id,
+                ).warning("Agent 确认提醒结算失败: {}", error)
+
+    async def _cancel_pending_confirmations(
+        self,
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> list[str]:
+        statement = update(AgentConfirmation).where(
+            AgentConfirmation.status == "pending"
+        )
+        if session_id is not None:
+            statement = statement.where(
+                AgentConfirmation.session_id == session_id
+            )
+        if run_id is not None:
+            statement = statement.where(AgentConfirmation.run_id == run_id)
+        now = utcnow()
+        confirmations = (
+            await self.db.execute(
+                statement.values(status="cancelled", decided_at=now)
+                .returning(AgentConfirmation)
+                .execution_options(populate_existing=True)
+            )
+        ).scalars().all()
+        cancelled: list[str] = []
+        for confirmation in confirmations:
+            call = await self.db.get(AgentToolCall, confirmation.tool_call_id)
+            if call is not None and call.status == "confirmation_required":
+                call.status = "cancelled"
+                call.completed_at = now
+            run = await self.db.get(AgentRun, confirmation.run_id)
+            if run is not None and run.status == "waiting_confirmation":
+                run.status = "stopped"
+                run.completed_at = now
+                run.updated_at = now
+            cancelled.append(confirmation.id)
+        return cancelled
+
     async def _context_budget(self) -> int:
         raw = await get_setting_value("agent_context_budget", 6000)
         try:
@@ -890,6 +1120,38 @@ class AgentService:
         }
 
     def _confirmation_summary(self, tool_name: str, args: Dict[str, Any]) -> str:
+        if tool_name == "capture_content":
+            url = str(args.get("url") or "").strip()
+            text = str(args.get("text") or "").strip()
+            label = "链接" if url else "文字"
+            preview = url or str(args.get("title") or "").strip() or text
+            if len(preview) > 160:
+                preview = preview[:160] + "..."
+            template_value = args.get("layout_type_override")
+            template = str(
+                getattr(template_value, "value", template_value) or ""
+            ).strip()
+            template_hint = f"，展示模板为 {template}" if template else ""
+            return f"将把这条{label}保存到 VaultStream{template_hint}：{preview}"
+        if tool_name == "organize_knowledge_event":
+            action = str(args.get("action") or "")
+            content_id = args.get("content_id")
+            role = getattr(args.get("role"), "value", args.get("role"))
+            evidence_state = getattr(
+                args.get("evidence_state"),
+                "value",
+                args.get("evidence_state"),
+            )
+            classification = f"角色 {role}，证据状态 {evidence_state}"
+            if action == "create":
+                return (
+                    f"将以内容 #{content_id} 创建知识事件“{args.get('title')}”"
+                    f"（{classification}）"
+                )
+            return (
+                f"将把内容 #{content_id} 加入知识事件 #{args.get('event_id')}"
+                f"（{classification}）"
+            )
         preview = json.dumps(args, ensure_ascii=False, default=str)
         if len(preview) > 500:
             preview = preview[:500] + "..."
@@ -903,8 +1165,10 @@ class AgentService:
         return (
             "你是 VaultStream 的内容库与分发 Agent。必须通过工具读取或修改系统状态，"
             "不要编造内容库事实。\n"
-            "回答内容库问题时优先调用 search_content，并引用检索结果的 content_id、title 和 url。"
-            "写操作、外部同步、批量推送、创建规则、标签修改都必须尊重工具返回的确认要求。"
+            "回答内容库问题时优先调用 search_content，并引用检索结果 items、events、"
+            "timepoints 中的 title、source_text 和 route；时间点证据应保留 start_seconds，"
+            "让用户能直接定位原文、事件或媒体播放位置。"
+            "写操作、外部同步、批量推送、创建规则、标签修改和事件组织都必须尊重工具返回的确认要求。"
             "工具报错会包含 error_code、message、retryable、details、suggested_fix；"
             "如果 retryable=true，可以修正参数后最多再试一次。\n"
             "可用工具:\n"

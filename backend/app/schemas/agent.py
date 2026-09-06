@@ -2,7 +2,7 @@
 Agent / Tool Calling schemas.
 """
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,7 +20,8 @@ class AgentToolInfo(BaseModel):
 
 class AgentToolInvokeRequest(BaseModel):
     args: Dict[str, Any] = Field(default_factory=dict)
-    confirmed: bool = False
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class AgentToolInvokeResponse(BaseModel):
@@ -75,6 +76,13 @@ class AgentSessionItem(BaseModel):
 
 class AgentSessionListResponse(BaseModel):
     sessions: List[AgentSessionItem]
+
+
+class AgentSessionActionResponse(BaseModel):
+    """Agent 会话删除或清空已同步完成。"""
+
+    ok: Literal[True]
+    session_id: str
 
 
 class AgentMessageItem(BaseModel):

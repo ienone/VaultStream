@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, Literal, Optional
 
 import httpx
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.config import settings
 from app.services.agent.tool_registry import (
@@ -23,7 +23,8 @@ _BINARY_PREFIXES = (
 )
 _SAFE_METHODS = {"GET"}
 _MUTATION_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
-_ALLOWED_PREFIXES = (
+_PUBLIC_METHODS = _SAFE_METHODS | _MUTATION_METHODS
+_READ_ALLOWED_PREFIXES = (
     "/api/v1/actions",
     "/api/v1/contents",
     "/api/v1/cards",
@@ -46,6 +47,11 @@ _ALLOWED_PREFIXES = (
     "/api/v1/health",
     "/api/v1/init-status",
 )
+_MUTATION_OPERATIONS = {
+    ("PATCH", "/api/v1/contents/{content_id}"),
+    ("POST", "/api/v1/cards/{card_id}/review"),
+    ("POST", "/api/v1/cards/batch-review"),
+}
 
 
 class ApiCatalogArgs(BaseModel):
@@ -72,6 +78,11 @@ class ApiMutationArgs(ApiGetArgs):
     method: Literal["POST", "PUT", "PATCH", "DELETE", "post", "put", "patch", "delete"]
     body: Dict[str, Any] = Field(default_factory=dict)
     reason: str = Field(description="说明这次变更的业务目的，展示给用户确认。", min_length=1)
+
+    @model_validator(mode="after")
+    def _operation_must_be_explicitly_allowed(self):
+        _validate_method_and_path(self.method.upper(), _normalize_path(self.path))
+        return self
 
 
 def register_api_bridge_tools(registry: AgentToolRegistry) -> None:
@@ -101,8 +112,8 @@ def register_api_bridge_tools(registry: AgentToolRegistry) -> None:
     registry.register(
         name="api_mutation",
         description=(
-            "调用 VaultStream 受控 allowlist 内的 POST/PUT/PATCH/DELETE API，复用客户端同一套后端实现完成写操作。"
-            "此工具会强制用户确认，适合内容编辑/审核、队列操作、分发规则、发现源、Bot、设置等变更。"
+            "调用 VaultStream 明确允许的本地内容编辑或审核 API。此工具会强制用户确认；"
+            "外部同步、发送、服务控制、设置和队列操作不通过通用 API bridge 执行。"
         ),
         args_model=ApiMutationArgs,
         result_schema={"type": "object", "required": ["status_code", "data"], "properties": {"data": {"type": "object"}}},
@@ -122,19 +133,24 @@ async def _api_catalog_tool(args: Dict[str, Any], context: AgentToolContext) -> 
         prefix = "/api/v1" + prefix
 
     endpoints: list[dict[str, Any]] = []
-    for route in getattr(app, "routes", []):
-        path = getattr(route, "path", "")
-        methods = sorted(m for m in getattr(route, "methods", set()) if m not in {"HEAD", "OPTIONS"})
-        if not _is_allowed_path(path) or (prefix and not path.startswith(prefix)):
+    for path, path_item in app.openapi().get("paths", {}).items():
+        if prefix and not path.startswith(prefix):
             continue
-        for method in methods:
+        if not isinstance(path_item, dict):
+            continue
+        for raw_method, operation in path_item.items():
+            method = raw_method.upper()
+            if method not in _PUBLIC_METHODS or not isinstance(operation, dict):
+                continue
             if method not in _SAFE_METHODS and not include_mutations:
+                continue
+            if not _is_allowed_operation(method, path):
                 continue
             endpoints.append(
                 {
                     "method": method,
                     "path": path,
-                    "name": getattr(route, "name", ""),
+                    "name": str(operation.get("operationId") or ""),
                     "permission_hint": "read" if method in _SAFE_METHODS else "confirmation_required",
                 }
             )
@@ -225,10 +241,22 @@ def _require_app(context: AgentToolContext):
 
 def _normalize_path(path: str) -> str:
     value = path.strip()
+    # Query values have their own argument. Reject ambiguous path syntax before
+    # HTTPX or ASGI can decode or collapse it into a different permission scope.
+    if (
+        not value
+        or any(char in value for char in "%?#\\")
+        or any(char.isspace() or ord(char) < 32 for char in value)
+        or "//" in value
+        or any(segment in {".", ".."} for segment in value.split("/"))
+    ):
+        _raise_blocked_path(value)
     if not value.startswith("/"):
         value = "/" + value
-    if not value.startswith("/api/v1"):
+    if value != "/api/v1" and not value.startswith("/api/v1/"):
         value = "/api/v1" + value
+    if httpx.URL(value).path != value:
+        _raise_blocked_path(value)
     return value
 
 
@@ -240,26 +268,43 @@ def _validate_method_and_path(method: str, path: str) -> None:
             retryable=True,
             suggested_fix="Use GET with api_get, or POST/PUT/PATCH/DELETE with api_mutation.",
         )
-    if method in _SAFE_METHODS and not _is_allowed_path(path):
-        _raise_blocked_path(path)
-    if method in _MUTATION_METHODS and not _is_allowed_path(path):
+    if not _is_allowed_operation(method, path):
         _raise_blocked_path(path)
     if method in _SAFE_METHODS and path.startswith(_BINARY_PREFIXES):
         _raise_blocked_path(path, "Binary/media endpoints are not exposed through api_get.")
 
 
-def _is_allowed_path(path: str) -> bool:
+def _is_allowed_operation(method: str, path: str) -> bool:
     if not path.startswith("/api/v1"):
         return False
     if path.startswith(_BLOCKED_PREFIXES):
         return False
     if path.startswith(_BINARY_PREFIXES):
         return False
-    return any(_matches_prefix(path, prefix) for prefix in _ALLOWED_PREFIXES)
+    if method in _SAFE_METHODS:
+        return any(
+            _matches_prefix(path, prefix) for prefix in _READ_ALLOWED_PREFIXES
+        )
+    return any(
+        method == allowed_method and _matches_path_template(path, template)
+        for allowed_method, template in _MUTATION_OPERATIONS
+    )
 
 
 def _matches_prefix(path: str, prefix: str) -> bool:
-    return path == prefix or path.startswith(prefix + "/") or path.startswith(prefix + "?")
+    return path == prefix or path.startswith(prefix + "/")
+
+
+def _matches_path_template(path: str, template: str) -> bool:
+    actual_segments = path.strip("/").split("/")
+    template_segments = template.strip("/").split("/")
+    if len(actual_segments) != len(template_segments):
+        return False
+    return all(
+        expected == actual
+        or (expected.startswith("{") and expected.endswith("}") and bool(actual))
+        for actual, expected in zip(actual_segments, template_segments)
+    )
 
 
 def _raise_blocked_path(path: str, message: str | None = None) -> None:
