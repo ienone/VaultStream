@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import and_, bindparam, desc, func, or_, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
@@ -472,15 +473,34 @@ class EmbeddingService:
 
         units = self._content_embedding_units(content)
         logger.info(f"Indexing {len(units)} semantic units for content_id={content_id}")
-        for chunk_index, text_part, media_refs, title in units:
-            await self._upsert_embedding(
-                session, content_id, chunk_index, title, text_part, media_refs
-            )
+        try:
+            for chunk_index, text_part, media_refs, title in units:
+                if not await self._upsert_embedding(
+                    session, content_id, chunk_index, title, text_part, media_refs
+                ):
+                    if own_session:
+                        await session.rollback()
+                    return False
 
-        if own_session:
-            await session.commit()
-        else:
-            await session.flush()
+            if own_session:
+                await session.commit()
+            else:
+                await session.flush()
+        except IntegrityError:
+            if not own_session:
+                raise
+            await session.rollback()
+            content_exists = (
+                await session.execute(
+                    select(Content.id).where(Content.id == content_id)
+                )
+            ).scalar_one_or_none()
+            if content_exists is None:
+                logger.bind(component="embedding", content_id=content_id).info(
+                    "Content was deleted while semantic indexing was running"
+                )
+                return False
+            raise
         return True
 
     def _content_embedding_units(self, content: Content) -> list[tuple[int, str, list[str], str]]:
@@ -512,7 +532,7 @@ class EmbeddingService:
         chunk_title: str,
         text_val: str,
         media_refs: list[str]
-    ):
+    ) -> bool:
         """执行单个切片的向量化与入库"""
         text_hash = self._hash_text(text_val + "".join(media_refs))
         model_signature = await self._get_document_embedding_signature()
@@ -534,29 +554,16 @@ class EmbeddingService:
             and existing_signature == model_signature
             and existing.index_status == "indexed"
         ):
-            return
-
-        record = existing or ContentEmbedding(content_id=content_id, chunk_index=chunk_index)
-        record.text_hash = text_hash
-        record.source_text = text_val[:4000]
-        record.chunk_title = chunk_title
-        record.embedding_model = model
-        record.embedding_model_signature = model_signature
-        record.index_status = "pending"
-        record.failure_reason = None
-        record.last_attempted_at = datetime.utcnow()
+            return True
 
         try:
             vector = await self._embed_document_text(text_val, media_refs)
-            record.embedding = vector
-            record.index_status = "indexed"
-            record.last_indexed_at = datetime.utcnow()
-            record.indexed_at = record.last_indexed_at
+            index_status = "indexed"
+            failure_reason = None
         except Exception as exc:
-            record.embedding = []
-            record.index_status = "failed"
-            record.failure_reason = str(exc)[:1000]
-            record.retry_count = int(record.retry_count or 0) + 1
+            vector = []
+            index_status = "failed"
+            failure_reason = str(exc)[:1000]
             logger.bind(
                 component="embedding",
                 content_id=content_id,
@@ -564,8 +571,35 @@ class EmbeddingService:
                 model_signature=model_signature,
             ).warning(f"Embedding indexing failed: {exc}")
 
+        content_exists = (
+            await session.execute(
+                select(Content.id).where(Content.id == content_id)
+            )
+        ).scalar_one_or_none()
+        if content_exists is None:
+            logger.bind(component="embedding", content_id=content_id).info(
+                "Content was deleted before semantic index persistence"
+            )
+            return False
+
+        record = existing or ContentEmbedding(content_id=content_id, chunk_index=chunk_index)
+        record.text_hash = text_hash
+        record.source_text = text_val[:4000]
+        record.chunk_title = chunk_title
+        record.embedding_model = model
+        record.embedding_model_signature = model_signature
+        record.embedding = vector
+        record.index_status = index_status
+        record.failure_reason = failure_reason
+        record.last_attempted_at = datetime.utcnow()
+        if index_status == "indexed":
+            record.last_indexed_at = datetime.utcnow()
+            record.indexed_at = record.last_indexed_at
+        else:
+            record.retry_count = int(record.retry_count or 0) + 1
         if existing is None:
             session.add(record)
+        return True
 
     async def _embed_document_text(self, text_val: str, media_refs: list[str]) -> list[float]:
         """Generate a document embedding using the project text-prefix convention."""

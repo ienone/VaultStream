@@ -150,6 +150,7 @@ def build_media_manifest(
             MediaSource(
                 url=url,
                 source_kind=MediaSourceKind.LOCAL_SIGNED,
+                variant_id=variant.id,
                 variant_kind=variant.variant_kind,
                 mime_type=variant.mime_type,
                 codec=variant.codec,

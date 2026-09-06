@@ -12,9 +12,12 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
+import uuid
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Optional, Literal
+from typing import AsyncIterable, Optional, Literal
 
 from app.core.config import settings
 from app.core.logging import logger
@@ -30,6 +33,16 @@ class StoredObject:
     sha256: Optional[str] = None
     content_type: Optional[str] = None
     url: Optional[str] = None
+
+
+class StorageObjectTooLargeError(ValueError):
+    def __init__(self, max_bytes: int):
+        self.max_bytes = max_bytes
+        super().__init__(f"Object exceeds {max_bytes} bytes")
+
+
+class StorageObjectEmptyError(ValueError):
+    pass
 
 
 class LocalStorageBackend:
@@ -109,6 +122,70 @@ class LocalStorageBackend:
 
         await asyncio.to_thread(write_atomic)
         return StoredObject(key=key, size=len(data), content_type=content_type, url=self.get_url(key=key))
+
+    @asynccontextmanager
+    async def stage_stream(
+        self,
+        *,
+        chunks: AsyncIterable[bytes],
+        content_type: str,
+        max_bytes: int,
+    ):
+        """Stage an upload until the enclosing capture batch has validated."""
+        incoming_dir = os.path.join(self.root_dir, ".incoming")
+        await asyncio.to_thread(os.makedirs, incoming_dir, exist_ok=True)
+        temp_path = os.path.join(incoming_dir, f"{uuid.uuid4().hex}.tmp")
+        stream = await asyncio.to_thread(open, temp_path, "wb")
+        digest = hashlib.sha256()
+        total = 0
+
+        try:
+            async for chunk in chunks:
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > max_bytes:
+                    raise StorageObjectTooLargeError(max_bytes)
+                digest.update(chunk)
+                await asyncio.to_thread(stream.write, chunk)
+
+            if total == 0:
+                raise StorageObjectEmptyError("Object cannot be empty")
+
+            def sync_and_close() -> None:
+                stream.flush()
+                os.fsync(stream.fileno())
+                stream.close()
+
+            await asyncio.to_thread(sync_and_close)
+            checksum = digest.hexdigest()
+            key = f"sha256:{checksum}"
+            yield StoredObject(
+                key=key,
+                size=total,
+                sha256=checksum,
+                content_type=content_type,
+                url=self.get_url(key=key),
+            ), temp_path
+        finally:
+            if not stream.closed:
+                await asyncio.to_thread(stream.close)
+            if os.path.exists(temp_path):
+                await asyncio.to_thread(os.remove, temp_path)
+
+    async def publish_staged(self, stored: StoredObject, temp_path: str) -> bool:
+        """Publish without replacing an existing shared content-addressed file."""
+        destination = self._full_path(stored.key)
+
+        def publish() -> bool:
+            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            try:
+                os.link(temp_path, destination)
+            except FileExistsError:
+                return False
+            return True
+
+        return await asyncio.to_thread(publish)
 
 
 _backend_singleton: LocalStorageBackend | None = None

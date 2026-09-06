@@ -54,15 +54,28 @@ class PostIngestService:
         except Exception as e:
             logger.warning("摘要生成/处理失败: {}", e)
 
-    def schedule_embedding_index(self, content_id: int, *, source: str = "post_ingest") -> None:
+    def schedule_embedding_index(
+        self,
+        content_id: int,
+        *,
+        source: str = "post_ingest",
+    ) -> asyncio.Task[None]:
         async def _run():
             run_id: str | None = None
             try:
+                decision = await AutomationPolicyService().automatic_semantic_indexing()
+                if not decision.allowed:
+                    logger.bind(
+                        component="embedding",
+                        content_id=content_id,
+                        policy=decision.as_dict(),
+                    ).info("Automatic semantic indexing skipped by automation policy")
+                    return
+
                 from app.services.embedding_service import EmbeddingService
                 from app.services.background_task_state import (
                     record_task_run_started,
                     record_task_run_success,
-                    record_task_success,
                 )
 
                 run = await record_task_run_started(
@@ -81,14 +94,8 @@ class PostIngestService:
                     indexed=bool(indexed),
                     trigger="auto",
                 )
-                await record_task_success(
-                    "embedding_index",
-                    content_id=content_id,
-                    indexed=bool(indexed),
-                )
             except Exception as e:
                 from app.services.background_task_state import (
-                    record_task_error,
                     record_task_run_error,
                 )
 
@@ -105,9 +112,8 @@ class PostIngestService:
                         source=source,
                         trigger="auto",
                     )
-                await record_task_error("embedding_index", e, content_id=content_id)
 
-        asyncio.create_task(_run())
+        return asyncio.create_task(_run())
 
     async def score_discovery(self, session: AsyncSession) -> None:
         decision = await AutomationPolicyService().discovery_scoring()

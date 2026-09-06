@@ -3,13 +3,13 @@
 """
 from datetime import datetime
 from enum import Enum
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+from typing import Optional, List, Dict, Any, Literal
+from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
 import json
 
-from app.models import Platform, ContentStatus, ReviewStatus, LayoutType
+from app.models import DiscoveryState, Platform, ContentStatus, ReviewStatus, LayoutType
 from app.schemas.base import UtcDatetime, OptionalUtcDatetime
-from app.schemas.media import MediaAssetManifest
+from app.schemas.media import MediaAssetManifest, MediaSegmentItem
 
 NOTE_MAX_LENGTH = 2000 # 备注内容的最大长度
 CLIENT_CONTEXT_MAX_BYTES = 4096 # JSON序列化后最大4KB
@@ -39,6 +39,25 @@ class ShareRequest(BaseModel):
         return v
 
 
+class TextCaptureRequest(BaseModel):
+    """直接保存用户提供的原始文本，不经过网页解析。"""
+
+    text: str = Field(..., min_length=1, max_length=200_000, description="原始文本")
+    title: Optional[str] = Field(None, max_length=500, description="可选标题")
+    tags: List[str] = Field(default_factory=list, description="标签列表")
+    tags_text: Optional[str] = Field(None, description="原始标签输入文本（后端统一拆分清洗）")
+    source: Optional[str] = Field("manual_text", description="来源标识")
+    note: Optional[str] = Field(None, description="备注", max_length=NOTE_MAX_LENGTH)
+    client_context: Optional[Dict[str, Any]] = Field(None, description="客户端上下文（可选）")
+    is_nsfw: bool = Field(default=False, description="是否为NSFW内容")
+    layout_type_override: Optional[LayoutType] = Field(None, description="强制指定的布局类型")
+
+    @field_validator("client_context")
+    @classmethod
+    def validate_client_context_size(cls, v: Optional[Dict[str, Any]]):
+        return ShareRequest.validate_client_context_size(v)
+
+
 class ShareResponse(BaseModel):
     """分享响应"""
     id: int
@@ -48,6 +67,63 @@ class ShareResponse(BaseModel):
     created_at: UtcDatetime
     
     model_config = ConfigDict(from_attributes=True)
+
+
+class ContentDeleteResponse(BaseModel):
+    """内容及其独占归档媒体已删除。"""
+
+    status: Literal["deleted"]
+    content_id: int
+
+
+class ContentRetryResponse(BaseModel):
+    """同步解析重试已完成并返回内容的最新状态。"""
+
+    success: Literal[True]
+    content_id: int
+    status: ContentStatus
+
+
+class ContentSummaryActionResponse(BaseModel):
+    """摘要生成已同步完成，且本次运行已写入任务账本。"""
+
+    summary: Optional[str] = None
+    content_id: int
+    run_id: str
+
+
+class ContentPatrolScoreResponse(BaseModel):
+    """发现流巡逻评分已同步完成，且本次运行已写入任务账本。"""
+
+    status: Literal["success"]
+    content_id: int
+    run_id: str
+    ai_score: Optional[float] = None
+    discovery_state: Optional[DiscoveryState] = None
+
+
+class ContentReparseAcceptedResponse(BaseModel):
+    """重新解析后台运行已受理。最终结果需按 run_id 查询。"""
+
+    status: Literal["processing"]
+    content_id: int
+    run_id: str
+    message: str
+
+
+class PushedRecordDeleteResponse(BaseModel):
+    success: Literal[True]
+    id: int
+
+
+class CardReviewResponse(BaseModel):
+    id: int
+    review_status: ReviewStatus
+
+
+class BatchCardReviewResponse(BaseModel):
+    updated: int
+    action: Literal["approve", "reject"]
 
 
 class ContentDetail(BaseModel):
@@ -93,6 +169,7 @@ class ContentDetail(BaseModel):
         default_factory=list,
         validation_alias="media_asset_manifests",
     )
+    media_segments: List[MediaSegmentItem] = Field(default_factory=list)
     extra_stats: Dict[str, Any] = Field(default_factory=dict)
     
     review_status: ReviewStatus = ReviewStatus.PENDING
@@ -107,6 +184,8 @@ class ContentDetail(BaseModel):
 
     context_data: Optional[Dict[str, Any]] = None
     rich_payload: Optional[Dict[str, Any]] = None
+    manual_edit_fields: List[str] = Field(default_factory=list)
+    parse_candidate: Optional[Dict[str, Any]] = None
     
     created_at: UtcDatetime
     updated_at: UtcDatetime
@@ -164,6 +243,35 @@ class ContentUpdate(BaseModel):
     review_note: Optional[str] = None
     reviewed_by: Optional[str] = None
     layout_type_override: Optional[LayoutType] = None
+
+
+class ParseCandidateField(str, Enum):
+    TITLE = "title"
+    BODY = "body"
+    AUTHOR_NAME = "author_name"
+    COVER_URL = "cover_url"
+
+
+class ParseCandidateAction(str, Enum):
+    ACCEPT_PARSED = "accept_parsed"
+    KEEP_CURRENT = "keep_current"
+    MERGE = "merge"
+
+
+class ContentParseCandidateResolution(BaseModel):
+    """Resolve one conflicting parser field without guessing other fields."""
+
+    field: ParseCandidateField
+    action: ParseCandidateAction
+    merged_value: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_merged_value(self):
+        if self.action == ParseCandidateAction.MERGE and self.merged_value is None:
+            raise ValueError("merged_value is required when action is merge")
+        if self.action != ParseCandidateAction.MERGE and self.merged_value is not None:
+            raise ValueError("merged_value is only allowed when action is merge")
+        return self
 
 
 class BatchReviewRequest(BaseModel):

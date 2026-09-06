@@ -20,7 +20,7 @@ from urllib.parse import quote, unquote, urlsplit, urlunsplit
 import httpx
 
 from app.core.logging import logger
-from app.core.safe_fetch import safe_client_get
+from app.core.safe_fetch import UnsafeUrlError, safe_client_get
 from app.adapters.storage import LocalStorageBackend
 from app.services.config_service import ConfigService
 
@@ -411,6 +411,13 @@ async def store_archive_images_as_webp(
                         except Exception as color_err:
                             logger.warning(f"提取主色调失败: {color_err}")
                         
+                    break
+                except UnsafeUrlError as e:
+                    logger.warning(
+                        "Process image rejected: {} ({})",
+                        orig_url,
+                        f"{type(e).__name__}: {e}",
+                    )
                     break
                 except Exception as e:
                     is_last = attempt >= 2

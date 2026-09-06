@@ -3,9 +3,20 @@
 包含：分享创建、内容增删改查、机器人对接、审批流
 调用方式：详见各接口文档
 """
+import json
 from typing import List, Optional
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Request
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +27,7 @@ from app.models import (
     ContentQueueItem,
     ContentStatus,
     DiscoveryState,
+    LayoutType,
     PushedRecord,
     QueueItemStatus,
     Platform,
@@ -23,9 +35,14 @@ from app.models import (
     ContentSource,
 )
 from app.schemas import (
-    ShareRequest, ShareResponse, ContentDetail,
+    ShareRequest, ShareResponse, TextCaptureRequest, ContentDetail,
     ShareCardListResponse, ContentListItemResponse, ContentListItem,
     ContentUpdate, ReviewAction, BatchReviewRequest,
+    ContentParseCandidateResolution,
+    ContentDeleteResponse, ContentRetryResponse,
+    ContentSummaryActionResponse, ContentPatrolScoreResponse,
+    ContentReparseAcceptedResponse,
+    PushedRecordDeleteResponse, CardReviewResponse, BatchCardReviewResponse,
     PushedRecordResponse,
     ContentProcessingStatus, ProcessingStage, ProcessingStageAction,
     ProcessingStageFailure, ProcessingStageKey, ProcessingStageState,
@@ -35,7 +52,11 @@ from app.core.logging import logger
 from app.core.config import settings
 from app.tasks import worker
 from app.core.dependencies import require_api_token, get_content_service, get_content_repo
-from app.services.content_service import ContentService
+from app.services.content_service import (
+    CaptureFileInput,
+    ContentService,
+    ParseQueueUnavailableError,
+)
 from app.repositories.content_repository import ContentRepository
 from app.services.content_presenter import (
     compute_effective_layout_type, compute_display_title, compute_author_avatar_url,
@@ -54,8 +75,54 @@ from app.services.media_manifest import (
     build_content_media_manifests,
     resolve_media_base_url,
 )
+from app.services.media_segments import build_media_segment_items
+from app.adapters.storage import LocalStorageBackend, get_storage_backend
+from app.adapters.storage.manager import (
+    StorageObjectEmptyError,
+    StorageObjectTooLargeError,
+)
+from app.core.api_errors import build_error_payload
+from app.schemas.content import CLIENT_CONTEXT_MAX_BYTES
 
 router = APIRouter()
+
+
+def _decode_capture_client_context(value: Optional[str]) -> Optional[dict]:
+    if value is None or not value.strip():
+        return None
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=build_error_payload(
+                message="客户端上下文不是有效 JSON",
+                code="capture_client_context_invalid",
+            ),
+        ) from error
+    if not isinstance(decoded, dict):
+        raise HTTPException(
+            status_code=400,
+            detail=build_error_payload(
+                message="客户端上下文必须是对象",
+                code="capture_client_context_invalid",
+            ),
+        )
+    encoded = json.dumps(
+        decoded,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    if len(encoded) > CLIENT_CONTEXT_MAX_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=build_error_payload(
+                message="客户端上下文超过大小限制",
+                code="capture_client_context_too_large",
+                extra={"max_bytes": CLIENT_CONTEXT_MAX_BYTES},
+            ),
+        )
+    return decoded
 
 
 def _status_counts(rows) -> dict[str, int]:
@@ -632,11 +699,212 @@ async def create_share(
             status=content.status,
             created_at=content.created_at
         )
+    except ParseQueueUnavailableError as e:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "detail": "内容已保存，但解析任务未能入队",
+                "error_code": "parse_queue_unavailable",
+                "content_id": e.content_id,
+            },
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception("Failed to create share")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/captures/text", response_model=ShareResponse)
+async def create_text_capture(
+    capture: TextCaptureRequest,
+    service: ContentService = Depends(get_content_service),
+    _: None = Depends(require_api_token),
+):
+    """保存用户直接提供的原始文本，并进入摘要、索引与分发后处理。"""
+    try:
+        content = await service.create_text_capture(
+            text=capture.text,
+            title=capture.title,
+            tags=capture.tags,
+            tags_text=capture.tags_text,
+            source_name=capture.source or "manual_text",
+            note=capture.note,
+            is_nsfw=capture.is_nsfw,
+            client_context=capture.client_context,
+            layout_type_override=capture.layout_type_override,
+        )
+        return ShareResponse(
+            id=content.id,
+            platform=content.platform,
+            url=content.url,
+            status=content.status,
+            created_at=content.created_at,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("Failed to create text capture")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/captures/file", response_model=ShareResponse)
+async def create_file_capture(
+    upload: UploadFile = File(...),
+    title: Optional[str] = Form(None, max_length=500),
+    tags_text: Optional[str] = Form(None, max_length=2000),
+    source: str = Form("manual_upload", max_length=100),
+    note: Optional[str] = Form(None, max_length=2000),
+    is_nsfw: bool = Form(False),
+    layout_type_override: Optional[LayoutType] = Form(None),
+    service: ContentService = Depends(get_content_service),
+    storage: LocalStorageBackend = Depends(get_storage_backend),
+    _: None = Depends(require_api_token),
+):
+    """保存一个用户上传文件，并建立可读取的媒体资产。"""
+    max_bytes = max(1, settings.capture_upload_max_bytes)
+
+    async def upload_chunks():
+        while chunk := await upload.read(1024 * 1024):
+            yield chunk
+
+    try:
+        content = await service.create_file_capture(
+            upload_chunks(),
+            filename=upload.filename or "未命名文件",
+            mime_type=upload.content_type,
+            title=title,
+            tags_text=tags_text,
+            source_name=source,
+            note=note,
+            is_nsfw=is_nsfw,
+            layout_type_override=layout_type_override,
+            storage=storage,
+            max_bytes=max_bytes,
+        )
+        return ShareResponse(
+            id=content.id,
+            platform=content.platform,
+            url=content.url,
+            status=content.status,
+            created_at=content.created_at,
+        )
+    except StorageObjectTooLargeError as error:
+        raise HTTPException(
+            status_code=413,
+            detail=build_error_payload(
+                message="上传文件超过大小限制",
+                code="capture_file_too_large",
+                extra={"max_bytes": error.max_bytes},
+            ),
+        ) from error
+    except StorageObjectEmptyError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=build_error_payload(
+                message="上传文件不能为空",
+                code="capture_file_empty",
+            ),
+        ) from error
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except Exception:
+        logger.exception("Failed to create file capture")
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        await upload.close()
+
+
+@router.post("/captures/files", response_model=ShareResponse)
+async def create_files_capture(
+    uploads: List[UploadFile] = File(...),
+    title: Optional[str] = Form(None, max_length=500),
+    tags_text: Optional[str] = Form(None, max_length=2000),
+    source: str = Form("manual_upload", max_length=100),
+    note: Optional[str] = Form(None, max_length=2000),
+    client_context_json: Optional[str] = Form(None),
+    is_nsfw: bool = Form(False),
+    layout_type_override: Optional[LayoutType] = Form(None),
+    service: ContentService = Depends(get_content_service),
+    storage: LocalStorageBackend = Depends(get_storage_backend),
+    _: None = Depends(require_api_token),
+):
+    """把一次分享中的多个原文件保存为同一个内容对象。"""
+    if not uploads:
+        raise HTTPException(status_code=400, detail="At least one file is required")
+    if len(uploads) > 32:
+        raise HTTPException(
+            status_code=400,
+            detail=build_error_payload(
+                message="单次最多保存 32 个文件",
+                code="capture_too_many_files",
+                extra={"max_files": 32},
+            ),
+        )
+
+    def upload_chunks(upload: UploadFile):
+        async def chunks():
+            while chunk := await upload.read(1024 * 1024):
+                yield chunk
+
+        return chunks()
+
+    try:
+        content = await service.create_files_capture(
+            [
+                CaptureFileInput(
+                    chunks=upload_chunks(upload),
+                    filename=upload.filename or "未命名文件",
+                    mime_type=upload.content_type,
+                )
+                for upload in uploads
+            ],
+            title=title,
+            tags_text=tags_text,
+            source_name=source,
+            note=note,
+            client_context=_decode_capture_client_context(client_context_json),
+            is_nsfw=is_nsfw,
+            layout_type_override=layout_type_override,
+            storage=storage,
+            max_bytes=max(1, settings.capture_upload_max_bytes),
+        )
+        return ShareResponse(
+            id=content.id,
+            platform=content.platform,
+            url=content.url,
+            status=content.status,
+            created_at=content.created_at,
+        )
+    except StorageObjectTooLargeError as error:
+        raise HTTPException(
+            status_code=413,
+            detail=build_error_payload(
+                message="上传文件超过大小限制",
+                code="capture_file_too_large",
+                extra={"max_bytes": error.max_bytes},
+            ),
+        ) from error
+    except StorageObjectEmptyError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=build_error_payload(
+                message="上传文件不能为空",
+                code="capture_file_empty",
+            ),
+        ) from error
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except Exception:
+        logger.exception("Failed to create files capture")
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        for upload in uploads:
+            await upload.close()
 
 # --- 内容 增删改查 ---
 
@@ -715,6 +983,11 @@ async def get_content_detail(
         base_url=base_url,
     )
     detail.media_assets = manifests.get(content.id, [])
+    detail.media_segments = build_media_segment_items(
+        content_id=content.id,
+        rich_payload=content.rich_payload,
+        assets=detail.media_assets,
+    )
     return detail
 
 
@@ -754,6 +1027,15 @@ async def update_content(
     }
     try:
         content = await service.update_content(content_id, updates)
+    except ParseQueueUnavailableError as e:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "detail": "内容状态已更新，但解析任务未能入队",
+                "error_code": "parse_queue_unavailable",
+                "content_id": e.content_id,
+            },
+        )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -766,21 +1048,75 @@ async def update_content(
         base_url=base_url,
     )
     detail.media_assets = manifests.get(content.id, [])
+    detail.media_segments = build_media_segment_items(
+        content_id=content.id,
+        rich_payload=content.rich_payload,
+        assets=detail.media_assets,
+    )
     return detail
 
-@router.delete("/contents/{content_id}")
+
+@router.post(
+    "/contents/{content_id}/parse-candidate/resolve",
+    response_model=ContentDetail,
+)
+async def resolve_content_parse_candidate(
+    content_id: int,
+    raw_request: Request,
+    resolution: ContentParseCandidateResolution,
+    service: ContentService = Depends(get_content_service),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """采用新解析、保留人工版本或提交合并后的单个字段。"""
+    try:
+        content = await service.resolve_parse_candidate(
+            content_id,
+            field=resolution.field.value,
+            action=resolution.action.value,
+            merged_value=resolution.merged_value,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = 404 if detail == "Content not found" else 409
+        raise HTTPException(status_code=status_code, detail=detail)
+
+    base_url = resolve_media_base_url(str(raw_request.base_url))
+    detail = transform_content_detail(ContentDetail.model_validate(content), base_url)
+    manifests = await build_content_media_manifests(
+        db,
+        [content.id],
+        purpose=MediaPurpose.DETAIL,
+        base_url=base_url,
+    )
+    detail.media_assets = manifests.get(content.id, [])
+    detail.media_segments = build_media_segment_items(
+        content_id=content.id,
+        rich_payload=content.rich_payload,
+        assets=detail.media_assets,
+    )
+    return detail
+
+@router.delete("/contents/{content_id}", response_model=ContentDeleteResponse)
 async def delete_content(
     content_id: int,
     service: ContentService = Depends(get_content_service),
     _: None = Depends(require_api_token),
 ):
     """删除内容（含数据库记录和已归档的本地媒体文件）"""
+    from app.services.knowledge_event_service import KnowledgeEventError
+
     try:
         return await service.delete_content(content_id)
+    except KnowledgeEventError as error:
+        raise HTTPException(
+            status_code=error.status_code,
+            detail=build_error_payload(message=error.message, code=error.code),
+        ) from error
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-@router.post("/contents/{content_id}/retry")
+@router.post("/contents/{content_id}/retry", response_model=ContentRetryResponse)
 async def retry_content(
     content_id: int,
     max_retries: int = 3,
@@ -808,7 +1144,10 @@ async def retry_content(
         logger.error(f"重试接口失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/contents/{content_id}/generate-summary")
+@router.post(
+    "/contents/{content_id}/generate-summary",
+    response_model=ContentSummaryActionResponse,
+)
 async def generate_content_summary(
     content_id: int,
     force: bool = Query(False, description="强制重新生成（覆盖已有摘要）"),
@@ -859,7 +1198,10 @@ async def generate_content_summary(
         )
         raise HTTPException(status_code=500, detail=f"摘要生成失败: {e}")
 
-@router.post("/contents/{content_id}/patrol-score")
+@router.post(
+    "/contents/{content_id}/patrol-score",
+    response_model=ContentPatrolScoreResponse,
+)
 async def score_content_patrol(
     content_id: int,
     db: AsyncSession = Depends(get_db),
@@ -938,7 +1280,10 @@ async def score_content_patrol(
         )
         raise HTTPException(status_code=500, detail=f"巡逻评分失败: {e}")
 
-@router.post("/contents/{content_id}/re-parse")
+@router.post(
+    "/contents/{content_id}/re-parse",
+    response_model=ContentReparseAcceptedResponse,
+)
 async def re_parse_content(
     content_id: int,
     background_tasks: BackgroundTasks,
@@ -989,7 +1334,10 @@ async def list_pushed_records(
     records = result.scalars().all()
     return [PushedRecordResponse.model_validate(r) for r in records]
 
-@router.delete("/pushed-records/{record_id}")
+@router.delete(
+    "/pushed-records/{record_id}",
+    response_model=PushedRecordDeleteResponse,
+)
 async def delete_pushed_record(
     record_id: int,
     db: AsyncSession = Depends(get_db),
@@ -1140,7 +1488,7 @@ async def get_share_card(
     }
 
 
-@router.post("/cards/{card_id}/review")
+@router.post("/cards/{card_id}/review", response_model=CardReviewResponse)
 async def review_card(
     card_id: int,
     action: ReviewAction,
@@ -1158,7 +1506,7 @@ async def review_card(
         raise HTTPException(status_code=status, detail=str(e))
 
 
-@router.post("/cards/batch-review")
+@router.post("/cards/batch-review", response_model=BatchCardReviewResponse)
 async def batch_review_cards(
     request: BatchReviewRequest,
     service: ContentService = Depends(get_content_service),

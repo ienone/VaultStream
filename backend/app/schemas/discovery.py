@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.models import ContentStatus, DiscoverySourceKind, DiscoveryState
 from app.schemas.base import UtcDatetime, OptionalUtcDatetime
+from app.schemas.media import MediaAssetManifest
 
 
 # --- Discovery Item ---
@@ -19,6 +20,7 @@ class DiscoveryItemListItem(BaseModel):
     status: Optional[ContentStatus] = None
     author_name: Optional[str] = None
     summary: Optional[str] = None
+    preview_text: Optional[str] = None
     ai_score: Optional[float] = None
     ai_tags: Optional[list] = None
     source_type: Optional[str] = None
@@ -28,7 +30,14 @@ class DiscoveryItemListItem(BaseModel):
     created_at: UtcDatetime
     cover_url: Optional[str] = None
     cover_color: Optional[str] = None
+    media_assets: List[MediaAssetManifest] = Field(
+        default_factory=list,
+        validation_alias="media_asset_manifests",
+    )
     discovery_source_id: Optional[int] = None
+    source_names: List[str] = Field(default_factory=list)
+    source_kinds: List[str] = Field(default_factory=list)
+    source_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -62,12 +71,19 @@ class DiscoveryItemResponse(BaseModel):
     share_count: int = 0
     comment_count: int = 0
     media_urls: List[str] = Field(default_factory=list)
+    media_assets: List[MediaAssetManifest] = Field(
+        default_factory=list,
+        validation_alias="media_asset_manifests",
+    )
     rich_payload: Optional[dict] = None
     extra_stats: dict = Field(default_factory=dict)
     context_data: Optional[dict] = None
     discovery_source_id: Optional[int] = None
+    source_names: List[str] = Field(default_factory=list)
+    source_kinds: List[str] = Field(default_factory=list)
+    source_count: int = 0
 
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DiscoveryItemListResponse(BaseModel):
@@ -79,12 +95,18 @@ class DiscoveryItemListResponse(BaseModel):
 
 
 class DiscoveryItemUpdate(BaseModel):
-    state: Literal["promoted", "ignored", "snoozed"]
+    state: Literal["promoted", "ignored", "snoozed", "visible"]
 
 
 class DiscoveryBulkAction(BaseModel):
     ids: List[int]
     action: Literal["promote", "ignore", "snooze"]
+
+
+class DiscoveryBulkActionResponse(BaseModel):
+    updated: int
+
+    model_config = ConfigDict(extra="forbid")
 
 
 # --- Discovery Source ---
@@ -116,6 +138,47 @@ class DiscoverySourceResponse(BaseModel):
     created_at: UtcDatetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DiscoverySourceDeleteResponse(BaseModel):
+    success: Literal[True]
+    id: int
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DiscoverySourceTestSample(BaseModel):
+    url: str
+    title: Optional[str] = None
+    author: Optional[str] = None
+    published_at: Optional[str] = None
+    tag_count: int
+    media_count: int
+
+
+class DiscoverySourceTestResponse(BaseModel):
+    run_id: str
+    ok: bool
+    status: Literal["ok", "empty", "error"]
+    source_id: int
+    source_name: str
+    source_kind: str
+    item_count: Optional[int] = None
+    sample_count: Optional[int] = None
+    samples: List[DiscoverySourceTestSample] = Field(default_factory=list)
+    cursor_available: Optional[bool] = None
+    elapsed_ms: float
+    error: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DiscoverySyncAcceptedResponse(BaseModel):
+    status: Literal["accepted"]
+    source_id: int
+    run_id: str
+
+    model_config = ConfigDict(extra="forbid")
 
 
 # --- Discovery Settings ---

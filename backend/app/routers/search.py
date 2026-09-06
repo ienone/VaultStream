@@ -12,13 +12,19 @@ from app.core.database import get_db
 from app.core.dependencies import require_api_token
 from app.models import ContentStatus, Platform
 from app.schemas import (
+    SemanticEmbeddingRetryResponse,
     SemanticIndexStatusResponse,
     SemanticReindexRequest,
     SemanticReindexResponse,
     SemanticSearchResponse,
     SemanticSearchItem,
+    UnifiedSearchEventItem,
+    UnifiedSearchFacetItem,
+    UnifiedSearchResponse,
+    UnifiedSearchTimepointItem,
 )
 from app.services.embedding_service import EmbeddingService
+from app.services.search_service import UnifiedSearchService
 from app.services.content_presenter import compute_effective_layout_type
 from app.services.background_task_state import (
     record_task_run_error,
@@ -27,6 +33,30 @@ from app.services.background_task_state import (
 )
 
 router = APIRouter()
+
+
+def _serialize_content_hit(hit) -> SemanticSearchItem:
+    return SemanticSearchItem(
+        content_id=hit.content.id,
+        score=float(hit.score),
+        match_source=hit.match_source,
+        chunk_title=hit.chunk_title,
+        source_text=hit.source_text,
+        platform=hit.content.platform.value if hit.content.platform else "",
+        url=hit.content.url,
+        status=hit.content.status.value if hit.content.status else "",
+        review_status=hit.content.review_status.value if hit.content.review_status else None,
+        discovery_state=hit.content.discovery_state.value if hit.content.discovery_state else None,
+        content_type=hit.content.content_type,
+        effective_layout_type=compute_effective_layout_type(hit.content),
+        title=hit.content.title,
+        summary=hit.content.summary,
+        author_name=hit.content.author_name,
+        cover_url=hit.content.cover_url,
+        tags=(hit.content.tags or []),
+        created_at=hit.content.created_at,
+        published_at=hit.content.published_at,
+    )
 
 
 def _parse_list_param(values: Optional[list[str]]) -> list[str] | None:
@@ -98,36 +128,114 @@ async def semantic_search(
         session=db,
     )
 
-    results = [
-        SemanticSearchItem(
-            content_id=hit.content.id,
-            score=float(hit.score),
-            match_source=hit.match_source,
-            chunk_title=hit.chunk_title,
-            source_text=hit.source_text,
-            platform=hit.content.platform.value if hit.content.platform else "",
-            url=hit.content.url,
-            status=hit.content.status.value if hit.content.status else "",
-            review_status=hit.content.review_status.value if hit.content.review_status else None,
-            discovery_state=hit.content.discovery_state.value if hit.content.discovery_state else None,
-            content_type=hit.content.content_type,
-            effective_layout_type=compute_effective_layout_type(hit.content),
-            title=hit.content.title,
-            summary=hit.content.summary,
-            author_name=hit.content.author_name,
-            cover_url=hit.content.cover_url,
-            tags=(hit.content.tags or []),
-            created_at=hit.content.created_at,
-            published_at=hit.content.published_at,
-        )
-        for hit in hits
-    ]
+    results = [_serialize_content_hit(hit) for hit in hits]
 
     return SemanticSearchResponse(
         query=q,
         top_k=top_k,
         scope=normalized_scope,
         results=results,
+    )
+
+
+@router.get("/search/unified", response_model=UnifiedSearchResponse)
+async def unified_search(
+    q: str = Query(..., min_length=1, description="检索关键词"),
+    top_k: int = Query(20, ge=1, le=100, description="每类结果返回数量"),
+    kind: str = Query(
+        "all",
+        description="结果类型：all/contents/events/people/topics/timepoints",
+    ),
+    content_scope: str = Query(
+        "library",
+        description="内容范围：library/discovery/all；不影响事件结果",
+    ),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    normalized_kind = kind.strip().lower()
+    valid_kinds = {"all", "contents", "events", "people", "topics", "timepoints"}
+    if normalized_kind not in valid_kinds:
+        raise HTTPException(
+            status_code=400,
+            detail="kind must be all, contents, events, people, topics or timepoints",
+        )
+    normalized_scope = content_scope.strip().lower()
+    if normalized_scope not in {"library", "discovery", "all"}:
+        raise HTTPException(
+            status_code=400,
+            detail="content_scope must be library, discovery or all",
+        )
+
+    results = await UnifiedSearchService(db).search(
+        query=q.strip(),
+        top_k=top_k,
+        kind=normalized_kind,
+        content_scope=normalized_scope,
+    )
+    events = []
+    for hit in results.events:
+        members = [member for member in hit.event.members if member.content is not None]
+        members.sort(
+            key=lambda member: (
+                member.content.published_at
+                or member.content.created_at
+                or member.added_at
+            )
+        )
+        events.append(
+            UnifiedSearchEventItem(
+                id=hit.event.id,
+                title=hit.event.title,
+                description=hit.event.description,
+                status=hit.event.status.value,
+                member_count=len(members),
+                latest_member_title=members[-1].content.title if members else None,
+                match_source=hit.match_source,
+                created_at=hit.event.created_at,
+                updated_at=hit.event.updated_at,
+            )
+        )
+    return UnifiedSearchResponse(
+        query=q.strip(),
+        kind=normalized_kind,
+        content_scope=normalized_scope,
+        contents=[_serialize_content_hit(hit) for hit in results.contents],
+        events=events,
+        people=[
+            UnifiedSearchFacetItem(
+                name=hit.name,
+                content_count=hit.content_count,
+                latest_content_id=hit.latest_content_id,
+                latest_content_title=hit.latest_content_title,
+            )
+            for hit in results.people
+        ],
+        topics=[
+            UnifiedSearchFacetItem(
+                name=hit.name,
+                content_count=hit.content_count,
+                latest_content_id=hit.latest_content_id,
+                latest_content_title=hit.latest_content_title,
+            )
+            for hit in results.topics
+        ],
+        timepoints=[
+            UnifiedSearchTimepointItem(
+                content_id=hit.content_id,
+                content_title=hit.content_title,
+                media_asset_id=hit.media_asset_id,
+                media_type=hit.media_type,
+                segment_type=hit.segment_type,
+                title=hit.title,
+                excerpt=hit.excerpt,
+                start_seconds=hit.start_seconds,
+                end_seconds=hit.end_seconds,
+                match_source=hit.match_source,
+                score=hit.score,
+            )
+            for hit in results.timepoints
+        ],
     )
 
 
@@ -223,7 +331,10 @@ async def semantic_reindex(
     )
 
 
-@router.post("/search/semantic/embeddings/{embedding_id}/retry")
+@router.post(
+    "/search/semantic/embeddings/{embedding_id}/retry",
+    response_model=SemanticEmbeddingRetryResponse,
+)
 async def retry_semantic_embedding(
     embedding_id: int,
     db: AsyncSession = Depends(get_db),

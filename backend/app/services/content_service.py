@@ -1,10 +1,30 @@
+from contextlib import AsyncExitStack
+import mimetypes
 import re
+from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional
+from typing import AsyncIterable, List, Optional
+from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func
+from sqlalchemy import select, and_, or_, func, text
 from sqlalchemy.exc import IntegrityError
-from app.models import Content, ContentStatus, ContentSource, PushedRecord, Platform, ReviewStatus
+from app.models import (
+    Content,
+    ContentStatus,
+    ContentSource,
+    LayoutType,
+    MediaArchiveStatus,
+    MediaAsset,
+    MediaRole,
+    MediaType,
+    MediaVariant,
+    MediaVariantKind,
+    MediaVariantStatus,
+    PushedRecord,
+    Platform,
+    ReviewStatus,
+)
+from app.adapters.storage import LocalStorageBackend
 from app.adapters import AdapterFactory, open_adapter
 from app.utils.url_utils import (
     extract_primary_url_candidate,
@@ -16,10 +36,59 @@ from app.core.queue import task_queue
 from app.core.logging import logger
 from app.core.events import event_bus
 from app.services.post_ingest import PostIngestService
+from app.services.notification_inbox import (
+    safely_record_bot_capture_notification,
+    safely_resolve_bot_capture_notification,
+)
+
+
+class ParseQueueUnavailableError(RuntimeError):
+    """Content was persisted, but its parse task could not be queued."""
+
+    def __init__(self, content_id: int):
+        self.content_id = content_id
+        super().__init__("Content saved but parse task enqueue failed")
+
+
+@dataclass(frozen=True)
+class CaptureFileInput:
+    """One streamed file in a user capture request."""
+
+    chunks: AsyncIterable[bytes]
+    filename: str
+    mime_type: Optional[str] = None
+
 
 class ContentService:
+    MANUAL_EDIT_FIELDS = frozenset({
+        "title",
+        "body",
+        "author_name",
+        "cover_url",
+        "tags",
+        "layout_type_override",
+    })
+
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    @staticmethod
+    async def _record_capture_receipt(
+        content: Content,
+        *,
+        source_name: str | None,
+        capture_kind: str,
+        client_context: dict | None,
+    ) -> None:
+        if (source_name or "").strip().lower() != "telegram_bot":
+            return
+        await safely_record_bot_capture_notification(
+            content_id=content.id,
+            capture_kind=capture_kind,
+            display_title=content.title,
+            display_url=content.url,
+            client_context=client_context,
+        )
 
     async def create_share(
         self, 
@@ -139,6 +208,12 @@ class ContentService:
             is_new = False
 
         await self.db.refresh(content)
+        await self._record_capture_receipt(
+            content,
+            source_name=source_name,
+            capture_kind="link",
+            client_context=client_context,
+        )
 
         # 6. 异步入队（新增内容，或存量仍处于待解析状态）
         should_enqueue_parse = is_new or content.status in (
@@ -146,7 +221,11 @@ class ContentService:
             ContentStatus.PARSE_FAILED,
         )
         if should_enqueue_parse:
-            await task_queue.enqueue({'content_id': content.id, 'action': 'parse'})
+            enqueued = await task_queue.enqueue(
+                {'content_id': content.id, 'action': 'parse'}
+            )
+            if not enqueued:
+                raise ParseQueueUnavailableError(content.id)
             logger.info(f"New content enqueued: {content.id}")
             
             # 广播新增事件
@@ -169,6 +248,341 @@ class ContentService:
 
         return content
 
+    async def create_text_capture(
+        self,
+        text: str,
+        *,
+        title: str = None,
+        tags: List[str] = None,
+        tags_text: str = None,
+        source_name: str = "manual_text",
+        note: str = None,
+        is_nsfw: bool = False,
+        client_context: dict = None,
+        layout_type_override: str = None,
+    ) -> Content:
+        """保存原始文本，并从已完成解析的状态进入统一后处理。"""
+        body = (text or "").strip()
+        if not body:
+            raise ValueError("Text content cannot be empty")
+
+        normalized_title = (title or "").strip()
+        if not normalized_title:
+            first_line = next(
+                (line.strip() for line in body.splitlines() if line.strip()),
+                "文本摘录",
+            )
+            normalized_title = first_line[:200]
+
+        internal_url = f"vaultstream://text/{uuid4().hex}"
+        normalized_tags = normalize_tags(tags, tags_text)
+        content = Content(
+            platform=Platform.UNIVERSAL,
+            url=internal_url,
+            canonical_url=internal_url,
+            clean_url=internal_url,
+            title=normalized_title,
+            body=body,
+            content_type="note",
+            tags=normalized_tags,
+            source=source_name or "manual_text",
+            source_type="manual_text",
+            is_nsfw=is_nsfw,
+            status=ContentStatus.PARSE_SUCCESS,
+            layout_type_override=layout_type_override,
+        )
+        self.db.add(content)
+        await self.db.flush()
+        self.db.add(
+            ContentSource(
+                content_id=content.id,
+                source=source_name or "manual_text",
+                tags_snapshot=normalized_tags,
+                note=note,
+                client_context=client_context,
+            )
+        )
+        await self.db.commit()
+        await self.db.refresh(content)
+        await self._record_capture_receipt(
+            content,
+            source_name=source_name,
+            capture_kind="text",
+            client_context=client_context,
+        )
+
+        await PostIngestService().run_for_content(
+            self.db,
+            content,
+            source=source_name or "manual_text",
+            summary=True,
+            embedding=True,
+            patrol=False,
+            distribution=True,
+        )
+        await event_bus.publish(
+            "content_created",
+            {
+                "id": content.id,
+                "url": content.url,
+                "platform": content.platform.value,
+                "status": content.status.value,
+            },
+        )
+        return content
+
+    async def create_file_capture(
+        self,
+        chunks: AsyncIterable[bytes],
+        *,
+        filename: str,
+        mime_type: str = None,
+        title: str = None,
+        tags: List[str] = None,
+        tags_text: str = None,
+        source_name: str = "manual_upload",
+        note: str = None,
+        is_nsfw: bool = False,
+        layout_type_override: str = None,
+        storage: LocalStorageBackend,
+        max_bytes: int,
+    ) -> Content:
+        """保存一个用户上传文件；单文件与多文件共享同一持久化规则。"""
+        return await self.create_files_capture(
+            [
+                CaptureFileInput(
+                    chunks=chunks,
+                    filename=filename,
+                    mime_type=mime_type,
+                )
+            ],
+            title=title,
+            tags=tags,
+            tags_text=tags_text,
+            source_name=source_name,
+            note=note,
+            is_nsfw=is_nsfw,
+            layout_type_override=layout_type_override,
+            storage=storage,
+            max_bytes=max_bytes,
+        )
+
+    async def create_files_capture(
+        self,
+        files: List[CaptureFileInput],
+        *,
+        title: str = None,
+        tags: List[str] = None,
+        tags_text: str = None,
+        source_name: str = "manual_upload",
+        note: str = None,
+        is_nsfw: bool = False,
+        layout_type_override: str = None,
+        client_context: dict = None,
+        storage: LocalStorageBackend,
+        max_bytes: int,
+    ) -> Content:
+        """把一次分享中的一个或多个原文件保存为同一个内容对象。"""
+        if not files:
+            raise ValueError("At least one file is required")
+
+        async with AsyncExitStack() as staging:
+            stored_files = []
+            for capture_file in files:
+                display_filename = (
+                    (capture_file.filename or "")
+                    .replace("\\", "/")
+                    .split("/")[-1]
+                    .strip()
+                    or "未命名文件"
+                )
+                normalized_mime = (
+                    (capture_file.mime_type or "").split(";", 1)[0].strip().lower()
+                )
+                if not normalized_mime or "/" not in normalized_mime:
+                    normalized_mime = (
+                        mimetypes.guess_type(display_filename)[0]
+                        or "application/octet-stream"
+                    )
+
+                if normalized_mime.startswith("image/"):
+                    media_type = MediaType.IMAGE
+                    media_role = MediaRole.GALLERY
+                    item_content_type = "image"
+                    item_layout_type = LayoutType.GALLERY
+                elif normalized_mime.startswith("video/"):
+                    media_type = MediaType.VIDEO
+                    media_role = MediaRole.BODY
+                    item_content_type = "video"
+                    item_layout_type = LayoutType.VIDEO
+                elif normalized_mime.startswith("audio/"):
+                    media_type = MediaType.AUDIO
+                    media_role = MediaRole.BODY
+                    item_content_type = "audio"
+                    item_layout_type = LayoutType.AUDIO
+                elif normalized_mime == "application/pdf" or normalized_mime.startswith("text/"):
+                    media_type = MediaType.DOCUMENT
+                    media_role = MediaRole.ATTACHMENT
+                    item_content_type = "document"
+                    item_layout_type = LayoutType.ARTICLE
+                else:
+                    media_type = MediaType.OTHER
+                    media_role = MediaRole.ATTACHMENT
+                    item_content_type = "document"
+                    item_layout_type = LayoutType.ARTICLE
+
+                stored, temp_path = await staging.enter_async_context(storage.stage_stream(
+                    chunks=capture_file.chunks,
+                    content_type=normalized_mime,
+                    max_bytes=max_bytes,
+                ))
+                stored_files.append(
+                    {
+                        "filename": display_filename,
+                        "mime_type": normalized_mime,
+                        "media_type": media_type,
+                        "media_role": media_role,
+                        "content_type": item_content_type,
+                        "layout_type": item_layout_type,
+                        "stored": stored,
+                        "temp_path": temp_path,
+                    }
+                )
+
+            first_file = stored_files[0]
+            if len(stored_files) == 1:
+                content_type = first_file["content_type"]
+                layout_type = first_file["layout_type"]
+                default_title = first_file["filename"]
+            elif all(item["media_type"] == MediaType.IMAGE for item in stored_files):
+                content_type = "gallery"
+                layout_type = LayoutType.GALLERY
+                default_title = f"{len(stored_files)} 张共享图片"
+            else:
+                content_type = "document"
+                layout_type = LayoutType.ARTICLE
+                default_title = f"{len(stored_files)} 个共享文件"
+
+            internal_url = f"vaultstream://file/{uuid4().hex}"
+            normalized_tags = normalize_tags(tags, tags_text)
+            normalized_title = (title or "").strip() or default_title
+            normalized_note = (note or "").strip() or None
+            normalized_source = source_name or "manual_upload"
+            archived_files = [
+                {
+                    "filename": item["filename"],
+                    "mime_type": item["mime_type"],
+                    "size_bytes": item["stored"].size,
+                    "checksum": item["stored"].sha256 or "",
+                }
+                for item in stored_files
+            ]
+            content = Content(
+                platform=Platform.UNIVERSAL,
+                url=internal_url,
+                canonical_url=internal_url,
+                clean_url=internal_url,
+                title=normalized_title,
+                body=normalized_note,
+                content_type=content_type,
+                layout_type=layout_type,
+                layout_type_override=layout_type_override,
+                tags=normalized_tags,
+                source=normalized_source,
+                source_type=normalized_source,
+                is_nsfw=is_nsfw,
+                status=ContentStatus.PARSE_SUCCESS,
+                archive_metadata={
+                    "files": archived_files,
+                },
+            )
+            self.db.add(content)
+            await self.db.flush()
+            self.db.add(
+                ContentSource(
+                    content_id=content.id,
+                    source=normalized_source,
+                    tags_snapshot=normalized_tags,
+                    note=normalized_note,
+                    client_context=client_context,
+                )
+            )
+            for position, item in enumerate(stored_files):
+                stored = item["stored"]
+                checksum = stored.sha256 or ""
+                asset = MediaAsset(
+                    content_id=content.id,
+                    position=position,
+                    media_type=item["media_type"],
+                    role=item["media_role"],
+                    archive_status=MediaArchiveStatus.READY,
+                    repairable=False,
+                    asset_metadata={
+                        "filename": item["filename"],
+                        "mime_type": item["mime_type"],
+                        "size_bytes": stored.size,
+                        "checksum": checksum,
+                        "source": normalized_source,
+                    },
+                )
+                self.db.add(asset)
+                await self.db.flush()
+                self.db.add(
+                    MediaVariant(
+                        asset_id=asset.id,
+                        variant_kind=MediaVariantKind.ORIGINAL_ARCHIVE,
+                        storage_key=stored.key,
+                        mime_type=item["mime_type"],
+                        size_bytes=stored.size,
+                        status=MediaVariantStatus.READY,
+                        checksum=checksum,
+                    )
+                )
+            published_keys = []
+            try:
+                await self.db.flush()
+                for item in stored_files:
+                    if await storage.publish_staged(item["stored"], item["temp_path"]):
+                        published_keys.append(item["stored"].key)
+                await self.db.commit()
+            except BaseException:
+                await self.db.rollback()
+                # Serialize cleanup with capture commits; never remove an object
+                # that another committed content now references.
+                await self.db.execute(text("BEGIN IMMEDIATE"))
+                for key in published_keys:
+                    if not await self._is_media_referenced(key, -1):
+                        await storage.delete(key=key)
+                await self.db.rollback()
+                raise
+        await self.db.refresh(content)
+        await self._record_capture_receipt(
+            content,
+            source_name=normalized_source,
+            capture_kind="attachment",
+            client_context=client_context,
+        )
+
+        await PostIngestService().run_for_content(
+            self.db,
+            content,
+            source=normalized_source,
+            summary=bool(normalized_note),
+            embedding=True,
+            patrol=False,
+            distribution=True,
+        )
+        await event_bus.publish(
+            "content_created",
+            {
+                "id": content.id,
+                "url": content.url,
+                "platform": content.platform.value,
+                "status": content.status.value,
+            },
+        )
+        return content
+
     # --- 内容更新 ---
 
     async def update_content(self, content_id: int, updates: dict) -> Content:
@@ -179,10 +593,15 @@ class ContentService:
             raise ValueError("Content not found")
 
         enqueue_parse = False
+        manual_fields = set(content.manual_edit_fields or [])
         for field, value in updates.items():
-            if value is None:
+            if value is None and field != "layout_type_override":
                 continue
-            if field == "cover_url" and content.cover_url != value:
+            previous_value = getattr(content, field)
+            if previous_value == value:
+                continue
+
+            if field == "cover_url":
                 content.cover_url = value
                 from app.media.color import extract_cover_color
                 content.cover_color = await extract_cover_color(value)
@@ -194,11 +613,23 @@ class ContentService:
             else:
                 setattr(content, field, value)
 
+            if field in self.MANUAL_EDIT_FIELDS:
+                if field == "layout_type_override" and value is None:
+                    manual_fields.discard(field)
+                else:
+                    manual_fields.add(field)
+
+        content.manual_edit_fields = sorted(manual_fields)
+
         await self.db.commit()
         await self.db.refresh(content)
 
         if enqueue_parse:
-            await task_queue.enqueue({'content_id': content.id, 'action': 'parse'})
+            enqueued = await task_queue.enqueue(
+                {'content_id': content.id, 'action': 'parse'}
+            )
+            if not enqueued:
+                raise ParseQueueUnavailableError(content.id)
             logger.info(f"Content status reset to unprocessed, parse re-enqueued: {content.id}")
 
         await event_bus.publish("content_updated", {
@@ -208,6 +639,62 @@ class ContentService:
             "platform": content.platform.value if content.platform else None,
         })
 
+        return content
+
+    async def resolve_parse_candidate(
+        self,
+        content_id: int,
+        *,
+        field: str,
+        action: str,
+        merged_value: Optional[str] = None,
+    ) -> Content:
+        """Resolve one parser/manual conflict and leave unrelated fields pending."""
+        result = await self.db.execute(select(Content).where(Content.id == content_id))
+        content = result.scalar_one_or_none()
+        if content is None:
+            raise ValueError("Content not found")
+
+        candidate = dict(content.parse_candidate or {})
+        fields = dict(candidate.get("fields") or {})
+        if field not in fields:
+            raise ValueError("Parse candidate field not found")
+
+        manual_fields = set(content.manual_edit_fields or [])
+        if action == "accept_parsed":
+            value = fields[field]
+            setattr(content, field, value)
+            manual_fields.discard(field)
+        elif action == "keep_current":
+            manual_fields.add(field)
+        elif action == "merge":
+            if merged_value is None:
+                raise ValueError("merged_value is required when action is merge")
+            setattr(content, field, merged_value)
+            manual_fields.add(field)
+        else:
+            raise ValueError("Unsupported parse candidate action")
+
+        if field == "cover_url" and action in {"accept_parsed", "merge"}:
+            from app.media.color import extract_cover_color
+            content.cover_color = await extract_cover_color(content.cover_url)
+
+        fields.pop(field)
+        content.manual_edit_fields = sorted(manual_fields)
+        content.parse_candidate = (
+            {**candidate, "fields": fields}
+            if fields
+            else None
+        )
+
+        await self.db.commit()
+        await self.db.refresh(content)
+        await event_bus.publish("content_updated", {
+            "id": content.id,
+            "title": content.title,
+            "status": content.status.value if content.status else None,
+            "platform": content.platform.value if content.platform else None,
+        })
         return content
 
     # --- 内容删除（含媒体清理 + 引用计数） ---
@@ -273,35 +760,66 @@ class ContentService:
                 Content.archive_metadata.like(f'%{local_url}%'),
             )
         )
-        ref_count = (await self.db.execute(ref_stmt)).scalar() or 0
-        return ref_count > 0
+        legacy_ref_count = (await self.db.execute(ref_stmt)).scalar() or 0
+        if legacy_ref_count > 0:
+            return True
+        variant_stmt = (
+            select(func.count())
+            .select_from(MediaVariant)
+            .join(MediaAsset, MediaVariant.asset_id == MediaAsset.id)
+            .where(
+                MediaVariant.storage_key == key,
+                MediaAsset.content_id != exclude_content_id,
+            )
+        )
+        variant_ref_count = (await self.db.execute(variant_stmt)).scalar() or 0
+        return variant_ref_count > 0
+
+    async def _collect_variant_storage_keys(self, content_id: int) -> list[str]:
+        stmt = (
+            select(MediaVariant.storage_key)
+            .join(MediaAsset, MediaVariant.asset_id == MediaAsset.id)
+            .where(MediaAsset.content_id == content_id)
+        )
+        return list((await self.db.execute(stmt)).scalars().all())
 
     async def delete_content(self, content_id: int) -> dict:
         """删除内容（含数据库记录和已归档的本地媒体文件）"""
+        from app.services.knowledge_event_service import KnowledgeEventService
+
+        await KnowledgeEventService(self.db).prepare_member_removal(content_id)
         result = await self.db.execute(select(Content).where(Content.id == content_id))
         content = result.scalar_one_or_none()
         if content is None:
             raise ValueError("Content not found")
 
-        local_keys = self._collect_local_media_keys(content)
-        if local_keys:
-            from app.adapters.storage import get_storage_backend
-            storage = get_storage_backend()
-            for key in local_keys:
-                try:
-                    if await self._is_media_referenced(key, content_id):
-                        logger.info(f"媒体文件仍被其他内容引用，跳过删除: key={key}")
-                        continue
-                    await storage.delete(key=key)
-                except Exception as e:
-                    logger.warning(f"清理媒体文件失败: key={key}, err={e}")
+        storage_keys = set(self._collect_local_media_keys(content))
+        storage_keys.update(await self._collect_variant_storage_keys(content_id))
 
         await self.db.execute(ContentSource.__table__.delete().where(ContentSource.content_id == content_id))
         await self.db.execute(PushedRecord.__table__.delete().where(PushedRecord.content_id == content_id))
         await self.db.delete(content)
         await self.db.commit()
+        await safely_resolve_bot_capture_notification(content_id)
 
-        logger.info(f"内容已删除: content_id={content_id}, 清理媒体文件={len(local_keys)}个")
+        deleted_storage_count = 0
+        if storage_keys:
+            from app.adapters.storage import get_storage_backend
+            storage = get_storage_backend()
+            for key in storage_keys:
+                try:
+                    if await self._is_media_referenced(key, content_id):
+                        logger.info(f"媒体文件仍被其他内容引用，跳过删除: key={key}")
+                        continue
+                    if await storage.delete(key=key):
+                        deleted_storage_count += 1
+                except Exception as e:
+                    logger.warning(f"清理媒体文件失败: key={key}, err={e}")
+
+        logger.info(
+            f"内容已删除: content_id={content_id}, "
+            f"清理媒体文件={deleted_storage_count}个"
+        )
         await event_bus.publish("content_deleted", {"id": content_id})
         return {"status": "deleted", "content_id": content_id}
 

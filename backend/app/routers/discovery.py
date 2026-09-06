@@ -3,7 +3,7 @@ Discovery API — 发现缓冲区管理
 """
 from typing import Optional, List
 import time
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy import select, func, desc, asc, cast, String, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,11 +20,31 @@ from app.services.background_task_state import (
 )
 from app.services.config_service import ConfigService
 from app.services.automation_policy import AutomationPolicyService
-from app.models import Content, DiscoverySource, DiscoveryState, DiscoverySourceKind
+from app.schemas.media import MediaPurpose
+from app.services.media_manifest import (
+    build_content_media_manifests,
+    resolve_media_base_url,
+)
+from app.models import (
+    Content,
+    ContentDiscoveryLink,
+    DiscoverySource,
+    DiscoveryState,
+    DiscoverySourceKind,
+)
 from app.schemas.discovery import (
-    DiscoveryItemListItem, DiscoveryItemListResponse, DiscoveryItemResponse,
-    DiscoveryItemUpdate, DiscoveryBulkAction,
-    DiscoverySourceCreate, DiscoverySourceUpdate, DiscoverySourceResponse,
+    DiscoveryBulkAction,
+    DiscoveryBulkActionResponse,
+    DiscoveryItemListItem,
+    DiscoveryItemListResponse,
+    DiscoveryItemResponse,
+    DiscoveryItemUpdate,
+    DiscoverySourceCreate,
+    DiscoverySourceDeleteResponse,
+    DiscoverySourceResponse,
+    DiscoverySourceTestResponse,
+    DiscoverySourceUpdate,
+    DiscoverySyncAcceptedResponse,
     DiscoverySettingsResponse, DiscoverySettingsUpdate,
     DiscoveryStatsResponse,
 )
@@ -120,22 +140,82 @@ def _apply_inbox_action(item: Content, action: str, now=None) -> None:
     if action == "ignore":
         item.discovery_state = DiscoveryState.IGNORED
         return
-
-    context = dict(item.context_data or {})
-    context["inbox_action"] = {
-        "action": action,
-        "requested_at": now.isoformat(),
-        "status": "recorded",
-    }
+    if action == "restore":
+        item.discovery_state = DiscoveryState.VISIBLE
+        return
     if action == "snooze":
-        item.discovery_state = DiscoveryState.INGESTED
-    item.context_data = context
+        item.discovery_state = DiscoveryState.SNOOZED
+        return
+    raise ValueError(f"Unsupported discovery inbox action: {action}")
+
+
+async def _load_item_sources(
+    db: AsyncSession,
+    content_ids: list[int],
+) -> dict[int, dict[str, object]]:
+    """Load the real discovery-source relationships for feed presentation."""
+    if not content_ids:
+        return {}
+
+    rows = (
+        await db.execute(
+            select(
+                ContentDiscoveryLink.content_id,
+                DiscoverySource.name,
+                DiscoverySource.kind,
+            )
+            .join(
+                DiscoverySource,
+                DiscoverySource.id == ContentDiscoveryLink.discovery_source_id,
+            )
+            .where(ContentDiscoveryLink.content_id.in_(content_ids))
+            .order_by(ContentDiscoveryLink.created_at.asc(), ContentDiscoveryLink.id.asc())
+        )
+    ).all()
+
+    sources: dict[int, dict[str, object]] = {}
+    for content_id, name, kind in rows:
+        summary = sources.setdefault(
+            content_id,
+            {"source_names": [], "source_kinds": [], "source_count": 0},
+        )
+        source_names = summary["source_names"]
+        source_kinds = summary["source_kinds"]
+        if isinstance(source_names, list) and name not in source_names:
+            source_names.append(name)
+        kind_value = kind.value if hasattr(kind, "value") else str(kind)
+        if isinstance(source_kinds, list) and kind_value not in source_kinds:
+            source_kinds.append(kind_value)
+        summary["source_count"] = int(summary["source_count"]) + 1
+    return sources
+
+
+def _with_item_sources(schema, sources: dict[str, object]):
+    return schema.model_copy(
+        update={
+            "source_names": list(sources.get("source_names", [])),
+            "source_kinds": list(sources.get("source_kinds", [])),
+            "source_count": int(sources.get("source_count", 0)),
+        }
+    )
+
+
+def _feed_preview(content: Content, limit: int = 280) -> str | None:
+    """Return a compact source-derived preview without pretending it is a summary."""
+    raw = content.summary or content.body or ""
+    text_value = " ".join(str(raw).split()).strip()
+    if not text_value:
+        return None
+    if len(text_value) <= limit:
+        return text_value
+    return f"{text_value[:limit].rstrip()}…"
 
 
 # ── Items ──────────────────────────────────────────────────────────────
 
 @router.get("/discovery/items", response_model=DiscoveryItemListResponse)
 async def list_discovery_items(
+    request: Request,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     sort: str = Query("created_at"),
@@ -215,9 +295,27 @@ async def list_discovery_items(
     query = query.offset((page - 1) * size).limit(size)
     result = await db.execute(query)
     items = result.scalars().all()
+    sources_by_content = await _load_item_sources(db, [item.id for item in items])
+    media_by_content = await build_content_media_manifests(
+        db,
+        [item.id for item in items],
+        purpose=MediaPurpose.CARD,
+        base_url=resolve_media_base_url(str(request.base_url)),
+    )
 
     return {
-        "items": [DiscoveryItemListItem.model_validate(i) for i in items],
+        "items": [
+            _with_item_sources(
+                DiscoveryItemListItem.model_validate(item).model_copy(
+                    update={
+                        "preview_text": _feed_preview(item),
+                        "media_assets": media_by_content.get(item.id, []),
+                    }
+                ),
+                sources_by_content.get(item.id, {}),
+            )
+            for item in items
+        ],
         "total": total,
         "page": page,
         "size": size,
@@ -228,6 +326,7 @@ async def list_discovery_items(
 @router.get("/discovery/items/{item_id}", response_model=DiscoveryItemResponse)
 async def get_discovery_item(
     item_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
@@ -240,13 +339,26 @@ async def get_discovery_item(
     item = result.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="Discovery item not found")
-    return DiscoveryItemResponse.model_validate(item)
+    sources_by_content = await _load_item_sources(db, [item.id])
+    media_by_content = await build_content_media_manifests(
+        db,
+        [item.id],
+        purpose=MediaPurpose.DETAIL,
+        base_url=resolve_media_base_url(str(request.base_url)),
+    )
+    return _with_item_sources(
+        DiscoveryItemResponse.model_validate(item).model_copy(
+            update={"media_assets": media_by_content.get(item.id, [])},
+        ),
+        sources_by_content.get(item.id, {}),
+    )
 
 
 @router.patch("/discovery/items/{item_id}", response_model=DiscoveryItemResponse)
 async def update_discovery_item(
     item_id: int,
     body: DiscoveryItemUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
@@ -264,6 +376,7 @@ async def update_discovery_item(
         "promoted": "promote",
         "ignored": "ignore",
         "snoozed": "snooze",
+        "visible": "restore",
     }
     _apply_inbox_action(item, action_map[body.state])
 
@@ -275,10 +388,25 @@ async def update_discovery_item(
         "platform": item.platform.value if item.platform else None,
         "discovery_state": item.discovery_state.value if item.discovery_state else None,
     })
-    return DiscoveryItemResponse.model_validate(item)
+    sources_by_content = await _load_item_sources(db, [item.id])
+    media_by_content = await build_content_media_manifests(
+        db,
+        [item.id],
+        purpose=MediaPurpose.DETAIL,
+        base_url=resolve_media_base_url(str(request.base_url)),
+    )
+    return _with_item_sources(
+        DiscoveryItemResponse.model_validate(item).model_copy(
+            update={"media_assets": media_by_content.get(item.id, [])},
+        ),
+        sources_by_content.get(item.id, {}),
+    )
 
 
-@router.post("/discovery/items/bulk-action")
+@router.post(
+    "/discovery/items/bulk-action",
+    response_model=DiscoveryBulkActionResponse,
+)
 async def bulk_action(
     body: DiscoveryBulkAction,
     db: AsyncSession = Depends(get_db),
@@ -396,7 +524,10 @@ async def update_source(
     return DiscoverySourceResponse.model_validate(source)
 
 
-@router.delete("/discovery/sources/{source_id}")
+@router.delete(
+    "/discovery/sources/{source_id}",
+    response_model=DiscoverySourceDeleteResponse,
+)
 async def delete_source(
     source_id: int,
     db: AsyncSession = Depends(get_db),
@@ -417,7 +548,11 @@ async def delete_source(
     return {"success": True, "id": source_id}
 
 
-@router.post("/discovery/sources/{source_id}/test")
+@router.post(
+    "/discovery/sources/{source_id}/test",
+    response_model=DiscoverySourceTestResponse,
+    response_model_exclude_none=True,
+)
 async def test_source_quality(
     source_id: int,
     request: Request,
@@ -500,10 +635,15 @@ async def test_source_quality(
         }
 
 
-@router.post("/discovery/sources/{source_id}/sync", status_code=202)
+@router.post(
+    "/discovery/sources/{source_id}/sync",
+    response_model=DiscoverySyncAcceptedResponse,
+    status_code=202,
+)
 async def trigger_sync(
     source_id: int,
     request: Request,
+    background_tasks: BackgroundTasks,
     force: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
@@ -545,14 +685,12 @@ async def trigger_sync(
         )
 
     run = await sync_task.create_run(source, trigger="manual")
-    import asyncio
-    asyncio.create_task(
-        sync_task.sync_source_by_id(
-            source_id,
-            run_id=run["run_id"],
-            trigger="manual",
-            force=force,
-        )
+    background_tasks.add_task(
+        sync_task.sync_source_by_id,
+        source_id,
+        run_id=run["run_id"],
+        trigger="manual",
+        force=force,
     )
 
     return {"status": "accepted", "source_id": source_id, "run_id": run["run_id"]}
