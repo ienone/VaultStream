@@ -70,13 +70,55 @@ class DiscoverySources extends _$DiscoverySources {
     return null;
   }
 
-  Future<Map<String, dynamic>> testQuality(int id) async {
+  Future<DiscoverySourceTestResult> testQuality(int id) async {
     final dio = ref.read(apiClientProvider);
     final response = await dio.post('/discovery/sources/$id/test');
-    final data = response.data;
-    if (data is Map) {
-      return Map<String, dynamic>.from(data);
-    }
-    return const <String, dynamic>{};
+    return DiscoverySourceTestResult.fromJson(
+      Map<String, dynamic>.from(response.data as Map),
+    );
   }
+}
+
+class DiscoverySourceTestResult {
+  const DiscoverySourceTestResult({
+    required this.runId,
+    required this.ok,
+    required this.status,
+    required this.sourceId,
+    required this.sourceName,
+    required this.sourceKind,
+    required this.elapsedMs,
+    this.itemCount,
+    this.sampleCount,
+    this.cursorAvailable,
+    this.error,
+  });
+
+  factory DiscoverySourceTestResult.fromJson(Map<String, dynamic> json) {
+    return DiscoverySourceTestResult(
+      runId: json['run_id'] as String,
+      ok: json['ok'] as bool,
+      status: json['status'] as String,
+      sourceId: (json['source_id'] as num).toInt(),
+      sourceName: json['source_name'] as String,
+      sourceKind: json['source_kind'] as String,
+      elapsedMs: (json['elapsed_ms'] as num).toDouble(),
+      itemCount: (json['item_count'] as num?)?.toInt(),
+      sampleCount: (json['sample_count'] as num?)?.toInt(),
+      cursorAvailable: json['cursor_available'] as bool?,
+      error: json['error'] as String?,
+    );
+  }
+
+  final String runId;
+  final bool ok;
+  final String status;
+  final int sourceId;
+  final String sourceName;
+  final String sourceKind;
+  final double elapsedMs;
+  final int? itemCount;
+  final int? sampleCount;
+  final bool? cursorAvailable;
+  final String? error;
 }

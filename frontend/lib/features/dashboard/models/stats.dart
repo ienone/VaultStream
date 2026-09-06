@@ -129,57 +129,173 @@ class BackgroundTaskDiagnostics {
 
 class BackgroundTaskRun {
   const BackgroundTaskRun({
-    required this.raw,
     required this.runId,
     required this.task,
     required this.status,
+    this.metadata = const {},
     this.startedAt,
     this.finishedAt,
     this.error,
     this.result,
+    required this.presentation,
   });
 
   factory BackgroundTaskRun.fromJson(Map<String, dynamic> json) {
     return BackgroundTaskRun(
-      raw: Map<String, dynamic>.from(json),
       runId: json['run_id']?.toString() ?? '',
       task: json['task']?.toString() ?? '',
       status: json['status']?.toString() ?? 'unknown',
+      metadata: json['metadata'] is Map
+          ? Map<String, dynamic>.from(json['metadata'] as Map)
+          : const {},
       startedAt: _parseDate(json['started_at']),
       finishedAt: _parseDate(json['finished_at']),
       error: json['error']?.toString(),
       result: json['result'] is Map
           ? Map<String, dynamic>.from(json['result'] as Map)
           : null,
+      presentation: TaskRunPresentation.fromJson(
+        Map<String, dynamic>.from(json['presentation'] as Map),
+      ),
     );
   }
 
-  final Map<String, dynamic> raw;
   final String runId;
   final String task;
   final String status;
+  final Map<String, dynamic> metadata;
   final DateTime? startedAt;
   final DateTime? finishedAt;
   final String? error;
   final Map<String, dynamic>? result;
+  final TaskRunPresentation presentation;
 
   String get shortRunId => runId.length > 8 ? runId.substring(0, 8) : runId;
+}
 
-  Map<String, dynamic> get metadata {
-    final data = Map<String, dynamic>.from(raw);
-    for (final key in [
-      'run_id',
-      'task',
-      'status',
-      'started_at',
-      'finished_at',
-      'error',
-      'result',
-    ]) {
-      data.remove(key);
-    }
-    return data;
+class TaskRunPresentation {
+  const TaskRunPresentation({
+    required this.kind,
+    required this.title,
+    required this.summary,
+    required this.entityLinks,
+    required this.allowedActions,
+    required this.resultSections,
+    this.errorCode,
+  });
+
+  factory TaskRunPresentation.fromJson(Map<String, dynamic> json) {
+    return TaskRunPresentation(
+      kind: json['kind']?.toString() ?? 'generic',
+      title: json['title']?.toString() ?? '后台任务',
+      summary: json['summary']?.toString() ?? '',
+      errorCode: json['error_code']?.toString(),
+      entityLinks: _mapList(json['entity_links'], TaskRunEntityLink.fromJson),
+      allowedActions: _mapList(
+        json['allowed_actions'],
+        TaskRunAllowedAction.fromJson,
+      ),
+      resultSections: _mapList(
+        json['result_sections'],
+        TaskRunResultSection.fromJson,
+      ),
+    );
   }
+
+  final String kind;
+  final String title;
+  final String summary;
+  final String? errorCode;
+  final List<TaskRunEntityLink> entityLinks;
+  final List<TaskRunAllowedAction> allowedActions;
+  final List<TaskRunResultSection> resultSections;
+}
+
+class TaskRunEntityLink {
+  const TaskRunEntityLink({
+    required this.kind,
+    required this.label,
+    required this.href,
+  });
+
+  factory TaskRunEntityLink.fromJson(Map<String, dynamic> json) {
+    return TaskRunEntityLink(
+      kind: json['kind']?.toString() ?? 'unknown',
+      label: json['label']?.toString() ?? '',
+      href: json['href']?.toString() ?? '',
+    );
+  }
+
+  final String kind;
+  final String label;
+  final String href;
+}
+
+class TaskRunAllowedAction {
+  const TaskRunAllowedAction({
+    required this.id,
+    required this.label,
+    required this.href,
+    required this.emphasis,
+  });
+
+  factory TaskRunAllowedAction.fromJson(Map<String, dynamic> json) {
+    return TaskRunAllowedAction(
+      id: json['id']?.toString() ?? '',
+      label: json['label']?.toString() ?? '',
+      href: json['href']?.toString() ?? '',
+      emphasis: json['emphasis']?.toString() ?? 'secondary',
+    );
+  }
+
+  final String id;
+  final String label;
+  final String href;
+  final String emphasis;
+
+  bool get isPrimary => emphasis == 'primary';
+}
+
+class TaskRunResultSection {
+  const TaskRunResultSection({required this.title, required this.items});
+
+  factory TaskRunResultSection.fromJson(Map<String, dynamic> json) {
+    return TaskRunResultSection(
+      title: json['title']?.toString() ?? '',
+      items: _mapList(json['items'], TaskRunResultItem.fromJson),
+    );
+  }
+
+  final String title;
+  final List<TaskRunResultItem> items;
+}
+
+class TaskRunResultItem {
+  const TaskRunResultItem({
+    required this.label,
+    required this.value,
+    required this.tone,
+  });
+
+  factory TaskRunResultItem.fromJson(Map<String, dynamic> json) {
+    return TaskRunResultItem(
+      label: json['label']?.toString() ?? '',
+      value: json['value']?.toString() ?? '-',
+      tone: json['tone']?.toString() ?? 'neutral',
+    );
+  }
+
+  final String label;
+  final String value;
+  final String tone;
+}
+
+List<T> _mapList<T>(Object? value, T Function(Map<String, dynamic>) parse) {
+  if (value is! List) return const [];
+  return value
+      .whereType<Map>()
+      .map((item) => parse(Map<String, dynamic>.from(item)))
+      .toList(growable: false);
 }
 
 DateTime? _parseDate(Object? value) {

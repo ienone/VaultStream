@@ -1,4 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
+import '../../../core/media/media_asset.dart';
 import '../../collection/models/content.dart';
 
 part 'discovery_models.freezed.dart';
@@ -16,6 +17,7 @@ abstract class DiscoveryItem with _$DiscoveryItem {
     @JsonKey(name: 'author_avatar_url') String? authorAvatarUrl,
     @JsonKey(name: 'author_url') String? authorUrl,
     String? summary,
+    @JsonKey(name: 'preview_text') String? previewText,
     @JsonKey(name: 'ai_score') double? aiScore,
     @JsonKey(name: 'ai_reason') String? aiReason,
     @JsonKey(name: 'ai_tags') List<String>? aiTags,
@@ -35,9 +37,13 @@ abstract class DiscoveryItem with _$DiscoveryItem {
     @JsonKey(name: 'share_count') @Default(0) int shareCount,
     @JsonKey(name: 'comment_count') @Default(0) int commentCount,
     @JsonKey(name: 'media_urls') @Default([]) List<String> mediaUrls,
+    @JsonKey(name: 'media_assets') @Default([]) List<MediaAsset> mediaAssets,
     @JsonKey(name: 'rich_payload') Map<String, dynamic>? richPayload,
     @JsonKey(name: 'extra_stats') @Default({}) Map<String, dynamic> extraStats,
     @JsonKey(name: 'context_data') Map<String, dynamic>? contextData,
+    @JsonKey(name: 'source_names') @Default([]) List<String> sourceNames,
+    @JsonKey(name: 'source_kinds') @Default([]) List<String> sourceKinds,
+    @JsonKey(name: 'source_count') @Default(0) int sourceCount,
   }) = _DiscoveryItem;
 
   factory DiscoveryItem.fromJson(Map<String, dynamic> json) =>
@@ -88,6 +94,7 @@ extension DiscoveryItemX on DiscoveryItem {
       coverColor: coverColor,
       publishedAt: publishedAt,
       mediaUrls: mediaUrls,
+      mediaAssets: mediaAssets,
       sourceTags: sourceTags,
       collectCount: collectCount,
       shareCount: shareCount,

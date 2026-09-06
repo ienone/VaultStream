@@ -1,224 +1,172 @@
 import 'dart:async';
-import 'dart:convert';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
+import 'package:go_router/go_router.dart';
 
-import '../../core/network/api_client.dart';
-import '../../core/providers/local_settings_provider.dart';
+import '../../core/layout/responsive_layout.dart';
+import '../../theme/design_tokens.dart';
 import 'models/agent_result.dart';
+import 'providers/agent_controller.dart';
+import 'providers/agent_draft_store.dart';
 
 class AgentPage extends ConsumerStatefulWidget {
-  const AgentPage({super.key});
+  const AgentPage({super.key, this.initialSessionId, this.initialPrompt});
+
+  final String? initialSessionId;
+  final String? initialPrompt;
 
   @override
   ConsumerState<AgentPage> createState() => _AgentPageState();
 }
 
 class _AgentPageState extends ConsumerState<AgentPage> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final TextEditingController _inputController = TextEditingController();
+  final FocusNode _inputFocus = FocusNode();
   final ScrollController _scrollController = ScrollController();
+  late final AgentDraftStore _draftStore;
+  Timer? _draftDebounce;
+  String? _draftSessionId;
+  String? _pendingInitialPrompt;
+  int _draftLoadRevision = 0;
+  bool _applyingDraft = false;
 
-  List<AgentSessionSummary> _sessions = const [];
-  final List<_TimelineItem> _timeline = [];
-  String? _sessionId;
-  String? _activeRunId;
-  String _assistantDraft = '';
-  bool _loading = true;
-  bool _streaming = false;
-  bool _stopRequested = false;
-  String? _error;
-  http.Client? _streamClient;
+  AgentController get _controller =>
+      ref.read(agentControllerProvider(widget.initialSessionId).notifier);
+  AgentViewState get _agentState =>
+      ref.read(agentControllerProvider(widget.initialSessionId));
+  List<AgentSessionSummary> get _sessions => _agentState.sessions;
+  List<AgentTimelineItem> get _timeline => _agentState.timeline;
+  Set<String> get _decidingConfirmationIds =>
+      _agentState.decidingConfirmationIds;
+  String? get _sessionId => _agentState.sessionId;
+  bool get _loading => _agentState.loading;
+  bool get _streaming => _agentState.streaming;
+  String? get _error => _agentState.error;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_bootstrap());
+    _draftStore = ref.read(agentDraftStoreProvider);
+    final initialPrompt = widget.initialPrompt?.trim();
+    _pendingInitialPrompt = initialPrompt == null || initialPrompt.isEmpty
+        ? null
+        : initialPrompt;
+    _inputController.text = _pendingInitialPrompt ?? '';
+    _inputController.addListener(_onDraftChanged);
   }
 
   @override
   void dispose() {
-    _streamClient?.close();
+    _draftLoadRevision += 1;
+    _draftDebounce?.cancel();
+    _inputController.removeListener(_onDraftChanged);
+    final sessionId = _draftSessionId;
+    if (sessionId != null) {
+      unawaited(_persistDraft(sessionId, _inputController.text));
+    }
     _inputController.dispose();
+    _inputFocus.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  Future<void> _bootstrap() async {
-    setState(() => _loading = true);
+  void _onDraftChanged() {
+    if (_applyingDraft || _draftSessionId == null) return;
+    _draftDebounce?.cancel();
+    final sessionId = _draftSessionId!;
+    final value = _inputController.text;
+    _draftDebounce = Timer(
+      const Duration(milliseconds: 250),
+      () => unawaited(_persistDraft(sessionId, value)),
+    );
+  }
+
+  Future<void> _persistDraft(String sessionId, String value) async {
     try {
-      await _loadSessions();
-      if (_sessions.isEmpty) {
-        await _createSession();
+      if (value.isEmpty) {
+        await _draftStore.remove(sessionId);
       } else {
-        await _selectSession(_sessions.first.id);
+        await _draftStore.write(sessionId, value);
       }
-    } finally {
-      if (mounted) setState(() => _loading = false);
+    } catch (_) {
+      // Draft persistence is best-effort and must not block the Agent workflow.
     }
   }
 
-  Future<void> _loadSessions() async {
-    final dio = ref.read(apiClientProvider);
-    final resp = await dio.get('/agent/sessions');
-    final data = resp.data as Map<String, dynamic>? ?? {};
-    final sessions = (data['sessions'] as List<dynamic>? ?? [])
-        .whereType<Map<String, dynamic>>()
-        .map(AgentSessionSummary.fromJson)
-        .toList();
-    if (mounted) setState(() => _sessions = sessions);
+  Future<void> _activateDraftSession(String? sessionId) async {
+    if (sessionId == null || sessionId == _draftSessionId) return;
+    _draftDebounce?.cancel();
+    final previousSessionId = _draftSessionId;
+    if (previousSessionId != null) {
+      unawaited(_persistDraft(previousSessionId, _inputController.text));
+    }
+
+    _draftSessionId = sessionId;
+    final revision = ++_draftLoadRevision;
+    final initialPrompt = _pendingInitialPrompt;
+    _pendingInitialPrompt = null;
+    if (initialPrompt != null) {
+      _setDraftText(initialPrompt);
+      await _persistDraft(sessionId, initialPrompt);
+      return;
+    }
+
+    final textBeforeLoad = _inputController.text;
+    String? storedDraft;
+    try {
+      storedDraft = await _draftStore.read(sessionId);
+    } catch (_) {
+      return;
+    }
+    if (!mounted ||
+        revision != _draftLoadRevision ||
+        sessionId != _draftSessionId ||
+        _inputController.text != textBeforeLoad) {
+      return;
+    }
+    _setDraftText(storedDraft ?? '');
+  }
+
+  void _setDraftText(String value) {
+    _applyingDraft = true;
+    _inputController.value = TextEditingValue(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
+    );
+    _applyingDraft = false;
+  }
+
+  Future<void> _removeCurrentDraft() async {
+    _draftDebounce?.cancel();
+    final sessionId = _draftSessionId;
+    if (sessionId != null) {
+      await _persistDraft(sessionId, '');
+    }
+    _setDraftText('');
+  }
+
+  Future<void> _bootstrap() async {
+    await _controller.bootstrap();
   }
 
   Future<void> _createSession() async {
-    final dio = ref.read(apiClientProvider);
-    final resp = await dio.post('/agent/sessions', data: {'title': '新会话'});
-    final session = AgentSessionSummary.fromJson(
-      resp.data as Map<String, dynamic>,
-    );
-    if (mounted) {
-      setState(() {
-        _sessions = [session, ..._sessions];
-        _sessionId = session.id;
-        _timeline.clear();
-      });
-    }
+    await _controller.createSession();
+    _scrollToBottom();
   }
 
   Future<void> _selectSession(String sessionId) async {
-    final dio = ref.read(apiClientProvider);
-    final resp = await dio.get('/agent/sessions/$sessionId/messages');
-    final data = resp.data as Map<String, dynamic>? ?? {};
-    final messages = (data['messages'] as List<dynamic>? ?? [])
-        .whereType<Map<String, dynamic>>()
-        .map(AgentMessageRecord.fromJson)
-        .map(_TimelineItem.fromMessage)
-        .toList();
-    if (mounted) {
-      setState(() {
-        _sessionId = sessionId;
-        _timeline
-          ..clear()
-          ..addAll(messages);
-        _assistantDraft = '';
-        _error = null;
-      });
-      _scrollToBottom();
-    }
-  }
-
-  Future<void> _sendPrompt([String? preset]) async {
-    if (_streaming) return;
-    final text = (preset ?? _inputController.text).trim();
-    if (text.isEmpty) return;
-    if (_sessionId == null) await _createSession();
-
-    _inputController.clear();
-    setState(() {
-      _streaming = true;
-      _stopRequested = false;
-      _error = null;
-      _assistantDraft = '';
-      _timeline.add(_TimelineItem.user(text));
-      _timeline.add(_TimelineItem.assistantDraft());
-    });
+    await _controller.selectSession(sessionId);
     _scrollToBottom();
-
-    final local = ref.read(localSettingsProvider);
-    final uri = Uri.parse(local.baseUrl).replace(
-      path: '${Uri.parse(local.baseUrl).path}/agent/sse',
-      queryParameters: {'message': text, 'session_id': ?_sessionId},
-    );
-
-    final client = http.Client();
-    _streamClient = client;
-    try {
-      final request = http.Request('GET', uri)
-        ..headers['X-API-Token'] = local.apiToken;
-      final response = await client.send(request);
-      if (response.statusCode >= 400) {
-        throw StateError('Agent stream failed: HTTP ${response.statusCode}');
-      }
-      await for (final line
-          in response.stream
-              .transform(utf8.decoder)
-              .transform(const LineSplitter())) {
-        if (!line.startsWith('data:')) continue;
-        final raw = line.substring(5).trim();
-        if (raw.isEmpty) continue;
-        final event = jsonDecode(raw);
-        if (event is Map<String, dynamic>) {
-          _applyEvent(event);
-        }
-      }
-    } catch (e) {
-      if (mounted && !_stopRequested) {
-        setState(() {
-          _error = 'Agent 流式请求失败: $e';
-          _replaceDraft(_TimelineItem.error(_error!));
-        });
-      }
-    } finally {
-      client.close();
-      if (identical(_streamClient, client)) _streamClient = null;
-      if (mounted) {
-        setState(() => _streaming = false);
-        _stopRequested = false;
-        unawaited(_loadSessions());
-        _scrollToBottom();
-      }
-    }
   }
 
-  void _applyEvent(Map<String, dynamic> event) {
-    if (!mounted) return;
-    setState(() {
-      final type = event['type']?.toString() ?? 'message';
-      switch (type) {
-        case 'start':
-          _sessionId = event['session_id']?.toString() ?? _sessionId;
-          _activeRunId = event['run_id']?.toString();
-          break;
-        case 'assistant_delta':
-          _assistantDraft += event['content']?.toString() ?? '';
-          _replaceDraft(_TimelineItem.assistant(_assistantDraft));
-          break;
-        case 'tool_call':
-          _timeline.add(_TimelineItem.toolCall(event));
-          break;
-        case 'tool_result':
-          _timeline.add(_TimelineItem.toolResult(event));
-          break;
-        case 'confirmation_required':
-          final raw = event['confirmation'];
-          if (raw is Map<String, dynamic>) {
-            _timeline.add(
-              _TimelineItem.confirmation(AgentConfirmation.fromJson(raw)),
-            );
-          }
-          break;
-        case 'context_summary':
-          _timeline.add(_TimelineItem.notice('已压缩较早上下文，保留可追踪摘要。'));
-          break;
-        case 'usage':
-          _timeline.add(
-            _TimelineItem.notice('用量: ${prettyJson(event['usage'])}'),
-          );
-          break;
-        case 'error':
-          _replaceDraft(_TimelineItem.error(_formatEventError(event)));
-          break;
-        case 'final':
-          final message = event['message']?.toString();
-          if (message != null && message.trim().isNotEmpty) {
-            _replaceDraft(_TimelineItem.assistant(message));
-          }
-          break;
-        default:
-          _timeline.add(_TimelineItem.notice(prettyJson(event)));
-      }
-    });
+  Future<void> _sendPrompt() async {
+    if (_streaming) return;
+    final text = _inputController.text.trim();
+    if (text.isEmpty) return;
+    await _removeCurrentDraft();
+    await _controller.sendPrompt(text);
     _scrollToBottom();
   }
 
@@ -226,79 +174,23 @@ class _AgentPageState extends ConsumerState<AgentPage> {
     AgentConfirmation confirmation,
     bool approved,
   ) async {
-    final dio = ref.read(apiClientProvider);
-    try {
-      final resp = await dio.post(
-        '/agent/confirmations/${confirmation.id}/decide',
-        data: {'approved': approved},
-      );
-      final result = AgentRunResponse.fromJson(
-        resp.data as Map<String, dynamic>,
-      );
-      for (final event in result.events) {
-        _applyEvent(event);
-      }
-      await _loadSessions();
-    } on DioException catch (e) {
-      setState(
-        () => _timeline.add(_TimelineItem.error(_formatAgentErrorMessage(e))),
-      );
-    }
+    await _controller.decideConfirmation(confirmation, approved);
+    _scrollToBottom();
   }
 
   Future<void> _redo() async {
-    if (_sessionId == null || _streaming) return;
-    final dio = ref.read(apiClientProvider);
-    try {
-      final resp = await dio.post('/agent/sessions/$_sessionId/redo');
-      final result = AgentRunResponse.fromJson(
-        resp.data as Map<String, dynamic>,
-      );
-      for (final event in result.events) {
-        _applyEvent(event);
-      }
-    } on DioException catch (e) {
-      setState(
-        () => _timeline.add(_TimelineItem.error(_formatAgentErrorMessage(e))),
-      );
-    }
+    await _controller.redo();
+    _scrollToBottom();
   }
 
   Future<void> _stop() async {
-    _stopRequested = true;
-    _streamClient?.close();
-    final runId = _activeRunId;
-    if (runId == null) {
-      if (mounted) setState(() => _streaming = false);
-      return;
-    }
-    final dio = ref.read(apiClientProvider);
-    await dio.post('/agent/runs/$runId/stop');
-    if (mounted) {
-      setState(() {
-        _streaming = false;
-        _timeline.add(_TimelineItem.notice('已请求停止当前 run。'));
-      });
-    }
+    await _controller.stop();
+    _scrollToBottom();
   }
 
   Future<void> _clearSession() async {
-    if (_sessionId == null) return;
-    final dio = ref.read(apiClientProvider);
-    await dio.post('/agent/sessions/$_sessionId/clear');
-    if (mounted) setState(_timeline.clear);
-  }
-
-  void _replaceDraft(_TimelineItem item) {
-    final index = _timeline.lastIndexWhere(
-      (it) => it.kind == _TimelineKind.assistantDraft,
-    );
-    if (index >= 0) {
-      _timeline[index] = item;
-    } else if (item.kind == _TimelineKind.assistant ||
-        item.kind == _TimelineKind.error) {
-      _timeline.add(item);
-    }
+    await _removeCurrentDraft();
+    await _controller.clearSession();
   }
 
   void _scrollToBottom() {
@@ -306,89 +198,194 @@ class _AgentPageState extends ConsumerState<AgentPage> {
       if (!_scrollController.hasClients) return;
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent + 120,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
+        duration: AppMotion.contentSwap,
+        curve: AppMotion.standardCurve,
       );
     });
   }
 
-  String _formatEventError(Map<String, dynamic> event) {
-    final code = event['error_code']?.toString() ?? 'agent_error';
-    final msg = event['message']?.toString() ?? 'Agent 执行失败';
-    final fix = event['suggested_fix']?.toString();
-    return fix == null || fix.isEmpty ? '$code: $msg' : '$code: $msg\n$fix';
+  @override
+  Widget build(BuildContext context) {
+    final provider = agentControllerProvider(widget.initialSessionId);
+    ref.listen(
+      provider.select((state) => state.timeline),
+      (_, _) => _scrollToBottom(),
+    );
+    ref.listen(
+      provider.select((state) => state.sessionId),
+      (_, sessionId) => unawaited(_activateDraftSession(sessionId)),
+    );
+    ref.watch(provider);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final metrics = WindowMetrics.fromSize(
+          Size(constraints.maxWidth, constraints.maxHeight),
+        );
+        final supportsSessionPane = metrics.supportsSupportingPane;
+        final supportsEvidencePane =
+            supportsSessionPane &&
+            metrics.widthClass.atLeast(WindowWidthClass.large) &&
+            _timeline.any(
+              (item) =>
+                  item.kind == AgentTimelineKind.toolCall ||
+                  item.kind == AgentTimelineKind.toolResult,
+            );
+        return Scaffold(
+          key: _scaffoldKey,
+          appBar: AppBar(
+            title: const Text('Agent 工作台'),
+            actions: [
+              if (!supportsSessionPane)
+                IconButton(
+                  tooltip: '选择 Agent 会话',
+                  onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
+                  icon: const Icon(Icons.forum_outlined),
+                ),
+              PopupMenuButton<String>(
+                tooltip: '会话操作',
+                onSelected: (action) {
+                  switch (action) {
+                    case 'redo':
+                      _redo();
+                    case 'refresh':
+                      _bootstrap();
+                    case 'clear':
+                      _clearSession();
+                  }
+                },
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: 'refresh',
+                    enabled: !_streaming,
+                    child: const Text('刷新会话'),
+                  ),
+                  PopupMenuItem(
+                    value: 'redo',
+                    enabled: !_streaming && _timeline.isNotEmpty,
+                    child: const Text('重做上一步'),
+                  ),
+                  PopupMenuItem(
+                    value: 'clear',
+                    enabled: !_streaming && _timeline.isNotEmpty,
+                    child: const Text('清空当前会话'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          endDrawer: supportsSessionPane
+              ? null
+              : Drawer(
+                  child: SafeArea(
+                    child: Column(
+                      children: [
+                        ListTile(
+                          title: const Text('Agent 会话'),
+                          trailing: IconButton(
+                            tooltip: '关闭会话列表',
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                        ),
+                        const Divider(height: 1),
+                        Expanded(
+                          child: _SessionPane(
+                            state: this,
+                            closeAfterSelection: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+          body: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _sessionId == null && _error != null
+              ? _AgentUnavailable(message: _error!, onRetry: _bootstrap)
+              : supportsSessionPane
+              ? Row(
+                  children: [
+                    SizedBox(
+                      width: AppPane.supportingWidth,
+                      child: _SessionPane(state: this),
+                    ),
+                    const VerticalDivider(width: 1),
+                    Expanded(
+                      child: _ConversationPane(
+                        state: this,
+                        showInlineCitations: !supportsEvidencePane,
+                      ),
+                    ),
+                    if (supportsEvidencePane) ...[
+                      const VerticalDivider(width: 1),
+                      SizedBox(
+                        width: AppPane.supportingWidth,
+                        child: _EvidenceRunPane(timeline: _timeline),
+                      ),
+                    ],
+                  ],
+                )
+              : _ConversationPane(state: this),
+        );
+      },
+    );
   }
+}
 
-  String _formatAgentErrorMessage(DioException error) {
-    final info = parseApiErrorInfo(error, fallbackMessage: 'Agent 请求失败，请稍后重试');
-    final message = switch (info.code) {
-      'agent_model_unavailable' => '模型配置不可用。请检查文本模型配置后重试。',
-      'agent_invalid_message' => '没有识别到可执行指令。请补充目标或关键词。',
-      'agent_tool_not_found' => '当前工具不可用。请刷新工具列表后重试。',
-      'agent_tool_invalid_args' => '参数不完整或格式不正确。请补充目标、关键词或群组信息。',
-      'agent_confirmation_not_found' => '确认请求已失效。请重新发起操作。',
-      'agent_tool_execution_failed' => '工具执行失败。请检查相关配置或稍后重试。',
-      'agent_execution_failed' => 'Agent 执行失败。请改成更具体的单步指令后重试。',
-      _ => formatApiErrorMessage(error, fallbackMessage: 'Agent 请求失败，请稍后重试'),
-    };
-    if (info.requestId == null || info.requestId!.isEmpty) return message;
-    final shortId = info.requestId!.length > 8
-        ? info.requestId!.substring(0, 8)
-        : info.requestId!;
-    return '$message | RID:$shortId';
-  }
+class _AgentUnavailable extends StatelessWidget {
+  const _AgentUnavailable({required this.message, required this.onRetry});
+
+  final String message;
+  final Future<void> Function() onRetry;
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    final wide = width >= 920;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Agent 工作台'),
-        actions: [
-          IconButton(
-            tooltip: '重做上一步',
-            onPressed: _streaming ? null : _redo,
-            icon: const Icon(Icons.replay_rounded),
+    final theme = Theme.of(context);
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.cloud_off_outlined,
+                size: 44,
+                color: theme.colorScheme.error,
+              ),
+              const SizedBox(height: 16),
+              Text('暂时无法打开 Agent 工作台', style: theme.textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('重试'),
+              ),
+            ],
           ),
-          IconButton(
-            tooltip: _streaming ? '停止' : '刷新',
-            onPressed: _streaming ? _stop : _bootstrap,
-            icon: Icon(_streaming ? Icons.stop_rounded : Icons.refresh_rounded),
-          ),
-          IconButton(
-            tooltip: '清空当前会话',
-            onPressed: _timeline.isEmpty ? null : _clearSession,
-            icon: const Icon(Icons.delete_outline_rounded),
-          ),
-        ],
+        ),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : wide
-          ? Row(
-              children: [
-                SizedBox(width: 300, child: _SessionPane(state: this)),
-                const VerticalDivider(width: 1),
-                Expanded(child: _ConversationPane(state: this)),
-              ],
-            )
-          : Column(
-              children: [
-                SizedBox(height: 92, child: _CompactSessionBar(state: this)),
-                const Divider(height: 1),
-                Expanded(child: _ConversationPane(state: this)),
-              ],
-            ),
     );
   }
 }
 
 class _ConversationPane extends StatelessWidget {
-  const _ConversationPane({required this.state});
+  const _ConversationPane({
+    required this.state,
+    this.showInlineCitations = true,
+  });
 
   final _AgentPageState state;
+  final bool showInlineCitations;
 
   @override
   Widget build(BuildContext context) {
@@ -396,51 +393,108 @@ class _ConversationPane extends StatelessWidget {
       children: [
         Expanded(
           child: state._timeline.isEmpty
-              ? _EmptyWorkbench(onPrompt: state._sendPrompt)
+              ? const SizedBox.expand()
               : ListView.builder(
                   controller: state._scrollController,
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(AppSpacing.md),
                   itemCount: state._timeline.length,
-                  itemBuilder: (context, index) => _TimelineTile(
-                    item: state._timeline[index],
-                    onDecide: state._decideConfirmation,
+                  itemBuilder: (context, index) => Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: AppPane.readableMaxWidth,
+                      ),
+                      child: _TimelineTile(
+                        item: state._timeline[index],
+                        showInlineCitations: showInlineCitations,
+                        onDecide: state._decideConfirmation,
+                        confirmationPending: state._decidingConfirmationIds
+                            .contains(state._timeline[index].confirmation?.id),
+                      ),
+                    ),
                   ),
                 ),
         ),
         if (state._error != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: _InlineError(message: state._error!),
+          Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: AppPane.readableMaxWidth,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md,
+                  0,
+                  AppSpacing.md,
+                  AppSpacing.xs,
+                ),
+                child: _InlineError(message: state._error!),
+              ),
+            ),
           ),
         SafeArea(
           top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: state._inputController,
-                    minLines: 1,
-                    maxLines: 5,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => state._sendPrompt(),
-                    decoration: const InputDecoration(
-                      hintText: '询问内容库、创建规则、同步收藏或批量推送',
-                      border: OutlineInputBorder(),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: AppPane.readableMaxWidth,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md,
+                  AppSpacing.xs,
+                  AppSpacing.md,
+                  AppSpacing.md,
+                ),
+                child: Material(
+                  color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                  borderRadius: AppShape.paneBorder,
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.xs),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: state._inputController,
+                            focusNode: state._inputFocus,
+                            minLines: 1,
+                            maxLines: WindowMetrics.of(context).isShortLandscape
+                                ? 2
+                                : 5,
+                            textInputAction: TextInputAction.newline,
+                            decoration: const InputDecoration(
+                              hintText: '输入问题或指令',
+                              filled: false,
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                            ),
+                          ),
+                        ),
+                        ValueListenableBuilder<TextEditingValue>(
+                          valueListenable: state._inputController,
+                          builder: (context, value, _) => IconButton.filled(
+                            tooltip: state._streaming ? '停止' : '发送',
+                            onPressed: state._streaming
+                                ? state._stop
+                                : value.text.trim().isEmpty
+                                ? null
+                                : state._sendPrompt,
+                            icon: Icon(
+                              state._streaming
+                                  ? Icons.stop_rounded
+                                  : Icons.arrow_upward_rounded,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                FilledButton.icon(
-                  onPressed: state._streaming ? state._stop : state._sendPrompt,
-                  icon: Icon(
-                    state._streaming ? Icons.stop_rounded : Icons.send_rounded,
-                  ),
-                  label: Text(state._streaming ? '停止' : '发送'),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -450,9 +504,24 @@ class _ConversationPane extends StatelessWidget {
 }
 
 class _SessionPane extends StatelessWidget {
-  const _SessionPane({required this.state});
+  const _SessionPane({required this.state, this.closeAfterSelection = false});
 
   final _AgentPageState state;
+  final bool closeAfterSelection;
+
+  Future<void> _createSession(BuildContext context) async {
+    await state._createSession();
+    if (closeAfterSelection && context.mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _selectSession(BuildContext context, String sessionId) async {
+    await state._selectSession(sessionId);
+    if (closeAfterSelection && context.mounted) {
+      Navigator.of(context).pop();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -461,7 +530,7 @@ class _SessionPane extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.all(12),
           child: FilledButton.icon(
-            onPressed: state._createSession,
+            onPressed: state._streaming ? null : () => _createSession(context),
             icon: const Icon(Icons.add_rounded),
             label: const Text('新会话'),
           ),
@@ -474,43 +543,14 @@ class _SessionPane extends StatelessWidget {
               return _SessionTile(
                 session: session,
                 selected: session.id == state._sessionId,
-                onTap: () => state._selectSession(session.id),
+                onTap: state._streaming
+                    ? null
+                    : () => _selectSession(context, session.id),
               );
             },
           ),
         ),
       ],
-    );
-  }
-}
-
-class _CompactSessionBar extends StatelessWidget {
-  const _CompactSessionBar({required this.state});
-
-  final _AgentPageState state;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      scrollDirection: Axis.horizontal,
-      itemCount: state._sessions.length + 1,
-      separatorBuilder: (_, _) => const SizedBox(width: 8),
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return ActionChip(
-            avatar: const Icon(Icons.add_rounded),
-            label: const Text('新会话'),
-            onPressed: state._createSession,
-          );
-        }
-        final session = state._sessions[index - 1];
-        return ChoiceChip(
-          selected: session.id == state._sessionId,
-          label: Text(session.title, overflow: TextOverflow.ellipsis),
-          onSelected: (_) => state._selectSession(session.id),
-        );
-      },
     );
   }
 }
@@ -524,7 +564,7 @@ class _SessionTile extends StatelessWidget {
 
   final AgentSessionSummary session;
   final bool selected;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -537,12 +577,9 @@ class _SessionTile extends StatelessWidget {
             : Icons.forum_outlined,
       ),
       title: Text(session.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(
-        session.pendingConfirmations > 0
-            ? '${session.pendingConfirmations} 个待确认'
-            : session.status,
-        maxLines: 1,
-      ),
+      subtitle: session.pendingConfirmations > 0
+          ? Text('${session.pendingConfirmations} 个待确认')
+          : null,
       selectedTileColor: theme.colorScheme.secondaryContainer.withValues(
         alpha: 0.5,
       ),
@@ -551,192 +588,375 @@ class _SessionTile extends StatelessWidget {
   }
 }
 
-class _EmptyWorkbench extends StatelessWidget {
-  const _EmptyWorkbench({required this.onPrompt});
-
-  final Future<void> Function(String prompt) onPrompt;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.hub_outlined,
-                size: 42,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                alignment: WrapAlignment.center,
-                children: [
-                  ActionChip(
-                    avatar: const Icon(Icons.search_rounded),
-                    label: const Text('检索最近的 AI Agent 内容'),
-                    onPressed: () =>
-                        onPrompt('检索内容库中关于 AI Agent 安全风险的资料，并引用来源'),
-                  ),
-                  ActionChip(
-                    avatar: const Icon(Icons.groups_rounded),
-                    label: const Text('列出推送群组'),
-                    onPressed: () => onPrompt('列出当前可用推送群组'),
-                  ),
-                  ActionChip(
-                    avatar: const Icon(Icons.rule_rounded),
-                    label: const Text('创建规则'),
-                    onPressed: () => onPrompt('为 #AI 标签创建一条需要审批的自动推送规则'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _TimelineTile extends StatelessWidget {
-  const _TimelineTile({required this.item, required this.onDecide});
+  const _TimelineTile({
+    required this.item,
+    required this.showInlineCitations,
+    required this.onDecide,
+    required this.confirmationPending,
+  });
 
-  final _TimelineItem item;
+  final AgentTimelineItem item;
+  final bool showInlineCitations;
   final Future<void> Function(AgentConfirmation confirmation, bool approved)
   onDecide;
+  final bool confirmationPending;
 
   @override
   Widget build(BuildContext context) {
     return switch (item.kind) {
-      _TimelineKind.user => _Bubble(
-        icon: Icons.person_outline_rounded,
+      AgentTimelineKind.user => _Bubble(
         alignRight: true,
         child: SelectableText(item.text),
       ),
-      _TimelineKind.assistant || _TimelineKind.assistantDraft => _Bubble(
-        icon: Icons.smart_toy_outlined,
-        child: item.kind == _TimelineKind.assistantDraft
+      AgentTimelineKind.assistant ||
+      AgentTimelineKind.assistantDraft => _Bubble(
+        child: item.kind == AgentTimelineKind.assistantDraft
             ? const LinearProgressIndicator(minHeight: 3)
             : SelectableText(item.text),
       ),
-      _TimelineKind.toolCall => _ToolEvent(event: item.event!, running: true),
-      _TimelineKind.toolResult => _ToolEvent(
+      AgentTimelineKind.toolCall => _ToolEvent(
+        event: item.event!,
+        running: true,
+        showCitations: showInlineCitations,
+      ),
+      AgentTimelineKind.toolResult => _ToolEvent(
         event: item.event!,
         running: false,
+        showCitations: showInlineCitations,
       ),
-      _TimelineKind.confirmation => _ConfirmationTile(
+      AgentTimelineKind.confirmation => _ConfirmationTile(
         confirmation: item.confirmation!,
         onDecide: onDecide,
+        pending: confirmationPending,
       ),
-      _TimelineKind.notice => _Notice(text: item.text),
-      _TimelineKind.error => _InlineError(message: item.text),
+      AgentTimelineKind.notice => _Notice(
+        text: item.text,
+        details: item.details,
+      ),
+      AgentTimelineKind.error => _InlineError(message: item.text),
     };
   }
 }
 
 class _Bubble extends StatelessWidget {
-  const _Bubble({
-    required this.child,
-    required this.icon,
-    this.alignRight = false,
-  });
+  const _Bubble({required this.child, this.alignRight = false});
 
   final Widget child;
-  final IconData icon;
   final bool alignRight;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = alignRight
-        ? theme.colorScheme.primaryContainer
-        : theme.colorScheme.surfaceContainerHighest;
     return Align(
       alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 820),
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 18),
-            const SizedBox(width: 10),
-            Flexible(child: child),
-          ],
-        ),
+        constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
+        margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+        padding: const EdgeInsets.all(AppSpacing.sm),
+        decoration: alignRight
+            ? BoxDecoration(
+                color: theme.colorScheme.primaryContainer,
+                borderRadius: AppShape.cardBorder,
+              )
+            : null,
+        child: child,
       ),
     );
   }
 }
 
-class _ToolEvent extends StatelessWidget {
-  const _ToolEvent({required this.event, required this.running});
+class _ToolEvent extends StatefulWidget {
+  const _ToolEvent({
+    required this.event,
+    required this.running,
+    required this.showCitations,
+  });
+
+  final Map<String, dynamic> event;
+  final bool running;
+  final bool showCitations;
+
+  @override
+  State<_ToolEvent> createState() => _ToolEventState();
+}
+
+class _ToolEventState extends State<_ToolEvent> {
+  late bool _expanded;
+
+  bool get _failed =>
+      !widget.running &&
+      (widget.event['ok'] == false || widget.event['error'] != null);
+
+  Object? get _details {
+    if (widget.running) return widget.event['args'];
+    return {
+      if (widget.event['args'] != null) 'args': widget.event['args'],
+      if (widget.event['error'] != null) 'error': widget.event['error'],
+      if (widget.event['result'] != null) 'result': widget.event['result'],
+    };
+  }
+
+  bool get _hasDetails {
+    final details = _details;
+    if (details == null) return false;
+    if (details is String) return details.isNotEmpty;
+    if (details is Iterable) return details.isNotEmpty;
+    if (details is Map) return details.isNotEmpty;
+    return true;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = _failed;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ToolEvent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_failed && !_expanded) _expanded = true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final citations = citationsFromToolResult(widget.event);
+    final actionSummary = actionSummaryFromToolResult(widget.event);
+    final statusLabel = widget.running
+        ? '调用中'
+        : _failed
+        ? '失败'
+        : '已完成';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: AppShape.cardBorder,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            borderRadius: AppShape.cardBorder,
+            onTap: _hasDetails
+                ? () => setState(() => _expanded = !_expanded)
+                : null,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Icon(
+                    widget.running
+                        ? Icons.build_circle_outlined
+                        : _failed
+                        ? Icons.error_outline_rounded
+                        : Icons.check_circle_outline_rounded,
+                    color: _failed ? theme.colorScheme.error : null,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${widget.event['tool'] ?? 'tool'} $statusLabel',
+                      style: theme.textTheme.titleSmall,
+                    ),
+                  ),
+                  if (_hasDetails)
+                    Icon(
+                      _expanded
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                    ),
+                ],
+              ),
+            ),
+          ),
+          if (actionSummary != null ||
+              (widget.showCitations && citations.isNotEmpty))
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (actionSummary != null)
+                    Text(actionSummary, style: theme.textTheme.bodyMedium),
+                  if (widget.showCitations && citations.isNotEmpty) ...[
+                    if (actionSummary != null) const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: citations
+                          .take(5)
+                          .map((c) => _CitationChip(citation: c))
+                          .toList(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          AnimatedSize(
+            duration: AppMotion.stateChange,
+            curve: AppMotion.standardCurve,
+            child: !_expanded || !_hasDetails
+                ? const SizedBox.shrink()
+                : Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      12,
+                      actionSummary == null &&
+                              (!widget.showCitations || citations.isEmpty)
+                          ? 0
+                          : 4,
+                      12,
+                      12,
+                    ),
+                    child: SelectableText(
+                      prettyJson(_details),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EvidenceRunPane extends StatelessWidget {
+  const _EvidenceRunPane({required this.timeline});
+
+  final List<AgentTimelineItem> timeline;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final toolItems = timeline
+        .where(
+          (item) =>
+              item.kind == AgentTimelineKind.toolCall ||
+              item.kind == AgentTimelineKind.toolResult,
+        )
+        .toList(growable: false);
+    final citations = <AgentCitation>[];
+    final citationKeys = <String>{};
+    for (final item in toolItems) {
+      for (final citation in citationsFromToolResult(item.event!)) {
+        final key = '${citation.kind}:${citation.appRoute}:${citation.title}';
+        if (citationKeys.add(key)) citations.add(citation);
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('证据与运行', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 4),
+              Text(
+                '${citations.length} 条引用 · ${toolItems.length} 次工具调用',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              if (citations.isNotEmpty) ...[
+                Text('引用', style: theme.textTheme.labelLarge),
+                const SizedBox(height: 8),
+                for (final citation in citations)
+                  _EvidenceListTile(citation: citation),
+                const SizedBox(height: 16),
+              ],
+              Text('工具过程', style: theme.textTheme.labelLarge),
+              const SizedBox(height: 8),
+              for (final item in toolItems)
+                _RunListTile(
+                  event: item.event!,
+                  running: item.kind == AgentTimelineKind.toolCall,
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EvidenceListTile extends StatelessWidget {
+  const _EvidenceListTile({required this.citation});
+
+  final AgentCitation citation;
+
+  @override
+  Widget build(BuildContext context) {
+    final route = citation.appRoute;
+    final icon = switch (citation.kind) {
+      AgentCitationKind.content => Icons.article_outlined,
+      AgentCitationKind.event => Icons.timeline_outlined,
+      AgentCitationKind.timepoint => Icons.play_circle_outline_rounded,
+    };
+    final detail = citation.sourceText?.trim().isNotEmpty == true
+        ? citation.sourceText!
+        : citation.contentTitle ?? citation.matchSource;
+    return Card.filled(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Icon(icon),
+        title: Text(
+          citation.displayLabel,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: detail.isEmpty
+            ? null
+            : Text(detail, maxLines: 2, overflow: TextOverflow.ellipsis),
+        onTap: route == null ? null : () => context.push(route),
+      ),
+    );
+  }
+}
+
+class _RunListTile extends StatelessWidget {
+  const _RunListTile({required this.event, required this.running});
 
   final Map<String, dynamic> event;
   final bool running;
 
   @override
   Widget build(BuildContext context) {
+    final failed = !running && (event['ok'] == false || event['error'] != null);
     final theme = Theme.of(context);
-    final citations = citationsFromToolResult(event);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(8),
+    final summary = actionSummaryFromToolResult(event);
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(
+        running
+            ? Icons.pending_outlined
+            : failed
+            ? Icons.error_outline_rounded
+            : Icons.check_circle_outline_rounded,
+        color: failed ? theme.colorScheme.error : null,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                running
-                    ? Icons.build_circle_outlined
-                    : Icons.check_circle_outline_rounded,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '${event['tool'] ?? 'tool'} ${running ? '调用中' : '结果'}',
-                  style: theme.textTheme.titleSmall,
-                ),
-              ),
-            ],
-          ),
-          if (citations.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: citations
-                  .take(5)
-                  .map((c) => _CitationChip(citation: c))
-                  .toList(),
-            ),
-          ] else ...[
-            const SizedBox(height: 8),
-            SelectableText(
-              prettyJson(
-                running ? event['args'] : event['result'] ?? event['error'],
-              ),
-              style: theme.textTheme.bodySmall,
-            ),
-          ],
-        ],
+      title: Text(event['tool']?.toString() ?? 'tool'),
+      subtitle: Text(
+        summary ??
+            (running
+                ? '调用中'
+                : failed
+                ? '执行失败'
+                : '执行完成'),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }
@@ -749,28 +969,43 @@ class _CitationChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final route = citation.appRoute;
+    final icon = switch (citation.kind) {
+      AgentCitationKind.content => Icons.article_outlined,
+      AgentCitationKind.event => Icons.timeline_outlined,
+      AgentCitationKind.timepoint => Icons.play_circle_outline_rounded,
+    };
+    final contextLabel = citation.contentTitle;
+    final tooltipLines = [
+      if (citation.matchSource.isNotEmpty) citation.matchSource,
+      if (contextLabel != null && contextLabel.isNotEmpty) contextLabel,
+      if (citation.chunkTitle != null && citation.chunkTitle!.isNotEmpty)
+        citation.chunkTitle!,
+      citation.sourceText ?? citation.url,
+    ].where((line) => line.isNotEmpty).toList(growable: false);
     return InputChip(
-      avatar: const Icon(Icons.article_outlined, size: 18),
+      avatar: Icon(icon, size: 18),
       label: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 260),
-        child: Text(
-          '#${citation.contentId} ${citation.title}',
-          overflow: TextOverflow.ellipsis,
-        ),
+        child: Text(citation.displayLabel, overflow: TextOverflow.ellipsis),
       ),
-      tooltip:
-          '${citation.matchSource} ${citation.chunkTitle ?? ''}\n${citation.sourceText ?? citation.url}',
-      onPressed: () {},
+      tooltip: tooltipLines.join('\n'),
+      onPressed: route == null ? null : () => context.push(route),
     );
   }
 }
 
 class _ConfirmationTile extends StatelessWidget {
-  const _ConfirmationTile({required this.confirmation, required this.onDecide});
+  const _ConfirmationTile({
+    required this.confirmation,
+    required this.onDecide,
+    required this.pending,
+  });
 
   final AgentConfirmation confirmation;
   final Future<void> Function(AgentConfirmation confirmation, bool approved)
   onDecide;
+  final bool pending;
 
   @override
   Widget build(BuildContext context) {
@@ -779,42 +1014,53 @@ class _ConfirmationTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(8),
+        color: theme.colorScheme.tertiaryContainer,
+        borderRadius: AppShape.paneBorder,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.verified_user_outlined),
+              Icon(
+                Icons.verified_user_outlined,
+                color: theme.colorScheme.onTertiaryContainer,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   '${confirmation.toolName} 需要确认',
-                  style: theme.textTheme.titleSmall,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.onTertiaryContainer,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          SelectableText(confirmation.summary),
-          const SizedBox(height: 8),
           SelectableText(
-            prettyJson(confirmation.args),
-            style: theme.textTheme.bodySmall,
+            confirmation.summary,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onTertiaryContainer,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ExpansionTile(
+            title: const Text('操作参数'),
+            tilePadding: EdgeInsets.zero,
+            children: [SelectableText(prettyJson(confirmation.args))],
           ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             children: [
               FilledButton.icon(
-                onPressed: () => onDecide(confirmation, true),
+                onPressed: pending ? null : () => onDecide(confirmation, true),
                 icon: const Icon(Icons.check_rounded),
-                label: const Text('确认'),
+                label: Text(pending ? '处理中' : '确认'),
               ),
               OutlinedButton.icon(
-                onPressed: () => onDecide(confirmation, false),
+                onPressed: pending ? null : () => onDecide(confirmation, false),
                 icon: const Icon(Icons.close_rounded),
                 label: const Text('拒绝'),
               ),
@@ -827,13 +1073,21 @@ class _ConfirmationTile extends StatelessWidget {
 }
 
 class _Notice extends StatelessWidget {
-  const _Notice({required this.text});
+  const _Notice({required this.text, this.details});
 
   final String text;
+  final String? details;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    if (details != null) {
+      return ExpansionTile(
+        title: Text(text),
+        tilePadding: EdgeInsets.zero,
+        children: [SelectableText(details!)],
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Text(
@@ -860,7 +1114,7 @@ class _InlineError extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: theme.colorScheme.errorContainer,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: AppShape.cardBorder,
       ),
       child: SelectableText(
         message,
@@ -870,65 +1124,4 @@ class _InlineError extends StatelessWidget {
       ),
     );
   }
-}
-
-enum _TimelineKind {
-  user,
-  assistant,
-  assistantDraft,
-  toolCall,
-  toolResult,
-  confirmation,
-  notice,
-  error,
-}
-
-class _TimelineItem {
-  const _TimelineItem({
-    required this.kind,
-    this.text = '',
-    this.event,
-    this.confirmation,
-  });
-
-  factory _TimelineItem.fromMessage(AgentMessageRecord message) {
-    return switch (message.role) {
-      'user' => _TimelineItem.user(message.content),
-      'tool' => _TimelineItem.notice(message.content),
-      'assistant' => _TimelineItem.assistant(message.content),
-      _ => _TimelineItem.notice(message.content),
-    };
-  }
-
-  factory _TimelineItem.user(String text) =>
-      _TimelineItem(kind: _TimelineKind.user, text: text);
-
-  factory _TimelineItem.assistant(String text) =>
-      _TimelineItem(kind: _TimelineKind.assistant, text: text);
-
-  factory _TimelineItem.assistantDraft() =>
-      const _TimelineItem(kind: _TimelineKind.assistantDraft);
-
-  factory _TimelineItem.toolCall(Map<String, dynamic> event) =>
-      _TimelineItem(kind: _TimelineKind.toolCall, event: event);
-
-  factory _TimelineItem.toolResult(Map<String, dynamic> event) =>
-      _TimelineItem(kind: _TimelineKind.toolResult, event: event);
-
-  factory _TimelineItem.confirmation(AgentConfirmation confirmation) =>
-      _TimelineItem(
-        kind: _TimelineKind.confirmation,
-        confirmation: confirmation,
-      );
-
-  factory _TimelineItem.notice(String text) =>
-      _TimelineItem(kind: _TimelineKind.notice, text: text);
-
-  factory _TimelineItem.error(String text) =>
-      _TimelineItem(kind: _TimelineKind.error, text: text);
-
-  final _TimelineKind kind;
-  final String text;
-  final Map<String, dynamic>? event;
-  final AgentConfirmation? confirmation;
 }
