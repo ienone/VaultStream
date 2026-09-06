@@ -1,16 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:go_router/go_router.dart';
+
 import '../core/layout/responsive_layout.dart';
-import '../features/collection/providers/collection_filter_provider.dart';
 import '../features/share_receiver/share_receiver_service.dart';
-import '../features/share_receiver/share_submit_sheet.dart';
+import '../features/player/global_player_widgets.dart';
+import '../features/collection/models/capture_draft.dart';
+import '../features/collection/widgets/dialogs/add_content_dialog.dart';
 import '../core/utils/toast.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   final StatefulNavigationShell navigationShell;
+  final String currentLocation;
 
-  const AppShell({required this.navigationShell, super.key});
+  const AppShell({
+    required this.navigationShell,
+    required this.currentLocation,
+    super.key,
+  });
 
   @override
   ConsumerState<AppShell> createState() => _AppShellState();
@@ -19,18 +27,8 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   bool _isShowingSheet = false;
 
-  @override
-  void initState() {
-    super.initState();
-    // 分享监听已在 VaultStreamApp 中初始化
-  }
-
   void _onDestinationSelected(int index) {
     final currentIndex = widget.navigationShell.currentIndex;
-    if (currentIndex == 1 || index == 1) {
-      ref.read(collectionFilterProvider.notifier).clearFilters();
-    }
-
     widget.navigationShell.goBranch(
       index,
       initialLocation: index == currentIndex,
@@ -42,14 +40,36 @@ class _AppShellState extends ConsumerState<AppShell> {
     setState(() => _isShowingSheet = true);
 
     try {
-      await ShareSubmitSheet.show(
+      final sharedText = (content.text ?? '').trim();
+      final sharedUrl = content.extractedUrl;
+      final files = content.mediaFiles
+          .map((file) => XFile(file.path, mimeType: file.mimeType))
+          .toList(growable: false);
+      final result = await AddContentDialog.show(
         context,
-        content,
-        onSubmitted: () {
-          Toast.show(context, '已保存到收藏库');
-        },
+        draft: CaptureDraft(
+          url: sharedUrl,
+          text: sharedText,
+          files: files,
+          note:
+              files.isNotEmpty || (sharedUrl != null && sharedText != sharedUrl)
+              ? sharedText
+              : null,
+          source: 'system_share',
+          receivedAt: content.receivedAt,
+        ),
       );
+      if (result != null && mounted) {
+        Toast.show(
+          context,
+          result.message,
+          icon: result.needsAttention
+              ? Icons.warning_amber_rounded
+              : Icons.check_circle_outline_rounded,
+        );
+      }
     } finally {
+      ref.read(shareReceiverServiceProvider).clearSharedContent();
       if (mounted) {
         setState(() => _isShowingSheet = false);
       }
@@ -65,253 +85,101 @@ class _AppShellState extends ConsumerState<AppShell> {
       }
     });
 
+    final isAutomationDetail =
+        widget.navigationShell.currentIndex == 2 &&
+        widget.currentLocation != '/automation';
+    final automationBackLocation =
+        widget.currentLocation.startsWith('/automation/distribution/rules/')
+        ? '/automation/distribution'
+        : '/automation';
+
     return PopScope(
       canPop: widget.navigationShell.currentIndex == 0,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && widget.navigationShell.currentIndex != 0) {
+        if (didPop) return;
+        if (isAutomationDetail) {
+          context.go(automationBackLocation);
+        } else if (widget.navigationShell.currentIndex != 0) {
           widget.navigationShell.goBranch(0);
         }
       },
       child: LayoutBuilder(
         builder: (context, constraints) {
-          if (constraints.maxWidth < ResponsiveLayout.mobileBreakpoint) {
-            return _MobileShell(
-              navigationShell: widget.navigationShell,
-              onDestinationSelected: _onDestinationSelected,
-            );
-          } else {
-            return _DesktopShell(
-              navigationShell: widget.navigationShell,
-              onDestinationSelected: _onDestinationSelected,
-            );
-          }
+          final metrics = WindowMetrics.fromSize(constraints.biggest);
+          final useRail = metrics.widthClass.atLeast(WindowWidthClass.medium);
+          return Scaffold(
+            body: Row(
+              children: [
+                if (useRail)
+                  NavigationRail(
+                    scrollable: true,
+                    minWidth: 80,
+                    selectedIndex: widget.navigationShell.currentIndex,
+                    onDestinationSelected: _onDestinationSelected,
+                    labelType: metrics.heightClass.isCompact
+                        ? NavigationRailLabelType.none
+                        : NavigationRailLabelType.all,
+                    destinations: const [
+                      NavigationRailDestination(
+                        icon: Icon(Icons.dynamic_feed_outlined),
+                        selectedIcon: Icon(Icons.dynamic_feed_rounded),
+                        label: Text('动态'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.perm_media_outlined),
+                        selectedIcon: Icon(Icons.perm_media_rounded),
+                        label: Text('收藏库'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.account_tree_outlined),
+                        selectedIcon: Icon(Icons.account_tree_rounded),
+                        label: Text('自动化'),
+                      ),
+                    ],
+                  ),
+                Expanded(
+                  key: const ValueKey('root-content'),
+                  child: SafeArea(
+                    top: false,
+                    bottom: useRail,
+                    left: !useRail,
+                    child: Column(
+                      children: [
+                        Expanded(child: widget.navigationShell),
+                        const GlobalMiniPlayer(),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            bottomNavigationBar:
+                useRail || MediaQuery.viewInsetsOf(context).bottom > 0
+                ? null
+                : NavigationBar(
+                    selectedIndex: widget.navigationShell.currentIndex,
+                    onDestinationSelected: _onDestinationSelected,
+                    destinations: const [
+                      NavigationDestination(
+                        icon: Icon(Icons.dynamic_feed_outlined),
+                        selectedIcon: Icon(Icons.dynamic_feed_rounded),
+                        label: '动态',
+                      ),
+                      NavigationDestination(
+                        icon: Icon(Icons.perm_media_outlined),
+                        selectedIcon: Icon(Icons.perm_media_rounded),
+                        label: '收藏库',
+                      ),
+                      NavigationDestination(
+                        icon: Icon(Icons.account_tree_outlined),
+                        selectedIcon: Icon(Icons.account_tree_rounded),
+                        label: '自动化',
+                      ),
+                    ],
+                  ),
+          );
         },
       ),
     );
   }
-}
-
-class _MobileShell extends StatelessWidget {
-  final StatefulNavigationShell navigationShell;
-  final ValueChanged<int> onDestinationSelected;
-
-  const _MobileShell({
-    required this.navigationShell,
-    required this.onDestinationSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: navigationShell,
-      bottomNavigationBar: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: NavigationBar(
-              selectedIndex: navigationShell.currentIndex,
-              onDestinationSelected: onDestinationSelected,
-              destinations: const [
-                NavigationDestination(
-                  icon: Icon(Icons.dynamic_feed_outlined),
-                  selectedIcon: Icon(Icons.dynamic_feed_rounded),
-                  label: '动态',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.perm_media_outlined),
-                  selectedIcon: Icon(Icons.perm_media_rounded),
-                  label: '收藏库',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.account_tree_outlined),
-                  selectedIcon: Icon(Icons.account_tree_rounded),
-                  label: '自动化',
-                ),
-              ],
-            ),
-          ),
-          const _MobileToolMenu(),
-        ],
-      ),
-    );
-  }
-}
-
-class _DesktopShell extends StatelessWidget {
-  final StatefulNavigationShell navigationShell;
-  final ValueChanged<int> onDestinationSelected;
-
-  const _DesktopShell({
-    required this.navigationShell,
-    required this.onDestinationSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final extended =
-        MediaQuery.of(context).size.width >= ResponsiveLayout.desktopBreakpoint;
-
-    return Scaffold(
-      body: Row(
-        children: [
-          NavigationRail(
-            selectedIndex: navigationShell.currentIndex,
-            onDestinationSelected: onDestinationSelected,
-            extended: extended,
-            minWidth: 80,
-            minExtendedWidth: 200,
-            destinations: const [
-              NavigationRailDestination(
-                icon: Icon(Icons.dynamic_feed_outlined),
-                selectedIcon: Icon(Icons.dynamic_feed_rounded),
-                label: Text('动态'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.perm_media_outlined),
-                selectedIcon: Icon(Icons.perm_media_rounded),
-                label: Text('收藏库'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.account_tree_outlined),
-                selectedIcon: Icon(Icons.account_tree_rounded),
-                label: Text('自动化'),
-              ),
-            ],
-            trailing: const Expanded(child: _DesktopToolRail()),
-          ),
-          VerticalDivider(
-            thickness: 1,
-            width: 1,
-            color: Theme.of(
-              context,
-            ).colorScheme.outlineVariant.withValues(alpha: 0.2),
-          ),
-          Expanded(child: navigationShell),
-        ],
-      ),
-    );
-  }
-}
-
-enum _GlobalTool { notifications, settings }
-
-class _DesktopToolRail extends StatelessWidget {
-  const _DesktopToolRail();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          Tooltip(
-            message: '通知中心',
-            child: IconButton(
-              onPressed: () => _showNotificationCenterPlaceholder(context),
-              icon: const Icon(Icons.notifications_none_rounded),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Tooltip(
-            message: '设置',
-            child: IconButton(
-              onPressed: () => context.push('/settings'),
-              icon: const Icon(Icons.settings_outlined),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MobileToolMenu extends StatelessWidget {
-  const _MobileToolMenu();
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Theme.of(context).colorScheme.surfaceContainer,
-      child: SizedBox(
-        width: 56,
-        child: PopupMenuButton<_GlobalTool>(
-          tooltip: '更多工具',
-          icon: const Icon(Icons.more_horiz_rounded),
-          onSelected: (tool) {
-            switch (tool) {
-              case _GlobalTool.notifications:
-                _showNotificationCenterPlaceholder(context);
-                break;
-              case _GlobalTool.settings:
-                context.push('/settings');
-                break;
-            }
-          },
-          itemBuilder: (context) => const [
-            PopupMenuItem(
-              value: _GlobalTool.notifications,
-              child: Row(
-                children: [
-                  Icon(Icons.notifications_none_rounded),
-                  SizedBox(width: 12),
-                  Text('通知中心'),
-                ],
-              ),
-            ),
-            PopupMenuItem(
-              value: _GlobalTool.settings,
-              child: Row(
-                children: [
-                  Icon(Icons.settings_outlined),
-                  SizedBox(width: 12),
-                  Text('设置'),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-void _showNotificationCenterPlaceholder(BuildContext context) {
-  showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    builder: (sheetContext) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.notifications_none_rounded,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  '通知中心',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '后续这里会统一承载运行中任务、需要处理的问题和最近完成结果。当前阶段先作为 Root Shell 顶部工具入口预留。',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
 }

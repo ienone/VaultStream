@@ -13,16 +13,17 @@
 2.  分发规则配置 (Distribution Rules):
     *   多维度规则定义：基于标签过滤、NSFW 策略、发布频率限制等。
     *   规则级预览：支持按特定规则筛选查看受影响的内容。
-3.  Bot & 渠道管理:
-    *   管理 Telegram Bot 及其关联的群组/频道。
-    *   支持手动同步后端 Bot 状态和触发即时分发任务。
+3.  收藏同步与处理链:
+    *   展示收藏同步策略、最近运行和失败重试。
+    *   按解析、媒体归档、内容理解和索引展示真实策略与运行状态。
 4.  推送历史:
     *   记录所有已尝试的推送任务，支持失败重试操作。
 
 ## 目录结构
 
 ### 核心文件
-*   `automation_page.dart`: 模块主入口，实现了响应式的 Master-Detail 布局（宽屏显示侧边栏规则，窄屏显示折叠面板）。
+*   `automation_page.dart`: 模块主入口，实现总览与三个领域分区。
+*   `distribution_rule_page.dart`: 可刷新、可返回的复杂规则新建与编辑页面。
 
 ### `models/` (数据模型)
 *   `queue_item.dart`: 队列中的内容条目，包含平台、作者、调度时间等信息。
@@ -38,16 +39,14 @@
 
 ### `widgets/` (UI 组件)
 *   `queue_content_list.dart`: 内容队列列表容器，包含拖拽排序逻辑。
-*   `rule_list_tile.dart`: 规则列表项，支持展开查看详情及快捷操作。
-*   `rule_config_panel.dart`: 规则配置的详细展示面板。
-*   `bot_chat_card.dart` / `bot_status_card.dart`: Bot 相关信息的展示组件。
-*   `distribution_rule_dialog.dart` / `bot_chat_dialog.dart`: 用于创建和编辑配置的弹出对话框。
+*   `rule_list_tile.dart`: 规则选择行，保留启用开关、审批状态和查看/编辑菜单。
+*   `distribution_rule_editor.dart`: 规则页面复用的响应式编辑面。
 *   `pushed_record_tile.dart`: 推送历史条目。
 
 ## 设计规范
 *   UI 风格: 严格遵循 Material 3 Expressive 设计规范。
-*   响应式: 针对平板/桌面端（宽度 > 800dp）和手机端做了差异化布局优化。
-*   交互: 大量使用动画切换（如 `AnimatedSize`, `AnimatedCrossFade`）以提升用户体验。
+*   响应式: 使用统一 WindowMetrics 与实际内容宽度；短横屏压缩队列控制区，保留可滚动正文。
+*   交互: 动画只服务于状态切换；领域入口与规则选择不套多层卡片。
 
 ## API 依赖
-主要交互后端 `/distribution-queue/*`, `/distribution-rules/*`、`/distribution-rules/{rule_id}/targets/*` 以及 `/bot/*` 系列接口。
+主要交互后端 `/distribution-queue/*`、`/distribution-rules/*`、`/distribution-rules/{rule_id}/targets/*`、`/favorites-sync/*`、`/background-tasks/diagnostics` 和 `/search/semantic/index-status`。

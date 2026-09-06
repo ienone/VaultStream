@@ -9,65 +9,58 @@ import '../../../../core/network/api_client.dart';
 import '../../../discovery/providers/discovery_settings_provider.dart';
 import '../../../discovery/providers/discovery_sources_provider.dart';
 import '../../../discovery/models/discovery_models.dart';
-import '../../providers/favorites_sync_provider.dart';
+import '../../../../theme/design_tokens.dart';
 
 class AutomationTab extends ConsumerWidget {
-  const AutomationTab({super.key});
+  const AutomationTab({super.key, this.sourcesOnly = false});
+
+  final bool sourcesOnly;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settingsAsync = ref.watch(systemSettingsProvider);
-    final discoverySettingsAsync = ref.watch(discoverySettingsStateProvider);
-    final discoverySourcesAsync = ref.watch(discoverySourcesProvider);
-    final favoritesSyncAsync = ref.watch(favoritesSyncStatusProvider);
-    final semanticStatusAsync = ref.watch(semanticIndexStatusProvider);
-    final aiCapabilitiesAsync = ref.watch(aiCapabilitiesProvider);
-
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      children: [
-        const SectionHeader(title: '自动化策略约束', icon: Icons.rule_folder_rounded),
-        _buildAutomationPolicySettings(context, ref, settingsAsync),
-        const SizedBox(height: 32),
-        const SectionHeader(
-          title: 'AI 巡逻 (Patrol)',
-          icon: Icons.auto_awesome_rounded,
-        ),
-        _buildPatrolSettings(context, ref, discoverySettingsAsync),
-        const SizedBox(height: 32),
-        const SectionHeader(
-          title: '发现来源 (Sources)',
-          icon: Icons.sensors_rounded,
-        ),
-        _buildDiscoverySources(context, ref, discoverySourcesAsync),
-        const SizedBox(height: 32),
-        const SectionHeader(
-          title: '收藏自动同步',
-          icon: Icons.bookmark_added_rounded,
-        ),
-        _buildFavoritesSyncSettings(
-          context,
-          ref,
-          settingsAsync,
-          favoritesSyncAsync,
-        ),
-        const SizedBox(height: 32),
-        const SectionHeader(title: '内容生成', icon: Icons.summarize_rounded),
-        _buildContentGenSettings(context, ref, settingsAsync),
-        const SizedBox(height: 32),
-        const SectionHeader(
-          title: '大模型引擎 (LLM)',
-          icon: Icons.psychology_rounded,
-        ),
-        _buildLlmSettings(
-          context,
-          ref,
-          settingsAsync,
-          semanticStatusAsync,
-          aiCapabilitiesAsync,
-        ),
-        const SizedBox(height: 40),
-      ],
+      children: sourcesOnly
+          ? [
+              _buildDiscoverySources(
+                context,
+                ref,
+                ref.watch(discoverySourcesProvider),
+              ),
+              const SizedBox(height: 24),
+              const SectionHeader(
+                title: '筛选与保留',
+                icon: Icons.filter_alt_outlined,
+              ),
+              _buildAutomationPolicySettings(context, ref, settingsAsync),
+              _buildPatrolSettings(
+                context,
+                ref,
+                ref.watch(discoverySettingsStateProvider),
+              ),
+            ]
+          : [
+              _buildLlmSettings(
+                context,
+                ref,
+                settingsAsync,
+                ref.watch(semanticIndexStatusProvider),
+              ),
+              const SizedBox(height: 24),
+              _buildContentGenSettings(context, ref, settingsAsync),
+              ExpansionTile(
+                title: const Text('能力与连通性'),
+                tilePadding: EdgeInsets.zero,
+                children: [
+                  _buildAiCapabilitySummary(
+                    context,
+                    ref,
+                    ref.watch(aiCapabilitiesProvider),
+                  ),
+                ],
+              ),
+            ],
     );
   }
 
@@ -86,45 +79,11 @@ class AutomationTab extends ConsumerWidget {
           getSettingValue(settings, 'enable_ai_scoring', true),
           true,
         );
-        final autoSummaryEnabled = parseBoolSetting(
-          getSettingValue(settings, 'enable_auto_summary', false),
-          false,
-        );
-        final cookieKeepaliveEnabled = parseBoolSetting(
-          getSettingValue(settings, 'enable_cookie_keepalive', true),
-          true,
-        );
-        final favoritesSchedulerEnabled = parseBoolSetting(
-          getSettingValue(settings, 'enable_favorites_sync_scheduler', true),
-          true,
-        );
-        final allowDisabledFavoritesManual = parseBoolSetting(
-          getSettingValue(
-            settings,
-            'allow_manual_favorites_sync_disabled_platform',
-            false,
-          ),
-          false,
-        );
-        final rawDistributionMode =
-            getSettingValue(
-              settings,
-              'distribution_mode',
-              'auto',
-            )?.toString() ??
-            'auto';
-        final distributionMode = rawDistributionMode == 'paused'
-            ? 'paused'
-            : 'auto';
-
         return SettingGroup(
           children: [
             SettingTile(
               title: '发现巡逻',
-              subtitle: discoveryPatrolEnabled
-                  ? '自动扫描待评分发现项'
-                  : '暂停自动巡逻，手动入口仍按接口策略处理',
-              icon: Icons.travel_explore_rounded,
+              subtitle: discoveryPatrolEnabled ? '自动检查新发现的内容' : '已暂停自动检查',
               trailing: Switch(
                 value: discoveryPatrolEnabled,
                 onChanged: (value) => ref
@@ -138,11 +97,10 @@ class AutomationTab extends ConsumerWidget {
               showArrow: false,
             ),
             SettingTile(
-              title: 'AI 发现评分写入',
+              title: 'AI 评分',
               subtitle: aiScoringEnabled
-                  ? '巡逻评分可写入分数、理由、标签、摘要与可见性'
-                  : '保留发现项，不写入 AI 评分字段',
-              icon: Icons.fact_check_rounded,
+                  ? '按兴趣筛选内容，并补充标签和摘要'
+                  : '保留内容，不进行 AI 评分',
               trailing: Switch(
                 value: aiScoringEnabled,
                 onChanged: (value) => ref
@@ -151,104 +109,6 @@ class AutomationTab extends ConsumerWidget {
                       'enable_ai_scoring',
                       value,
                       category: 'automation',
-                    ),
-              ),
-              showArrow: false,
-            ),
-            SettingTile(
-              title: '内容理解/摘要',
-              subtitle: autoSummaryEnabled
-                  ? '解析后自动生成内容理解/摘要'
-                  : '解析后不自动生成内容理解/摘要',
-              icon: Icons.summarize_rounded,
-              trailing: Switch(
-                value: autoSummaryEnabled,
-                onChanged: (value) => ref
-                    .read(systemSettingsProvider.notifier)
-                    .updateSetting(
-                      'enable_auto_summary',
-                      value,
-                      category: 'llm',
-                    ),
-              ),
-              showArrow: false,
-            ),
-            SettingTile(
-              title: '分发模式',
-              subtitle: distributionMode == 'paused'
-                  ? '暂停自动分发入队/领取'
-                  : '自动分发按规则入队并由 worker 领取',
-              icon: Icons.outbox_rounded,
-              trailing: DropdownButton<String>(
-                value: distributionMode,
-                underline: const SizedBox.shrink(),
-                items: const [
-                  DropdownMenuItem(value: 'auto', child: Text('auto')),
-                  DropdownMenuItem(value: 'paused', child: Text('paused')),
-                ],
-                onChanged: (value) {
-                  if (value == null) return;
-                  ref
-                      .read(systemSettingsProvider.notifier)
-                      .updateSetting(
-                        'distribution_mode',
-                        value,
-                        category: 'automation',
-                      );
-                },
-              ),
-              showArrow: false,
-            ),
-            SettingTile(
-              title: 'Cookie 保活',
-              subtitle: cookieKeepaliveEnabled
-                  ? '后台维护已配置平台 Cookie'
-                  : '暂停 Cookie 保活任务',
-              icon: Icons.cookie_rounded,
-              trailing: Switch(
-                value: cookieKeepaliveEnabled,
-                onChanged: (value) => ref
-                    .read(systemSettingsProvider.notifier)
-                    .updateSetting(
-                      'enable_cookie_keepalive',
-                      value,
-                      category: 'automation',
-                    ),
-              ),
-              showArrow: false,
-            ),
-            SettingTile(
-              title: '收藏同步调度',
-              subtitle: favoritesSchedulerEnabled
-                  ? '按间隔自动同步已启用平台'
-                  : '暂停自动调度，手动同步仍受平台启用策略约束',
-              icon: Icons.bookmark_added_rounded,
-              trailing: Switch(
-                value: favoritesSchedulerEnabled,
-                onChanged: (value) => ref
-                    .read(systemSettingsProvider.notifier)
-                    .updateSetting(
-                      'enable_favorites_sync_scheduler',
-                      value,
-                      category: 'favorites_sync',
-                    ),
-              ),
-              showArrow: false,
-            ),
-            SettingTile(
-              title: '禁用平台手动同步覆盖',
-              subtitle: allowDisabledFavoritesManual
-                  ? '后端允许 force=true 覆盖禁用平台'
-                  : '禁用平台手动同步默认拒绝',
-              icon: Icons.admin_panel_settings_rounded,
-              trailing: Switch(
-                value: allowDisabledFavoritesManual,
-                onChanged: (value) => ref
-                    .read(systemSettingsProvider.notifier)
-                    .updateSetting(
-                      'allow_manual_favorites_sync_disabled_platform',
-                      value,
-                      category: 'favorites_sync',
                     ),
               ),
               showArrow: false,
@@ -366,7 +226,9 @@ class AutomationTab extends ConsumerWidget {
           maxLines: 4,
           decoration: InputDecoration(
             hintText: '描述你感兴趣的领域、技术栈、博主或关键词...',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            border: const OutlineInputBorder(
+              borderRadius: AppShape.cardMediaBorder,
+            ),
           ),
         ),
         const Gap(12),
@@ -493,826 +355,6 @@ class AutomationTab extends ConsumerWidget {
     }
   }
 
-  Widget _buildFavoritesSyncSettings(
-    BuildContext context,
-    WidgetRef ref,
-    AsyncValue<List<SystemSetting>> settingsAsync,
-    AsyncValue<FavoritesSyncStatus> statusAsync,
-  ) {
-    return settingsAsync.when(
-      data: (settings) {
-        final currentEnabled = _parsePlatformsSetting(
-          getSettingValue(
-            settings,
-            'favorites_sync_platforms',
-            const <String>[],
-          ),
-        );
-        const intervalOptions = <int>[60, 180, 360, 720, 1440];
-        const maxItemOptions = <int>[20, 50, 100, 200];
-        const rateOptions = <int>[1, 3, 5, 10, 20];
-        const duplicateStrategyOptions = <String, String>{
-          'merge': '合并已有收藏',
-          'skip': '跳过已有收藏',
-        };
-        final interval = parseIntSetting(
-          getSettingValue(settings, 'favorites_sync_interval_minutes', 360),
-          360,
-        );
-        final maxItems = parseIntSetting(
-          getSettingValue(settings, 'favorites_sync_max_items', 50),
-          50,
-        );
-        final duplicateStrategy =
-            getSettingValue(
-              settings,
-              'favorites_sync_duplicate_strategy',
-              'merge',
-            )?.toString() ??
-            'merge';
-
-        return statusAsync.when(
-          data: (status) {
-            final statusMap = <String, FavoritesPlatformStatus>{
-              for (final item in status.platforms) item.platform: item,
-            };
-            final platforms = <String>['zhihu', 'xiaohongshu', 'twitter'];
-            final latestRun = status.recentRuns.isNotEmpty
-                ? status.recentRuns.first
-                : null;
-            final latestRunStatus = latestRun?['status']?.toString();
-            final latestRunId = latestRun?['run_id']?.toString();
-            final latestRunScope = latestRun?['scope']?.toString();
-
-            return SettingGroup(
-              children: [
-                for (final platform in platforms)
-                  SettingTile(
-                    title: _platformLabel(platform),
-                    subtitle: [
-                      _platformSubtitle(
-                        platform: platform,
-                        configuredRate: parseDoubleSetting(
-                          getSettingValue(
-                            settings,
-                            'favorites_sync_rate_$platform',
-                            5,
-                          ),
-                          statusMap[platform]?.ratePerMinute ?? 5,
-                        ),
-                        status: statusMap[platform],
-                      ),
-                      currentEnabled.contains(platform)
-                          ? '自动同步此平台'
-                          : '未自动同步此平台',
-                    ].join(' · '),
-                    icon: _platformIcon(platform),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        DropdownButton<int>(
-                          value: (() {
-                            final configuredRate = parseDoubleSetting(
-                              getSettingValue(
-                                settings,
-                                'favorites_sync_rate_$platform',
-                                5,
-                              ),
-                              statusMap[platform]?.ratePerMinute ?? 5,
-                            ).round();
-                            return rateOptions.contains(configuredRate)
-                                ? configuredRate
-                                : 5;
-                          })(),
-                          underline: const SizedBox.shrink(),
-                          items: rateOptions
-                              .map(
-                                (rate) => DropdownMenuItem<int>(
-                                  value: rate,
-                                  child: Text('$rate/min'),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (value) async {
-                            if (value == null) return;
-                            await ref
-                                .read(systemSettingsProvider.notifier)
-                                .updateSetting(
-                                  'favorites_sync_rate_$platform',
-                                  value,
-                                  category: 'favorites_sync',
-                                );
-                            ref.invalidate(favoritesSyncStatusProvider);
-                            if (context.mounted) {
-                              showToast(
-                                context,
-                                '${_platformLabel(platform)} 速率已更新',
-                              );
-                            }
-                          },
-                        ),
-                        const SizedBox(width: 8),
-                        Switch(
-                          value: currentEnabled.contains(platform),
-                          onChanged: (enabled) async {
-                            final updated = [...currentEnabled];
-                            if (enabled) {
-                              if (!updated.contains(platform)) {
-                                updated.add(platform);
-                              }
-                            } else {
-                              updated.remove(platform);
-                            }
-                            await ref
-                                .read(systemSettingsProvider.notifier)
-                                .updateSetting(
-                                  'favorites_sync_platforms',
-                                  updated,
-                                  category: 'favorites_sync',
-                                );
-                            ref.invalidate(favoritesSyncStatusProvider);
-                            if (context.mounted) {
-                              showToast(
-                                context,
-                                '${_platformLabel(platform)} 已${enabled ? '启用' : '禁用'}同步',
-                              );
-                            }
-                          },
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.sync_rounded),
-                          tooltip: '手动同步 ${_platformLabel(platform)}',
-                          onPressed: statusMap[platform]?.available == false
-                              ? null
-                              : () {
-                                  if (!currentEnabled.contains(platform)) {
-                                    showToast(context, '该平台未启用自动同步，手动同步已按策略拒绝');
-                                    return;
-                                  }
-                                  _triggerFavoritesSyncWithPreview(
-                                    context,
-                                    ref,
-                                    platform: platform,
-                                  );
-                                },
-                        ),
-                      ],
-                    ),
-                    showArrow: false,
-                  ),
-                SettingTile(
-                  title: '同步间隔',
-                  subtitle: '当前每 $interval 分钟执行一次',
-                  icon: Icons.schedule_rounded,
-                  trailing: DropdownButton<int>(
-                    value: intervalOptions.contains(interval) ? interval : 360,
-                    underline: const SizedBox.shrink(),
-                    items: intervalOptions
-                        .map(
-                          (val) => DropdownMenuItem<int>(
-                            value: val,
-                            child: Text(
-                              val >= 60 ? '${val ~/ 60}h' : '$val min',
-                            ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) async {
-                      if (value == null) return;
-                      await ref
-                          .read(systemSettingsProvider.notifier)
-                          .updateSetting(
-                            'favorites_sync_interval_minutes',
-                            value,
-                            category: 'favorites_sync',
-                          );
-                      ref.invalidate(favoritesSyncStatusProvider);
-                    },
-                  ),
-                  showArrow: false,
-                ),
-                SettingTile(
-                  title: '单次拉取上限',
-                  subtitle: '每个平台单轮最多拉取 $maxItems 条',
-                  icon: Icons.numbers_rounded,
-                  trailing: DropdownButton<int>(
-                    value: maxItemOptions.contains(maxItems) ? maxItems : 50,
-                    underline: const SizedBox.shrink(),
-                    items: maxItemOptions
-                        .map(
-                          (val) => DropdownMenuItem<int>(
-                            value: val,
-                            child: Text('$val'),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) async {
-                      if (value == null) return;
-                      await ref
-                          .read(systemSettingsProvider.notifier)
-                          .updateSetting(
-                            'favorites_sync_max_items',
-                            value,
-                            category: 'favorites_sync',
-                          );
-                      ref.invalidate(favoritesSyncStatusProvider);
-                    },
-                  ),
-                  showArrow: false,
-                ),
-                SettingTile(
-                  title: '重复内容策略',
-                  subtitle: _duplicateStrategySubtitle(duplicateStrategy),
-                  icon: Icons.difference_rounded,
-                  trailing: DropdownButton<String>(
-                    value:
-                        duplicateStrategyOptions.containsKey(duplicateStrategy)
-                        ? duplicateStrategy
-                        : 'merge',
-                    underline: const SizedBox.shrink(),
-                    items: duplicateStrategyOptions.entries
-                        .map(
-                          (entry) => DropdownMenuItem<String>(
-                            value: entry.key,
-                            child: Text(entry.value),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) async {
-                      if (value == null) return;
-                      await ref
-                          .read(systemSettingsProvider.notifier)
-                          .updateSetting(
-                            'favorites_sync_duplicate_strategy',
-                            value,
-                            category: 'favorites_sync',
-                          );
-                      ref.invalidate(favoritesSyncStatusProvider);
-                    },
-                  ),
-                  showArrow: false,
-                ),
-                SettingTile(
-                  title: '立即同步',
-                  subtitle: latestRunId != null
-                      ? '最近任务: ${latestRunId.length > 8 ? latestRunId.substring(0, 8) : latestRunId} · ${latestRunStatus ?? 'unknown'}'
-                      : status.lastSyncAt == null
-                      ? '尚未同步'
-                      : '上次同步: ${status.lastSyncAt}',
-                  icon: status.running
-                      ? Icons.play_circle_fill_rounded
-                      : Icons.pause_circle_filled_rounded,
-                  trailing: FilledButton.tonalIcon(
-                    onPressed: () =>
-                        _triggerFavoritesSyncWithPreview(context, ref),
-                    icon: const Icon(Icons.sync_rounded),
-                    label: const Text('手动同步'),
-                  ),
-                  showArrow: false,
-                ),
-                if (latestRunId != null)
-                  SettingTile(
-                    title: '最近同步任务',
-                    subtitle:
-                        '${latestRunId.length > 8 ? latestRunId.substring(0, 8) : latestRunId} · ${latestRunScope ?? 'all'} · ${latestRunStatus ?? 'unknown'}',
-                    icon: latestRunStatus == 'error'
-                        ? Icons.error_outline_rounded
-                        : Icons.task_alt_rounded,
-                    iconColor: latestRunStatus == 'error'
-                        ? Theme.of(context).colorScheme.error
-                        : null,
-                    trailing: latestRunStatus == 'error'
-                        ? OutlinedButton.icon(
-                            onPressed: () async {
-                              try {
-                                final retryRunId = await ref
-                                    .read(favoritesSyncActionsProvider)
-                                    .retryRun(latestRunId);
-                                if (context.mounted) {
-                                  final retrySuffix = retryRunId == null
-                                      ? ''
-                                      : ' #${retryRunId.length > 8 ? retryRunId.substring(0, 8) : retryRunId}';
-                                  showToast(context, '已重新触发同步$retrySuffix');
-                                }
-                              } catch (e) {
-                                if (context.mounted) {
-                                  showToast(
-                                    context,
-                                    formatApiErrorMessage(
-                                      e,
-                                      fallbackMessage: '重试同步失败',
-                                    ),
-                                  );
-                                }
-                              }
-                            },
-                            icon: const Icon(Icons.replay_rounded),
-                            label: const Text('重试'),
-                          )
-                        : null,
-                    showArrow: false,
-                  ),
-                if (status.recentRuns.isNotEmpty)
-                  SettingTile(
-                    title: '同步运行记录',
-                    subtitle: '最近 ${status.recentRuns.length} 次任务，可查看结果与失败原因',
-                    icon: Icons.history_rounded,
-                    trailing: TextButton.icon(
-                      onPressed: () => _showFavoritesSyncRunsDialog(
-                        context,
-                        ref,
-                        status.recentRuns,
-                      ),
-                      icon: const Icon(Icons.open_in_new_rounded),
-                      label: const Text('查看'),
-                    ),
-                    showArrow: false,
-                  ),
-              ],
-            );
-          },
-          loading: () => const LoadingGroup(),
-          error: (error, _) => const Text('收藏同步状态加载失败'),
-        );
-      },
-      loading: () => const LoadingGroup(),
-      error: (error, _) => const Text('配置加载失败'),
-    );
-  }
-
-  void _showFavoritesSyncRunsDialog(
-    BuildContext context,
-    WidgetRef ref,
-    List<Map<String, dynamic>> runs,
-  ) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('同步运行记录'),
-          content: SizedBox(
-            width: 560,
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: runs.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final run = runs[index];
-                final runId = _runString(run, 'run_id');
-                final status = _runString(run, 'status') ?? 'unknown';
-                final error = _runString(run, 'error');
-                return ListTile(
-                  leading: Icon(
-                    _favoritesRunIcon(status),
-                    color: _favoritesRunColor(dialogContext, status),
-                  ),
-                  title: Text(
-                    '${_shortRunId(runId)} · ${_runString(run, 'scope') ?? 'all'}',
-                  ),
-                  subtitle: Text(
-                    [
-                      _favoritesRunStatusLabel(status),
-                      if (_runString(run, 'trigger') != null)
-                        '触发: ${_runString(run, 'trigger')}',
-                      if (_runString(run, 'started_at') != null)
-                        '开始: ${_runString(run, 'started_at')}',
-                      if (error != null) '错误: $error',
-                    ].join('\n'),
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  isThreeLine: true,
-                  trailing: status == 'error' && runId != null
-                      ? IconButton(
-                          tooltip: '重试',
-                          icon: const Icon(Icons.replay_rounded),
-                          onPressed: () =>
-                              _retryFavoritesRun(dialogContext, ref, runId),
-                        )
-                      : null,
-                  onTap: () => _showFavoritesSyncRunDetailDialog(
-                    dialogContext,
-                    ref,
-                    run,
-                  ),
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('关闭'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showFavoritesSyncRunDetailDialog(
-    BuildContext context,
-    WidgetRef ref,
-    Map<String, dynamic> run,
-  ) {
-    final runId = _runString(run, 'run_id');
-    final status = _runString(run, 'status') ?? 'unknown';
-    final error = _runString(run, 'error');
-    final result = run['result'];
-
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('任务 ${_shortRunId(runId)}'),
-        content: SizedBox(
-          width: 520,
-          child: SingleChildScrollView(
-            child: SelectableText(
-              [
-                '状态: ${_favoritesRunStatusLabel(status)}',
-                '范围: ${_runString(run, 'scope') ?? 'all'}',
-                '触发: ${_runString(run, 'trigger') ?? '-'}',
-                '开始: ${_runString(run, 'started_at') ?? '-'}',
-                '结束: ${_runString(run, 'finished_at') ?? '-'}',
-                if (_runString(run, 'retry_of') != null)
-                  '重试自: ${_runString(run, 'retry_of')}',
-                if (error != null) '错误: $error',
-                if (result != null) '结果: $result',
-              ].join('\n'),
-            ),
-          ),
-        ),
-        actions: [
-          if (status == 'error' && runId != null)
-            TextButton.icon(
-              onPressed: () => _retryFavoritesRun(dialogContext, ref, runId),
-              icon: const Icon(Icons.replay_rounded),
-              label: const Text('重试'),
-            ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('关闭'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _retryFavoritesRun(
-    BuildContext context,
-    WidgetRef ref,
-    String runId,
-  ) async {
-    try {
-      final retryRunId = await ref
-          .read(favoritesSyncActionsProvider)
-          .retryRun(runId);
-      if (context.mounted) {
-        final retrySuffix = retryRunId == null
-            ? ''
-            : ' #${_shortRunId(retryRunId)}';
-        showToast(context, '已重新触发同步$retrySuffix');
-      }
-    } catch (e) {
-      if (context.mounted) {
-        showToast(context, formatApiErrorMessage(e, fallbackMessage: '重试同步失败'));
-      }
-    }
-  }
-
-  Future<void> _triggerFavoritesSyncWithPreview(
-    BuildContext context,
-    WidgetRef ref, {
-    String? platform,
-  }) async {
-    try {
-      final actions = ref.read(favoritesSyncActionsProvider);
-      final preview = await actions.previewSync(platform: platform);
-      if (!context.mounted) return;
-
-      final confirmed = await _showFavoritesSyncPreviewDialog(context, preview);
-      if (!confirmed || !context.mounted) return;
-
-      final runId = await actions.triggerSync(platform: platform);
-      if (context.mounted) {
-        final runSuffix = runId == null ? '' : ' #${_shortRunId(runId)}';
-        final label = platform == null ? '全平台' : _platformLabel(platform);
-        showToast(context, '已触发 $label 同步$runSuffix');
-      }
-    } catch (e) {
-      if (context.mounted) {
-        showToast(context, formatApiErrorMessage(e, fallbackMessage: '手动同步失败'));
-      }
-    }
-  }
-
-  Future<bool> _showFavoritesSyncPreviewDialog(
-    BuildContext context,
-    FavoritesSyncPreview preview,
-  ) async {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final platformLabel = preview.platform == 'all'
-        ? '全平台'
-        : _platformLabel(preview.platform);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: Text('确认同步 $platformLabel 收藏'),
-          content: SizedBox(
-            width: 520,
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _PreviewMetricChip(
-                        label: '预览拉取',
-                        value: preview.fetched,
-                        icon: Icons.download_rounded,
-                      ),
-                      _PreviewMetricChip(
-                        label: '预计新增',
-                        value: preview.estimatedNew,
-                        icon: Icons.add_circle_outline_rounded,
-                      ),
-                      _PreviewMetricChip(
-                        label: '已存在',
-                        value: preview.existing,
-                        icon: Icons.check_circle_outline_rounded,
-                      ),
-                      _PreviewMetricChip(
-                        label: '跳过',
-                        value: preview.skipped,
-                        icon: Icons.block_rounded,
-                      ),
-                    ],
-                  ),
-                  if (preview.hasFailures) ...[
-                    const Gap(12),
-                    Text(
-                      '部分平台预览失败，触发同步后仍可能失败。',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: cs.error,
-                      ),
-                    ),
-                  ],
-                  const Gap(16),
-                  ...preview.platforms.map((item) {
-                    final failed = item.status == 'failed';
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: failed ? cs.error : cs.outlineVariant,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    _platformIcon(item.platform),
-                                    size: 18,
-                                    color: failed ? cs.error : cs.primary,
-                                  ),
-                                  const Gap(8),
-                                  Text(
-                                    _platformLabel(item.platform),
-                                    style: theme.textTheme.titleSmall,
-                                  ),
-                                  const Spacer(),
-                                  Text(
-                                    failed
-                                        ? '失败'
-                                        : '新增 ${item.estimatedNew} / 已存在 ${item.existing}',
-                                    style: theme.textTheme.labelMedium
-                                        ?.copyWith(
-                                          color: failed
-                                              ? cs.error
-                                              : cs.onSurfaceVariant,
-                                        ),
-                                  ),
-                                ],
-                              ),
-                              if (failed && item.error != null) ...[
-                                const Gap(8),
-                                Text(
-                                  item.errorHint ?? item.error!,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: cs.error,
-                                  ),
-                                ),
-                              ],
-                              if (!failed && item.items.isNotEmpty) ...[
-                                const Gap(8),
-                                ...item.items.take(3).map((sample) {
-                                  final title = sample['title']
-                                      ?.toString()
-                                      .trim();
-                                  final exists = sample['exists'] == true;
-                                  return Text(
-                                    '${exists ? '已存在' : '新候选'} · ${title == null || title.isEmpty ? sample['url'] : title}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: cs.onSurfaceVariant,
-                                    ),
-                                  );
-                                }),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  }),
-                  Text(
-                    '预览不会写入内容，也不会推进同步 cursor。',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('确认同步'),
-            ),
-          ],
-        );
-      },
-    );
-    return confirmed == true;
-  }
-
-  String? _runString(Map<String, dynamic> run, String key) {
-    final value = run[key];
-    if (value == null) return null;
-    final text = value.toString();
-    return text.isEmpty ? null : text;
-  }
-
-  String _shortRunId(String? runId) {
-    if (runId == null || runId.isEmpty) return '-';
-    return runId.length > 8 ? runId.substring(0, 8) : runId;
-  }
-
-  String _favoritesRunStatusLabel(String status) {
-    switch (status) {
-      case 'running':
-        return '运行中';
-      case 'success':
-        return '成功';
-      case 'error':
-        return '失败';
-      default:
-        return status;
-    }
-  }
-
-  IconData _favoritesRunIcon(String status) {
-    switch (status) {
-      case 'running':
-        return Icons.sync_rounded;
-      case 'success':
-        return Icons.task_alt_rounded;
-      case 'error':
-        return Icons.error_outline_rounded;
-      default:
-        return Icons.info_outline_rounded;
-    }
-  }
-
-  Color? _favoritesRunColor(BuildContext context, String status) {
-    switch (status) {
-      case 'success':
-        return Theme.of(context).colorScheme.primary;
-      case 'error':
-        return Theme.of(context).colorScheme.error;
-      default:
-        return null;
-    }
-  }
-
-  String _platformLabel(String platform) {
-    switch (platform) {
-      case 'zhihu':
-        return '知乎';
-      case 'xiaohongshu':
-        return '小红书';
-      case 'twitter':
-        return 'Twitter / X';
-      default:
-        return platform;
-    }
-  }
-
-  String _duplicateStrategySubtitle(String strategy) {
-    return switch (strategy) {
-      'skip' => '本地已有同一 canonical URL 时直接跳过，不追加来源记录',
-      _ => '本地已有同一 canonical URL 时合并来源记录并执行必要后处理',
-    };
-  }
-
-  IconData _platformIcon(String platform) {
-    switch (platform) {
-      case 'zhihu':
-        return Icons.menu_book_rounded;
-      case 'xiaohongshu':
-        return Icons.auto_stories_rounded;
-      case 'twitter':
-        return Icons.alternate_email_rounded;
-      default:
-        return Icons.bookmark_rounded;
-    }
-  }
-
-  String _platformSubtitle({
-    required String platform,
-    required double configuredRate,
-    required FavoritesPlatformStatus? status,
-  }) {
-    final authText = switch ((
-      status?.available ?? true,
-      status?.authenticated ?? false,
-      platform,
-    )) {
-      (false, _, _) => '状态检查失败',
-      (_, true, _) => '已认证',
-      (_, false, 'twitter') => 'CLI 未就绪或未登录',
-      _ => '未登录',
-    };
-    final parts = <String>[
-      authText,
-      '${configuredRate.toStringAsFixed(0)} 条/分钟',
-    ];
-
-    final lastResult = status?.lastResult;
-    if (lastResult != null) {
-      final hint = (lastResult['error_hint'] ?? '').toString().trim();
-      final message = (lastResult['error_message'] ?? lastResult['error'] ?? '')
-          .toString()
-          .trim();
-      final resultStatus = (lastResult['status'] ?? '').toString();
-      if (hint.isNotEmpty) {
-        parts.add(hint);
-      } else if ((resultStatus == 'failed' ||
-              resultStatus == 'partial_success') &&
-          message.isNotEmpty) {
-        parts.add(message);
-      }
-    }
-
-    final statusError = status?.statusError;
-    if (statusError != null) {
-      final hint = (statusError['error_hint'] ?? '').toString().trim();
-      final message =
-          (statusError['error_message'] ?? statusError['detail'] ?? '')
-              .toString()
-              .trim();
-      if (hint.isNotEmpty) {
-        parts.add(hint);
-      } else if (message.isNotEmpty) {
-        parts.add(message);
-      }
-    }
-
-    return parts.join(' · ');
-  }
-
-  List<String> _parsePlatformsSetting(dynamic raw) {
-    if (raw == null) return <String>[];
-    if (raw is List) {
-      return raw.map((e) => e.toString()).toList();
-    }
-    if (raw is String && raw.isNotEmpty) {
-      return raw
-          .split(',')
-          .map((e) => e.trim())
-          .where((e) => e.isNotEmpty)
-          .toList();
-    }
-    return <String>[];
-  }
-
   Widget _buildContentGenSettings(
     BuildContext context,
     WidgetRef ref,
@@ -1320,42 +362,18 @@ class AutomationTab extends ConsumerWidget {
   ) {
     return settingsAsync.when(
       data: (settings) {
-        final enableAutoSummary = parseBoolSetting(
-          getSettingValue(settings, 'enable_auto_summary', false),
-          false,
-        );
-
         return SettingGroup(
           children: [
-            SettingTile(
-              title: '内容理解/摘要',
-              subtitle: '解析后自动生成内容理解/摘要',
-              icon: Icons.summarize_rounded,
-              trailing: Switch(
-                value: enableAutoSummary,
-                onChanged: (val) => ref
-                    .read(systemSettingsProvider.notifier)
-                    .updateSetting('enable_auto_summary', val, category: 'llm'),
-              ),
-              onTap: () => ref
-                  .read(systemSettingsProvider.notifier)
-                  .updateSetting(
-                    'enable_auto_summary',
-                    !enableAutoSummary,
-                    category: 'llm',
-                  ),
-            ),
             ExpandableSettingTile(
-              title: '摘要模型 (Summary LLM)',
+              title: '摘要模型',
               subtitle: _getSummarySubtitle(settings),
-              icon: Icons.auto_awesome_rounded,
               expandedContent: _buildSummaryConfigEditor(context, ref),
             ),
           ],
         );
       },
       loading: () => const LoadingGroup(),
-      error: (error, stackTrace) => const SizedBox.shrink(),
+      error: (error, stackTrace) => const Text('摘要配置读取失败，请刷新后重试'),
     );
   }
 
@@ -1364,32 +382,26 @@ class AutomationTab extends ConsumerWidget {
     WidgetRef ref,
     AsyncValue<List<SystemSetting>> settingsAsync,
     AsyncValue<Map<String, dynamic>> semanticStatusAsync,
-    AsyncValue<List<Map<String, dynamic>>> aiCapabilitiesAsync,
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildAiCapabilitySummary(context, ref, aiCapabilitiesAsync),
-        const Gap(12),
         settingsAsync.when(
           data: (settings) => SettingGroup(
             children: [
               ExpandableSettingTile(
-                title: '文本大模型 (Text LLM)',
+                title: '文本模型',
                 subtitle: _getLlmSubtitle(settings, 'text'),
-                icon: Icons.text_fields_rounded,
                 expandedContent: _buildLlmConfigEditor(context, ref, 'text'),
               ),
               ExpandableSettingTile(
-                title: '视觉大模型 (Vision LLM)',
+                title: '视觉模型',
                 subtitle: _getLlmSubtitle(settings, 'vision'),
-                icon: Icons.image_search_rounded,
                 expandedContent: _buildLlmConfigEditor(context, ref, 'vision'),
               ),
               ExpandableSettingTile(
                 title: 'Gemini Embedding',
                 subtitle: _getEmbeddingSubtitle(settings),
-                icon: Icons.hub_rounded,
                 expandedContent: _buildEmbeddingConfigEditor(
                   context,
                   ref,
@@ -1544,13 +556,11 @@ class AutomationTab extends ConsumerWidget {
   ) async {
     try {
       final result = await ref.read(aiConnectivityTestProvider).run(target);
-      final ok = result['ok'] == true;
-      final runId = result['run_id']?.toString();
-      final suffix = runId == null || runId.isEmpty
+      final suffix = result.runId.isEmpty
           ? ''
-          : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
+          : ' #${result.runId.length > 8 ? result.runId.substring(0, 8) : result.runId}';
       if (context.mounted) {
-        showToast(context, ok ? '连通性测试通过$suffix' : '连通性测试失败$suffix');
+        showToast(context, result.ok ? '连通性测试通过$suffix' : '连通性测试失败$suffix');
       }
     } catch (e) {
       if (context.mounted) {
@@ -1587,10 +597,10 @@ class AutomationTab extends ConsumerWidget {
     final colorScheme = Theme.of(context).colorScheme;
     switch (status) {
       case 'available':
-        return Colors.green;
+        return colorScheme.primary;
       case 'partial':
       case 'pending':
-        return Colors.orange;
+        return colorScheme.tertiary;
       case 'disabled':
         return colorScheme.outline;
       case 'unavailable':
@@ -1713,7 +723,7 @@ class AutomationTab extends ConsumerWidget {
 
     if (model.isEmpty && apiKey.isEmpty) return '未配置';
     final keyLabel = _isEnvConfigured(apiKey) ? '密钥已配置' : _maskKey(apiKey);
-    final modelLabel = model.isEmpty ? '使用后端默认模型' : model;
+    final modelLabel = model.isEmpty ? '使用默认模型' : model;
     return '$modelLabel • $keyLabel';
   }
 
@@ -1802,7 +812,7 @@ class AutomationTab extends ConsumerWidget {
                 labelText: 'API Base URL',
                 hintText: 'e.g. https://api.openai.com/v1',
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppShape.cardMediaBorder,
                 ),
               ),
             ),
@@ -1814,7 +824,7 @@ class AutomationTab extends ConsumerWidget {
                 labelText: 'API Key',
                 hintText: isKeyFromEnv ? '已通过环境变量配置，输入新值可覆盖' : 'sk-...',
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppShape.cardMediaBorder,
                 ),
               ),
             ),
@@ -1825,7 +835,7 @@ class AutomationTab extends ConsumerWidget {
                 labelText: 'Model Name',
                 hintText: 'e.g. gpt-4o',
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppShape.cardMediaBorder,
                 ),
               ),
             ),
@@ -1918,7 +928,7 @@ class AutomationTab extends ConsumerWidget {
                 labelText: 'Summary API Key',
                 hintText: isKeyFromEnv ? '已配置，输入新值可覆盖' : 'AIza...',
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppShape.cardMediaBorder,
                 ),
               ),
             ),
@@ -1930,7 +940,7 @@ class AutomationTab extends ConsumerWidget {
                 hintText: 'gemini-3.1-flash-lite-preview',
                 helperText: '仅用于摘要、标签和 RAG 切片生成',
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppShape.cardMediaBorder,
                 ),
               ),
             ),
@@ -1941,7 +951,7 @@ class AutomationTab extends ConsumerWidget {
                 labelText: 'Gemini API Version',
                 hintText: 'v1beta',
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppShape.cardMediaBorder,
                 ),
               ),
             ),
@@ -2037,7 +1047,7 @@ class AutomationTab extends ConsumerWidget {
                 labelText: 'Embedding API Key',
                 hintText: isKeyFromEnv ? '已配置，输入新值可覆盖' : 'AIza...',
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppShape.cardMediaBorder,
                 ),
               ),
             ),
@@ -2048,7 +1058,7 @@ class AutomationTab extends ConsumerWidget {
                 labelText: 'Embedding Model',
                 hintText: 'gemini-embedding-2',
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppShape.cardMediaBorder,
                 ),
               ),
             ),
@@ -2060,7 +1070,7 @@ class AutomationTab extends ConsumerWidget {
                 labelText: '输出维度',
                 helperText: '推荐 768 / 1536 / 3072',
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppShape.cardMediaBorder,
                 ),
               ),
             ),
@@ -2138,7 +1148,7 @@ class AutomationTab extends ConsumerWidget {
             color: theme.colorScheme.surfaceContainerHighest.withValues(
               alpha: 0.45,
             ),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppShape.cardMediaBorder,
             border: Border.all(color: theme.colorScheme.outlineVariant),
           ),
           child: Column(
@@ -2198,17 +1208,11 @@ class AutomationTab extends ConsumerWidget {
                   child: OutlinedButton.icon(
                     onPressed: () async {
                       try {
-                        final response = await ref
-                            .read(apiClientProvider)
-                            .post(
-                              '/search/semantic/reindex',
-                              data: {'scope': 'failed', 'limit': 100},
-                            );
-                        ref.invalidate(semanticIndexStatusProvider);
+                        final result = await ref
+                            .read(semanticIndexActionsProvider)
+                            .retryFailed();
                         if (context.mounted) {
-                          final runId = response.data is Map
-                              ? response.data['run_id']?.toString()
-                              : null;
+                          final runId = result.runId;
                           final suffix = runId == null
                               ? ''
                               : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
@@ -2251,7 +1255,7 @@ class _StatusPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: AppShape.cardMediaBorder,
         border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
       child: Text('$label $value', style: theme.textTheme.labelMedium),
@@ -2326,65 +1330,62 @@ class _SourceEditDialogState extends State<_SourceEditDialog> {
     final meta = _kindMeta[_kind]!;
     return AdaptiveTaskSurface(
       title: widget.initialSource == null ? '添加来源' : '编辑来源',
-      icon: Icons.sensors_rounded,
-      body: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              initialValue: _kind,
-              decoration: const InputDecoration(labelText: '来源类型'),
-              items: _kindMeta.entries
-                  .map(
-                    (e) => DropdownMenuItem(
-                      value: e.key,
-                      child: Text(e.value.label),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (val) => setState(() => _kind = val!),
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DropdownButtonFormField<String>(
+            initialValue: _kind,
+            decoration: const InputDecoration(labelText: '来源类型'),
+            items: _kindMeta.entries
+                .map(
+                  (e) => DropdownMenuItem(
+                    value: e.key,
+                    child: Text(e.value.label),
+                  ),
+                )
+                .toList(),
+            onChanged: (val) => setState(() => _kind = val!),
+          ),
+          const Gap(12),
+          TextField(
+            controller: _nameController,
+            decoration: const InputDecoration(
+              labelText: '名称',
+              hintText: '如: IT之家',
             ),
-            const Gap(12),
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: '名称',
-                hintText: '如: IT之家',
-              ),
+          ),
+          const Gap(12),
+          TextField(
+            controller: _urlController,
+            keyboardType: TextInputType.url,
+            decoration: InputDecoration(
+              labelText: meta.urlLabel,
+              hintText: meta.urlHint,
             ),
-            const Gap(12),
-            TextField(
-              controller: _urlController,
-              keyboardType: TextInputType.url,
-              decoration: InputDecoration(
-                labelText: meta.urlLabel,
-                hintText: meta.urlHint,
-              ),
+          ),
+          const Gap(12),
+          TextField(
+            controller: _categoryController,
+            decoration: const InputDecoration(
+              labelText: '分类标签（可选）',
+              hintText: '如: 科技、新闻',
             ),
-            const Gap(12),
-            TextField(
-              controller: _categoryController,
-              decoration: const InputDecoration(
-                labelText: '分类标签（可选）',
-                hintText: '如: 科技、新闻',
-              ),
-            ),
-            const Gap(12),
-            DropdownButtonFormField<int>(
-              initialValue: _interval,
-              decoration: const InputDecoration(labelText: '同步频率'),
-              items: [15, 30, 60, 120, 360, 1440]
-                  .map(
-                    (i) => DropdownMenuItem(
-                      value: i,
-                      child: Text(i >= 60 ? '${i ~/ 60} 小时' : '$i 分钟'),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (val) => setState(() => _interval = val!),
-            ),
-          ],
-        ),
+          ),
+          const Gap(12),
+          DropdownButtonFormField<int>(
+            initialValue: _interval,
+            decoration: const InputDecoration(labelText: '同步频率'),
+            items: [15, 30, 60, 120, 360, 1440]
+                .map(
+                  (i) => DropdownMenuItem(
+                    value: i,
+                    child: Text(i >= 60 ? '${i ~/ 60} 小时' : '$i 分钟'),
+                  ),
+                )
+                .toList(),
+            onChanged: (val) => setState(() => _interval = val!),
+          ),
+        ],
       ),
       actions: [
         if (widget.onDelete != null)
@@ -2424,42 +1425,6 @@ class _SourceEditDialogState extends State<_SourceEditDialog> {
           child: const Text('保存'),
         ),
       ],
-    );
-  }
-}
-
-class _PreviewMetricChip extends StatelessWidget {
-  const _PreviewMetricChip({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  final String label;
-  final int value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: cs.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: cs.primary),
-            const Gap(6),
-            Text('$label $value', style: theme.textTheme.labelMedium),
-          ],
-        ),
-      ),
     );
   }
 }

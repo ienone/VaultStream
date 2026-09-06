@@ -29,21 +29,6 @@ class DistributionTargets extends _$DistributionTargets {
         .toList();
   }
 
-  Future<DistributionTarget> createTarget(
-    int ruleId,
-    DistributionTargetCreate target, {
-    String backfillMode = 'new_only',
-    int? backfillRecentDays,
-  }) async {
-    final result = await createTargetWithResult(
-      ruleId,
-      target,
-      backfillMode: backfillMode,
-      backfillRecentDays: backfillRecentDays,
-    );
-    return result.target;
-  }
-
   Future<DistributionTargetCreateResult> createTargetWithResult(
     int ruleId,
     DistributionTargetCreate target, {

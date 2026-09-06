@@ -56,6 +56,9 @@ final class AppShape {
   static const BorderRadius paneBorder = BorderRadius.all(
     Radius.circular(pane),
   );
+  static const BorderRadius sheetBorder = BorderRadius.all(
+    Radius.circular(sheet),
+  );
   static const BorderRadius sheetTopBorder = BorderRadius.vertical(
     top: Radius.circular(sheet),
   );
@@ -76,6 +79,9 @@ final class AppMotion {
   /// 同层内容切换：section、筛选结果、list-detail 选择。
   static const Duration contentSwap = Duration(milliseconds: 240);
 
+  /// 列表项顺序进入时的单项错峰间隔。
+  static const Duration listItemStagger = Duration(milliseconds: 50);
+
   /// 临时 surface 进入：menu、dialog、bottom/side sheet。
   static const Duration surfaceEnter = Duration(milliseconds: 320);
 
@@ -88,8 +94,12 @@ final class AppMotion {
   /// 容器反向收拢。返回应比展开更快，且不延迟源列表恢复。
   static const Duration containerTransformBack = Duration(milliseconds: 360);
 
+  /// 加载骨架的低干扰呼吸周期。
+  static const Duration skeletonPulse = Duration(milliseconds: 1100);
+
   static const Curve standardCurve = Curves.easeOutCubic;
   static const Curve emphasizedCurve = Curves.easeInOutCubic;
+  static const Curve ambientCurve = Curves.easeInOut;
 
   const AppMotion._();
 }
@@ -104,6 +114,9 @@ final class AppPane {
 
   /// 表单和对话框最大宽度。
   static const double formMaxWidth = 560;
+
+  /// 设置、自动化等多分区工作区的主内容最大宽度。
+  static const double workspaceMaxWidth = 1120;
 
   const AppPane._();
 }

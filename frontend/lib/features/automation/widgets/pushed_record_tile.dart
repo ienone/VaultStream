@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../theme/design_tokens.dart';
 import '../models/pushed_record.dart';
 
 class PushedRecordTile extends StatelessWidget {
@@ -41,12 +43,11 @@ class PushedRecordTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
               color: _getStatusColor(colorScheme).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(AppShape.pill),
             ),
             child: Text(
               _getStatusLabel(),
-              style: TextStyle(
-                fontSize: 10,
+              style: theme.textTheme.labelSmall?.copyWith(
                 color: _getStatusColor(colorScheme),
                 fontWeight: FontWeight.w500,
               ),
@@ -57,10 +58,7 @@ class PushedRecordTile extends StatelessWidget {
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '目标: ${record.targetId}',
-            style: theme.textTheme.bodySmall,
-          ),
+          Text('目标: ${record.targetId}', style: theme.textTheme.bodySmall),
           if (record.messageId != null)
             Text(
               '消息ID: ${record.messageId}',
@@ -81,7 +79,6 @@ class PushedRecordTile extends StatelessWidget {
             _formatDateTime(record.pushedAt),
             style: theme.textTheme.bodySmall?.copyWith(
               color: colorScheme.onSurfaceVariant,
-              fontSize: 11,
             ),
           ),
         ],
@@ -98,7 +95,7 @@ class PushedRecordTile extends StatelessWidget {
   }
 
   Color _getStatusColor(ColorScheme colorScheme) {
-    if (record.isSuccess) return Colors.green;
+    if (record.isSuccess) return colorScheme.primary;
     if (record.isFailed) return colorScheme.error;
     return colorScheme.tertiary;
   }

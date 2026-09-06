@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/widgets/frosted_app_bar.dart';
-import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/layout/responsive_layout.dart';
-import 'presentation/tabs/connection_tab.dart';
+import '../../theme/design_tokens.dart';
 import 'presentation/tabs/automation_tab.dart';
+import 'presentation/tabs/connection_tab.dart';
 import 'presentation/tabs/push_tab.dart';
 import 'presentation/tabs/system_tab.dart';
 
@@ -22,33 +21,55 @@ class SettingsPage extends ConsumerStatefulWidget {
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   late int _selectedIndex;
   late bool _showMobileDetail;
+  final _contentKey = GlobalKey();
 
   static const List<_SettingsSection> _sections = [
     _SettingsSection(
-      key: 'accounts',
-      title: '账号与平台',
-      subtitle: '服务器连接、平台登录、认证摘要',
-      icon: Icons.manage_accounts_rounded,
+      key: 'connection',
+      title: '连接与访问',
+      subtitle: '服务器地址、访问密钥和网络代理',
+      icon: Icons.lan_rounded,
       child: ConnectionTab(),
     ),
     _SettingsSection(
       key: 'automation',
-      title: 'AI 与发现',
-      subtitle: '发现源、AI 模型、收藏同步策略',
+      title: 'AI 模型',
+      subtitle: '文本、视觉、摘要与语义模型',
       icon: Icons.auto_awesome_rounded,
       child: AutomationTab(),
     ),
     _SettingsSection(
+      key: 'sources',
+      title: '信息来源',
+      subtitle: '发现来源、兴趣与保留策略',
+      icon: Icons.rss_feed_rounded,
+      child: AutomationTab(sourcesOnly: true),
+    ),
+    _SettingsSection(
       key: 'push',
       title: '推送与通知',
-      subtitle: 'Bot 凭证、目标、权限和频道',
+      subtitle: 'Bot 凭证、权限与周期摘要',
       icon: Icons.outbox_rounded,
       child: PushTab(),
     ),
     _SettingsSection(
+      key: 'targets',
+      title: '推送目标',
+      subtitle: '群组与频道',
+      icon: Icons.groups_outlined,
+      child: PushTab(targetsOnly: true),
+    ),
+    _SettingsSection(
+      key: 'storage',
+      title: '媒体与存储',
+      subtitle: '媒体归档、质量与存储限制',
+      icon: Icons.storage_outlined,
+      child: SystemTab(storageOnly: true),
+    ),
+    _SettingsSection(
       key: 'system',
       title: '外观与系统',
-      subtitle: '主题、媒体归档、存储和许可',
+      subtitle: '主题与开源许可',
       icon: Icons.tune_rounded,
       child: SystemTab(),
     ),
@@ -59,6 +80,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     super.initState();
     _selectedIndex = _sectionIndex(widget.initialTab);
     _showMobileDetail = widget.initialTab != null;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // A visible desktop detail remains the current destination after rotation.
+    if (WindowMetrics.of(context).supportsSupportingPane) {
+      _showMobileDetail = true;
+    }
   }
 
   @override
@@ -74,150 +104,123 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = ResponsiveLayout.isMobile(context);
-    final selected = _sections[_selectedIndex];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final metrics = WindowMetrics.fromSize(
+          Size(constraints.maxWidth, constraints.maxHeight),
+        );
+        final singlePane = !metrics.supportsSupportingPane;
+        final selected = _sections[_selectedIndex];
 
-    return Scaffold(
-      appBar: FrostedAppBar(
-        title: Text(isMobile && _showMobileDetail ? selected.title : '设置'),
-        leading: isMobile && _showMobileDetail
-            ? IconButton(
-                tooltip: '返回设置列表',
-                icon: const Icon(Icons.arrow_back_rounded),
-                onPressed: () {
-                  setState(() => _showMobileDetail = false);
-                  context.go('/settings');
-                },
-              )
-            : null,
-        actions: kDebugMode
-            ? [
-                IconButton(
-                  icon: const Icon(Icons.rocket_launch),
-                  tooltip: 'Debug: 进入引导页 (Onboarding)',
-                  onPressed: () => context.push('/onboarding'),
-                ),
-              ]
-            : null,
-      ),
-      body: isMobile ? _buildMobileBody(context) : _buildDesktopBody(context),
+        if (!singlePane) return _buildDesktopBody(context);
+        return Scaffold(
+          appBar: AppBar(
+            toolbarHeight: metrics.heightClass.isCompact ? 48 : null,
+            title: Text(_showMobileDetail ? selected.title : '设置'),
+            leading: _showMobileDetail
+                ? BackButton(onPressed: () => _backToSections(context))
+                : _exitButton(context),
+          ),
+          body: SafeArea(top: false, child: _buildMobileBody(context)),
+        );
+      },
     );
+  }
+
+  Widget _exitButton(BuildContext context) => BackButton(
+    onPressed: () {
+      if (GoRouter.maybeOf(context)?.canPop() ?? false) {
+        context.pop();
+      } else {
+        context.go('/home');
+      }
+    },
+  );
+
+  void _backToSections(BuildContext context) {
+    setState(() => _showMobileDetail = false);
+    context.replace('/settings');
   }
 
   Widget _buildDesktopBody(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final selected = _sections[_selectedIndex];
-
-    return Row(
-      children: [
-        Container(
-          width: 292,
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.38),
-            border: Border(
-              right: BorderSide(
-                color: colorScheme.outlineVariant.withValues(alpha: 0.42),
-              ),
-            ),
-          ),
-          child: SafeArea(
-            top: false,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+    final surface = Theme.of(context).colorScheme.surfaceContainerLow;
+    return Scaffold(
+      body: Row(
+        children: [
+          SizedBox(
+            key: const ValueKey('settings-section-pane'),
+            width: AppPane.supportingWidth,
+            child: Column(
               children: [
-                Text(
-                  '设置分区',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '低频配置集中在这里；日常任务和异常处理会进入通知中心或自动化下钻。',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                for (var i = 0; i < _sections.length; i++)
-                  _SettingsSectionTile(
-                    section: _sections[i],
-                    selected: i == _selectedIndex,
-                    onTap: () => _selectSection(context, i),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        Expanded(
-          child: ColoredBox(
-            color: colorScheme.surfaceContainerLowest,
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1120),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 28),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                AppBar(title: const Text('设置'), leading: _exitButton(context)),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
                     children: [
-                      _SettingsContentHeader(section: selected),
-                      const SizedBox(height: 16),
-                      Expanded(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: colorScheme.surface,
-                            borderRadius: BorderRadius.circular(28),
-                            border: Border.all(
-                              color: colorScheme.outlineVariant.withValues(
-                                alpha: 0.38,
-                              ),
-                            ),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(28),
-                            child: selected.child,
-                          ),
+                      for (var i = 0; i < _sections.length; i++)
+                        _SettingsSectionTile(
+                          section: _sections[i],
+                          selected: i == _selectedIndex,
+                          compact: true,
+                          onTap: () => _selectSection(context, i),
                         ),
-                      ),
                     ],
                   ),
                 ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: const BorderRadius.horizontal(
+                left: Radius.circular(AppShape.sheet),
+              ),
+              child: Material(
+                color: surface,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    AppBar(
+                      automaticallyImplyLeading: false,
+                      backgroundColor: surface,
+                      title: Text(selected.title),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            maxWidth: AppPane.readableMaxWidth,
+                          ),
+                          child: _sectionContent(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
+  Widget _sectionContent() =>
+      KeyedSubtree(key: _contentKey, child: _sections[_selectedIndex].child);
+
   Widget _buildMobileBody(BuildContext context) {
     if (_showMobileDetail) {
-      return _sections[_selectedIndex].child;
+      return _sectionContent();
     }
 
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     return ListView(
+      key: const ValueKey('settings-section-list'),
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
       children: [
-        Text(
-          '选择设置分区',
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '移动端先进入分区列表，再打开对应详情，避免在一个页面里堆叠过多表单。',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 20),
         for (var i = 0; i < _sections.length; i++)
           Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.only(bottom: 4),
             child: _SettingsSectionTile(
               section: _sections[i],
               selected: false,
@@ -233,17 +236,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   void _selectSection(BuildContext context, int index) {
     setState(() => _selectedIndex = index);
-    context.go('/settings?tab=${_sections[index].key}');
+    context.replace('/settings?tab=${_sections[index].key}');
   }
 
   int _sectionIndex(String? tab) {
-    return switch (tab) {
-      'connection' || 'account' || 'accounts' || 'platforms' => 0,
-      'automation' || 'ai' || 'discovery' || 'sources' => 1,
-      'push' || 'bot' || 'notifications' => 2,
-      'system' || 'appearance' => 3,
-      _ => 0,
-    };
+    final index = _sections.indexWhere((section) => section.key == tab);
+    return index < 0 ? 0 : index;
   }
 }
 
@@ -267,138 +265,24 @@ class _SettingsSectionTile extends StatelessWidget {
   final _SettingsSection section;
   final bool selected;
   final VoidCallback onTap;
+  final bool compact;
 
   const _SettingsSectionTile({
     required this.section,
     required this.selected,
     required this.onTap,
+    this.compact = false,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final foreground = selected
-        ? colorScheme.onSecondaryContainer
-        : colorScheme.onSurface;
-
-    return Card(
-      elevation: 0,
-      color: selected
-          ? colorScheme.secondaryContainer
-          : colorScheme.surface.withValues(alpha: 0.78),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(
-          color: selected
-              ? colorScheme.secondary.withValues(alpha: 0.24)
-              : colorScheme.outlineVariant.withValues(alpha: 0.34),
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: selected
-                      ? colorScheme.onSecondaryContainer.withValues(alpha: 0.1)
-                      : colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(section.icon, color: foreground),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      section.title,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: foreground,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      section.subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: selected
-                            ? colorScheme.onSecondaryContainer.withValues(
-                                alpha: 0.76,
-                              )
-                            : colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Icon(
-                selected
-                    ? Icons.check_circle_rounded
-                    : Icons.chevron_right_rounded,
-                color: selected ? colorScheme.primary : colorScheme.outline,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SettingsContentHeader extends StatelessWidget {
-  final _SettingsSection section;
-
-  const _SettingsContentHeader({required this.section});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Row(
-      children: [
-        Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            color: colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Icon(section.icon, color: colorScheme.onPrimaryContainer),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                section.title,
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                section.subtitle,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => ListTile(
+    leading: Icon(section.icon),
+    title: Text(section.title),
+    subtitle: compact ? null : Text(section.subtitle),
+    trailing: compact ? null : const Icon(Icons.chevron_right_rounded),
+    selected: selected,
+    selectedTileColor: Theme.of(context).colorScheme.secondaryContainer,
+    shape: RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
+    onTap: onTap,
+  );
 }

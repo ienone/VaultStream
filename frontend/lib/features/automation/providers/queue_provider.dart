@@ -22,11 +22,11 @@ class QueueFilter extends _$QueueFilter {
   QueueFilterState build() => const QueueFilterState();
 
   void setRuleId(int? ruleId) {
-    state = state.copyWith(ruleId: ruleId);
+    state = QueueFilterState(ruleId: ruleId, status: state.status);
   }
 
   void setStatus(QueueStatus status) {
-    state = state.copyWith(status: status);
+    state = QueueFilterState(ruleId: state.ruleId, status: status);
   }
 }
 
@@ -35,13 +35,6 @@ class QueueFilterState {
   final QueueStatus status;
 
   const QueueFilterState({this.ruleId, this.status = QueueStatus.willPush});
-
-  QueueFilterState copyWith({int? ruleId, QueueStatus? status}) {
-    return QueueFilterState(
-      ruleId: ruleId ?? this.ruleId,
-      status: status ?? this.status,
-    );
-  }
 }
 
 @riverpod
@@ -276,10 +269,10 @@ Future<Map<String, int>> queueStats(Ref ref, int? ruleId) async {
   final data = Map<String, dynamic>.from(response.data as Map);
 
   final mapped = <String, int>{
-    'will_push': (data['will_push'] ?? 0),
-    'filtered': (data['filtered'] ?? 0),
-    'pushed': (data['pushed'] ?? 0),
-    'total': (data['total'] ?? 0),
+    'will_push': data['will_push'] as int,
+    'filtered': data['filtered'] as int,
+    'pushed': data['pushed'] as int,
+    'total': data['total'] as int,
   };
   return mapped;
 }

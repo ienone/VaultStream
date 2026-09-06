@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
+import '../../theme/design_tokens.dart';
+
 class PlatformBadge extends StatelessWidget {
   final String platform;
 
@@ -16,6 +18,11 @@ class PlatformBadge extends StatelessWidget {
     String label = platform.toUpperCase();
 
     switch (platform.toLowerCase()) {
+      case 'universal':
+        color = theme.colorScheme.secondary;
+        icon = const Icon(Icons.language_rounded, size: 10);
+        label = '网页';
+        break;
       case 'twitter':
       case 'x':
         color = isDark ? Colors.white : Colors.black;
@@ -55,7 +62,7 @@ class PlatformBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: color.withAlpha(isDark ? 50 : 30),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppShape.pill),
         border: Border.all(color: color.withAlpha(80), width: 0.5),
       ),
       child: Row(
@@ -71,8 +78,6 @@ class PlatformBadge extends StatelessWidget {
             style: theme.textTheme.labelSmall?.copyWith(
               color: color,
               fontWeight: FontWeight.bold,
-              fontSize: 10,
-              letterSpacing: 0.5,
             ),
           ),
         ],

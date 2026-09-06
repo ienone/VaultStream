@@ -1,31 +1,44 @@
 import 'package:flutter/material.dart';
+
+import '../../../theme/design_tokens.dart';
 import '../models/distribution_rule.dart';
 import '../models/bot_chat.dart';
 import '../models/render_config.dart';
 import 'render_config_editor.dart';
 
-class DistributionRuleDialog extends StatefulWidget {
+class DistributionRuleEditor extends StatefulWidget {
   final DistributionRule? rule;
-  final Function(DistributionRuleCreate, List<int>, String, int?) onCreate;
-  final Function(int, DistributionRuleUpdate, List<int>, String, int?)?
+  final Future<void> Function(DistributionRuleCreate, List<int>, String, int?)
+  onCreate;
+  final Future<void> Function(
+    int,
+    DistributionRuleUpdate,
+    List<int>,
+    String,
+    int?,
+  )?
   onUpdate;
+  final VoidCallback onCancel;
+  final VoidCallback? onManageTargets;
   final List<BotChat> availableChats;
   final List<int> initialSelectedChatIds;
 
-  const DistributionRuleDialog({
+  const DistributionRuleEditor({
     super.key,
     this.rule,
     required this.onCreate,
     this.onUpdate,
+    required this.onCancel,
+    this.onManageTargets,
     this.availableChats = const [],
     this.initialSelectedChatIds = const [],
   });
 
   @override
-  State<DistributionRuleDialog> createState() => _DistributionRuleDialogState();
+  State<DistributionRuleEditor> createState() => _DistributionRuleEditorState();
 }
 
-class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
+class _DistributionRuleEditorState extends State<DistributionRuleEditor> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _descriptionController;
@@ -44,6 +57,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
   late RenderConfig _renderConfig;
   late Set<int> _selectedTargetChatIds;
   late String _backfillMode;
+  bool _saving = false;
 
   bool get isEditing => widget.rule != null;
 
@@ -91,15 +105,14 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final colorScheme = Theme.of(context).colorScheme;
     final size = MediaQuery.sizeOf(context);
     final compact = size.width < 640;
 
-    final content = Container(
+    return Container(
       constraints: BoxConstraints(
-        maxWidth: compact ? double.infinity : 560,
-        maxHeight: compact ? double.infinity : size.height * 0.9,
+        maxWidth: compact ? double.infinity : AppPane.readableMaxWidth,
+        maxHeight: double.infinity,
       ),
       padding: compact
           ? const EdgeInsets.fromLTRB(20, 20, 20, 16)
@@ -108,29 +121,6 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(
-                  Icons.settings_suggest_rounded,
-                  color: colorScheme.primary,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Text(
-                isEditing ? '编辑分发规则' : '创建分发规则',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 28),
           Flexible(
             child: Form(
               key: _formKey,
@@ -143,71 +133,11 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
                       controller: _nameController,
                       label: '规则名称',
                       hint: '为规则起一个直观的名字',
-                      icon: Icons.label_important_rounded,
                       validator: (v) =>
                           v == null || v.isEmpty ? '请输入规则名称' : null,
                     ),
                     const SizedBox(height: 24),
-                    _buildTextField(
-                      controller: _descriptionController,
-                      label: '规则描述',
-                      hint: '可选：描述该规则的用途',
-                      icon: Icons.description_rounded,
-                      maxLines: 2,
-                    ),
-                    const SizedBox(height: 32),
-                    _buildSubHeader('分发策略'),
-                    const SizedBox(height: 16),
-                    _buildNsfwSelector(),
-                    const SizedBox(height: 24),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildTextField(
-                            controller: _priorityController,
-                            label: '优先级',
-                            hint: '0',
-                            icon: Icons.priority_high_rounded,
-                            keyboardType: TextInputType.number,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildTextField(
-                            controller: _rateLimitController,
-                            label: '频率限制',
-                            hint: '最大推送数',
-                            icon: Icons.speed_rounded,
-                            keyboardType: TextInputType.number,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    _buildTextField(
-                      controller: _timeWindowController,
-                      label: '时间窗口 (秒)',
-                      hint: '3600',
-                      icon: Icons.timer_rounded,
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: 24),
-                    _buildSwitchTile(
-                      title: '人工审批',
-                      subtitle: '开启后，符合规则的内容需在“待审批”中手动确认',
-                      icon: Icons.rate_review_rounded,
-                      value: _approvalRequired,
-                      onChanged: (v) => setState(() => _approvalRequired = v),
-                    ),
-                    _buildSwitchTile(
-                      title: '启用该规则',
-                      subtitle: '控制该规则是否立即生效',
-                      icon: Icons.power_settings_new_rounded,
-                      value: _enabled,
-                      onChanged: (v) => setState(() => _enabled = v),
-                    ),
-                    const SizedBox(height: 32),
-                    _buildSubHeader('标签匹配'),
+                    _buildSubHeader('哪些内容'),
                     const SizedBox(height: 16),
                     _TagInput(
                       label: '包含标签',
@@ -238,14 +168,74 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
                       chipColor: colorScheme.error,
                     ),
                     const SizedBox(height: 32),
-                    _buildSubHeader('推送目标'),
+                    _buildNsfwSelector(),
+                    const SizedBox(height: 16),
+                    _buildSubHeader('发到哪里'),
                     const SizedBox(height: 12),
                     _buildTargetSelector(),
                     const SizedBox(height: 24),
-                    _buildBackfillSelector(),
+                    _buildSwitchTile(
+                      title: '人工审批',
+                      subtitle: '开启后，符合规则的内容需在“待审批”中手动确认',
+                      icon: Icons.rate_review_rounded,
+                      value: _approvalRequired,
+                      onChanged: (v) => setState(() => _approvalRequired = v),
+                    ),
+                    _buildSwitchTile(
+                      title: '启用该规则',
+                      subtitle: '控制该规则是否立即生效',
+                      icon: Icons.power_settings_new_rounded,
+                      value: _enabled,
+                      onChanged: (v) => setState(() => _enabled = v),
+                    ),
                     const SizedBox(height: 32),
-                    _buildRenderConfigSection(),
-                    const SizedBox(height: 24),
+                    ExpansionTile(
+                      title: const Text('高级设置'),
+                      maintainState: true,
+                      tilePadding: EdgeInsets.zero,
+                      children: [
+                        _buildTextField(
+                          controller: _descriptionController,
+                          label: '规则描述',
+                          hint: '可选：描述该规则的用途',
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 32),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildTextField(
+                                controller: _priorityController,
+                                label: '优先级',
+                                hint: '0',
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildTextField(
+                                controller: _rateLimitController,
+                                label: '频率限制',
+                                hint: '最大推送数',
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+                        _buildTextField(
+                          controller: _timeWindowController,
+                          label: '时间窗口 (秒)',
+                          hint: '3600',
+                          keyboardType: TextInputType.number,
+                        ),
+                        const SizedBox(height: 24),
+                        _buildBackfillSelector(),
+                        const SizedBox(height: 32),
+                        _buildRenderConfigSection(),
+                        const SizedBox(height: 24),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -256,45 +246,41 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               TextButton(
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: _saving ? null : widget.onCancel,
                 style: TextButton.styleFrom(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 24,
                     vertical: 12,
                   ),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: AppShape.cardMediaBorder,
                   ),
                 ),
                 child: const Text('取消'),
               ),
               const SizedBox(width: 12),
               FilledButton(
-                onPressed: _submit,
+                onPressed: _saving ? null : _submit,
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 32,
                     vertical: 12,
                   ),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: AppShape.cardMediaBorder,
                   ),
                 ),
-                child: Text(isEditing ? '保存修改' : '创建规则'),
+                child: _saving
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(isEditing ? '保存修改' : '创建规则'),
               ),
             ],
           ),
         ],
       ),
-    );
-
-    if (compact) {
-      return Dialog.fullscreen(child: SafeArea(child: content));
-    }
-
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
-      child: content,
     );
   }
 
@@ -309,15 +295,25 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppShape.cardBorder,
         ),
-        child: const Text('暂无可用群组，请先在 Bot 群组页添加或同步。'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('还没有可用推送目标'),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: widget.onManageTargets,
+              child: const Text('添加推送目标'),
+            ),
+          ],
+        ),
       );
     }
 
     return Material(
       color: colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: AppShape.cardBorder,
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
@@ -377,7 +373,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
     final colorScheme = Theme.of(context).colorScheme;
     return Material(
       color: colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: AppShape.cardBorder,
       clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -438,7 +434,6 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
                 controller: _backfillRecentDaysController,
                 label: '回填天数',
                 hint: '30',
-                icon: Icons.timelapse_rounded,
                 keyboardType: TextInputType.number,
               ),
             ],
@@ -454,7 +449,6 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
       style: Theme.of(context).textTheme.labelLarge?.copyWith(
         color: Theme.of(context).colorScheme.primary,
         fontWeight: FontWeight.bold,
-        letterSpacing: 1.2,
       ),
     );
   }
@@ -468,7 +462,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
           children: [
             Icon(Icons.security_rounded, size: 20, color: colorScheme.outline),
             const SizedBox(width: 12),
-            Text('NSFW 策略', style: Theme.of(context).textTheme.bodyMedium),
+            Text('敏感内容', style: Theme.of(context).textTheme.bodyMedium),
           ],
         ),
         const SizedBox(height: 12),
@@ -511,7 +505,6 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
     required TextEditingController controller,
     required String label,
     required String hint,
-    required IconData icon,
     int maxLines = 1,
     TextInputType? keyboardType,
     String? Function(String?)? validator,
@@ -525,19 +518,18 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        prefixIcon: Icon(icon, size: 20),
         filled: true,
         fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppShape.cardBorder,
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppShape.cardBorder,
           borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppShape.cardBorder,
           borderSide: BorderSide(color: colorScheme.primary, width: 2),
         ),
         contentPadding: const EdgeInsets.symmetric(
@@ -567,7 +559,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
         filled: true,
         fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppShape.cardBorder,
           borderSide: BorderSide.none,
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -582,45 +574,12 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
     required bool value,
     required ValueChanged<bool> onChanged,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Material(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        clipBehavior: Clip.antiAlias,
-        child: SwitchListTile(
-          title: Text(
-            title,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-          ),
-          subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-          secondary: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: (value ? colorScheme.primary : colorScheme.outline)
-                  .withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              icon,
-              size: 20,
-              color: value ? colorScheme.primary : colorScheme.outline,
-            ),
-          ),
-          value: value,
-          onChanged: onChanged,
-          thumbIcon: WidgetStateProperty.resolveWith<Icon?>((states) {
-            if (states.contains(WidgetState.selected)) {
-              return const Icon(Icons.check_rounded);
-            }
-            return const Icon(Icons.close_rounded);
-          }),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-        ),
-      ),
+    return SwitchListTile.adaptive(
+      contentPadding: EdgeInsets.zero,
+      title: Text(title),
+      subtitle: Text(subtitle),
+      value: value,
+      onChanged: onChanged,
     );
   }
 
@@ -628,18 +587,18 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
     final colorScheme = Theme.of(context).colorScheme;
     return Material(
       color: colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: AppShape.cardBorder,
       clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
         collapsedShape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppShape.cardBorder,
         ),
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: colorScheme.tertiary.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: AppShape.cardMediaBorder,
           ),
           child: Icon(
             Icons.palette_rounded,
@@ -647,13 +606,15 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
             color: colorScheme.tertiary,
           ),
         ),
-        title: const Text(
+        title: Text(
           '渲染配置',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
         ),
         subtitle: Text(
           _renderConfig.isEmpty ? '使用默认渲染配置' : '已自定义',
-          style: const TextStyle(fontSize: 12),
+          style: Theme.of(context).textTheme.bodySmall,
         ),
         children: [
           Padding(
@@ -668,7 +629,7 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
     );
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     final matchConditions = {
       if (_includeTags.isNotEmpty) 'tags': _includeTags,
@@ -689,40 +650,41 @@ class _DistributionRuleDialogState extends State<DistributionRuleDialog> {
       timeWindow: int.tryParse(_timeWindowController.text),
       renderConfig: _renderConfig.isEmpty ? null : _renderConfig,
     );
-    if (isEditing) {
-      final recentDays = _backfillMode == 'recent_days'
-          ? (int.tryParse(_backfillRecentDaysController.text) ?? 30)
-          : null;
-      widget.onUpdate?.call(
-        widget.rule!.id,
-        DistributionRuleUpdate(
-          name: create.name,
-          description: create.description,
-          matchConditions: create.matchConditions,
-          priority: create.priority,
-          nsfwPolicy: create.nsfwPolicy,
-          approvalRequired: create.approvalRequired,
-          enabled: create.enabled,
-          rateLimit: create.rateLimit,
-          timeWindow: create.timeWindow,
-          renderConfig: create.renderConfig,
-        ),
-        _selectedTargetChatIds.toList()..sort(),
-        _backfillMode,
-        recentDays,
-      );
-    } else {
-      final recentDays = _backfillMode == 'recent_days'
-          ? (int.tryParse(_backfillRecentDaysController.text) ?? 30)
-          : null;
-      widget.onCreate(
-        create,
-        _selectedTargetChatIds.toList()..sort(),
-        _backfillMode,
-        recentDays,
-      );
+    final recentDays = _backfillMode == 'recent_days'
+        ? (int.tryParse(_backfillRecentDaysController.text) ?? 30)
+        : null;
+    setState(() => _saving = true);
+    try {
+      if (isEditing) {
+        await widget.onUpdate?.call(
+          widget.rule!.id,
+          DistributionRuleUpdate(
+            name: create.name,
+            description: create.description,
+            matchConditions: create.matchConditions,
+            priority: create.priority,
+            nsfwPolicy: create.nsfwPolicy,
+            approvalRequired: create.approvalRequired,
+            enabled: create.enabled,
+            rateLimit: create.rateLimit,
+            timeWindow: create.timeWindow,
+            renderConfig: create.renderConfig,
+          ),
+          _selectedTargetChatIds.toList()..sort(),
+          _backfillMode,
+          recentDays,
+        );
+      } else {
+        await widget.onCreate(
+          create,
+          _selectedTargetChatIds.toList()..sort(),
+          _backfillMode,
+          recentDays,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
-    Navigator.of(context).pop();
   }
 }
 
@@ -785,7 +747,7 @@ class _TagInputState extends State<_TagInput> {
               alpha: 0.3,
             ),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: AppShape.cardBorder,
               borderSide: BorderSide.none,
             ),
             suffixIcon: IconButton(
@@ -804,17 +766,17 @@ class _TagInputState extends State<_TagInput> {
                 .map(
                   (tag) => InputChip(
                     label: Text(tag),
-                    labelStyle: TextStyle(
-                      color: widget.chipColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    labelStyle: Theme.of(context).textTheme.labelMedium
+                        ?.copyWith(
+                          color: widget.chipColor,
+                          fontWeight: FontWeight.bold,
+                        ),
                     backgroundColor: widget.chipColor.withValues(alpha: 0.08),
                     side: BorderSide(
                       color: widget.chipColor.withValues(alpha: 0.15),
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppShape.cardMediaBorder,
                     ),
                     onDeleted: () => widget.onChanged(
                       List<String>.from(widget.tags)..remove(tag),

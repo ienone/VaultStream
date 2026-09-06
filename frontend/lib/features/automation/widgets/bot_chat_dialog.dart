@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/layout/responsive_layout.dart';
 import '../../../core/utils/toast.dart';
+import '../../../theme/design_tokens.dart';
 import '../models/bot_chat.dart';
 
 class BotChatDialog extends ConsumerStatefulWidget {
@@ -58,11 +61,14 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final metrics = WindowMetrics.of(context);
 
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 560),
+    final content = ConstrainedBox(
+      constraints: BoxConstraints(
+        maxWidth: AppPane.formMaxWidth,
+        maxHeight: metrics.height * 0.9,
+      ),
+      child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -74,7 +80,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: colorScheme.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: AppShape.cardBorder,
                   ),
                   child: Icon(
                     Icons.smart_toy_rounded,
@@ -193,8 +199,8 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                       horizontal: 24,
                       vertical: 12,
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: AppShape.cardMediaBorder,
                     ),
                   ),
                   child: const Text('取消'),
@@ -207,8 +213,8 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                       horizontal: 32,
                       vertical: 12,
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: AppShape.cardMediaBorder,
                     ),
                   ),
                   child: Text(isEditing ? '保存修改' : '确认添加'),
@@ -218,6 +224,14 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
           ],
         ),
       ),
+    );
+
+    if (metrics.widthClass.isCompact) {
+      return Dialog.fullscreen(child: SafeArea(child: content));
+    }
+    return Dialog(
+      shape: const RoundedRectangleBorder(borderRadius: AppShape.sheetBorder),
+      child: content,
     );
   }
 
@@ -243,15 +257,15 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
         filled: true,
         fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppShape.cardBorder,
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppShape.cardBorder,
           borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppShape.cardBorder,
           borderSide: BorderSide(color: colorScheme.primary, width: 2),
         ),
         contentPadding: const EdgeInsets.symmetric(
@@ -281,7 +295,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
         filled: true,
         fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppShape.cardBorder,
           borderSide: BorderSide.none,
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -297,23 +311,24 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
     required ValueChanged<bool> onChanged,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-      ),
+    return Material(
+      color: colorScheme.surfaceContainerLow,
+      shape: const RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
+      clipBehavior: Clip.antiAlias,
       child: SwitchListTile(
         title: Text(
           title,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
         ),
-        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+        subtitle: Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
         secondary: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: (value ? colorScheme.primary : colorScheme.outline)
                 .withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: AppShape.cardMediaBorder,
           ),
           child: Icon(
             icon,
@@ -329,7 +344,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
           }
           return const Icon(Icons.close_rounded);
         }),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: const RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
       ),
     );
   }

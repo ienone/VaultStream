@@ -1,5 +1,7 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
+import '../../../core/media/media_asset.dart';
+
 part 'queue_item.freezed.dart';
 part 'queue_item.g.dart';
 
@@ -35,6 +37,7 @@ abstract class QueueItem with _$QueueItem {
     @JsonKey(name: 'is_nsfw') @Default(false) bool isNsfw,
     @JsonKey(name: 'cover_url') String? coverUrl,
     @JsonKey(name: 'author_name') String? authorName,
+    @JsonKey(name: 'media_assets') @Default([]) List<MediaAsset> mediaAssets,
     required String status,
     @JsonKey(name: 'reason_code') String? reasonCode,
     @JsonKey(name: 'last_error') String? reason,

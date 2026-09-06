@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/network/api_client.dart';
 import '../../../core/providers/system_status_provider.dart';
+import '../../../core/layout/responsive_layout.dart';
 import '../../../core/utils/safe_url_launcher.dart';
+import '../../../theme/design_tokens.dart';
 import '../../automation/providers/bot_chats_provider.dart';
+import '../../settings/providers/bot_config_actions.dart';
+import '../../settings/providers/settings_provider.dart';
 import '../../settings/presentation/widgets/setting_components.dart'
     as settings_ui;
 import 'widgets/interactive_login_dialog.dart';
@@ -100,7 +103,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   }
 
   Future<void> _put(String key, Object value) =>
-      ref.read(apiClientProvider).put('/settings/$key', data: {'value': value});
+      ref.read(systemSettingsProvider.notifier).updateSetting(key, value);
 
   Future<void> _saveProvider(String target) async {
     final isText = target == 'text_llm';
@@ -128,14 +131,9 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     });
     try {
       await _saveProvider(target);
-      final response = await ref
-          .read(apiClientProvider)
-          .post('/ai/models', data: {'target': target});
-      final models = List<String>.from(
-        (response.data['models'] as List<dynamic>).map(
-          (item) => item.toString(),
-        ),
-      );
+      final models = await ref
+          .read(aiModelDiscoveryActionsProvider)
+          .discover(target);
       if (!mounted) return;
       setState(() {
         if (target == 'text_llm') {
@@ -234,31 +232,26 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   }
 
   Future<void> _saveBots() async {
-    final dio = ref.read(apiClientProvider);
     if (_enableTelegramBot) {
-      await dio.post(
-        '/bot-config',
-        data: {
-          'platform': 'telegram',
-          'name': 'Main Telegram Bot',
-          'bot_token': _tgTokenController.text.trim(),
-          'enabled': true,
-        },
-      );
+      await ref
+          .read(botConfigActionsProvider)
+          .saveCredentials(
+            platform: 'telegram',
+            telegramToken: _tgTokenController.text,
+            napcatHttpUrl: '',
+          );
       if (_tgAdminIdController.text.trim().isNotEmpty) {
         await _put('telegram_admin_ids', _tgAdminIdController.text.trim());
       }
     }
     if (_enableQqBot) {
-      await dio.post(
-        '/bot-config',
-        data: {
-          'platform': 'qq',
-          'name': 'Main QQ Bot',
-          'napcat_http_url': _qqUrlController.text.trim(),
-          'enabled': true,
-        },
-      );
+      await ref
+          .read(botConfigActionsProvider)
+          .saveCredentials(
+            platform: 'qq',
+            telegramToken: '',
+            napcatHttpUrl: _qqUrlController.text,
+          );
       if (_qqAdminIdController.text.trim().isNotEmpty) {
         await _put('qq_admin_ids', _qqAdminIdController.text.trim());
       }
@@ -375,8 +368,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
             onChanged: onChanged,
           ),
           AnimatedSize(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
+            duration: AppMotion.contentSwap,
+            curve: AppMotion.standardCurve,
             child: value
                 ? Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -395,17 +388,19 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = maxColumns >= 3 && constraints.maxWidth >= 1040
+        final widthClass = ResponsiveLayout.widthClassFor(constraints.maxWidth);
+        final columns =
+            maxColumns >= 3 && widthClass.atLeast(WindowWidthClass.expanded)
             ? 3
-            : maxColumns >= 2 && constraints.maxWidth >= 680
+            : maxColumns >= 2 && widthClass.atLeast(WindowWidthClass.medium)
             ? 2
             : 1;
         const spacing = 12.0;
         final itemWidth =
             (constraints.maxWidth - spacing * (columns - 1)) / columns;
         return AnimatedSize(
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeOutCubic,
+          duration: AppMotion.contentSwap,
+          curve: AppMotion.standardCurve,
           alignment: Alignment.topCenter,
           child: Wrap(
             spacing: spacing,
@@ -414,8 +409,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
             children: children
                 .map(
                   (child) => AnimatedContainer(
-                    duration: const Duration(milliseconds: 260),
-                    curve: Curves.easeOutCubic,
+                    duration: AppMotion.contentSwap,
+                    curve: AppMotion.standardCurve,
                     width: itemWidth,
                     child: child,
                   ),
@@ -617,7 +612,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
           ListTile(
             leading: Icon(
               connected ? Icons.check_circle : Icons.account_circle_outlined,
-              color: connected ? Colors.green : null,
+              color: connected ? Theme.of(context).colorScheme.primary : null,
             ),
             title: Text(label),
             subtitle: Text(connected ? '已连接' : '未连接'),
@@ -697,8 +692,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
       if (targetContext == null) return;
       Scrollable.ensureVisible(
         targetContext,
-        duration: const Duration(milliseconds: 320),
-        curve: Curves.easeOutCubic,
+        duration: AppMotion.surfaceEnter,
+        curve: AppMotion.standardCurve,
         alignment: 0.08,
       );
     });
@@ -726,7 +721,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                 height: 44,
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppShape.cardMediaBorder,
                 ),
                 child: Icon(icon),
               ),
@@ -1005,7 +1000,7 @@ class _ProgressItem extends StatelessWidget {
         child: Material(
           type: MaterialType.transparency,
           child: InkWell(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: AppShape.cardMediaBorder,
             hoverColor: colorScheme.primary.withValues(alpha: 0.08),
             splashColor: colorScheme.primary.withValues(alpha: 0.14),
             highlightColor: colorScheme.primary.withValues(alpha: 0.05),
@@ -1016,7 +1011,7 @@ class _ProgressItem extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
+                    duration: AppMotion.stateChange,
                     width: 24,
                     height: 24,
                     decoration: BoxDecoration(

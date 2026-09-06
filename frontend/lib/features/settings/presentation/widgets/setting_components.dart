@@ -1,160 +1,111 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+
+import '../../../../core/layout/responsive_layout.dart';
 import '../../../../core/utils/toast.dart';
+import '../../../../theme/design_tokens.dart';
 
 // SectionHeader 已迁移至 core/widgets，此处重新导出保持向后兼容。
 export '../../../../core/widgets/section_header.dart' show SectionHeader;
 
 class SettingGroup extends StatelessWidget {
+  const SettingGroup({super.key, required this.children});
   final List<Widget> children;
 
-  const SettingGroup({super.key, required this.children});
-
   @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    // M3 Spec: 使用 Card 实现分组，利用 surfaceContainer 及其自带的 elevation 效果
-    return Card(
-      elevation: 0, // M3 倾向于使用色块区分而非阴影，或使用极低阴影。若需阴影可设为 1-2
-      color: colorScheme.surfaceContainer, // M3 标准容器色
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20), // 大圆角
-        side: BorderSide(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-          width: 1,
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: children.asMap().entries.map((entry) {
-          final isLast = entry.key == children.length - 1;
-          return Column(
-            children: [
-              entry.value,
-              if (!isLast)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Divider(
-                    height: 1,
-                    thickness: 0.5,
-                    color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-                  ),
-                ),
-            ],
-          );
-        }).toList(),
-      ),
-    ).animate().fadeIn(delay: 100.ms).slideY(begin: 0.05, end: 0);
-  }
+  Widget build(BuildContext context) => Column(
+    children: [
+      for (var i = 0; i < children.length; i++) ...[
+        children[i],
+        if (i < children.length - 1) const Divider(height: 1),
+      ],
+    ],
+  );
 }
 
 class SettingTile extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color? iconColor;
-  final Widget? trailing;
-  final VoidCallback? onTap;
-  final bool showArrow;
-
   const SettingTile({
     super.key,
     required this.title,
-    required this.subtitle,
-    required this.icon,
+    this.subtitle,
+    this.icon,
     this.iconColor,
     this.trailing,
     this.onTap,
     this.showArrow = true,
+    this.stackTrailing = false,
   });
+
+  final String title;
+  final String? subtitle;
+  final IconData? icon;
+  final Color? iconColor;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+  final bool showArrow;
+  final bool stackTrailing;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final compact = trailing != null && constraints.maxWidth < 560;
-            final leading = Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: (iconColor ?? colorScheme.primary).withValues(
-                  alpha: 0.1,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked =
+            stackTrailing && constraints.maxWidth < AppPane.formMaxWidth;
+        final copy = Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: theme.textTheme.titleMedium),
+              if (subtitle != null && subtitle!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  subtitle!,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(
-                icon,
-                color: iconColor ?? colorScheme.primary,
-                size: 22,
-              ),
-            );
-            final copy = Expanded(
+              ],
+            ],
+          ),
+        );
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    child: Row(
+                      children: [
+                        if (icon != null) ...[
+                          Icon(icon, size: 22, color: iconColor),
+                          const SizedBox(width: 12),
+                        ],
+                        copy,
+                        if (!stacked && trailing != null) ...[
+                          const SizedBox(width: 12),
+                          trailing!,
+                        ],
+                        if (trailing == null && showArrow && onTap != null)
+                          const Icon(Icons.chevron_right_rounded),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
+                  if (stacked && trailing != null) ...[
+                    const SizedBox(height: 8),
+                    trailing!,
+                  ],
                 ],
               ),
-            );
-
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-              child: compact
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [leading, const SizedBox(width: 16), copy],
-                        ),
-                        const SizedBox(height: 14),
-                        SizedBox(
-                          width: double.infinity,
-                          child: Align(
-                            alignment: Alignment.centerRight,
-                            child: trailing!,
-                          ),
-                        ),
-                      ],
-                    )
-                  : Row(
-                      children: [
-                        leading,
-                        const SizedBox(width: 16),
-                        copy,
-                        ?trailing,
-                        if (trailing == null && showArrow)
-                          Icon(
-                            Icons.chevron_right_rounded,
-                            color: colorScheme.outline.withValues(alpha: 0.5),
-                          ),
-                      ],
-                    ),
-            );
-          },
-        ),
-      ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -163,85 +114,42 @@ class AdaptiveTaskSurface extends StatelessWidget {
   const AdaptiveTaskSurface({
     super.key,
     required this.title,
-    required this.icon,
     required this.body,
     required this.actions,
-    this.maxWidth = 560,
+    this.maxWidth = AppPane.formMaxWidth,
   });
 
   final String title;
-  final IconData icon;
   final Widget body;
   final List<Widget> actions;
   final double maxWidth;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final size = MediaQuery.sizeOf(context);
-    final compact = size.width < 640;
-    final header = Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: colorScheme.primary.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Icon(icon, color: colorScheme.primary),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Text(
-            title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-      ],
-    );
-    final actionBar = OverflowBar(
-      alignment: MainAxisAlignment.end,
-      spacing: 12,
-      overflowSpacing: 8,
-      children: actions,
-    );
-    final content = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        header,
-        const SizedBox(height: 24),
-        Expanded(child: body),
-        const SizedBox(height: 16),
-        actionBar,
-      ],
-    );
-
-    if (compact) {
-      return Dialog.fullscreen(
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-            child: content,
-          ),
-        ),
-      );
-    }
-
+    final compact = WindowMetrics.of(context).widthClass.isCompact;
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+      insetPadding: EdgeInsets.all(compact ? 12 : 24),
+      shape: const RoundedRectangleBorder(borderRadius: AppShape.sheetBorder),
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: maxWidth,
-          maxHeight: size.height * 0.9,
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
-          child: content,
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 20),
+              body,
+              const SizedBox(height: 16),
+              OverflowBar(
+                alignment: MainAxisAlignment.end,
+                spacing: 12,
+                overflowSpacing: 8,
+                children: actions,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -250,8 +158,8 @@ class AdaptiveTaskSurface extends StatelessWidget {
 
 class ExpandableSettingTile extends StatefulWidget {
   final String title;
-  final String subtitle;
-  final IconData icon;
+  final String? subtitle;
+  final IconData? icon;
   final Widget expandedContent;
   final Widget? trailing;
   final bool isInitiallyExpanded;
@@ -260,8 +168,8 @@ class ExpandableSettingTile extends StatefulWidget {
   const ExpandableSettingTile({
     super.key,
     required this.title,
-    required this.subtitle,
-    required this.icon,
+    this.subtitle,
+    this.icon,
     required this.expandedContent,
     this.trailing,
     this.isInitiallyExpanded = false,
@@ -302,11 +210,14 @@ class _ExpandableSettingTileState extends State<ExpandableSettingTile> {
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (widget.trailing != null) widget.trailing!,
-              const SizedBox(width: 8),
+              if (widget.trailing != null) ...[
+                widget.trailing!,
+                const SizedBox(width: 8),
+              ],
               AnimatedRotation(
                 turns: _isExpanded ? 0.25 : 0,
-                duration: 300.ms,
+                duration: AppMotion.stateChange,
+                curve: AppMotion.standardCurve,
                 child: Icon(
                   Icons.chevron_right_rounded,
                   color: colorScheme.outline.withValues(alpha: 0.5),
@@ -317,12 +228,12 @@ class _ExpandableSettingTileState extends State<ExpandableSettingTile> {
           onTap: _toggle,
         ),
         AnimatedSize(
-          duration: 300.ms,
-          curve: Curves.easeOutQuart,
+          duration: AppMotion.stateChange,
+          curve: AppMotion.standardCurve,
           child: _isExpanded
               ? Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(64, 0, 20, 24),
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 16),
                   child: widget.expandedContent,
                 )
               : const SizedBox.shrink(),
@@ -344,7 +255,7 @@ class LoadingGroup extends StatelessWidget {
       height: 200,
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: AppShape.sheetBorder,
       ),
       child: const Center(child: CircularProgressIndicator()),
     ).animate(onPlay: (c) => c.repeat()).shimmer();

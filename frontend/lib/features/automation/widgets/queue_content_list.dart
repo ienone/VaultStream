@@ -6,6 +6,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 import '../../../core/utils/toast.dart';
 import '../../../core/widgets/network_thumbnail.dart';
+import '../../../core/widgets/platform_badge.dart';
+import '../../../core/media/media_asset.dart';
+import '../../../theme/design_tokens.dart';
 import '../models/queue_item.dart';
 import '../providers/queue_provider.dart';
 
@@ -86,42 +89,24 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
   }
 
   Widget _buildEmptyState() {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final message = switch (widget.currentStatus) {
+      QueueStatus.willPush => '暂无待推送内容',
+      QueueStatus.filtered => '暂无不推送内容',
+      QueueStatus.pushed => '暂无已推送内容',
+    };
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: colorScheme.primary.withValues(alpha: 0.05),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.auto_awesome_rounded,
-              size: 64,
-              color: colorScheme.primary.withValues(alpha: 0.3),
-            ),
-          ),
-          const SizedBox(height: 24),
-          Text('暂无待处理内容', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Text(
-            '队列目前是空的，休息一下吧',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colorScheme.outline,
-            ),
-          ),
-          const SizedBox(height: 24),
-          FilledButton.tonalIcon(
-            onPressed: widget.onRefresh,
-            icon: const Icon(Icons.refresh_rounded),
-            label: const Text('刷新队列'),
-          ),
-        ],
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(message, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            TextButton(onPressed: widget.onRefresh, child: const Text('刷新')),
+          ],
+        ),
       ),
-    ).animate().fadeIn();
+    );
   }
 
   Widget _buildMainList() {
@@ -151,13 +136,15 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                 return AnimatedBuilder(
                   animation: animation,
                   builder: (context, _) {
-                    final animValue = Curves.easeInOut.transform(
+                    final animValue = AppMotion.emphasizedCurve.transform(
                       animation.value,
                     );
                     final elevation = lerpDouble(0, 12, animValue)!;
                     return Material(
                       elevation: elevation,
-                      borderRadius: BorderRadius.circular(24),
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: AppShape.sheetBorder,
+                      ),
                       color: Colors.transparent,
                       shadowColor: Colors.black.withValues(alpha: 0.2),
                       child: Transform.scale(
@@ -317,7 +304,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
         color: colorScheme.primaryContainer,
         elevation: 8,
         shadowColor: colorScheme.shadow.withValues(alpha: 0.2),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: const RoundedRectangleBorder(borderRadius: AppShape.sheetBorder),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           child: Row(
@@ -329,7 +316,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                 ),
                 decoration: BoxDecoration(
                   color: colorScheme.onPrimaryContainer.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppShape.pill),
                 ),
                 child: Text(
                   '已选 ${_selectedIds.length}',
@@ -347,9 +334,6 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                 style: FilledButton.styleFrom(
                   backgroundColor: colorScheme.onPrimaryContainer,
                   foregroundColor: colorScheme.primaryContainer,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -357,11 +341,6 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                 onPressed: _batchReschedule,
                 icon: const Icon(Icons.schedule_send_rounded, size: 18),
                 label: const Text('批量排期'),
-                style: FilledButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
               ),
               const SizedBox(width: 8),
               IconButton.filledTonal(
@@ -375,7 +354,12 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
           ),
         ),
       ),
-    ).animate().slideY(begin: 1, end: 0, curve: Curves.easeOutBack);
+    ).animate().slideY(
+      begin: 1,
+      end: 0,
+      duration: AppMotion.surfaceEnter,
+      curve: AppMotion.emphasizedCurve,
+    );
   }
 
   Future<void> _batchPushNow() async {
@@ -555,22 +539,42 @@ class _QueueItemCard extends StatelessWidget {
   final Function(DateTime)? onUpdateSchedule;
   final VoidCallback? onPushNow;
 
+  List<MediaAsset> get _coverAssets => item.mediaAssets
+      .where(
+        (asset) =>
+            asset.mediaType == MediaType.image &&
+            asset.role != MediaRole.avatar &&
+            asset.sources.isNotEmpty,
+      )
+      .toList(growable: false);
+
+  MediaAsset? get _coverAsset => _coverAssets.firstOrNull;
+
+  List<String> get _coverCandidates {
+    return _coverAssets
+        .expand((asset) => asset.sources)
+        .map((source) => source.url.trim())
+        .where((url) => url.isNotEmpty)
+        .toList(growable: false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isWillPush = currentStatus == QueueStatus.willPush;
     final reasonText = (item.displayReason ?? '').trim();
+    final coverCandidates = _coverCandidates;
 
     final card = Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: AnimatedContainer(
-        duration: 300.ms,
+        duration: AppMotion.stateChange,
         decoration: BoxDecoration(
           color: isSelected
               ? colorScheme.primary.withValues(alpha: 0.05)
               : colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: AppShape.paneBorder,
           border: Border.all(
             color: isSelected
                 ? colorScheme.primary
@@ -583,7 +587,7 @@ class _QueueItemCard extends StatelessWidget {
           child: InkWell(
             onTap: isSelectionMode ? onToggleSelect : null,
             onLongPress: onLongPress,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: AppShape.paneBorder,
             child: IntrinsicHeight(
               child: Row(
                 children: [
@@ -594,7 +598,8 @@ class _QueueItemCard extends StatelessWidget {
                       padding: const EdgeInsets.all(16),
                       child: Row(
                         children: [
-                          if (item.coverUrl != null) _buildCover(colorScheme),
+                          if (coverCandidates.isNotEmpty)
+                            _buildCover(coverCandidates),
                           const SizedBox(width: 16),
                           Expanded(
                             child: Column(
@@ -606,13 +611,12 @@ class _QueueItemCard extends StatelessWidget {
                                   overflow: TextOverflow.ellipsis,
                                   style: theme.textTheme.titleSmall?.copyWith(
                                     fontWeight: FontWeight.bold,
-                                    letterSpacing: -0.2,
                                   ),
                                 ),
                                 const SizedBox(height: 8),
                                 Row(
                                   children: [
-                                    _PlatformBadge(
+                                    PlatformBadge(
                                       platform: item.displayPlatform,
                                     ),
                                     if (item.isNsfw)
@@ -620,7 +624,7 @@ class _QueueItemCard extends StatelessWidget {
                                         padding: const EdgeInsets.only(left: 8),
                                         child: _Badge(
                                           label: 'NSFW',
-                                          color: Colors.red,
+                                          color: colorScheme.error,
                                         ),
                                       ),
                                     const Spacer(),
@@ -662,9 +666,6 @@ class _QueueItemCard extends StatelessWidget {
                       child: Checkbox(
                         value: isSelected,
                         onChanged: (_) => onToggleSelect?.call(),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        ),
                       ),
                     )
                   else
@@ -693,8 +694,8 @@ class _QueueItemCard extends StatelessWidget {
     if (animateEntry) {
       return card
           .animate()
-          .fadeIn(delay: (index % 15 * 50).ms)
-          .slideX(begin: 0.1, end: 0, curve: Curves.easeOutCubic);
+          .fadeIn(delay: AppMotion.listItemStagger * (index % 15))
+          .slideX(begin: 0.1, end: 0, curve: AppMotion.standardCurve);
     }
     return card;
   }
@@ -716,7 +717,7 @@ class _QueueItemCard extends StatelessWidget {
       child: PopupMenuButton<dynamic>(
         tooltip: '调整时间',
         offset: const Offset(72, 0),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: const RoundedRectangleBorder(borderRadius: AppShape.paneBorder),
         onSelected: (value) async {
           final now = DateTime.now();
           DateTime? newTime;
@@ -769,8 +770,8 @@ class _QueueItemCard extends StatelessWidget {
         child: Material(
           color: colorScheme.primary.withValues(alpha: 0.08),
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(23),
-            bottomLeft: const Radius.circular(23),
+            topLeft: const Radius.circular(AppShape.pane),
+            bottomLeft: const Radius.circular(AppShape.pane),
           ),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
@@ -839,26 +840,18 @@ class _QueueItemCard extends StatelessWidget {
     }
   }
 
-  Widget _buildCover(ColorScheme colorScheme) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: NetworkThumbnail(
-          imageUrl: item.coverUrl!,
-          width: 52,
-          height: 52,
-          fit: BoxFit.cover,
-        ),
+  Widget _buildCover(List<String> coverCandidates) {
+    return ClipRRect(
+      borderRadius: AppShape.cardMediaBorder,
+      child: NetworkThumbnail(
+        imageUrl: coverCandidates.first,
+        fallbackUrls: coverCandidates.skip(1).toList(growable: false),
+        mediaAsset: _coverAsset,
+        mediaAssets: _coverAssets,
+        purpose: MediaPurpose.card,
+        width: 52,
+        height: 52,
+        fit: BoxFit.cover,
       ),
     );
   }
@@ -902,58 +895,15 @@ class _Badge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(AppShape.pill),
         border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Text(
         label,
-        style: TextStyle(
-          fontSize: 10,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
           color: color,
           fontWeight: FontWeight.bold,
         ),
-      ),
-    );
-  }
-}
-
-class _PlatformBadge extends StatelessWidget {
-  const _PlatformBadge({required this.platform});
-  final String platform;
-
-  @override
-  Widget build(BuildContext context) {
-    final (icon, color) = switch (platform.toLowerCase()) {
-      'bilibili' => (Icons.play_circle_fill_rounded, const Color(0xFFFA7298)),
-      'weibo' => (Icons.radio_button_checked_rounded, const Color(0xFFE6162D)),
-      'twitter' => (Icons.tag_rounded, const Color(0xFF1DA1F2)),
-      'xiaohongshu' => (Icons.explore_rounded, const Color(0xFFFF2442)),
-      'zhihu' => (Icons.question_answer_rounded, const Color(0xFF0066FF)),
-      _ => (Icons.public_rounded, Colors.grey),
-    };
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.15)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 6),
-          Text(
-            platform.toUpperCase(),
-            style: TextStyle(
-              fontSize: 10,
-              color: color,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.5,
-            ),
-          ),
-        ],
       ),
     );
   }

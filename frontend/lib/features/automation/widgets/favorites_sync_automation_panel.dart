@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+import '../../settings/utils/setting_value.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/toast.dart';
+import '../../../theme/design_tokens.dart';
 import '../../settings/providers/favorites_sync_provider.dart';
 import '../../settings/providers/settings_provider.dart';
 
@@ -43,11 +46,11 @@ class _FavoritesSyncAutomationPanelState
             children: [
               _SyncOverviewCard(status: status),
               const SizedBox(height: 16),
+              _PlatformStatusGrid(platforms: status.platforms),
+              const SizedBox(height: 16),
               _SyncCommandBar(status: status),
               const SizedBox(height: 16),
               _SyncPolicyCard(status: status),
-              const SizedBox(height: 16),
-              _PlatformStatusGrid(platforms: status.platforms),
               const SizedBox(height: 24),
               _RecentRunsList(runs: status.recentRuns),
             ],
@@ -100,7 +103,7 @@ class _FavoritesSyncAutomationPanelState
     _openedRunId = highlightRunId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _showRunDetail(context, matchedRun!);
+      context.go('/tasks/$highlightRunId');
     });
   }
 }
@@ -113,68 +116,21 @@ class _SyncOverviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final enabledCount = status.enabledPlatforms.length;
-    final authenticatedCount = status.platforms
-        .where((item) => item.authenticated)
-        .length;
-    final failureCount = status.recentRuns
-        .where((run) => _runString(run, 'status') == 'error')
-        .length;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: cs.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.bookmark_added_rounded, color: cs.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '收藏同步总览',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                Text(
-                  status.running ? '自动任务运行中' : '自动任务未运行',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: status.running ? cs.primary : cs.error,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _MetricChip(label: '已启用平台', value: enabledCount),
-                _MetricChip(label: '认证可用', value: authenticatedCount),
-                _MetricChip(label: '失败任务', value: failureCount),
-                _MetricChip(label: '单轮上限', value: status.maxItems),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '同步间隔 ${status.intervalMinutes} 分钟；最近同步 ${status.lastSyncAt ?? '尚未完成'}。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: cs.onSurfaceVariant,
-              ),
-            ),
-          ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          status.enabledPlatforms.isEmpty
+              ? '连接并启用平台，开始同步收藏'
+              : '已启用 ${status.enabledPlatforms.length} 个平台',
+          style: theme.textTheme.titleMedium,
         ),
-      ),
+        const SizedBox(height: 4),
+        Text(
+          '${status.running ? '调度服务已启动' : '调度服务未启动'} · 最近同步 ${_formatTime(status.lastSyncAt)}',
+          style: theme.textTheme.bodySmall,
+        ),
+      ],
     );
   }
 }
@@ -186,141 +142,97 @@ class _SyncPolicyCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final enabledPlatforms = status.enabledPlatforms.isEmpty
-        ? '暂无已启用平台'
-        : status.enabledPlatforms.map(_platformLabel).join('、');
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: cs.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.rule_folder_rounded, color: cs.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '同步策略',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+    final settings = ref.watch(systemSettingsProvider);
+    return ExpansionTile(
+      title: const Text('同步策略'),
+      tilePadding: EdgeInsets.zero,
+      children: [
+        settings.when(
+          loading: () => const LinearProgressIndicator(),
+          error: (error, _) => const Text('策略读取失败，请刷新后重试'),
+          data: (values) => Column(
+            children: [
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('自动同步'),
+                value: parseBoolSetting(
+                  getSettingValue(
+                    values,
+                    'enable_favorites_sync_scheduler',
+                    true,
                   ),
+                  true,
                 ),
-                TextButton.icon(
-                  onPressed: () => context.push('/settings?tab=automation'),
-                  icon: const Icon(Icons.tune_rounded, size: 18),
-                  label: const Text('高级参数'),
+                onChanged: (value) => _updateFavoritesSyncSetting(
+                  context,
+                  ref,
+                  key: 'enable_favorites_sync_scheduler',
+                  value: value,
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _PolicyLine(
-              icon: Icons.account_tree_rounded,
-              label: '同步范围',
-              value: enabledPlatforms,
-            ),
-            _PolicyLine(
-              icon: Icons.update_rounded,
-              label: '拉取策略',
-              value:
-                  '按平台 cursor 增量拉取；每轮最多 ${status.maxItems} 条；每 ${status.intervalMinutes} 分钟自动执行。',
-            ),
-            const SizedBox(height: 10),
-            _PolicyControlRow(
-              label: '同步间隔',
-              value: status.intervalMinutes,
-              values: const [60, 180, 360, 720, 1440],
-              suffix: '分钟',
-              onChanged: (value) => _updateFavoritesSyncSetting(
-                context,
-                ref,
-                key: 'favorites_sync_interval_minutes',
-                value: value,
               ),
-            ),
-            _PolicyControlRow(
-              label: '单轮上限',
-              value: status.maxItems,
-              values: const [20, 50, 100, 200],
-              suffix: '条',
-              onChanged: (value) => _updateFavoritesSyncSetting(
-                context,
-                ref,
-                key: 'favorites_sync_max_items',
-                value: value,
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('允许手动同步未启用的平台'),
+                subtitle: const Text('每次同步仍需预览并确认'),
+                value: parseBoolSetting(
+                  getSettingValue(
+                    values,
+                    'allow_manual_favorites_sync_disabled_platform',
+                    false,
+                  ),
+                  false,
+                ),
+                onChanged: (value) => _updateFavoritesSyncSetting(
+                  context,
+                  ref,
+                  key: 'allow_manual_favorites_sync_disabled_platform',
+                  value: value,
+                ),
               ),
-            ),
-            _PolicyStringControlRow(
-              label: '重复处理',
-              value: status.duplicateStrategy,
-              options: const {'merge': '合并已有收藏', 'skip': '跳过已有收藏'},
-              description: _duplicateStrategyDescription(
-                status.duplicateStrategy,
-              ),
-              onChanged: (value) => _updateFavoritesSyncSetting(
-                context,
-                ref,
-                key: 'favorites_sync_duplicate_strategy',
-                value: value,
-              ),
-            ),
-            _PolicyStringControlRow(
-              label: '同步范围',
-              value: status.scopeStrategy,
-              options: const {'all_favorites': '全部收藏'},
-              description: _scopeStrategyDescription(status.scopeStrategy),
-              onChanged: (value) => _updateFavoritesSyncSetting(
-                context,
-                ref,
-                key: 'favorites_sync_scope_strategy',
-                value: value,
-              ),
-            ),
-            _PolicyStringControlRow(
-              label: '首次同步',
-              value: status.firstSyncStrategy,
-              options: const {'latest_page': '仅拉取当前页'},
-              description: _firstSyncStrategyDescription(
-                status.firstSyncStrategy,
-              ),
-              onChanged: (value) => _updateFavoritesSyncSetting(
-                context,
-                ref,
-                key: 'favorites_sync_first_sync_strategy',
-                value: value,
-              ),
-            ),
-            _PolicyStringControlRow(
-              label: '取消收藏',
-              value: status.unfavoriteStrategy,
-              options: const {'keep_local': '保留本地收藏'},
-              description: _unfavoriteStrategyDescription(
-                status.unfavoriteStrategy,
-              ),
-              onChanged: (value) => _updateFavoritesSyncSetting(
-                context,
-                ref,
-                key: 'favorites_sync_unfavorite_strategy',
-                value: value,
-              ),
-            ),
-            const _PolicyLine(
-              icon: Icons.replay_rounded,
-              label: '失败恢复',
-              value: '支持 run 级失败重试，也可在结果摘要中重试单条失败候选。',
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
+        _PolicyControlRow(
+          label: '同步间隔',
+          value: status.intervalMinutes,
+          values: const [60, 180, 360, 720, 1440],
+          suffix: '分钟',
+          onChanged: (value) => _updateFavoritesSyncSetting(
+            context,
+            ref,
+            key: 'favorites_sync_interval_minutes',
+            value: value,
+          ),
+        ),
+        _PolicyControlRow(
+          label: '单轮上限',
+          value: status.maxItems,
+          values: const [20, 50, 100, 200],
+          suffix: '条',
+          onChanged: (value) => _updateFavoritesSyncSetting(
+            context,
+            ref,
+            key: 'favorites_sync_max_items',
+            value: value,
+          ),
+        ),
+        _PolicyStringControlRow(
+          label: '重复内容',
+          value: status.duplicateStrategy,
+          options: const {'merge': '合并来源', 'skip': '跳过'},
+          description: _duplicateStrategyDescription(status.duplicateStrategy),
+          onChanged: (value) => _updateFavoritesSyncSetting(
+            context,
+            ref,
+            key: 'favorites_sync_duplicate_strategy',
+            value: value,
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 12),
+          child: Text('首次从最新一页开始同步。远端取消收藏后，本地内容仍保留。'),
+        ),
+      ],
     );
   }
 }
@@ -449,45 +361,6 @@ class _PolicyControlRow extends StatelessWidget {
   }
 }
 
-class _PolicyLine extends StatelessWidget {
-  const _PolicyLine({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: cs.onSurfaceVariant),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 72,
-            child: Text(
-              label,
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          Expanded(child: Text(value, style: theme.textTheme.bodyMedium)),
-        ],
-      ),
-    );
-  }
-}
-
 class _SyncCommandBar extends ConsumerWidget {
   const _SyncCommandBar({required this.status});
 
@@ -530,27 +403,13 @@ class _PlatformStatusGrid extends StatelessWidget {
       return const _EmptyPanel(message: '暂无可用收藏同步平台');
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 1080
-            ? 3
-            : constraints.maxWidth >= 720
-            ? 2
-            : 1;
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: platforms.length,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            mainAxisExtent: 188,
-          ),
-          itemBuilder: (context, index) =>
-              _PlatformStatusCard(status: platforms[index]),
-        );
-      },
+    return Column(
+      children: [
+        for (final platform in platforms) ...[
+          _PlatformStatusCard(status: platform),
+          const Divider(height: 24),
+        ],
+      ],
     );
   }
 }
@@ -562,95 +421,100 @@ class _PlatformStatusCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final ok = status.enabled && status.available && status.authenticated;
-    final color = ok
-        ? cs.primary
-        : status.available
-        ? cs.tertiary
-        : cs.error;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: cs.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final settings = ref.watch(systemSettingsProvider);
+    final enabled =
+        ref.watch(favoritesSyncStatusProvider).value?.enabledPlatforms ??
+        const <String>[];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                Icon(_platformIcon(status.platform), color: color),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _platformLabel(status.platform),
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                Text(
-                  _platformStateLabel(status),
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: color,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              '速率 ${status.ratePerMinute.toStringAsFixed(0)}/min',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: cs.onSurfaceVariant,
+            Icon(_platformIcon(status.platform), size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _platformLabel(status.platform),
+                style: Theme.of(context).textTheme.titleMedium,
               ),
             ),
-            if (status.error != null || status.statusError != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                status.error ?? status.statusError.toString(),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(color: cs.error),
-              ),
-            ],
-            const Spacer(),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: status.available
-                      ? () => _showPreview(
-                          context,
-                          ref,
-                          platform: status.platform,
-                        )
-                      : null,
-                  icon: const Icon(Icons.manage_search_rounded, size: 16),
-                  label: const Text('预览'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: status.available
-                      ? () => _triggerWithPreview(
-                          context,
-                          ref,
-                          platform: status.platform,
-                        )
-                      : null,
-                  icon: const Icon(Icons.sync_rounded, size: 16),
-                  label: const Text('同步'),
-                ),
-              ],
+            Switch.adaptive(
+              value: status.enabled,
+              onChanged: settings.hasValue
+                  ? (value) => _updateFavoritesSyncSetting(
+                      context,
+                      ref,
+                      key: 'favorites_sync_platforms',
+                      value: value
+                          ? {...enabled, status.platform}.toList()
+                          : enabled.where((p) => p != status.platform).toList(),
+                    )
+                  : null,
             ),
           ],
         ),
-      ),
+        Text(
+          !status.authenticated ? '连接账号后可同步收藏' : _platformStateLabel(status),
+        ),
+        if (!status.available)
+          Text(
+            status.statusError?['error_hint']?.toString() ??
+                '暂时无法检查账号，请到账号页重新检查',
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            if (!status.authenticated || !status.available)
+              FilledButton.tonal(
+                onPressed: () => context.push('/accounts/${status.platform}'),
+                child: const Text('连接 / 检查账号'),
+              )
+            else ...[
+              OutlinedButton(
+                onPressed: () =>
+                    _showPreview(context, ref, platform: status.platform),
+                child: const Text('预览'),
+              ),
+              FilledButton.tonal(
+                onPressed: () => _triggerWithPreview(
+                  context,
+                  ref,
+                  platform: status.platform,
+                ),
+                child: const Text('同步'),
+              ),
+            ],
+            DropdownButton<int>(
+              value: status.ratePerMinute.round(),
+              underline: const SizedBox.shrink(),
+              items: [
+                for (final rate in _withCurrentValue(const [
+                  1,
+                  3,
+                  5,
+                  10,
+                  20,
+                ], status.ratePerMinute.round()))
+                  DropdownMenuItem(value: rate, child: Text('$rate 条/分钟')),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  _updateFavoritesSyncSetting(
+                    context,
+                    ref,
+                    key: 'favorites_sync_rate_${status.platform}',
+                    value: value,
+                  );
+                }
+              },
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -679,7 +543,7 @@ class _RecentRunsList extends ConsumerWidget {
         const SizedBox(height: 8),
         DecoratedBox(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: AppShape.cardBorder,
             border: Border.all(color: theme.colorScheme.outlineVariant),
           ),
           child: Column(
@@ -716,14 +580,13 @@ class _RunTile extends ConsumerWidget {
             ? Theme.of(context).colorScheme.error
             : Theme.of(context).colorScheme.primary,
       ),
-      title: Text('${_shortId(runId)} · ${_runString(run, 'scope') ?? 'all'}'),
+      title: Text(
+        '${_runStatusLabel(status)} · ${_runString(run, 'scope') == 'all' ? '全部平台' : _platformLabel(_runString(run, 'scope') ?? '')}',
+      ),
       subtitle: Text(
         [
-          _runStatusLabel(status),
-          if (_runString(run, 'trigger') != null)
-            '触发: ${_runString(run, 'trigger')}',
           if (_runString(run, 'started_at') != null)
-            '开始: ${_runString(run, 'started_at')}',
+            _formatTime(_runString(run, 'started_at')),
           if (error != null) '错误: $error',
         ].join('\n'),
         maxLines: 4,
@@ -737,24 +600,7 @@ class _RunTile extends ConsumerWidget {
               label: const Text('重试'),
             )
           : null,
-      onTap: () => _showRunDetail(context, run),
-    );
-  }
-}
-
-class _MetricChip extends StatelessWidget {
-  const _MetricChip({required this.label, required this.value});
-
-  final String label;
-  final int value;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Chip(
-      label: Text('$label $value'),
-      backgroundColor: cs.surfaceContainerHighest,
-      side: BorderSide(color: cs.outlineVariant),
+      onTap: runId == null ? null : () => context.push('/tasks/$runId'),
     );
   }
 }
@@ -769,7 +615,7 @@ class _EmptyPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: AppShape.cardBorder,
         border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Text(message),
@@ -858,10 +704,10 @@ Future<bool> _showPreviewDialog(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  _MetricChip(label: '拉取', value: preview.fetched),
-                  _MetricChip(label: '预计新增', value: preview.estimatedNew),
-                  _MetricChip(label: '已存在', value: preview.existing),
-                  _MetricChip(label: '跳过', value: preview.skipped),
+                  Text('拉取 ${preview.fetched}'),
+                  Text('预计新增 ${preview.estimatedNew}'),
+                  Text('已存在 ${preview.existing}'),
+                  Text('跳过 ${preview.skipped}'),
                 ],
               ),
               const SizedBox(height: 14),
@@ -871,7 +717,7 @@ Future<bool> _showPreviewDialog(
                   child: _PreviewPlatformSection(item: item),
                 ),
               Text(
-                '预览不会导入内容或推进 cursor。',
+                '确认前不会导入内容或改变同步进度。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: cs.onSurfaceVariant,
                 ),
@@ -956,7 +802,7 @@ class _PreviewFavoriteItem extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: AppShape.cardMediaBorder,
         border: Border.all(color: cs.outlineVariant),
       ),
       child: Padding(
@@ -1033,532 +879,11 @@ Future<void> _retryRun(
   }
 }
 
-Future<void> _retryFailedFavoriteItem(
-  BuildContext context,
-  WidgetRef ref, {
-  required String platform,
-  required String? sourceRunId,
-  required Map<String, dynamic> item,
-}) async {
-  final url = _mapString(item, 'url');
-  if (url == null || url.isEmpty) {
-    Toast.show(context, '失败项缺少 URL，无法重试', isError: true);
-    return;
-  }
-
-  try {
-    final retryRunId = await ref
-        .read(favoritesSyncActionsProvider)
-        .retryItem(
-          platform: platform,
-          url: url,
-          title: _mapString(item, 'title'),
-          itemId: _mapString(item, 'item_id'),
-          sourceRunId: sourceRunId,
-        );
-    if (context.mounted) {
-      Toast.show(
-        context,
-        '已重试失败项${retryRunId == null ? '' : ' #${_shortId(retryRunId)}'}',
-        action: retryRunId == null
-            ? null
-            : SnackBarAction(
-                label: '查看日志',
-                onPressed: () => context.go('/tasks/$retryRunId'),
-              ),
-      );
-    }
-  } catch (e) {
-    if (context.mounted) {
-      Toast.show(
-        context,
-        formatApiErrorMessage(e, fallbackMessage: '重试失败项失败'),
-        isError: true,
-      );
-    }
-  }
-}
-
-Future<void> _retryFailedFavoriteItems(
-  BuildContext context,
-  WidgetRef ref, {
-  required String platform,
-  required String? sourceRunId,
-  required List<Map<String, dynamic>> items,
-}) async {
-  final retryableItems = items
-      .where((item) {
-        final url = _mapString(item, 'url');
-        return url != null && url.isNotEmpty;
-      })
-      .map(
-        (item) => {
-          'url': _mapString(item, 'url'),
-          if (_mapString(item, 'title') != null)
-            'title': _mapString(item, 'title'),
-          if (_mapString(item, 'item_id') != null)
-            'item_id': _mapString(item, 'item_id'),
-        },
-      )
-      .toList(growable: false);
-  if (retryableItems.isEmpty) {
-    Toast.show(context, '失败项缺少 URL，无法重试', isError: true);
-    return;
-  }
-
-  try {
-    final retryRunId = await ref
-        .read(favoritesSyncActionsProvider)
-        .retryItems(
-          platform: platform,
-          items: retryableItems,
-          sourceRunId: sourceRunId,
-        );
-    if (context.mounted) {
-      Toast.show(
-        context,
-        '已批量重试 ${retryableItems.length} 个失败项${retryRunId == null ? '' : ' #${_shortId(retryRunId)}'}',
-        action: retryRunId == null
-            ? null
-            : SnackBarAction(
-                label: '查看日志',
-                onPressed: () => context.go('/tasks/$retryRunId'),
-              ),
-      );
-    }
-  } catch (e) {
-    if (context.mounted) {
-      Toast.show(
-        context,
-        formatApiErrorMessage(e, fallbackMessage: '批量重试失败项失败'),
-        isError: true,
-      );
-    }
-  }
-}
-
-void _showRunDetail(BuildContext context, Map<String, dynamic> run) {
-  final runId = _runString(run, 'run_id');
-  final status = _runString(run, 'status') ?? 'unknown';
-  showDialog<void>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: Text('同步任务 ${_shortId(runId)}'),
-      content: SizedBox(
-        width: 520,
-        child: SingleChildScrollView(
-          child: _RunDetailContent(run: run, status: status),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(),
-          child: const Text('关闭'),
-        ),
-      ],
-    ),
-  );
-}
-
-class _RunDetailContent extends StatelessWidget {
-  const _RunDetailContent({required this.run, required this.status});
-
-  final Map<String, dynamic> run;
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final platformResults = _extractPlatformResults(run);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _DetailLine(label: '状态', value: _runStatusLabel(status)),
-        _DetailLine(label: '范围', value: _runString(run, 'scope') ?? 'all'),
-        _DetailLine(label: '触发', value: _runString(run, 'trigger') ?? '-'),
-        _DetailLine(label: '开始', value: _runString(run, 'started_at') ?? '-'),
-        _DetailLine(label: '结束', value: _runString(run, 'finished_at') ?? '-'),
-        if (_runString(run, 'retry_of') != null)
-          _DetailLine(label: '重试自', value: _runString(run, 'retry_of')!),
-        if (_runString(run, 'error') != null)
-          _DetailLine(label: '错误', value: _runString(run, 'error')!),
-        if (platformResults.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          Text(
-            '结果摘要',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _MetricChip(
-                label: '拉取',
-                value: _sumResultCount(platformResults, 'fetched'),
-              ),
-              _MetricChip(
-                label: '导入',
-                value: _sumResultCount(platformResults, 'imported'),
-              ),
-              _MetricChip(
-                label: '跳过',
-                value: _sumResultCount(platformResults, 'skipped'),
-              ),
-              _MetricChip(
-                label: '失败',
-                value: _sumResultCount(platformResults, 'failed'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          for (final result in platformResults)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: _PlatformRunResult(
-                result: result,
-                sourceRunId: _runString(run, 'run_id'),
-              ),
-            ),
-        ] else if (run['result'] != null) ...[
-          const SizedBox(height: 14),
-          Text(
-            '原始结果',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 8),
-          SelectableText(
-            run['result'].toString(),
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: cs.onSurfaceVariant,
-              fontFamily: 'monospace',
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _PlatformRunResult extends ConsumerWidget {
-  const _PlatformRunResult({required this.result, required this.sourceRunId});
-
-  final Map<String, dynamic> result;
-  final String? sourceRunId;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final status = _mapString(result, 'status') ?? 'unknown';
-    final platform = _mapString(result, 'platform') ?? 'unknown';
-    final hasError = status == 'failed' || status == 'partial_success';
-    final authRequired = result['auth_required'] == true;
-    final retryable = result['retryable'] == true;
-    final failedItems = _mapListOfMaps(result, 'failed_items');
-    final failedItemsTotal = _mapInt(result, 'failed_items_total');
-    final displayedFailedItems = failedItems.take(20).toList();
-    final totalFailedItems = failedItemsTotal > 0
-        ? failedItemsTotal
-        : _mapInt(result, 'failed');
-    final failedItemsTruncated = result['failed_items_truncated'] == true;
-    final errorText =
-        _mapString(result, 'error_hint') ??
-        _mapString(result, 'error') ??
-        _mapString(result, 'error_message');
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: hasError
-            ? cs.errorContainer.withValues(alpha: 0.18)
-            : cs.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: hasError
-              ? cs.error.withValues(alpha: 0.35)
-              : cs.outlineVariant,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  hasError
-                      ? Icons.report_problem_outlined
-                      : Icons.task_alt_rounded,
-                  size: 18,
-                  color: hasError ? cs.error : cs.primary,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _platformLabel(platform),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                Text(
-                  _platformRunStatusLabel(status),
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: hasError ? cs.error : cs.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _MetricChip(label: '拉取', value: _mapInt(result, 'fetched')),
-                _MetricChip(label: '导入', value: _mapInt(result, 'imported')),
-                _MetricChip(label: '跳过', value: _mapInt(result, 'skipped')),
-                _MetricChip(label: '失败', value: _mapInt(result, 'failed')),
-              ],
-            ),
-            if (authRequired || retryable) ...[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  if (authRequired) const Chip(label: Text('需要登录')),
-                  if (retryable) const Chip(label: Text('可重试')),
-                ],
-              ),
-            ],
-            if (errorText != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                errorText,
-                style: theme.textTheme.bodySmall?.copyWith(color: cs.error),
-              ),
-            ],
-            if (failedItems.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      totalFailedItems > failedItems.length ||
-                              failedItemsTruncated
-                          ? '失败项 · 显示 ${displayedFailedItems.length} / $totalFailedItems'
-                          : '失败项',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: cs.error,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: displayedFailedItems.isEmpty
-                        ? null
-                        : () => _retryFailedFavoriteItems(
-                            context,
-                            ref,
-                            platform: platform,
-                            sourceRunId: sourceRunId,
-                            items: displayedFailedItems,
-                          ),
-                    icon: const Icon(Icons.refresh_rounded, size: 16),
-                    label: const Text('重试可见失败项'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              for (final item in displayedFailedItems)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: _FailedFavoriteItem(
-                    item: item,
-                    onRetry: () => _retryFailedFavoriteItem(
-                      context,
-                      ref,
-                      platform: platform,
-                      sourceRunId: sourceRunId,
-                      item: item,
-                    ),
-                  ),
-                ),
-              if (failedItemsTruncated ||
-                  totalFailedItems > displayedFailedItems.length)
-                Text(
-                  failedItemsTruncated
-                      ? '仍有失败项未写入本次运行结果，请缩小同步范围后重试。'
-                      : '仍有失败项未在此处展开，可在运行结果中查看记录列表。',
-                  style: theme.textTheme.bodySmall?.copyWith(color: cs.error),
-                ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _FailedFavoriteItem extends StatelessWidget {
-  const _FailedFavoriteItem({required this.item, required this.onRetry});
-
-  final Map<String, dynamic> item;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final title = _mapString(item, 'title');
-    final url = _mapString(item, 'url') ?? '-';
-    final error = _mapString(item, 'error') ?? _mapString(item, 'error_code');
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: cs.errorContainer.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: cs.error.withValues(alpha: 0.22)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (title != null)
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            SelectableText(
-              url,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: cs.onSurfaceVariant,
-              ),
-            ),
-            if (error != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                error,
-                style: theme.textTheme.bodySmall?.copyWith(color: cs.error),
-              ),
-            ],
-            const SizedBox(height: 6),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: url == '-' ? null : onRetry,
-                icon: const Icon(Icons.refresh_rounded, size: 16),
-                label: const Text('重试此项'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DetailLine extends StatelessWidget {
-  const _DetailLine({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 64,
-            child: Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Expanded(child: SelectableText(value)),
-        ],
-      ),
-    );
-  }
-}
-
-List<Map<String, dynamic>> _extractPlatformResults(Map<String, dynamic> run) {
-  final result = run['result'];
-  if (result is! Map) return const [];
-  final normalized = Map<String, dynamic>.from(result);
-  final allResults = normalized['results'];
-  if (allResults is Map) {
-    return allResults.values
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .toList(growable: false);
-  }
-  final singleResult = normalized['result'];
-  if (singleResult is Map) {
-    return [Map<String, dynamic>.from(singleResult)];
-  }
-  if (normalized.containsKey('platform') && normalized.containsKey('status')) {
-    return [normalized];
-  }
-  return const [];
-}
-
-int _sumResultCount(List<Map<String, dynamic>> results, String key) {
-  return results.fold<int>(0, (sum, item) => sum + _mapInt(item, key));
-}
-
-int _mapInt(Map<String, dynamic> item, String key) {
-  final value = item[key];
-  if (value is num) return value.toInt();
-  return int.tryParse('$value') ?? 0;
-}
-
 String? _mapString(Map<String, dynamic> item, String key) {
   final value = item[key];
   if (value == null) return null;
   final text = value.toString();
   return text.isEmpty ? null : text;
-}
-
-List<Map<String, dynamic>> _mapListOfMaps(
-  Map<String, dynamic> item,
-  String key,
-) {
-  final value = item[key];
-  if (value is! List) return const [];
-  return value
-      .whereType<Map>()
-      .map((entry) => Map<String, dynamic>.from(entry))
-      .toList(growable: false);
-}
-
-String _platformRunStatusLabel(String status) {
-  return switch (status) {
-    'success' => '成功',
-    'partial_success' => '部分成功',
-    'failed' => '失败',
-    'skipped' => '已跳过',
-    _ => status,
-  };
 }
 
 List<int> _withCurrentValue(List<int> values, int current) {
@@ -1593,27 +918,17 @@ Future<void> _updateFavoritesSyncSetting(
 
 String _duplicateStrategyDescription(String strategy) {
   return switch (strategy) {
-    'skip' => '导入阶段发现本地已有同一 canonical URL 时直接跳过。',
-    _ => '导入阶段合并来源记录，并让已有内容继续执行必要后处理。',
+    'skip' => '已保存的内容不再导入。',
+    _ => '为已保存的内容补充收藏来源。',
   };
 }
 
-String _scopeStrategyDescription(String strategy) {
-  return switch (strategy) {
-    _ => '同步该平台当前可访问的全部收藏列表。',
-  };
-}
-
-String _firstSyncStrategyDescription(String strategy) {
-  return switch (strategy) {
-    _ => '没有 cursor 时只拉取当前默认页，避免首次同步失控。',
-  };
-}
-
-String _unfavoriteStrategyDescription(String strategy) {
-  return switch (strategy) {
-    _ => '远端取消收藏不会自动删除或归档本地内容。',
-  };
+String _formatTime(String? value) {
+  if (value == null) return '暂无';
+  final time = DateTime.tryParse(value);
+  return time == null
+      ? '时间不可用'
+      : DateFormat('MM-dd HH:mm').format(time.toLocal());
 }
 
 String? _runString(Map<String, dynamic> run, String key) {

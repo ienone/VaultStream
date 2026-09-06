@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/utils/toast.dart';
+import '../../../theme/design_tokens.dart';
 import '../models/render_config.dart';
 import '../models/render_config_preset.dart';
-import '../providers/targets_provider.dart';
+import '../providers/render_config_presets_provider.dart';
 
 class RenderConfigEditor extends ConsumerStatefulWidget {
   const RenderConfigEditor({
@@ -63,7 +65,7 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
   @override
   Widget build(BuildContext context) {
     final presetsAsync = ref.watch(renderConfigPresetsProvider);
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -154,10 +156,9 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
     return Text(
       text,
       style: Theme.of(context).textTheme.labelLarge?.copyWith(
-            color: Theme.of(context).colorScheme.primary,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1.2,
-          ),
+        color: Theme.of(context).colorScheme.primary,
+        fontWeight: FontWeight.bold,
+      ),
     );
   }
 
@@ -168,29 +169,38 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
     required ValueChanged<bool> onChanged,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.only(top: 8),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Material(
         color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: SwitchListTile(
-        title: Text(title,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-        secondary: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: (value ? colorScheme.primary : colorScheme.outline)
-                .withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(10),
+        shape: const RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
+        clipBehavior: Clip.antiAlias,
+        child: SwitchListTile(
+          title: Text(
+            title,
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
           ),
-          child: Icon(icon,
+          secondary: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: (value ? colorScheme.primary : colorScheme.outline)
+                  .withValues(alpha: 0.1),
+              borderRadius: AppShape.cardMediaBorder,
+            ),
+            child: Icon(
+              icon,
               size: 20,
-              color: value ? colorScheme.primary : colorScheme.outline),
+              color: value ? colorScheme.primary : colorScheme.outline,
+            ),
+          ),
+          value: value,
+          onChanged: onChanged,
+          shape: const RoundedRectangleBorder(
+            borderRadius: AppShape.cardBorder,
+          ),
         ),
-        value: value,
-        onChanged: onChanged,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }
@@ -218,8 +228,10 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
           width: double.infinity,
           child: SegmentedButton<String>(
             segments: options.entries
-                .map((e) =>
-                    ButtonSegment<String>(value: e.key, label: Text(e.value)))
+                .map(
+                  (e) =>
+                      ButtonSegment<String>(value: e.key, label: Text(e.value)),
+                )
                 .toList(),
             selected: {value},
             onSelectionChanged: (sel) => onChanged(sel.first),
@@ -252,40 +264,46 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
         filled: true,
         fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppShape.cardBorder,
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppShape.cardBorder,
           borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppShape.cardBorder,
           borderSide: BorderSide(color: colorScheme.primary, width: 2),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
       ),
     );
   }
 
   Widget _buildPresetSelector(List<RenderConfigPreset> presets) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(Icons.auto_awesome_rounded, 
-                size: 20, color: colorScheme.primary),
+            Icon(
+              Icons.auto_awesome_rounded,
+              size: 20,
+              color: colorScheme.primary,
+            ),
             const SizedBox(width: 12),
-            Text('预设模板', 
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: colorScheme.primary,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.2,
-                )),
+            Text(
+              '预设模板',
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: colorScheme.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -307,7 +325,7 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
                 color: colorScheme.outline.withValues(alpha: 0.2),
               ),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: AppShape.cardMediaBorder,
               ),
             );
           }).toList(),
@@ -334,14 +352,14 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
   void _applyPreset(RenderConfigPreset preset) {
     // Apply preset config
     final presetConfig = preset.config.structure;
-    
+
     // Update text controllers
     _headerController.text = presetConfig['header_text'] ?? '';
     _footerController.text = presetConfig['footer_text'] ?? '';
-    
+
     // Emit change
     _emitChange(presetConfig);
-    
+
     // Show feedback
     Toast.show(context, '已应用预设: ${preset.name}');
   }

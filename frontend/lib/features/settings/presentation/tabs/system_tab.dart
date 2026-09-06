@@ -5,9 +5,12 @@ import '../../providers/settings_provider.dart';
 import '../../models/system_setting.dart';
 import '../widgets/setting_components.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import '../../../../theme/design_tokens.dart';
 
 class SystemTab extends ConsumerWidget {
-  const SystemTab({super.key});
+  const SystemTab({super.key, this.storageOnly = false});
+
+  final bool storageOnly;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -16,41 +19,39 @@ class SystemTab extends ConsumerWidget {
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      children: [
-        const SectionHeader(title: '外观模式', icon: Icons.palette_rounded),
-        SettingGroup(
-          children: [
-            SettingTile(
-              title: '主题模式',
-              subtitle: _getThemeModeName(themeMode),
-              icon: Icons.palette_rounded,
-              onTap: () => _showThemePicker(context, ref, themeMode),
-            ),
-          ],
-        ),
-        const SizedBox(height: 32),
-        const SectionHeader(title: '存储与归档策略', icon: Icons.storage_rounded),
-        _buildStorageSettings(context, ref, settingsAsync),
-        const SizedBox(height: 32),
-        const SectionHeader(title: '关于与许可', icon: Icons.info_rounded),
-        SettingGroup(
-          children: [
-            SettingTile(
-              title: '开源许可',
-              subtitle: '查看第三方库授权信息',
-              icon: Icons.info_outline_rounded,
-              onTap: () => showLicensePage(
-                context: context,
-                applicationName: 'VaultStream',
-                applicationVersion: 'v0.1.0-alpha',
+      children: storageOnly
+          ? [_buildStorageSettings(context, ref, settingsAsync)]
+          : [
+              const SectionHeader(title: '外观模式'),
+              SettingGroup(
+                children: [
+                  SettingTile(
+                    title: '主题模式',
+                    subtitle: _getThemeModeName(themeMode),
+                    icon: Icons.palette_rounded,
+                    onTap: () => _showThemePicker(context, ref, themeMode),
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 64),
-        _buildAppInfo(context),
-        const SizedBox(height: 40),
-      ],
+              const SizedBox(height: 32),
+              const SectionHeader(title: '关于与许可'),
+              SettingGroup(
+                children: [
+                  SettingTile(
+                    title: '开源许可',
+                    icon: Icons.info_outline_rounded,
+                    onTap: () => showLicensePage(
+                      context: context,
+                      applicationName: 'VaultStream',
+                      applicationVersion: 'v0.1.0-alpha',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 64),
+              _buildAppInfo(context),
+              const SizedBox(height: 40),
+            ],
     );
   }
 
@@ -250,7 +251,7 @@ class SystemTab extends ConsumerWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(AppShape.pill),
                 ),
                 child: Text(
                   '$quality%',
@@ -303,7 +304,9 @@ class SystemTab extends ConsumerWidget {
             labelText: '单帖最大图片数限制',
             helperText: '0 表示无限制，推荐设置为 20-50 以节省空间',
             prefixIcon: const Icon(Icons.collections_rounded),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            border: const OutlineInputBorder(
+              borderRadius: AppShape.cardMediaBorder,
+            ),
             filled: true,
             fillColor: colorScheme.surfaceContainerHighest.withValues(
               alpha: 0.3,
@@ -328,7 +331,9 @@ class SystemTab extends ConsumerWidget {
             labelText: '单条最大视频数限制',
             helperText: '0 表示无限制',
             prefixIcon: const Icon(Icons.video_library_rounded),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            border: const OutlineInputBorder(
+              borderRadius: AppShape.cardMediaBorder,
+            ),
             filled: true,
             fillColor: colorScheme.surfaceContainerHighest.withValues(
               alpha: 0.3,
@@ -351,9 +356,11 @@ class SystemTab extends ConsumerWidget {
           keyboardType: TextInputType.number,
           decoration: InputDecoration(
             labelText: '单个视频最大字节数',
-            helperText: '0 表示使用后端默认上限',
+            helperText: '0 表示使用默认上限',
             prefixIcon: const Icon(Icons.sd_storage_rounded),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            border: const OutlineInputBorder(
+              borderRadius: AppShape.cardMediaBorder,
+            ),
             filled: true,
             fillColor: colorScheme.surfaceContainerHighest.withValues(
               alpha: 0.3,
@@ -391,7 +398,7 @@ class SystemTab extends ConsumerWidget {
       builder: (context) => Container(
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          borderRadius: AppShape.sheetTopBorder,
         ),
         padding: const EdgeInsets.symmetric(vertical: 24),
         child: Column(

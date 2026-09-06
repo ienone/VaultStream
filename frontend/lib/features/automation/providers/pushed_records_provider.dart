@@ -3,6 +3,8 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/network/api_client.dart';
 import '../models/pushed_record.dart';
+import '../models/queue_item.dart';
+import 'queue_provider.dart';
 
 part 'pushed_records_provider.g.dart';
 
@@ -101,5 +103,22 @@ class PushedRecords extends _$PushedRecords {
     final dio = ref.read(apiClientProvider);
     await dio.delete('/pushed-records/$id');
     ref.invalidateSelf();
+  }
+
+  Future<void> repushNow({
+    required int contentId,
+    required String targetId,
+  }) async {
+    await ref
+        .read(apiClientProvider)
+        .post(
+          '/distribution-queue/content/$contentId/repush-now',
+          queryParameters: {'target_id': targetId},
+        );
+    ref.invalidateSelf();
+    ref.invalidate(contentQueueProvider);
+    final filter = ref.read(queueFilterProvider);
+    ref.invalidate(queueStatsProvider(filter.ruleId));
+    ref.read(queueFilterProvider.notifier).setStatus(QueueStatus.willPush);
   }
 }

@@ -7,19 +7,76 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/providers/local_settings_provider.dart';
 import '../../../../core/utils/safe_url_launcher.dart';
+import '../../../../core/network/api_client.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/platform_auth_controller.dart';
 import '../../providers/platform_health_provider.dart';
 import '../../models/system_setting.dart';
+import '../../utils/setting_value.dart';
 import '../widgets/setting_components.dart';
+import '../../../../theme/design_tokens.dart';
 
 class ConnectionTab extends ConsumerWidget {
-  const ConnectionTab({super.key});
+  const ConnectionTab({
+    super.key,
+    this.accountsOnly = false,
+    this.onOpenPlatform,
+  });
+
+  final bool accountsOnly;
+  final ValueChanged<PlatformHealthStatus>? onOpenPlatform;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (accountsOnly) {
+      final platformHealthAsync = ref.watch(platformHealthProvider);
+      return ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        children: [
+          _buildPlatformHealthSection(context, ref, platformHealthAsync),
+          ref
+              .watch(systemSettingsProvider)
+              .when(
+                data: (settings) => SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('自动检查登录状态'),
+                  subtitle: const Text('关闭后停止后续定时检查，仍可手动检测'),
+                  value: parseBoolSetting(
+                    getSettingValue(settings, 'enable_cookie_keepalive', true),
+                    true,
+                  ),
+                  onChanged: (value) => ref
+                      .read(systemSettingsProvider.notifier)
+                      .updateSetting(
+                        'enable_cookie_keepalive',
+                        value,
+                        category: 'automation',
+                      ),
+                ),
+                loading: () => const LinearProgressIndicator(),
+                error: (_, _) => const Text('登录检查策略暂时无法读取'),
+              ),
+          const SizedBox(height: 32),
+          const SectionHeader(
+            title: '手动凭据',
+            icon: Icons.settings_ethernet_rounded,
+          ),
+          SettingGroup(
+            children: [
+              ExpandableSettingTile(
+                title: 'Bilibili 高级配置',
+                subtitle: '配置 SESSDATA / JCT / BuVid3',
+                icon: Icons.settings_ethernet_rounded,
+                expandedContent: _buildBiliAdvancedEditor(context, ref),
+              ),
+            ],
+          ),
+          const SizedBox(height: 40),
+        ],
+      );
+    }
+
     final localSettings = ref.watch(localSettingsProvider);
-    final platformHealthAsync = ref.watch(platformHealthProvider);
     final colorScheme = Theme.of(context).colorScheme;
 
     return ListView(
@@ -29,7 +86,7 @@ class ConnectionTab extends ConsumerWidget {
         SettingGroup(
           children: [
             ExpandableSettingTile(
-              title: '后端 API 地址',
+              title: '服务器地址',
               subtitle: localSettings.baseUrl,
               icon: Icons.cloud_done_rounded,
               expandedContent: _buildBaseUrlEditor(
@@ -50,7 +107,6 @@ class ConnectionTab extends ConsumerWidget {
             ),
             SettingTile(
               title: '测试服务器连接',
-              subtitle: '验证后端服务可用性',
               icon: Icons.cell_tower_rounded,
               onTap: () => _testConnection(
                 context,
@@ -61,11 +117,6 @@ class ConnectionTab extends ConsumerWidget {
             ),
           ],
         ),
-        const SizedBox(height: 32),
-        const SectionHeader(title: '账号与平台健康', icon: Icons.link_rounded),
-        const SizedBox(height: 12),
-        _buildPlatformHealthSection(context, ref, platformHealthAsync),
-        const SizedBox(height: 32),
         const SectionHeader(title: '高级连接设置', icon: Icons.tune_rounded),
         SettingGroup(
           children: [
@@ -74,12 +125,6 @@ class ConnectionTab extends ConsumerWidget {
               subtitle: _getProxySubtitle(ref),
               icon: Icons.lan_rounded,
               expandedContent: _buildProxyEditor(context, ref),
-            ),
-            ExpandableSettingTile(
-              title: 'Bilibili 高级配置',
-              subtitle: '配置 SESSDATA / JCT / BuVid3',
-              icon: Icons.settings_ethernet_rounded,
-              expandedContent: _buildBiliAdvancedEditor(context, ref),
             ),
           ],
         ),
@@ -109,7 +154,16 @@ class ConnectionTab extends ConsumerWidget {
     return healthAsync.when(
       data: (health) {
         if (health.platforms.isEmpty) {
-          return const SizedBox.shrink();
+          return const SettingGroup(
+            children: [
+              SettingTile(
+                title: '暂无平台账号',
+                subtitle: '服务器未返回可连接的平台，请稍后刷新或检查后端配置。',
+                icon: Icons.account_circle_outlined,
+                showArrow: false,
+              ),
+            ],
+          );
         }
         return SettingGroup(
           children: [
@@ -119,6 +173,7 @@ class ConnectionTab extends ConsumerWidget {
                 subtitle: _platformHealthSubtitle(platform),
                 icon: _platformHealthIcon(platform),
                 iconColor: _platformHealthColor(context, platform),
+                stackTrailing: true,
                 trailing: _PlatformAccountActions(
                   platform: platform,
                   onLogin: () => _startPlatformLogin(context, ref, platform),
@@ -126,6 +181,9 @@ class ConnectionTab extends ConsumerWidget {
                   onLogout: () =>
                       _confirmPlatformLogout(context, ref, platform),
                 ),
+                onTap: onOpenPlatform == null
+                    ? null
+                    : () => onOpenPlatform!(platform),
                 showArrow: false,
               ),
           ],
@@ -232,7 +290,7 @@ class ConnectionTab extends ConsumerWidget {
     final success = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _PlatformLoginDialog(
+      builder: (_) => PlatformLoginDialog(
         platform: platform.platform,
         label: platform.label,
       ),
@@ -310,7 +368,7 @@ class ConnectionTab extends ConsumerWidget {
               context,
             ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: AppShape.cardBorder,
               borderSide: BorderSide.none,
             ),
           ),
@@ -353,7 +411,7 @@ class ConnectionTab extends ConsumerWidget {
               context,
             ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: AppShape.cardBorder,
               borderSide: BorderSide.none,
             ),
           ),
@@ -425,7 +483,7 @@ class ConnectionTab extends ConsumerWidget {
                 labelText: 'HTTP/HTTPS Proxy',
                 hintText: 'e.g. http://127.0.0.1:7890',
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppShape.cardMediaBorder,
                 ),
               ),
             ),
@@ -498,7 +556,7 @@ class ConnectionTab extends ConsumerWidget {
                 labelText: 'SESSDATA (Cookie)',
                 helperText: '一般情况下无需配置，仅用于高画质/会员内容',
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppShape.cardMediaBorder,
                 ),
               ),
             ),
@@ -508,7 +566,7 @@ class ConnectionTab extends ConsumerWidget {
               decoration: InputDecoration(
                 labelText: 'bili_jct (CSRF)',
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppShape.cardMediaBorder,
                 ),
               ),
             ),
@@ -518,7 +576,7 @@ class ConnectionTab extends ConsumerWidget {
               decoration: InputDecoration(
                 labelText: 'buvid3',
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppShape.cardMediaBorder,
                 ),
               ),
             ),
@@ -570,13 +628,18 @@ class ConnectionTab extends ConsumerWidget {
       if (context.mounted) {
         if (result['success'] == true) {
           final authOk = result['auth_ok'] == true;
-          showToast(context, authOk ? '✅ 连接并认证成功' : '⚠️ 连接成功，但 API 密钥无效');
+          showToast(context, authOk ? '连接并认证成功' : '连接成功，但 API 密钥无效');
         } else {
-          showToast(context, '❌ ${result['error']}');
+          showToast(context, result['error'] as String);
         }
       }
     } catch (e) {
-      if (context.mounted) showToast(context, '❌ 错误: $e');
+      if (context.mounted) {
+        showToast(
+          context,
+          formatApiErrorMessage(e, fallbackMessage: '连接测试失败，请重试'),
+        );
+      }
     }
   }
 
@@ -685,18 +748,22 @@ class _PlatformAccountActions extends ConsumerWidget {
   }
 }
 
-class _PlatformLoginDialog extends ConsumerStatefulWidget {
-  const _PlatformLoginDialog({required this.platform, required this.label});
+class PlatformLoginDialog extends ConsumerStatefulWidget {
+  const PlatformLoginDialog({
+    super.key,
+    required this.platform,
+    required this.label,
+  });
 
   final String platform;
   final String label;
 
   @override
-  ConsumerState<_PlatformLoginDialog> createState() =>
+  ConsumerState<PlatformLoginDialog> createState() =>
       _PlatformLoginDialogState();
 }
 
-class _PlatformLoginDialogState extends ConsumerState<_PlatformLoginDialog> {
+class _PlatformLoginDialogState extends ConsumerState<PlatformLoginDialog> {
   PlatformAuthSession? _session;
   String? _error;
   bool _starting = true;
@@ -816,8 +883,8 @@ class _PlatformLoginDialogState extends ConsumerState<_PlatformLoginDialog> {
       content: SizedBox(
         width: 360,
         child: AnimatedSize(
-          duration: const Duration(milliseconds: 240),
-          curve: Curves.easeOutCubic,
+          duration: AppMotion.contentSwap,
+          curve: AppMotion.standardCurve,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -833,7 +900,7 @@ class _PlatformLoginDialogState extends ConsumerState<_PlatformLoginDialog> {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: AppShape.paneBorder,
                   ),
                   child: Image.memory(
                     qrBytes,

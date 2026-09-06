@@ -1,30 +1,35 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/setting_components.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/bot_config_actions.dart';
 import '../../models/system_setting.dart';
-import '../../../../core/network/api_client.dart';
+import '../../utils/setting_value.dart';
 import '../../../automation/providers/bot_chats_provider.dart';
 import '../../../automation/models/bot_chat.dart';
 import '../../../automation/widgets/bot_chat_dialog.dart';
+import '../../../notifications/notification_provider.dart';
+import '../../../../theme/design_tokens.dart';
 
 class PushTab extends ConsumerStatefulWidget {
-  const PushTab({super.key});
+  const PushTab({super.key, this.targetsOnly = false});
+
+  final bool targetsOnly;
 
   @override
   ConsumerState<PushTab> createState() => _PushTabState();
 }
 
 class _PushTabState extends ConsumerState<PushTab> {
-  int _currentStep = 0;
   bool _isSaving = false;
   bool _isControllingTelegram = false;
   bool _isSyncingChats = false;
+  bool _isGeneratingDigest = false;
   bool _pushConfigExpanded = false;
   String _botPlatform = 'telegram';
 
   final _tgTokenController = TextEditingController();
-  final _tgAdminIdController = TextEditingController();
   final _qqUrlController = TextEditingController(text: 'http://127.0.0.1:3000');
   final _adminsCtrl = TextEditingController();
   final _whiteCtrl = TextEditingController();
@@ -35,7 +40,6 @@ class _PushTabState extends ConsumerState<PushTab> {
   @override
   void dispose() {
     _tgTokenController.dispose();
-    _tgAdminIdController.dispose();
     _qqUrlController.dispose();
     _adminsCtrl.dispose();
     _whiteCtrl.dispose();
@@ -74,58 +78,19 @@ class _PushTabState extends ConsumerState<PushTab> {
   Future<void> _saveConfig() async {
     setState(() => _isSaving = true);
     try {
-      final dio = ref.read(apiClientProvider);
-
-      // 查询是否已有同平台配置，有则 PATCH，无则 POST
-      final existingResp = await dio.get('/bot-config');
-      final existingConfigs = (existingResp.data as List?) ?? [];
-      final existing = existingConfigs.cast<Map<String, dynamic>>().where(
-        (c) => c['platform'] == _botPlatform,
-      );
-      final existingConfig = existing.isNotEmpty ? existing.first : null;
-
-      if (_botPlatform == 'telegram' &&
-          _tgTokenController.text.trim().isNotEmpty) {
-        if (existingConfig != null) {
-          await dio.patch(
-            '/bot-config/${existingConfig['id']}',
-            data: {
-              'bot_token': _tgTokenController.text.trim(),
-              'enabled': true,
-            },
+      final saveResult = await ref
+          .read(botConfigActionsProvider)
+          .saveCredentials(
+            platform: _botPlatform,
+            telegramToken: _tgTokenController.text,
+            napcatHttpUrl: _qqUrlController.text,
           );
-        } else {
-          await dio.post(
-            '/bot-config',
-            data: {
-              'platform': 'telegram',
-              'name': 'Main Telegram Bot',
-              'bot_token': _tgTokenController.text.trim(),
-              'enabled': true,
-            },
-          );
-        }
-      } else if (_botPlatform == 'qq' &&
-          _qqUrlController.text.trim().isNotEmpty) {
-        if (existingConfig != null) {
-          await dio.patch(
-            '/bot-config/${existingConfig['id']}',
-            data: {
-              'napcat_http_url': _qqUrlController.text.trim(),
-              'enabled': true,
-            },
-          );
-        } else {
-          await dio.post(
-            '/bot-config',
-            data: {
-              'platform': 'qq',
-              'name': 'Main QQ Bot',
-              'napcat_http_url': _qqUrlController.text.trim(),
-              'enabled': true,
-            },
-          );
-        }
+      if (!saveResult.saved) {
+        throw StateError(
+          _botPlatform == 'telegram'
+              ? '请填写 Telegram Bot Token。'
+              : '请填写 Napcat HTTP 地址。',
+        );
       }
       // 保存权限配置
       final notifier = ref.read(systemSettingsProvider.notifier);
@@ -145,9 +110,20 @@ class _PushTabState extends ConsumerState<PushTab> {
         category: 'bot',
       );
       if (mounted) {
-        showToast(context, '机器人配置已保存，正在启动 Bot…');
-        // 等待 Bot 进程启动并发送心跳后再刷新状态
-        await _pollBotStatus();
+        final runId = saveResult.followUpRunId;
+        final runSuffix = runId == null || runId.isEmpty
+            ? ''
+            : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
+        if (saveResult.followUpFailed) {
+          showToast(context, '机器人配置已保存；运行时同步失败$runSuffix，请查看任务详情。');
+        } else if (saveResult.followUpStatus == 'accepted') {
+          showToast(context, '机器人配置已保存；群组同步已提交$runSuffix。');
+        } else if (saveResult.followUpRunId != null) {
+          showToast(context, '机器人配置已保存；运行时同步已完成$runSuffix。');
+          await _pollBotStatus();
+        } else {
+          showToast(context, '机器人配置已保存。');
+        }
       }
     } catch (e) {
       if (mounted) showToast(context, '保存失败: $e');
@@ -198,8 +174,13 @@ class _PushTabState extends ConsumerState<PushTab> {
     };
 
     try {
-      final dio = ref.read(apiClientProvider);
-      await dio.post('/bot-config/service/telegram/$action');
+      final typedAction = switch (action) {
+        'start' => TelegramServiceAction.start,
+        'stop' => TelegramServiceAction.stop,
+        'restart' => TelegramServiceAction.restart,
+        _ => throw ArgumentError.value(action, 'action'),
+      };
+      await ref.read(botConfigActionsProvider).controlTelegram(typedAction);
 
       if (action == 'start' || action == 'restart') {
         await _pollBotStatus();
@@ -221,31 +202,8 @@ class _PushTabState extends ConsumerState<PushTab> {
     }
   }
 
-  Future<List<Map<String, dynamic>>> _fetchBotConfigs() async {
-    final dio = ref.read(apiClientProvider);
-    final response = await dio.get('/bot-config');
-    final configs = (response.data as List?) ?? const [];
-    return configs
-        .map((item) => (item as Map).cast<String, dynamic>())
-        .toList();
-  }
-
   Future<int> _resolveBotConfigId(String chatType) async {
-    final platform = chatType.startsWith('qq_') ? 'qq' : 'telegram';
-    final configs = await _fetchBotConfigs();
-    final candidates = configs.where((config) {
-      return config['platform'] == platform && config['enabled'] == true;
-    }).toList();
-
-    if (candidates.isEmpty) {
-      throw StateError(
-        platform == 'telegram'
-            ? '请先在上方配置并启用 Telegram Bot。'
-            : '请先在上方配置并启用 QQ Bot。',
-      );
-    }
-
-    return (candidates.first['id'] as num).toInt();
+    return ref.read(botConfigActionsProvider).resolveEnabledConfigId(chatType);
   }
 
   Future<void> _syncConfiguredChats() async {
@@ -253,52 +211,22 @@ class _PushTabState extends ConsumerState<PushTab> {
     setState(() => _isSyncingChats = true);
 
     try {
-      final dio = ref.read(apiClientProvider);
-      final configs = await _fetchBotConfigs();
-      final activeConfigs = configs.where((config) {
-        if (config['enabled'] != true) {
-          return false;
-        }
-
-        final platform = (config['platform'] ?? '').toString();
-        if (platform == 'telegram') {
-          return (config['bot_token_masked'] ?? '').toString().isNotEmpty;
-        }
-        if (platform == 'qq') {
-          return (config['napcat_http_url'] ?? '').toString().isNotEmpty;
-        }
-        return false;
-      }).toList();
-
-      if (activeConfigs.isEmpty) {
+      final result = await ref
+          .read(botConfigActionsProvider)
+          .syncConfiguredChats();
+      if (!result.configured) {
         if (mounted) {
           showToast(context, '请先配置并启用至少一个 Bot');
         }
         return;
       }
 
-      int total = 0;
-      int updated = 0;
-      int created = 0;
-      int failed = 0;
-
-      for (final config in activeConfigs) {
-        final response = await dio.post(
-          '/bot-config/${config['id']}/sync-chats',
-        );
-        final data = (response.data as Map).cast<String, dynamic>();
-        total += (data['total'] as num?)?.toInt() ?? 0;
-        updated += (data['updated'] as num?)?.toInt() ?? 0;
-        created += (data['created'] as num?)?.toInt() ?? 0;
-        failed += (data['failed'] as num?)?.toInt() ?? 0;
-      }
-
-      ref.invalidate(botChatsProvider);
-      ref.invalidate(botStatusProvider);
-      await ref.read(botChatsProvider.future);
-
       if (mounted) {
-        showToast(context, '同步完成：$updated 更新，$created 新增，$failed 失败，$total 总计');
+        showToast(
+          context,
+          '同步完成：${result.updated} 更新，${result.created} 新增，'
+          '${result.failed} 失败，${result.total} 总计',
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -334,301 +262,272 @@ class _PushTabState extends ConsumerState<PushTab> {
     );
   }
 
+  Future<void> _updateDigestSetting(String key, Object value) async {
+    try {
+      await ref
+          .read(systemSettingsProvider.notifier)
+          .updateSetting(key, value, category: 'notifications');
+    } catch (error) {
+      if (mounted) showToast(context, '摘要设置保存失败: $error');
+    }
+  }
+
+  Future<void> _generateDigestNow() async {
+    if (_isGeneratingDigest) return;
+    setState(() => _isGeneratingDigest = true);
+    try {
+      final result = await generateNotificationDigest(ref);
+      if (!mounted) return;
+      final created = result['created'] == true;
+      final discoveryCount = (result['discovery_count'] as num?)?.toInt() ?? 0;
+      final eventCount = (result['event_count'] as num?)?.toInt() ?? 0;
+      showToast(
+        context,
+        created
+            ? '摘要已生成：$discoveryCount 条动态，$eventCount 个事件更新'
+            : '本周期没有新的动态或事件变化',
+      );
+    } catch (error) {
+      if (mounted) showToast(context, '摘要生成失败: $error');
+    } finally {
+      if (mounted) setState(() => _isGeneratingDigest = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final settingsAsync = ref.watch(systemSettingsProvider);
     final statusAsync = ref.watch(botStatusProvider);
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
     settingsAsync.whenData(_initFromSettings);
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      children: [
-        // ── 当前状态横幅 ──
-        statusAsync.when(
-          data: (s) => Column(
-            children: [
-              _buildStatusBanner(s, colorScheme, theme),
-              const SizedBox(height: 12),
-              _buildBotControlActions(context, s),
-            ],
-          ),
-          loading: () => const SizedBox.shrink(),
-          error: (_, _) => const SizedBox.shrink(),
-        ),
-        const SizedBox(height: 24),
-        const SectionHeader(title: '机器人推送配置', icon: Icons.smart_toy_rounded),
-        const SizedBox(height: 8),
-        Card(
-          elevation: 0,
-          margin: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-            side: BorderSide(
-              color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-            ),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Theme(
-            data: theme.copyWith(
-              dividerColor: Colors.transparent,
-              colorScheme: colorScheme.copyWith(secondary: colorScheme.primary),
-            ),
-            child: ExpansionTile(
-              maintainState: true,
-              initiallyExpanded: _pushConfigExpanded,
-              onExpansionChanged: (expanded) {
-                setState(() => _pushConfigExpanded = expanded);
-              },
-              tilePadding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 6,
-              ),
-              childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              leading: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer.withValues(alpha: 0.45),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(Icons.tune_rounded, color: colorScheme.primary),
-              ),
-              title: const Text('凭证与权限配置'),
-              subtitle: Text(
-                _pushConfigExpanded
-                    ? '展开中，可编辑 Bot 凭证、管理员与访问控制'
-                    : '默认收起，按需展开编辑 Bot 凭证与访问权限',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-              children: [
-                Stepper(
-                  type: StepperType.vertical,
-                  currentStep: _currentStep,
-                  physics: const NeverScrollableScrollPhysics(),
-                  onStepTapped: (i) => setState(() => _currentStep = i),
-                  onStepContinue: () {
-                    if (_currentStep < 2) {
-                      setState(() => _currentStep++);
-                    } else {
-                      _saveConfig();
-                    }
-                  },
-                  onStepCancel: () {
-                    if (_currentStep > 0) setState(() => _currentStep--);
-                  },
-                  controlsBuilder: (context, details) {
-                    final isLast = _currentStep == 2;
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 20),
-                      child: Row(
-                        children: [
-                          FilledButton.icon(
-                            onPressed: _isSaving
-                                ? null
-                                : details.onStepContinue,
-                            icon: _isSaving
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : Icon(
-                                    isLast
-                                        ? Icons.save_rounded
-                                        : Icons.arrow_forward,
-                                    size: 18,
-                                  ),
-                            label: Text(isLast ? '保存配置' : '下一步'),
-                          ),
-                          if (_currentStep > 0) ...[
-                            const SizedBox(width: 12),
-                            OutlinedButton(
-                              onPressed: _isSaving
-                                  ? null
-                                  : details.onStepCancel,
-                              child: const Text('上一步'),
-                            ),
-                          ],
-                        ],
-                      ),
-                    );
-                  },
-                  steps: [
-                    Step(
-                      title: const Text('选择推送平台'),
-                      subtitle: Text(
-                        _botPlatform == 'telegram'
-                            ? 'Telegram Bot'
-                            : 'QQ Napcat',
-                      ),
-                      isActive: _currentStep >= 0,
-                      state: _currentStep > 0
-                          ? StepState.complete
-                          : StepState.indexed,
-                      content: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('选择您要配置的推送平台：'),
-                          const SizedBox(height: 16),
-                          SegmentedButton<String>(
-                            segments: const [
-                              ButtonSegment(
-                                value: 'telegram',
-                                label: Text('Telegram'),
-                                icon: Icon(Icons.send),
-                              ),
-                              ButtonSegment(
-                                value: 'qq',
-                                label: Text('QQ (Napcat)'),
-                                icon: Icon(Icons.alternate_email),
-                              ),
-                            ],
-                            selected: {_botPlatform},
-                            onSelectionChanged: (s) {
-                              setState(() => _botPlatform = s.first);
-                              _reloadPermissionFields();
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                    Step(
-                      title: const Text('填写凭证'),
-                      subtitle: Text(
-                        _botPlatform == 'telegram'
-                            ? 'Bot Token 与管理员 ID'
-                            : 'Napcat HTTP 地址',
-                      ),
-                      isActive: _currentStep >= 1,
-                      state: _currentStep > 1
-                          ? StepState.complete
-                          : StepState.indexed,
-                      content: Column(
-                        children: [
-                          if (_botPlatform == 'telegram') ...[
-                            TextField(
-                              controller: _tgTokenController,
-                              decoration: const InputDecoration(
-                                labelText: 'Bot Token',
-                                hintText: '12345678:ABC-DEF...',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.key_rounded),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: _tgAdminIdController,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: '管理员 Telegram ID',
-                                hintText: '123456789',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.person_rounded),
-                                helperText:
-                                    '您的 Telegram 用户 ID（可通过 @userinfobot 获取）',
-                              ),
-                            ),
-                          ] else ...[
-                            TextField(
-                              controller: _qqUrlController,
-                              decoration: const InputDecoration(
-                                labelText: 'Napcat HTTP API 地址',
-                                hintText: 'http://127.0.0.1:3000',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.link_rounded),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    Step(
-                      title: const Text('权限与访问控制'),
-                      subtitle: const Text('管理员、白名单与黑名单'),
-                      isActive: _currentStep >= 2,
-                      state: _currentStep == 2
-                          ? StepState.editing
-                          : StepState.indexed,
-                      content: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '配置可使用 Bot 的用户 ID。留空则不限制。',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: colorScheme.outline,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          _buildPermissionField(
-                            controller: _adminsCtrl,
-                            label: '超级管理员 ID（逗号分隔）',
-                            hint: '123456, 789012',
-                            icon: Icons.admin_panel_settings_rounded,
-                          ),
-                          const SizedBox(height: 12),
-                          _buildPermissionField(
-                            controller: _whiteCtrl,
-                            label: '白名单 ID（逗号分隔）',
-                            hint: '允许使用 Bot 的用户 ID',
-                            icon: Icons.check_circle_rounded,
-                          ),
-                          const SizedBox(height: 12),
-                          _buildPermissionField(
-                            controller: _blackCtrl,
-                            label: '黑名单 ID（逗号分隔）',
-                            hint: '禁止使用 Bot 的用户 ID',
-                            icon: Icons.block_rounded,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 32),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SectionHeader(title: '群组与频道管理', icon: Icons.groups_rounded),
-            Padding(
-              padding: const EdgeInsets.only(left: 4, bottom: 8),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
+      children: widget.targetsOnly
+          ? [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  FilledButton.tonalIcon(
-                    onPressed: _isSyncingChats ? null : _syncConfiguredChats,
-                    icon: _isSyncingChats
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.sync_rounded),
-                    label: Text(_isSyncingChats ? '同步中...' : '同步群组'),
+                  const SectionHeader(
+                    title: '群组与频道管理',
+                    icon: Icons.groups_rounded,
                   ),
-                  OutlinedButton.icon(
-                    onPressed: _showAddChatDialog,
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('手动新增'),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, bottom: 8),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.tonalIcon(
+                          onPressed: _isSyncingChats
+                              ? null
+                              : _syncConfiguredChats,
+                          icon: _isSyncingChats
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.sync_rounded),
+                          label: Text(_isSyncingChats ? '同步中...' : '同步群组'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _showAddChatDialog,
+                          icon: const Icon(Icons.add_rounded),
+                          label: const Text('手动新增'),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              _buildGroupManagement(context, ref),
+            ]
+          : [
+              const SectionHeader(
+                title: '应用内周期摘要',
+                icon: Icons.summarize_rounded,
+              ),
+              const SizedBox(height: 8),
+              settingsAsync.when(
+                data: (settings) => _buildDigestSettings(settings),
+                loading: () => const LinearProgressIndicator(),
+                error: (_, _) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('摘要设置加载失败'),
+                  trailing: TextButton(
+                    onPressed: () => ref.invalidate(systemSettingsProvider),
+                    child: const Text('重试'),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 28),
+              statusAsync.when(
+                data: _buildBotStatus,
+                loading: () => const LinearProgressIndicator(),
+                error: (_, _) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('机器人状态读取失败'),
+                  trailing: TextButton(
+                    onPressed: _refreshBotStatus,
+                    child: const Text('重试'),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              const SectionHeader(
+                title: '机器人推送配置',
+                icon: Icons.smart_toy_rounded,
+              ),
+              const SizedBox(height: 8),
+              ExpansionTile(
+                maintainState: true,
+                initiallyExpanded: _pushConfigExpanded,
+                onExpansionChanged: (expanded) =>
+                    setState(() => _pushConfigExpanded = expanded),
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: const EdgeInsets.only(bottom: 16),
+                title: const Text('凭证与权限'),
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: _botPlatform,
+                    decoration: const InputDecoration(labelText: '推送平台'),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'telegram',
+                        child: Text('Telegram'),
+                      ),
+                      DropdownMenuItem(value: 'qq', child: Text('QQ (Napcat)')),
+                    ],
+                    onChanged: _isSaving
+                        ? null
+                        : (value) {
+                            if (value == null) return;
+                            setState(() => _botPlatform = value);
+                            _reloadPermissionFields();
+                          },
+                  ),
+                  const SizedBox(height: 20),
+                  if (_botPlatform == 'telegram')
+                    TextField(
+                      controller: _tgTokenController,
+                      obscureText: true,
+                      enableSuggestions: false,
+                      autocorrect: false,
+                      decoration: const InputDecoration(labelText: 'Bot Token'),
+                    )
+                  else
+                    TextField(
+                      controller: _qqUrlController,
+                      decoration: const InputDecoration(
+                        labelText: 'Napcat HTTP API 地址',
+                      ),
+                    ),
+                  const SizedBox(height: 20),
+                  _buildPermissionField(
+                    controller: _adminsCtrl,
+                    label: '超级管理员 ID',
+                    hint: '多个 ID 用逗号分隔',
+                  ),
+                  const SizedBox(height: 20),
+                  _buildPermissionField(
+                    controller: _whiteCtrl,
+                    label: '白名单 ID',
+                    hint: '多个 ID 用逗号分隔',
+                  ),
+                  const SizedBox(height: 20),
+                  _buildPermissionField(
+                    controller: _blackCtrl,
+                    label: '黑名单 ID',
+                    hint: '多个 ID 用逗号分隔',
+                  ),
+                  const SizedBox(height: 24),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton(
+                      onPressed: _isSaving ? null : _saveConfig,
+                      child: Text(_isSaving ? '保存中…' : '保存配置'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+              TextButton(
+                onPressed: () => context.push('/settings?tab=targets'),
+                child: const Text('管理推送目标'),
+              ),
+              const SizedBox(height: 40),
+            ],
+    );
+  }
+
+  Widget _buildDigestSettings(List<SystemSetting> settings) {
+    final enabled = parseBoolSetting(
+      getSettingValue(settings, 'enable_notification_digest', false),
+      false,
+    );
+    final interval = parseIntSetting(
+      getSettingValue(settings, 'notification_digest_interval_hours', 24),
+      24,
+    );
+    const intervalOptions = <int>[6, 12, 24, 168];
+    final selectedInterval = intervalOptions.contains(interval) ? interval : 24;
+
+    return SettingGroup(
+      children: [
+        SettingTile(
+          title: '周期摘要',
+          subtitle: '定期汇总新动态和事件变化',
+          icon: Icons.notifications_active_outlined,
+          showArrow: false,
+          trailing: Switch(
+            key: const ValueKey('notification-digest-enabled'),
+            value: enabled,
+            onChanged: (value) =>
+                _updateDigestSetting('enable_notification_digest', value),
+          ),
         ),
-        const SizedBox(height: 8),
-        _buildGroupManagement(context, ref),
-        const SizedBox(height: 40),
+        SettingTile(
+          title: '摘要周期',
+          subtitle: '只统计上次检查后新出现的动态和事件变化',
+          icon: Icons.schedule_rounded,
+          showArrow: false,
+          trailing: DropdownButton<int>(
+            value: selectedInterval,
+            items: const [
+              DropdownMenuItem(value: 6, child: Text('每 6 小时')),
+              DropdownMenuItem(value: 12, child: Text('每 12 小时')),
+              DropdownMenuItem(value: 24, child: Text('每天')),
+              DropdownMenuItem(value: 168, child: Text('每周')),
+            ],
+            onChanged: (value) {
+              if (value != null) {
+                _updateDigestSetting(
+                  'notification_digest_interval_hours',
+                  value,
+                );
+              }
+            },
+          ),
+        ),
+        SettingTile(
+          title: '立即检查',
+          icon: Icons.refresh_rounded,
+          showArrow: false,
+          trailing: FilledButton.tonalIcon(
+            onPressed: _isGeneratingDigest ? null : _generateDigestNow,
+            icon: _isGeneratingDigest
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.summarize_rounded),
+            label: Text(_isGeneratingDigest ? '检查中' : '生成摘要'),
+          ),
+        ),
       ],
     );
   }
@@ -637,58 +536,10 @@ class _PushTabState extends ConsumerState<PushTab> {
     required TextEditingController controller,
     required String label,
     required String hint,
-    required IconData icon,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 6),
-          child: Text(
-            label,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        TextField(
-          controller: controller,
-          minLines: 2,
-          maxLines: 2,
-          textAlignVertical: TextAlignVertical.top,
-          decoration: InputDecoration(
-            hintText: hint,
-            filled: true,
-            fillColor: colorScheme.surfaceContainerHigh,
-            prefixIcon: Padding(
-              padding: const EdgeInsets.only(bottom: 18),
-              child: Icon(icon),
-            ),
-            prefixIconConstraints: const BoxConstraints(minWidth: 48),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(
-                color: colorScheme.primary.withValues(alpha: 0.6),
-                width: 1.5,
-              ),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 16,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+  }) => TextField(
+    controller: controller,
+    decoration: InputDecoration(labelText: label, hintText: hint),
+  );
 
   Widget _buildGroupManagement(BuildContext context, WidgetRef ref) {
     final chatsAsync = ref.watch(botChatsProvider);
@@ -698,40 +549,9 @@ class _PushTabState extends ConsumerState<PushTab> {
     return chatsAsync.when(
       data: (chats) {
         if (chats.isEmpty) {
-          return Card(
-            elevation: 0,
-            margin: EdgeInsets.zero,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-              side: BorderSide(
-                color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(28),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.speaker_notes_off_rounded,
-                    size: 48,
-                    color: colorScheme.outline.withValues(alpha: 0.5),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '尚未发现任何群组或频道',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '先点击“同步群组”从已启用 Bot 拉取会话，或点击“手动新增”直接补录目标。',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Text('暂无推送目标。同步已启用 Bot 的群组，或手动新增。'),
           );
         }
 
@@ -741,7 +561,7 @@ class _PushTabState extends ConsumerState<PushTab> {
             Padding(
               padding: const EdgeInsets.only(left: 4, bottom: 12),
               child: Text(
-                '当前共 ${chats.length} 个目标，可分别控制启用、巡逻监听与分发推送。',
+                '${chats.length} 个推送目标',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),
@@ -756,24 +576,12 @@ class _PushTabState extends ConsumerState<PushTab> {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Card(
-        elevation: 0,
-        margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              Icon(Icons.error_outline_rounded, color: colorScheme.error),
-              const SizedBox(width: 12),
-              Expanded(child: Text('群组列表加载失败: $e')),
-            ],
-          ),
+      error: (_, _) => ListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('推送目标加载失败'),
+        trailing: TextButton(
+          onPressed: () => ref.invalidate(botChatsProvider),
+          child: const Text('重试'),
         ),
       ),
     );
@@ -801,7 +609,7 @@ class _PushTabState extends ConsumerState<PushTab> {
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: colorScheme.primaryContainer.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: AppShape.cardMediaBorder,
                 ),
                 child: Icon(
                   chat.isTelegram
@@ -875,18 +683,19 @@ class _PushTabState extends ConsumerState<PushTab> {
     Function(bool) onChanged,
     IconData icon,
   ) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Expanded(
       child: InkWell(
         onTap: () => onChanged(!value),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppShape.cardMediaBorder,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: value
                 ? colorScheme.primaryContainer.withValues(alpha: 0.2)
                 : colorScheme.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppShape.cardMediaBorder,
             border: Border.all(
               color: value
                   ? colorScheme.primary.withValues(alpha: 0.3)
@@ -903,8 +712,7 @@ class _PushTabState extends ConsumerState<PushTab> {
               const SizedBox(width: 8),
               Text(
                 label,
-                style: TextStyle(
-                  fontSize: 12,
+                style: theme.textTheme.labelMedium?.copyWith(
                   fontWeight: value ? FontWeight.bold : FontWeight.normal,
                   color: value ? colorScheme.primary : colorScheme.onSurface,
                 ),
@@ -929,124 +737,56 @@ class _PushTabState extends ConsumerState<PushTab> {
     );
   }
 
-  Widget _buildBotControlActions(BuildContext context, dynamic status) {
-    final bool isRunning = status.isRunning == true;
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+  Widget _buildBotStatus(BotStatus status) {
+    final username = status.botUsername;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        FilledButton.tonalIcon(
-          onPressed: _isControllingTelegram ? null : () => _refreshBotStatus(),
-          icon: const Icon(Icons.refresh_rounded),
-          label: const Text('刷新状态'),
-        ),
-        FilledButton.tonalIcon(
-          onPressed: (_isControllingTelegram || isRunning)
-              ? null
-              : () => _controlTelegramService('start'),
-          icon: const Icon(Icons.play_arrow_rounded),
-          label: const Text('启动 Bot'),
-        ),
-        FilledButton.tonalIcon(
-          onPressed: (_isControllingTelegram || !isRunning)
-              ? null
-              : () => _controlTelegramService('stop'),
-          icon: const Icon(Icons.stop_rounded),
-          label: const Text('停止 Bot'),
-        ),
-        FilledButton.tonalIcon(
-          onPressed: _isControllingTelegram
-              ? null
-              : () => _controlTelegramService('restart'),
-          icon: _isControllingTelegram
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.restart_alt_rounded),
-          label: Text(_isControllingTelegram ? '处理中...' : '重启 Bot'),
-        ),
-      ],
-    );
-  }
-
-  /// 顶部状态横幅：显示当前Bot运行状态
-  Widget _buildStatusBanner(
-    dynamic status,
-    ColorScheme colorScheme,
-    ThemeData theme,
-  ) {
-    final bool isRunning = status.isRunning == true;
-    final bool hasNapcat = status.isNapcatEnabled == true;
-    final String? username = status.botUsername as String?;
-
-    if (!isRunning && !hasNapcat) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: colorScheme.errorContainer.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: colorScheme.error.withValues(alpha: 0.2)),
-        ),
-        child: Row(
+        Row(
           children: [
-            Icon(
-              Icons.warning_amber_rounded,
-              color: colorScheme.error,
-              size: 20,
-            ),
-            const SizedBox(width: 12),
             Expanded(
               child: Text(
-                '推送机器人未运行或未配置，请检查下方配置并可手动启动',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.error,
-                ),
+                status.isRunning
+                    ? 'Telegram 运行中${username != null ? ' · @$username' : ''}'
+                    : 'Telegram 未运行',
               ),
+            ),
+            IconButton(
+              tooltip: '刷新机器人状态',
+              onPressed: _isControllingTelegram ? null : _refreshBotStatus,
+              icon: const Icon(Icons.refresh_rounded),
             ),
           ],
         ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.green.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.green.withValues(alpha: 0.2)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.check_circle_rounded, color: Colors.green, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isRunning
-                      ? 'Telegram Bot 运行中${username != null ? ' (@$username)' : ''}'
-                      : 'QQ Bot (Napcat) 已配置',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.green.shade700,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                if (hasNapcat && isRunning)
-                  Text(
-                    'QQ Napcat 同步已启用',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: Colors.green.shade600,
+        if (status.isNapcatEnabled)
+          Text(status.isNapcatOnline ? 'QQ 已连接' : 'QQ 未连接，请检查 Napcat 配置'),
+        Wrap(
+          spacing: 8,
+          children: [
+            TextButton(
+              onPressed: _isControllingTelegram
+                  ? null
+                  : () => _controlTelegramService(
+                      status.isRunning ? 'stop' : 'start',
                     ),
-                  ),
-              ],
+              child: Text(
+                _isControllingTelegram
+                    ? '处理中…'
+                    : status.isRunning
+                    ? '停止 Telegram'
+                    : '启动 Telegram',
+              ),
             ),
-          ),
-        ],
-      ),
+            if (status.isRunning)
+              TextButton(
+                onPressed: _isControllingTelegram
+                    ? null
+                    : () => _controlTelegramService('restart'),
+                child: const Text('重启 Telegram'),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

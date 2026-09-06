@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'package:frontend/core/network/api_client.dart';
 import 'package:frontend/core/utils/safe_url_launcher.dart';
+import 'package:frontend/theme/design_tokens.dart';
 
 class InteractiveLoginDialog extends ConsumerStatefulWidget {
   final String platform;
@@ -160,6 +161,8 @@ class _InteractiveLoginDialogState
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return AlertDialog(
       title: Text('连接到 ${widget.platformLabel}'),
       content: SizedBox(
@@ -182,7 +185,7 @@ class _InteractiveLoginDialogState
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: AppShape.cardMediaBorder,
                       ),
                       child: Image.memory(
                         base64Decode(qrB64),
@@ -197,13 +200,13 @@ class _InteractiveLoginDialogState
                 ),
                 const SizedBox(height: 24),
                 if (_status == 'needs_captcha') ...[
-                  const Icon(Icons.security, color: Colors.orange, size: 48),
+                  Icon(Icons.security, color: colorScheme.tertiary, size: 48),
                   const SizedBox(height: 8),
-                  const Text(
+                  Text(
                     '触发人机验证',
-                    style: TextStyle(
+                    style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: Colors.orange,
+                      color: colorScheme.tertiary,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -212,14 +215,16 @@ class _InteractiveLoginDialogState
                     icon: const Icon(Icons.open_in_new),
                     label: const Text('去验证'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
+                      backgroundColor: colorScheme.tertiaryContainer,
+                      foregroundColor: colorScheme.onTertiaryContainer,
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
+                  Text(
                     '验证完成后请回到此处继续',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                 ] else ...[
@@ -229,25 +234,34 @@ class _InteractiveLoginDialogState
                   ),
                 ],
               ] else if (_status == 'success') ...[
-                const Icon(Icons.check_circle, color: Colors.green, size: 64),
+                Icon(Icons.check_circle, color: colorScheme.primary, size: 64),
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   '登录成功！',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ] else ...[
-                const Icon(Icons.error_outline, color: Colors.red, size: 64),
+                Icon(Icons.error_outline, color: colorScheme.error, size: 64),
                 const SizedBox(height: 16),
                 Text(
                   _message,
-                  style: const TextStyle(color: Colors.red),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.error,
+                  ),
                   textAlign: TextAlign.center,
                 ),
               ],
 
               if (_status != 'failed' && _status != 'timeout') ...[
                 const SizedBox(height: 24),
-                Text(_message, style: const TextStyle(color: Colors.grey)),
+                Text(
+                  _message,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ],
           ),

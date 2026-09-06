@@ -68,10 +68,7 @@ class WindowMetrics {
   /// 是否存在需要避开的显示铰链（折叠屏）。
   final bool hasHinge;
 
-  factory WindowMetrics.fromSize(
-    Size size, {
-    bool hasHinge = false,
-  }) {
+  factory WindowMetrics.fromSize(Size size, {bool hasHinge = false}) {
     return WindowMetrics(
       width: size.width,
       height: size.height,
@@ -96,8 +93,7 @@ class WindowMetrics {
   bool get isCompact => widthClass.isCompact;
 
   /// 手机横屏：宽度足够但高度不足，需要缩短顶栏、隐藏次要信息。
-  bool get isShortLandscape =>
-      heightClass.isCompact && width > height;
+  bool get isShortLandscape => heightClass.isCompact && width > height;
 
   /// 是否可以并排显示主内容与辅助 pane。
   /// 高度过低时即使宽度足够也不强制双栏，避免三层结构挤压正文。
@@ -128,25 +124,6 @@ class ResponsiveLayout {
   static const double compactHeightBreakpoint = 480;
   static const double expandedHeightBreakpoint = 900;
 
-  // --- 尚未迁移到窗口类别的 Root Shell 断点 ---
-  //
-  // `AppShell` 与设置页仍在使用这两个值。把它们改成 `mediumBreakpoint`
-  // 会让 600–839dp 的主导航从底栏变成 NavigationRail，影响动态、自动化和
-  // 设置三个页面，超出收藏库切片的范围，因此保持现状。
-  // 迁移到 [WindowWidthClass] 属于 Root Shell 自己的切片。
-
-  /// 主导航从底栏切换到 NavigationRail 的宽度。
-  static const double mobileBreakpoint = 800;
-
-  /// NavigationRail 展开为 extended rail 的宽度。
-  static const double desktopBreakpoint = largeBreakpoint;
-
-  /// 正文可读宽度上限。超宽屏不应无限拉伸正文。
-  static const double readableContentMaxWidth = 720;
-
-  /// 辅助 pane 的固定宽度。
-  static const double supportingPaneWidth = 320;
-
   static WindowWidthClass widthClassFor(double width) {
     if (width >= extraLargeBreakpoint) return WindowWidthClass.extraLarge;
     if (width >= largeBreakpoint) return WindowWidthClass.large;
@@ -165,7 +142,7 @@ class ResponsiveLayout {
       widthClassFor(MediaQuery.of(context).size.width);
 
   static bool isMobile(BuildContext context) =>
-      MediaQuery.of(context).size.width < mobileBreakpoint;
+      !widthClassOf(context).atLeast(WindowWidthClass.expanded);
 
   /// 收藏库内容网格列数。
   ///
@@ -175,8 +152,8 @@ class ResponsiveLayout {
     final widthClass = widthClassFor(availableWidth);
     switch (widthClass) {
       case WindowWidthClass.compact:
-        // 极窄屏使用紧凑单列；常规手机宽度使用双列紧凑网格。
-        return availableWidth < 360 ? 1 : 2;
+        // 手机按阅读顺序使用单列，避免长标题被挤成窄卡片。
+        return 1;
       case WindowWidthClass.medium:
         return 2;
       case WindowWidthClass.expanded:

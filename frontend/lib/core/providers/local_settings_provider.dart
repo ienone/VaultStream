@@ -118,11 +118,11 @@ class LocalSettings extends _$LocalSettings {
       } else if (e.type == DioExceptionType.badResponse) {
         msg += '状态码 ${e.response?.statusCode}';
       } else {
-        msg += e.message ?? '未知错误';
+        msg += '无法连接服务器，请检查地址与网络';
       }
       return {'success': false, 'error': msg};
-    } catch (e) {
-      return {'success': false, 'error': '未知错误: $e'};
+    } catch (_) {
+      return {'success': false, 'error': '连接测试失败，请重试'};
     }
   }
 }

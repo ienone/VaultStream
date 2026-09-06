@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/local_settings_provider.dart';
 import '../../../core/utils/toast.dart';
+import '../../../theme/design_tokens.dart';
 
 class ConnectPage extends ConsumerStatefulWidget {
   const ConnectPage({super.key});
@@ -133,13 +134,12 @@ class _ConnectPageState extends ConsumerState<ConnectPage> {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.errorContainer,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: AppShape.cardMediaBorder,
                   ),
                   child: Text(
                     _error!,
-                    style: TextStyle(
+                    style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onErrorContainer,
-                      fontSize: 13,
                     ),
                   ),
                 ),
@@ -158,14 +158,6 @@ class _ConnectPageState extends ConsumerState<ConnectPage> {
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                '密钥通常显示在您启动后端服务的控制台日志中。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontStyle: FontStyle.italic,
-                ),
-                textAlign: TextAlign.center,
               ),
             ],
           ),
