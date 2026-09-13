@@ -43,7 +43,7 @@ class MediaBookmarkActions {
           data: {
             'media_asset_id': query.mediaAssetId,
             'position_seconds': position.inMilliseconds / 1000,
-            if (note != null) 'note': note,
+            'note': ?note,
           },
         );
     final bookmark = _bookmark(response.data);

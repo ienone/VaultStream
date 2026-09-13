@@ -1,17 +1,25 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../core/layout/responsive_layout.dart';
 import '../../core/media/media_segment.dart';
 import '../../core/media/media_source_session.dart';
 import '../../core/network/api_client.dart';
+import '../../core/widgets/browser_leave_guard.dart';
+import '../../core/widgets/adaptive_form_dialog.dart';
+import '../../core/widgets/predictive_back_dialog.dart';
+import '../../core/widgets/discard_changes_dialog.dart';
 import '../../theme/design_tokens.dart';
 import 'global_playback_controller.dart';
+import 'android_picture_in_picture.dart';
 import 'media_bookmark.dart';
 import 'media_bookmark_provider.dart';
+import 'playback_route_observer.dart';
 
 class GlobalPlaybackChrome extends StatelessWidget {
   const GlobalPlaybackChrome({
@@ -27,7 +35,11 @@ class GlobalPlaybackChrome extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     children: [
       Expanded(child: child),
-      if (showMiniPlayer) const GlobalMiniPlayer(),
+      if (showMiniPlayer)
+        Offstage(
+          offstage: MediaQuery.viewInsetsOf(context).bottom > 0,
+          child: const GlobalMiniPlayer(),
+        ),
     ],
   );
 }
@@ -133,12 +145,13 @@ class _GlobalPlaybackSurfaceState extends ConsumerState<GlobalPlaybackSurface> {
       );
     }
     if (audioPresentation) {
-      return _AudioControls(
-        controller: player,
-        videoAudioOnly: !widget.request.audioOnly,
-      );
+      return _AudioControls(controller: player);
     }
-    return _VideoSurface(controller: player);
+    return Center(
+      widthFactor: 1,
+      heightFactor: 1,
+      child: _VideoSurface(controller: player),
+    );
   }
 }
 
@@ -160,7 +173,7 @@ class _InactivePlaybackChoice extends ConsumerWidget {
     final actions = ref.read(globalPlaybackProvider.notifier);
     return _PlayerFrame(
       audioOnly: requested.audioOnly,
-      height: 176,
+      minHeight: 0,
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.md),
         child: Column(
@@ -215,28 +228,24 @@ class PlaybackSegmentList extends ConsumerStatefulWidget {
       _PlaybackSegmentListState();
 }
 
-class PlaybackQueuePanel extends ConsumerWidget {
-  const PlaybackQueuePanel({super.key});
+class PlaybackQueueSliver extends ConsumerWidget {
+  const PlaybackQueueSliver({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final queue = ref.watch(
       globalPlaybackProvider.select((state) => state.queue),
     );
-    if (queue.isEmpty) return const SizedBox.shrink();
+    if (queue.isEmpty) return const SliverToBoxAdapter();
     final actions = ref.read(globalPlaybackProvider.notifier);
-    return Card(
+    return SliverMainAxisGroup(
       key: const ValueKey('playback-queue'),
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: Row(
               children: [
-                const Icon(Icons.queue_music_rounded, size: 20),
-                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     '接下来',
@@ -246,62 +255,52 @@ class PlaybackQueuePanel extends ConsumerWidget {
                 Text('${queue.length} 条'),
               ],
             ),
-            const SizedBox(height: AppSpacing.sm),
-            ReorderableListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: queue.length,
-              onReorderItem: (oldIndex, newIndex) {
-                actions.moveQueued(
-                  queue[oldIndex].identity,
-                  newIndex - oldIndex,
-                );
-              },
-              itemBuilder: (context, index) {
-                final request = queue[index];
-                return ListTile(
-                  key: ValueKey('queued-${request.identity}'),
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    request.audioOnly
-                        ? Icons.headphones_rounded
-                        : Icons.smart_display_rounded,
-                  ),
-                  title: Text(
-                    request.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(request.audioOnly ? '音频' : '视频'),
-                  onTap: () => actions.playQueued(request.identity),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        tooltip: '立即播放 ${request.title}',
-                        onPressed: () => actions.playQueued(request.identity),
-                        icon: const Icon(Icons.play_arrow_rounded),
-                      ),
-                      IconButton(
-                        tooltip: '从队列移除 ${request.title}',
-                        onPressed: () => actions.removeQueued(request.identity),
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                      ReorderableDragStartListener(
-                        index: index,
-                        child: const Padding(
-                          padding: EdgeInsets.all(12),
-                          child: Icon(Icons.drag_handle_rounded),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ],
+          ),
         ),
-      ),
+        SliverReorderableList(
+          proxyDecorator: (child, index, animation) => Material(
+            color: Theme.of(context).colorScheme.surfaceContainerHigh,
+            borderRadius: AppShape.cardBorder,
+            clipBehavior: Clip.antiAlias,
+            child: child,
+          ),
+          itemCount: queue.length,
+          onReorderItem: (oldIndex, newIndex) {
+            actions.moveQueued(queue[oldIndex].identity, newIndex - oldIndex);
+          },
+          itemBuilder: (context, index) {
+            final request = queue[index];
+            return ListTile(
+              key: ValueKey('queued-${request.identity}'),
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                request.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(request.audioOnly ? '音频' : '视频'),
+              onTap: () => actions.playQueued(request.identity),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: '从队列移除 ${request.title}',
+                    onPressed: () => actions.removeQueued(request.identity),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                  ReorderableDragStartListener(
+                    index: index,
+                    child: const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Icon(Icons.drag_handle_rounded),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }
@@ -314,77 +313,110 @@ class PlaybackSessionControls extends ConsumerWidget {
     final state = ref.watch(globalPlaybackProvider);
     final actions = ref.read(globalPlaybackProvider.notifier);
     final timerEndsAt = state.sleepTimerEndsAt;
-    return Card(
-      key: const ValueKey('playback-session-controls'),
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (state.request?.audioOnly == false)
+          SwitchListTile.adaptive(
+            key: const ValueKey('video-audio-only-toggle'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('仅听声音'),
+            value: state.videoAudioOnly,
+            onChanged: actions.setVideoAudioOnly,
+          ),
+        Row(
           children: [
-            Text('播放设置', style: Theme.of(context).textTheme.titleMedium),
-            if (state.request?.audioOnly == false) ...[
-              const SizedBox(height: AppSpacing.sm),
-              SwitchListTile.adaptive(
-                key: const ValueKey('video-audio-only-toggle'),
-                contentPadding: EdgeInsets.zero,
-                secondary: const Icon(Icons.headphones_rounded),
-                title: const Text('仅听声音'),
-                value: state.videoAudioOnly,
-                onChanged: actions.setVideoAudioOnly,
-              ),
-            ],
-            const SizedBox(height: AppSpacing.md),
-            Text('倍速', style: Theme.of(context).textTheme.labelLarge),
-            const SizedBox(height: AppSpacing.xs),
-            Wrap(
-              spacing: AppSpacing.xs,
-              runSpacing: AppSpacing.xs,
-              children: [
-                for (final speed in supportedPlaybackSpeeds)
-                  ChoiceChip(
-                    label: Text('${_speedLabel(speed)}x'),
-                    selected: state.playbackSpeed == speed,
-                    onSelected: (_) {
-                      unawaited(actions.setPlaybackSpeed(speed));
-                    },
+            const Expanded(child: Text('倍速')),
+            Material(
+              type: MaterialType.transparency,
+              child: PopupMenuButton<double>(
+                useRootNavigator: true,
+                borderRadius: BorderRadius.circular(AppShape.pill),
+                clipBehavior: Clip.antiAlias,
+                popUpAnimationStyle: MediaQuery.disableAnimationsOf(context)
+                    ? AnimationStyle.noAnimation
+                    : null,
+                tooltip: '调整播放速度',
+                initialValue: state.playbackSpeed,
+                itemBuilder: (_) => [
+                  for (final speed in supportedPlaybackSpeeds)
+                    CheckedPopupMenuItem(
+                      value: speed,
+                      checked: speed == state.playbackSpeed,
+                      child: Text('${_speedLabel(speed)}x'),
+                    ),
+                ],
+                onSelected: (speed) =>
+                    unawaited(actions.setPlaybackSpeed(speed)),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    minWidth: 48,
+                    minHeight: 48,
                   ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    timerEndsAt == null
-                        ? '定时停止'
-                        : '将在 ${_clockTime(timerEndsAt)} 停止',
-                    style: Theme.of(context).textTheme.labelLarge,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm,
+                      vertical: AppSpacing.sm,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('${_speedLabel(state.playbackSpeed)}x'),
+                        const SizedBox(width: AppSpacing.xs),
+                        const Icon(Icons.arrow_drop_down_rounded),
+                      ],
+                    ),
                   ),
                 ),
-                if (timerEndsAt != null)
-                  TextButton(
-                    onPressed: () => actions.setSleepTimer(null),
-                    child: const Text('取消'),
-                  ),
-              ],
-            ),
-            Wrap(
-              spacing: AppSpacing.xs,
-              runSpacing: AppSpacing.xs,
-              children: [
-                for (final minutes in const [15, 30, 60])
-                  ActionChip(
-                    avatar: const Icon(Icons.bedtime_outlined, size: 18),
-                    label: Text('$minutes 分钟'),
-                    onPressed: () =>
-                        actions.setSleepTimer(Duration(minutes: minutes)),
-                  ),
-              ],
+              ),
             ),
           ],
         ),
-      ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('定时停止'),
+          trailing: Material(
+            type: MaterialType.transparency,
+            child: PopupMenuButton<int>(
+              useRootNavigator: true,
+              borderRadius: BorderRadius.circular(AppShape.pill),
+              clipBehavior: Clip.antiAlias,
+              popUpAnimationStyle: MediaQuery.disableAnimationsOf(context)
+                  ? AnimationStyle.noAnimation
+                  : null,
+              tooltip: '设置定时停止',
+              onSelected: (minutes) => actions.setSleepTimer(
+                minutes == 0 ? null : Duration(minutes: minutes),
+              ),
+              itemBuilder: (_) => [
+                if (timerEndsAt != null)
+                  const PopupMenuItem(value: 0, child: Text('取消定时')),
+                for (final minutes in const [15, 30, 60])
+                  PopupMenuItem(value: minutes, child: Text('$minutes 分钟后')),
+              ],
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.sm,
+                    vertical: AppSpacing.sm,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        timerEndsAt == null ? '未设置' : _clockTime(timerEndsAt),
+                      ),
+                      const SizedBox(width: AppSpacing.xs),
+                      const Icon(Icons.arrow_drop_down_rounded),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -402,115 +434,68 @@ class PlaybackBookmarkPanel extends ConsumerWidget {
     final bookmarks = ref.watch(mediaBookmarksProvider(query));
     final playback = ref.read(globalPlaybackProvider.notifier);
 
-    return Card(
+    return Column(
       key: const ValueKey('playback-bookmarks'),
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                const Icon(Icons.bookmarks_outlined, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '时间点书签',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: () => _createBookmark(
-                    context,
-                    ref,
-                    query,
-                    playback.currentPosition,
-                  ),
-                  icon: const Icon(Icons.bookmark_add_outlined, size: 18),
-                  label: const Text('记录当前时间点'),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            bookmarks.when(
-              loading: () => const LinearProgressIndicator(),
-              error: (error, _) => Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      formatApiErrorMessage(
-                        error,
-                        fallbackMessage: '时间点书签加载失败',
-                      ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () =>
-                        ref.invalidate(mediaBookmarksProvider(query)),
-                    child: const Text('重试'),
-                  ),
-                ],
+            Expanded(
+              child: Text(
+                '时间点书签',
+                style: Theme.of(context).textTheme.titleMedium,
               ),
-              data: (items) => items.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                      child: Text(
-                        '播放到需要回看的位置时记录书签，可附加一条笔记。',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    )
-                  : Column(
-                      children: [
-                        for (final bookmark in items)
-                          ListTile(
-                            key: ValueKey('media-bookmark-${bookmark.id}'),
-                            contentPadding: EdgeInsets.zero,
-                            leading: Text(
-                              _duration(bookmark.position),
-                              style: Theme.of(context).textTheme.labelLarge,
-                            ),
-                            title: Text(
-                              bookmark.note?.trim().isNotEmpty == true
-                                  ? bookmark.note!.trim()
-                                  : '无笔记',
-                            ),
-                            onTap: () => playback.activate(
-                              request,
-                              initialPosition: bookmark.position,
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  tooltip: '编辑书签笔记',
-                                  onPressed: () => _updateBookmark(
-                                    context,
-                                    ref,
-                                    query,
-                                    bookmark,
-                                  ),
-                                  icon: const Icon(Icons.edit_outlined),
-                                ),
-                                IconButton(
-                                  tooltip: '删除时间点书签',
-                                  onPressed: () => _deleteBookmark(
-                                    context,
-                                    ref,
-                                    query,
-                                    bookmark,
-                                  ),
-                                  icon: const Icon(Icons.delete_outline),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
+            ),
+            IconButton.filledTonal(
+              tooltip: '记录当前时间点',
+              onPressed: () => _createBookmark(
+                context,
+                ref,
+                query,
+                playback.currentPosition,
+              ),
+              icon: const Icon(Icons.bookmark_add_outlined, size: 18),
             ),
           ],
         ),
-      ),
+        const SizedBox(height: AppSpacing.sm),
+        bookmarks.when(
+          loading: () => const LinearProgressIndicator(),
+          error: (error, _) => Row(
+            children: [
+              Expanded(
+                child: Text(
+                  formatApiErrorMessage(error, fallbackMessage: '时间点书签加载失败'),
+                ),
+              ),
+              TextButton(
+                onPressed: () => ref.invalidate(mediaBookmarksProvider(query)),
+                child: const Text('重试'),
+              ),
+            ],
+          ),
+          data: (items) => items.isEmpty
+              ? const SizedBox.shrink()
+              : Column(
+                  children: [
+                    for (final bookmark in items)
+                      _PlaybackBookmarkTile(
+                        key: ValueKey('media-bookmark-${bookmark.id}'),
+                        time: _duration(bookmark.position),
+                        note: bookmark.note,
+                        onPlay: () => playback.activate(
+                          request,
+                          initialPosition: bookmark.position,
+                        ),
+                        onEdit: () =>
+                            _updateBookmark(context, ref, query, bookmark),
+                        onDelete: () =>
+                            _deleteBookmark(context, ref, query, bookmark),
+                      ),
+                  ],
+                ),
+        ),
+      ],
     );
   }
 
@@ -520,18 +505,15 @@ class PlaybackBookmarkPanel extends ConsumerWidget {
     MediaBookmarkQuery query,
     Duration position,
   ) async {
-    final result = await _showBookmarkDialog(
+    final actions = ref.read(mediaBookmarkActionsProvider);
+    await _showBookmarkDialog(
       context,
-      title: '记录 ${_duration(position)}',
+      title: '记录时间点',
+      positionLabel: _duration(position),
+      onSave: (note) async {
+        await actions.create(query: query, position: position, note: note);
+      },
     );
-    if (result == null || !context.mounted) return;
-    try {
-      await ref
-          .read(mediaBookmarkActionsProvider)
-          .create(query: query, position: position, note: result.note);
-    } catch (error) {
-      if (context.mounted) _showBookmarkError(context, error);
-    }
   }
 
   Future<void> _updateBookmark(
@@ -540,19 +522,20 @@ class PlaybackBookmarkPanel extends ConsumerWidget {
     MediaBookmarkQuery query,
     MediaBookmark bookmark,
   ) async {
-    final result = await _showBookmarkDialog(
+    final actions = ref.read(mediaBookmarkActionsProvider);
+    await _showBookmarkDialog(
       context,
-      title: '编辑 ${_duration(bookmark.position)}',
+      title: '编辑笔记',
+      positionLabel: _duration(bookmark.position),
       initialNote: bookmark.note,
+      onSave: (note) async {
+        await actions.updateNote(
+          query: query,
+          bookmarkId: bookmark.id,
+          note: note,
+        );
+      },
     );
-    if (result == null || !context.mounted) return;
-    try {
-      await ref
-          .read(mediaBookmarkActionsProvider)
-          .updateNote(query: query, bookmarkId: bookmark.id, note: result.note);
-    } catch (error) {
-      if (context.mounted) _showBookmarkError(context, error);
-    }
   }
 
   Future<void> _deleteBookmark(
@@ -563,19 +546,24 @@ class PlaybackBookmarkPanel extends ConsumerWidget {
   ) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('删除时间点书签？'),
-        content: Text('${_duration(bookmark.position)} 的书签将被永久删除。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('删除'),
-          ),
-        ],
+      animationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
+      builder: (dialogContext) => PredictiveBackDialog(
+        child: AlertDialog(
+          title: const Text('删除时间点书签？'),
+          content: Text('${_duration(bookmark.position)} 的书签将被永久删除。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('删除'),
+            ),
+          ],
+        ),
       ),
     );
     if (confirmed != true || !context.mounted) return;
@@ -589,26 +577,136 @@ class PlaybackBookmarkPanel extends ConsumerWidget {
   }
 }
 
-class _BookmarkEditResult {
-  const _BookmarkEditResult(this.note);
+enum _BookmarkAction { edit, delete }
 
+class _PlaybackBookmarkTile extends StatelessWidget {
+  const _PlaybackBookmarkTile({
+    super.key,
+    required this.time,
+    required this.note,
+    required this.onPlay,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final String time;
   final String? note;
+  final VoidCallback onPlay;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final text = note?.trim() ?? '';
+    return Material(
+      type: MaterialType.transparency,
+      borderRadius: AppShape.cardBorder,
+      clipBehavior: Clip.antiAlias,
+      child: Semantics(
+        button: true,
+        child: InkWell(
+          onTap: onPlay,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.sm,
+              0,
+              AppSpacing.xs,
+              AppSpacing.sm,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Semantics(
+                        label: '从 $time 播放',
+                        excludeSemantics: true,
+                        child: Text(
+                          time,
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                    PopupMenuButton<_BookmarkAction>(
+                      tooltip: '$time 书签操作',
+                      useRootNavigator: true,
+                      clipBehavior: Clip.antiAlias,
+                      borderRadius: BorderRadius.circular(AppShape.pill),
+                      popUpAnimationStyle:
+                          MediaQuery.disableAnimationsOf(context)
+                          ? AnimationStyle.noAnimation
+                          : null,
+                      icon: const Icon(Icons.more_horiz_rounded),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: _BookmarkAction.edit,
+                          child: Text('编辑笔记'),
+                        ),
+                        PopupMenuItem(
+                          value: _BookmarkAction.delete,
+                          child: Text('删除书签'),
+                        ),
+                      ],
+                      onSelected: (action) {
+                        switch (action) {
+                          case _BookmarkAction.edit:
+                            onEdit();
+                          case _BookmarkAction.delete:
+                            onDelete();
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                if (text.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(right: AppSpacing.xs),
+                    child: Text(text, style: theme.textTheme.bodyLarge),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-Future<_BookmarkEditResult?> _showBookmarkDialog(
+Future<void> _showBookmarkDialog(
   BuildContext context, {
   required String title,
+  required String positionLabel,
+  required Future<void> Function(String? note) onSave,
   String? initialNote,
-}) => showDialog<_BookmarkEditResult>(
+}) => showDialog<void>(
   context: context,
-  builder: (_) => _BookmarkEditDialog(title: title, initialNote: initialNote),
+  animationStyle: MediaQuery.disableAnimationsOf(context)
+      ? AnimationStyle.noAnimation
+      : null,
+  builder: (_) => _BookmarkEditDialog(
+    title: title,
+    positionLabel: positionLabel,
+    initialNote: initialNote,
+    onSave: onSave,
+  ),
 );
 
 class _BookmarkEditDialog extends StatefulWidget {
-  const _BookmarkEditDialog({required this.title, this.initialNote});
+  const _BookmarkEditDialog({
+    required this.title,
+    required this.positionLabel,
+    required this.onSave,
+    this.initialNote,
+  });
 
   final String title;
+  final String positionLabel;
   final String? initialNote;
+  final Future<void> Function(String? note) onSave;
 
   @override
   State<_BookmarkEditDialog> createState() => _BookmarkEditDialogState();
@@ -619,42 +717,140 @@ class _BookmarkEditDialogState extends State<_BookmarkEditDialog> {
     text: widget.initialNote,
   );
 
+  final _noteFocus = FocusNode();
+  bool _saving = false;
+  bool _confirmingExit = false;
+  String? _error;
+
+  bool get _hasChanges =>
+      _noteController.text.trim() != (widget.initialNote ?? '').trim();
+
+  @override
+  void initState() {
+    super.initState();
+    _noteController.addListener(_draftChanged);
+  }
+
+  void _draftChanged() => setState(() {});
+
+  Future<void> _requestClose() async {
+    if (_saving || _confirmingExit) return;
+    if (!_hasChanges) {
+      Navigator.pop(context);
+      return;
+    }
+    _confirmingExit = true;
+    _noteFocus.unfocus();
+    final discard = await showDiscardChangesDialog(
+      context,
+      title: '放弃未保存的笔记？',
+      message: '退出后，本次修改不会保存。',
+    );
+    _confirmingExit = false;
+    if (!mounted) return;
+    if (discard == true) {
+      Navigator.pop(context);
+    } else {
+      _noteFocus.requestFocus();
+    }
+  }
+
+  Future<void> _save() async {
+    if (_saving || _confirmingExit) return;
+    final note = _noteController.text.trim();
+    _noteFocus.unfocus();
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.onSave(note.isEmpty ? null : note);
+      if (mounted) Navigator.pop(context);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = parseApiErrorInfo(error).code == 'media_bookmark_exists'
+            ? '这个时间点已有书签，请返回编辑现有笔记。'
+            : formatApiErrorMessage(error, fallbackMessage: '笔记保存失败，请重试');
+      });
+    }
+  }
+
   @override
   void dispose() {
     _noteController.dispose();
+    _noteFocus.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.title),
-    content: TextField(
-      controller: _noteController,
-      autofocus: true,
-      maxLength: 2000,
-      minLines: 2,
-      maxLines: 5,
-      decoration: const InputDecoration(
-        labelText: '笔记（可选）',
-        hintText: '为什么这个时间点值得回来？',
+  Widget build(BuildContext context) => BrowserLeaveGuard(
+    enabled: _saving || _hasChanges,
+    child: PopScope<void>(
+      canPop: !_saving && !_hasChanges,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _requestClose();
+      },
+      child: AdaptiveFormDialog(
+        title: widget.title,
+        contentBuilder: (context, width, short) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '时间点 ${widget.positionLabel}',
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            TextField(
+              controller: _noteController,
+              focusNode: _noteFocus,
+              enabled: !_saving,
+              autofocus: true,
+              maxLength: 2000,
+              minLines: 2,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                labelText: '笔记（可选）',
+                hintText: '为什么这个时间点值得回来？',
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: OverflowBar(
+          alignment: MainAxisAlignment.end,
+          spacing: AppSpacing.sm,
+          overflowSpacing: AppSpacing.xs,
+          children: [
+            TextButton(
+              onPressed: _saving ? null : _requestClose,
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: _saving ? null : _save,
+              child: _saving
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('保存'),
+            ),
+          ],
+        ),
       ),
     ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('取消'),
-      ),
-      FilledButton(
-        onPressed: () {
-          final note = _noteController.text.trim();
-          Navigator.pop(
-            context,
-            _BookmarkEditResult(note.isEmpty ? null : note),
-          );
-        },
-        child: const Text('保存'),
-      ),
-    ],
   );
 }
 
@@ -710,6 +906,7 @@ class _PlaybackSegmentListState extends ConsumerState<PlaybackSegmentList> {
           ? null
           : _activeSegmentIndex(segments, position);
       final tiles = ListView.separated(
+        key: ValueKey(selectedType),
         padding: EdgeInsets.zero,
         shrinkWrap: segments.length <= 6,
         physics: segments.length <= 6
@@ -719,6 +916,43 @@ class _PlaybackSegmentListState extends ConsumerState<PlaybackSegmentList> {
         separatorBuilder: (_, _) => const Divider(height: 1),
         itemBuilder: (context, index) {
           final segment = segments[index];
+          if (segment.segmentType == MediaSegmentType.transcript) {
+            final activeColor = index == selectedIndex
+                ? Theme.of(context).colorScheme.secondaryContainer
+                : Colors.transparent;
+            return ExpansionTile(
+              key: ValueKey(
+                'transcript-${segment.mediaAssetId}-${segment.startPosition.inMilliseconds}',
+              ),
+              backgroundColor: activeColor,
+              collapsedBackgroundColor: activeColor,
+              title: Text(
+                '${_duration(segment.startPosition)} · ${segment.title}',
+              ),
+              subtitle: Text(
+                segment.excerpt,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SelectableText(segment.fullText),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => actions.activate(
+                      widget.request,
+                      initialPosition: segment.startPosition,
+                      startPlaying: true,
+                    ),
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: const Text('从此处播放'),
+                  ),
+                ),
+              ],
+            );
+          }
           return ListTile(
             key: ValueKey(
               'media-segment-${segment.mediaAssetId}-${segment.startPosition.inMilliseconds}',
@@ -732,7 +966,9 @@ class _PlaybackSegmentListState extends ConsumerState<PlaybackSegmentList> {
               ),
             ),
             title: Text(segment.title),
-            subtitle: segment.excerpt.isEmpty
+            subtitle:
+                segment.excerpt.trim().isEmpty ||
+                    segment.excerpt.trim() == segment.title.trim()
                 ? null
                 : Text(
                     segment.excerpt,
@@ -868,95 +1104,104 @@ class GlobalMiniPlayer extends ConsumerWidget {
     final player = actions.videoController;
     final scheme = Theme.of(context).colorScheme;
     final audioPresentation = request.audioOnly || state.videoAudioOnly;
+    final compact = WindowMetrics.of(context).heightClass.isCompact;
+    final status = state.loading
+        ? '正在载入'
+        : state.failure != null
+        ? mediaFailureLabel(state.failure!, audioOnly: request.audioOnly)
+        : state.videoAudioOnly && !request.audioOnly
+        ? '仅听声音'
+        : null;
 
     return Material(
       key: const ValueKey('global-mini-player'),
       color: scheme.surfaceContainerHigh,
       child: SafeArea(
         top: false,
-        child: InkWell(
-          onTap: () => context.push('/player'),
-          child: SizedBox(
-            height: 72,
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 88,
-                  child: audioPresentation || player == null
-                      ? Icon(
-                          audioPresentation
-                              ? Icons.graphic_eq_rounded
-                              : Icons.movie_outlined,
-                          color: scheme.primary,
-                        )
-                      : AspectRatio(
-                          aspectRatio: player.value.aspectRatio == 0
-                              ? 16 / 9
-                              : player.value.aspectRatio,
-                          child: VideoPlayer(player),
-                        ),
-                ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          request.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleSmall,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          state.loading
-                              ? '正在载入'
-                              : state.failure == null
-                              ? state.videoAudioOnly && !request.audioOnly
-                                    ? '仅听声音 · 点击展开当前播放'
-                                    : '点击展开当前播放'
-                              : mediaFailureLabel(
-                                  state.failure!,
-                                  audioOnly: request.audioOnly,
-                                ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
+        child: Semantics(
+          hint: '展开当前播放',
+          child: InkWell(
+            onTap: () => context.push('/player'),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: compact ? 56 : 72),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: compact ? 72 : 88,
+                    height: compact ? 56 : 72,
+                    child: audioPresentation || player == null
+                        ? Icon(
+                            audioPresentation
+                                ? Icons.graphic_eq_rounded
+                                : Icons.movie_outlined,
+                            color: scheme.primary,
+                          )
+                        : AspectRatio(
+                            aspectRatio: player.value.aspectRatio == 0
+                                ? 16 / 9
+                                : player.value.aspectRatio,
+                            child: _PlaybackVideoView(controller: player),
+                          ),
                   ),
-                ),
-                if (state.loading)
-                  const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                else if (player != null && state.initialized)
-                  ValueListenableBuilder<VideoPlayerValue>(
-                    valueListenable: player,
-                    builder: (context, value, _) => IconButton(
-                      tooltip: value.isPlaying ? '暂停' : '播放',
-                      onPressed: actions.togglePlayback,
-                      icon: Icon(
-                        value.isPlaying
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: AppSpacing.sm,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            request.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          if (status != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              status,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ),
-                IconButton(
-                  tooltip: '关闭播放器',
-                  onPressed: actions.close,
-                  icon: const Icon(Icons.close_rounded),
-                ),
-                const SizedBox(width: 4),
-              ],
+                  if (state.loading)
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  else if (player != null && state.initialized)
+                    ValueListenableBuilder<VideoPlayerValue>(
+                      valueListenable: player,
+                      builder: (context, value, _) => IconButton(
+                        tooltip: value.isPlaying ? '暂停' : '播放',
+                        onPressed: actions.togglePlayback,
+                        icon: Icon(
+                          value.isPlaying
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                        ),
+                      ),
+                    ),
+                  IconButton(
+                    tooltip: '关闭播放器',
+                    onPressed: actions.close,
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+              ),
             ),
           ),
         ),
@@ -971,95 +1216,251 @@ class _VideoSurface extends StatelessWidget {
   final VideoPlayerController controller;
 
   @override
-  Widget build(BuildContext context) => AspectRatio(
-    aspectRatio: controller.value.aspectRatio == 0
-        ? 16 / 9
-        : controller.value.aspectRatio,
-    child: ColoredBox(
-      color: Colors.black,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          VideoPlayer(controller),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: ColoredBox(
-              color: Colors.black54,
-              child: _PlaybackControls(controller: controller),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-class _AudioControls extends StatelessWidget {
-  const _AudioControls({required this.controller, this.videoAudioOnly = false});
-
-  final VideoPlayerController controller;
-  final bool videoAudioOnly;
-
-  @override
   Widget build(BuildContext context) => Material(
-    key: videoAudioOnly ? const ValueKey('video-audio-only-surface') : null,
     color: Theme.of(context).colorScheme.surfaceContainerHigh,
     borderRadius: AppShape.cardBorder,
+    clipBehavior: Clip.antiAlias,
     child: Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (videoAudioOnly)
-          const Padding(
-            padding: EdgeInsets.fromLTRB(12, 10, 12, 0),
-            child: Row(
-              children: [
-                Icon(Icons.headphones_rounded, size: 18),
-                SizedBox(width: 8),
-                Expanded(child: Text('视频画面已隐藏，声音继续播放')),
-              ],
+        Flexible(
+          child: ColoredBox(
+            color: Colors.black,
+            child: Center(
+              heightFactor: 1,
+              child: AspectRatio(
+                aspectRatio: controller.value.aspectRatio == 0
+                    ? 16 / 9
+                    : controller.value.aspectRatio,
+                child: PictureInPictureTarget(
+                  controller: controller,
+                  child: _PlaybackVideoView(controller: controller),
+                ),
+              ),
             ),
           ),
+        ),
         _PlaybackControls(controller: controller),
       ],
     ),
   );
 }
 
-class _PlaybackControls extends ConsumerWidget {
+/// The web decoder owns one HTML element. Mount it only after the previous
+/// route has released its platform view, otherwise disposal removes the new
+/// route's video element as well.
+class _PlaybackVideoView extends ConsumerWidget {
+  const _PlaybackVideoView({required this.controller});
+
+  final VideoPlayerController controller;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final enabled = TickerMode.valuesOf(context).enabled;
+    if (!kIsWeb) {
+      return _PlaybackVideoMount(controller: controller, active: enabled);
+    }
+    final route = ModalRoute.of(context);
+    final observer = ref.watch(playbackRouteObserverProvider);
+    return ValueListenableBuilder(
+      valueListenable: observer.topPage,
+      builder: (context, _, _) => _PlaybackVideoMount(
+        controller: controller,
+        active: enabled && observer.ownsPage(route),
+        prepareView: ref
+            .read(globalPlaybackProvider.notifier)
+            .preservePlaybackOnViewRemoval,
+      ),
+    );
+  }
+}
+
+class _PlaybackVideoMount extends StatefulWidget {
+  const _PlaybackVideoMount({
+    required this.controller,
+    required this.active,
+    this.prepareView,
+  });
+
+  final VideoPlayerController controller;
+  final bool active;
+  final Future<void> Function(Future<Object?>)? prepareView;
+
+  @override
+  State<_PlaybackVideoMount> createState() => _PlaybackVideoMountState();
+}
+
+class _PlaybackVideoMountState extends State<_PlaybackVideoMount> {
+  bool _visible = false;
+  bool _mountScheduled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _updateVisibility();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PlaybackVideoMount oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _updateVisibility();
+  }
+
+  void _updateVisibility() {
+    if (!widget.active) {
+      _visible = false;
+    } else if (!kIsWeb) {
+      _visible = true;
+    } else if (!_visible && !_mountScheduled) {
+      _mountScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        WidgetsBinding.instance.scheduleFrame();
+        await WidgetsBinding.instance.endOfFrame;
+        await Future<void>.delayed(Duration.zero);
+        _mountScheduled = false;
+        if (mounted && widget.active) {
+          // The destination may load after the route animation has finished.
+          // Keep the playback intent until this view has actually mounted.
+          final mountedFrame = Completer<void>();
+          unawaited(widget.prepareView?.call(mountedFrame.future));
+          setState(() => _visible = true);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            mountedFrame.complete();
+          });
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _visible ? VideoPlayer(widget.controller) : const SizedBox.expand();
+}
+
+class _AudioControls extends StatelessWidget {
+  const _AudioControls({required this.controller});
+
+  final VideoPlayerController controller;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Theme.of(context).colorScheme.surfaceContainerHigh,
+    borderRadius: AppShape.cardBorder,
+    child: _PlaybackControls(controller: controller),
+  );
+}
+
+class _PlaybackControls extends ConsumerStatefulWidget {
   const _PlaybackControls({required this.controller});
 
   final VideoPlayerController controller;
 
   @override
+  ConsumerState<_PlaybackControls> createState() => _PlaybackControlsState();
+}
+
+class _PlaybackControlsState extends ConsumerState<_PlaybackControls> {
+  double? _scrubPosition;
+
+  @override
+  void didUpdateWidget(covariant _PlaybackControls oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) _scrubPosition = null;
+  }
+
+  @override
   Widget build(
     BuildContext context,
-    WidgetRef ref,
   ) => ValueListenableBuilder<VideoPlayerValue>(
-    valueListenable: controller,
-    builder: (context, value, _) => Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(
-        children: [
-          IconButton.filledTonal(
-            tooltip: value.isPlaying ? '暂停' : '播放',
-            onPressed: ref.read(globalPlaybackProvider.notifier).togglePlayback,
-            icon: Icon(
-              value.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+    valueListenable: widget.controller,
+    builder: (context, value, _) {
+      final duration = value.duration.inMilliseconds.toDouble();
+      final maximum = duration > 0 ? duration : 1.0;
+      final position =
+          (_scrubPosition ?? value.position.inMilliseconds.toDouble()).clamp(
+            0.0,
+            maximum,
+          );
+      final buffered = value.buffered
+          .fold<double>(position, (end, range) {
+            final next = range.end.inMilliseconds.toDouble();
+            return next > end ? next : end;
+          })
+          .clamp(0.0, maximum);
+      final actions = ref.read(globalPlaybackProvider.notifier);
+      return Padding(
+        padding: const EdgeInsets.all(AppSpacing.sm),
+        child: Row(
+          children: [
+            IconButton.filledTonal(
+              tooltip: value.isPlaying ? '暂停' : '播放',
+              onPressed: actions.togglePlayback,
+              icon: Icon(
+                value.isPlaying
+                    ? Icons.pause_rounded
+                    : Icons.play_arrow_rounded,
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: VideoProgressIndicator(
-              controller,
-              allowScrubbing: true,
-              padding: const EdgeInsets.symmetric(vertical: 16),
+            const SizedBox(width: AppSpacing.xs),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Slider(
+                    label: '播放进度',
+                    value: position,
+                    max: maximum,
+                    secondaryTrackValue: buffered,
+                    semanticFormatterCallback: (milliseconds) =>
+                        '${_duration(Duration(milliseconds: milliseconds.round()))} / ${_duration(value.duration)}',
+                    onChanged: duration > 0
+                        ? (milliseconds) =>
+                              setState(() => _scrubPosition = milliseconds)
+                        : null,
+                    onChangeEnd: duration > 0
+                        ? (milliseconds) async {
+                            final player = widget.controller;
+                            await actions.seekTo(
+                              Duration(milliseconds: milliseconds.round()),
+                            );
+                            if (mounted &&
+                                player == widget.controller &&
+                                _scrubPosition == milliseconds) {
+                              setState(() => _scrubPosition = null);
+                            }
+                          }
+                        : null,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm,
+                    ),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        spacing: AppSpacing.sm,
+                        children: [
+                          Text(
+                            _duration(Duration(milliseconds: position.round())),
+                            style: Theme.of(context).textTheme.labelSmall,
+                          ),
+                          Text(
+                            _duration(value.duration),
+                            style: Theme.of(context).textTheme.labelSmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Text('${_duration(value.position)} / ${_duration(value.duration)}'),
-        ],
-      ),
-    ),
+          ],
+        ),
+      );
+    },
   );
 }
 
@@ -1067,20 +1468,30 @@ class _PlayerFrame extends StatelessWidget {
   const _PlayerFrame({
     required this.audioOnly,
     required this.child,
-    this.height,
+    this.minHeight,
   });
 
   final bool audioOnly;
   final Widget child;
-  final double? height;
+  final double? minHeight;
 
   @override
-  Widget build(BuildContext context) => Container(
-    height: height ?? (audioOnly ? 88 : 240),
-    color: audioOnly
-        ? Theme.of(context).colorScheme.surfaceContainerHigh
-        : Colors.black,
-    child: child,
+  Widget build(BuildContext context) => Material(
+    color: Theme.of(context).colorScheme.surfaceContainerHigh,
+    borderRadius: AppShape.cardBorder,
+    clipBehavior: Clip.antiAlias,
+    child: LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: constraints.constrainHeight(
+              minHeight ?? (audioOnly ? 88 : 240),
+            ),
+          ),
+          child: Center(child: child),
+        ),
+      ),
+    ),
   );
 }
 
@@ -1091,19 +1502,22 @@ class _FailureView extends StatelessWidget {
   final Future<void> Function() onRetry;
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Icon(Icons.error_outline),
-        const SizedBox(height: 8),
-        Text(label),
-        TextButton.icon(
-          onPressed: onRetry,
-          icon: const Icon(Icons.refresh_rounded),
-          label: const Text('重试'),
-        ),
-      ],
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(AppSpacing.md),
+    child: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.error_outline_rounded),
+          const SizedBox(height: 8),
+          Text(label, textAlign: TextAlign.center),
+          TextButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('重试'),
+          ),
+        ],
+      ),
     ),
   );
 }

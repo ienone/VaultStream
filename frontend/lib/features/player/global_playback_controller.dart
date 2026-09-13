@@ -161,6 +161,9 @@ class GlobalPlaybackController extends Notifier<GlobalPlaybackState> {
   int _persistRevision = 0;
   bool _restoringSnapshot = false;
   int _playbackIntentVersion = 0;
+  int _viewHandoffVersion = 0;
+  // Route removal and a later destination mount can overlap while paused.
+  (VideoPlayerController, int)? _viewResumeIntent;
 
   VideoPlayerController? get videoController => _videoController;
   Duration get currentPosition =>
@@ -244,6 +247,7 @@ class GlobalPlaybackController extends Notifier<GlobalPlaybackState> {
     final session = _sourceSession;
     if (request == null || session == null) return;
 
+    final playbackIntent = _playbackIntentVersion;
     await _loadPlaybackManifest(session, generation);
     while (generation == _generation) {
       var source = session.current;
@@ -276,7 +280,13 @@ class GlobalPlaybackController extends Notifier<GlobalPlaybackState> {
 
       VideoPlayerController? candidate;
       try {
-        candidate = VideoPlayerController.networkUrl(Uri.parse(source.url));
+        candidate = VideoPlayerController.networkUrl(
+          Uri.parse(source.url),
+          videoPlayerOptions: VideoPlayerOptions(
+            allowBackgroundPlayback:
+                !kIsWeb && defaultTargetPlatform == TargetPlatform.android,
+          ),
+        );
         await candidate.initialize();
         if (generation != _generation) {
           await candidate.dispose();
@@ -293,7 +303,9 @@ class GlobalPlaybackController extends Notifier<GlobalPlaybackState> {
           _pendingSeekPosition = null;
         }
         await candidate.setPlaybackSpeed(state.playbackSpeed);
-        if (resumePlaying && !_sleepTimerElapsedDuringLoad) {
+        if (resumePlaying &&
+            !_sleepTimerElapsedDuringLoad &&
+            playbackIntent == _playbackIntentVersion) {
           await candidate.play();
           if (_sleepTimerElapsedDuringLoad) await candidate.pause();
         }
@@ -444,36 +456,54 @@ class GlobalPlaybackController extends Notifier<GlobalPlaybackState> {
     );
   }
 
-  /// Chromium pauses a video when its platform view leaves the DOM. A view
-  /// handoff must preserve the session, while explicit pause/close still wins.
+  /// Chromium pauses a video when its platform view leaves the DOM. Pause
+  /// before that removal, then resume the same session after the handoff;
+  /// explicit pause/close and the sleep timer still win.
   Future<void> preservePlaybackOnViewRemoval(
     Future<Object?> viewRemoved,
   ) async {
     if (!kIsWeb) return;
     final player = _videoController;
-    if (player == null || !player.value.isPlaying) return;
+    if (player == null) return;
     final intent = _playbackIntentVersion;
+    final resumeIntent = (player, intent);
+    if (!player.value.isPlaying && _viewResumeIntent != resumeIntent) return;
+    _viewResumeIntent = resumeIntent;
+    final handoff = ++_viewHandoffVersion;
+    await player.pause();
     await viewRemoved;
+    WidgetsBinding.instance.scheduleFrame();
+    await WidgetsBinding.instance.endOfFrame;
+    WidgetsBinding.instance.scheduleFrame();
     await WidgetsBinding.instance.endOfFrame;
     // DOM removal queues the media pause event after the rendering frame.
     await Future<void>.delayed(Duration.zero);
+    if (handoff != _viewHandoffVersion) return;
+    _viewResumeIntent = null;
     if (_videoController != player || intent != _playbackIntentVersion) return;
     final value = player.value;
-    if (!value.isPlaying && !value.hasError && !value.isCompleted) {
+    if (!value.hasError && !value.isCompleted) {
       await player.play();
     }
   }
 
-  Future<void> togglePlayback() async {
+  Future<void> togglePlayback() =>
+      _videoController?.value.isPlaying == true ? pause() : play();
+
+  Future<void> play() async {
     _playbackIntentVersion++;
     final player = _videoController;
     if (player == null || !player.value.isInitialized) return;
-    if (player.value.isPlaying) {
-      await player.pause();
-    } else {
-      _sleepTimerElapsedDuringLoad = false;
-      await player.play();
-    }
+    _sleepTimerElapsedDuringLoad = false;
+    await player.play();
+    await _persistSession();
+  }
+
+  Future<void> pause() async {
+    _playbackIntentVersion++;
+    final player = _videoController;
+    if (player == null || !player.value.isInitialized) return;
+    await player.pause();
     await _persistSession();
   }
 
@@ -490,7 +520,12 @@ class GlobalPlaybackController extends Notifier<GlobalPlaybackState> {
   }
 
   void setVideoAudioOnly(bool enabled) {
-    if (state.request?.audioOnly != false) return;
+    if (state.request?.audioOnly != false || state.videoAudioOnly == enabled) {
+      return;
+    }
+    unawaited(
+      preservePlaybackOnViewRemoval(WidgetsBinding.instance.endOfFrame),
+    );
     state = state.copyWith(videoAudioOnly: enabled);
     unawaited(_persistSession());
   }
@@ -542,7 +577,7 @@ class GlobalPlaybackController extends Notifier<GlobalPlaybackState> {
     final request = state.queue
         .where((queued) => queued.identity == identity)
         .firstOrNull;
-    if (request != null) await activate(request);
+    if (request != null) await activate(request, startPlaying: true);
   }
 
   void removeQueued(String identity) {
@@ -595,6 +630,7 @@ class GlobalPlaybackController extends Notifier<GlobalPlaybackState> {
 
   Future<void> close() async {
     _generation += 1;
+    _viewResumeIntent = null;
     final player = _videoController;
     _videoController = null;
     _sourceSession = null;

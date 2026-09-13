@@ -7,6 +7,7 @@ class MediaSegment {
     required this.segmentType,
     required this.title,
     required this.excerpt,
+    this.fullText = '',
     required this.startSeconds,
     this.endSeconds,
   });
@@ -17,6 +18,7 @@ class MediaSegment {
     segmentType: MediaSegmentType.values.byName(json['segment_type'] as String),
     title: json['title'] as String,
     excerpt: json['excerpt'] as String? ?? '',
+    fullText: json['full_text'] as String? ?? '',
     startSeconds: (json['start_seconds'] as num).toDouble(),
     endSeconds: (json['end_seconds'] as num?)?.toDouble(),
   );
@@ -27,6 +29,7 @@ class MediaSegment {
     'segment_type': segmentType.name,
     'title': title,
     'excerpt': excerpt,
+    'full_text': fullText,
     'start_seconds': startSeconds,
     'end_seconds': endSeconds,
   };
@@ -36,6 +39,7 @@ class MediaSegment {
   final MediaSegmentType segmentType;
   final String title;
   final String excerpt;
+  final String fullText;
   final double startSeconds;
   final double? endSeconds;
 
