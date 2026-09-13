@@ -150,9 +150,9 @@ Dio apiClient(Ref ref) {
   if (EnvConfig.debugLog) {
     dio.interceptors.add(
       LogInterceptor(
-        responseBody: true,
+        responseBody: false,
         requestHeader: true,
-        requestBody: true,
+        requestBody: false,
         logPrint: redactedDebugPrint,
       ),
     );
