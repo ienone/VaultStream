@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/media/media_asset.dart';
@@ -14,6 +15,9 @@ import 'package:video_player_platform_interface/video_player_platform_interface.
 // Replace only the OS decoder. The provider, persistence, Dio and manifest
 // parsing remain real; this does not establish actual media decoding quality.
 class _Decoder extends VideoPlayerPlatform {
+  _Decoder({this.initialization});
+  final Completer<VideoEvent>? initialization;
+  final created = Completer<void>();
   String? url;
   Duration position = Duration.zero;
   bool playing = false;
@@ -21,21 +25,26 @@ class _Decoder extends VideoPlayerPlatform {
   @override
   Future<void> init() async {}
   @override
+  Future<void> setMixWithOthers(bool mixWithOthers) async {}
+  @override
   Future<void> dispose(int playerId) async {}
   @override
   Future<int> createWithOptions(VideoCreationOptions options) async {
     url = options.dataSource.uri;
+    if (!created.isCompleted) created.complete();
     return 1;
   }
 
   @override
-  Stream<VideoEvent> videoEventsFor(int playerId) => Stream.value(
-    VideoEvent(
-      eventType: VideoEventType.initialized,
-      duration: const Duration(minutes: 3),
-      size: const Size(640, 360),
-    ),
-  );
+  Stream<VideoEvent> videoEventsFor(int playerId) =>
+      initialization?.future.asStream() ??
+      Stream.value(
+        VideoEvent(
+          eventType: VideoEventType.initialized,
+          duration: const Duration(minutes: 3),
+          size: const Size(640, 360),
+        ),
+      );
   @override
   Future<void> setLooping(int playerId, bool looping) async {}
   @override
@@ -65,6 +74,76 @@ class _Decoder extends VideoPlayerPlatform {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  testWidgets(
+    'web destination mount extends playback handoff and explicit pause wins',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(const SizedBox.shrink());
+      final previous = VideoPlayerPlatform.instance;
+      final decoder = _Decoder();
+      VideoPlayerPlatform.instance = decoder;
+      final container = ProviderContainer();
+      final actions = container.read(globalPlaybackProvider.notifier);
+      try {
+        await tester.runAsync(
+          () => actions.activate(
+            const PlaybackRequest(
+              contentId: 9,
+              title: 'View handoff',
+              urls: ['https://media.test/handoff'],
+              audioOnly: true,
+            ),
+            startPlaying: true,
+          ),
+        );
+        expect(decoder.playing, isTrue);
+        final routeRemoved = Completer<void>();
+        final destinationMounted = Completer<void>();
+        final first = actions.preservePlaybackOnViewRemoval(
+          routeRemoved.future,
+        );
+        await tester.pump(const Duration(milliseconds: 1));
+        final second = actions.preservePlaybackOnViewRemoval(
+          destinationMounted.future,
+        );
+        await tester.pump(const Duration(milliseconds: 1));
+        routeRemoved.complete();
+        for (var i = 0; i < 5; i++) {
+          await tester.pump(const Duration(milliseconds: 1));
+        }
+        expect(decoder.playing, isFalse);
+        destinationMounted.complete();
+        for (var i = 0; i < 5; i++) {
+          await tester.pump(const Duration(milliseconds: 1));
+        }
+        var done = false;
+        Future.wait([first, second]).then((_) => done = true);
+        await tester.pump(const Duration(milliseconds: 1));
+        expect(
+          done,
+          isTrue,
+          reason: 'Both handoffs must settle after destination mount',
+        );
+        expect(decoder.playing, isTrue);
+
+        final nextMount = Completer<void>();
+        final third = actions.preservePlaybackOnViewRemoval(nextMount.future);
+        await tester.pump(const Duration(milliseconds: 1));
+        await tester.runAsync(actions.pause);
+        nextMount.complete();
+        for (var i = 0; i < 5; i++) {
+          await tester.pump(const Duration(milliseconds: 1));
+        }
+        await third;
+        expect(decoder.playing, isFalse);
+      } finally {
+        await tester.runAsync(actions.close);
+        container.dispose();
+        VideoPlayerPlatform.instance = previous;
+      }
+    },
+    skip: !kIsWeb,
+  );
   test(
     'restart reloads asset manifest and resumes from paused position',
     () async {
@@ -156,6 +235,45 @@ void main() {
         await controller.close();
         container.dispose();
         dio.close();
+        VideoPlayerPlatform.instance = previous;
+      }
+    },
+  );
+  test(
+    'pause during initialization prevents late automatic playback',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final previous = VideoPlayerPlatform.instance;
+      final initialized = Completer<VideoEvent>();
+      final decoder = _Decoder(initialization: initialized);
+      VideoPlayerPlatform.instance = decoder;
+      final container = ProviderContainer();
+      final actions = container.read(globalPlaybackProvider.notifier);
+      try {
+        final activation = actions.activate(
+          const PlaybackRequest(
+            contentId: 9,
+            title: 'Interrupted media',
+            urls: ['https://media.test/interrupted'],
+            audioOnly: true,
+          ),
+          startPlaying: true,
+        );
+        await decoder.created.future;
+        await actions.pause();
+        initialized.complete(
+          VideoEvent(
+            eventType: VideoEventType.initialized,
+            duration: const Duration(minutes: 3),
+            size: const Size(640, 360),
+          ),
+        );
+        await activation;
+        expect(container.read(globalPlaybackProvider).initialized, isTrue);
+        expect(decoder.playing, isFalse);
+      } finally {
+        await actions.close();
+        container.dispose();
         VideoPlayerPlatform.instance = previous;
       }
     },
