@@ -17,8 +17,6 @@ class UnifiedStats extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final stats = detail.extraStats;
     final bool isWeibo = detail.platform.isWeibo;
     final bool isZhihu = detail.platform.isZhihu;
@@ -369,38 +367,16 @@ class UnifiedStats extends StatelessWidget {
 
     if (items.isEmpty) return const SizedBox.shrink();
 
-    final contentWidget = LayoutBuilder(
-      builder: (context, constraints) {
-        final int crossAxisCount = constraints.maxWidth > 680
-            ? 4
-            : (constraints.maxWidth > 420 ? 3 : 2);
-        const double horizontalSpacing = AppSpacing.sm;
-        final double itemWidth =
-            (constraints.maxWidth -
-                (horizontalSpacing * (crossAxisCount - 1))) /
-            crossAxisCount;
-
-        return Wrap(
-          spacing: horizontalSpacing,
-          runSpacing: AppSpacing.md,
-          children: items
-              .map((item) => SizedBox(width: itemWidth, child: item))
-              .toList(),
-        );
-      },
-    );
-
-    if (!useContainer) return contentWidget;
-
-    return Container(
+    return Padding(
       key: const ValueKey('detail-stats-module'),
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: AppShape.paneBorder,
+      padding: useContainer
+          ? const EdgeInsets.symmetric(vertical: AppSpacing.sm)
+          : EdgeInsets.zero,
+      child: Wrap(
+        spacing: AppSpacing.lg,
+        runSpacing: AppSpacing.sm,
+        children: items,
       ),
-      child: contentWidget,
     );
   }
 }

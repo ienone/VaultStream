@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:markdown/markdown.dart' as md;
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../../core/utils/media_utils.dart' as media_utils;
 import '../../../core/constants/platform_constants.dart';
@@ -7,6 +8,30 @@ import '../models/header_line.dart';
 import '../../../core/media/media_asset.dart';
 
 class ContentParser {
+  /// Parse image nodes with the same Markdown grammar as the reader.
+  /// Code examples are not images; reference-style images retain their URL.
+  static List<String> extractMarkdownImageUrls(String markdown) {
+    final urls = <String>[];
+    void visit(md.Node node) {
+      if (node is! md.Element) return;
+      if (node.tag == 'img') {
+        final url = node.attributes['src'];
+        if (url != null && url.isNotEmpty) urls.add(url);
+      }
+      for (final child in node.children ?? const <md.Node>[]) {
+        visit(child);
+      }
+    }
+
+    final nodes = md.Document(
+      extensionSet: md.ExtensionSet.gitHubFlavored,
+    ).parseLines(markdown.split('\n'));
+    for (final node in nodes) {
+      visit(node);
+    }
+    return urls;
+  }
+
   static List<String> extractAllImages(
     ContentDetail detail, {
     bool includeAvatarFallback = false,

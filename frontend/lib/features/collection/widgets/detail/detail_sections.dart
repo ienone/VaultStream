@@ -1,4 +1,6 @@
+import 'parse_candidate_merge_editor.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/utils/safe_url_launcher.dart';
@@ -326,23 +328,30 @@ class _ParseCandidatePanelState extends State<ParseCandidatePanel> {
 
   Future<void> _merge(String field, String? parsedValue) async {
     final current = _currentValue(field) ?? '';
-    final merged = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => _MergeCandidateDialog(
-        field: field,
-        label: _fieldLabels[field] ?? field,
-        initialValue: current.isEmpty ? (parsedValue ?? '') : current,
-        parsedValue: parsedValue,
-      ),
+    final editor = ParseCandidateMergeEditor(
+      field: field,
+      label: _fieldLabels[field] ?? field,
+      initialValue: current.isEmpty ? (parsedValue ?? '') : current,
+      parsedValue: parsedValue,
     );
+    final merged = field == 'body'
+        ? await Navigator.of(
+            context,
+            rootNavigator: true,
+          ).push<String>(MaterialPageRoute(builder: (_) => editor))
+        : await showDialog<String>(
+            context: context,
+            animationStyle: MediaQuery.disableAnimationsOf(context)
+                ? AnimationStyle.noAnimation
+                : null,
+            builder: (_) => editor,
+          );
     if (merged != null && mounted) await _resolve(field, 'merge', merged);
   }
 
-  static String _displayValue(String? value, {bool compact = false}) {
+  static String _displayValue(String? value) {
     final normalized = (value ?? '').trim();
-    if (normalized.isEmpty) return '（空）';
-    if (!compact || normalized.length <= 120) return normalized;
-    return '${normalized.substring(0, 120)}…';
+    return normalized.isEmpty ? '（空）' : normalized;
   }
 
   @override
@@ -361,11 +370,8 @@ class _ParseCandidatePanelState extends State<ParseCandidatePanel> {
       width: double.infinity,
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: candidate == null
-            ? scheme.surfaceContainerLow
-            : scheme.tertiaryContainer.withValues(alpha: 0.45),
+        color: candidate == null ? null : scheme.surfaceContainerLow,
         borderRadius: AppShape.paneBorder,
-        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -387,36 +393,24 @@ class _ParseCandidatePanelState extends State<ParseCandidatePanel> {
                   ),
                 ),
               ),
-              if (candidate != null)
-                Text(
-                  DateFormat(
-                    'MM-dd HH:mm',
-                  ).format(candidate.createdAt.toLocal()),
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
             ],
           ),
-          if (manualFields.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.sm),
+          if (candidate != null) ...[
+            const SizedBox(height: AppSpacing.xxs),
             Text(
-              '重新解析不会覆盖这些字段',
-              style: theme.textTheme.bodySmall?.copyWith(
+              DateFormat('MM-dd HH:mm').format(candidate.createdAt.toLocal()),
+              style: theme.textTheme.labelSmall?.copyWith(
                 color: scheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: AppSpacing.xs),
-            Wrap(
-              spacing: AppSpacing.xs,
-              runSpacing: AppSpacing.xxs,
-              children: [
-                for (final field in manualFields)
-                  Chip(
-                    visualDensity: VisualDensity.compact,
-                    label: Text(_fieldLabels[field] ?? field),
-                  ),
-              ],
+          ],
+          if (manualFields.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              '已保护：${manualFields.map((field) => _fieldLabels[field] ?? field).join('、')}。重新解析不会自动覆盖。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
             ),
           ],
           if (candidateFields.isNotEmpty) ...[
@@ -440,72 +434,6 @@ class _ParseCandidatePanelState extends State<ParseCandidatePanel> {
           ],
         ],
       ),
-    );
-  }
-}
-
-class _MergeCandidateDialog extends StatefulWidget {
-  const _MergeCandidateDialog({
-    required this.field,
-    required this.label,
-    required this.initialValue,
-    required this.parsedValue,
-  });
-
-  final String field;
-  final String label;
-  final String initialValue;
-  final String? parsedValue;
-
-  @override
-  State<_MergeCandidateDialog> createState() => _MergeCandidateDialogState();
-}
-
-class _MergeCandidateDialogState extends State<_MergeCandidateDialog> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initialValue);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('合并${widget.label}'),
-      content: SizedBox(
-        width: 560,
-        child: TextField(
-          key: ValueKey('parse-candidate-merge-${widget.field}'),
-          controller: _controller,
-          autofocus: true,
-          minLines: widget.field == 'body' ? 8 : 1,
-          maxLines: widget.field == 'body' ? 18 : 4,
-          decoration: InputDecoration(
-            labelText: '最终保留的内容',
-            helperText:
-                '新解析：${_ParseCandidatePanelState._displayValue(widget.parsedValue, compact: true)}',
-            border: const OutlineInputBorder(),
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, _controller.text),
-          child: const Text('保存合并版本'),
-        ),
-      ],
     );
   }
 }
@@ -534,50 +462,45 @@ class _CandidateFieldComparison extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    Widget valuePane(String title, String? value) => Container(
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: AppShape.cardBorder,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.labelMedium),
-          const SizedBox(height: AppSpacing.xxs),
-          Text(
-            _ParseCandidatePanelState._displayValue(value),
-            maxLines: field == 'body' ? 8 : 4,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
+    Widget valuePane(String title, String? value) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: Theme.of(
+            context,
+          ).textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Text(
+          _ParseCandidatePanelState._displayValue(value),
+          maxLines: field == 'body' ? 8 : 4,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
     );
 
-    return Container(
+    return Padding(
       key: ValueKey('parse-candidate-field-$field'),
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: scheme.surface.withValues(alpha: 0.72),
-        borderRadius: AppShape.cardBorder,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: AppSpacing.xs),
+          const SizedBox(height: AppSpacing.sm),
           LayoutBuilder(
             builder: (context, constraints) {
               final panes = [
                 valuePane('当前人工版本', currentValue),
                 valuePane('新解析版本', parsedValue),
               ];
-              if (constraints.maxWidth >= 520) {
+              final textScale = MediaQuery.textScalerOf(context).scale(16) / 16;
+              if (constraints.maxWidth >= 520 * textScale) {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(child: panes.first),
-                    const SizedBox(width: AppSpacing.xs),
+                    const SizedBox(width: AppSpacing.lg),
                     Expanded(child: panes.last),
                   ],
                 );
@@ -585,16 +508,16 @@ class _CandidateFieldComparison extends StatelessWidget {
               return Column(
                 children: [
                   SizedBox(width: double.infinity, child: panes.first),
-                  const SizedBox(height: AppSpacing.xs),
+                  const SizedBox(height: AppSpacing.sm),
                   SizedBox(width: double.infinity, child: panes.last),
                 ],
               );
             },
           ),
-          const SizedBox(height: AppSpacing.xs),
+          const SizedBox(height: AppSpacing.sm),
           Wrap(
             spacing: AppSpacing.xs,
-            runSpacing: AppSpacing.xxs,
+            runSpacing: AppSpacing.xs,
             children: [
               FilledButton.tonal(
                 key: ValueKey('parse-candidate-accept-$field'),
@@ -610,7 +533,7 @@ class _CandidateFieldComparison extends StatelessWidget {
                 TextButton(
                   key: ValueKey('parse-candidate-merge-action-$field'),
                   onPressed: busy ? null : onMerge,
-                  child: const Text('合并'),
+                  child: const Text('对照并合并'),
                 ),
             ],
           ),
@@ -620,87 +543,123 @@ class _CandidateFieldComparison extends StatelessWidget {
   }
 }
 
-/// 派生结果容器。
-///
-/// 摘要、标签建议、评分等模型生成结果必须与原文有明确视觉边界，
-/// 并标注来源，不能被当成来源事实展示。
-class DerivedResultSection extends StatelessWidget {
-  const DerivedResultSection({
-    super.key,
-    required this.title,
-    required this.child,
-    this.icon = Icons.auto_awesome_rounded,
-    this.trailing,
-  });
-
-  final String title;
-  final Widget child;
-  final IconData icon;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
-        borderRadius: AppShape.paneBorder,
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 16, color: scheme.tertiary),
-              const SizedBox(width: AppSpacing.xs),
-              Expanded(
-                child: Text(
-                  title,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: scheme.tertiary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              ?trailing,
-            ],
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            '由模型生成，不是原文内容',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          child,
-        ],
-      ),
-    );
-  }
-}
-
-/// AI 摘要区块。内容缺失时不渲染。
-class ContentSummaryBlock extends StatelessWidget {
+/// 阅读前的 AI 概览；长摘要可展开，保持与原文的清晰边界。
+class ContentSummaryBlock extends StatefulWidget {
   const ContentSummaryBlock({super.key, required this.detail});
 
   final ContentDetail detail;
 
   @override
+  State<ContentSummaryBlock> createState() => _ContentSummaryBlockState();
+}
+
+class _ContentSummaryBlockState extends State<ContentSummaryBlock> {
+  bool _expanded = false;
+
+  bool _overflows = false;
+
+  @override
+  void didUpdateWidget(covariant ContentSummaryBlock oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.detail.id != widget.detail.id) _expanded = false;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (!detail.hasSummary) return const SizedBox.shrink();
-    return DerivedResultSection(
-      title: 'AI 摘要',
-      child: SelectableText(
-        detail.summary!.trim(),
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.6),
+    if (!widget.detail.hasSummary) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final summary = widget.detail.summary!.trim();
+    final style = theme.textTheme.bodyMedium?.copyWith(height: 1.6);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: AppShape.cardBorder,
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.auto_awesome_outlined,
+                    size: 16,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  Expanded(
+                    child: Text('AI 摘要', style: theme.textTheme.labelLarge),
+                  ),
+                  if (_overflows)
+                    TextButton(
+                      onPressed: () => setState(() => _expanded = !_expanded),
+                      child: Text(_expanded ? '收起' : '展开'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              if (_expanded)
+                SelectableText(summary, style: style)
+              else
+                _SummaryOverflowObserver(
+                  onOverflow: (value) {
+                    if (mounted && value != _overflows) {
+                      setState(() => _overflows = value);
+                    }
+                  },
+                  child: Text(
+                    summary,
+                    style: style,
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
+  }
+}
+
+/// Observe the paragraph actually laid out, including late-loaded CJK fonts.
+class _SummaryOverflowObserver extends SingleChildRenderObjectWidget {
+  const _SummaryOverflowObserver({
+    required this.onOverflow,
+    required super.child,
+  });
+  final ValueChanged<bool> onOverflow;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _SummaryOverflowRenderObject(onOverflow);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _SummaryOverflowRenderObject renderObject,
+  ) {
+    renderObject.onOverflow = onOverflow;
+  }
+}
+
+class _SummaryOverflowRenderObject extends RenderProxyBox {
+  _SummaryOverflowRenderObject(this.onOverflow);
+  ValueChanged<bool> onOverflow;
+  bool? _lastOverflow;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    final paragraph = child;
+    if (paragraph is! RenderParagraph) return;
+    final overflow = paragraph.didExceedMaxLines;
+    if (_lastOverflow == overflow) return;
+    _lastOverflow = overflow;
+    WidgetsBinding.instance.addPostFrameCallback((_) => onOverflow(overflow));
   }
 }
 

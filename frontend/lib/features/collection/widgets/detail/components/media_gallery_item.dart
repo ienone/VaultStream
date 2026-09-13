@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../../core/widgets/media_image_button.dart';
 import '../../../../../core/media/media_asset.dart';
 import '../../../../../core/widgets/network_thumbnail.dart';
 import '../../../../player/global_playback_controller.dart';
@@ -65,8 +66,10 @@ class MediaGalleryItem extends StatelessWidget {
       );
     }
 
-    return GestureDetector(
-      onTap: () => _showFullScreenImage(context),
+    return MediaImageButton(
+      label: '查看第 ${index + 1} 张图片，共 ${images.length} 张',
+      onPressed: () => _showFullScreenImage(context),
+      borderRadius: effectiveBorderRadius,
       child: Container(
         width: width,
         height: height,

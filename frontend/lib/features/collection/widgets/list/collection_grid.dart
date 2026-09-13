@@ -42,17 +42,11 @@ class CollectionGrid extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final widthClass = ResponsiveLayout.widthClassFor(width);
-        final isCompact =
-            widthClass.isCompact || WindowMetrics.of(context).isShortLandscape;
-
-        // 极窄屏收紧间距并弱化卡片边界；宽屏恢复正常呼吸感。
+        final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+        final columns = ResponsiveLayout.contentGridColumns(width / textScale);
+        final isCompact = columns == 1;
         final gutter = isCompact ? AppSpacing.xs : AppSpacing.sm;
         final horizontalPadding = isCompact ? AppSpacing.sm : AppSpacing.md;
-
-        final columns = isCompact
-            ? 1
-            : ResponsiveLayout.contentGridColumns(width);
 
         return RefreshIndicator(
           onRefresh: onRefresh,

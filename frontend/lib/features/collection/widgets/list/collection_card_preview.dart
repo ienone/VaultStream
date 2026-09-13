@@ -21,15 +21,17 @@ class ContentSharedTransition extends StatelessWidget {
     required this.contentId,
     required this.child,
     this.immersiveMedia = false,
+    this.enabled = true,
   });
 
   final int contentId;
   final Widget child;
   final bool immersiveMedia;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    if (MediaQuery.disableAnimationsOf(context)) return child;
+    if (!enabled || MediaQuery.disableAnimationsOf(context)) return child;
     return Hero(
       tag: contentSharedTransitionTag(contentId),
       transitionOnUserGestures: true,
@@ -40,6 +42,17 @@ class ContentSharedTransition extends StatelessWidget {
           (flightContext, animation, direction, fromContext, toContext) {
             final fromHero = fromContext.widget as Hero;
             final toHero = toContext.widget as Hero;
+            final fromSize =
+                (fromContext.findRenderObject()! as RenderBox).size;
+            final toSize = (toContext.findRenderObject()! as RenderBox).size;
+            Widget retainLayout(Widget child, Size size) => OverflowBox(
+              alignment: Alignment.topLeft,
+              minWidth: size.width,
+              maxWidth: size.width,
+              minHeight: size.height,
+              maxHeight: size.height,
+              child: child,
+            );
             return AnimatedBuilder(
               animation: animation,
               builder: (context, _) {
@@ -51,15 +64,26 @@ class ContentSharedTransition extends StatelessWidget {
                   immersiveMedia ? 0.9 : 0.72,
                   curve: AppMotion.standardCurve,
                 ).transform(progress.clamp(0, 1));
-                return Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Opacity(
-                      opacity: 1 - destinationOpacity,
-                      child: fromHero.child,
+                // Keep each endpoint at its measured layout size. Reflowing
+                // the detail header into a shrinking card overflows on return.
+                return ClipRRect(
+                  borderRadius: AppShape.cardBorder,
+                  child: ColoredBox(
+                    color: Theme.of(flightContext).colorScheme.surface,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Opacity(
+                          opacity: 1 - destinationOpacity,
+                          child: retainLayout(fromHero.child, fromSize),
+                        ),
+                        Opacity(
+                          opacity: destinationOpacity,
+                          child: retainLayout(toHero.child, toSize),
+                        ),
+                      ],
                     ),
-                    Opacity(opacity: destinationOpacity, child: toHero.child),
-                  ],
+                  ),
                 );
               },
             );
@@ -196,8 +220,6 @@ class _CardSurface extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        metadata,
-        const SizedBox(height: AppSpacing.xxs),
         Text(
           _displayTitle,
           maxLines: isList ? 3 : 4,
@@ -251,14 +273,40 @@ class _CardSurface extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       padding: const EdgeInsets.all(AppSpacing.sm),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(child: text),
-          if (media != null) ...[
-            const SizedBox(width: AppSpacing.sm),
-            SizedBox.square(dimension: 88, child: media),
-          ],
+          metadata,
+          const SizedBox(height: AppSpacing.xs),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              if (media == null) return text;
+              final textScale = MediaQuery.textScalerOf(context).scale(16) / 16;
+              final stacked =
+                  constraints.maxWidth - 88 - AppSpacing.sm < 200 * textScale;
+              if (stacked) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      height: (constraints.maxWidth / 2.4).clamp(80.0, 160.0),
+                      child: media,
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    text,
+                  ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: text),
+                  const SizedBox(width: AppSpacing.sm),
+                  SizedBox(width: 88, height: 64, child: media),
+                ],
+              );
+            },
+          ),
         ],
       ),
     );
@@ -314,28 +362,38 @@ class _CardMeta extends StatelessWidget {
         ),
         if (['http', 'https'].contains(Uri.tryParse(content.url)?.scheme))
           PlatformBadge(platform: content.platform),
-        if (avatarUrl.isNotEmpty)
-          SizedBox.square(
-            dimension: 20,
-            child: ClipOval(
-              child: NetworkThumbnail(
-                imageUrl: avatarUrl,
-                mediaAsset: avatarAsset,
-                purpose: MediaPurpose.card,
-                fit: BoxFit.cover,
-                maxHeightDiskCache: 96,
-                errorIcon: Icons.person_rounded,
-              ),
-            ),
-          ),
-        if (author.isNotEmpty)
-          Text(
-            author,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
+        if (avatarUrl.isNotEmpty || author.isNotEmpty)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (avatarUrl.isNotEmpty) ...[
+                SizedBox.square(
+                  dimension: 20,
+                  child: ClipOval(
+                    child: NetworkThumbnail(
+                      imageUrl: avatarUrl,
+                      mediaAsset: avatarAsset,
+                      purpose: MediaPurpose.card,
+                      fit: BoxFit.cover,
+                      maxHeightDiskCache: 96,
+                      errorIcon: Icons.person_rounded,
+                    ),
+                  ),
+                ),
+                if (author.isNotEmpty) const SizedBox(width: AppSpacing.xxs),
+              ],
+              if (author.isNotEmpty)
+                Flexible(
+                  child: Text(
+                    author,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+            ],
           ),
         if (date != null)
           Text(

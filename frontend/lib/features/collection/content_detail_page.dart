@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/widgets/predictive_back_dialog.dart';
 
 import '../../core/layout/responsive_layout.dart';
 import '../../core/media/media_asset.dart';
@@ -20,9 +21,8 @@ import 'utils/content_parser.dart';
 import 'widgets/detail/content_templates.dart';
 import 'widgets/detail/detail_sections.dart';
 import 'widgets/detail/gallery/gallery_navigation.dart';
-import 'widgets/dialogs/edit_content_dialog.dart';
+import 'widgets/dialogs/content_template_picker.dart';
 import 'widgets/list/collection_card_preview.dart';
-import '../events/models/knowledge_event.dart';
 import '../events/widgets/add_to_event_dialog.dart';
 import '../events/widgets/content_event_links.dart';
 
@@ -62,6 +62,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   final ScrollController _scrollController = ScrollController();
   final Map<String, GlobalKey> _headerKeys = {};
   String? _activeHeader;
+  int _selectedImageIndex = 0;
   StreamSubscription<SseEvent>? _sseSub;
   DateTime _lastScrollCheck = DateTime.now();
 
@@ -70,6 +71,18 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     super.initState();
     _scrollController.addListener(_onScroll);
     _bindRealtimeEvents();
+  }
+
+  @override
+  void didUpdateWidget(covariant ContentDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.contentId != widget.contentId) _selectedImageIndex = 0;
+  }
+
+  void _selectImage(int index) {
+    if (mounted && index != _selectedImageIndex) {
+      setState(() => _selectedImageIndex = index);
+    }
   }
 
   void _bindRealtimeEvents() {
@@ -288,6 +301,10 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           metrics: metrics,
           headerKeys: _headerKeys,
           images: images,
+          selectedImageIndex: images.isEmpty
+              ? 0
+              : _selectedImageIndex.clamp(0, images.length - 1),
+          onImagePageChanged: _selectImage,
           imageFallbacks: imageFallbacks,
           imageAssets: imageAssets,
           onImageTap: (index) => _openGallery(
@@ -311,15 +328,18 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           initialMediaAssetId: widget.initialMediaAssetId,
         );
 
+        final body =
+            metrics.supportsSupportingPane && detail.hasExternalOriginal
+            ? templateContext.usesImmersiveMediaLayout
+                  ? _buildImmersiveMediaPane(templateContext)
+                  : _buildTwoPane(templateContext)
+            : _buildSinglePane(templateContext);
         return Scaffold(
           appBar: _buildAppBar(detail, metrics),
-          body: SelectionArea(
-            child: metrics.supportsSupportingPane && detail.hasExternalOriginal
-                ? templateContext.usesImmersiveMediaLayout
-                      ? _buildImmersiveMediaPane(templateContext)
-                      : _buildTwoPane(templateContext)
-                : _buildSinglePane(templateContext),
-          ),
+          // Text selection must not compete with document pinch/pan gestures.
+          body: detail.template == ContentTemplate.document
+              ? body
+              : SelectionArea(child: body),
         );
       },
     );
@@ -369,7 +389,11 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             ctx.metrics.isCompact ? AppSpacing.md : AppSpacing.lg,
           ),
           children: [
-            _SharedDetailHeader(detail: ctx.detail, showSourceLine: true),
+            _SharedDetailHeader(
+              detail: ctx.detail,
+              showSourceLine: true,
+              sharedTransition: widget.preview?.id == ctx.detail.id,
+            ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -385,8 +409,6 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                   child: ContentTemplateBody(context_: ctx),
                 ),
                 const SizedBox(height: AppSpacing.xl),
-                const Divider(height: 1),
-                const SizedBox(height: AppSpacing.lg),
                 ContentEventLinks(contentId: ctx.detail.id),
                 ContentSupportingSections(
                   detail: ctx.detail,
@@ -411,7 +433,11 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             controller: _scrollController,
             padding: const EdgeInsets.all(AppSpacing.xl),
             children: [
-              _SharedDetailHeader(detail: ctx.detail, showSourceLine: false),
+              _SharedDetailHeader(
+                detail: ctx.detail,
+                showSourceLine: false,
+                sharedTransition: widget.preview?.id == ctx.detail.id,
+              ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -501,6 +527,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           context_: ctx,
           sharedHeaderBuilder: (child) => ContentSharedTransition(
             contentId: ctx.detail.id,
+            enabled: widget.preview?.id == ctx.detail.id,
             immersiveMedia: true,
             child: child,
           ),
@@ -515,23 +542,28 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     if (detail.manualEditFields.isNotEmpty) {
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('重新解析并保留人工修改？'),
-          content: Text(
-            detail.parseCandidate == null
-                ? '人工修改的字段不会被覆盖；有差异的新解析结果会出现在详情页供你比较。'
-                : '人工修改的字段不会被覆盖；本次结果会替换尚未处理的解析候选。',
+        animationStyle: MediaQuery.disableAnimationsOf(context)
+            ? AnimationStyle.noAnimation
+            : null,
+        builder: (dialogContext) => PredictiveBackDialog(
+          child: AlertDialog(
+            title: const Text('重新解析并保留人工修改？'),
+            content: Text(
+              detail.parseCandidate == null
+                  ? '人工修改的字段不会被覆盖；有差异的新解析结果会出现在详情页供你比较。'
+                  : '人工修改的字段不会被覆盖；本次结果会替换尚未处理的解析候选。',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('继续解析'),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('继续解析'),
-            ),
-          ],
         ),
       );
       if (confirmed != true || !mounted) return;
@@ -560,10 +592,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   }
 
   Future<void> _edit(ContentDetail detail) async {
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (_) => EditContentDialog(content: detail),
-    );
+    final saved = await context.push<bool>('/collection/${detail.id}/edit');
     if (saved == true && mounted) {
       Toast.show(context, '内容已更新');
       ref.invalidate(contentDetailProvider(detail.id));
@@ -571,12 +600,10 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   }
 
   Future<void> _addToEvent(ContentDetail detail) async {
-    final event = await showDialog<KnowledgeEventDetail>(
-      context: context,
-      builder: (_) => AddToEventDialog(
-        contentId: detail.id,
-        suggestedTitle: _displayDetailTitle(detail),
-      ),
+    final event = await showAddToEventDialog(
+      context,
+      contentId: detail.id,
+      suggestedTitle: _displayDetailTitle(detail),
     );
     if (event == null || !mounted) return;
     Toast.show(
@@ -590,13 +617,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   }
 
   Future<void> _changeTemplate(ContentDetail detail) async {
-    final selected = await showModalBottomSheet<String?>(
-      context: context,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: AppShape.sheetTopBorder,
-      ),
-      builder: (sheetContext) => _TemplatePicker(detail: detail),
+    final selected = await showContentTemplatePicker(
+      context,
+      detail.layoutTypeOverride,
     );
     if (selected == null || !mounted) return;
 
@@ -604,7 +627,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         .read(contentActionsProvider.notifier)
         .setLayoutOverride(
           detail.id,
-          selected == _TemplatePicker.autoValue ? null : selected,
+          selected == ContentTemplatePicker.autoValue ? null : selected,
         );
     _report(result);
   }
@@ -613,20 +636,25 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     final scheme = Theme.of(context).colorScheme;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('确认删除'),
-        content: const Text('将删除这条内容及其已归档的本地媒体。此操作不可撤销。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            style: FilledButton.styleFrom(backgroundColor: scheme.error),
-            child: const Text('删除'),
-          ),
-        ],
+      animationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
+      builder: (dialogContext) => PredictiveBackDialog(
+        child: AlertDialog(
+          title: const Text('确认删除'),
+          content: const Text('将删除这条内容及其已归档的本地媒体。此操作不可撤销。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: FilledButton.styleFrom(backgroundColor: scheme.error),
+              child: const Text('删除'),
+            ),
+          ],
+        ),
       ),
     );
     if (confirmed != true || !mounted) return;
@@ -669,6 +697,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       fallbackUrlsByImage: imageFallbacks,
       mediaAssetsByImage: imageAssets,
       initialIndex: index,
+      onPageChanged: _selectImage,
       contentId: contentId,
     );
   }
@@ -692,13 +721,13 @@ class _LoadingSharedHeader extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final surface = Material(
       key: const ValueKey('content-detail-shared-loading-header'),
-      color: scheme.surfaceContainerLow,
+      color: scheme.surface,
       shape: RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 116),
         child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.md),
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
           child: preview == null
               ? const _LoadingHeaderPlaceholder()
               : _PreviewHeader(preview: preview!),
@@ -970,14 +999,7 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final contextData = detail.contextData;
     final isShortPost = detail.template == ContentTemplate.shortPost;
-    final normalizedTitle = (detail.title ?? '').trim();
-    final normalizedBody = (detail.body ?? '').trim();
-    final titleRepeatsBody =
-        isShortPost &&
-        normalizedTitle.isNotEmpty &&
-        normalizedBody.isNotEmpty &&
-        (normalizedTitle == normalizedBody ||
-            normalizedBody.startsWith(normalizedTitle));
+    final titleRepeatsBody = detail.shortPostTitleRepeatsBody;
     final isQuestionAnswer =
         detail.contentType == 'answer' &&
         contextData != null &&
@@ -1121,23 +1143,33 @@ class _SharedDetailHeader extends StatelessWidget {
   const _SharedDetailHeader({
     required this.detail,
     required this.showSourceLine,
+    required this.sharedTransition,
   });
 
   final ContentDetail detail;
   final bool showSourceLine;
+  final bool sharedTransition;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return ContentSharedTransition(
       contentId: detail.id,
+      enabled: sharedTransition,
       child: Material(
-        color: scheme.surfaceContainerLow,
+        color: scheme.surface,
         shape: RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
         clipBehavior: Clip.antiAlias,
         child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: _Header(detail: detail, showSourceLine: showSourceLine),
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+          child: detail.template == ContentTemplate.document
+              ? SelectionArea(
+                  child: _Header(
+                    detail: detail,
+                    showSourceLine: showSourceLine,
+                  ),
+                )
+              : _Header(detail: detail, showSourceLine: showSourceLine),
         ),
       ),
     );
@@ -1330,79 +1362,6 @@ class _MoreMenu extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// 模板选择器。
-///
-/// 只列出后端 `LayoutType` 枚举实际接受的值——这是 `layout_type_override`
-/// 的合法取值域，不是前端自定义的模板名。
-class _TemplatePicker extends StatelessWidget {
-  const _TemplatePicker({required this.detail});
-
-  final ContentDetail detail;
-
-  static const autoValue = '__auto__';
-
-  /// 与后端 `LayoutType` 枚举一致。
-  static const _options = <(String, String, String)>[
-    (autoValue, '自动判定', '由来源和内容特征决定'),
-    ('article', '文章', '连续阅读，正文限宽'),
-    ('gallery', '图集 / 图文', '媒体为主体'),
-    ('video', '视频', '播放器与简介'),
-    ('audio', '音频', '封面、播放与文字说明'),
-    ('link', '书签', '只保留链接与保存记录'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final current = detail.layoutTypeOverride ?? autoValue;
-
-    return SafeArea(
-      child: ListView(
-        shrinkWrap: true,
-        padding: const EdgeInsets.only(bottom: AppSpacing.md),
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.lg,
-              0,
-              AppSpacing.lg,
-              AppSpacing.xs,
-            ),
-            child: Text('切换模板', style: Theme.of(context).textTheme.titleMedium),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.lg,
-              0,
-              AppSpacing.lg,
-              AppSpacing.sm,
-            ),
-            child: Text(
-              '手动选择后，重新解析不会覆盖你的选择。',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          RadioGroup<String>(
-            groupValue: current,
-            onChanged: (selected) => Navigator.of(context).pop(selected),
-            child: Column(
-              children: [
-                for (final (value, label, hint) in _options)
-                  RadioListTile<String>(
-                    value: value,
-                    title: Text(label),
-                    subtitle: Text(hint),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

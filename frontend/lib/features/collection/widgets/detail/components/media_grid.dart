@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../../../../core/widgets/media_image_button.dart';
 import 'package:frontend/core/utils/media_utils.dart';
 import 'package:frontend/core/widgets/network_thumbnail.dart';
+import 'package:frontend/core/widgets/media_overlay_surface.dart';
 
 import '../../../../../core/media/media_asset.dart';
 import '../../../../../theme/design_tokens.dart';
@@ -97,14 +99,13 @@ class MediaGrid extends StatelessWidget {
                     top: 0,
                     bottom: 0,
                     child: Center(
-                      child: IconButton.filledTonal(
-                        icon: const Icon(Icons.chevron_left),
-                        onPressed: () {
-                          pageController?.previousPage(
-                            duration: AppMotion.contentSwap,
-                            curve: AppMotion.emphasizedCurve,
-                          );
-                        },
+                      child: MediaOverlaySurface(
+                        child: IconButton(
+                          tooltip: '上一张',
+                          icon: const Icon(Icons.chevron_left_rounded),
+                          onPressed: () =>
+                              _selectPage(context, currentIndex + (-1)),
+                        ),
                       ),
                     ),
                   ),
@@ -114,14 +115,13 @@ class MediaGrid extends StatelessWidget {
                     top: 0,
                     bottom: 0,
                     child: Center(
-                      child: IconButton.filledTonal(
-                        icon: const Icon(Icons.chevron_right),
-                        onPressed: () {
-                          pageController?.nextPage(
-                            duration: AppMotion.contentSwap,
-                            curve: AppMotion.emphasizedCurve,
-                          );
-                        },
+                      child: MediaOverlaySurface(
+                        child: IconButton(
+                          tooltip: '下一张',
+                          icon: const Icon(Icons.chevron_right_rounded),
+                          onPressed: () =>
+                              _selectPage(context, currentIndex + (1)),
+                        ),
                       ),
                     ),
                   ),
@@ -131,21 +131,17 @@ class MediaGrid extends StatelessWidget {
                 Positioned(
                   top: 16,
                   right: 16,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colorScheme.inverseSurface.withValues(alpha: 0.72),
-                      borderRadius: const BorderRadius.all(
-                        Radius.circular(AppShape.pill),
+                  child: MediaOverlaySurface(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.sm,
+                        vertical: AppSpacing.xxs,
                       ),
-                    ),
-                    child: Text(
-                      '${currentIndex + 1} / ${images.length}',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: colorScheme.onInverseSurface,
+                      child: Text(
+                        '${currentIndex + 1} / ${images.length}',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
@@ -165,16 +161,14 @@ class MediaGrid extends StatelessWidget {
               itemBuilder: (context, index) {
                 final img = images[index];
                 final isSelected = index == currentIndex;
-                return GestureDetector(
-                  onTap: () {
-                    pageController?.animateToPage(
-                      index,
-                      duration: AppMotion.contentSwap,
-                      curve: AppMotion.emphasizedCurve,
-                    );
-                  },
+                return MediaImageButton(
+                  label: '选择第 ${index + 1} 项媒体，共 ${images.length} 项',
+                  selected: isSelected,
+                  onPressed: () => _selectPage(context, index),
                   child: AnimatedContainer(
-                    duration: AppMotion.stateChange,
+                    duration: MediaQuery.disableAnimationsOf(context)
+                        ? Duration.zero
+                        : AppMotion.stateChange,
                     curve: AppMotion.standardCurve,
                     width: isSelected ? 120 : 64,
                     height: 64,
@@ -227,6 +221,18 @@ class MediaGrid extends StatelessWidget {
     );
   }
 
+  void _selectPage(BuildContext context, int index) {
+    if (MediaQuery.disableAnimationsOf(context)) {
+      pageController?.jumpToPage(index);
+    } else {
+      pageController?.animateToPage(
+        index,
+        duration: AppMotion.contentSwap,
+        curve: AppMotion.emphasizedCurve,
+      );
+    }
+  }
+
   /// 竖屏布局：单图/双图/九宫格自适应
   Widget _buildPortraitLayout(BuildContext context) {
     if (images.length == 1) {
@@ -251,8 +257,11 @@ class MediaGrid extends StatelessWidget {
 
   /// 单图大图展示
   Widget _buildSingleImage(BuildContext context, String imageUrl, int index) {
-    return GestureDetector(
-      onTap: () => onImageTap?.call(index),
+    return MediaImageButton(
+      label: isVideo(images[index])
+          ? '查看第 ${index + 1} 个视频，共 ${images.length} 项媒体'
+          : '查看第 ${index + 1} 张图片，共 ${images.length} 张',
+      onPressed: onImageTap == null ? null : () => onImageTap!(index),
       child: ClipRRect(
         borderRadius: AppShape.cardBorder,
         child: Hero(
@@ -274,8 +283,12 @@ class MediaGrid extends StatelessWidget {
 
   /// 网格图片（用于双图和九宫格）
   Widget _buildGridImage(BuildContext context, String imageUrl, int index) {
-    return GestureDetector(
-      onTap: () => onImageTap?.call(index),
+    return MediaImageButton(
+      borderRadius: AppShape.cardMediaBorder,
+      label: isVideo(images[index])
+          ? '查看第 ${index + 1} 个视频，共 ${images.length} 项媒体'
+          : '查看第 ${index + 1} 张图片，共 ${images.length} 张',
+      onPressed: onImageTap == null ? null : () => onImageTap!(index),
       child: AspectRatio(
         aspectRatio: 1,
         child: ClipRRect(
@@ -314,8 +327,12 @@ class MediaGrid extends StatelessWidget {
       itemBuilder: (context, index) {
         final isLast = index == displayCount - 1 && hasMore;
 
-        return GestureDetector(
-          onTap: () => onImageTap?.call(index),
+        return MediaImageButton(
+          borderRadius: AppShape.cardMediaBorder,
+          label: isVideo(images[index])
+              ? '查看第 ${index + 1} 个视频，共 ${images.length} 项媒体'
+              : '查看第 ${index + 1} 张图片，共 ${images.length} 张',
+          onPressed: onImageTap == null ? null : () => onImageTap!(index),
           child: ClipRRect(
             borderRadius: AppShape.cardMediaBorder,
             child: Stack(

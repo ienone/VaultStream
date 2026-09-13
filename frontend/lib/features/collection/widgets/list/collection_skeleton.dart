@@ -15,20 +15,12 @@ class CollectionSkeleton extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final isCompact =
-            ResponsiveLayout.widthClassFor(width).isCompact ||
-            WindowMetrics.of(context).isShortLandscape;
+        final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+        final columns = ResponsiveLayout.contentGridColumns(width / textScale);
+        final isCompact = columns == 1;
         final gutter = isCompact ? AppSpacing.xs : AppSpacing.sm;
         final horizontalPadding = isCompact ? AppSpacing.sm : AppSpacing.md;
-        final columns = isCompact
-            ? 1
-            : ResponsiveLayout.contentGridColumns(width);
-        final itemWidth =
-            (width - horizontalPadding * 2 - gutter * (columns - 1)) / columns;
-        final itemHeight = isCompact
-            ? 116.0
-            : itemWidth * 9 / 16 + (itemWidth < 200 ? 112 : 140);
-
+        final itemHeight = 132.0 * textScale;
         return GridView.builder(
           padding: EdgeInsets.fromLTRB(
             horizontalPadding,

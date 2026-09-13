@@ -12,7 +12,9 @@ import 'providers/search_history_provider.dart';
 import 'widgets/detail/detail_sections.dart';
 import 'widgets/dialogs/batch_action_sheet.dart';
 import 'widgets/dialogs/collection_filter_form.dart';
+import 'widgets/dialogs/collection_filter_sheet.dart';
 import 'widgets/list/collection_grid.dart';
+import 'widgets/list/collection_search_entry.dart';
 import 'widgets/list/collection_skeleton.dart';
 
 /// 收藏库。
@@ -125,7 +127,9 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     final notifier = ref.read(collectionFilterProvider.notifier);
     if (mode != null) notifier.setSearchMode(mode);
     notifier.updateSearchQuery(trimmed);
-    if (_searchController.isOpen) _searchController.closeView(trimmed);
+    if (_searchController.isAttached && _searchController.isOpen) {
+      _searchController.closeView(trimmed);
+    }
   }
 
   void _syncSearchText(String query) {
@@ -134,6 +138,26 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
       text: query,
       selection: TextSelection.collapsed(offset: query.length),
     );
+  }
+
+  Future<void> _openSearchPage() async {
+    final initialQuery = ref.read(collectionFilterProvider).searchQuery;
+    final result = await Navigator.of(context, rootNavigator: true)
+        .push<CollectionSearchSelection>(
+          MaterialPageRoute(
+            builder: (_) => CollectionSearchPage(initialQuery: initialQuery),
+          ),
+        );
+    if (!mounted) return;
+    if (result != null) {
+      _performSearch(result.query, mode: result.mode);
+    }
+    _restoreSearchText();
+  }
+
+  void _restoreSearchText() {
+    _syncSearchText(ref.read(collectionFilterProvider).searchQuery);
+    _searchController.selection = const TextSelection.collapsed(offset: 0);
   }
 
   @override
@@ -148,7 +172,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     }
     final collectionAsync = ref.watch(collectionProvider);
     final selection = ref.watch(batchSelectionProvider);
-    final compact = MediaQuery.sizeOf(context).width < 600;
+    final compact = _searchBelowToolbar(context);
 
     return Scaffold(
       appBar: selection.isSelectionMode
@@ -164,13 +188,12 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
                 AppSpacing.md,
                 AppSpacing.sm,
               ),
-              child: SizedBox(
-                height: 44,
-                child: _SearchEntry(
-                  controller: _searchController,
-                  filter: filter,
-                  onSubmit: _performSearch,
-                ),
+              child: CollectionSearchEntry(
+                controller: _searchController,
+                filter: filter,
+                onSubmit: _performSearch,
+                onClose: _restoreSearchText,
+                onOpenPage: _openSearchPage,
               ),
             ),
           if (!selection.isSelectionMode)
@@ -221,14 +244,9 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
       ),
       floatingActionButton: selection.isSelectionMode
           ? FloatingActionButton.extended(
-              onPressed: () => showModalBottomSheet<void>(
-                context: context,
-                showDragHandle: true,
-                shape: const RoundedRectangleBorder(
-                  borderRadius: AppShape.sheetTopBorder,
-                ),
-                builder: (_) => const BatchActionSheet(),
-              ),
+              onPressed: selection.isProcessing || selection.count == 0
+                  ? null
+                  : () => showBatchActions(context),
               icon: const Icon(Icons.checklist_rounded),
               label: Text('操作 (${selection.count})'),
             )
@@ -260,11 +278,19 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
 
   // --- 顶栏 ---
 
+  bool _searchBelowToolbar(BuildContext context) =>
+      MediaQuery.sizeOf(context).width /
+          (MediaQuery.textScalerOf(context).scale(16) / 16) <
+      ResponsiveLayout.largeBreakpoint;
+
   PreferredSizeWidget _buildAppBar(CollectionFilterState filter) {
     final width = MediaQuery.sizeOf(context).width;
-    final compact = width < 600;
+    final compact = _searchBelowToolbar(context);
 
     return AppBar(
+      toolbarHeight: WindowMetrics.of(context).heightClass.isCompact
+          ? 48
+          : null,
       title: compact
           ? const Text('收藏库')
           : Row(
@@ -276,11 +302,12 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
                     alignment: Alignment.centerLeft,
                     child: SizedBox(
                       width: width < 840 ? 260 : 360,
-                      height: 40,
-                      child: _SearchEntry(
+                      child: CollectionSearchEntry(
                         controller: _searchController,
                         filter: filter,
                         onSubmit: _performSearch,
+                        onClose: _restoreSearchText,
+                        onOpenPage: _openSearchPage,
                       ),
                     ),
                   ),
@@ -307,23 +334,31 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
 
   PreferredSizeWidget _buildSelectionAppBar(BatchSelectionState selection) {
     return AppBar(
+      toolbarHeight: WindowMetrics.of(context).heightClass.isCompact
+          ? 48
+          : null,
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
       leading: IconButton(
+        tooltip: '退出选择',
         icon: const Icon(Icons.close_rounded),
-        onPressed: () =>
-            ref.read(batchSelectionProvider.notifier).exitSelectionMode(),
+        onPressed: selection.isProcessing
+            ? null
+            : () =>
+                  ref.read(batchSelectionProvider.notifier).exitSelectionMode(),
       ),
       title: Text('已选择 ${selection.count} 项'),
       actions: [
         IconButton(
           tooltip: '全选',
           icon: const Icon(Icons.select_all_rounded),
-          onPressed: () {
-            final items = ref.read(collectionProvider).value?.items ?? [];
-            ref
-                .read(batchSelectionProvider.notifier)
-                .selectAll(items.map((e) => e.id).toList());
-          },
+          onPressed: selection.isProcessing
+              ? null
+              : () {
+                  final items = ref.read(collectionProvider).value?.items ?? [];
+                  ref
+                      .read(batchSelectionProvider.notifier)
+                      .selectAll(items.map((e) => e.id).toList());
+                },
         ),
         const SizedBox(width: AppSpacing.xs),
       ],
@@ -333,7 +368,6 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   /// 高级筛选：Compact 使用接近全高的 bottom sheet，Expanded 使用 side sheet。
   Future<void> _openFilters() async {
     final filter = ref.read(collectionFilterProvider);
-    final metrics = WindowMetrics.of(context);
     final items = ref.read(collectionProvider).value?.items ?? const [];
     final availableTags = <String>{
       for (final item in items) ...item.tags,
@@ -351,39 +385,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
       availableTags: availableTags,
     );
 
-    final result = metrics.widthClass.supportsSupportingPane
-        ? await showDialog<Map<String, dynamic>>(
-            context: context,
-            builder: (_) => Align(
-              alignment: Alignment.centerRight,
-              child: SizedBox(
-                width: 420,
-                height: double.infinity,
-                child: Material(
-                  color: Theme.of(context).colorScheme.surface,
-                  child: dialog,
-                ),
-              ),
-            ),
-          )
-        : await showModalBottomSheet<Map<String, dynamic>>(
-            context: context,
-            isScrollControlled: true,
-            useSafeArea: true,
-            showDragHandle: true,
-            shape: const RoundedRectangleBorder(
-              borderRadius: AppShape.sheetTopBorder,
-            ),
-            builder: (context) => Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.viewInsetsOf(context).bottom,
-              ),
-              child: SizedBox(
-                height: MediaQuery.sizeOf(context).height * .85,
-                child: dialog,
-              ),
-            ),
-          );
+    final result = await showCollectionFilters(context, child: dialog);
 
     if (result == null || !mounted) return;
     ref
@@ -398,76 +400,6 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
           semanticTopK: result['semanticTopK'] as int?,
           semanticScope: result['semanticScope'] as String?,
         );
-  }
-}
-
-/// 统一搜索入口。
-///
-/// 搜索模式用文字说明"精确与全文"/"语义相关"，不再用图标让用户猜测，
-/// 也不再在顶栏放一个独立的模式切换按钮。
-class _SearchEntry extends ConsumerWidget {
-  const _SearchEntry({
-    required this.controller,
-    required this.filter,
-    required this.onSubmit,
-  });
-
-  final SearchController controller;
-  final CollectionFilterState filter;
-  final void Function(String query, {String? mode}) onSubmit;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final historyAsync = ref.watch(searchHistoryProvider);
-
-    return SearchAnchor(
-      searchController: controller,
-      viewHintText: '搜索标题、正文、作者或标签',
-      builder: (context, ctrl) => SearchBar(
-        controller: ctrl,
-        hintText: filter.searchQuery.isEmpty ? '搜索收藏库' : filter.searchQuery,
-        leading: const Icon(Icons.search_rounded),
-        padding: const WidgetStatePropertyAll(
-          EdgeInsets.symmetric(horizontal: AppSpacing.md),
-        ),
-        onTap: () {
-          ctrl.text = filter.searchQuery;
-          ctrl.openView();
-        },
-        onSubmitted: onSubmit,
-      ),
-      viewOnSubmitted: (value) => onSubmit(value),
-      suggestionsBuilder: (context, ctrl) {
-        final keyword = ctrl.text.trim();
-        final history = historyAsync.value ?? const <String>[];
-
-        return [
-          if (keyword.isNotEmpty) ...[
-            ListTile(
-              leading: const Icon(Icons.manage_search_rounded),
-              title: Text('精确与全文搜索 "$keyword"'),
-              subtitle: const Text('匹配标题、正文和标签中的字面内容'),
-              onTap: () => onSubmit(keyword, mode: 'keyword'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.psychology_alt_rounded),
-              title: Text('语义相关搜索 "$keyword"'),
-              subtitle: const Text('按含义查找相关内容，结果会标注命中来源'),
-              onTap: () => onSubmit(keyword, mode: 'semantic'),
-            ),
-            const Divider(height: 1),
-          ],
-          for (final item in history.where(
-            (h) => keyword.isEmpty || h.contains(keyword),
-          ))
-            ListTile(
-              leading: const Icon(Icons.history_rounded),
-              title: Text(item),
-              onTap: () => onSubmit(item),
-            ),
-        ];
-      },
-    );
   }
 }
 
@@ -587,11 +519,18 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InputChip(
-      avatar: icon == null ? null : Icon(icon, size: 16),
-      label: Text(label),
-      onDeleted: onRemove,
-      visualDensity: VisualDensity.compact,
+    return Tooltip(
+      message: label,
+      child: Chip(
+        avatar: icon == null ? null : Icon(icon, size: 16),
+        label: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 280),
+          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+        deleteButtonTooltipMessage: '移除筛选 $label',
+        onDeleted: onRemove,
+        visualDensity: VisualDensity.compact,
+      ),
     );
   }
 }

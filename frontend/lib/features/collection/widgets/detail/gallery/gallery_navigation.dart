@@ -1,8 +1,24 @@
 import 'package:flutter/material.dart';
 
 import '../../../../../core/media/media_asset.dart';
-import '../../../../../theme/design_tokens.dart';
 import 'full_screen_gallery.dart';
+
+/// Keep the source visible during drag dismissal while using platform back motion.
+class _GalleryRoute extends PageRoute<void>
+    with MaterialRouteTransitionMixin<void> {
+  _GalleryRoute({required this.builder});
+
+  final WidgetBuilder builder;
+
+  @override
+  Widget buildContent(BuildContext context) => builder(context);
+
+  @override
+  bool get maintainState => true;
+
+  @override
+  bool get opaque => false;
+}
 
 Future<void> pushFullScreenGallery({
   required BuildContext context,
@@ -16,29 +32,17 @@ Future<void> pushFullScreenGallery({
   void Function(int)? onPageChanged,
 }) {
   return Navigator.of(context, rootNavigator: true).push(
-    PageRouteBuilder(
-      opaque: false,
-      barrierColor: Colors.transparent,
-      transitionDuration: AppMotion.fast,
-      reverseTransitionDuration: AppMotion.fast,
-      pageBuilder: (context, animation, secondaryAnimation) =>
-          FullScreenGallery(
-            images: images,
-            fallbackUrlsByImage: fallbackUrlsByImage,
-            mediaAssetsByImage: mediaAssetsByImage,
-            initialIndex: initialIndex,
-            contentId: contentId,
-            contentColor: contentColor,
-            customHeroTag: customHeroTag,
-            onPageChanged: onPageChanged,
-          ),
-      transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: AppMotion.standardCurve,
-        );
-        return FadeTransition(opacity: curved, child: child);
-      },
+    _GalleryRoute(
+      builder: (context) => FullScreenGallery(
+        images: images,
+        fallbackUrlsByImage: fallbackUrlsByImage,
+        mediaAssetsByImage: mediaAssetsByImage,
+        initialIndex: initialIndex,
+        contentId: contentId,
+        contentColor: contentColor,
+        customHeroTag: customHeroTag,
+        onPageChanged: onPageChanged,
+      ),
     ),
   );
 }

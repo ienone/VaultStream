@@ -59,7 +59,9 @@ enum ContentTemplate {
 
   /// 正文是否需要限制可读宽度。
   bool get constrainsBodyWidth =>
-      this == ContentTemplate.article || this == ContentTemplate.imageNote;
+      this == ContentTemplate.article ||
+      this == ContentTemplate.imageNote ||
+      this == ContentTemplate.document;
 
   /// 媒体是否是该模板的主体。
   bool get mediaIsPrimary =>
@@ -138,6 +140,18 @@ ContentTemplate resolveContentTemplate({
 }
 
 extension ContentDetailTemplate on ContentDetail {
+  /// 平台为短帖截取的标题不再重复正文；人工标题始终保留。
+  bool get shortPostTitleRepeatsBody {
+    if (template != ContentTemplate.shortPost || manualEditFields.contains('title')) {
+      return false;
+    }
+    final heading = (title ?? '').trim()
+        .replaceFirst(RegExp(r'(?:…|\.{3})+$'), '').trimRight();
+    final text = (body ?? '').trim();
+    return heading.isNotEmpty && text.startsWith(heading);
+  }
+
+
   ContentTemplate get template =>
       resolveContentTemplate(layoutType: layoutType, contentType: contentType);
 

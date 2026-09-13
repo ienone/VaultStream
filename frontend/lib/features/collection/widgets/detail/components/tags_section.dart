@@ -1,93 +1,51 @@
 import 'package:flutter/material.dart';
 import '../../../models/content.dart';
+import '../../../../../theme/design_tokens.dart';
 
+/// 阅读中的主题标记；来源保留在提示中，不把静态标签伪装成筛选控件。
 class TagsSection extends StatelessWidget {
-  final ContentDetail detail;
-
   const TagsSection({super.key, required this.detail});
+
+  final ContentDetail detail;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final scheme = Theme.of(context).colorScheme;
+    final sourceTags = detail.sourceTags.map((tag) => tag.trim()).toSet();
+    final userTags = detail.tags.map((tag) => tag.trim()).toSet();
+    final tags = {...sourceTags, ...userTags}..remove('');
+    if (tags.isEmpty) return const SizedBox.shrink();
 
-    final bool hasUserTags = detail.tags.isNotEmpty;
-    final bool hasSourceTags = detail.sourceTags.isNotEmpty;
-
-    if (!hasUserTags && !hasSourceTags) {
-      return const SizedBox.shrink();
-    }
-
-    final content = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Wrap(
+      key: const ValueKey('detail-tags-module'),
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
       children: [
-        // 平台原生标签（source_tags）
-        if (hasSourceTags) ...[
-          Text(
-            '平台标签',
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: colorScheme.outline,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: detail.sourceTags
-                .map(
-                  (tag) => Chip(
-                    label: Text('#$tag'),
-                    labelStyle: theme.textTheme.labelSmall?.copyWith(
-                      color: colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    visualDensity: VisualDensity.compact,
-                    side: BorderSide.none,
-                    backgroundColor: colorScheme.primary.withValues(alpha: 0.1),
-                    shape: StadiumBorder(),
-                  ),
-                )
-                .toList(),
-          ),
-        ],
-
-        // 间隔
-        if (hasSourceTags && hasUserTags) const SizedBox(height: 16),
-
-        // 用户自定义标签
-        if (hasUserTags) ...[
-          if (hasSourceTags)
-            Text(
-              '自定义标签',
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: colorScheme.outline,
-                fontWeight: FontWeight.w500,
+        for (final tag in tags)
+          Tooltip(
+            message: sourceTags.contains(tag)
+                ? userTags.contains(tag)
+                    ? '平台标签 · 自定义标签'
+                    : '平台标签'
+                : '自定义标签',
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.sm,
+                vertical: AppSpacing.xs,
+              ),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(AppShape.pill),
+              ),
+              child: Text(
+                tag.startsWith('#') ? tag : '#$tag',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
               ),
             ),
-          if (hasSourceTags) const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: detail.tags
-                .map(
-                  (tag) => Chip(
-                    label: Text(tag),
-                    labelStyle: theme.textTheme.labelSmall,
-                    visualDensity: VisualDensity.compact,
-                    side: BorderSide.none,
-                    backgroundColor: colorScheme.surfaceContainerHigh,
-                  ),
-                )
-                .toList(),
           ),
-        ],
       ],
-    );
-
-    return KeyedSubtree(
-      key: const ValueKey('detail-tags-module'),
-      child: content,
     );
   }
 }

@@ -1,5 +1,4 @@
-import 'dart:ui';
-
+import '../../../../core/widgets/media_image_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,6 +8,7 @@ import '../../../../core/media/media_manifest_client.dart';
 import '../../../../core/media/media_source_session.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/widgets/network_thumbnail.dart';
+import '../../../../core/widgets/media_overlay_surface.dart';
 import '../../../../core/widgets/platform_badge.dart';
 import '../../../../theme/design_tokens.dart';
 import '../../models/content.dart';
@@ -24,6 +24,8 @@ import 'components/rich_content.dart';
 import 'components/tags_section.dart';
 import 'components/unified_stats.dart';
 import 'detail_sections.dart';
+import 'document_reader.dart';
+import 'gallery/gallery_navigation.dart';
 
 /// 模板渲染所需的上下文。
 class TemplateContext {
@@ -35,6 +37,8 @@ class TemplateContext {
     required this.imageFallbacks,
     required this.imageAssets,
     required this.onImageTap,
+    this.selectedImageIndex = 0,
+    this.onImagePageChanged,
     required this.onReParse,
     this.onResolveParseCandidate,
     this.initialPlaybackPosition,
@@ -50,6 +54,8 @@ class TemplateContext {
   final Map<String, List<String>> imageFallbacks;
   final Map<String, MediaAsset> imageAssets;
   final void Function(int index) onImageTap;
+  final int selectedImageIndex;
+  final ValueChanged<int>? onImagePageChanged;
   final VoidCallback onReParse;
   final Future<void> Function(String field, String action, String? mergedValue)?
   onResolveParseCandidate;
@@ -83,7 +89,7 @@ class ContentTemplateBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return switch (context_.detail.template) {
+    final body = switch (context_.detail.template) {
       ContentTemplate.article => _ArticleBody(ctx: context_),
       ContentTemplate.imageNote => _ImageNoteBody(ctx: context_),
       ContentTemplate.shortPost => _ShortPostBody(ctx: context_),
@@ -95,12 +101,22 @@ class ContentTemplateBody extends StatelessWidget {
       ContentTemplate.profile => _ProfileBody(ctx: context_),
       ContentTemplate.bookmark => _BookmarkBody(ctx: context_),
     };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (context_.detail.hasSummary) ...[
+          ContentSummaryBlock(detail: context_.detail),
+          const SizedBox(height: AppSpacing.lg),
+        ],
+        body,
+      ],
+    );
   }
 }
 
 /// 媒体型内容的桌面阅读器：媒体占据左侧主舞台，右侧集中承载身份、
 /// 标题、正文、统计和标签，避免再叠加第三列辅助栏。
-class ImmersiveMediaDetail extends StatefulWidget {
+class ImmersiveMediaDetail extends StatelessWidget {
   const ImmersiveMediaDetail({
     super.key,
     required this.context_,
@@ -111,44 +127,10 @@ class ImmersiveMediaDetail extends StatefulWidget {
   final Widget Function(Widget child) sharedHeaderBuilder;
 
   @override
-  State<ImmersiveMediaDetail> createState() => _ImmersiveMediaDetailState();
-}
-
-class _ImmersiveMediaDetailState extends State<ImmersiveMediaDetail>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _entryController = AnimationController(
-    vsync: this,
-    duration: AppMotion.containerTransform,
-  );
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _entryController.value = 1;
-    } else if (!_entryController.isAnimating && _entryController.value == 0) {
-      _entryController.forward();
-    }
-  }
-
-  @override
-  void dispose() {
-    _entryController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final ctx = widget.context_;
+    final ctx = context_;
     final scheme = Theme.of(context).colorScheme;
-    final normalizedTitle = (ctx.detail.title ?? '').trim();
-    final normalizedBody = (ctx.detail.body ?? '').trim();
-    final titleRepeatsBody =
-        ctx.detail.template == ContentTemplate.shortPost &&
-        normalizedTitle.isNotEmpty &&
-        normalizedBody.isNotEmpty &&
-        (normalizedTitle == normalizedBody ||
-            normalizedBody.startsWith(normalizedTitle));
+    final titleRepeatsBody = ctx.detail.shortPostTitleRepeatsBody;
     return Row(
       key: const ValueKey('immersive-media-detail'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -157,79 +139,60 @@ class _ImmersiveMediaDetailState extends State<ImmersiveMediaDetail>
         VerticalDivider(width: 1, color: scheme.outlineVariant),
         Expanded(
           flex: 8,
-          child: FadeTransition(
-            key: const ValueKey('immersive-media-side-reveal'),
-            opacity: CurvedAnimation(
-              parent: _entryController,
-              curve: const Interval(0.48, 1, curve: AppMotion.standardCurve),
-            ),
-            child: SlideTransition(
-              position:
-                  Tween<Offset>(
-                    begin: const Offset(0.045, 0),
-                    end: Offset.zero,
-                  ).animate(
-                    CurvedAnimation(
-                      parent: _entryController,
-                      curve: const Interval(
-                        0.42,
-                        1,
-                        curve: AppMotion.standardCurve,
+          child: ColoredBox(
+            color: scheme.surface,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(AppSpacing.xl),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  sharedHeaderBuilder(
+                    Material(
+                      key: const ValueKey('immersive-media-shared-header'),
+                      color: scheme.surface,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: AppShape.cardBorder,
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppSpacing.sm,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            PlatformBadge(platform: ctx.detail.platform),
+                            const SizedBox(height: AppSpacing.md),
+                            ContentSourceLine(
+                              detail: ctx.detail,
+                              showPlatform: false,
+                              showOriginalAction: false,
+                            ),
+                            if (!titleRepeatsBody) ...[
+                              const SizedBox(height: AppSpacing.lg),
+                              ContentTitleBlock(
+                                detail: ctx.detail,
+                                style: Theme.of(context).textTheme.titleLarge
+                                    ?.copyWith(fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
-              child: ColoredBox(
-                color: scheme.surface,
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(AppSpacing.xl),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      widget.sharedHeaderBuilder(
-                        Material(
-                          key: const ValueKey('immersive-media-shared-header'),
-                          color: scheme.surfaceContainerLow,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: AppShape.cardBorder,
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: Padding(
-                            padding: const EdgeInsets.all(AppSpacing.md),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                PlatformBadge(platform: ctx.detail.platform),
-                                const SizedBox(height: AppSpacing.md),
-                                ContentSourceLine(
-                                  detail: ctx.detail,
-                                  showPlatform: false,
-                                  showOriginalAction: false,
-                                ),
-                                if (!titleRepeatsBody) ...[
-                                  const SizedBox(height: AppSpacing.lg),
-                                  ContentTitleBlock(
-                                    detail: ctx.detail,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleLarge
-                                        ?.copyWith(fontWeight: FontWeight.w600),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      _ImmersiveTextBody(ctx: ctx),
-                      const SizedBox(height: AppSpacing.xl),
-                      ContentSupportingSections(
-                        detail: ctx.detail,
-                        onResolveParseCandidate: ctx.onResolveParseCandidate,
-                      ),
-                    ],
+                  const SizedBox(height: AppSpacing.md),
+                  if (ctx.detail.hasSummary) ...[
+                    ContentSummaryBlock(detail: ctx.detail),
+                    const SizedBox(height: AppSpacing.lg),
+                  ],
+                  _ImmersiveTextBody(ctx: ctx),
+                  const SizedBox(height: AppSpacing.xl),
+                  ContentSupportingSections(
+                    detail: ctx.detail,
+                    onResolveParseCandidate: ctx.onResolveParseCandidate,
                   ),
-                ),
+                ],
               ),
             ),
           ),
@@ -270,9 +233,24 @@ class _ImmersiveMediaViewer extends StatefulWidget {
 }
 
 class _ImmersiveMediaViewerState extends State<_ImmersiveMediaViewer> {
-  late final PageController _controller = PageController();
-  int _index = 0;
+  late int _index = widget.ctx.selectedImageIndex;
+  late final PageController _controller = PageController(initialPage: _index);
   bool _hovered = false;
+
+  @override
+  void didUpdateWidget(covariant _ImmersiveMediaViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final index = widget.ctx.selectedImageIndex;
+    if (_index != index) {
+      _index = index;
+      if (_controller.hasClients) _controller.jumpToPage(index);
+    }
+  }
+
+  void _pageChanged(int index) {
+    setState(() => _index = index);
+    widget.ctx.onImagePageChanged?.call(index);
+  }
 
   @override
   void dispose() {
@@ -320,11 +298,12 @@ class _ImmersiveMediaViewerState extends State<_ImmersiveMediaViewer> {
             PageView.builder(
               controller: _controller,
               itemCount: ctx.images.length,
-              onPageChanged: (index) => setState(() => _index = index),
+              onPageChanged: _pageChanged,
               itemBuilder: (context, index) {
                 final image = ctx.images[index];
-                return GestureDetector(
-                  onTap: () => ctx.onImageTap(index),
+                return MediaImageButton(
+                  label: '查看第 ${index + 1} 张图片，共 ${ctx.images.length} 张',
+                  onPressed: () => ctx.onImageTap(index),
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(
                       AppSpacing.md,
@@ -393,9 +372,7 @@ class _PageCounter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return _GlassMediaSurface(
-      borderRadius: BorderRadius.circular(AppShape.pill),
+    return MediaOverlaySurface(
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.sm,
@@ -405,7 +382,7 @@ class _PageCounter extends StatelessWidget {
           '${index + 1} / $total',
           style: Theme.of(
             context,
-          ).textTheme.labelMedium?.copyWith(color: scheme.onPrimaryContainer),
+          ).textTheme.labelMedium?.copyWith(color: Colors.white),
         ),
       ),
     );
@@ -435,14 +412,14 @@ class _HoverPageButton extends StatelessWidget {
         child: IgnorePointer(
           ignoring: !visible,
           child: AnimatedOpacity(
-            duration: AppMotion.stateChange,
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : AppMotion.stateChange,
             opacity: visible ? 1 : 0,
-            child: _GlassMediaSurface(
-              borderRadius: BorderRadius.circular(AppRadius.xl),
+            child: MediaOverlaySurface(
               child: IconButton(
                 tooltip: icon == Icons.chevron_left_rounded ? '上一张' : '下一张',
                 onPressed: onPressed,
-                color: Theme.of(context).colorScheme.onPrimaryContainer,
                 icon: Icon(icon),
               ),
             ),
@@ -471,9 +448,9 @@ class _ImmersiveThumbnailStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return _GlassMediaSurface(
+    return MediaOverlaySurface(
       key: const ValueKey('immersive-media-thumbnails'),
-      borderRadius: BorderRadius.circular(AppRadius.lg),
+      shape: const RoundedRectangleBorder(borderRadius: AppShape.paneBorder),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420, maxHeight: 68),
         child: ListView.separated(
@@ -491,14 +468,16 @@ class _ImmersiveThumbnailStrip extends StatelessWidget {
                 borderRadius: BorderRadius.circular(AppRadius.sm),
                 onTap: () => onSelected(index),
                 child: AnimatedContainer(
-                  duration: AppMotion.stateChange,
+                  duration: MediaQuery.disableAnimationsOf(context)
+                      ? Duration.zero
+                      : AppMotion.stateChange,
                   width: selected ? 58 : 48,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(AppRadius.sm),
                     border: Border.all(
                       color: selected
                           ? scheme.primary
-                          : scheme.onPrimaryContainer.withValues(alpha: 0.16),
+                          : Colors.white.withValues(alpha: 0.24),
                       width: selected ? 2 : 0.5,
                     ),
                   ),
@@ -514,39 +493,6 @@ class _ImmersiveThumbnailStrip extends StatelessWidget {
               ),
             );
           },
-        ),
-      ),
-    );
-  }
-}
-
-class _GlassMediaSurface extends StatelessWidget {
-  const _GlassMediaSurface({
-    super.key,
-    required this.child,
-    required this.borderRadius,
-  });
-
-  final Widget child;
-  final BorderRadius borderRadius;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return ClipRRect(
-      borderRadius: borderRadius,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: scheme.primaryContainer.withValues(alpha: 0.35),
-            borderRadius: borderRadius,
-            border: Border.all(
-              color: scheme.onPrimaryContainer.withValues(alpha: 0.15),
-              width: 0.5,
-            ),
-          ),
-          child: child,
         ),
       ),
     );
@@ -692,22 +638,40 @@ class _ArticleBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final inlineImages =
+        ContentParser.extractMarkdownImageUrls(
+              ContentParser.getMarkdownContent(ctx.detail),
+            )
+            .expand(
+              (url) => ContentParser.imageCandidatesForUrl(ctx.detail, url),
+            )
+            .toSet();
+    final attachments = ctx.images
+        .where((url) => !inlineImages.contains(url))
+        .toList(growable: false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _BodyText(ctx: ctx, hideMedia: false),
-        if (ctx.images.isNotEmpty) ...[
+        _BodyText(ctx: ctx),
+        if (attachments.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.xl),
-          const DetailSectionHeader(title: '文内媒体'),
-          _MediaBlock(ctx: ctx),
+          const DetailSectionHeader(title: '其他图片'),
+          MediaGrid(
+            images: attachments,
+            fallbackUrlsByImage: ctx.imageFallbacks,
+            mediaAssetsByImage: ctx.imageAssets,
+            contentId: ctx.detail.id,
+            onImageTap: (index) =>
+                ctx.onImageTap(ctx.images.indexOf(attachments[index])),
+            isLandscape: false,
+          ),
         ],
       ],
     );
   }
 }
 
-/// 用户上传的原始文档或附件。这里不伪装成已经完成 OCR 的正文，
-/// 只展示保存说明并提供签名原文件入口。
+/// 原文件、用户说明与按页提取的 PDF 文本分别呈现。
 class _DocumentBody extends StatelessWidget {
   const _DocumentBody({required this.ctx});
 
@@ -715,21 +679,14 @@ class _DocumentBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final attachments = ctx.detail.mediaAssets
-        .where(
-          (asset) =>
-              (asset.mediaType == MediaType.document ||
-                  asset.mediaType == MediaType.other) &&
-              asset.sources.isNotEmpty,
-        )
-        .toList(growable: false);
+    final attachments = ctx.detail.mediaAssets;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (ctx.detail.hasBody) ...[
           const DetailSectionHeader(title: '保存说明'),
-          _BodyText(ctx: ctx),
+          SelectionArea(child: _BodyText(ctx: ctx)),
           const SizedBox(height: AppSpacing.lg),
         ],
         const DetailSectionHeader(title: '原始文件'),
@@ -741,18 +698,40 @@ class _DocumentBody extends StatelessWidget {
           )
         else
           ...attachments.map(
-            (asset) => _DocumentAttachmentTile(
+            (asset) => Column(
               key: ValueKey('document-attachment-${asset.id}'),
-              asset: asset,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _DocumentAttachmentTile(asset: asset),
+                if (asset.sources.isNotEmpty &&
+                    (asset.mediaType == MediaType.video ||
+                        asset.mediaType == MediaType.audio))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+                    child: GlobalPlaybackSurface(
+                      request: _playbackRequest(ctx, (
+                        asset: asset,
+                        urls: asset.sources
+                            .map((source) => source.url)
+                            .toList(),
+                      ), audioOnly: asset.mediaType == MediaType.audio),
+                      activateOnMount: ctx.initialMediaAssetId == asset.id,
+                      initialPosition: ctx.initialMediaAssetId == asset.id
+                          ? ctx.initialPlaybackPosition
+                          : null,
+                    ),
+                  ),
+              ],
             ),
           ),
+        DocumentReader(contentId: ctx.detail.id),
       ],
     );
   }
 }
 
 class _DocumentAttachmentTile extends ConsumerStatefulWidget {
-  const _DocumentAttachmentTile({super.key, required this.asset});
+  const _DocumentAttachmentTile({required this.asset});
 
   final MediaAsset asset;
 
@@ -839,12 +818,7 @@ class _DocumentAttachmentTileState
       child: ListTile(
         leading: const Icon(Icons.description_outlined),
         title: Text(name),
-        subtitle: Text(
-          [
-            if (metadata.isNotEmpty) metadata,
-            if (_error != null) _error!,
-          ].join('\n'),
-        ),
+        subtitle: Text([if (metadata.isNotEmpty) metadata, ?_error].join('\n')),
         trailing: _busy
             ? const SizedBox.square(
                 dimension: 20,
@@ -869,23 +843,55 @@ String _formatFileSize(int bytes) {
   return '${mib.toStringAsFixed(mib < 10 ? 1 : 0)} MB';
 }
 
-class _ImageNoteMediaViewer extends StatefulWidget {
-  const _ImageNoteMediaViewer({required this.ctx});
+class _PagedMediaViewer extends StatefulWidget {
+  const _PagedMediaViewer({required this.ctx});
 
   final TemplateContext ctx;
 
   @override
-  State<_ImageNoteMediaViewer> createState() => _ImageNoteMediaViewerState();
+  State<_PagedMediaViewer> createState() => _PagedMediaViewerState();
 }
 
-class _ImageNoteMediaViewerState extends State<_ImageNoteMediaViewer> {
-  late final PageController _controller = PageController();
-  int _index = 0;
+class _PagedMediaViewerState extends State<_PagedMediaViewer> {
+  late int _index = widget.ctx.selectedImageIndex;
+  late final PageController _controller = PageController(initialPage: _index);
+
+  @override
+  void didUpdateWidget(covariant _PagedMediaViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final index = widget.ctx.selectedImageIndex;
+    if (_index != index) {
+      _index = index;
+      if (_controller.hasClients) _controller.jumpToPage(index);
+    }
+  }
+
+  void _pageChanged(int index) {
+    setState(() => _index = index);
+    widget.ctx.onImagePageChanged?.call(index);
+  }
 
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  void _openFullScreen() {
+    final ctx = widget.ctx;
+    pushFullScreenGallery(
+      context: context,
+      images: ctx.images,
+      fallbackUrlsByImage: ctx.imageFallbacks,
+      mediaAssetsByImage: ctx.imageAssets,
+      initialIndex: _index,
+      contentId: ctx.detail.id,
+      onPageChanged: (index) {
+        if (!mounted) return;
+        _pageChanged(index);
+        if (_controller.hasClients) _controller.jumpToPage(index);
+      },
+    );
   }
 
   @override
@@ -904,11 +910,12 @@ class _ImageNoteMediaViewerState extends State<_ImageNoteMediaViewer> {
                 PageView.builder(
                   controller: _controller,
                   itemCount: ctx.images.length,
-                  onPageChanged: (index) => setState(() => _index = index),
+                  onPageChanged: _pageChanged,
                   itemBuilder: (context, index) {
                     final image = ctx.images[index];
-                    return GestureDetector(
-                      onTap: () => ctx.onImageTap(index),
+                    return MediaImageButton(
+                      label: '查看第 ${index + 1} 张图片，共 ${ctx.images.length} 张',
+                      onPressed: _openFullScreen,
                       child: NetworkThumbnail(
                         imageUrl: image,
                         fallbackUrls: ctx.imageFallbacks[image] ?? const [],
@@ -918,6 +925,15 @@ class _ImageNoteMediaViewerState extends State<_ImageNoteMediaViewer> {
                       ),
                     );
                   },
+                ),
+                Positioned(
+                  bottom: AppSpacing.sm,
+                  right: AppSpacing.sm,
+                  child: FilledButton.tonalIcon(
+                    onPressed: _openFullScreen,
+                    icon: const Icon(Icons.fullscreen_rounded),
+                    label: const Text('查看大图'),
+                  ),
                 ),
                 if (ctx.images.length > 1)
                   Positioned(
@@ -1009,7 +1025,7 @@ class _ImageNoteBody extends StatelessWidget {
               key: const ValueKey('image-note-split-layout'),
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(flex: 6, child: _ImageNoteMediaViewer(ctx: ctx)),
+                Expanded(flex: 6, child: _PagedMediaViewer(ctx: ctx)),
                 const SizedBox(width: AppSpacing.xl),
                 Expanded(
                   flex: 4,
@@ -1044,7 +1060,7 @@ class _ImageNoteStack extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (ctx.images.isNotEmpty) ...[
-          _MediaBlock(ctx: ctx),
+          _PagedMediaViewer(ctx: ctx),
           if (ctx.detail.hasBody) const SizedBox(height: AppSpacing.lg),
         ],
         if (ctx.detail.hasBody || ctx.images.isEmpty)
@@ -1213,7 +1229,10 @@ class _GalleryBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _MediaBlock(ctx: ctx, emptyMessage: '这个图集没有可显示的图片'),
+        if (ctx.images.isNotEmpty)
+          _PagedMediaViewer(ctx: ctx)
+        else
+          _MediaBlock(ctx: ctx, emptyMessage: '这个图集没有可显示的图片'),
         if (ctx.detail.hasBody) ...[
           const SizedBox(height: AppSpacing.lg),
           const DetailSectionHeader(title: '说明'),
@@ -1499,10 +1518,6 @@ class ContentSupportingSections extends StatelessWidget {
         ),
         if (detail.manualEditFields.isNotEmpty)
           const SizedBox(height: AppSpacing.md),
-        if (detail.hasSummary) ...[
-          ContentSummaryBlock(detail: detail),
-          const SizedBox(height: AppSpacing.md),
-        ],
         if (showStats) ...[UnifiedStats(detail: detail)],
         if (hasTags) ...[
           const SizedBox(height: AppSpacing.md),

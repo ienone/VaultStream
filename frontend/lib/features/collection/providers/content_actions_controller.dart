@@ -7,6 +7,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/network/api_client.dart';
 import '../models/processing_status.dart';
 import 'collection_provider.dart';
+import 'document_text_provider.dart';
 
 part 'content_actions_controller.g.dart';
 
@@ -127,6 +128,17 @@ class ContentActions extends _$ContentActions {
   }
 
   // --- 内容级动作 ---
+
+  Future<ContentActionResult> extractDocumentText(int contentId) {
+    return _run(contentId, 'extract_document', () async {
+      final response = await ref
+          .read(apiClientProvider)
+          .post('/contents/$contentId/document-text/extract');
+      final runId = _requiredRunIdOf(response.data);
+      ref.invalidate(documentTextProvider(contentId));
+      return ContentActionResult.success('已开始提取 PDF 正文', runId: runId);
+    });
+  }
 
   /// 从统一捕获入口保存分享链接。
   Future<ContentActionResult> createShare({

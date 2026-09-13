@@ -5,7 +5,7 @@ import 'package:frontend/core/utils/safe_url_launcher.dart';
 import '../../../../../theme/design_tokens.dart';
 import '../../../models/content.dart';
 import '../../../utils/content_parser.dart';
-import '../markdown/markdown_config.dart';
+import '../../../../../core/widgets/markdown_reading.dart';
 import 'media_gallery_item.dart';
 
 class RichContent extends StatelessWidget {
@@ -40,9 +40,9 @@ class RichContent extends StatelessWidget {
     final List<Widget> children = [];
 
     if (markdown.isNotEmpty) {
-      final style = _getMarkdownStyle(theme);
+      final style = readingMarkdownStyle(context);
       // 从 Markdown 文本中提取图片标识，只保留能匹配统一媒体资产的条目。
-      final inlineImageUrls = _extractInlineImageUrls(markdown)
+      final inlineImageUrls = ContentParser.extractMarkdownImageUrls(markdown)
           .map(
             (url) =>
                 ContentParser.imageCandidatesForUrl(detail, url).firstOrNull,
@@ -55,6 +55,8 @@ class RichContent extends StatelessWidget {
           child: MarkdownBody(
             data: markdown,
             selectable: true,
+            // 小红书正文是保留原始段落的纯文本，单换行不是排版软换行。
+            softLineBreak: detail.platform == 'xiaohongshu',
             onTapLink: (text, href, title) async {
               await SafeUrlLauncher.openExternal(context, href);
             },
@@ -228,59 +230,6 @@ class RichContent extends StatelessWidget {
     _markdownCache[cacheKey] = processed;
 
     return processed;
-  }
-
-  MarkdownStyleSheet _getMarkdownStyle(ThemeData theme) {
-    return MarkdownStyleSheet.fromTheme(theme).copyWith(
-      p: theme.textTheme.bodyLarge?.copyWith(
-        height: 1.7,
-        color: theme.colorScheme.onSurface,
-      ),
-      h1: theme.textTheme.headlineMedium?.copyWith(
-        fontWeight: FontWeight.w700,
-        color: theme.colorScheme.onSurface,
-      ),
-      h2: theme.textTheme.headlineSmall?.copyWith(
-        fontWeight: FontWeight.w700,
-        color: theme.colorScheme.onSurface,
-      ),
-      h3: theme.textTheme.titleLarge?.copyWith(
-        fontWeight: FontWeight.bold,
-        color: theme.colorScheme.onSurface,
-      ),
-      blockSpacing: AppSpacing.md,
-      listBullet: theme.textTheme.bodyLarge?.copyWith(
-        color: theme.colorScheme.primary,
-        fontWeight: FontWeight.bold,
-      ),
-      blockquote: theme.textTheme.bodyMedium?.copyWith(
-        color: theme.colorScheme.onSurfaceVariant,
-        height: 1.65,
-        fontStyle: FontStyle.italic,
-      ),
-      blockquotePadding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 14,
-      ),
-      blockquoteDecoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: AppShape.cardMediaBorder,
-      ),
-      code: theme.textTheme.bodyMedium?.copyWith(
-        backgroundColor: Colors.transparent,
-        fontFamily: 'monospace',
-      ),
-      codeblockPadding: EdgeInsets.zero,
-      codeblockDecoration: const BoxDecoration(),
-    );
-  }
-
-  /// 从 Markdown 文本中按顺序提取 inline 图片标识。
-  /// 这里只用于匹配已经归档的媒体资产，不直接请求正文里的原始 URL。
-  List<String> _extractInlineImageUrls(String markdown) {
-    if (markdown.isEmpty) return const [];
-    final regex = RegExp(r'!\[.*?\]\(([^)]+)\)');
-    return regex.allMatches(markdown).map((m) => m.group(1)!.trim()).toList();
   }
 
   Widget _buildMarkdownImage(
