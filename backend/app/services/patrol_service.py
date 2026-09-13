@@ -5,10 +5,12 @@ AI 巡逻评分服务
 """
 import json
 from typing import Optional
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from langchain_core.messages import SystemMessage, HumanMessage
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.core.llm_factory import LLMFactory
 from app.core.logging import logger
@@ -44,7 +46,6 @@ Consider:
 _CONTENT_ANALYSIS_USER = """Analyze the following content and provide a JSON response with:
 - score (0-10): Importance score
 - reason: Brief explanation for the score
-- summary: One-sentence summary of the content
 - tags: Relevant topic tags (3-5 tags)
 
 Content:
@@ -58,9 +59,15 @@ Respond with valid JSON only:
 {{
   "score": <number>,
   "reason": "<explanation>",
-  "summary": "<one-sentence-summary>",
   "tags": ["<tag1>", "<tag2>"]
 }}"""
+
+
+class PatrolScore(BaseModel):
+    model_config = ConfigDict(strict=True)
+    score: float = Field(ge=0, le=10, allow_inf_nan=False)
+    reason: str
+    tags: list[str]
 
 
 class PatrolService:
@@ -97,25 +104,17 @@ class PatrolService:
         """Parse JSON response, return None on failure."""
         try:
             data = json.loads(response_text)
-            if not isinstance(data, dict):
-                return None
-            if "score" not in data:
-                return None
-            return {
-                "score": float(data["score"]),
-                "reason": str(data.get("reason", "")),
-                "summary": str(data.get("summary", "")),
-                "tags": list(data.get("tags", [])),
-            }
-        except (json.JSONDecodeError, ValueError, TypeError) as e:
-            logger.warning(f"巡逻评分响应解析失败: {e}")
+            return PatrolScore.model_validate(data).model_dump()
+        except (json.JSONDecodeError, ValidationError, ValueError, TypeError):
+            logger.warning("巡逻评分响应不符合分数或字段约定")
             return None
 
-    async def score_item(self, content: Content, interest_profile: str = "") -> bool:
+    async def score_item(self, content: Content, interest_profile: str = "", *, db: AsyncSession) -> bool:
         """
         Score a single discovery item.
         Returns True if scoring succeeded.
         """
+        revision = content.updated_at
         llm = await LLMFactory.get_text_llm()
         if llm is None:
             logger.warning("巡逻评分: LLM 不可用，跳过评分")
@@ -139,18 +138,19 @@ class PatrolService:
             logger.warning(f"巡逻评分响应解析失败, content_id={content.id}")
             return False
 
-        # Update content fields
-        content.ai_score = parsed["score"]
-        content.ai_reason = parsed["reason"]
-        content.summary = parsed["summary"]
-        content.ai_tags = parsed["tags"]
-
-        # State transition
         threshold = await self._get_score_threshold()
-        if parsed["score"] >= threshold:
-            content.discovery_state = DiscoveryState.VISIBLE
-        else:
-            content.discovery_state = DiscoveryState.IGNORED
+        state = DiscoveryState.VISIBLE if parsed["score"] >= threshold else DiscoveryState.IGNORED
+        with db.no_autoflush:
+            result = await db.execute(update(Content).where(
+                Content.id == content.id, Content.updated_at == revision,
+            ).values(ai_score=parsed["score"], ai_reason=parsed["reason"],
+                     ai_tags=parsed["tags"], discovery_state=state
+            ).execution_options(synchronize_session=False))
+        if result.rowcount != 1:
+            await db.commit()
+            raise StaleDataError("评分期间内容或处理状态已变化，请刷新后重试")
+        await db.commit()
+        await db.refresh(content)
 
         logger.info(
             f"巡逻评分完成: content_id={content.id}, "
@@ -159,7 +159,7 @@ class PatrolService:
         return True
 
     async def score_batch(
-        self, items: list[Content], interest_profile: str = "", batch_size: int = 10
+        self, items: list[Content], interest_profile: str = "", batch_size: int = 10, *, db: AsyncSession
     ) -> int:
         """
         Score multiple items sequentially.
@@ -169,7 +169,10 @@ class PatrolService:
         size = max(1, batch_size)
         for start in range(0, len(items), size):
             for item in items[start:start + size]:
-                ok = await self.score_item(item, interest_profile=interest_profile)
+                try:
+                    ok = await self.score_item(item, interest_profile=interest_profile, db=db)
+                except StaleDataError:
+                    ok = False
                 if ok:
                     scored += 1
         return scored
@@ -198,21 +201,26 @@ class PatrolService:
             interest_profile = await self._get_interest_profile()
 
             logger.info(f"巡逻评分: 开始处理 {len(items)} 条待评分内容")
-            scored = await self.score_batch(items, interest_profile=interest_profile)
+            scored = await self.score_batch(items, interest_profile=interest_profile, db=db)
 
             await db.commit()
-            await record_task_run_success(
-                "discovery_patrol",
-                run_id,
+            metadata = dict(
                 trigger="auto",
                 candidate_count=len(items),
                 scored_count=scored,
                 failed_count=max(0, len(items) - scored),
                 interest_profile_present=bool(interest_profile.strip()),
             )
+            if scored < len(items):
+                await record_task_run_error(
+                    "discovery_patrol", run_id, "部分候选评分失败，未评分候选保留待处理", **metadata,
+                )
+            else:
+                await record_task_run_success("discovery_patrol", run_id, **metadata)
             logger.info(f"巡逻评分: 完成, 成功 {scored}/{len(items)}")
             return scored
         except Exception as e:
+            await db.rollback()
             await record_task_run_error(
                 "discovery_patrol",
                 run_id,

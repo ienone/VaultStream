@@ -46,8 +46,7 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
     async def fetch(self, last_cursor: Optional[str] = None) -> tuple[list[DiscoveryItem], Optional[str]]:
         feed_url = self._expand_env_vars(self.config.get("url", ""))
         if not feed_url:
-            logger.warning("RSS source config missing 'url'")
-            return [], last_cursor
+            raise ValueError("RSS 来源未配置订阅地址")
 
         items: list[DiscoveryItem] = []
         new_cursor = last_cursor
@@ -67,7 +66,9 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
             raw_nodes = self._extract_raw_nodes(response.content)
 
             if feed.bozo and not feed.entries:
-                logger.warning("RSS formatting error (Bozo) for %s: %s", feed_url, feed.bozo_exception)
+                raise ValueError("订阅响应不是有效的 RSS/Atom 内容")
+            if not feed.version:
+                raise ValueError("订阅响应不是 RSS/Atom 格式")
 
             for entry_index, entry in enumerate(feed.entries):
                 entry_id: str = str(entry.get("id") or entry.get("link") or "")
@@ -209,7 +210,16 @@ class RSSDiscoveryScraper(BaseDiscoveryScraper):
                     new_cursor = first_id
 
         except Exception as e:
-            logger.warning("RSS parse error for %s: %s", feed_url, e)
+            # URLs can contain private feed credentials. Only expose a bounded
+            # diagnosis while allowing the caller to record a failed run.
+            if isinstance(e, httpx.HTTPStatusError):
+                message = f"RSS 抓取失败（HTTP {e.response.status_code}）"
+            elif isinstance(e, httpx.RequestError):
+                message = "RSS 来源连接失败，请检查网络或订阅地址"
+            else:
+                message = "RSS 内容解析失败，请检查订阅格式"
+            logger.warning("RSS fetch failed: {}", type(e).__name__)
+            raise RuntimeError(message) from e
 
         return items, new_cursor
 
