@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/layout/responsive_layout.dart';
 import '../../core/network/api_client.dart';
+import '../../core/widgets/app_filter_menu.dart';
+import '../../routing/app_navigation.dart';
+import '../../theme/design_tokens.dart';
 import '../collection/providers/search_history_provider.dart';
 import 'search_models.dart';
 import 'search_provider.dart';
@@ -26,6 +29,7 @@ class SearchPage extends ConsumerStatefulWidget {
 
 class _SearchPageState extends ConsumerState<SearchPage> {
   late final TextEditingController _controller;
+  final FocusNode _queryFocus = FocusNode(debugLabel: 'global-search-query');
   late final ScrollController _resultsScrollController;
   late String _kind;
   late String _contentScope;
@@ -47,6 +51,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   @override
   void dispose() {
     _controller.dispose();
+    _queryFocus.dispose();
     _resultsScrollController.dispose();
     super.dispose();
   }
@@ -76,7 +81,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     if (query.isEmpty) {
       _resetResultScroll();
       setState(() => _request = null);
-      context.go(
+      context.replace(
         Uri(
           path: "/search",
           queryParameters: {"kind": _kind, "content_scope": _contentScope},
@@ -88,7 +93,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     if (_request != request) _resetResultScroll();
     setState(() => _request = request);
     ref.read(searchHistoryProvider.notifier).add(query);
-    GoRouter.maybeOf(context)?.go(
+    GoRouter.maybeOf(context)?.replace(
       Uri(
         path: '/search',
         queryParameters: {
@@ -132,6 +137,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     final request = _request;
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBackButton(),
         title: const Text('搜索'),
         actions: [
           IconButton(
@@ -144,104 +150,150 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1180),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SearchBar(
-                    controller: _controller,
-                    hintText: '搜索内容与知识事件',
-                    leading: const Icon(Icons.search_rounded),
-                    trailing: [
-                      if (_controller.text.isNotEmpty)
-                        IconButton(
-                          tooltip: '清除搜索',
-                          onPressed: () {
-                            _controller.clear();
-                            _search();
-                          },
-                          icon: const Icon(Icons.close_rounded),
+            constraints: const BoxConstraints(
+              maxWidth: AppPane.workspaceMaxWidth,
+            ),
+            child: CustomScrollView(
+              key: const ValueKey('search-results-scroll'),
+              controller: _resultsScrollController,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  sliver: SliverToBoxAdapter(
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          maxWidth: AppPane.readableMaxWidth,
                         ),
-                      IconButton(
-                        tooltip: '搜索',
-                        onPressed: _search,
-                        icon: const Icon(Icons.arrow_forward_rounded),
-                      ),
-                    ],
-                    onSubmitted: (_) => _search(),
-                    onChanged: (_) => setState(() {}),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Flexible(
-                        child: DropdownButton<String>(
-                          value: _kind,
-                          isExpanded: false,
-                          underline: const SizedBox.shrink(),
-                          items: [
-                            for (final option in const {
-                              'all': '全部类型',
-                              'contents': '内容',
-                              'events': '事件',
-                              'people': '人物',
-                              'topics': '主题',
-                              'timepoints': '时间点',
-                            }.entries)
-                              DropdownMenuItem(
-                                value: option.key,
-                                child: Text(option.value),
-                              ),
-                          ],
-                          onChanged: (value) {
-                            if (value != null) _setKind(value);
-                          },
-                        ),
-                      ),
-                      if (_kind != 'events') ...[
-                        const SizedBox(width: 16),
-                        Flexible(
-                          child: DropdownButton<String>(
-                            value: _contentScope,
-                            isExpanded: false,
-                            underline: const SizedBox.shrink(),
-                            items: [
-                              for (final option in const {
-                                'library': '收藏库',
-                                'discovery': '发现',
-                                'all': '全部内容',
-                              }.entries)
-                                DropdownMenuItem(
-                                  value: option.key,
-                                  child: Text(option.value),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SearchBar(
+                              controller: _controller,
+                              focusNode: _queryFocus,
+                              hintText: '搜索内容与知识事件',
+                              leading: const Icon(Icons.search_rounded),
+                              trailing: [
+                                if (_controller.text.isNotEmpty)
+                                  IconButton(
+                                    tooltip: '清除搜索',
+                                    onPressed: () {
+                                      _controller.clear();
+                                      _search();
+                                    },
+                                    icon: const Icon(Icons.close_rounded),
+                                  ),
+                                IconButton(
+                                  tooltip: '搜索',
+                                  onPressed: _search,
+                                  icon: const Icon(Icons.arrow_forward_rounded),
                                 ),
-                            ],
-                            onChanged: (value) {
-                              if (value != null) _setContentScope(value);
-                            },
-                          ),
+                              ],
+                              onSubmitted: (_) => _search(),
+                              onChanged: (_) => setState(() {}),
+                            ),
+                            const SizedBox(height: AppSpacing.md),
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                final preferredWidth =
+                                    168 *
+                                    MediaQuery.textScalerOf(context).scale(14) /
+                                    14;
+                                final width = preferredWidth.clamp(
+                                  0.0,
+                                  constraints.maxWidth,
+                                );
+                                return AnimatedSize(
+                                  duration:
+                                      MediaQuery.disableAnimationsOf(context)
+                                      ? Duration.zero
+                                      : AppMotion.standard,
+                                  curve: AppMotion.standardCurve,
+                                  alignment: Alignment.topLeft,
+                                  child: Align(
+                                    alignment: Alignment.topLeft,
+                                    child: Wrap(
+                                      spacing: AppSpacing.sm,
+                                      runSpacing: AppSpacing.sm,
+                                      children: [
+                                        SizedBox(
+                                          width: width,
+                                          child: AppFilterMenu(
+                                            label: '结果类型',
+                                            value: _kind,
+                                            options: const {
+                                              'all': '全部类型',
+                                              'contents': '内容',
+                                              'events': '事件',
+                                              'people': '人物',
+                                              'topics': '主题',
+                                              'timepoints': '时间点',
+                                              'document_pages': '文档页码',
+                                            },
+                                            onOpened: _queryFocus.unfocus,
+                                            onSelected: _setKind,
+                                          ),
+                                        ),
+                                        if (_kind != 'events')
+                                          SizedBox(
+                                            width: width,
+                                            child: AppFilterMenu(
+                                              label: '内容范围',
+                                              value: _contentScope,
+                                              options: const {
+                                                'library': '收藏库',
+                                                'discovery': '发现',
+                                                'all': '全部内容',
+                                              },
+                                              onOpened: _queryFocus.unfocus,
+                                              onSelected: _setContentScope,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                         ),
-                      ],
-                    ],
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: request == null
-                        ? _SearchEmptyState(
-                            onSelect: (query) {
-                              _controller.text = query;
-                              _search();
-                            },
-                          )
-                        : ref
-                              .watch(unifiedSearchProvider(request))
-                              .when(
-                                loading: () => const Center(
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  sliver: request == null
+                      ? SliverToBoxAdapter(
+                          child: Align(
+                            alignment: Alignment.topCenter,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                maxWidth: AppPane.readableMaxWidth,
+                              ),
+                              child: _SearchEmptyState(
+                                onSelect: (query) {
+                                  _controller.text = query;
+                                  _search();
+                                },
+                              ),
+                            ),
+                          ),
+                        )
+                      : ref
+                            .watch(unifiedSearchProvider(request))
+                            .when(
+                              loading: () => const SliverFillRemaining(
+                                hasScrollBody: false,
+                                child: Center(
                                   child: CircularProgressIndicator(),
                                 ),
-                                error: (error, _) => _SearchError(
+                              ),
+                              error: (error, _) => SliverFillRemaining(
+                                hasScrollBody: false,
+                                child: _SearchError(
                                   message: formatApiErrorMessage(
                                     error,
                                     fallbackMessage: '搜索失败，请稍后重试',
@@ -250,15 +302,14 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                                     unifiedSearchProvider(request),
                                   ),
                                 ),
-                                data: (results) => _SearchResultsView(
-                                  results: results,
-                                  onAgent: _openAgent,
-                                  scrollController: _resultsScrollController,
-                                ),
                               ),
-                  ),
-                ],
-              ),
+                              data: (results) => _SearchResultsView(
+                                results: results,
+                                onAgent: _openAgent,
+                              ),
+                            ),
+                ),
+              ],
             ),
           ),
         ),
@@ -274,6 +325,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         'people',
         'topics',
         'timepoints',
+        'document_pages',
       }.contains(value)
       ? value
       : 'all';
@@ -283,19 +335,32 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 }
 
 class _SearchResultsView extends StatelessWidget {
-  const _SearchResultsView({
-    required this.results,
-    required this.onAgent,
-    required this.scrollController,
-  });
+  const _SearchResultsView({required this.results, required this.onAgent});
 
   final UnifiedSearchResults results;
   final VoidCallback onAgent;
-  final ScrollController scrollController;
 
   @override
   Widget build(BuildContext context) {
     final sections = <String, _ResultSection>{
+      'document_pages': _ResultSection(
+        title: '文档页码',
+        count: results.documentPages.length,
+        children: results.documentPages
+            .map(
+              (item) => ListTile(
+                leading: const Icon(Icons.description_outlined),
+                title: Text('${item.filename} · 第 ${item.pageNumber} 页'),
+                subtitle: Text(
+                  item.excerpt,
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: () => context.push(item.route),
+              ),
+            )
+            .toList(growable: false),
+      ),
       'contents': _ResultSection(
         title: '内容',
         count: results.contents.length,
@@ -337,42 +402,51 @@ class _SearchResultsView extends StatelessWidget {
           section.count == 0 || (results.kind != 'all' && key != results.kind),
     );
     if (sections.isEmpty) {
-      return _NoResults(query: results.query, onAgent: onAgent);
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: _NoResults(query: results.query, onAgent: onAgent),
+      );
     }
-    return LayoutBuilder(
+    return SliverLayoutBuilder(
       builder: (context, constraints) {
-        final metrics = WindowMetrics.fromSize(constraints.biggest);
+        final metrics = WindowMetrics.fromSize(
+          Size(constraints.crossAxisExtent, constraints.viewportMainAxisExtent),
+        );
         if (metrics.supportsSupportingPane &&
             results.kind == 'all' &&
             sections.length > 1) {
-          final sectionWidth = (constraints.maxWidth - 20) / 2;
-          return ListView(
-            key: const ValueKey('search-results-scroll'),
-            controller: scrollController,
-            children: [
-              Wrap(
-                spacing: 20,
-                runSpacing: 20,
-                children: [
-                  for (final section in sections.values)
-                    SizedBox(width: sectionWidth, child: section),
-                ],
-              ),
-            ],
+          final sectionWidth =
+              (constraints.crossAxisExtent - AppSpacing.xl) / 2;
+          return SliverToBoxAdapter(
+            child: Wrap(
+              spacing: AppSpacing.xl,
+              runSpacing: AppSpacing.xl,
+              children: [
+                for (final section in sections.values)
+                  SizedBox(width: sectionWidth, child: section),
+              ],
+            ),
           );
         }
-        final visibleKeys = results.kind == 'all'
-            ? sections.keys
-            : sections.keys.where((key) => key == results.kind);
-        return ListView(
-          key: const ValueKey('search-results-scroll'),
-          controller: scrollController,
-          children: [
-            for (final key in visibleKeys) ...[
-              sections[key]!,
-              if (key != visibleKeys.last) const SizedBox(height: 18),
-            ],
-          ],
+        return SliverToBoxAdapter(
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: AppPane.readableMaxWidth,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final key in sections.keys) ...[
+                    sections[key]!,
+                    if (key != sections.keys.last)
+                      const SizedBox(height: AppSpacing.xl),
+                  ],
+                ],
+              ),
+            ),
+          ),
         );
       },
     );
@@ -394,11 +468,25 @@ class _ResultSection extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      Text('$title · $count', style: Theme.of(context).textTheme.titleMedium),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+        child: Semantics(
+          header: true,
+          child: Text(
+            '$title · $count',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+        ),
+      ),
       const SizedBox(height: 8),
       for (var i = 0; i < children.length; i++) ...[
         children[i],
-        if (i < children.length - 1) const Divider(height: 1),
+        if (i < children.length - 1)
+          const Divider(
+            height: 1,
+            indent: AppSpacing.md,
+            endIndent: AppSpacing.md,
+          ),
       ],
     ],
   );
@@ -468,7 +556,7 @@ class _FacetResultTile extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
       trailing: const Icon(Icons.filter_alt_outlined),
-      onTap: () => context.push(
+      onTap: () => context.go(
         Uri(
           path: '/collection',
           queryParameters: {isPerson ? 'author' : 'tag': item.name},
@@ -536,8 +624,8 @@ class _SearchEmptyState extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final history = ref.watch(searchHistoryProvider).value ?? const [];
     if (history.isEmpty) return const SizedBox.shrink();
-    return ListView(
-      padding: const EdgeInsets.only(top: 16),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text('最近搜索', style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 12),
@@ -568,19 +656,17 @@ class _NoResults extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-    child: SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('没有找到“$query”'),
-          const SizedBox(height: 16),
-          OutlinedButton.icon(
-            onPressed: onAgent,
-            icon: const Icon(Icons.auto_awesome_outlined),
-            label: const Text('询问 Agent'),
-          ),
-        ],
-      ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('没有找到“$query”'),
+        const SizedBox(height: 16),
+        OutlinedButton.icon(
+          onPressed: onAgent,
+          icon: const Icon(Icons.auto_awesome_outlined),
+          label: const Text('询问 Agent'),
+        ),
+      ],
     ),
   );
 }
@@ -592,17 +678,15 @@ class _SearchError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-    child: SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.error_outline_rounded, size: 44),
-          const SizedBox(height: 12),
-          Text(message, textAlign: TextAlign.center),
-          const SizedBox(height: 12),
-          FilledButton.tonal(onPressed: onRetry, child: const Text('重试')),
-        ],
-      ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.error_outline_rounded, size: 44),
+        const SizedBox(height: 12),
+        Text(message, textAlign: TextAlign.center),
+        const SizedBox(height: 12),
+        FilledButton.tonal(onPressed: onRetry, child: const Text('重试')),
+      ],
     ),
   );
 }

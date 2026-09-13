@@ -492,18 +492,16 @@ class AgentController extends Notifier<AgentViewState> {
 
   List<AgentTimelineItem> _replaceDraft(AgentTimelineItem item) {
     final timeline = [...state.timeline];
-    final index = timeline.lastIndexWhere(
-      (candidate) => candidate.kind == AgentTimelineKind.assistantDraft,
+    final userIndex = timeline.lastIndexWhere(
+      (candidate) => candidate.kind == AgentTimelineKind.user,
     );
-    final replaceIndex = index >= 0
-        ? index
-        : state.streaming &&
-              timeline.isNotEmpty &&
-              timeline.last.kind == AgentTimelineKind.assistant
-        ? timeline.length - 1
-        : -1;
-    if (replaceIndex >= 0) {
-      timeline[replaceIndex] = item;
+    final index = timeline.lastIndexWhere(
+      (candidate) =>
+          candidate.kind == AgentTimelineKind.assistantDraft ||
+          (state.streaming && candidate.kind == AgentTimelineKind.assistant),
+    );
+    if (index > userIndex) {
+      timeline[index] = item;
     } else if (item.kind == AgentTimelineKind.assistant ||
         item.kind == AgentTimelineKind.error) {
       timeline.add(item);

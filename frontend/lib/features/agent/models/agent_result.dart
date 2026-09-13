@@ -92,7 +92,7 @@ class AgentConfirmation {
   final Map<String, dynamic> args;
 }
 
-enum AgentCitationKind { content, event, timepoint }
+enum AgentCitationKind { content, event, timepoint, documentPage }
 
 class AgentCitation {
   const AgentCitation({
@@ -105,6 +105,7 @@ class AgentCitation {
     this.contentTitle,
     this.startSeconds,
     this.endSeconds,
+    this.pageNumber,
     this.url = '',
     this.chunkTitle,
     this.sourceText,
@@ -126,14 +127,19 @@ class AgentCitation {
       contentId: json['content_id']?.toString() ?? '',
       eventId: json['event_id']?.toString() ?? '',
       mediaAssetId: json['media_asset_id']?.toString() ?? '',
-      title: json['title']?.toString() ?? '无标题',
+      title: kind == AgentCitationKind.documentPage
+          ? json['filename'] as String
+          : json['title']?.toString() ?? '无标题',
+      pageNumber: json['page_number'] as int?,
       contentTitle: json['content_title']?.toString(),
       startSeconds: (json['start_seconds'] as num?)?.toDouble(),
       endSeconds: (json['end_seconds'] as num?)?.toDouble(),
       url: json['url']?.toString() ?? '',
       matchSource: json['match_source']?.toString() ?? '',
       chunkTitle: json['chunk_title']?.toString(),
-      sourceText: json['source_text']?.toString(),
+      sourceText: kind == AgentCitationKind.documentPage
+          ? json['excerpt'] as String
+          : json['source_text']?.toString(),
     );
   }
 
@@ -145,6 +151,7 @@ class AgentCitation {
   final String? contentTitle;
   final double? startSeconds;
   final double? endSeconds;
+  final int? pageNumber;
   final String url;
   final String matchSource;
   final String? chunkTitle;
@@ -152,6 +159,20 @@ class AgentCitation {
 
   String? get appRoute {
     switch (kind) {
+      case AgentCitationKind.documentPage:
+        if (contentId.isEmpty ||
+            mediaAssetId.isEmpty ||
+            pageNumber == null ||
+            pageNumber! < 1) {
+          return null;
+        }
+        return Uri(
+          path: '/collection/$contentId',
+          queryParameters: {
+            'document_asset': mediaAssetId,
+            'page': '$pageNumber',
+          },
+        ).toString();
       case AgentCitationKind.content:
         return contentId.isEmpty ? null : '/collection/$contentId';
       case AgentCitationKind.event:
@@ -173,6 +194,8 @@ class AgentCitation {
 
   String get displayLabel {
     switch (kind) {
+      case AgentCitationKind.documentPage:
+        return '$title · 第 $pageNumber 页';
       case AgentCitationKind.content:
         return contentId.isEmpty ? title : '#$contentId $title';
       case AgentCitationKind.event:
@@ -234,11 +257,46 @@ String prettyJson(Object? value) {
 List<AgentCitation> citationsFromToolResult(Map<String, dynamic> event) {
   final result = event['result'];
   if (result is! Map<String, dynamic>) return const [];
+  if (event['tool'] == 'read_content' &&
+      result['source_kind'] == 'pdf_native_text') {
+    return [
+      AgentCitation.fromJson({
+        'content_id': result['content_id'],
+        'media_asset_id': result['document_asset_id'],
+        'page_number': result['page_number'],
+        'filename': result['filename'],
+        'excerpt': result['text'],
+      }, fallbackKind: AgentCitationKind.documentPage),
+    ];
+  }
+  if (event['tool'] == 'read_content' &&
+      result['source_kind'] == 'stored_original') {
+    return [
+      AgentCitation.fromJson({
+        'content_id': result['content_id'],
+        'title': result['title'],
+        'source_text': result['body'],
+      }),
+      for (final segment in (result['segments'] as List)
+          .whereType<Map<String, dynamic>>())
+        AgentCitation.fromJson({
+          'content_id': result['content_id'],
+          'content_title': result['title'],
+          'media_asset_id': segment['media_asset_id'],
+          'start_seconds': segment['start_seconds'],
+          'end_seconds': segment['end_seconds'],
+          'title': segment['title'],
+          'chunk_title': segment['title'],
+          'source_text': segment['text'],
+        }, fallbackKind: AgentCitationKind.timepoint),
+    ];
+  }
   final groups = <List<AgentCitation>>[];
   for (final group in const [
     ('items', AgentCitationKind.content),
     ('events', AgentCitationKind.event),
     ('timepoints', AgentCitationKind.timepoint),
+    ('document_pages', AgentCitationKind.documentPage),
   ]) {
     final items = result[group.$1];
     if (items is! List) continue;

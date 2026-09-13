@@ -1,14 +1,20 @@
+import '../../routing/app_navigation.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../../core/layout/responsive_layout.dart';
+import '../../core/utils/safe_url_launcher.dart';
+import '../../core/widgets/markdown_reading.dart';
 import '../../theme/design_tokens.dart';
 import 'models/agent_result.dart';
 import 'providers/agent_controller.dart';
 import 'providers/agent_draft_store.dart';
+import 'widgets/agent_citation_tile.dart';
+import 'widgets/agent_confirmation_panel.dart';
+import 'widgets/agent_tool_event.dart';
 
 class AgentPage extends ConsumerStatefulWidget {
   const AgentPage({super.key, this.initialSessionId, this.initialPrompt});
@@ -233,6 +239,8 @@ class _AgentPageState extends ConsumerState<AgentPage> {
         return Scaffold(
           key: _scaffoldKey,
           appBar: AppBar(
+            leading: const AppBackButton(),
+            toolbarHeight: metrics.heightClass.isCompact ? 48 : null,
             title: const Text('Agent 工作台'),
             actions: [
               if (!supportsSessionPane)
@@ -276,26 +284,13 @@ class _AgentPageState extends ConsumerState<AgentPage> {
           endDrawer: supportsSessionPane
               ? null
               : Drawer(
+                  width:
+                      (AppPane.supportingWidth *
+                              MediaQuery.textScalerOf(context).scale(16) /
+                              16)
+                          .clamp(0.0, constraints.maxWidth * 0.9),
                   child: SafeArea(
-                    child: Column(
-                      children: [
-                        ListTile(
-                          title: const Text('Agent 会话'),
-                          trailing: IconButton(
-                            tooltip: '关闭会话列表',
-                            onPressed: () => Navigator.of(context).pop(),
-                            icon: const Icon(Icons.close_rounded),
-                          ),
-                        ),
-                        const Divider(height: 1),
-                        Expanded(
-                          child: _SessionPane(
-                            state: this,
-                            closeAfterSelection: true,
-                          ),
-                        ),
-                      ],
-                    ),
+                    child: _SessionPane(state: this, closeAfterSelection: true),
                   ),
                 ),
           body: _loading
@@ -525,32 +520,65 @@ class _SessionPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: FilledButton.icon(
-            onPressed: state._streaming ? null : () => _createSession(context),
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('新会话'),
-          ),
+    final theme = Theme.of(context);
+    final header = Material(
+      color: closeAfterSelection
+          ? theme.drawerTheme.backgroundColor ??
+                theme.colorScheme.surfaceContainerLow
+          : theme.scaffoldBackgroundColor,
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.sm),
+        child: Row(
+          children: [
+            Expanded(child: Text('会话', style: theme.textTheme.titleMedium)),
+            IconButton.filledTonal(
+              tooltip: '新建会话',
+              onPressed: state._streaming
+                  ? null
+                  : () => _createSession(context),
+              icon: const Icon(Icons.add_rounded),
+            ),
+            if (closeAfterSelection)
+              IconButton(
+                tooltip: '关闭会话列表',
+                onPressed: () =>
+                    state._scaffoldKey.currentState?.closeEndDrawer(),
+                icon: const Icon(Icons.close_rounded),
+              ),
+          ],
         ),
-        Expanded(
-          child: ListView.builder(
-            itemCount: state._sessions.length,
-            itemBuilder: (context, index) {
-              final session = state._sessions[index];
-              return _SessionTile(
-                session: session,
-                selected: session.id == state._sessionId,
-                onTap: state._streaming
-                    ? null
-                    : () => _selectSession(context, session.id),
-              );
-            },
+      ),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) => CustomScrollView(
+        slivers: [
+          if (constraints.maxHeight >= 240)
+            PinnedHeaderSliver(child: header)
+          else
+            SliverToBoxAdapter(child: header),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.xs,
+              0,
+              AppSpacing.xs,
+              AppSpacing.sm,
+            ),
+            sliver: SliverList.builder(
+              itemCount: state._sessions.length,
+              itemBuilder: (context, index) {
+                final session = state._sessions[index];
+                return _SessionTile(
+                  session: session,
+                  selected: session.id == state._sessionId,
+                  onTap: state._streaming
+                      ? null
+                      : () => _selectSession(context, session.id),
+                );
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -569,21 +597,28 @@ class _SessionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return ListTile(
-      selected: selected,
-      leading: Icon(
-        session.pendingConfirmations > 0
-            ? Icons.verified_user_outlined
-            : Icons.forum_outlined,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.xxs),
+      child: Material(
+        color: selected
+            ? theme.colorScheme.secondaryContainer
+            : Colors.transparent,
+        borderRadius: AppShape.cardBorder,
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
+          selected: selected,
+          contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+          title: Text(
+            session.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: session.pendingConfirmations > 0
+              ? Text('${session.pendingConfirmations} 个待确认')
+              : null,
+          onTap: onTap,
+        ),
       ),
-      title: Text(session.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: session.pendingConfirmations > 0
-          ? Text('${session.pendingConfirmations} 个待确认')
-          : null,
-      selectedTileColor: theme.colorScheme.secondaryContainer.withValues(
-        alpha: 0.5,
-      ),
-      onTap: onTap,
     );
   }
 }
@@ -613,19 +648,41 @@ class _TimelineTile extends StatelessWidget {
       AgentTimelineKind.assistantDraft => _Bubble(
         child: item.kind == AgentTimelineKind.assistantDraft
             ? const LinearProgressIndicator(minHeight: 3)
-            : SelectableText(item.text),
+            : MarkdownBody(
+                data: item.text,
+                selectable: true,
+                styleSheet: readingMarkdownStyle(context),
+                builders: {'code': CodeElementBuilder(context)},
+                onTapLink: (_, href, _) {
+                  final uri = Uri.tryParse(href ?? '');
+                  if (uri != null &&
+                      !uri.hasScheme &&
+                      !uri.hasAuthority &&
+                      RegExp(
+                        r'^/(collection|events)/\d+$',
+                      ).hasMatch(uri.path)) {
+                    openAppLocation(context, uri.toString());
+                  } else {
+                    SafeUrlLauncher.openExternal(context, href);
+                  }
+                },
+                // Model output does not own media assets. Keep media in the
+                // cited content page instead of fetching arbitrary image URLs.
+                // ignore: deprecated_member_use
+                imageBuilder: (_, _, alt) => Text(alt ?? '图片'),
+              ),
       ),
-      AgentTimelineKind.toolCall => _ToolEvent(
+      AgentTimelineKind.toolCall => AgentToolEvent(
         event: item.event!,
         running: true,
         showCitations: showInlineCitations,
       ),
-      AgentTimelineKind.toolResult => _ToolEvent(
+      AgentTimelineKind.toolResult => AgentToolEvent(
         event: item.event!,
         running: false,
         showCitations: showInlineCitations,
       ),
-      AgentTimelineKind.confirmation => _ConfirmationTile(
+      AgentTimelineKind.confirmation => AgentConfirmationPanel(
         confirmation: item.confirmation!,
         onDecide: onDecide,
         pending: confirmationPending,
@@ -661,162 +718,6 @@ class _Bubble extends StatelessWidget {
               )
             : null,
         child: child,
-      ),
-    );
-  }
-}
-
-class _ToolEvent extends StatefulWidget {
-  const _ToolEvent({
-    required this.event,
-    required this.running,
-    required this.showCitations,
-  });
-
-  final Map<String, dynamic> event;
-  final bool running;
-  final bool showCitations;
-
-  @override
-  State<_ToolEvent> createState() => _ToolEventState();
-}
-
-class _ToolEventState extends State<_ToolEvent> {
-  late bool _expanded;
-
-  bool get _failed =>
-      !widget.running &&
-      (widget.event['ok'] == false || widget.event['error'] != null);
-
-  Object? get _details {
-    if (widget.running) return widget.event['args'];
-    return {
-      if (widget.event['args'] != null) 'args': widget.event['args'],
-      if (widget.event['error'] != null) 'error': widget.event['error'],
-      if (widget.event['result'] != null) 'result': widget.event['result'],
-    };
-  }
-
-  bool get _hasDetails {
-    final details = _details;
-    if (details == null) return false;
-    if (details is String) return details.isNotEmpty;
-    if (details is Iterable) return details.isNotEmpty;
-    if (details is Map) return details.isNotEmpty;
-    return true;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _expanded = _failed;
-  }
-
-  @override
-  void didUpdateWidget(covariant _ToolEvent oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (_failed && !_expanded) _expanded = true;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final citations = citationsFromToolResult(widget.event);
-    final actionSummary = actionSummaryFromToolResult(widget.event);
-    final statusLabel = widget.running
-        ? '调用中'
-        : _failed
-        ? '失败'
-        : '已完成';
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-        borderRadius: AppShape.cardBorder,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          InkWell(
-            borderRadius: AppShape.cardBorder,
-            onTap: _hasDetails
-                ? () => setState(() => _expanded = !_expanded)
-                : null,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  Icon(
-                    widget.running
-                        ? Icons.build_circle_outlined
-                        : _failed
-                        ? Icons.error_outline_rounded
-                        : Icons.check_circle_outline_rounded,
-                    color: _failed ? theme.colorScheme.error : null,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '${widget.event['tool'] ?? 'tool'} $statusLabel',
-                      style: theme.textTheme.titleSmall,
-                    ),
-                  ),
-                  if (_hasDetails)
-                    Icon(
-                      _expanded
-                          ? Icons.expand_less_rounded
-                          : Icons.expand_more_rounded,
-                    ),
-                ],
-              ),
-            ),
-          ),
-          if (actionSummary != null ||
-              (widget.showCitations && citations.isNotEmpty))
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (actionSummary != null)
-                    Text(actionSummary, style: theme.textTheme.bodyMedium),
-                  if (widget.showCitations && citations.isNotEmpty) ...[
-                    if (actionSummary != null) const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: citations
-                          .take(5)
-                          .map((c) => _CitationChip(citation: c))
-                          .toList(),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          AnimatedSize(
-            duration: AppMotion.stateChange,
-            curve: AppMotion.standardCurve,
-            child: !_expanded || !_hasDetails
-                ? const SizedBox.shrink()
-                : Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      12,
-                      actionSummary == null &&
-                              (!widget.showCitations || citations.isEmpty)
-                          ? 0
-                          : 4,
-                      12,
-                      12,
-                    ),
-                    child: SelectableText(
-                      prettyJson(_details),
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ),
-          ),
-        ],
       ),
     );
   }
@@ -874,7 +775,7 @@ class _EvidenceRunPane extends StatelessWidget {
                 Text('引用', style: theme.textTheme.labelLarge),
                 const SizedBox(height: 8),
                 for (final citation in citations)
-                  _EvidenceListTile(citation: citation),
+                  AgentCitationTile(citation: citation, showExcerpt: true),
                 const SizedBox(height: 16),
               ],
               Text('工具过程', style: theme.textTheme.labelLarge),
@@ -888,40 +789,6 @@ class _EvidenceRunPane extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _EvidenceListTile extends StatelessWidget {
-  const _EvidenceListTile({required this.citation});
-
-  final AgentCitation citation;
-
-  @override
-  Widget build(BuildContext context) {
-    final route = citation.appRoute;
-    final icon = switch (citation.kind) {
-      AgentCitationKind.content => Icons.article_outlined,
-      AgentCitationKind.event => Icons.timeline_outlined,
-      AgentCitationKind.timepoint => Icons.play_circle_outline_rounded,
-    };
-    final detail = citation.sourceText?.trim().isNotEmpty == true
-        ? citation.sourceText!
-        : citation.contentTitle ?? citation.matchSource;
-    return Card.filled(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Icon(icon),
-        title: Text(
-          citation.displayLabel,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: detail.isEmpty
-            ? null
-            : Text(detail, maxLines: 2, overflow: TextOverflow.ellipsis),
-        onTap: route == null ? null : () => context.push(route),
-      ),
     );
   }
 }
@@ -957,116 +824,6 @@ class _RunListTile extends StatelessWidget {
                 : '执行完成'),
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-      ),
-    );
-  }
-}
-
-class _CitationChip extends StatelessWidget {
-  const _CitationChip({required this.citation});
-
-  final AgentCitation citation;
-
-  @override
-  Widget build(BuildContext context) {
-    final route = citation.appRoute;
-    final icon = switch (citation.kind) {
-      AgentCitationKind.content => Icons.article_outlined,
-      AgentCitationKind.event => Icons.timeline_outlined,
-      AgentCitationKind.timepoint => Icons.play_circle_outline_rounded,
-    };
-    final contextLabel = citation.contentTitle;
-    final tooltipLines = [
-      if (citation.matchSource.isNotEmpty) citation.matchSource,
-      if (contextLabel != null && contextLabel.isNotEmpty) contextLabel,
-      if (citation.chunkTitle != null && citation.chunkTitle!.isNotEmpty)
-        citation.chunkTitle!,
-      citation.sourceText ?? citation.url,
-    ].where((line) => line.isNotEmpty).toList(growable: false);
-    return InputChip(
-      avatar: Icon(icon, size: 18),
-      label: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 260),
-        child: Text(citation.displayLabel, overflow: TextOverflow.ellipsis),
-      ),
-      tooltip: tooltipLines.join('\n'),
-      onPressed: route == null ? null : () => context.push(route),
-    );
-  }
-}
-
-class _ConfirmationTile extends StatelessWidget {
-  const _ConfirmationTile({
-    required this.confirmation,
-    required this.onDecide,
-    required this.pending,
-  });
-
-  final AgentConfirmation confirmation;
-  final Future<void> Function(AgentConfirmation confirmation, bool approved)
-  onDecide;
-  final bool pending;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.tertiaryContainer,
-        borderRadius: AppShape.paneBorder,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.verified_user_outlined,
-                color: theme.colorScheme.onTertiaryContainer,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '${confirmation.toolName} 需要确认',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: theme.colorScheme.onTertiaryContainer,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          SelectableText(
-            confirmation.summary,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onTertiaryContainer,
-            ),
-          ),
-          const SizedBox(height: 8),
-          ExpansionTile(
-            title: const Text('操作参数'),
-            tilePadding: EdgeInsets.zero,
-            children: [SelectableText(prettyJson(confirmation.args))],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            children: [
-              FilledButton.icon(
-                onPressed: pending ? null : () => onDecide(confirmation, true),
-                icon: const Icon(Icons.check_rounded),
-                label: Text(pending ? '处理中' : '确认'),
-              ),
-              OutlinedButton.icon(
-                onPressed: pending ? null : () => onDecide(confirmation, false),
-                icon: const Icon(Icons.close_rounded),
-                label: const Text('拒绝'),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }

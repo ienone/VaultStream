@@ -165,9 +165,81 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     final horizontalPadding = metrics.widthClass.isCompact
         ? AppSpacing.md
         : AppSpacing.xl;
+    final content = _showEventUpdates
+        ? _EventUpdatesFeed(onRefresh: _refresh)
+        : feed.when(
+            loading: () => const SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (error, _) => SliverFillRemaining(
+              hasScrollBody: false,
+              child: _FeedError(
+                message: formatApiErrorMessage(
+                  error,
+                  fallbackMessage: '无法读取动态，请检查服务器连接',
+                ),
+                onRetry: _refresh,
+              ),
+            ),
+            data: (data) {
+              if (data.items.isEmpty) {
+                return _FeedSliverList(
+                  children: [
+                    _EmptyFeed(
+                      view: _view,
+                      onAction: _view == DiscoveryFeedView.recent
+                          ? () => context.push('/settings?tab=sources')
+                          : () => _showView(DiscoveryFeedView.recent),
+                    ),
+                  ],
+                );
+              }
+              final children = <Widget>[];
+              String? previousDay;
+              for (final item in data.items) {
+                final day = _dayLabel(_itemTime(item));
+                if (day != previousDay) {
+                  children.add(_DayHeader(label: day));
+                  previousDay = day;
+                }
+                children.add(
+                  _FeedCard(
+                    item: item,
+                    busy: _busyItems.contains(item.id),
+                    onOpen: () => context.push('/collection/${item.id}'),
+                    onPromote: () => _actOnItem(item, stateValue: 'promoted'),
+                    onSnooze: () => _actOnItem(item, stateValue: 'snoozed'),
+                    onRestore: () => _actOnItem(item, stateValue: 'visible'),
+                    onIgnore: () => _actOnItem(item, stateValue: 'ignored'),
+                    view: _view,
+                  ),
+                );
+              }
 
+              if (data.hasMore) {
+                children.add(
+                  Center(
+                    child: TextButton.icon(
+                      onPressed: _isLoadingMore ? null : _loadMore,
+                      icon: _isLoadingMore
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.expand_more_rounded),
+                      label: Text(_isLoadingMore ? '正在加载' : '加载更多'),
+                    ),
+                  ),
+                );
+              }
+              children.add(const SizedBox(height: AppSpacing.xxl));
+              return _FeedSliverList(children: children);
+            },
+          );
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: metrics.heightClass.isCompact ? 48 : null,
         title: const Text('动态'),
         actions: [
           IconButton(
@@ -178,38 +250,31 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           const RootPageActions(),
         ],
       ),
-      body: _showEventUpdates
-          ? _EventUpdatesFeed(
-              horizontalPadding: horizontalPadding,
-              onRefresh: _refresh,
-              onShowDiscovery: _showView,
-              onShowEvents: _showEvents,
-            )
-          : feed.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => _FeedError(
-                message: formatApiErrorMessage(
-                  error,
-                  fallbackMessage: '无法读取动态，请检查服务器连接',
-                ),
-                onRetry: _refresh,
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: CustomScrollView(
+          key: const PageStorageKey('dashboard-feed'),
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                AppSpacing.sm,
+                horizontalPadding,
+                AppSpacing.xl,
               ),
-              data: (data) {
-                if (data.items.isEmpty) {
-                  return RefreshIndicator(
-                    onRefresh: _refresh,
-                    child: ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: EdgeInsets.fromLTRB(
-                        horizontalPadding,
-                        AppSpacing.sm,
-                        horizontalPadding,
-                        AppSpacing.xl,
-                      ),
-                      children: [
-                        Center(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 880),
+              sliver: SliverMainAxisGroup(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 880),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: AppSpacing.sm,
+                            ),
                             child: _FeedViewSelector(
                               view: _view,
                               showEvents: _showEventUpdates,
@@ -218,89 +283,16 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                             ),
                           ),
                         ),
-                        _EmptyFeed(
-                          view: _view,
-                          onAction: _view == DiscoveryFeedView.recent
-                              ? () => context.push('/settings?tab=sources')
-                              : () => _showView(DiscoveryFeedView.recent),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                final children = <Widget>[
-                  _FeedViewSelector(
-                    view: _view,
-                    showEvents: _showEventUpdates,
-                    onChanged: _showView,
-                    onShowEvents: _showEvents,
-                  ),
-                ];
-                String? previousDay;
-                for (final item in data.items) {
-                  final day = _dayLabel(_itemTime(item));
-                  if (day != previousDay) {
-                    children.add(_DayHeader(label: day));
-                    previousDay = day;
-                  }
-                  children.add(
-                    _FeedCard(
-                      item: item,
-                      busy: _busyItems.contains(item.id),
-                      onOpen: () => context.push('/collection/${item.id}'),
-                      onPromote: () => _actOnItem(item, stateValue: 'promoted'),
-                      onSnooze: () => _actOnItem(item, stateValue: 'snoozed'),
-                      onRestore: () => _actOnItem(item, stateValue: 'visible'),
-                      onIgnore: () => _actOnItem(item, stateValue: 'ignored'),
-                      view: _view,
-                    ),
-                  );
-                }
-
-                if (data.hasMore) {
-                  children.add(
-                    Center(
-                      child: TextButton.icon(
-                        onPressed: _isLoadingMore ? null : _loadMore,
-                        icon: _isLoadingMore
-                            ? const SizedBox.square(
-                                dimension: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.expand_more_rounded),
-                        label: Text(_isLoadingMore ? '正在加载' : '加载更多'),
-                      ),
-                    ),
-                  );
-                }
-                children.add(const SizedBox(height: AppSpacing.xxl));
-
-                return RefreshIndicator(
-                  onRefresh: _refresh,
-                  child: ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      AppSpacing.sm,
-                      horizontalPadding,
-                      AppSpacing.xl,
-                    ),
-                    itemCount: children.length,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(height: AppSpacing.sm),
-                    itemBuilder: (context, index) => Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 880),
-                        child: children[index],
                       ),
                     ),
                   ),
-                );
-              },
+                  content,
+                ],
+              ),
             ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -342,64 +334,53 @@ class _FeedViewSelector extends StatelessWidget {
   );
 }
 
-class _EventUpdatesFeed extends ConsumerWidget {
-  const _EventUpdatesFeed({
-    required this.horizontalPadding,
-    required this.onRefresh,
-    required this.onShowDiscovery,
-    required this.onShowEvents,
-  });
+class _FeedSliverList extends StatelessWidget {
+  const _FeedSliverList({required this.children});
+  final List<Widget> children;
 
-  final double horizontalPadding;
+  @override
+  Widget build(BuildContext context) => SliverList.separated(
+    itemCount: children.length,
+    separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
+    itemBuilder: (context, index) => Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 880),
+        child: SizedBox(width: double.infinity, child: children[index]),
+      ),
+    ),
+  );
+}
+
+class _EventUpdatesFeed extends ConsumerWidget {
+  const _EventUpdatesFeed({required this.onRefresh});
   final Future<void> Function() onRefresh;
-  final ValueChanged<DiscoveryFeedView> onShowDiscovery;
-  final VoidCallback onShowEvents;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final events = ref.watch(activeKnowledgeEventsProvider);
     return events.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => _FeedError(
-        message: formatApiErrorMessage(error, fallbackMessage: '无法读取事件变化'),
-        onRetry: onRefresh,
+      loading: () => const SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(child: CircularProgressIndicator()),
       ),
-      data: (data) {
-        final children = <Widget>[
-          _FeedViewSelector(
-            view: DiscoveryFeedView.recent,
-            showEvents: true,
-            onChanged: onShowDiscovery,
-            onShowEvents: onShowEvents,
-          ),
-          _EventFeedLead(total: data.total),
+      error: (error, _) => SliverFillRemaining(
+        hasScrollBody: false,
+        child: _FeedError(
+          message: formatApiErrorMessage(error, fallbackMessage: '无法读取事件变化'),
+          onRetry: onRefresh,
+        ),
+      ),
+      data: (data) => _FeedSliverList(
+        children: [
           if (data.items.isEmpty)
             const _EmptyEvents()
-          else
+          else ...[
+            _EventFeedLead(total: data.total),
             for (final event in data.items) _EventUpdateCard(event: event),
+          ],
           const SizedBox(height: AppSpacing.xxl),
-        ];
-        return RefreshIndicator(
-          onRefresh: onRefresh,
-          child: ListView.separated(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              AppSpacing.sm,
-              horizontalPadding,
-              AppSpacing.xl,
-            ),
-            itemCount: children.length,
-            separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
-            itemBuilder: (context, index) => Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 880),
-                child: children[index],
-              ),
-            ),
-          ),
-        );
-      },
+        ],
+      ),
     );
   }
 }
@@ -411,24 +392,16 @@ class _EventFeedLead extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-    child: Row(
-      children: [
-        Expanded(
-          child: Text(
-            '按最近变化排列的进行中事件',
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-        Text(
-          '$total 个事件',
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-            color: Theme.of(context).colorScheme.primary,
-          ),
-        ),
-      ],
+    padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+    child: DefaultTextStyle(
+      style: Theme.of(context).textTheme.bodySmall!.copyWith(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+      child: Wrap(
+        spacing: AppSpacing.md,
+        runSpacing: AppSpacing.xs,
+        children: [Text('$total 个进行中事件'), const Text('最近更新优先')],
+      ),
     ),
   );
 }
@@ -443,7 +416,7 @@ class _EventUpdateCard extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     return Material(
-      color: scheme.tertiaryContainer.withValues(alpha: 0.45),
+      color: scheme.surfaceContainerLow,
       borderRadius: AppShape.cardBorder,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -454,18 +427,30 @@ class _EventUpdateCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.hub_outlined, color: scheme.tertiary),
+                  Icon(Icons.hub_outlined, size: 18, color: scheme.tertiary),
                   const SizedBox(width: AppSpacing.xs),
                   Expanded(
-                    child: Text(
-                      '事件更新 · ${_relativeTime(event.updatedAt.toLocal())}',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
+                    child: Wrap(
+                      spacing: AppSpacing.md,
+                      runSpacing: AppSpacing.xs,
+                      children: [
+                        Text(
+                          _relativeTime(event.updatedAt.toLocal()),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                        Text(
+                          '${event.memberCount} 条内容',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  Text('${event.memberCount} 条内容'),
                 ],
               ),
               const SizedBox(height: AppSpacing.sm),
@@ -492,8 +477,11 @@ class _EventUpdateCard extends StatelessWidget {
                 const SizedBox(height: AppSpacing.sm),
                 Text(
                   '最新关联：$latest',
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ],
@@ -512,14 +500,19 @@ class _EmptyEvents extends StatelessWidget {
     padding: const EdgeInsets.all(AppSpacing.xl),
     child: Column(
       children: [
-        const SizedBox(height: 88),
         Icon(
           Icons.hub_outlined,
-          size: 56,
+          size: 32,
           color: Theme.of(context).colorScheme.tertiary,
         ),
-        const SizedBox(height: AppSpacing.lg),
-        Text('还没有进行中的事件', style: Theme.of(context).textTheme.headlineSmall),
+        const SizedBox(height: AppSpacing.md),
+        Text(
+          '还没有进行中的事件',
+          textAlign: TextAlign.center,
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
         const SizedBox(height: AppSpacing.xs),
         Text(
           '在内容详情中选择“加入事件”。',
@@ -539,13 +532,16 @@ class _DayHeader extends StatelessWidget {
   final String label;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: AppSpacing.sm),
-    child: Text(
-      label,
-      style: Theme.of(
-        context,
-      ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+  Widget build(BuildContext context) => SizedBox(
+    width: double.infinity,
+    child: Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.sm),
+      child: Text(
+        label,
+        style: Theme.of(
+          context,
+        ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+      ),
     ),
   );
 }
@@ -580,6 +576,32 @@ class _FeedCard extends StatelessWidget {
         .toList(growable: false);
     final coverUrl = coverAssets.firstOrNull?.sources.firstOrNull?.url ?? '';
 
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _displayTitle(item),
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+            height: 1.35,
+          ),
+        ),
+        if (_displaySummary(item) case final summary?) ...[
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            summary,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+              height: 1.45,
+            ),
+          ),
+        ],
+      ],
+    );
     return Material(
       color: scheme.surfaceContainerLow,
       borderRadius: AppShape.cardBorder,
@@ -588,108 +610,91 @@ class _FeedCard extends StatelessWidget {
         onTap: busy ? null : onOpen,
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.md),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final showCover = coverUrl.isNotEmpty;
-              final coverWidth = constraints.maxWidth < 520 ? 88.0 : 156.0;
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _SourceLine(item: item),
+              const SizedBox(height: AppSpacing.sm),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  if (coverUrl.isEmpty) return content;
+                  final textScale =
+                      MediaQuery.textScalerOf(context).scale(16) / 16;
+                  final coverWidth = constraints.maxWidth < 520 ? 88.0 : 156.0;
+                  final stacked =
+                      constraints.maxWidth - coverWidth - AppSpacing.md <
+                      220 * textScale;
+                  final cover = NetworkThumbnail(
+                    imageUrl: coverUrl,
+                    mediaAssets: coverAssets,
+                    purpose: MediaPurpose.card,
+                    width: stacked ? constraints.maxWidth : coverWidth,
+                    height: stacked
+                        ? (constraints.maxWidth / 2.4).clamp(80.0, 160.0)
+                        : coverWidth * 0.72,
+                    fit: BoxFit.cover,
+                    borderRadius: AppShape.cardMediaBorder,
+                    maxWidthDiskCache: 960,
+                    maxHeightDiskCache: 480,
+                    errorIcon: Icons.article_outlined,
+                  );
+                  if (stacked) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _SourceLine(item: item),
-                        const SizedBox(height: AppSpacing.xs),
-                        Text(
-                          _displayTitle(item),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            height: 1.35,
-                          ),
-                        ),
-                        if (_displaySummary(item) case final summary?) ...[
-                          const SizedBox(height: AppSpacing.xs),
-                          Text(
-                            summary,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                              height: 1.45,
-                            ),
-                          ),
-                        ],
+                        cover,
                         const SizedBox(height: AppSpacing.sm),
-                        Wrap(
-                          spacing: AppSpacing.xs,
-                          runSpacing: AppSpacing.xs,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            if (view == DiscoveryFeedView.later)
-                              TextButton.icon(
-                                onPressed: busy ? null : onRestore,
-                                icon: const Icon(
-                                  Icons.move_to_inbox_outlined,
-                                  size: 19,
-                                ),
-                                label: const Text('移回动态'),
-                              ),
-                            TextButton.icon(
-                              onPressed: busy ? null : onPromote,
-                              icon: const Icon(
-                                Icons.bookmark_add_outlined,
-                                size: 19,
-                              ),
-                              label: const Text('收录'),
-                            ),
-                            if (view == DiscoveryFeedView.recent)
-                              TextButton.icon(
-                                onPressed: busy ? null : onSnooze,
-                                icon: const Icon(
-                                  Icons.schedule_rounded,
-                                  size: 19,
-                                ),
-                                label: const Text('稍后'),
-                              ),
-                            TextButton(
-                              onPressed: busy ? null : onIgnore,
-                              child: const Text('忽略'),
-                            ),
-                            if (busy) ...[
-                              const SizedBox(width: AppSpacing.xs),
-                              const SizedBox.square(
-                                dimension: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
+                        content,
                       ],
+                    );
+                  }
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: content),
+                      const SizedBox(width: AppSpacing.md),
+                      cover,
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Wrap(
+                spacing: AppSpacing.xs,
+                runSpacing: AppSpacing.xs,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  if (view == DiscoveryFeedView.later)
+                    TextButton.icon(
+                      onPressed: busy ? null : onRestore,
+                      icon: const Icon(Icons.move_to_inbox_outlined, size: 19),
+                      label: const Text('移回动态'),
                     ),
+                  TextButton.icon(
+                    onPressed: busy ? null : onPromote,
+                    icon: const Icon(Icons.bookmark_add_outlined, size: 19),
+                    label: const Text('收录'),
                   ),
-                  if (showCover) ...[
-                    const SizedBox(width: AppSpacing.md),
-                    NetworkThumbnail(
-                      imageUrl: coverUrl,
-                      mediaAssets: coverAssets,
-                      purpose: MediaPurpose.card,
-                      width: coverWidth,
-                      height: coverWidth * 0.72,
-                      fit: BoxFit.cover,
-                      borderRadius: AppShape.cardMediaBorder,
-                      maxWidthDiskCache: 480,
-                      maxHeightDiskCache: 360,
-                      errorIcon: Icons.article_outlined,
+                  if (view == DiscoveryFeedView.recent)
+                    TextButton.icon(
+                      onPressed: busy ? null : onSnooze,
+                      icon: const Icon(Icons.schedule_rounded, size: 19),
+                      label: const Text('稍后'),
+                    ),
+                  TextButton(
+                    onPressed: busy ? null : onIgnore,
+                    child: const Text('忽略'),
+                  ),
+                  if (busy) ...[
+                    const SizedBox(width: AppSpacing.xs),
+                    const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   ],
                 ],
-              );
-            },
+              ),
+            ],
           ),
         ),
       ),
@@ -705,39 +710,65 @@ class _SourceLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final source = item.sourceNames.isNotEmpty
-        ? item.sourceNames.take(2).join(' · ')
+    final sourceNames = item.sourceNames.take(2);
+    final source = sourceNames.isNotEmpty
+        ? sourceNames.join(' · ')
         : _sourceKindLabel(
             item.sourceKinds.isNotEmpty
                 ? item.sourceKinds.first
                 : item.sourceType,
           );
-    final sourceText = item.sourceCount > 1
+    final sourceText =
+        item.sourceCount > sourceNames.length && item.sourceCount > 1
         ? '$source · 来自 ${item.sourceCount} 个来源'
         : source;
 
-    return Row(
-      children: [
-        Icon(_sourceIcon(item), size: 17, color: theme.colorScheme.primary),
-        const SizedBox(width: AppSpacing.xs),
-        Expanded(
-          child: Text(
-            sourceText,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+    final sourceLabel = Text(
+      sourceText,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    );
+    final timeLabel = Text(
+      _relativeTime(_itemTime(item)),
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final textScale = MediaQuery.textScalerOf(context).scale(12) / 12;
+        final stacked = constraints.maxWidth < 320 * textScale;
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Icon(
+                _sourceIcon(item),
+                size: 17,
+                color: theme.colorScheme.primary,
+              ),
             ),
-          ),
-        ),
-        const SizedBox(width: AppSpacing.xs),
-        Text(
-          _relativeTime(_itemTime(item)),
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
+            const SizedBox(width: AppSpacing.xs),
+            Expanded(
+              child: stacked
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        sourceLabel,
+                        const SizedBox(height: AppSpacing.xs),
+                        timeLabel,
+                      ],
+                    )
+                  : sourceLabel,
+            ),
+            if (!stacked) ...[const SizedBox(width: AppSpacing.sm), timeLabel],
+          ],
+        );
+      },
     );
   }
 }
@@ -755,19 +786,18 @@ class _EmptyFeed extends StatelessWidget {
       padding: const EdgeInsets.all(AppSpacing.xl),
       child: Column(
         children: [
-          const SizedBox(height: 88),
           Icon(
             view == DiscoveryFeedView.recent
                 ? Icons.dynamic_feed_outlined
                 : Icons.schedule_rounded,
-            size: 56,
+            size: 32,
             color: theme.colorScheme.primary,
           ),
-          const SizedBox(height: AppSpacing.lg),
+          const SizedBox(height: AppSpacing.md),
           Text(
             view == DiscoveryFeedView.recent ? '暂时没有新动态' : '没有稍后处理的动态',
             textAlign: TextAlign.center,
-            style: theme.textTheme.headlineSmall?.copyWith(
+            style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -820,13 +850,13 @@ class _FeedError extends StatelessWidget {
             children: [
               Icon(
                 Icons.cloud_off_outlined,
-                size: 48,
+                size: 32,
                 color: theme.colorScheme.error,
               ),
               const SizedBox(height: AppSpacing.md),
               Text(
                 '动态暂时不可用',
-                style: theme.textTheme.titleLarge?.copyWith(
+                style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
               ),

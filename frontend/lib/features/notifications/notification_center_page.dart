@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/widgets/app_filter_menu.dart';
+import '../../routing/app_navigation.dart';
 import '../../theme/design_tokens.dart';
 import 'notification_models.dart';
 import 'notification_provider.dart';
@@ -17,21 +18,39 @@ class NotificationCenterPage extends ConsumerStatefulWidget {
 
 class _NotificationCenterPageState
     extends ConsumerState<NotificationCenterPage> {
+  final _scrollController = ScrollController();
   String? _category;
   String _state = 'active';
 
   NotificationQuery get _query => (category: _category, state: _state);
 
   @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _changeFilter(VoidCallback change) {
+    if (_scrollController.hasClients) _scrollController.jumpTo(0);
+    setState(change);
+  }
+
+  Future<void> _refresh() async {
+    ref.invalidate(notificationInboxProvider(_query));
+    await ref.read(notificationInboxProvider(_query).future);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final inbox = ref.watch(notificationInboxProvider(_query));
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBackButton(),
         title: const Text('消息盒子'),
         actions: [
           IconButton(
             tooltip: '全部标为已读',
-            onPressed: inbox.value?.unreadCount == 0
+            onPressed: inbox.value == null || inbox.value!.unreadCount == 0
                 ? null
                 : () => _run(() => markAllNotificationsRead(ref)),
             icon: const Icon(Icons.done_all_rounded),
@@ -45,39 +64,61 @@ class _NotificationCenterPageState
       ),
       body: SafeArea(
         top: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _InboxFilters(
-              category: _category,
-              state: _state,
-              onCategoryChanged: (value) => setState(() => _category = value),
-              onStateChanged: (value) => setState(() => _state = value),
-            ),
-            Expanded(
-              child: inbox.when(
-                data: (value) => _InboxBody(
-                  inbox: value,
-                  state: _state,
-                  onRefresh: () async {
-                    ref.invalidate(notificationInboxProvider(_query));
-                    await ref.read(notificationInboxProvider(_query).future);
-                  },
-                  onOpen: _open,
-                  onAction: _applyAction,
-                ),
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) => _InboxError(
-                  message: formatApiErrorMessage(
-                    error,
-                    fallbackMessage: '消息盒子加载失败',
+        child: RefreshIndicator(
+          onRefresh: _refresh,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final horizontal =
+                  constraints.maxWidth > AppPane.readableMaxWidth + 32
+                  ? (constraints.maxWidth - AppPane.readableMaxWidth) / 2
+                  : AppSpacing.md;
+              return CustomScrollView(
+                controller: _scrollController,
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(horizontal, 8, horizontal, 24),
+                    sliver: SliverToBoxAdapter(
+                      child: _InboxFilters(
+                        category: _category,
+                        state: _state,
+                        onCategoryChanged: (value) =>
+                            _changeFilter(() => _category = value),
+                        onStateChanged: (value) =>
+                            _changeFilter(() => _state = value),
+                      ),
+                    ),
                   ),
-                  onRetry: () =>
-                      ref.invalidate(notificationInboxProvider(_query)),
-                ),
-              ),
-            ),
-          ],
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(horizontal, 0, horizontal, 24),
+                    sliver: inbox.when(
+                      data: (value) => _InboxBody(
+                        inbox: value,
+                        state: _state,
+                        onOpen: _open,
+                        onAction: _applyAction,
+                      ),
+                      loading: () => const SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                      error: (error, _) => SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: _InboxError(
+                          message: formatApiErrorMessage(
+                            error,
+                            fallbackMessage: '消息盒子加载失败',
+                          ),
+                          onRetry: () =>
+                              ref.invalidate(notificationInboxProvider(_query)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -88,7 +129,7 @@ class _NotificationCenterPageState
       await _run(() => applyNotificationAction(ref, item.id, 'read'));
     }
     if (!mounted || item.route == null || item.route!.isEmpty) return;
-    context.push(item.route!);
+    openAppLocation(context, item.route!);
   }
 
   Future<void> _applyAction(NotificationInboxItem item, String action) async {
@@ -127,31 +168,6 @@ class _NotificationCenterPageState
   }
 }
 
-class NotificationCenterBadge extends ConsumerWidget {
-  const NotificationCenterBadge({
-    super.key,
-    this.size = 24,
-    this.icon = Icons.notifications_none_rounded,
-  });
-
-  final double size;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final count = ref.watch(
-      notificationInboxProvider(
-        defaultNotificationQuery,
-      ).select((value) => value.value?.unreadCount ?? 0),
-    );
-    return Badge(
-      isLabelVisible: count > 0,
-      label: Text(count > 99 ? '99+' : '$count'),
-      child: Icon(icon, size: size),
-    );
-  }
-}
-
 class _InboxFilters extends StatelessWidget {
   const _InboxFilters({
     required this.category,
@@ -167,54 +183,51 @@ class _InboxFilters extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.sm,
-        AppSpacing.lg,
-        AppSpacing.md,
-      ),
-      child: Wrap(
-        spacing: AppSpacing.sm,
-        runSpacing: AppSpacing.sm,
-        children: [
-          SizedBox(
-            width: 172,
-            child: DropdownButtonFormField<String?>(
-              initialValue: category,
-              decoration: const InputDecoration(labelText: '类别', isDense: true),
-              items: const [
-                DropdownMenuItem(value: null, child: Text('全部类别')),
-                DropdownMenuItem(value: 'task', child: Text('任务回执')),
-                DropdownMenuItem(value: 'account', child: Text('账号状态')),
-                DropdownMenuItem(value: 'agent', child: Text('Agent 消息')),
-                DropdownMenuItem(value: 'capture', child: Text('捕获回执')),
-                DropdownMenuItem(value: 'digest', child: Text('周期摘要')),
-                DropdownMenuItem(value: 'system', child: Text('系统消息')),
-              ],
-              onChanged: onCategoryChanged,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = (168 * MediaQuery.textScalerOf(context).scale(14) / 14)
+            .clamp(0.0, constraints.maxWidth);
+        return Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: [
+            SizedBox(
+              width: width,
+              child: AppFilterMenu(
+                label: '类别',
+                value: category ?? 'all',
+                options: const {
+                  'all': '全部类别',
+                  'task': '任务回执',
+                  'account': '账号状态',
+                  'agent': 'Agent 消息',
+                  'capture': '捕获回执',
+                  'digest': '周期摘要',
+                  'system': '系统消息',
+                },
+                onSelected: (value) =>
+                    onCategoryChanged(value == 'all' ? null : value),
+              ),
             ),
-          ),
-          SizedBox(
-            width: 172,
-            child: DropdownButtonFormField<String>(
-              initialValue: state,
-              decoration: const InputDecoration(labelText: '状态', isDense: true),
-              items: const [
-                DropdownMenuItem(value: 'active', child: Text('当前消息')),
-                DropdownMenuItem(value: 'unread', child: Text('未读')),
-                DropdownMenuItem(value: 'read', child: Text('已读')),
-                DropdownMenuItem(value: 'snoozed', child: Text('稍后提醒')),
-                DropdownMenuItem(value: 'muted', child: Text('已静默')),
-                DropdownMenuItem(value: 'all', child: Text('全部记录')),
-              ],
-              onChanged: (value) {
-                if (value != null) onStateChanged(value);
-              },
+            SizedBox(
+              width: width,
+              child: AppFilterMenu(
+                label: '状态',
+                value: state,
+                options: const {
+                  'active': '当前消息',
+                  'unread': '未读',
+                  'read': '已读',
+                  'snoozed': '稍后提醒',
+                  'muted': '已静默',
+                  'all': '全部记录',
+                },
+                onSelected: onStateChanged,
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 }
@@ -223,56 +236,43 @@ class _InboxBody extends StatelessWidget {
   const _InboxBody({
     required this.inbox,
     required this.state,
-    required this.onRefresh,
     required this.onOpen,
     required this.onAction,
   });
 
   final NotificationInbox inbox;
   final String state;
-  final Future<void> Function() onRefresh;
   final Future<void> Function(NotificationInboxItem) onOpen;
   final Future<void> Function(NotificationInboxItem, String) onAction;
 
   @override
   Widget build(BuildContext context) {
     if (inbox.items.isEmpty) {
-      return _InboxEmpty(state: state, onRefresh: onRefresh);
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: _InboxEmpty(state: state),
+      );
     }
-    return RefreshIndicator(
-      onRefresh: onRefresh,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final horizontal = constraints.maxWidth >= 840
-              ? (constraints.maxWidth - 760) / 2
-              : AppSpacing.lg;
-          return ListView.separated(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(
-              horizontal,
-              0,
-              horizontal,
-              AppSpacing.xxl,
-            ),
-            itemCount: inbox.items.length,
-            separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
-            itemBuilder: (context, index) {
-              final item = inbox.items[index];
-              return _InboxTile(
-                item: item,
-                onOpen: () => onOpen(item),
-                onAction: (action) => onAction(item, action),
-              );
-            },
-          );
-        },
-      ),
+    return SliverList.separated(
+      itemCount: inbox.items.length,
+      separatorBuilder: (_, _) =>
+          const Divider(height: 1, indent: 16, endIndent: 16),
+      itemBuilder: (context, index) {
+        final item = inbox.items[index];
+        return _InboxTile(
+          key: ValueKey(item.id),
+          item: item,
+          onOpen: () => onOpen(item),
+          onAction: (action) => onAction(item, action),
+        );
+      },
     );
   }
 }
 
 class _InboxTile extends StatelessWidget {
   const _InboxTile({
+    super.key,
     required this.item,
     required this.onOpen,
     required this.onAction,
@@ -286,96 +286,88 @@ class _InboxTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final isAttention = item.severity == 'attention';
-    final iconColor = isAttention ? scheme.error : scheme.primary;
+    final hasDestination = item.route?.isNotEmpty == true;
     return Material(
       color: item.isUnread
           ? scheme.primaryContainer.withValues(alpha: 0.28)
-          : scheme.surfaceContainerLow,
-      borderRadius: AppShape.cardBorder,
+          : Colors.transparent,
+      borderRadius: BorderRadius.circular(AppRadius.md),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: item.route == null ? null : onOpen,
+        onTap: hasDestination ? onOpen : null,
         child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: Row(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                isAttention
-                    ? Icons.error_outline_rounded
-                    : item.category == 'capture'
-                    ? Icons.save_alt_rounded
-                    : Icons.task_alt_rounded,
-                color: iconColor,
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            item.title,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: item.isUnread
-                                  ? FontWeight.w700
-                                  : FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        if (item.isUnread)
-                          Semantics(
-                            label: '未读',
-                            child: Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: scheme.primary,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ),
-                      ],
+              Row(
+                children: [
+                  if (item.severity == 'attention') ...[
+                    Icon(
+                      Icons.error_outline_rounded,
+                      color: scheme.error,
+                      size: 20,
                     ),
-                    if (item.body?.trim().isNotEmpty == true) ...[
-                      const SizedBox(height: AppSpacing.xs),
-                      Text(
-                        item.body!.trim(),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                    const SizedBox(height: AppSpacing.sm),
-                    Wrap(
-                      spacing: AppSpacing.sm,
-                      runSpacing: AppSpacing.xs,
-                      children: [
-                        Text(
-                          _relativeTime(item.lastOccurredAt.toLocal()),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                          ),
-                        ),
-                        if (item.occurrenceCount > 1)
-                          Text(
-                            '合并 ${item.occurrenceCount} 次',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                            ),
-                          ),
-                        if (item.isMuted)
-                          Text('已静默', style: theme.textTheme.bodySmall),
-                        if (item.isSnoozed)
-                          Text('稍后提醒', style: theme.textTheme.bodySmall),
-                      ],
-                    ),
+                    const SizedBox(width: AppSpacing.sm),
                   ],
-                ),
+                  Expanded(
+                    child: Text(
+                      item.title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: item.isUnread
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  if (item.isUnread)
+                    Semantics(
+                      label: '未读',
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: scheme.primary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                  _InboxItemMenu(item: item, onSelected: onAction),
+                ],
               ),
-              _InboxItemMenu(item: item, onSelected: onAction),
+              if (item.body?.trim().isNotEmpty == true) ...[
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  item.body!.trim(),
+                  maxLines: hasDestination ? 3 : null,
+                  overflow: hasDestination ? TextOverflow.ellipsis : null,
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ],
+              const SizedBox(height: AppSpacing.sm),
+              Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.xs,
+                children: [
+                  Text(
+                    _relativeTime(item.lastOccurredAt.toLocal()),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  if (item.occurrenceCount > 1)
+                    Text(
+                      '合并 ${item.occurrenceCount} 次',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  if (item.isMuted)
+                    Text('已静默', style: theme.textTheme.bodySmall),
+                  if (item.isSnoozed)
+                    Text('稍后提醒', style: theme.textTheme.bodySmall),
+                  if (item.dismissedAt != null)
+                    Text('已移除', style: theme.textTheme.bodySmall),
+                ],
+              ),
             ],
           ),
         ),
@@ -394,6 +386,10 @@ class _InboxItemMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     return PopupMenuButton<String>(
       tooltip: '消息操作',
+      useRootNavigator: true,
+      popUpAnimationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
       onSelected: onSelected,
       itemBuilder: (_) => [
         PopupMenuItem(
@@ -420,43 +416,31 @@ class _InboxItemMenu extends StatelessWidget {
 }
 
 class _InboxEmpty extends StatelessWidget {
-  const _InboxEmpty({required this.state, required this.onRefresh});
-
+  const _InboxEmpty({required this.state});
   final String state;
-  final Future<void> Function() onRefresh;
 
   @override
-  Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: onRefresh,
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(
-            height: MediaQuery.sizeOf(context).height * 0.58,
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.xxl),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.inbox_outlined, size: 52),
-                    const SizedBox(height: AppSpacing.md),
-                    Text(
-                      state == 'unread' ? '没有未读消息' : '没有符合筛选条件的消息',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          Icon(
+            Icons.inbox_outlined,
+            size: 44,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            state == 'unread' ? '没有未读消息' : '没有符合筛选条件的消息',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium,
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _InboxError extends StatelessWidget {

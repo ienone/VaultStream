@@ -134,6 +134,18 @@ class UnifiedTimepointResult {
   final double score;
 }
 
+class DocumentPageResult {
+  DocumentPageResult.fromJson(Map<String, dynamic> json)
+    : filename = json['filename'] as String,
+      pageNumber = json['page_number'] as int,
+      excerpt = json['excerpt'] as String,
+      route = json['route'] as String;
+  final String filename;
+  final int pageNumber;
+  final String excerpt;
+  final String route;
+}
+
 class UnifiedSearchResults {
   const UnifiedSearchResults({
     required this.query,
@@ -144,6 +156,7 @@ class UnifiedSearchResults {
     required this.people,
     required this.topics,
     required this.timepoints,
+    this.documentPages = const [],
   });
 
   factory UnifiedSearchResults.fromJson(
@@ -187,6 +200,11 @@ class UnifiedSearchResults {
           ),
         )
         .toList(growable: false),
+    documentPages: (json['document_pages'] as List)
+        .map(
+          (item) => DocumentPageResult.fromJson(item as Map<String, dynamic>),
+        )
+        .toList(growable: false),
   );
 
   final String query;
@@ -197,4 +215,5 @@ class UnifiedSearchResults {
   final List<UnifiedFacetResult> people;
   final List<UnifiedFacetResult> topics;
   final List<UnifiedTimepointResult> timepoints;
+  final List<DocumentPageResult> documentPages;
 }

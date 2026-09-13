@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/utils/toast.dart';
+import '../../routing/app_navigation.dart';
 import '../../theme/design_tokens.dart';
 import '../settings/providers/favorites_sync_provider.dart';
 import 'models/stats.dart';
@@ -21,6 +22,7 @@ class TaskResultPage extends ConsumerWidget {
     final runAsync = ref.watch(backgroundTaskRunProvider(runId));
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBackButton(),
         title: const Text('任务结果'),
         actions: [
           IconButton(
@@ -51,7 +53,7 @@ class _TaskLoadError extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(AppSpacing.xl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -83,40 +85,43 @@ class _TaskResultBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final main = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _TaskSummaryCard(run: run),
-        if (run.presentation.resultSections.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.md),
-          _BusinessResultCard(run: run),
-        ],
-      ],
-    );
-    final contextPane = _RunContextCard(run: run);
-
+    final hasContext =
+        run.startedAt != null ||
+        run.finishedAt != null ||
+        run.presentation.entityLinks.any(
+          (link) => !run.presentation.allowedActions.any(
+            (action) => action.href == link.href,
+          ),
+        );
     return SafeArea(
       top: false,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          AppSpacing.lg,
-          AppSpacing.lg,
-          AppSpacing.xxxl,
-        ),
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 48),
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 800),
+            constraints: const BoxConstraints(
+              maxWidth: AppPane.readableMaxWidth,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                main,
-                const SizedBox(height: AppSpacing.md),
-                contextPane,
+                _TaskSummary(run: run),
+                if (run.presentation.resultSections.isNotEmpty) ...[
+                  const Divider(height: 48),
+                  _BusinessResult(run: run),
+                ],
+                if (hasContext) ...[
+                  const Divider(height: 48),
+                  _RunContext(run: run),
+                ],
                 if (run.metadata.isNotEmpty ||
-                    (run.result?.isNotEmpty ?? false)) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  _TechnicalDetails(run: run),
+                    (run.result?.isNotEmpty ?? false) ||
+                    run.presentation.errorCode != null) ...[
+                  const SizedBox(height: 24),
+                  _TechnicalDetails(
+                    key: ValueKey('technical-${run.runId}'),
+                    run: run,
+                  ),
                 ],
               ],
             ),
@@ -127,8 +132,8 @@ class _TaskResultBody extends StatelessWidget {
   }
 }
 
-class _TaskSummaryCard extends StatelessWidget {
-  const _TaskSummaryCard({required this.run});
+class _TaskSummary extends StatelessWidget {
+  const _TaskSummary({required this.run});
 
   final BackgroundTaskRun run;
 
@@ -138,123 +143,102 @@ class _TaskSummaryCard extends StatelessWidget {
     final colors = theme.colorScheme;
     final statusColor = _statusColor(colors, run.status);
     final presentation = run.presentation;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerLow,
-        borderRadius: AppShape.paneBorder,
-        border: Border.all(color: colors.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.12),
-                    borderRadius: AppShape.cardMediaBorder,
-                  ),
-                  child: Icon(_kindIcon(presentation.kind), color: statusColor),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        presentation.title,
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.xxs),
-                      Text(
-                        _statusLabel(run.status),
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: statusColor,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.12),
+                borderRadius: AppShape.cardMediaBorder,
+              ),
+              child: Icon(_kindIcon(presentation.kind), color: statusColor),
             ),
-            const SizedBox(height: AppSpacing.md),
-            Text(presentation.summary, style: theme.textTheme.bodyLarge),
-            if (presentation.allowedActions.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.lg),
-              Wrap(
-                spacing: AppSpacing.xs,
-                runSpacing: AppSpacing.xs,
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  for (final action in presentation.allowedActions)
-                    if (action.isPrimary)
-                      FilledButton(
-                        onPressed: () => context.push(action.href),
-                        child: Text(action.label),
-                      )
-                    else
-                      OutlinedButton(
-                        onPressed: () => context.push(action.href),
-                        child: Text(action.label),
+                  Semantics(
+                    header: true,
+                    child: Text(
+                      presentation.title,
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
                       ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xxs),
+                  Text(
+                    _statusLabel(run.status),
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: statusColor,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ],
               ),
-            ],
+            ),
           ],
         ),
-      ),
+        const SizedBox(height: AppSpacing.md),
+        Text(presentation.summary, style: theme.textTheme.bodyLarge),
+        if (presentation.allowedActions.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.lg),
+          Wrap(
+            spacing: AppSpacing.xs,
+            runSpacing: AppSpacing.xs,
+            children: [
+              for (final action in presentation.allowedActions)
+                if (action.isPrimary)
+                  FilledButton(
+                    onPressed: () => openAppLocation(context, action.href),
+                    child: Text(action.label),
+                  )
+                else
+                  OutlinedButton(
+                    onPressed: () => openAppLocation(context, action.href),
+                    child: Text(action.label),
+                  ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 }
 
-class _BusinessResultCard extends ConsumerWidget {
-  const _BusinessResultCard({required this.run});
+class _BusinessResult extends StatelessWidget {
+  const _BusinessResult({required this.run});
 
   final BackgroundTaskRun run;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final colors = Theme.of(context).colorScheme;
+  Widget build(BuildContext context) {
     final presentation = run.presentation;
     final favoritesResults = presentation.kind == 'favorites_sync'
         ? _favoritesPlatformResults(run.result)
         : const <Map<String, dynamic>>[];
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: AppShape.paneBorder,
-        border: Border.all(color: colors.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (
-              var index = 0;
-              index < presentation.resultSections.length;
-              index++
-            ) ...[
-              if (index > 0) const Divider(height: AppSpacing.xxl),
-              _ResultSection(section: presentation.resultSections[index]),
-            ],
-            if (favoritesResults.any(_hasFavoriteFailure)) ...[
-              const Divider(height: AppSpacing.xxl),
-              _FavoritesFailureSection(
-                runId: run.runId,
-                results: favoritesResults,
-              ),
-            ],
-          ],
-        ),
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (
+          var index = 0;
+          index < presentation.resultSections.length;
+          index++
+        ) ...[
+          if (index > 0) const Divider(height: AppSpacing.xxl),
+          _ResultSection(section: presentation.resultSections[index]),
+        ],
+        if (favoritesResults.any(_hasFavoriteFailure)) ...[
+          const Divider(height: AppSpacing.xxl),
+          _FavoritesFailureSection(runId: run.runId, results: favoritesResults),
+        ],
+      ],
     );
   }
 }
@@ -273,14 +257,16 @@ class _FavoritesFailureSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        OverflowBar(
+          alignment: MainAxisAlignment.spaceBetween,
+          overflowAlignment: OverflowBarAlignment.start,
+          spacing: AppSpacing.sm,
+          overflowSpacing: AppSpacing.xs,
           children: [
-            Expanded(
-              child: Text(
-                '失败项与处理',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            Text(
+              '失败项与处理',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
               ),
             ),
             OutlinedButton.icon(
@@ -338,17 +324,30 @@ class _FavoritePlatformFailure extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        OverflowBar(
+          alignment: MainAxisAlignment.spaceBetween,
+          overflowAlignment: OverflowBarAlignment.start,
+          spacing: AppSpacing.sm,
+          overflowSpacing: AppSpacing.xs,
           children: [
-            Icon(Icons.report_problem_outlined, size: 18, color: colors.error),
-            const SizedBox(width: AppSpacing.xs),
-            Expanded(
-              child: Text(
-                '$platform · $total 个失败项',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.report_problem_outlined,
+                  size: 18,
+                  color: colors.error,
                 ),
-              ),
+                const SizedBox(width: AppSpacing.xs),
+                Flexible(
+                  child: Text(
+                    '$platform · $total 个失败项',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
             ),
             if (items.isNotEmpty)
               TextButton.icon(
@@ -462,20 +461,30 @@ class _ResultSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          section.title,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
+        Semantics(
+          header: true,
+          child: Text(
+            section.title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
         const SizedBox(height: AppSpacing.sm),
         LayoutBuilder(
           builder: (context, constraints) {
-            final itemWidth = constraints.maxWidth >= 300
-                ? (constraints.maxWidth - AppSpacing.sm) / 2
-                : constraints.maxWidth;
+            final minimumWidth =
+                160 * MediaQuery.textScalerOf(context).scale(16) / 16;
+            final columns =
+                ((constraints.maxWidth + AppSpacing.md) /
+                        (minimumWidth + AppSpacing.md))
+                    .floor()
+                    .clamp(1, 2);
+            final itemWidth =
+                (constraints.maxWidth - AppSpacing.md * (columns - 1)) /
+                columns;
             return Wrap(
-              spacing: AppSpacing.sm,
+              spacing: AppSpacing.md,
               runSpacing: AppSpacing.sm,
               children: [
                 for (final item in section.items)
@@ -514,77 +523,100 @@ class _ResultItem extends StatelessWidget {
               color: colors.onSurfaceVariant,
             ),
           ),
-          SelectableText(item.value, style: theme.textTheme.titleMedium),
+          SelectableText(
+            item.value,
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: switch (item.tone) {
+                'negative' => colors.error,
+                'positive' => colors.primary,
+                _ => colors.onSurface,
+              },
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _RunContextCard extends StatelessWidget {
-  const _RunContextCard({required this.run});
-
+class _RunContext extends StatelessWidget {
+  const _RunContext({required this.run});
   final BackgroundTaskRun run;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-    final presentation = run.presentation;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerLow,
-        borderRadius: AppShape.paneBorder,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '运行信息',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            if (run.startedAt != null)
-              _DetailLine(label: '开始时间', value: _formatTime(run.startedAt!)),
-            if (run.finishedAt != null)
-              _DetailLine(label: '结束时间', value: _formatTime(run.finishedAt!)),
-            if (run.startedAt != null && run.finishedAt != null)
-              _DetailLine(
-                label: '耗时',
-                value: _formatDuration(
-                  run.finishedAt!.difference(run.startedAt!),
-                ),
-              ),
-            if (presentation.entityLinks.isNotEmpty) ...[
-              const Divider(height: AppSpacing.xxl),
-              Text('关联对象', style: theme.textTheme.labelLarge),
-              const SizedBox(height: AppSpacing.xs),
-              Wrap(
-                spacing: AppSpacing.xs,
-                runSpacing: AppSpacing.xs,
+    final facts = <(String, String)>[
+      if (run.startedAt != null) ('开始时间', _formatTime(run.startedAt!)),
+      if (run.finishedAt != null) ('结束时间', _formatTime(run.finishedAt!)),
+      if (run.startedAt != null && run.finishedAt != null)
+        ('耗时', _formatDuration(run.finishedAt!.difference(run.startedAt!))),
+    ];
+    final actionTargets = run.presentation.allowedActions
+        .map((a) => a.href)
+        .toSet();
+    final links = run.presentation.entityLinks
+        .where((link) => !actionTargets.contains(link.href))
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (facts.isNotEmpty) ...[
+          Semantics(
+            header: true,
+            child: Text('运行信息', style: theme.textTheme.titleMedium),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final minWidth =
+                  220 * MediaQuery.textScalerOf(context).scale(14) / 14;
+              final columns = ((constraints.maxWidth + 16) / (minWidth + 16))
+                  .floor()
+                  .clamp(1, 3);
+              final width =
+                  (constraints.maxWidth - 16 * (columns - 1)) / columns;
+              return Wrap(
+                spacing: 16,
+                runSpacing: 12,
                 children: [
-                  for (final link in presentation.entityLinks)
-                    ActionChip(
-                      avatar: Icon(_entityIcon(link.kind), size: 18),
-                      label: Text(link.label),
-                      onPressed: () => context.push(link.href),
+                  for (final fact in facts)
+                    SizedBox(
+                      width: width,
+                      child: _DetailLine(label: fact.$1, value: fact.$2),
                     ),
                 ],
-              ),
+              );
+            },
+          ),
+        ],
+        if (links.isNotEmpty) ...[
+          if (facts.isNotEmpty) const SizedBox(height: AppSpacing.lg),
+          Semantics(
+            header: true,
+            child: Text('关联对象', style: theme.textTheme.titleMedium),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              for (final link in links)
+                ActionChip(
+                  avatar: Icon(_entityIcon(link.kind), size: 18),
+                  label: Text(link.label),
+                  onPressed: () => openAppLocation(context, link.href),
+                ),
             ],
-          ],
-        ),
-      ),
+          ),
+        ],
+      ],
     );
   }
 }
 
 class _TechnicalDetails extends StatelessWidget {
-  const _TechnicalDetails({required this.run});
+  const _TechnicalDetails({super.key, required this.run});
 
   final BackgroundTaskRun run;
 
@@ -596,6 +628,15 @@ class _TechnicalDetails extends StatelessWidget {
       borderRadius: AppShape.cardBorder,
       clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
+        expansionAnimationStyle: MediaQuery.disableAnimationsOf(context)
+            ? AnimationStyle.noAnimation
+            : AnimationStyle(
+                duration: AppMotion.standard,
+                curve: AppMotion.standardCurve,
+              ),
+        expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+        shape: const Border(),
+        collapsedShape: const Border(),
         title: const Text('技术详情'),
         subtitle: const Text('原始输入与运行结果'),
         childrenPadding: const EdgeInsets.fromLTRB(
@@ -826,8 +867,8 @@ Future<void> _retryFavoriteItems(
       .map(
         (item) => <String, dynamic>{
           'url': _mapText(item, 'url'),
-          if (_mapText(item, 'title') case final title?) 'title': title,
-          if (_mapText(item, 'item_id') case final itemId?) 'item_id': itemId,
+          'title': ?_mapText(item, 'title'),
+          'item_id': ?_mapText(item, 'item_id'),
         },
       )
       .toList(growable: false);
