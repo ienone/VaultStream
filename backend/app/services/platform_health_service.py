@@ -51,9 +51,40 @@ class PlatformHealthService:
         platform: str,
     ) -> dict[str, Any] | None:
         for run in runs:
-            scope = str(run.get("scope") or "all").strip().lower()
-            if scope == platform or scope == "all":
+            scope = str(run.get("scope") or "").strip().lower()
+            if scope == platform:
                 return run
+            result = run.get("result")
+            platform_results = (
+                result.get("results") if isinstance(result, dict) else None
+            )
+            if (
+                scope == "all"
+                and isinstance(platform_results, dict)
+                and platform in platform_results
+            ):
+                return run
+        return None
+
+    @staticmethod
+    def _platform_run_status(run: dict[str, Any] | None, platform: str) -> str | None:
+        if run is None:
+            return None
+        result = run.get("result")
+        result = result if isinstance(result, dict) else {}
+        if run.get("scope") == platform:
+            platform_result = result.get("result")
+            if isinstance(platform_result, dict):
+                return platform_result.get("status")
+            # A platform-specific run may fail before producing a result.
+            return run.get("status")
+        if run.get("scope") == "all":
+            results = result.get("results")
+            platform_result = (
+                results.get(platform) if isinstance(results, dict) else None
+            )
+            if isinstance(platform_result, dict):
+                return platform_result.get("status")
         return None
 
     async def _cookie_keepalive_status(self) -> dict[str, Any]:
@@ -187,6 +218,7 @@ class PlatformHealthService:
                 recent_runs,
                 platform,
             )
+            latest_platform_status = self._platform_run_status(latest_run, platform)
             issues: list[str] = []
             if (
                 browser_auth_supported
@@ -200,8 +232,7 @@ class PlatformHealthService:
                 issues.append("收藏同步认证失败")
             if (
                 favorites_enabled
-                and latest_run
-                and latest_run.get("status") == "error"
+                and latest_platform_status in {"error", "failed", "partial_success"}
             ):
                 issues.append("最近收藏同步失败")
 
@@ -235,6 +266,7 @@ class PlatformHealthService:
                             else None
                         ),
                         "last_run": latest_run,
+                        "last_run_status": latest_platform_status,
                         "error": favorites_error,
                         "status_error": favorites_status_error,
                     },

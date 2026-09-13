@@ -13,6 +13,7 @@ import httpx
 from typing import Optional, Dict
 from urllib.parse import urlparse, parse_qs, urlencode
 from app.core.logging import logger
+from app.adapters.errors import NonRetryableAdapterError
 from app.utils.url_utils import normalize_bilibili_url
 
 from app.adapters.base import PlatformAdapter, ParsedContent
@@ -117,6 +118,17 @@ class BilibiliAdapter(PlatformAdapter):
         
         # 移除追踪参数
         parsed = urlparse(url)
+        video_path = re.fullmatch(r"/video/(BV[0-9A-Za-z]{10}|av[0-9]+)/?", parsed.path)
+        if parsed.hostname in {"bilibili.com", "www.bilibili.com", "m.bilibili.com"} and video_path:
+            page_raw = parse_qs(parsed.query, keep_blank_values=True).get("p", ["1"])[0]
+            try:
+                page = int(page_raw)
+                if page < 1:
+                    raise ValueError("invalid page")
+            except ValueError:
+                raise NonRetryableAdapterError("无效的视频分 P 参数") from None
+            canonical = f"https://www.bilibili.com/video/{video_path.group(1)}/"
+            return canonical if page == 1 else f"{canonical}?p={page}"
         clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
         
         # 保留必要的查询参数（如视频的p参数）

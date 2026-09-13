@@ -3,8 +3,8 @@
 
 负责解析微博用户主页和个人信息
 """
+import asyncio
 import requests
-from datetime import datetime
 from typing import Dict, Any
 from app.core.logging import logger
 from app.adapters.base import ParsedContent, LAYOUT_GALLERY
@@ -122,7 +122,7 @@ def parse_user_detail(item: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, A
     return item
 
 
-async def parse_user(uid: str, url: str, headers: Dict[str, str], cookies: Dict[str, str], proxies: Dict[str, str] = None) -> ParsedContent:
+def _parse_user_sync(uid: str, url: str, headers: Dict[str, str], cookies: Dict[str, str], proxies: Dict[str, str] = None) -> ParsedContent:
     """
     解析微博用户主页
     
@@ -173,7 +173,7 @@ async def parse_user(uid: str, url: str, headers: Dict[str, str], cookies: Dict[
         author_url=author_url,
         cover_url=author_avatar_url,
         media_urls=[author_avatar_url] if author_avatar_url else [],
-        published_at=datetime.now(), 
+        published_at=None,
         archive_metadata={
             **user_info,
             "archive": archive  # worker需要此字段进行颜色提取
@@ -190,3 +190,8 @@ async def parse_user(uid: str, url: str, headers: Dict[str, str], cookies: Dict[
             "favorite": 0
         }
     )
+
+
+async def parse_user(uid: str, url: str, headers: Dict[str, str], cookies: Dict[str, str], proxies: Dict[str, str] = None) -> ParsedContent:
+    """Run blocking platform requests outside the API event loop."""
+    return await asyncio.to_thread(_parse_user_sync, uid, url, headers, cookies, proxies)

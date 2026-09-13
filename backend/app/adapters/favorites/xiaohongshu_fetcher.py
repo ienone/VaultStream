@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Optional
+from urllib.parse import urlencode
 
 import httpx
 from xhshow import SessionManager, Xhshow
@@ -309,9 +310,15 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
                 seen_ids.add(note_id)
 
                 user = note.get("user", {}) or {}
+                note_url = f"https://www.xiaohongshu.com/explore/{note_id}"
+                # The collection response supplies the token required by the
+                # detail endpoint, including for the account's own favorites.
+                xsec_token = note.get("xsec_token")
+                if isinstance(xsec_token, str) and xsec_token:
+                    note_url += "?" + urlencode({"xsec_token": xsec_token})
                 items.append(
                     FavoriteItem(
-                        url=f"https://www.xiaohongshu.com/explore/{note_id}",
+                        url=note_url,
                         title=note.get("display_title") or note.get("title"),
                         platform=self.platform_name(),
                         item_id=note_id,

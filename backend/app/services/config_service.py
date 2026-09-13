@@ -538,7 +538,7 @@ class ConfigService:
     async def set_favorites_sync_cursor(
         self,
         platform: str,
-        value: str,
+        value: str | None,
     ) -> SystemSetting:
         return await self.set_value(
             f"favorites_sync_cursor_{platform}",

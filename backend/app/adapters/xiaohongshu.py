@@ -128,27 +128,15 @@ class XiaohongshuAdapter(PlatformAdapter):
         return None
     
     async def clean_url(self, url: str) -> str:
-        """
-        净化URL，保留xsec_token和xsec_source以便后续访问
-        """
-        xsec_token = self._extract_xsec_token(url)
-        xsec_source = self._extract_xsec_source(url)
-        
-        def build_query() -> str:
-            params = []
-            if xsec_token:
-                params.append(f"xsec_token={xsec_token}")
-            if xsec_source and xsec_source != "pc_feed":
-                params.append(f"xsec_source={xsec_source}")
-            return "?" + "&".join(params) if params else ""
+        """按平台对象确定存档身份；访问参数保留在原始 Content.url。"""
         
         note_id = self._extract_note_id(url)
         if note_id:
-            return f"https://www.xiaohongshu.com/explore/{note_id}{build_query()}"
+            return f"https://www.xiaohongshu.com/explore/{note_id}"
         
         user_id = self._extract_user_id(url)
         if user_id:
-            return f"https://www.xiaohongshu.com/user/profile/{user_id}{build_query()}"
+            return f"https://www.xiaohongshu.com/user/profile/{user_id}"
         
         return url
     

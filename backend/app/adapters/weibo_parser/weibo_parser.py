@@ -4,6 +4,7 @@
 负责解析微博状态（推文）内容
 """
 import re
+import asyncio
 import requests
 from datetime import datetime
 from typing import Dict, Any, List
@@ -18,7 +19,7 @@ from app.core.config import settings
 from .base import clean_html_text, extract_url, extract_weibo_images, extract_weibo_video
 
 
-async def parse_weibo(
+def _parse_weibo_sync(
     bid: str,
     url: str,
     headers: Dict[str, str],
@@ -244,3 +245,8 @@ def build_weibo_archive(data: Dict[str, Any]) -> Dict[str, Any]:
         archive["images"].append({"url": author_avatar_url, "type": "avatar"})
     
     return archive
+
+
+async def parse_weibo(bid: str, url: str, headers: Dict[str, str], cookies: Dict[str, str], proxies: Dict[str, str] = None) -> ParsedContent:
+    """Run blocking platform requests outside the API event loop."""
+    return await asyncio.to_thread(_parse_weibo_sync, bid, url, headers, cookies, proxies)

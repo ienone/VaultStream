@@ -92,13 +92,11 @@ def strip_tags_from_text(text: str) -> str:
         return ""
     
     # 移除#xxx[话题]#格式
-    result = re.sub(r'#[^#\[\]]+\[话题\]#\s*', '', text)
+    result = re.sub(r'#[^#\[\]]+\[话题\]#', '', text)
     
     # 移除独立的#xxx#格式（前后是空白或行首行尾）
-    result = re.sub(r'(?:^|\s)#[^#\[\]\s]+#(?:\s|$)', ' ', result)
+    result = re.sub(r'(?<!\S)#[^#\[\]\s]+#(?!\S)', '', result)
     
     # 清理多余空白
-    result = re.sub(r'\s+', ' ', result).strip()
-    result = re.sub(r'\n\s*\n', '\n\n', result)
-    
-    return result
+    result = re.sub(r'[^\S\n]+', ' ', result)
+    return clean_text(result)

@@ -25,6 +25,7 @@ os.environ.update({
 from app.core.database import ensure_content_embeddings_schema, ensure_content_fts
 from app.core.db_adapter import AsyncSessionLocal, engine
 from app.main import app
+from app.core.events import EventBus
 from app.models import Base
 
 
@@ -34,6 +35,7 @@ async def database():
         await connection.run_sync(Base.metadata.create_all)
         await ensure_content_embeddings_schema(connection)
         await ensure_content_fts(connection)
+    await EventBus._ensure_event_table()
     yield
     await engine.dispose()
     logger.remove()

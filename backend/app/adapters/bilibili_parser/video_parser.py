@@ -16,6 +16,7 @@ from app.adapters.errors import (
 )
 from app.models import BilibiliContentType
 from .base import clean_text, safe_url, prune_metadata, format_request_error
+from .video_media import read_video_media
 
 
 # API端点
@@ -112,14 +113,21 @@ async def parse_video(
             author_avatar_url=author_avatar_url
         )
         
-        # 当前只归档视频封面；VIDEO 布局表达原生内容类型，播放源仍由后续媒体能力提供。
+        video, rich_payload = await read_video_media(client, item, url)
+        archive_metadata['archive']['videos'] = [video]
+        stats['duration_seconds'] = video['duration_ms'] / 1000
+        title = item.get('title')
+        if rich_payload['video_page_count'] > 1:
+            part_title = rich_payload.get('video_page_title')
+            suffix = f" {part_title.strip()}" if isinstance(part_title, str) and part_title.strip() else ''
+            title = f"{title or ''} · P{rich_payload['video_page']}{suffix}"
         return PlatformAdapter.create_parsed_content(
             platform='bilibili',
             content_type=BilibiliContentType.VIDEO.value,
             content_id=bvid or f"av{aid}",
             clean_url=url,
             layout_type=LAYOUT_VIDEO,
-            title=item.get('title'),
+            title=title,
             body=item.get('desc'),
             author_name=owner.get('name'),
             author_id=str(author_mid) if author_mid else None,
@@ -129,6 +137,7 @@ async def parse_video(
             media_urls=[item.get('pic')] if item.get('pic') else [],
             published_at=datetime.fromtimestamp(item.get('pubdate')) if item.get('pubdate') else None,
             archive_metadata=archive_metadata,
+            rich_payload=rich_payload,
             stats=stats,
             source_tags=list(dict.fromkeys(
                 tag for tag in (item.get('tname'), item.get('tname_v2')) if tag

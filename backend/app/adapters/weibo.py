@@ -35,7 +35,24 @@ class WeiboAdapter(PlatformAdapter):
     # https://m.weibo.cn/status/49999...
     # https://weibo.com/u/5673255066
     # https://mapp.api.weibo.cn/fx/493bfdaf31cffc58f0ddcb59738cf77c.html
-    URL_PATTERN = re.compile(r"(?:weibo\.com|weibo\.cn|mapp\.api\.weibo\.cn)/(?:(\d+)/|status/|detail/|u/|fx/)?([A-Za-z0-9]+)(?:\.html)?")
+    URL_PATTERN = re.compile(r"(?:weibo\.com|weibo\.cn|mapp\.api\.weibo\.cn)/(?:(?:2/)?detail/|(\d+)/|status/|u/|fx/)?([A-Za-z0-9]+)(?:\.html)?")
+
+    @staticmethod
+    def _numeric_status_id(value: str) -> str:
+        """Weibo BID uses 4 Base62 digits per 7 decimal MID digits."""
+        if value.isdigit():
+            return str(int(value))
+        alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        groups = []
+        end = len(value)
+        while end > 0:
+            start = max(0, end - 4)
+            number = 0
+            for character in value[start:end]:
+                number = number * 62 + alphabet.index(character)
+            groups.append(str(number).zfill(7) if start else str(number))
+            end = start
+        return str(int("".join(reversed(groups))))
 
     def __init__(self, cookies: Optional[Dict[str, str]] = None):
         """
@@ -128,13 +145,8 @@ class WeiboAdapter(PlatformAdapter):
                 if "/u/" in url:
                     return f"https://weibo.com/u/{part2}"
 
-            bid = part2
-            uid = part1
-            if uid:
-                return f"https://weibo.com/{uid}/{bid}"
-            if bid:
-                return f"https://weibo.com/detail/{bid}"
-        
+            return f"https://weibo.com/detail/{self._numeric_status_id(part2)}"
+
         return url.split("?")[0]
 
     async def parse(self, url: str) -> ParsedContent:
@@ -196,7 +208,7 @@ class WeiboAdapter(PlatformAdapter):
         if not match:
             raise NonRetryableAdapterError("无效的微博URL")
         
-        bid = match.group(2)  # mblogid
+        bid = self._numeric_status_id(match.group(2))
         
         # 净化URL
         clean_url = await self.clean_url(url)

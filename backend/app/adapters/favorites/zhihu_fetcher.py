@@ -3,6 +3,7 @@
 # 本文件为基于 API 调用模式的原生复刻实现，非原始代码复制。
 from __future__ import annotations
 
+import json
 import asyncio
 import re
 from datetime import datetime, timezone
@@ -286,7 +287,20 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
         max_items: int = 50,
         cursor: Optional[str] = None,
     ) -> tuple[list[FavoriteItem], Optional[str]]:
-        del cursor  # Zhihu collection APIs are offset-based; this phase returns no cursor.
+        if max_items < 1:
+            raise ValueError("max_items must be positive")
+        resume_collection, resume_offset = None, 0
+        if cursor:
+            try:
+                decoded = json.loads(cursor)
+                resume_collection = decoded["collection_id"]
+                resume_offset = decoded["offset"]
+                if not isinstance(resume_collection, str) or not resume_collection.isdigit():
+                    raise ValueError("invalid collection")
+                if type(resume_offset) is not int or resume_offset < 0:
+                    raise ValueError("invalid offset")
+            except (ValueError, TypeError, KeyError):
+                raise FavoritesFetchError(code="invalid_cursor", message="知乎收藏游标无效", hint="重置知乎收藏同步游标后重试", retryable=False) from None
         cookies = await self._get_cookies()
         if not cookies.get("z_c0"):
             raise FavoritesFetchError(
@@ -300,10 +314,17 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
 
         collections = await self._fetch_user_collections(cookies)
 
+        collections = [c for c in collections if c.get("id")]
+        if resume_collection is not None:
+            index = next((i for i, c in enumerate(collections) if str(c["id"]) == resume_collection), None)
+            if index is None:
+                raise FavoritesFetchError(code="invalid_cursor", message="续同步的知乎收藏夹已不存在", hint="重置知乎收藏同步游标后重试", retryable=False)
+            collections = collections[index:]
+
         items: list[FavoriteItem] = []
         seen_urls: set[str] = set()
 
-        for collection in collections:
+        for collection_index, collection in enumerate(collections):
             if len(items) >= max_items:
                 break
 
@@ -311,14 +332,16 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
             if not coll_id:
                 continue
 
-            offset = 0
+            offset = resume_offset if collection_index == 0 else 0
             while len(items) < max_items:
                 url = (
                     f"https://www.zhihu.com/api/v4/collections/{coll_id}/items"
                     f"?limit={self._PAGE_SIZE}&offset={offset}"
                 )
                 data = await self._api_get(url, cookies)
-                for entry in data.get("data", []):
+                entries = data.get("data", [])
+                is_end = data.get("paging", {}).get("is_end", True)
+                for entry_index, entry in enumerate(entries):
                     if len(items) >= max_items:
                         break
 
@@ -367,6 +390,15 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
                             favorited_at=favorited_at,
                         )
                     )
+
+                    if len(items) >= max_items:
+                        if entry_index + 1 < len(entries) or not is_end:
+                            next_cursor = {"collection_id": str(coll_id), "offset": offset + entry_index + 1}
+                        elif collection_index + 1 < len(collections):
+                            next_cursor = {"collection_id": str(collections[collection_index + 1]["id"]), "offset": 0}
+                        else:
+                            return items, None
+                        return items, json.dumps(next_cursor, separators=(",", ":"))
 
                 paging = data.get("paging", {})
                 if paging.get("is_end", True):

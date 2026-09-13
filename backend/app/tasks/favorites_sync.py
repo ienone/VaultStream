@@ -740,8 +740,11 @@ class FavoritesSyncTask:
                 delay=delay,
             )
 
-        if next_cursor is not None:
+        if import_result["failed"] == 0:
             await self._config_service.set_favorites_sync_cursor(platform, next_cursor)
+        else:
+            # Revisit this page instead of skipping items that never entered the library.
+            next_cursor = platform_state.cursor
 
         result = {
             "platform": platform,
