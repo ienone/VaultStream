@@ -4,6 +4,7 @@
 定期检查到期的发现源并抓取新内容入库。
 """
 import asyncio
+from copy import deepcopy
 import html
 from datetime import timedelta
 from urllib.parse import unquote
@@ -19,7 +20,7 @@ from app.core.db_adapter import AsyncSessionLocal
 from app.core.time_utils import utcnow
 from app.adapters.storage import get_storage_backend
 from app.core.config import settings
-from app.media.processor import store_archive_images_as_webp
+from app.media.processor import store_archive_images_as_webp, store_archive_videos
 from app.models import (
     Content,
     ContentDiscoveryLink,
@@ -229,7 +230,9 @@ class DiscoverySyncTask:
 
             for item in items:
                 canonical = normalize_url_for_dedup(item.url)
-                cover_candidate = item.cover_url or (item.media_urls[0] if item.media_urls else None)
+                cover_candidate = item.cover_url or (
+                    item.media_urls[0] if item.media_urls and item.layout_type != "video" else None
+                )
 
                 # 检查 URL 是否已存在（主库或发现流）
                 stmt = select(Content).where(Content.canonical_url == canonical).limit(1)
@@ -323,7 +326,8 @@ class DiscoverySyncTask:
                     expire_at=utcnow() + timedelta(days=retention_days),
                     source_tags=item.source_tags,
                     status=ContentStatus.PARSE_SUCCESS,
-                    layout_type=LayoutType.ARTICLE,
+                    layout_type=LayoutType(item.layout_type),
+                    archive_metadata=item.archive_metadata,
                     cover_url=cover_candidate,
                     media_urls=item.media_urls,
                     rich_payload=item.rich_payload,
@@ -423,9 +427,9 @@ class DiscoverySyncTask:
                 )
 
     async def _archive_discovery_media(self, db, content_ids: list[int]):
-        """Download and convert images to WebP for newly ingested discovery items."""
+        """Archive declared image/video media under the existing media switches."""
         archive_config = await ConfigService().get_archive_media_config()
-        if not archive_config.enabled or not archive_config.images_enabled:
+        if not archive_config.enabled or not (archive_config.images_enabled or archive_config.videos_enabled):
             return
 
         if not content_ids:
@@ -445,24 +449,33 @@ class DiscoverySyncTask:
             if not content.media_urls:
                 continue
             try:
-                archive = {
-                    "images": [{"url": url, "type": "image"} for url in content.media_urls],
-                }
-                await store_archive_images_as_webp(
-                    archive=archive,
-                    storage=storage,
-                    namespace=namespace,
-                    quality=archive_config.image_webp_quality,
-                    max_images=archive_config.image_max_count,
-                )
-
+                metadata = deepcopy(content.archive_metadata or {})
+                archive = metadata.get("archive")
+                if not isinstance(archive, dict):
+                    # RSS discovery's untyped media contract contains images.
+                    archive = {"images": [{"url": url, "type": "image"} for url in content.media_urls]}
+                if archive_config.images_enabled:
+                    await store_archive_images_as_webp(
+                        archive=archive, storage=storage, namespace=namespace,
+                        quality=archive_config.image_webp_quality,
+                        max_images=archive_config.image_max_count,
+                    )
+                if archive_config.videos_enabled:
+                    await store_archive_videos(
+                        archive=archive, storage=storage, namespace=namespace,
+                        max_videos=archive_config.video_max_count,
+                        max_bytes=archive_config.video_max_bytes,
+                    )
+                metadata["archive"] = archive
+                content.archive_metadata = metadata
                 stored_images = archive.get("stored_images", [])
-                if not stored_images:
+                stored_media = stored_images + archive.get("stored_videos", [])
+                if not stored_media:
                     continue
 
                 local_urls = []
                 url_mapping = {}
-                for img in stored_images:
+                for img in stored_media:
                     if img.get("key"):
                         local_url = f"local://{img['key']}"
                         local_urls.append(local_url)
@@ -471,13 +484,15 @@ class DiscoverySyncTask:
                             url_mapping[orig_url] = local_url
 
                 if local_urls:
-                    content.media_urls = list(dict.fromkeys(local_urls))
+                    content.media_urls = list(dict.fromkeys(url_mapping.get(url, url) for url in content.media_urls))
                     flag_modified(content, "media_urls")
 
                 if content.cover_url and content.cover_url in url_mapping:
                     content.cover_url = url_mapping[content.cover_url]
-                elif not content.cover_url and local_urls:
-                    content.cover_url = local_urls[0]
+                elif not content.cover_url and stored_images:
+                    image_key = stored_images[0].get("key")
+                    if image_key:
+                        content.cover_url = f"local://{image_key}"
 
                 # Rewrite inline markdown image URLs in body to local:// keys.
                 if content.body and url_mapping:

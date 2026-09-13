@@ -40,8 +40,8 @@ class TelegramAdapter(PlatformAdapter):
         else:
             embed_url = clean_url
             
-        logger.info(f"TelegramAdapter: Fetching single message {embed_url}")
         resp = await self.client.get(embed_url)
+        resp.raise_for_status()
         soup = BeautifulSoup(resp.text, 'html.parser')
         
         msg = soup.select_one('.tgme_widget_message')
@@ -53,42 +53,70 @@ class TelegramAdapter(PlatformAdapter):
     def map_stats_to_content(self, content: Any, parsed: ParsedContent) -> None:
         self.map_common_stats(content, parsed.stats)
 
-    async def parse_channel(self, channel_url: str, limit: int = 20) -> List[ParsedContent]:
-        """解析 Telegram 频道（用于 Discovery）"""
-        if "/s/" not in channel_url:
-            channel_url = channel_url.replace("t.me/", "t.me/s/")
-        
-        logger.info(f"TelegramAdapter: Fetching channel {channel_url}")
-        resp = await self.client.get(channel_url)
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        
-        messages = soup.select('.tgme_widget_message_wrap')
-        results = []
-        
-        for msg in messages[-limit:]:
-            try:
-                msg_elem = msg.select_one('.tgme_widget_message')
-                if not msg_elem:
+    async def parse_channel(
+        self, channel_url: str, limit: int = 20, *, last_cursor: str | None = None,
+    ) -> List[ParsedContent]:
+        """Read the latest page initially; subsequent runs catch up to the saved ID.
+
+        Telegram public history exposes an older-page link with data-before.
+        Never advance the caller's watermark across a failed or incomplete scan.
+        """
+        parsed_url = urlparse(channel_url)
+        match = re.fullmatch(r"/(?:s/)?([A-Za-z0-9_]+)/?", parsed_url.path)
+        if parsed_url.scheme != "https" or parsed_url.netloc != "t.me" or not match:
+            raise ValueError("Telegram 订阅需要 https://t.me/频道名 公开频道地址")
+        channel = match.group(1)
+        channel_url = f"https://t.me/s/{channel}"
+        watermark = None
+        if last_cursor:
+            cursor_match = re.fullmatch(r"([A-Za-z0-9_]+)/(\d+)", last_cursor)
+            if not cursor_match or cursor_match.group(1).lower() != channel.lower():
+                raise ValueError("Telegram 同步游标不属于当前频道，请重置游标")
+            watermark = int(cursor_match.group(2))
+        results: dict[int, ParsedContent] = {}
+        before = None
+        for _ in range(100):
+            resp = await self.client.get(
+                channel_url, params={"before": before} if before is not None else None,
+            )
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            if not soup.select_one('.tgme_channel_history'):
+                raise ValueError("Telegram 未返回公开频道消息页")
+            reached_watermark = False
+            for msg in soup.select('.tgme_widget_message_wrap .tgme_widget_message'):
+                identity = str(msg.get('data-post', ''))
+                identity_match = re.fullmatch(r"([A-Za-z0-9_]+)/(\d+)", identity)
+                if not identity_match or identity_match.group(1).lower() != channel.lower():
+                    raise ValueError("Telegram 返回无效消息身份")
+                message_id = int(identity_match.group(2))
+                if watermark is not None and message_id <= watermark:
+                    reached_watermark = True
                     continue
-                
-                # 尝试提取当前消息的链接
-                link_elem = msg_elem.select_one('.tgme_widget_message_date')
-                msg_url = link_elem['href'] if link_elem else channel_url
-                
-                parsed_msg = self._parse_message_element(msg_elem, msg_url)
-                if parsed_msg:
-                    results.append(parsed_msg)
-            except Exception as e:
-                logger.warning(f"TelegramAdapter: 解析单条频道消息失败: {e}")
-                continue
-                
-        return results
+                item = self._parse_message_element(msg, f"https://t.me/{channel}/{message_id}")
+                if item is None:
+                    raise ValueError("Telegram 消息无法解析，未推进同步进度")
+                results[message_id] = item
+            ordered = [results[key] for key in sorted(results)]
+            if watermark is None:
+                return ordered[-limit:]
+            if reached_watermark:
+                return ordered
+            older = soup.select_one('a.tme_messages_more[data-before]')
+            if older is None:
+                return ordered
+            raw_before = str(older.get('data-before', ''))
+            if not raw_before.isdigit():
+                raise ValueError("Telegram 返回无效分页位置")
+            next_before = int(raw_before)
+            if before is not None and next_before >= before:
+                raise ValueError("Telegram 分页未向历史推进")
+            before = next_before
+        raise ValueError("Telegram 增量超过单轮 100 页，未推进游标")
 
     def _parse_message_element(self, msg: BeautifulSoup, fallback_url: str) -> Optional[ParsedContent]:
         """将 DOM 元素转换为 ParsedContent"""
         text_elem = msg.select_one('.js-message_text')
-        if not text_elem: 
-            return None
         
         # 1. 发送者信息提取
         author_link = msg.select_one('.tgme_widget_message_owner_name')
@@ -144,7 +172,7 @@ class TelegramAdapter(PlatformAdapter):
                 pass
 
         # 4. 正文与媒体
-        content_copy = BeautifulSoup(str(text_elem), 'html.parser')
+        content_copy = BeautifulSoup(str(text_elem) if text_elem else '', 'html.parser')
         for a in content_copy.find_all('a'):
             a.replace_with(f"[{a.get_text()}]({a.get('href', '')})")
         for b in content_copy.find_all(['b', 'strong']):
@@ -154,18 +182,26 @@ class TelegramAdapter(PlatformAdapter):
         title = main_body.split('\n')[0][:50] + "..." if main_body else "无正文内容"
         
         media_urls = []
-        photo_elem = msg.select_one('.tgme_widget_message_photo_wrap')
-        if photo_elem and 'style' in photo_elem.attrs:
-            match = re.search(r"background-image:url\(['\"](.*?)['\"]\)", photo_elem['style'])
-            if match:
+        for photo_elem in msg.select('.tgme_widget_message_photo_wrap'):
+            match = re.search(r"background-image:url\(['\"](.*?)['\"]\)", photo_elem.get('style', ''))
+            if match and match.group(1) not in media_urls:
                 media_urls.append(match.group(1))
         
-        video_elem = msg.select_one('.tgme_widget_message_video_player i')
-        if video_elem and 'style' in video_elem.attrs:
-            match = re.search(r"background-image:url\(['\"](.*?)['\"]\)", video_elem['style'])
-            if match:
-                # 在此设计中，将其视为视频的缩略图占位
-                media_urls.append(match.group(1))
+        images = [{"url": url} for url in media_urls]
+        videos = []
+        cover_url = media_urls[0] if media_urls else None
+        for player in msg.select('.tgme_widget_message_video_player'):
+            poster = player.select_one('i[style]')
+            match = re.search(r"background-image:url\(['\"](.*?)['\"]\)", poster.get('style', '')) if poster else None
+            thumbnail = match.group(1) if match else None
+            if thumbnail and not cover_url:
+                cover_url = thumbnail
+            for video in player.select('video.tgme_widget_message_video[src]'):
+                url = urljoin(fallback_url, video['src'])
+                if urlparse(url).scheme not in ('http', 'https') or url in media_urls:
+                    continue
+                media_urls.append(url)
+                videos.append({"url": url, "thumbnail_url": thumbnail})
 
         # 5. 组装 Payload 和 Stats
         rich_payload = {}
@@ -179,7 +215,9 @@ class TelegramAdapter(PlatformAdapter):
 
         # 确定 LayoutType
         layout_type = LAYOUT_ARTICLE
-        if len(media_urls) >= 1 and len(main_body) < 100:
+        if videos:
+            layout_type = LAYOUT_VIDEO
+        elif images and len(main_body) < 100:
             layout_type = LAYOUT_GALLERY
             
         content_id = msg.get(
@@ -198,7 +236,10 @@ class TelegramAdapter(PlatformAdapter):
             author_name=author_name,
             author_avatar_url=author_avatar_url,
             author_url=author_url,
+            cover_url=cover_url,
             media_urls=media_urls,
+            archive_metadata={"archive": {"type": "telegram_post", "version": "1",
+                "images": images, "videos": videos}},
             published_at=published_at,
             stats=stats,
             rich_payload=rich_payload

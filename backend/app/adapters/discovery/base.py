@@ -4,6 +4,7 @@
 所有来源 Scraper（RSS/HN/Reddit/GitHub/Telegram）继承此基类。
 """
 from abc import ABC, abstractmethod
+from app.adapters.base import LayoutTypeStr
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, Dict, Any, List
@@ -26,6 +27,8 @@ class DiscoveryItem:
     rich_payload: Optional[Dict[str, Any]] = None
     extra_stats: Dict[str, Any] = field(default_factory=dict)
     raw_metadata: dict = field(default_factory=dict)
+    layout_type: LayoutTypeStr = "article"
+    archive_metadata: Optional[Dict[str, Any]] = None
 
 
 class BaseDiscoveryScraper(ABC):
