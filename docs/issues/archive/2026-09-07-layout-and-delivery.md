@@ -58,3 +58,35 @@
 ![手机推送表单](/Users/ienone/coding/vaultstream/docs/issues/assets/2026-09-07-flat-layout/push-form-390.png)
 ![横屏推送表单](/Users/ienone/coding/vaultstream/docs/issues/assets/2026-09-07-flat-layout/push-form-844.png)
 ![桌面推送表单](/Users/ienone/coding/vaultstream/docs/issues/assets/2026-09-07-flat-layout/push-form-1200.png)
+
+## 内容视图横竖屏补充
+
+进一步读取两项目的内容布局实现，而不止参考导航外观：
+
+- [Animeko AdaptivePlayerScreenLayout](https://github.com/open-ani/animeko/blob/073f035dac1b7b23ad509bd1a88bf0b201d3e94d/app/shared/ui-episode/src/commonMain/kotlin/ui/episode/AdaptivePlayerScreenLayout.kt#L146) 使用 `movableContentOf` 在不同布局中复用播放器，并分别组织紧凑、横向和剧场布局。VaultStream 复用自身播放控制器，通过稳定的子树身份移动画面及信息列表；此次没有新增剧场模式。
+- [Mihon TwoPanelBox](https://github.com/mihonapp/mihon/blob/3a64c8d65cf9fe44346a5994642db440c73aa70a/presentation-core/src/main/java/tachiyomi/presentation/core/components/TwoPanelBox.kt#L27) 从可用宽度扣除安全区，限制一侧宽度后把余量交给另一侧。[MangaScreen](https://github.com/mihonapp/mihon/blob/3a64c8d65cf9fe44346a5994642db440c73aa70a/app/src/main/java/eu/kanade/presentation/manga/MangaScreen.kt#L137) 分别组织小、大屏内容。VaultStream 据此按内容区约束决定布局，保留既有窗口类别，不复制 Compose 容器或断点。
+
+本次实现：
+
+- 收藏库取消“手机横屏强制单列”，按实际内容宽度和字号决定列数。844×390 普通字号显示两列；放大字号时自动减少列数。骨架同步列数和紧凑内容卡高度。
+- 播放器在足够宽的短横屏和桌面将视频、信息并排；竖屏画面在上，标题、设置、章节、书签和队列在下面滚动。视频不会随信息一起滚出视野，横屏信息栏独立滚动；大字号空间不足时恢复单列。
+- 倍速改为下拉，定时停止改为菜单，显示当前值；删除外围设置卡、重复标题、常驻选项组和空书签说明。书签和队列使用直接列表，不再套分组卡；书签入口收成有工具提示的按钮。队列保留整行点击播放、移除和排序，删除重复的播放按钮与类型图标。保留真正的书签、章节及播放队列。删除声音模式中的重复说明与装饰图标，实际播放/暂停状态由控制按钮表达。
+- 动态、收藏库（含多选）、Agent 和播放器的紧凑高度顶栏使用 48dp。进度时间移到进度条下方，避免大字号挤压进度条；媒体失败区允许滚动到重试操作。
+
+收藏库横屏前后：
+
+![此前收藏库横屏](/Users/ienone/coding/vaultstream/docs/issues/assets/2026-09-06-implementation-review/after/collection-844.png)
+![本次收藏库横屏](/Users/ienone/coding/vaultstream/docs/issues/assets/2026-09-07-responsive-content/collection-844.png)
+
+本次手机、平板和桌面收藏库：
+
+![手机收藏库](/Users/ienone/coding/vaultstream/docs/issues/assets/2026-09-07-responsive-content/collection-390.png)
+![平板收藏库](/Users/ienone/coding/vaultstream/docs/issues/assets/2026-09-07-responsive-content/collection-768.png)
+![桌面收藏库](/Users/ienone/coding/vaultstream/docs/issues/assets/2026-09-07-responsive-content/collection-1200.png)
+
+播放器本次四尺寸实拍（没有保存同场景的旧播放器截图，不伪造前图）：
+
+![手机播放器](/Users/ienone/coding/vaultstream/docs/issues/assets/2026-09-07-responsive-content/player-390.png)
+![横屏播放器](/Users/ienone/coding/vaultstream/docs/issues/assets/2026-09-07-responsive-content/player-844.png)
+![平板播放器](/Users/ienone/coding/vaultstream/docs/issues/assets/2026-09-07-responsive-content/player-768.png)
+![桌面播放器](/Users/ienone/coding/vaultstream/docs/issues/assets/2026-09-07-responsive-content/player-1200.png)
