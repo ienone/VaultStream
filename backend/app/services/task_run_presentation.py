@@ -13,6 +13,7 @@ _TASK_TITLES = {
     "content_parse": "内容解析",
     "content_reparse": "重新解析内容",
     "content_summary": "生成内容摘要",
+    "content_aggregation": "多来源自动聚合",
     "content_embedding": "内容语义索引",
     "document_extract": "提取 PDF 正文",
     "semantic_reindex": "重建语义索引",
@@ -98,6 +99,9 @@ def _summary_for_task(
         return "内容已重新解析，可查看最新正文和解析候选。"
     if task == "content_summary":
         return "内容摘要已生成。" if result.get("summary_present") else "摘要任务已完成，但没有生成摘要。"
+    if task == "content_aggregation":
+        count = len(result.get("content_ids") or [])
+        return f"已检查 {_int(result.get('input_count'))} 条来源，生成 {count} 篇事件综合；生成结论待核实。"
     if task == "content_embedding":
         return "内容已加入语义索引。" if result.get("indexed") else "语义索引任务已完成，但没有写入索引。"
     if task == "document_extract":
@@ -322,6 +326,11 @@ def _entity_links(
     if content_id is not None:
         links.append({"kind": "content", "label": f"内容 #{content_id}", "href": f"/collection/{content_id}"})
 
+    if task == "content_aggregation":
+        for generated_id in result.get("content_ids") or []:
+            if _positive_int(generated_id):
+                links.append({"kind": "content", "label": f"事件综合 #{generated_id}", "href": f"/collection/{generated_id}"})
+
     source_id = _positive_int(_first_value(result.get("source_id"), metadata.get("source_id")))
     if source_id is not None:
         links.append({"kind": "discovery_source", "label": f"发现源 #{source_id}", "href": "/automation/processing"})
@@ -358,7 +367,7 @@ def _allowed_actions(
     elif task.startswith("discovery_"):
         actions.append({"id": "open_feed", "label": "查看动态", "href": "/home", "emphasis": "primary" if not actions else "secondary"})
         actions.append({"id": "open_processing", "label": "查看自动化", "href": "/automation/processing", "emphasis": "secondary"})
-    elif task in {"content_parse", "content_reparse", "content_summary", "content_embedding", "semantic_reindex"}:
+    elif task in {"content_parse", "content_reparse", "content_summary", "content_aggregation", "content_embedding", "semantic_reindex"}:
         actions.append({"id": "open_processing", "label": "查看处理状态", "href": "/automation/processing", "emphasis": "secondary"})
     elif task == "ai_connectivity_test":
         actions.append({"id": "open_ai_settings", "label": "查看 AI 设置", "href": "/settings?tab=automation", "emphasis": "primary"})
@@ -374,7 +383,7 @@ def _allowed_actions(
 def _task_kind(task: str) -> str:
     if task == "favorites_sync":
         return "favorites_sync"
-    if task in {"content_parse", "content_reparse", "content_summary", "content_embedding", "document_extract"}:
+    if task in {"content_parse", "content_reparse", "content_summary", "content_aggregation", "content_embedding", "document_extract"}:
         return "content_processing"
     if task == "semantic_reindex":
         return "semantic_index"

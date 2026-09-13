@@ -31,6 +31,24 @@ class AutomationPolicyService:
     def __init__(self, config_service: ConfigService | None = None) -> None:
         self._config = config_service or ConfigService()
 
+    async def content_aggregation(self) -> AutomationPolicyDecision:
+        enabled = coerce_bool(await self._config.get_value_fresh("enable_content_aggregation", False))
+        return AutomationPolicyDecision(
+            enabled, "allowed" if enabled else "content_aggregation_disabled",
+            "内容自动聚合已启用" if enabled else "内容自动聚合已关闭",
+            "enable_content_aggregation", enabled,
+        )
+
+    async def aggregation_delivery(self, content) -> AutomationPolicyDecision:
+        if content.source_type != "ai_aggregation":
+            return AutomationPolicyDecision(True, "allowed", "非自动聚合内容")
+        enabled = coerce_bool(await self._config.get_value_fresh("enable_aggregation_push", False))
+        return AutomationPolicyDecision(
+            enabled, "allowed" if enabled else "aggregation_push_disabled",
+            "聚合推送已启用" if enabled else "聚合推送已关闭",
+            "enable_aggregation_push", enabled,
+        )
+
     async def favorites_scheduler(self) -> AutomationPolicyDecision:
         enabled = coerce_bool(
             await self._config.get_value_fresh(

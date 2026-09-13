@@ -63,6 +63,8 @@ class DiscoverySyncTask:
 
     def __init__(self):
         self._task: asyncio.Task | None = None
+        from app.services.content_aggregation_service import ContentAggregationService
+        self._aggregation = ContentAggregationService()
 
     def start(self):
         if self._task and not self._task.done():
@@ -84,6 +86,7 @@ class DiscoverySyncTask:
         while True:
             try:
                 await self._sync_due_sources()
+                await self._aggregation.run_if_due()
             except Exception as e:
                 logger.error(f"Discovery sync error: {e}")
                 await record_task_error("discovery_sync", e)
