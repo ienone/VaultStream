@@ -4,7 +4,7 @@ Distribution business entrypoint.
 This service owns rule matching, auto-approval, rule refresh, and queue
 enqueue decisions.
 """
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import event_bus
@@ -50,6 +50,11 @@ class DistributionService:
                 content_id=content.id,
                 policy=policy.as_dict(),
             ).info("Content auto-approval skipped by automation policy")
+            return False
+
+        if not (await AutomationPolicyService().aggregation_delivery(content)).allowed:
+            return False
+        if content.review_status != ReviewStatus.PENDING or content.deleted_at is not None:
             return False
 
         result = await self.db.execute(
@@ -108,7 +113,8 @@ class DistributionService:
                     content.review_note = "Rule update requires manual review"
                     changes += 1
 
-            elif allow_auto_approval and content.review_status == ReviewStatus.PENDING:
+            elif (allow_auto_approval and content.review_status == ReviewStatus.PENDING
+                  and (await AutomationPolicyService().aggregation_delivery(content)).allowed):
                 if matches_any_auto_approve_rule(content):
                     content.review_status = ReviewStatus.AUTO_APPROVED
                     content.reviewed_at = utcnow()
@@ -150,6 +156,10 @@ class DistributionService:
             logger.warning(f"Content not found: content_id={content_id}")
             return 0
 
+        if not (await AutomationPolicyService().aggregation_delivery(content)).allowed:
+            return 0
+        if content.deleted_at is not None:
+            return 0
         if content.status != ContentStatus.PARSE_SUCCESS:
             logger.info(
                 f"Content not eligible (status): content_id={content_id}, status={content.status}"
@@ -248,16 +258,19 @@ class DistributionService:
                         continue
 
                     if existing.status == QueueItemStatus.FAILED and force:
-                        existing.status = QueueItemStatus.SCHEDULED
-                        existing.attempt_count = 0
-                        existing.last_error = None
-                        existing.last_error_type = None
-                        existing.last_error_at = None
-                        existing.next_attempt_at = None
-                        existing.target_id = target_id
-                        existing.nsfw_routing_result = decision.nsfw_routing_result
-                        existing.scheduled_at = utcnow()
-                        existing.updated_at = utcnow()
+                        reset = await self.db.execute(update(ContentQueueItem).where(
+                            ContentQueueItem.id == existing.id,
+                            ContentQueueItem.status == QueueItemStatus.FAILED,
+                        ).values(
+                            status=QueueItemStatus.SCHEDULED, attempt_count=0,
+                            last_error=None, last_error_type=None, last_error_at=None,
+                            next_attempt_at=None, target_id=target_id,
+                            nsfw_routing_result=decision.nsfw_routing_result,
+                            scheduled_at=utcnow(), updated_at=utcnow(),
+                        ).execution_options(synchronize_session=False))
+                        if reset.rowcount != 1:
+                            continue
+                        await self.db.refresh(existing)
                         count += 1
                         logger.info(
                             f"Queue item reset to SCHEDULED: content_id={content_id}, "

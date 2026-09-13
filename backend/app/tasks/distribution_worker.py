@@ -9,7 +9,7 @@ from typing import Optional, List
 
 from sqlalchemy import select, and_, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, aliased
 
 from app.core.database import AsyncSessionLocal
 from app.core.logging import logger
@@ -20,6 +20,7 @@ from app.models import (
     Content,
     ContentStatus,
     DistributionRule,
+    DistributionTarget,
     BotChat,
     MediaAsset,
     PushedRecord,
@@ -35,6 +36,7 @@ from app.services.background_task_state import (
     record_task_success,
 )
 from app.services.automation_policy import AutomationPolicyService
+from app.services.distribution.decision import should_distribute, DECISION_WILL_PUSH
 from app.tasks.distributor import ContentDistributor
 from app.core.events import event_bus
 
@@ -167,21 +169,28 @@ class DistributionQueueWorker:
             if not item:
                 raise ValueError("Queue item not found")
 
-            if item.status in (
-                QueueItemStatus.SUCCESS,
-            ):
-                raise ValueError(f"Queue item status not pushable: {item.status.value}")
-
             now = utcnow()
-            item.status = QueueItemStatus.PROCESSING
-            item.locked_at = now
-            item.locked_by = worker_name
-            item.scheduled_at = now
-            if item.started_at is None:
-                item.started_at = now
+            claimed = await session.execute(update(ContentQueueItem).where(
+                ContentQueueItem.id == item.id,
+                ContentQueueItem.status.in_([QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED]),
+                self._no_delivery_in_flight(item),
+            ).values(status=QueueItemStatus.PROCESSING, locked_at=now, locked_by=worker_name,
+                scheduled_at=now, started_at=func.coalesce(ContentQueueItem.started_at, now))
+                .execution_options(synchronize_session=False))
+            if claimed.rowcount != 1:
+                raise ValueError("Queue item or the same content target is already processing/completed")
             await session.commit()
+            await session.refresh(item)
+            await self._process_item(session, item, worker_name, manual=True)
 
-            await self._process_item(session, item, worker_name)
+    @staticmethod
+    def _no_delivery_in_flight(item):
+        peer = aliased(ContentQueueItem)
+        return ~select(peer.id).where(
+            peer.id != item.id, peer.content_id == item.content_id,
+            peer.target_platform == item.target_platform, peer.target_id == item.target_id,
+            peer.status == QueueItemStatus.PROCESSING,
+        ).exists()
 
     # ── 主循环 ────────────────────────────────────────
 
@@ -449,12 +458,14 @@ class DistributionQueueWorker:
                     )
                 )
 
-            claim_result = await session.execute(claim_stmt)
+            claim_result = await session.execute(claim_stmt.where(
+                self._no_delivery_in_flight(item)
+            ).execution_options(synchronize_session=False))
             if int(claim_result.rowcount or 0) == 0:
                 continue
 
             claimed_result = await session.execute(
-                select(ContentQueueItem).where(ContentQueueItem.id == item.id)
+                select(ContentQueueItem).where(ContentQueueItem.id == item.id).execution_options(populate_existing=True)
             )
             claimed = claimed_result.scalar_one_or_none()
             if claimed is not None:
@@ -489,6 +500,7 @@ class DistributionQueueWorker:
         session: AsyncSession,
         item: ContentQueueItem,
         worker_name: str,
+        *, manual: bool = False,
     ):
         """处理单个队列项：校验 → 去重 → 构建 → 推送 → 记录。"""
         # 1. 加载关联数据
@@ -527,7 +539,7 @@ class DistributionQueueWorker:
             return
 
         # 2. 资格检查
-        if not content or content.review_status not in (
+        if not content or content.deleted_at is not None or content.review_status not in (
             ReviewStatus.APPROVED,
             ReviewStatus.AUTO_APPROVED,
         ) or content.status != ContentStatus.PARSE_SUCCESS:
@@ -549,6 +561,7 @@ class DistributionQueueWorker:
                 and_(
                     PushedRecord.content_id == item.content_id,
                     PushedRecord.target_id == item.target_id,
+                    PushedRecord.target_platform == item.target_platform,
                 )
             ).limit(1)
         )
@@ -579,6 +592,48 @@ class DistributionQueueWorker:
             media_assets=content.media_assets,
             target_platform=item.target_platform,
         )
+
+        # End the read transaction before rechecking controls that may have
+        # changed while rendering. No external send has happened yet.
+        await session.commit()
+        await session.refresh(content, attribute_names=["review_status", "status", "deleted_at", "tags", "is_nsfw", "platform"])
+        if bot_chat is not None:
+            await session.refresh(bot_chat)
+        if rule is not None:
+            await session.refresh(rule)
+        target_enabled = (await session.execute(select(DistributionTarget.enabled).where(
+            DistributionTarget.rule_id == item.rule_id,
+            DistributionTarget.bot_chat_id == item.bot_chat_id,
+        ))).scalar_one_or_none()
+        reason, code = None, None
+        if not rule or not rule.enabled or not target_enabled or not bot_chat.enabled or not bot_chat.is_accessible:
+            reason, code = "Rule or target disabled", "rule_or_target_disabled"
+        elif content.deleted_at is not None or content.status != ContentStatus.PARSE_SUCCESS or content.review_status not in (ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED):
+            reason, code = "Content no longer eligible", "content_not_eligible"
+        else:
+            decision = should_distribute(content=content, rule=rule, bot_chat=bot_chat)
+            if rule.approval_required and content.review_status == ReviewStatus.AUTO_APPROVED:
+                reason, code = "Manual approval now required", "approval_required"
+            elif decision.bucket != DECISION_WILL_PUSH:
+                reason, code = decision.reason, decision.reason_code
+            elif decision.target_id != actual_target_id:
+                # A changed destination needs enqueue to acquire the correct
+                # target lease and deduplication identity before another send.
+                reason, code = "Target routing changed; refresh queue", "target_routing_changed"
+        policies = [await AutomationPolicyService().aggregation_delivery(content)]
+        if not manual:
+            policies.append(await AutomationPolicyService().distribution_worker_poll())
+        for policy in policies:
+            if not policy.allowed:
+                reason, code = policy.reason, policy.code
+        if reason:
+            item.status = QueueItemStatus.SCHEDULED
+            item.last_error = reason
+            item.last_error_type = code
+            item.locked_at = None
+            item.locked_by = None
+            await session.commit()
+            return
 
         # 6. 推送
         try:

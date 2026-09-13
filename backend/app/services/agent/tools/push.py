@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core.time_utils import utcnow
-from app.models import ContentQueueItem, QueueItemStatus
+from app.models import Content, ContentQueueItem, QueueItemStatus
 from app.services.agent.tool_registry import (
     AgentToolContext,
     AgentToolError,
@@ -84,26 +84,33 @@ async def _push_batch_tool(args: Dict[str, Any], context: AgentToolContext) -> D
         stmt = stmt.where(ContentQueueItem.bot_chat_id == bot_chat_id)
     queue_items = (await context.db.execute(stmt)).scalars().all()
 
+    contents = {content.id: content for content in (await context.db.execute(
+        select(Content).where(Content.id.in_(content_ids))
+    )).scalars().all()}
+    blocked_ids = {content.id for content in contents.values()
+                   if not (await AutomationPolicyService().aggregation_delivery(content)).allowed}
+
     now = utcnow()
     changed = 0
     changed_ids: list[int] = []
 
     for item in queue_items:
+        if item.content_id in blocked_ids or item.status == QueueItemStatus.PROCESSING:
+            continue
         if item.status == QueueItemStatus.SUCCESS and not include_success:
             continue
 
-        item.status = QueueItemStatus.SCHEDULED
-        item.scheduled_at = now
-        item.next_attempt_at = None
-        item.last_error = None
-        item.last_error_type = None
-        item.last_error_at = None
-        item.locked_at = None
-        item.locked_by = None
+        values = dict(status=QueueItemStatus.SCHEDULED, scheduled_at=now,
+                      next_attempt_at=None, last_error=None, last_error_type=None,
+                      last_error_at=None, locked_at=None, locked_by=None)
         if include_success:
-            item.message_id = None
-        changed += 1
-        changed_ids.append(item.id)
+            values["message_id"] = None
+        updated = await context.db.execute(update(ContentQueueItem).where(
+            ContentQueueItem.id == item.id, ContentQueueItem.status == item.status,
+        ).values(**values).execution_options(synchronize_session=False))
+        if updated.rowcount == 1:
+            changed += 1
+            changed_ids.append(item.id)
 
     await context.db.commit()
 
