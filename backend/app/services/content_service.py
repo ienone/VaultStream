@@ -399,7 +399,9 @@ class ContentService:
                 normalized_mime = (
                     (capture_file.mime_type or "").split(";", 1)[0].strip().lower()
                 )
-                if not normalized_mime or "/" not in normalized_mime:
+                # Native file pickers may omit MIME; multipart clients then
+                # send the generic binary type. It is not a format decision.
+                if not normalized_mime or "/" not in normalized_mime or normalized_mime == "application/octet-stream":
                     normalized_mime = (
                         mimetypes.guess_type(display_filename)[0]
                         or "application/octet-stream"
@@ -563,15 +565,19 @@ class ContentService:
             client_context=client_context,
         )
 
+        has_pdf = any(item["mime_type"] == "application/pdf" for item in stored_files)
         await PostIngestService().run_for_content(
             self.db,
             content,
             source=normalized_source,
-            summary=bool(normalized_note),
-            embedding=True,
+            summary=bool(normalized_note) and not has_pdf,
+            embedding=not has_pdf,
             patrol=False,
             distribution=True,
         )
+        if has_pdf:
+            from app.services.document_text import schedule_document_extraction
+            await schedule_document_extraction(content.id, source=normalized_source, trigger="auto")
         await event_bus.publish(
             "content_created",
             {

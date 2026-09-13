@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.adapters.storage import LocalStorageBackend
 from app.models import Content
@@ -42,6 +43,7 @@ class MediaAssetCandidate:
     role: MediaRole
     position: int
     original_url: str | None = None
+    source_identity: str | None = None
     width: int | None = None
     height: int | None = None
     duration_ms: int | None = None
@@ -224,13 +226,20 @@ def build_media_candidates(content: Content) -> list[MediaAssetCandidate]:
     identities: set[tuple[MediaType, MediaRole, str]] = set()
 
     def add_candidate(candidate: MediaAssetCandidate) -> None:
-        identity_value = candidate.original_url or (
-            candidate.variants[0].storage_key if candidate.variants else ""
-        )
-        identity = (candidate.media_type, candidate.role, identity_value)
-        if not identity_value or identity in identities:
+        # An archived image can be referenced by its remote URL in archive
+        # metadata and by a local variant in the cover/avatar field.
+        values = {variant.storage_key for variant in candidate.variants}
+        if candidate.source_identity:
+            values.add(candidate.source_identity)
+        if candidate.original_url:
+            values.add(candidate.original_url)
+        candidate_identities = {
+            (candidate.media_type, candidate.role, value)
+            for value in values if value
+        }
+        if not candidate_identities or identities.intersection(candidate_identities):
             return
-        identities.add(identity)
+        identities.update(candidate_identities)
         key = (candidate.media_type, candidate.role)
         candidate.position = role_positions.get(key, 0)
         role_positions[key] = candidate.position + 1
@@ -318,6 +327,7 @@ def build_media_candidates(content: Content) -> list[MediaAssetCandidate]:
                 position=0,
                 original_url=original,
                 duration_ms=item.get("duration_ms"),
+                source_identity=_text(item.get("source_identity")),
                 variants=[variant] if variant else [],
             )
         )
@@ -391,54 +401,79 @@ async def replace_content_media_assets(
     source: str,
 ) -> list[MediaAsset]:
     candidates = build_media_candidates(content)
-    await session.execute(delete(MediaAsset).where(MediaAsset.content_id == content.id))
+    existing = list((await session.scalars(
+        select(MediaAsset).where(MediaAsset.content_id == content.id)
+        .options(selectinload(MediaAsset.variants))
+    )).all())
+    retained_ids: set[int] = set()
     assets: list[MediaAsset] = []
     for candidate in candidates:
-        ready_count = sum(
-            1 for variant in candidate.variants if _variant_path(storage, variant.storage_key).is_file()
-        )
-        missing_count = len(candidate.variants) - ready_count
-        archive_status = (
-            MediaArchiveStatus.READY
-            if ready_count and not missing_count
-            else MediaArchiveStatus.PARTIAL
-            if ready_count
-            else MediaArchiveStatus.MISSING
-        )
-        asset = MediaAsset(
-            content_id=content.id,
-            position=candidate.position,
-            media_type=candidate.media_type,
-            role=candidate.role,
-            original_url=candidate.original_url,
-            client_fetch_allowed=is_client_direct_allowed(candidate.original_url),
-            alt_text=candidate.alt_text,
-            caption=candidate.caption,
-            width=candidate.width,
-            height=candidate.height,
-            duration_ms=candidate.duration_ms,
-            archive_status=archive_status,
-            last_error="legacy_local_blob_missing" if missing_count else None,
-            repairable=bool(candidate.original_url),
-            asset_metadata={"write_source": source},
-        )
+        candidate_keys = {variant.storage_key for variant in candidate.variants}
+        matches = [item for item in existing
+            if item.id not in retained_ids and item.media_type == candidate.media_type
+            and (
+                (candidate.source_identity is not None and (item.asset_metadata or {}).get("source_identity") == candidate.source_identity)
+                or (candidate.source_identity is None and candidate.original_url is not None and item.original_url == candidate.original_url)
+                or (not candidate.source_identity and candidate_keys.intersection(variant.storage_key for variant in item.variants))
+            )]
+        same_role = [item for item in matches if item.role == candidate.role]
+        if same_role:
+            matches = same_role
+        # Reuse only an unambiguous object identity, never its list position.
+        asset = matches[0] if len(matches) == 1 else MediaAsset(content_id=content.id)
+        if asset.id is not None:
+            retained_ids.add(asset.id)
+        for field_name in (
+            "position", "media_type", "role", "original_url", "alt_text",
+            "caption", "width", "height", "duration_ms",
+        ):
+            setattr(asset, field_name, getattr(candidate, field_name))
+        asset.client_fetch_allowed = is_client_direct_allowed(candidate.original_url)
+        asset.repairable = bool(candidate.original_url)
+        asset.asset_metadata = {**(asset.asset_metadata or {}), "write_source": source}
+        if candidate.source_identity:
+            asset.asset_metadata["source_identity"] = candidate.source_identity
+        previous_variants = {(item.variant_kind, item.storage_key): item for item in asset.variants}
+        variants = []
         for variant in candidate.variants:
             exists = _variant_path(storage, variant.storage_key).is_file()
-            asset.variants.append(
-                MediaVariant(
-                    variant_kind=variant.kind,
-                    storage_key=variant.storage_key,
-                    mime_type=variant.mime_type,
-                    width=variant.width,
-                    height=variant.height,
-                    size_bytes=variant.size_bytes,
-                    checksum=variant.checksum,
-                    status=MediaVariantStatus.READY if exists else MediaVariantStatus.MISSING,
-                )
+            persisted = previous_variants.get((variant.kind, variant.storage_key)) or MediaVariant(
+                variant_kind=variant.kind, storage_key=variant.storage_key,
             )
+            for field_name in ("mime_type", "width", "height", "size_bytes", "checksum"):
+                setattr(persisted, field_name, getattr(variant, field_name))
+            persisted.status = MediaVariantStatus.READY if exists else MediaVariantStatus.MISSING
+            variants.append(persisted)
+        # Turning archiving off must not discard previously saved versions.
+        replaced_kinds = {variant.variant_kind for variant in variants}
+        variants.extend(variant for variant in previous_variants.values()
+                        if variant.variant_kind not in replaced_kinds)
+        for variant in variants:
+            exists = _variant_path(storage, variant.storage_key).is_file()
+            variant.status = MediaVariantStatus.READY if exists else MediaVariantStatus.MISSING
+        ready_count = sum(variant.status == MediaVariantStatus.READY for variant in variants)
+        missing_count = len(variants) - ready_count
+        asset.archive_status = (MediaArchiveStatus.READY if ready_count and not missing_count
+            else MediaArchiveStatus.PARTIAL if ready_count else MediaArchiveStatus.MISSING)
+        asset.last_error = "legacy_local_blob_missing" if missing_count else None
+        asset.variants = variants
         session.add(asset)
         assets.append(asset)
+    removed_ids = [item.id for item in existing if item.id not in retained_ids]
+    if removed_ids:
+        await session.execute(delete(MediaAsset).where(MediaAsset.id.in_(removed_ids)))
     await session.flush()
+    # Platform time slices refer to explicit media identities before database IDs exist.
+    identities = {asset.asset_metadata.get("source_identity"): asset.id for asset in assets
+                  if asset.asset_metadata.get("source_identity")}
+    if isinstance(content.rich_payload, dict) and isinstance(content.rich_payload.get("chunks"), list):
+        payload = dict(content.rich_payload)
+        payload["chunks"] = [
+            {**chunk, "media_asset_id": identities.get(chunk["source_identity"])}
+            if isinstance(chunk, dict) and chunk.get("source_identity") else chunk
+            for chunk in payload["chunks"]
+        ]
+        content.rich_payload = payload
     return assets
 
 

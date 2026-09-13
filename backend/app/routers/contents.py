@@ -19,6 +19,7 @@ from fastapi import (
 )
 from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.core.database import get_db
 from app.models import (
@@ -76,6 +77,10 @@ from app.services.media_manifest import (
     resolve_media_base_url,
 )
 from app.services.media_segments import build_media_segment_items
+from app.schemas.document import DocumentTextResponse, DocumentExtractionAcceptedResponse
+from app.services.document_text import (
+    document_assets, original_pdf, build_document_text_items, schedule_document_extraction,
+)
 from app.adapters.storage import LocalStorageBackend, get_storage_backend
 from app.adapters.storage.manager import (
     StorageObjectEmptyError,
@@ -991,6 +996,35 @@ async def get_content_detail(
     return detail
 
 
+@router.get("/contents/{content_id}/document-text", response_model=DocumentTextResponse)
+async def get_document_text(
+    content_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    content = await db.get(Content, content_id)
+    if content is None:
+        raise HTTPException(status_code=404, detail="Content not found")
+    return DocumentTextResponse(content_id=content_id, documents=build_document_text_items(
+        content, await document_assets(db, content_id),
+    ))
+
+
+@router.post("/contents/{content_id}/document-text/extract", status_code=202,
+             response_model=DocumentExtractionAcceptedResponse)
+async def extract_document_text(
+    content_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    if await db.get(Content, content_id) is None:
+        raise HTTPException(status_code=404, detail="Content not found")
+    if not any(original_pdf(a) for a in await document_assets(db, content_id)):
+        raise HTTPException(status_code=400, detail="没有已归档的 PDF 原文件")
+    run_id = await schedule_document_extraction(content_id, source="document_detail", trigger="manual")
+    return DocumentExtractionAcceptedResponse(content_id=content_id, run_id=run_id)
+
+
 @router.get(
     "/contents/{content_id}/processing-status",
     response_model=ContentProcessingStatus,
@@ -1155,7 +1189,7 @@ async def generate_content_summary(
     _: None = Depends(require_api_token),
 ):
     """为指定内容生成 AI 摘要"""
-    from app.services.content_summary_service import generate_summary_for_content
+    from app.services.content_summary_service import generate_summary_for_content, SummaryGenerationError
     run = await record_task_run_started(
         "content_summary",
         content_id=content_id,
@@ -1178,7 +1212,21 @@ async def generate_content_summary(
             chunk_count=len(chunks) if isinstance(chunks, list) else 0,
             tag_count=len(content.tags or []),
         )
+        from app.services.post_ingest import PostIngestService
+        PostIngestService().schedule_embedding_index(content_id, source="manual_summary")
         return {"summary": content.summary, "content_id": content_id, "run_id": run["run_id"]}
+    except SummaryGenerationError as e:
+        await record_task_run_error(
+            "content_summary", run["run_id"], str(e),
+            content_id=content_id, force=force,
+        )
+        raise HTTPException(status_code=e.status_code, detail=str(e)) from e
+    except StaleDataError as e:
+        await record_task_run_error(
+            "content_summary", run["run_id"], e,
+            content_id=content_id, force=force,
+        )
+        raise HTTPException(status_code=409, detail="原文已变化，请刷新后重新生成摘要") from e
     except ValueError as e:
         await record_task_run_error(
             "content_summary",
@@ -1225,7 +1273,7 @@ async def score_content_patrol(
         candidate_count=1,
     )
     try:
-        ok = await PatrolService().score_item(content, interest_profile=interest_profile)
+        ok = await PatrolService().score_item(content, interest_profile=interest_profile, db=db)
         if not ok:
             await db.rollback()
             error = "巡逻评分失败或模型不可用"
@@ -1278,7 +1326,8 @@ async def score_content_patrol(
             failed_count=1,
             interest_profile_present=bool(interest_profile.strip()),
         )
-        raise HTTPException(status_code=500, detail=f"巡逻评分失败: {e}")
+        raise HTTPException(status_code=409 if isinstance(e, StaleDataError) else 500,
+                            detail=str(e) if isinstance(e, StaleDataError) else f"巡逻评分失败: {e}")
 
 @router.post(
     "/contents/{content_id}/re-parse",

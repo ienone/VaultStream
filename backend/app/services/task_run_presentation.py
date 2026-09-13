@@ -14,6 +14,7 @@ _TASK_TITLES = {
     "content_reparse": "重新解析内容",
     "content_summary": "生成内容摘要",
     "content_embedding": "内容语义索引",
+    "document_extract": "提取 PDF 正文",
     "semantic_reindex": "重建语义索引",
     "discovery_sync": "发现源同步",
     "discovery_source_test": "发现源测试",
@@ -99,6 +100,10 @@ def _summary_for_task(
         return "内容摘要已生成。" if result.get("summary_present") else "摘要任务已完成，但没有生成摘要。"
     if task == "content_embedding":
         return "内容已加入语义索引。" if result.get("indexed") else "语义索引任务已完成，但没有写入索引。"
+    if task == "document_extract":
+        return (f"已检查 {_int(result.get('document_count'))} 份 PDF，"
+                f"{_int(result.get('page_count'))} 页中有 {_int(result.get('text_page_count'))} 页包含原生文本。"
+                "无原生文本的页面尚未识别。")
     if task == "semantic_reindex":
         return (
             f"已索引 {_int(result.get('indexed'))} 个分块，"
@@ -166,12 +171,19 @@ def _sections_for_task(
             sections.append(_section("平台明细", platform_rows))
         return sections
 
+    if task == "document_extract":
+        return [_section("文档正文", [
+            _item("PDF 文件", result.get("document_count")),
+            _item("总页数", result.get("page_count")),
+            _item("含原生文本", result.get("text_page_count")),
+        ])]
+
     if task in {"content_parse", "content_reparse", "content_summary", "content_embedding"}:
         items = [_item("内容 ID", _first_value(result.get("content_id"), metadata.get("content_id")))]
         if task == "content_parse":
             items.extend(
                 [
-                    _item("解析状态", result.get("status") or ("已跳过" if result.get("skipped") else "已完成")),
+                    _item("解析状态", result.get("status") or ("已跳过" if result.get("skipped") else None)),
                     _item("尝试次数", result.get("attempt") or metadata.get("attempt")),
                     _item("原因", result.get("reason")),
                 ]
@@ -362,7 +374,7 @@ def _allowed_actions(
 def _task_kind(task: str) -> str:
     if task == "favorites_sync":
         return "favorites_sync"
-    if task in {"content_parse", "content_reparse", "content_summary", "content_embedding"}:
+    if task in {"content_parse", "content_reparse", "content_summary", "content_embedding", "document_extract"}:
         return "content_processing"
     if task == "semantic_reindex":
         return "semantic_index"

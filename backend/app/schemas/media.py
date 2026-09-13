@@ -74,6 +74,7 @@ class MediaSegmentItem(BaseModel):
     segment_type: Literal["chapter", "transcript"]
     title: str
     excerpt: str = ""
+    full_text: str = Field("", description="Validated source segment text without preview truncation")
     start_seconds: float = Field(..., ge=0)
     end_seconds: Optional[float] = Field(None, gt=0)
 

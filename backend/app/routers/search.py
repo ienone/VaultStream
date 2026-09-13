@@ -6,6 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.core.database import AsyncSessionLocal
 from app.core.database import get_db
@@ -144,7 +145,7 @@ async def unified_search(
     top_k: int = Query(20, ge=1, le=100, description="每类结果返回数量"),
     kind: str = Query(
         "all",
-        description="结果类型：all/contents/events/people/topics/timepoints",
+        description="结果类型：all/contents/events/people/topics/timepoints/document_pages",
     ),
     content_scope: str = Query(
         "library",
@@ -154,11 +155,11 @@ async def unified_search(
     _: None = Depends(require_api_token),
 ):
     normalized_kind = kind.strip().lower()
-    valid_kinds = {"all", "contents", "events", "people", "topics", "timepoints"}
+    valid_kinds = {"all", "contents", "events", "people", "topics", "timepoints", "document_pages"}
     if normalized_kind not in valid_kinds:
         raise HTTPException(
             status_code=400,
-            detail="kind must be all, contents, events, people, topics or timepoints",
+            detail="kind must be all, contents, events, people, topics, timepoints or document_pages",
         )
     normalized_scope = content_scope.strip().lower()
     if normalized_scope not in {"library", "discovery", "all"}:
@@ -201,6 +202,7 @@ async def unified_search(
         kind=normalized_kind,
         content_scope=normalized_scope,
         contents=[_serialize_content_hit(hit) for hit in results.contents],
+        document_pages=results.document_pages,
         events=events,
         people=[
             UnifiedSearchFacetItem(
@@ -381,6 +383,13 @@ async def retry_semantic_embedding(
         return {"run_id": run["run_id"], **result}
     except HTTPException:
         raise
+    except StaleDataError as exc:
+        await db.rollback()
+        await record_task_run_error(
+            "semantic_reindex", run["run_id"], exc,
+            trigger="manual", scope="embedding", embedding_id=embedding_id, failed=1,
+        )
+        raise HTTPException(status_code=409, detail="原文已变化，请刷新后重新索引") from exc
     except ValueError as exc:
         await db.rollback()
         await record_task_run_error(

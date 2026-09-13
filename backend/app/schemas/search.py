@@ -6,6 +6,7 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.base import OptionalUtcDatetime
+from app.schemas.document import DocumentPageSearchItem
 
 
 class SemanticSearchItem(BaseModel):
@@ -82,6 +83,7 @@ class UnifiedSearchResponse(BaseModel):
     people: List[UnifiedSearchFacetItem]
     topics: List[UnifiedSearchFacetItem]
     timepoints: List[UnifiedSearchTimepointItem]
+    document_pages: list[DocumentPageSearchItem] = Field(default_factory=list)
 
 
 class SemanticReindexRequest(BaseModel):

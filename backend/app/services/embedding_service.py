@@ -8,9 +8,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import and_, bindparam, desc, func, or_, select, text
+from sqlalchemy import and_, bindparam, delete, desc, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.core.database import AsyncSessionLocal
 from app.core.logging import logger
@@ -284,7 +285,7 @@ class EmbeddingService:
         content: Content,
         model_signature: str,
     ) -> int:
-        units = self._content_embedding_units(content)
+        units = await self._validated_embedding_units(content, session)
         if not units:
             return 0
         existing_rows = (
@@ -421,21 +422,22 @@ class EmbeddingService:
 
         units = {
             chunk_index: (text_part, media_refs, title)
-            for chunk_index, text_part, media_refs, title in self._content_embedding_units(content)
+            for chunk_index, text_part, media_refs, title in await self._validated_embedding_units(content, session)
         }
         unit = units.get(embedding.chunk_index)
         if unit is None:
             raise ValueError("semantic unit no longer exists")
 
         text_part, media_refs, title = unit
-        await self._upsert_embedding(
-            session,
-            content.id,
-            embedding.chunk_index,
-            title,
-            text_part,
-            media_refs,
-        )
+        source_updated_at = content.updated_at
+        with session.no_autoflush:
+            exists = await self._upsert_embedding(
+                session, content.id, embedding.chunk_index, title, text_part, media_refs,
+            )
+            if not exists or not await self._lock_current_source(session, content.id, source_updated_at):
+                if own_session:
+                    await session.rollback()
+                raise StaleDataError("原文已变化，请刷新后重新索引")
         await session.flush()
         await session.refresh(embedding)
         if own_session:
@@ -471,17 +473,38 @@ class EmbeddingService:
         if content is None:
             return False
 
-        units = self._content_embedding_units(content)
+        units = await self._validated_embedding_units(content, session)
+        source_updated_at = content.updated_at
         logger.info(f"Indexing {len(units)} semantic units for content_id={content_id}")
         try:
-            for chunk_index, text_part, media_refs, title in units:
-                if not await self._upsert_embedding(
-                    session, content_id, chunk_index, title, text_part, media_refs
-                ):
+            # Queries for later units must not flush earlier units while we
+            # still await remote models: SQLite would hold its sole writer
+            # lock throughout those network calls. Persist the set together.
+            with session.no_autoflush:
+                for chunk_index, text_part, media_refs, title in units:
+                    if not await self._upsert_embedding(
+                        session, content_id, chunk_index, title, text_part, media_refs
+                    ):
+                        if own_session:
+                            await session.rollback()
+                        return False
+
+                # Acquire the write transaction only after remote work, and
+                # only if the source revision used above is still current.
+                if not await self._lock_current_source(session, content_id, source_updated_at):
                     if own_session:
                         await session.rollback()
-                    return False
+                        return False
+                    raise StaleDataError("Content changed during semantic indexing; rollback required")
 
+            # Reindexing replaces the source's unit set, not just existing rows.
+            # Otherwise removed subtitles remain retrievable indefinitely.
+            await session.execute(
+                delete(ContentEmbedding).where(
+                    ContentEmbedding.content_id == content_id,
+                    ContentEmbedding.chunk_index.not_in([unit[0] for unit in units]),
+                )
+            )
             if own_session:
                 await session.commit()
             else:
@@ -503,16 +526,50 @@ class EmbeddingService:
             raise
         return True
 
-    def _content_embedding_units(self, content: Content) -> list[tuple[int, str, list[str], str]]:
+    async def _lock_current_source(self, session: AsyncSession, content_id: int, revision: datetime | None) -> bool:
+        guard = await session.execute(
+            update(Content).where(
+                Content.id == content_id,
+                Content.status == ContentStatus.PARSE_SUCCESS,
+                Content.updated_at == revision,
+            ).values(updated_at=Content.updated_at)
+            .execution_options(synchronize_session=False)
+        )
+        return guard.rowcount == 1
+
+    async def _validated_embedding_units(self, content: Content, session: AsyncSession):
+        from app.services.document_text import build_document_text_items, document_assets
+        chunks = (content.rich_payload or {}).get("chunks", [])
+        document_indexes = set()
+        if isinstance(chunks, list) and any(isinstance(c, dict) and c.get("source_kind") == "pdf_native_text" for c in chunks):
+            document_indexes = {page.chunk_index
+                for document in build_document_text_items(content, await document_assets(session, content.id))
+                for page in document.pages}
+        return self._content_embedding_units(content, document_chunk_indexes=document_indexes)
+
+    def _content_embedding_units(self, content: Content, *, document_chunk_indexes: set[int] | None = None) -> list[tuple[int, str, list[str], str]]:
         units: list[tuple[int, str, list[str], str]] = []
         global_payload = self._build_content_text(content)
         if global_payload:
             units.append((-1, global_payload, [], "全局摘要"))
 
+        # Long source text needs its own complete retrieval coverage; the
+        # global overview intentionally caps body length. Negative IDs below
+        # -1 cannot collide with source media chunks or imply video timestamps.
+        body = (content.body or "").strip()
+        if len(body) > self._MAX_BODY_CHARS:
+            for part, start in enumerate(range(0, len(body), 1800)):
+                text = body[start:start + 2000]
+                units.append((-2 - part, text, [], f"正文片段 {part + 1}（字符 {start + 1}–{start + len(text)}）"))
+                if start + 2000 >= len(body):
+                    break
+
         chunks = (content.rich_payload or {}).get("chunks", [])
         if isinstance(chunks, list):
             for idx, chunk in enumerate(chunks):
                 if not isinstance(chunk, dict):
+                    continue
+                if chunk.get("source_kind") == "pdf_native_text" and idx not in (document_chunk_indexes or set()):
                     continue
                 text_part = str(chunk.get("content") or "").strip()
                 if not text_part:
@@ -884,17 +941,17 @@ class EmbeddingService:
         return [int(row[0]) for row in rows.all()]
 
     async def _has_current_content_index_impl(self, content_id: int, session: AsyncSession) -> bool:
-        model_signature = await self._get_document_embedding_signature()
-        stmt = (
-            select(ContentEmbedding.id)
-            .where(
-                ContentEmbedding.content_id == content_id,
-                ContentEmbedding.embedding_model_signature == model_signature,
-                ContentEmbedding.index_status == "indexed",
-            )
-            .limit(1)
+        content = await session.get(Content, content_id)
+        if content is None or content.status != ContentStatus.PARSE_SUCCESS:
+            return False
+        if not await self._validated_embedding_units(content, session):
+            return False
+        missing = await self._estimate_missing_embedding_calls(
+            session=session,
+            content=content,
+            model_signature=await self._get_document_embedding_signature(),
         )
-        return (await session.execute(stmt)).scalar_one_or_none() is not None
+        return missing == 0
 
     def _build_content_text(self, content: Content) -> str:
         tags = content.tags or []

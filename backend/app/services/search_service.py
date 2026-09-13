@@ -1,6 +1,6 @@
 """Unified search across persisted contents and human-curated knowledge events."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from sqlalchemy import or_, select, text
@@ -18,6 +18,8 @@ from app.models import (
 from app.repositories.knowledge_event_repository import KnowledgeEventRepository
 from app.services.embedding_service import EmbeddingService, SemanticSearchHit
 from app.services.media_segments import extract_media_segments
+from app.services.document_text import build_document_text_items, document_assets
+from app.schemas.document import DocumentPageSearchItem
 
 
 @dataclass(slots=True)
@@ -57,6 +59,7 @@ class UnifiedSearchResultSet:
     people: list[UnifiedContentFacetHit]
     topics: list[UnifiedContentFacetHit]
     timepoints: list[UnifiedTimepointSearchHit]
+    document_pages: list[DocumentPageSearchItem] = field(default_factory=list)
 
 
 class UnifiedSearchService:
@@ -76,7 +79,7 @@ class UnifiedSearchService:
     ) -> UnifiedSearchResultSet:
         contents: list[SemanticSearchHit] = []
         events: list[UnifiedEventSearchHit] = []
-        if kind in {"all", "contents", "people", "topics", "timepoints"}:
+        if kind in {"all", "contents", "people", "topics", "timepoints", "document_pages"}:
             contents = await EmbeddingService().search(
                 query=query,
                 top_k=top_k,
@@ -143,13 +146,55 @@ class UnifiedSearchService:
             if kind in {"all", "timepoints"}
             else []
         )
+        document_pages = await self._document_page_hits(
+            contents, query=query, content_scope=content_scope, platforms=platforms,
+            date_from=date_from, date_to=date_to, limit=top_k,
+        ) if kind in {"all", "document_pages"} else []
         return UnifiedSearchResultSet(
             contents=contents if kind in {"all", "contents"} else [],
             events=events,
             people=people,
             topics=topics,
             timepoints=timepoints,
+            document_pages=document_pages,
         )
+
+    async def _document_page_hits(self, hits, *, query, content_scope, platforms, date_from, date_to, limit):
+        candidates = {hit.content.id: hit for hit in hits}
+        exact = (await self.db.scalars(select(Content).where(
+            *self._content_filters(content_scope=content_scope, platforms=platforms,
+                                  date_from=date_from, date_to=date_to),
+            text("""EXISTS (
+                SELECT 1 FROM json_each(contents.rich_payload, '$.chunks') AS chunk
+                WHERE json_extract(chunk.value, '$.source_kind') = 'pdf_native_text'
+                AND instr(lower(COALESCE(json_extract(chunk.value, '$.content'), '')), lower(:document_query)) > 0
+            )"""),
+        ).order_by(Content.updated_at.desc(), Content.id.desc()).limit(max(50, limit * 6))
+          .params(document_query=query.strip()))).all()
+        for content in exact:
+            candidates.setdefault(content.id, SemanticSearchHit(content=content, score=0, match_source="fts"))
+        needle = query.strip().casefold()
+        results = []
+        for hit in candidates.values():
+            chunks = (hit.content.rich_payload or {}).get("chunks", [])
+            if not isinstance(chunks, list) or not any(isinstance(c, dict) and c.get("source_kind") == "pdf_native_text" for c in chunks):
+                continue
+            for document in build_document_text_items(hit.content, await document_assets(self.db, hit.content.id)):
+                for page in document.pages:
+                    position = page.text.casefold().find(needle) if needle else -1
+                    semantic = page.chunk_index == hit.chunk_index and hit.match_source in {"vector", "hybrid"}
+                    if not page.text.strip() or (position < 0 and not semantic):
+                        continue
+                    start = max(0, position - 80)
+                    results.append(DocumentPageSearchItem(
+                        content_id=hit.content.id, content_title=hit.content.title,
+                        media_asset_id=document.media_asset_id, filename=document.filename,
+                        page_number=page.page_number, excerpt=page.text[start:start + 280],
+                        match_source=hit.match_source if semantic else "text", score=hit.score,
+                        route=f"/collection/{hit.content.id}?document_asset={document.media_asset_id}&page={page.page_number}",
+                    ))
+        results.sort(key=lambda item: (-item.score, item.content_id, item.media_asset_id, item.page_number))
+        return results[:limit]
 
     @staticmethod
     def _event_match_source(event: KnowledgeEvent, query: str) -> str:

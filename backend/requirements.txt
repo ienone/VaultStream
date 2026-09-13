@@ -37,6 +37,7 @@ Pillow
 qrcode[pil]
 
 # Content parsing and Markdown conversion
+pypdf
 markdownify
 beautifulsoup4
 bbcode

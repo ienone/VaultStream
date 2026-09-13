@@ -16,6 +16,7 @@ class ValidatedMediaSegment:
     segment_type: str
     title: str
     excerpt: str
+    full_text: str
     start_seconds: float
     end_seconds: float | None
 
@@ -79,6 +80,7 @@ def extract_media_segments(
                 segment_type=segment_type,
                 title=title,
                 excerpt=excerpt[:280],
+                full_text=excerpt,
                 start_seconds=start_seconds,
                 end_seconds=end_seconds,
             )
@@ -103,6 +105,7 @@ def build_media_segment_items(
             segment_type=item.segment_type,
             title=item.title,
             excerpt=item.excerpt,
+            full_text=item.full_text,
             start_seconds=item.start_seconds,
             end_seconds=item.end_seconds,
         )

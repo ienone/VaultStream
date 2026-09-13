@@ -82,6 +82,7 @@ pydantic_core==2.46.4
 pyee==13.0.1
 Pygments==2.21.0
 pyparsing==3.3.2
+pypdf==6.18.0
 pytest==9.1.1
 pytest-asyncio==1.4.0
 pytest-socket==0.8.1
