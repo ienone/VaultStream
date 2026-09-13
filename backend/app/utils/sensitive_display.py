@@ -26,6 +26,7 @@ SENSITIVE_SETTING_KEYS = {
     "agent_chat_api_key",
     "summary_api_key",
     "embedding_api_key",
+    "qwen_api_key",
 }
 
 

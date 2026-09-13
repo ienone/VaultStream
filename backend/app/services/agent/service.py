@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from dataclasses import dataclass, field
@@ -8,6 +9,7 @@ from typing import Any, Callable, Dict, Iterable, Optional
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.tools import StructuredTool
+from langchain_core.runnables import RunnableLambda
 from langgraph.prebuilt import create_react_agent
 from sqlalchemy import desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +38,23 @@ from app.services.notification_inbox import (
 from app.services.settings_service import get_setting_value
 
 _REGISTRY: AgentToolRegistry | None = None
+
+
+def _model_with_step_limit(llm, tools):
+    """Detect exhausted tool budgets before LangGraph replaces the model output."""
+    def select_model(state, runtime):
+        async def invoke(messages, config):
+            response = await llm.bind_tools(tools).ainvoke(messages, config=config)
+            if state.get("remaining_steps", 2) < 2 and getattr(response, "tool_calls", None):
+                raise AgentToolError(
+                    error_code="agent_step_limit_reached",
+                    message="本轮工具步骤已用完，尚未完成回答。",
+                    retryable=True,
+                    suggested_fix="缩小问题范围或继续读取已找到的具体证据。",
+                )
+            return response
+        return RunnableLambda(invoke)
+    return select_model
 
 
 def get_tool_registry() -> AgentToolRegistry:
@@ -274,7 +293,8 @@ class AgentService:
         session.last_message_at = now
         if session.title == "新会话":
             session.title = self._derive_title(user_message)
-        await self.db.flush()
+        await self.db.commit()
+        run_id = run.id
 
         events: list[Dict[str, Any]] = []
         emit_event = _event_collector(events, event_sink)
@@ -289,9 +309,10 @@ class AgentService:
                     suggested_fix="Configure agent_chat_api_key/model/base_url or text_llm_api_key/model/base_url.",
                 )
 
+            tools = self._build_langchain_tools(session=session, run=run, emit_event=emit_event)
             graph = create_react_agent(
-                llm,
-                self._build_langchain_tools(session=session, run=run, emit_event=emit_event),
+                _model_with_step_limit(llm, tools),
+                tools,
                 prompt=self._system_prompt(),
                 version="v2",
             )
@@ -405,11 +426,17 @@ class AgentService:
                 usage=usage,
             )
         except AgentToolError as exc:
+            if not self.db.is_active:
+                await self.db.rollback()
+                run = await self.db.get(AgentRun, run_id)
             await self._fail_run(run, exc)
             emit_event({"type": "error", **exc.to_payload()})
             await self.db.commit()
             raise
         except Exception as exc:
+            if not self.db.is_active:
+                await self.db.rollback()
+                run = await self.db.get(AgentRun, run_id)
             logger.exception("Agent run failed")
             error = AgentToolError(
                 error_code="agent_execution_failed",
@@ -696,46 +723,50 @@ class AgentService:
         emit_event: AgentEventSink,
     ) -> list[StructuredTool]:
         tools: list[StructuredTool] = []
+        # LangGraph may dispatch several tools at once, but they share this
+        # run's AsyncSession and must finish their database work sequentially.
+        tool_lock = asyncio.Lock()
         for spec in self.registry.list_specs():
             async def _call(_spec_name: str = spec.name, **kwargs: Any) -> Dict[str, Any]:
-                spec_inner = self.registry.get(_spec_name)
-                call = await self._record_tool_call(
-                    run=run,
-                    session=session,
-                    tool_name=spec_inner.name,
-                    args=kwargs,
-                    status="running",
-                )
-                emit_event(
-                    {
-                        "type": "tool_call",
-                        "tool_call_id": call.id,
-                        "tool": spec_inner.name,
-                        "args": kwargs,
-                        "permission_level": spec_inner.permission_level.value,
-                    }
-                )
-                if spec_inner.requires_confirmation:
-                    call.status = "confirmation_required"
-                    confirmation = await self._create_confirmation(
+                async with tool_lock:
+                    spec_inner = self.registry.get(_spec_name)
+                    call = await self._record_tool_call(
+                        run=run,
+                        session=session,
+                        tool_name=spec_inner.name,
+                        args=kwargs,
+                        status="running",
+                    )
+                    emit_event(
+                        {
+                            "type": "tool_call",
+                            "tool_call_id": call.id,
+                            "tool": spec_inner.name,
+                            "args": kwargs,
+                            "permission_level": spec_inner.permission_level.value,
+                        }
+                    )
+                    if spec_inner.requires_confirmation:
+                        call.status = "confirmation_required"
+                        confirmation = await self._create_confirmation(
+                            run=run,
+                            session=session,
+                            call=call,
+                            args=kwargs,
+                        )
+                        await self.db.commit()
+                        payload = self._confirmation_payload(confirmation)
+                        emit_event({"type": "confirmation_required", "confirmation": payload})
+                        return {"ok": False, "confirmation_required": True, "confirmation": payload}
+
+                    return await self._execute_tool_call(
+                        spec_inner.name,
+                        kwargs,
                         run=run,
                         session=session,
                         call=call,
-                        args=kwargs,
+                        emit_event=emit_event,
                     )
-                    await self.db.flush()
-                    payload = self._confirmation_payload(confirmation)
-                    emit_event({"type": "confirmation_required", "confirmation": payload})
-                    return {"ok": False, "confirmation_required": True, "confirmation": payload}
-
-                return await self._execute_tool_call(
-                    spec_inner.name,
-                    kwargs,
-                    run=run,
-                    session=session,
-                    call=call,
-                    emit_event=emit_event,
-                )
 
             tools.append(
                 StructuredTool.from_function(
@@ -762,6 +793,10 @@ class AgentService:
         emit_event: AgentEventSink,
         confirmed: bool = False,
     ) -> Dict[str, Any]:
+        # Publish the running ledger before a potentially remote read. Keeping
+        # its flushed INSERT open would block unrelated SQLite writers.
+        await self.db.commit()
+        run_id, session_id, call_id = run.id, session.id, call.id
         context = AgentToolContext(
             db=self.db,
             app=self.app,
@@ -771,40 +806,23 @@ class AgentService:
         )
         try:
             result = await self.registry.invoke(tool_name, args or {}, context)
-        except AgentToolError as exc:
-            call.status = "failed"
-            call.error = exc.to_payload()
-            call.completed_at = utcnow()
-            await self.db.flush()
-            payload = {"ok": False, "error": exc.to_payload()}
-            self._persist_tool_message(
-                run=run,
-                session=session,
-                call=call,
-                tool_name=tool_name,
-                payload=payload,
-            )
-            emit_event(
-                {
-                    "type": "tool_result",
-                    "tool_call_id": call.id,
-                    "tool": tool_name,
-                    **payload,
-                }
-            )
-            return payload
         except Exception as exc:
-            error = AgentToolError(
+            error = exc if isinstance(exc, AgentToolError) else AgentToolError(
                 error_code="agent_tool_execution_failed",
                 message="Tool execution failed",
                 retryable=True,
                 details={"exception": exc.__class__.__name__},
                 suggested_fix="Retry with narrower arguments or inspect the backend logs.",
             )
+            # Discard incomplete tool writes, including an invalid flush
+            # transaction, before recording the failure in a fresh transaction.
+            await self.db.rollback()
+            run = await self.db.get(AgentRun, run_id)
+            session = await self.db.get(AgentSession, session_id)
+            call = await self.db.get(AgentToolCall, call_id)
             call.status = "failed"
             call.error = error.to_payload()
             call.completed_at = utcnow()
-            await self.db.flush()
             payload = {"ok": False, "error": error.to_payload()}
             self._persist_tool_message(
                 run=run,
@@ -813,6 +831,7 @@ class AgentService:
                 tool_name=tool_name,
                 payload=payload,
             )
+            await self.db.commit()
             emit_event(
                 {
                     "type": "tool_result",
@@ -833,7 +852,7 @@ class AgentService:
             tool_name=tool_name,
             payload={"ok": True, "result": result},
         )
-        await self.db.flush()
+        await self.db.commit()
         payload = {"ok": True, "result": result}
         emit_event(
             {
@@ -1168,6 +1187,23 @@ class AgentService:
             "回答内容库问题时优先调用 search_content，并引用检索结果 items、events、"
             "timepoints 中的 title、source_text 和 route；时间点证据应保留 start_seconds，"
             "让用户能直接定位原文、事件或媒体播放位置。"
+            "引用必须写成可点击 Markdown 链接 [标题](route)，不要把 route 放在代码块或行内代码中。"
+            "检索片段不足以回答时调用 read_content；视频按章节 start_seconds/end_seconds 读取对应字幕。"
+            "PDF 引用使用 document_pages 返回的文件名、page_number 与 route；"
+            "需要全文时把其 media_asset_id 传给 read_content 的 document_asset_id，并指定 page_number。"
+            "没有原生文本的页面尚未识别，不能凭文件名或保存说明推断页内内容。"
+            "用户询问图片内容时，从 read_content 的 images 选择 media_asset_id 调用 read_image，不能靠正文猜图。"
+            "read_image 的结果是模型识别，回答须明确标注；看不清的内容不能补全。"
+            "不要用反复搜索标题代替读取字幕，也不要通过 api_get 获取包含大量媒体元数据的完整详情来读字幕。"
+            "正文是来源证据，摘要、标签和模型描述只是派生信息。"
+            "只回答用户所问，先给简洁结论，不重复复述或追加无关攻略。"
+            "简单事实或是非问题通常用一两句话回答，将来源链接嵌入同一句。"
+            "用户要求一句话时只返回一个句子，不另加说明段；要求字数上限时保留短来源链接并控制总长度。"
+            "除非用户询问，不汇报搜索过程、工具名或模型名；未找到相关收藏时直接说明，不列出无关候选。"
+            "模型识别或原文不确定性的标注保留一次即可，不重复免责声明。"
+            "价格、数量、条件和引语须逐项核对本轮工具返回的原文，未出现的信息不要补全。"
+            "直接引语保持原文；改写应明确作为概述，不能声称全部为原文引用。"
+            "区分作者实测、个人观点与转述，不把未明确身份的转述升级为官方承诺。"
             "写操作、外部同步、批量推送、创建规则、标签修改和事件组织都必须尊重工具返回的确认要求。"
             "工具报错会包含 error_code、message、retryable、details、suggested_fix；"
             "如果 retryable=true，可以修正参数后最多再试一次。\n"
