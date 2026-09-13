@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/layout/responsive_layout.dart';
+import '../../routing/navigation_scope.dart';
 import '../../theme/design_tokens.dart';
 import 'presentation/tabs/automation_tab.dart';
 import 'presentation/tabs/connection_tab.dart';
@@ -22,6 +23,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   late int _selectedIndex;
   late bool _showMobileDetail;
   final _contentKey = GlobalKey();
+  final _navigatorKey = GlobalKey<NavigatorState>();
+  static const _detailPageKey = ValueKey('settings-detail-page');
 
   static const List<_SettingsSection> _sections = [
     _SettingsSection(
@@ -83,15 +86,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // A visible desktop detail remains the current destination after rotation.
-    if (WindowMetrics.of(context).supportsSupportingPane) {
-      _showMobileDetail = true;
-    }
-  }
-
-  @override
   void didUpdateWidget(SettingsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialTab != widget.initialTab) {
@@ -110,18 +104,74 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           Size(constraints.maxWidth, constraints.maxHeight),
         );
         final singlePane = !metrics.supportsSupportingPane;
+        // Remember the detail actually shown by this layout, including when
+        // a browser history entry clears the selected section query.
+        if (!singlePane) _showMobileDetail = true;
         final selected = _sections[_selectedIndex];
 
-        if (!singlePane) return _buildDesktopBody(context);
-        return Scaffold(
-          appBar: AppBar(
-            toolbarHeight: metrics.heightClass.isCompact ? 48 : null,
-            title: Text(_showMobileDetail ? selected.title : '设置'),
-            leading: _showMobileDetail
-                ? BackButton(onPressed: () => _backToSections(context))
-                : _exitButton(context),
+        return NavigatorPopHandler<void>(
+          enabled: singlePane,
+          onPopWithResult: (_) {
+            if (singlePane && _showMobileDetail) {
+              _navigatorKey.currentState!.maybePop();
+            }
+          },
+          child: NotificationListener<NavigationNotification>(
+            // The wide section is part of one settings workspace. Only the
+            // compact list-detail stack participates in nested system back.
+            onNotification: (_) => !singlePane,
+            child: AppNavigationScope(
+              child: Navigator(
+                key: _navigatorKey,
+                pages: [
+                  MaterialPage<void>(
+                    key: const ValueKey('settings-list-page'),
+                    child: Scaffold(
+                      appBar: AppBar(
+                        toolbarHeight: metrics.heightClass.isCompact
+                            ? 48
+                            : null,
+                        title: const Text('设置'),
+                        leading: _exitButton(context),
+                      ),
+                      body: SafeArea(
+                        top: false,
+                        child: _buildSectionList(context),
+                      ),
+                    ),
+                  ),
+                  if (_showMobileDetail)
+                    MaterialPage<void>(
+                      key: _detailPageKey,
+                      canPop: singlePane,
+                      child: singlePane
+                          ? Scaffold(
+                              appBar: AppBar(
+                                toolbarHeight: metrics.heightClass.isCompact
+                                    ? 48
+                                    : null,
+                                title: Text(selected.title),
+                                leading: BackButton(
+                                  onPressed: () =>
+                                      _navigatorKey.currentState!.maybePop(),
+                                ),
+                              ),
+                              body: SafeArea(
+                                top: false,
+                                child: _sectionContent(),
+                              ),
+                            )
+                          : _buildDesktopBody(context),
+                    ),
+                ],
+                onDidRemovePage: (page) {
+                  if (page.key == _detailPageKey && _showMobileDetail) {
+                    _backToSections(context);
+                  }
+                },
+              ),
+            ),
           ),
-          body: SafeArea(top: false, child: _buildMobileBody(context)),
         );
       },
     );
@@ -184,7 +234,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     AppBar(
                       automaticallyImplyLeading: false,
                       backgroundColor: surface,
-                      title: Text(selected.title),
+                      centerTitle: true,
+                      titleSpacing: 0,
+                      title: SizedBox(
+                        width: AppPane.readableMaxWidth,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Text(selected.title),
+                        ),
+                      ),
                     ),
                     Expanded(
                       child: Center(
@@ -209,13 +267,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget _sectionContent() =>
       KeyedSubtree(key: _contentKey, child: _sections[_selectedIndex].child);
 
-  Widget _buildMobileBody(BuildContext context) {
-    if (_showMobileDetail) {
-      return _sectionContent();
-    }
-
+  Widget _buildSectionList(BuildContext context) {
     return ListView(
-      key: const ValueKey('settings-section-list'),
+      key: const PageStorageKey('settings-section-list'),
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
       children: [
         for (var i = 0; i < _sections.length; i++)
@@ -276,6 +330,9 @@ class _SettingsSectionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListTile(
+    titleAlignment: compact
+        ? ListTileTitleAlignment.center
+        : ListTileTitleAlignment.titleHeight,
     leading: Icon(section.icon),
     title: Text(section.title),
     subtitle: compact ? null : Text(section.subtitle),

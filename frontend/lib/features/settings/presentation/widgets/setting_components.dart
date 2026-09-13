@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
-import '../../../../core/layout/responsive_layout.dart';
 import '../../../../core/utils/toast.dart';
 import '../../../../theme/design_tokens.dart';
 
@@ -110,135 +109,77 @@ class SettingTile extends StatelessWidget {
   }
 }
 
-class AdaptiveTaskSurface extends StatelessWidget {
-  const AdaptiveTaskSurface({
-    super.key,
-    required this.title,
-    required this.body,
-    required this.actions,
-    this.maxWidth = AppPane.formMaxWidth,
-  });
-
-  final String title;
-  final Widget body;
-  final List<Widget> actions;
-  final double maxWidth;
-
-  @override
-  Widget build(BuildContext context) {
-    final compact = WindowMetrics.of(context).widthClass.isCompact;
-    return Dialog(
-      insetPadding: EdgeInsets.all(compact ? 12 : 24),
-      shape: const RoundedRectangleBorder(borderRadius: AppShape.sheetBorder),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: Theme.of(context).textTheme.headlineSmall),
-              const SizedBox(height: 20),
-              body,
-              const SizedBox(height: 16),
-              OverflowBar(
-                alignment: MainAxisAlignment.end,
-                spacing: 12,
-                overflowSpacing: 8,
-                children: actions,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class ExpandableSettingTile extends StatefulWidget {
-  final String title;
-  final String? subtitle;
-  final IconData? icon;
-  final Widget expandedContent;
-  final Widget? trailing;
-  final bool isInitiallyExpanded;
-  final ValueChanged<bool>? onToggle;
-
   const ExpandableSettingTile({
     super.key,
     required this.title,
     this.subtitle,
     this.icon,
     required this.expandedContent,
-    this.trailing,
-    this.isInitiallyExpanded = false,
-    this.onToggle,
   });
+
+  final String title;
+  final String? subtitle;
+  final IconData? icon;
+  final Widget expandedContent;
 
   @override
   State<ExpandableSettingTile> createState() => _ExpandableSettingTileState();
 }
 
-class _ExpandableSettingTileState extends State<ExpandableSettingTile> {
-  late bool _isExpanded;
+class _ExpandableSettingTileState extends State<ExpandableSettingTile>
+    with AutomaticKeepAliveClientMixin {
+  bool _expanded = false;
 
   @override
-  void initState() {
-    super.initState();
-    _isExpanded = widget.isInitiallyExpanded;
-  }
-
-  void _toggle() {
-    setState(() {
-      _isExpanded = !_isExpanded;
-    });
-    widget.onToggle?.call(_isExpanded);
-  }
+  bool get wantKeepAlive => _expanded;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Column(
-      children: [
-        SettingTile(
-          title: widget.title,
-          subtitle: widget.subtitle,
-          icon: widget.icon,
-          showArrow: false,
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (widget.trailing != null) ...[
-                widget.trailing!,
-                const SizedBox(width: 8),
-              ],
-              AnimatedRotation(
-                turns: _isExpanded ? 0.25 : 0,
-                duration: AppMotion.stateChange,
-                curve: AppMotion.standardCurve,
-                child: Icon(
-                  Icons.chevron_right_rounded,
-                  color: colorScheme.outline.withValues(alpha: 0.5),
+    super.build(context);
+    final theme = Theme.of(context);
+    const shape = RoundedRectangleBorder(
+      borderRadius: AppShape.cardMediaBorder,
+    );
+    return ListTileTheme.merge(
+      shape: shape,
+      child: ExpansionTile(
+        title: Text(widget.title, style: theme.textTheme.titleMedium),
+        subtitle: widget.subtitle == null || widget.subtitle!.isEmpty
+            ? null
+            : Text(
+                widget.subtitle!,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-            ],
+        leading: widget.icon == null ? null : Icon(widget.icon, size: 22),
+        tilePadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        childrenPadding: const EdgeInsets.fromLTRB(4, 8, 4, 16),
+        shape: shape,
+        collapsedShape: shape,
+        clipBehavior: Clip.antiAlias,
+        maintainState: true,
+        expansionAnimationStyle: MediaQuery.disableAnimationsOf(context)
+            ? AnimationStyle.noAnimation
+            : const AnimationStyle(
+                duration: AppMotion.contentSwap,
+                curve: AppMotion.standardCurve,
+              ),
+        onExpansionChanged: (expanded) {
+          setState(() => _expanded = expanded);
+          updateKeepAlive();
+        },
+        children: [
+          ExcludeFocus(
+            excluding: !_expanded,
+            child: SizedBox(
+              width: double.infinity,
+              child: widget.expandedContent,
+            ),
           ),
-          onTap: _toggle,
-        ),
-        AnimatedSize(
-          duration: AppMotion.stateChange,
-          curve: AppMotion.standardCurve,
-          child: _isExpanded
-              ? Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 16),
-                  child: widget.expandedContent,
-                )
-              : const SizedBox.shrink(),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

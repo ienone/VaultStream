@@ -11,6 +11,7 @@ import '../../../automation/models/bot_chat.dart';
 import '../../../automation/widgets/bot_chat_dialog.dart';
 import '../../../notifications/notification_provider.dart';
 import '../../../../theme/design_tokens.dart';
+import '../../../../core/widgets/app_filter_menu.dart';
 
 class PushTab extends ConsumerStatefulWidget {
   const PushTab({super.key, this.targetsOnly = false});
@@ -300,57 +301,40 @@ class _PushTabState extends ConsumerState<PushTab> {
     final statusAsync = ref.watch(botStatusProvider);
     settingsAsync.whenData(_initFromSettings);
 
-    return ListView(
+    final content = ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       children: widget.targetsOnly
           ? [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SectionHeader(
-                    title: '群组与频道管理',
-                    icon: Icons.groups_rounded,
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 4, bottom: 8),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        FilledButton.tonalIcon(
-                          onPressed: _isSyncingChats
-                              ? null
-                              : _syncConfiguredChats,
-                          icon: _isSyncingChats
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.sync_rounded),
-                          label: Text(_isSyncingChats ? '同步中...' : '同步群组'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: _showAddChatDialog,
-                          icon: const Icon(Icons.add_rounded),
-                          label: const Text('手动新增'),
-                        ),
-                      ],
+              Padding(
+                padding: const EdgeInsets.only(left: 4, bottom: 8),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.tonalIcon(
+                      onPressed: _isSyncingChats ? null : _syncConfiguredChats,
+                      icon: _isSyncingChats
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.sync_rounded),
+                      label: Text(_isSyncingChats ? '同步中...' : '同步目标'),
                     ),
-                  ),
-                ],
+                    OutlinedButton.icon(
+                      onPressed: _showAddChatDialog,
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('手动新增'),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 8),
               _buildGroupManagement(context, ref),
             ]
           : [
-              const SectionHeader(
-                title: '应用内周期摘要',
-                icon: Icons.summarize_rounded,
-              ),
-              const SizedBox(height: 8),
+              const SectionHeader(title: '应用内摘要'),
               settingsAsync.when(
                 data: (settings) => _buildDigestSettings(settings),
                 loading: () => const LinearProgressIndicator(),
@@ -364,6 +348,14 @@ class _PushTabState extends ConsumerState<PushTab> {
                 ),
               ),
               const SizedBox(height: 28),
+              SectionHeader(
+                title: '机器人服务',
+                action: IconButton(
+                  tooltip: '刷新机器人状态',
+                  onPressed: _isControllingTelegram ? null : _refreshBotStatus,
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
+              ),
               statusAsync.when(
                 data: _buildBotStatus,
                 loading: () => const LinearProgressIndicator(),
@@ -377,11 +369,6 @@ class _PushTabState extends ConsumerState<PushTab> {
                 ),
               ),
               const SizedBox(height: 24),
-              const SectionHeader(
-                title: '机器人推送配置',
-                icon: Icons.smart_toy_rounded,
-              ),
-              const SizedBox(height: 8),
               ExpansionTile(
                 maintainState: true,
                 initiallyExpanded: _pushConfigExpanded,
@@ -454,12 +441,24 @@ class _PushTabState extends ConsumerState<PushTab> {
                 ],
               ),
               const SizedBox(height: 32),
-              TextButton(
-                onPressed: () => context.push('/settings?tab=targets'),
-                child: const Text('管理推送目标'),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: AppShape.cardMediaBorder,
+                ),
+                onTap: () => context.push('/settings?tab=targets'),
+                title: const Text('管理推送目标'),
+                trailing: const Icon(Icons.chevron_right_rounded),
               ),
               const SizedBox(height: 40),
             ],
+    );
+    if (widget.targetsOnly) return content;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
+        child: content,
+      ),
     );
   }
 
@@ -475,57 +474,69 @@ class _PushTabState extends ConsumerState<PushTab> {
     const intervalOptions = <int>[6, 12, 24, 168];
     final selectedInterval = intervalOptions.contains(interval) ? interval : 24;
 
-    return SettingGroup(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SettingTile(
-          title: '周期摘要',
-          subtitle: '定期汇总新动态和事件变化',
-          icon: Icons.notifications_active_outlined,
-          showArrow: false,
-          trailing: Switch(
-            key: const ValueKey('notification-digest-enabled'),
-            value: enabled,
-            onChanged: (value) =>
-                _updateDigestSetting('enable_notification_digest', value),
+        SwitchListTile(
+          key: const ValueKey('notification-digest-enabled'),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 4,
+            vertical: 8,
           ),
+          shape: const RoundedRectangleBorder(
+            borderRadius: AppShape.cardMediaBorder,
+          ),
+          title: const Text('定期生成摘要'),
+          subtitle: const Text('汇总上次检查后的新动态和事件变化'),
+          value: enabled,
+          onChanged: (value) =>
+              _updateDigestSetting('enable_notification_digest', value),
         ),
-        SettingTile(
-          title: '摘要周期',
-          subtitle: '只统计上次检查后新出现的动态和事件变化',
-          icon: Icons.schedule_rounded,
-          showArrow: false,
-          trailing: DropdownButton<int>(
-            value: selectedInterval,
-            items: const [
-              DropdownMenuItem(value: 6, child: Text('每 6 小时')),
-              DropdownMenuItem(value: 12, child: Text('每 12 小时')),
-              DropdownMenuItem(value: 24, child: Text('每天')),
-              DropdownMenuItem(value: 168, child: Text('每周')),
-            ],
-            onChanged: (value) {
-              if (value != null) {
-                _updateDigestSetting(
-                  'notification_digest_interval_hours',
-                  value,
-                );
-              }
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
+              final inline = constraints.maxWidth >= 600 * scale;
+              return Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SizedBox(
+                    width: inline ? 320 : constraints.maxWidth,
+                    child: AppFilterMenu(
+                      label: '摘要周期',
+                      value: selectedInterval.toString(),
+                      options: const {
+                        '6': '每 6 小时',
+                        '12': '每 12 小时',
+                        '24': '每天',
+                        '168': '每周',
+                      },
+                      onOpened: () =>
+                          FocusManager.instance.primaryFocus?.unfocus(),
+                      onSelected: (value) => _updateDigestSetting(
+                        'notification_digest_interval_hours',
+                        int.parse(value),
+                      ),
+                    ),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: _isGeneratingDigest ? null : _generateDigestNow,
+                    icon: _isGeneratingDigest
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.summarize_rounded),
+                    label: Text(_isGeneratingDigest ? '检查中' : '立即生成摘要'),
+                  ),
+                ],
+              );
             },
-          ),
-        ),
-        SettingTile(
-          title: '立即检查',
-          icon: Icons.refresh_rounded,
-          showArrow: false,
-          trailing: FilledButton.tonalIcon(
-            onPressed: _isGeneratingDigest ? null : _generateDigestNow,
-            icon: _isGeneratingDigest
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.summarize_rounded),
-            label: Text(_isGeneratingDigest ? '检查中' : '生成摘要'),
           ),
         ),
       ],
@@ -589,85 +600,61 @@ class _PushTabState extends ConsumerState<PushTab> {
 
   Widget _buildChatTile(BuildContext context, WidgetRef ref, BotChat chat) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.2),
-          ),
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer.withValues(alpha: 0.3),
-                  borderRadius: AppShape.cardMediaBorder,
-                ),
-                child: Icon(
-                  chat.isTelegram
-                      ? Icons.telegram_rounded
-                      : Icons.alternate_email_rounded,
-                  size: 20,
-                  color: colorScheme.primary,
-                ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            shape: const RoundedRectangleBorder(
+              borderRadius: AppShape.cardMediaBorder,
+            ),
+            title: Text(
+              chat.displayName,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      chat.displayName,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      chat.chatTypeLabel,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.outline,
-                      ),
-                    ),
-                  ],
-                ),
+            ),
+            subtitle: Text(
+              chat.chatTypeLabel,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
-              Switch(
-                value: chat.enabled,
-                onChanged: (val) => ref
-                    .read(botChatsProvider.notifier)
-                    .updateChatStatus(chat.id, enabled: val),
-              ),
-            ],
+            ),
+            value: chat.enabled,
+            onChanged: (value) => ref
+                .read(botChatsProvider.notifier)
+                .updateChatStatus(chat.id, enabled: value),
           ),
-          const SizedBox(height: 12),
-          Row(
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              _buildCompactToggle(
-                context,
-                '巡逻监听',
-                chat.isMonitoring,
-                (val) => ref
+              FilterChip(
+                label: const Text('巡逻监听'),
+                avatar: Icon(
+                  chat.isMonitoring ? Icons.check_rounded : Icons.add_rounded,
+                  size: 18,
+                ),
+                selected: chat.isMonitoring,
+                showCheckmark: false,
+                onSelected: (value) => ref
                     .read(botChatsProvider.notifier)
-                    .updateChatStatus(chat.id, isMonitoring: val),
-                Icons.radar_rounded,
+                    .updateChatStatus(chat.id, isMonitoring: value),
               ),
-              const SizedBox(width: 12),
-              _buildCompactToggle(
-                context,
-                '分发推送',
-                chat.isPushTarget,
-                (val) => ref
+              FilterChip(
+                label: const Text('分发推送'),
+                avatar: Icon(
+                  chat.isPushTarget ? Icons.check_rounded : Icons.add_rounded,
+                  size: 18,
+                ),
+                selected: chat.isPushTarget,
+                showCheckmark: false,
+                onSelected: (value) => ref
                     .read(botChatsProvider.notifier)
-                    .updateChatStatus(chat.id, isPushTarget: val),
-                Icons.auto_awesome_motion_rounded,
+                    .updateChatStatus(chat.id, isPushTarget: value),
               ),
             ],
           ),
@@ -676,117 +663,55 @@ class _PushTabState extends ConsumerState<PushTab> {
     );
   }
 
-  Widget _buildCompactToggle(
-    BuildContext context,
-    String label,
-    bool value,
-    Function(bool) onChanged,
-    IconData icon,
-  ) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return Expanded(
-      child: InkWell(
-        onTap: () => onChanged(!value),
-        borderRadius: AppShape.cardMediaBorder,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: value
-                ? colorScheme.primaryContainer.withValues(alpha: 0.2)
-                : colorScheme.surfaceContainerHigh,
-            borderRadius: AppShape.cardMediaBorder,
-            border: Border.all(
-              color: value
-                  ? colorScheme.primary.withValues(alpha: 0.3)
-                  : Colors.transparent,
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                icon,
-                size: 16,
-                color: value ? colorScheme.primary : colorScheme.outline,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  fontWeight: value ? FontWeight.bold : FontWeight.normal,
-                  color: value ? colorScheme.primary : colorScheme.onSurface,
-                ),
-              ),
-              const Spacer(),
-              SizedBox(
-                height: 20,
-                width: 32,
-                child: FittedBox(
-                  fit: BoxFit.contain,
-                  child: Switch(
-                    value: value,
-                    onChanged: onChanged,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildBotStatus(BotStatus status) {
     final username = status.botUsername;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                status.isRunning
-                    ? 'Telegram 运行中${username != null ? ' · @$username' : ''}'
-                    : 'Telegram 未运行',
-              ),
-            ),
-            IconButton(
-              tooltip: '刷新机器人状态',
-              onPressed: _isControllingTelegram ? null : _refreshBotStatus,
-              icon: const Icon(Icons.refresh_rounded),
-            ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            status.isRunning ? 'Telegram 运行中' : 'Telegram 未运行',
+            style: Theme.of(context).textTheme.bodyLarge,
+          ),
+          if (status.isRunning && username != null) ...[
+            const SizedBox(height: 4),
+            Text('@$username', style: Theme.of(context).textTheme.bodyMedium),
           ],
-        ),
-        if (status.isNapcatEnabled)
-          Text(status.isNapcatOnline ? 'QQ 已连接' : 'QQ 未连接，请检查 Napcat 配置'),
-        Wrap(
-          spacing: 8,
-          children: [
-            TextButton(
-              onPressed: _isControllingTelegram
-                  ? null
-                  : () => _controlTelegramService(
-                      status.isRunning ? 'stop' : 'start',
-                    ),
-              child: Text(
-                _isControllingTelegram
-                    ? '处理中…'
-                    : status.isRunning
-                    ? '停止 Telegram'
-                    : '启动 Telegram',
-              ),
-            ),
-            if (status.isRunning)
+          if (status.isNapcatEnabled) ...[
+            const SizedBox(height: 12),
+            Text(status.isNapcatOnline ? 'QQ 已连接' : 'QQ 未连接，请检查 Napcat 配置'),
+          ],
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
               TextButton(
                 onPressed: _isControllingTelegram
                     ? null
-                    : () => _controlTelegramService('restart'),
-                child: const Text('重启 Telegram'),
+                    : () => _controlTelegramService(
+                        status.isRunning ? 'stop' : 'start',
+                      ),
+                child: Text(
+                  _isControllingTelegram
+                      ? '处理中…'
+                      : status.isRunning
+                      ? '停止 Telegram'
+                      : '启动 Telegram',
+                ),
               ),
-          ],
-        ),
-      ],
+              if (status.isRunning)
+                TextButton(
+                  onPressed: _isControllingTelegram
+                      ? null
+                      : () => _controlTelegramService('restart'),
+                  child: const Text('重启 Telegram'),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

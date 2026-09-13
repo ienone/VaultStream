@@ -26,6 +26,8 @@ class PlatformHealthStatus {
       : null;
   bool get favoritesEnabled => favoritesSync['enabled'] == true;
   bool get favoritesSupported => favoritesSync['supported'] == true;
+  String? get lastFavoritesStatus =>
+      favoritesSync['last_run_status'] as String?;
   bool? get favoritesAuthenticated => favoritesSync['authenticated'] is bool
       ? favoritesSync['authenticated'] as bool
       : null;

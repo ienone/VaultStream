@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'package:frontend/core/network/api_client.dart';
 import 'package:frontend/core/utils/safe_url_launcher.dart';
+import 'package:frontend/core/widgets/adaptive_form_dialog.dart';
 import 'package:frontend/theme/design_tokens.dart';
 
 class InteractiveLoginDialog extends ConsumerStatefulWidget {
@@ -162,120 +163,94 @@ class _InteractiveLoginDialogState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return AlertDialog(
-      title: Text('连接到 ${widget.platformLabel}'),
-      content: SizedBox(
-        width: 300,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (_status == 'initializing')
-                const CircularProgressIndicator()
-              else if (_status == 'waiting_scan' ||
-                  _status == 'needs_captcha') ...[
-                // 使用 ValueListenableBuilder 单独监听二维码变化，不引发整棵树重建
-                ValueListenableBuilder<String?>(
-                  valueListenable: _qrcodeNotifier,
-                  builder: (context, qrB64, _) {
-                    if (qrB64 == null) return const CircularProgressIndicator();
-                    return Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: AppShape.cardMediaBorder,
-                      ),
-                      child: Image.memory(
-                        base64Decode(qrB64),
-                        width: 200,
-                        height: 200,
-                        fit: BoxFit.contain,
-                        // 明确 key，防止 Flutter 以为是同一个 Widget 而触发无意义重建
-                        key: const ValueKey('qr_image'),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 24),
-                if (_status == 'needs_captcha') ...[
-                  Icon(Icons.security, color: colorScheme.tertiary, size: 48),
-                  const SizedBox(height: 8),
-                  Text(
-                    '触发人机验证',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.tertiary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  ElevatedButton.icon(
-                    onPressed: _launchCaptchaUrl,
-                    icon: const Icon(Icons.open_in_new),
-                    label: const Text('去验证'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: colorScheme.tertiaryContainer,
-                      foregroundColor: colorScheme.onTertiaryContainer,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '验证完成后请回到此处继续',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ] else ...[
-                  const Text(
-                    '请使用手机 APP 扫描二维码\n扫码后在手机端稍等片刻以完成授权',
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ] else if (_status == 'success') ...[
-                Icon(Icons.check_circle, color: colorScheme.primary, size: 64),
-                const SizedBox(height: 16),
-                Text(
-                  '登录成功！',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ] else ...[
-                Icon(Icons.error_outline, color: colorScheme.error, size: 64),
-                const SizedBox(height: 16),
-                Text(
-                  _message,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.error,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-
-              if (_status != 'failed' && _status != 'timeout') ...[
-                const SizedBox(height: 24),
-                Text(
-                  _message,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
+    final waiting = _status == 'waiting_scan' || _status == 'needs_captcha';
+    final failed = _status == 'failed' || _status == 'timeout';
+    return AdaptiveFormDialog(
+      title: '连接到 ${widget.platformLabel}',
+      maxWidth: waiting ? AppPane.formMaxWidth : 440,
+      contentBuilder: (context, width, short) {
+        final qrSize = (width - 16).clamp(0.0, short ? 144.0 : 200.0);
+        final message = Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_status == 'initializing') ...[
+              const LinearProgressIndicator(),
+              const SizedBox(height: 16),
             ],
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                _message,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: failed
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            if (_status == 'needs_captcha') ...[
+              const SizedBox(height: 12),
+              FilledButton.tonalIcon(
+                onPressed: _captchaUrl == null ? null : _launchCaptchaUrl,
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('前往验证'),
+              ),
+            ],
+          ],
+        );
+        if (!waiting) return message;
+        final qr = ValueListenableBuilder<String?>(
+          valueListenable: _qrcodeNotifier,
+          builder: (context, qrB64, _) => Container(
+            width: qrSize + 16,
+            height: qrSize + 16,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: AppShape.cardMediaBorder,
+            ),
+            child: qrB64 == null
+                ? const Center(child: CircularProgressIndicator())
+                : Image.memory(
+                    base64Decode(qrB64),
+                    key: const ValueKey('qr_image'),
+                    semanticLabel: '${widget.platformLabel} 登录二维码',
+                    fit: BoxFit.contain,
+                  ),
           ),
-        ),
-      ),
-      actions: [
-        TextButton(
+        );
+        final horizontal =
+            width >= qrSize + 40 + MediaQuery.textScalerOf(context).scale(140);
+        return horizontal
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  qr,
+                  const SizedBox(width: 24),
+                  Expanded(child: message),
+                ],
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(child: qr),
+                  const SizedBox(height: 20),
+                  message,
+                ],
+              );
+      },
+      actions: Align(
+        alignment: Alignment.centerRight,
+        child: TextButton(
           onPressed: () {
             _pollingTimer?.cancel();
             Navigator.of(context).pop(false);
           },
           child: Text(_status == 'success' ? '完成' : '取消'),
         ),
-      ],
+      ),
     );
   }
 }

@@ -11,6 +11,7 @@ import '../../settings/providers/settings_provider.dart';
 import '../../settings/presentation/widgets/setting_components.dart'
     as settings_ui;
 import 'widgets/interactive_login_dialog.dart';
+import 'widgets/onboarding_feature_card.dart';
 
 class OnboardingPage extends ConsumerStatefulWidget {
   const OnboardingPage({super.key});
@@ -19,8 +20,10 @@ class OnboardingPage extends ConsumerStatefulWidget {
   ConsumerState<OnboardingPage> createState() => _OnboardingPageState();
 }
 
-class _OnboardingPageState extends ConsumerState<OnboardingPage> {
-  int _currentStep = 0;
+class _OnboardingPageState extends ConsumerState<OnboardingPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _stepController;
+  int get _currentStep => _stepController.index;
   bool _isLoading = false;
   String? _error;
   final _scrollController = ScrollController();
@@ -75,6 +78,18 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   static const int _finishStep = 3;
 
   @override
+  void initState() {
+    super.initState();
+    _stepController = TabController(length: _totalSteps, vsync: this);
+  }
+
+  void _selectStep(int step) {
+    FocusScope.of(context).unfocus();
+    setState(() => _stepController.index = step);
+    if (_scrollController.hasClients) _scrollController.jumpTo(0);
+  }
+
+  @override
   void dispose() {
     for (final controller in [
       _llmBaseUrlController,
@@ -99,6 +114,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
       controller.dispose();
     }
     _scrollController.dispose();
+    _stepController.dispose();
     super.dispose();
   }
 
@@ -155,21 +171,21 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         (_llmKeyController.text.trim().isEmpty ||
             _llmBaseUrlController.text.trim().isEmpty)) {
       setState(() {
-        _currentStep = 0;
+        _stepController.index = 0;
         _error = '请填写内容理解的 API 地址和密钥';
       });
       return;
     }
     if (_enableAutoSummary && _summaryKeyController.text.trim().isEmpty) {
       setState(() {
-        _currentStep = 0;
+        _stepController.index = 0;
         _error = '请填写自动摘要的 API Key';
       });
       return;
     }
     if (_enableEmbedding && _embeddingKeyController.text.trim().isEmpty) {
       setState(() {
-        _currentStep = 0;
+        _stepController.index = 0;
         _error = '请填写语义搜索的 API Key';
       });
       return;
@@ -178,21 +194,21 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         (_visionKeyController.text.trim().isEmpty ||
             _visionBaseUrlController.text.trim().isEmpty)) {
       setState(() {
-        _currentStep = 0;
+        _stepController.index = 0;
         _error = '请填写图像理解的 API 地址和密钥';
       });
       return;
     }
     if (_enableTelegramBot && _tgTokenController.text.trim().isEmpty) {
       setState(() {
-        _currentStep = _botStep;
+        _stepController.index = _botStep;
         _error = '请填写 Telegram Bot Token';
       });
       return;
     }
     if (_enableQqBot && _qqUrlController.text.trim().isEmpty) {
       setState(() {
-        _currentStep = _botStep;
+        _stepController.index = _botStep;
         _error = '请填写 Napcat API 地址';
       });
       return;
@@ -274,6 +290,9 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     final connected = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
+      animationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
       builder: (_) =>
           InteractiveLoginDialog(platform: platform, platformLabel: label),
     );
@@ -345,87 +364,46 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     );
   }
 
-  Widget _featureCard({
-    required GlobalKey cardKey,
-    required String title,
-    required IconData icon,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-    required Widget configuration,
-  }) {
-    return Card(
-      key: cardKey,
-      margin: EdgeInsets.zero,
-      elevation: 0,
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          SwitchListTile(
-            secondary: Icon(icon),
-            title: Text(title),
-            value: value,
-            onChanged: onChanged,
-          ),
-          AnimatedSize(
-            duration: AppMotion.contentSwap,
-            curve: AppMotion.standardCurve,
-            child: value
-                ? Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: configuration,
-                  )
-                : const SizedBox.shrink(),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _responsiveCardWrap({
     required List<Widget> children,
     required int maxColumns,
   }) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final widthClass = ResponsiveLayout.widthClassFor(constraints.maxWidth);
-        final columns =
-            maxColumns >= 3 && widthClass.atLeast(WindowWidthClass.expanded)
-            ? 3
-            : maxColumns >= 2 && widthClass.atLeast(WindowWidthClass.medium)
-            ? 2
-            : 1;
-        const spacing = 12.0;
-        final itemWidth =
-            (constraints.maxWidth - spacing * (columns - 1)) / columns;
-        return AnimatedSize(
-          duration: AppMotion.contentSwap,
-          curve: AppMotion.standardCurve,
-          alignment: Alignment.topCenter,
-          child: Wrap(
-            spacing: spacing,
-            runSpacing: spacing,
-            crossAxisAlignment: WrapCrossAlignment.start,
-            children: children
-                .map(
-                  (child) => AnimatedContainer(
-                    duration: AppMotion.contentSwap,
-                    curve: AppMotion.standardCurve,
-                    width: itemWidth,
-                    child: child,
-                  ),
-                )
-                .toList(),
-          ),
-        );
-      },
+    return Align(
+      alignment: Alignment.topLeft,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: maxColumns == 1
+              ? AppPane.readableMaxWidth
+              : double.infinity,
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final textScale = MediaQuery.textScalerOf(context).scale(16) / 16;
+            final columns = (constraints.maxWidth / (320 * textScale))
+                .floor()
+                .clamp(1, maxColumns);
+            const spacing = 12.0;
+            final itemWidth =
+                (constraints.maxWidth - spacing * (columns - 1)) / columns;
+            return Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              crossAxisAlignment: WrapCrossAlignment.start,
+              children: [
+                for (final child in children)
+                  SizedBox(width: itemWidth, child: child),
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 
   Widget _featureStep() {
     final cards = [
-      _featureCard(
-        cardKey: _textFeatureKey,
+      OnboardingFeatureCard(
+        key: _textFeatureKey,
         title: '内容理解',
         icon: Icons.text_snippet_outlined,
         value: _enableTextLlm,
@@ -438,8 +416,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
           models: _textModels,
         ),
       ),
-      _featureCard(
-        cardKey: _summaryFeatureKey,
+      OnboardingFeatureCard(
+        key: _summaryFeatureKey,
         title: '自动摘要',
         icon: Icons.auto_awesome_outlined,
         value: _enableAutoSummary,
@@ -465,8 +443,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
           ],
         ),
       ),
-      _featureCard(
-        cardKey: _embeddingFeatureKey,
+      OnboardingFeatureCard(
+        key: _embeddingFeatureKey,
         title: '语义搜索',
         icon: Icons.manage_search_outlined,
         value: _enableEmbedding,
@@ -482,36 +460,42 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
               ),
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: TextField(
-                    controller: _embeddingModelController,
-                    decoration: const InputDecoration(
-                      labelText: '模型',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: _embeddingDimController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: '维度',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final modelField = TextField(
+                  controller: _embeddingModelController,
+                  decoration: const InputDecoration(labelText: '模型'),
+                );
+                final dimensionField = TextField(
+                  controller: _embeddingDimController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: '维度'),
+                );
+                final textScale =
+                    MediaQuery.textScalerOf(context).scale(16) / 16;
+                if (constraints.maxWidth < 480 * textScale) {
+                  return Column(
+                    children: [
+                      modelField,
+                      const SizedBox(height: AppSpacing.sm),
+                      dimensionField,
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(flex: 2, child: modelField),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(child: dimensionField),
+                  ],
+                );
+              },
             ),
           ],
         ),
       ),
-      _featureCard(
-        cardKey: _visionFeatureKey,
+      OnboardingFeatureCard(
+        key: _visionFeatureKey,
         title: '图像理解',
         icon: Icons.image_search_outlined,
         value: _enableVisionLlm,
@@ -527,61 +511,41 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     ];
     return _responsiveCardWrap(
       children: [cards[0], cards[3], cards[1], cards[2]],
-      maxColumns: 2,
+      maxColumns: 1,
     );
   }
 
   Widget _botConfigCard({required bool telegram}) {
     final enabled = telegram ? _enableTelegramBot : _enableQqBot;
-    return Card(
+    return OnboardingFeatureCard(
       key: telegram ? _telegramKey : _qqKey,
-      margin: EdgeInsets.zero,
-      elevation: 0,
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
-      clipBehavior: Clip.antiAlias,
-      child: Column(
+      title: telegram ? 'Telegram' : 'QQ',
+      icon: telegram ? Icons.send_outlined : Icons.chat_outlined,
+      value: enabled,
+      onChanged: (value) => setState(() {
+        if (telegram) {
+          _enableTelegramBot = value;
+        } else {
+          _enableQqBot = value;
+        }
+      }),
+      configuration: Column(
         children: [
-          SwitchListTile(
-            secondary: Icon(
-              telegram ? Icons.send_outlined : Icons.chat_outlined,
+          TextField(
+            controller: telegram ? _tgTokenController : _qqUrlController,
+            decoration: InputDecoration(
+              labelText: telegram ? 'Bot Token' : 'Napcat API 地址',
+              border: const OutlineInputBorder(),
             ),
-            title: Text(telegram ? 'Telegram' : 'QQ'),
-            value: enabled,
-            onChanged: (value) => setState(() {
-              if (telegram) {
-                _enableTelegramBot = value;
-              } else {
-                _enableQqBot = value;
-              }
-            }),
           ),
-          if (enabled)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Column(
-                children: [
-                  TextField(
-                    controller: telegram
-                        ? _tgTokenController
-                        : _qqUrlController,
-                    decoration: InputDecoration(
-                      labelText: telegram ? 'Bot Token' : 'Napcat API 地址',
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: telegram
-                        ? _tgAdminIdController
-                        : _qqAdminIdController,
-                    decoration: InputDecoration(
-                      labelText: telegram ? '管理员 ID（可选）' : '管理员 QQ 号（可选）',
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                ],
-              ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: telegram ? _tgAdminIdController : _qqAdminIdController,
+            decoration: InputDecoration(
+              labelText: telegram ? '管理员 ID（可选）' : '管理员 QQ 号（可选）',
+              border: const OutlineInputBorder(),
             ),
+          ),
         ],
       ),
     );
@@ -593,7 +557,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         _botConfigCard(telegram: true),
         _botConfigCard(telegram: false),
       ],
-      maxColumns: 2,
+      maxColumns: 1,
     );
   }
 
@@ -609,20 +573,44 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          ListTile(
-            leading: Icon(
-              connected ? Icons.check_circle : Icons.account_circle_outlined,
-              color: connected ? Theme.of(context).colorScheme.primary : null,
-            ),
-            title: Text(label),
-            subtitle: Text(connected ? '已连接' : '未连接'),
-            trailing: connected
-                ? null
-                : FilledButton.tonalIcon(
-                    onPressed: () => _showLoginDialog(id, label),
-                    icon: const Icon(Icons.qr_code_scanner),
-                    label: const Text('扫码连接'),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final textScale = MediaQuery.textScalerOf(context).scale(16) / 16;
+              final stacked = constraints.maxWidth < 440 * textScale;
+              final connectButton = connected
+                  ? null
+                  : FilledButton.tonalIcon(
+                      onPressed: () => _showLoginDialog(id, label),
+                      icon: const Icon(Icons.qr_code_scanner),
+                      label: const Text('扫码连接'),
+                    );
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ListTile(
+                    leading: Icon(
+                      connected
+                          ? Icons.check_circle
+                          : Icons.account_circle_outlined,
+                      color: connected
+                          ? Theme.of(context).colorScheme.primary
+                          : null,
+                    ),
+                    title: Text(label),
+                    subtitle: Text(connected ? '已连接' : '未连接'),
+                    trailing: stacked ? null : connectButton,
                   ),
+                  if (stacked && connectButton != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: connectButton,
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
           ExpansionTile(
             shape: const Border(),
@@ -686,7 +674,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   }
 
   void _jumpToConfiguration(int step, GlobalKey key) {
-    setState(() => _currentStep = step);
+    _selectStep(step);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final targetContext = key.currentContext;
       if (targetContext == null) return;
@@ -699,47 +687,21 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     });
   }
 
-  Widget _reviewCard({
+  Widget _reviewItem({
     required String title,
     required String subtitle,
     required IconData icon,
     required VoidCallback onTap,
   }) {
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 0,
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
+    return Material(
+      color: Colors.transparent,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
+        leading: Icon(icon),
+        title: Text(title),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.edit_outlined),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer,
-                  borderRadius: AppShape.cardMediaBorder,
-                ),
-                child: Icon(icon),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 2),
-                    Text(subtitle),
-                  ],
-                ),
-              ),
-              const Icon(Icons.edit_outlined),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -754,70 +716,67 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         _zhihuController.text.trim().isNotEmpty;
     final cards = <Widget>[
       if (_enableTextLlm)
-        _reviewCard(
+        _reviewItem(
           title: '内容理解',
           subtitle: _llmModelController.text.trim(),
           icon: Icons.text_snippet_outlined,
           onTap: () => _jumpToConfiguration(0, _textFeatureKey),
         ),
       if (_enableAutoSummary)
-        _reviewCard(
+        _reviewItem(
           title: '自动摘要',
           subtitle: _summaryModelController.text.trim(),
           icon: Icons.auto_awesome_outlined,
           onTap: () => _jumpToConfiguration(0, _summaryFeatureKey),
         ),
       if (_enableEmbedding)
-        _reviewCard(
+        _reviewItem(
           title: '语义搜索',
           subtitle: _embeddingModelController.text.trim(),
           icon: Icons.manage_search_outlined,
           onTap: () => _jumpToConfiguration(0, _embeddingFeatureKey),
         ),
       if (_enableVisionLlm)
-        _reviewCard(
+        _reviewItem(
           title: '图像理解',
           subtitle: _visionModelController.text.trim(),
           icon: Icons.image_search_outlined,
           onTap: () => _jumpToConfiguration(0, _visionFeatureKey),
         ),
       if (_enableTelegramBot)
-        _reviewCard(
+        _reviewItem(
           title: 'Telegram',
           subtitle: '推送已启用',
           icon: Icons.send_outlined,
           onTap: () => _jumpToConfiguration(_botStep, _telegramKey),
         ),
       if (_enableQqBot)
-        _reviewCard(
+        _reviewItem(
           title: 'QQ',
           subtitle: '推送已启用',
           icon: Icons.chat_outlined,
           onTap: () => _jumpToConfiguration(_botStep, _qqKey),
         ),
       if (hasConfiguredAccounts)
-        _reviewCard(
+        _reviewItem(
           title: '平台账户',
           subtitle: '检查登录状态',
           icon: Icons.account_circle_outlined,
           onTap: () => _jumpToConfiguration(_accountStep, _accountsKey),
         ),
     ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 28),
-      child: Column(
-        children: [
-          Text('确认配置', style: Theme.of(context).textTheme.headlineMedium),
-          const SizedBox(height: 6),
-          Text(
-            cards.isEmpty ? '没有需要确认的可选配置' : '点击卡片可返回修改',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          if (cards.isNotEmpty) ...[
-            const SizedBox(height: 32),
-            _responsiveCardWrap(children: cards, maxColumns: 3),
+    return Align(
+      alignment: Alignment.topLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('确认配置', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: AppSpacing.md),
+            if (cards.isEmpty) const Text('没有需要确认的可选配置') else ...cards,
           ],
-        ],
+        ),
       ),
     );
   }
@@ -833,231 +792,80 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final compactHeight = WindowMetrics.of(context).heightClass.isCompact;
     return Scaffold(
-      appBar: AppBar(title: const Text('初始化向导')),
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final wide = constraints.maxWidth >= 720;
-            return Column(
-              children: [
-                _OnboardingProgress(
-                  currentStep: _currentStep,
-                  onStepTapped: (step) => setState(() => _currentStep = step),
-                ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    controller: _scrollController,
-                    padding: EdgeInsets.fromLTRB(
-                      wide ? 32 : 16,
-                      24,
-                      wide ? 32 : 16,
-                      32,
-                    ),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 1180),
-                        child: _currentStepContent(),
-                      ),
-                    ),
-                  ),
-                ),
-                if (_error != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Text(
-                      _error!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                    ),
-                  ),
-                _OnboardingNavigation(
-                  currentStep: _currentStep,
-                  totalSteps: _totalSteps,
-                  isLoading: _isLoading,
-                  onBack: _currentStep == 0
-                      ? null
-                      : () => setState(() => _currentStep -= 1),
-                  onNext: () {
-                    if (_currentStep < _finishStep) {
-                      setState(() => _currentStep += 1);
-                    } else {
-                      _handleComplete();
-                    }
-                  },
-                ),
-              ],
-            );
-          },
-        ),
+      appBar: AppBar(
+        title: const Text('初始化向导'),
+        toolbarHeight: compactHeight ? 48 : null,
       ),
-    );
-  }
-}
-
-class _OnboardingProgress extends StatelessWidget {
-  const _OnboardingProgress({
-    required this.currentStep,
-    required this.onStepTapped,
-  });
-
-  final int currentStep;
-  final ValueChanged<int> onStepTapped;
-
-  static const _labels = ['功能与 AI', '通知', '账户', '完成'];
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Material(
-      color: colorScheme.surface,
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final edge = constraints.maxWidth / (_labels.length * 2);
-            final progress = currentStep / (_labels.length - 1);
-            return SizedBox(
-              height: 64,
-              child: Stack(
-                children: [
-                  Positioned(
-                    top: 16,
-                    left: edge,
-                    right: edge,
-                    child: ClipRect(
-                      child: Stack(
-                        children: [
-                          Container(
-                            key: const ValueKey('onboarding-progress-line'),
-                            height: 2,
-                            color: colorScheme.outlineVariant,
-                          ),
-                          FractionallySizedBox(
-                            widthFactor: progress,
-                            alignment: Alignment.centerLeft,
-                            child: Container(
-                              height: 2,
-                              color: colorScheme.primary,
-                            ),
-                          ),
+      body: SafeArea(
+        top: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1180),
+            child: CustomScrollView(
+              controller: _scrollController,
+              slivers: [
+                SliverToBoxAdapter(
+                  child: ExcludeFocus(
+                    excluding: _isLoading,
+                    child: IgnorePointer(
+                      ignoring: _isLoading,
+                      child: TabBar(
+                        controller: _stepController,
+                        isScrollable: true,
+                        tabAlignment: TabAlignment.start,
+                        dividerColor: Colors.transparent,
+                        onTap: _isLoading ? null : _selectStep,
+                        tabs: const [
+                          Tab(child: Text('1 · 功能与 AI')),
+                          Tab(child: Text('2 · 通知')),
+                          Tab(child: Text('3 · 账户')),
+                          Tab(child: Text('4 · 完成')),
                         ],
                       ),
                     ),
                   ),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  sliver: SliverToBoxAdapter(child: _currentStepContent()),
+                ),
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (var index = 0; index < _labels.length; index++)
-                        Expanded(
-                          child: _ProgressItem(
-                            label: _labels[index],
-                            index: index,
-                            currentStep: currentStep,
-                            onTap: () => onStepTapped(index),
+                      if (_error != null)
+                        Padding(
+                          padding: const EdgeInsets.all(AppSpacing.md),
+                          child: Text(
+                            _error!,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
                           ),
                         ),
+                      _OnboardingNavigation(
+                        currentStep: _currentStep,
+                        totalSteps: _totalSteps,
+                        isLoading: _isLoading,
+                        onBack: _currentStep == 0
+                            ? null
+                            : () => _selectStep(_currentStep - 1),
+                        onNext: () {
+                          if (_currentStep < _finishStep) {
+                            _selectStep(_currentStep + 1);
+                          } else {
+                            _handleComplete();
+                          }
+                        },
+                      ),
                     ],
                   ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-class _ProgressItem extends StatelessWidget {
-  const _ProgressItem({
-    required this.label,
-    required this.index,
-    required this.currentStep,
-    required this.onTap,
-  });
-
-  final String label;
-  final int index;
-  final int currentStep;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final active = index == currentStep;
-    final complete = index < currentStep;
-    return Semantics(
-      button: true,
-      selected: active,
-      label: label,
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: Material(
-          type: MaterialType.transparency,
-          child: InkWell(
-            borderRadius: AppShape.cardMediaBorder,
-            hoverColor: colorScheme.primary.withValues(alpha: 0.08),
-            splashColor: colorScheme.primary.withValues(alpha: 0.14),
-            highlightColor: colorScheme.primary.withValues(alpha: 0.05),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedContainer(
-                    duration: AppMotion.stateChange,
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: active
-                          ? colorScheme.primary
-                          : complete
-                          ? colorScheme.primaryContainer
-                          : colorScheme.surface,
-                      border: Border.all(
-                        color: active || complete
-                            ? colorScheme.primary
-                            : colorScheme.outline,
-                      ),
-                    ),
-                    child: Center(
-                      child: complete
-                          ? Icon(
-                              Icons.check_rounded,
-                              size: 15,
-                              color: colorScheme.onPrimaryContainer,
-                            )
-                          : Text(
-                              '${index + 1}',
-                              style: Theme.of(context).textTheme.labelSmall
-                                  ?.copyWith(
-                                    color: active
-                                        ? colorScheme.onPrimary
-                                        : colorScheme.onSurface,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                            ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: active ? colorScheme.primary : null,
-                      fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -1084,18 +892,21 @@ class _OnboardingNavigation extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      elevation: 8,
+      color: Theme.of(context).scaffoldBackgroundColor,
       child: SafeArea(
         top: false,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
+          child: OverflowBar(
+            alignment: MainAxisAlignment.spaceBetween,
+            overflowAlignment: OverflowBarAlignment.end,
+            spacing: AppSpacing.xs,
+            overflowSpacing: AppSpacing.xs,
             children: [
               OutlinedButton(
                 onPressed: isLoading ? null : onBack,
                 child: const Text('上一步'),
               ),
-              const Spacer(),
               FilledButton.icon(
                 onPressed: isLoading ? null : onNext,
                 icon: isLoading

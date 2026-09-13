@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/providers/theme_provider.dart';
+import '../../../../core/widgets/app_filter_menu.dart';
 import '../../providers/settings_provider.dart';
 import '../../models/system_setting.dart';
 import '../widgets/setting_components.dart';
+import '../licenses_page.dart';
+import '../widgets/settings_editor_draft.dart';
+import '../widgets/settings_slider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../../../theme/design_tokens.dart';
 
@@ -14,44 +18,38 @@ class SystemTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeMode = ref.watch(themeModeProvider);
-    final settingsAsync = ref.watch(systemSettingsProvider);
-
-    return ListView(
+    final content = ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       children: storageOnly
-          ? [_buildStorageSettings(context, ref, settingsAsync)]
+          ? [
+              _buildStorageSettings(
+                context,
+                ref,
+                ref.watch(systemSettingsProvider),
+              ),
+            ]
           : [
-              const SectionHeader(title: '外观模式'),
-              SettingGroup(
-                children: [
-                  SettingTile(
-                    title: '主题模式',
-                    subtitle: _getThemeModeName(themeMode),
-                    icon: Icons.palette_rounded,
-                    onTap: () => _showThemePicker(context, ref, themeMode),
-                  ),
-                ],
+              AppFilterMenu(
+                label: '外观模式',
+                value: ref.watch(themeModeProvider).name,
+                options: const {
+                  'system': '跟随系统',
+                  'light': '浅色模式',
+                  'dark': '深色模式',
+                },
+                onSelected: (value) => ref
+                    .read(themeModeProvider.notifier)
+                    .set(ThemeMode.values.byName(value)),
               ),
               const SizedBox(height: 32),
-              const SectionHeader(title: '关于与许可'),
-              SettingGroup(
-                children: [
-                  SettingTile(
-                    title: '开源许可',
-                    icon: Icons.info_outline_rounded,
-                    onTap: () => showLicensePage(
-                      context: context,
-                      applicationName: 'VaultStream',
-                      applicationVersion: 'v0.1.0-alpha',
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 64),
-              _buildAppInfo(context),
-              const SizedBox(height: 40),
+              const _AppAboutSection(),
             ],
+    );
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
+        child: content,
+      ),
     );
   }
 
@@ -140,75 +138,65 @@ class SystemTab extends ConsumerWidget {
               .value,
         );
 
-        return SettingGroup(
+        final switchShape = const RoundedRectangleBorder(
+          borderRadius: AppShape.cardMediaBorder,
+        );
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SettingTile(
-              title: '自动归档远程媒体',
-              subtitle: enableProcessing ? '按策略归档图片和视频' : '不下载网络媒体到本地',
-              icon: Icons.compress_rounded,
-              trailing: Switch(
-                value: enableProcessing,
-                // M3 Style: Thumb icon
-                thumbIcon: WidgetStateProperty.resolveWith<Icon?>((
-                  Set<WidgetState> states,
-                ) {
-                  if (states.contains(WidgetState.selected)) {
-                    return const Icon(Icons.check);
-                  }
-                  return null; // 默认无图标
-                }),
-                onChanged: (val) => ref
-                    .read(systemSettingsProvider.notifier)
-                    .updateSetting(
-                      'enable_archive_media_processing',
-                      val,
-                      category: 'storage',
-                    ),
+            SwitchListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 4,
+                vertical: 8,
               ),
-              onTap: () => ref
+              shape: switchShape,
+              title: const Text('自动归档远程媒体'),
+              subtitle: Text(enableProcessing ? '按策略归档图片和视频' : '不下载网络媒体到本地'),
+              value: enableProcessing,
+              onChanged: (val) => ref
                   .read(systemSettingsProvider.notifier)
                   .updateSetting(
                     'enable_archive_media_processing',
-                    !enableProcessing,
+                    val,
                     category: 'storage',
                   ),
             ),
             if (enableProcessing) ...[
-              SettingTile(
-                title: '归档远程图片',
-                subtitle: enableImages ? '启用 WebP 转换和数量限制' : '跳过图片归档',
-                icon: Icons.image_rounded,
-                trailing: Switch(
-                  value: enableImages,
-                  onChanged: (val) => ref
-                      .read(systemSettingsProvider.notifier)
-                      .updateSetting(
-                        'enable_archive_image_processing',
-                        val,
-                        category: 'storage',
-                      ),
+              SwitchListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 4,
+                  vertical: 8,
                 ),
+                shape: switchShape,
+                title: const Text('归档远程图片'),
+                value: enableImages,
+                onChanged: (val) => ref
+                    .read(systemSettingsProvider.notifier)
+                    .updateSetting(
+                      'enable_archive_image_processing',
+                      val,
+                      category: 'storage',
+                    ),
               ),
-              SettingTile(
-                title: '归档远程视频',
-                subtitle: enableVideos ? '启用视频数量和体积限制' : '跳过视频归档',
-                icon: Icons.movie_creation_rounded,
-                trailing: Switch(
-                  value: enableVideos,
-                  onChanged: (val) => ref
-                      .read(systemSettingsProvider.notifier)
-                      .updateSetting(
-                        'enable_archive_video_processing',
-                        val,
-                        category: 'storage',
-                      ),
+              SwitchListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 4,
+                  vertical: 8,
                 ),
+                shape: switchShape,
+                title: const Text('归档远程视频'),
+                value: enableVideos,
+                onChanged: (val) => ref
+                    .read(systemSettingsProvider.notifier)
+                    .updateSetting(
+                      'enable_archive_video_processing',
+                      val,
+                      category: 'storage',
+                    ),
               ),
+              const SizedBox(height: 16),
               ExpandableSettingTile(
                 title: '归档质量与限制',
-                subtitle:
-                    'WebP: $webpQuality% | 图片: ${maxCount == 0 ? "无限制" : maxCount} | 视频: ${videoMaxCount == 0 ? "无限制" : videoMaxCount}',
-                icon: Icons.tune_rounded,
                 expandedContent: _buildStorageAdvanced(
                   context,
                   ref,
@@ -235,275 +223,165 @@ class SystemTab extends ConsumerWidget {
     int videoMaxCount,
     int videoMaxBytes,
   ) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return SettingsEditorDraft(
+      initialValues: {
+        'archive_image_max_count': maxCount.toString(),
+        'archive_video_max_count': videoMaxCount.toString(),
+        'archive_video_max_bytes': videoMaxBytes.toString(),
+      },
+      builder: (context, controllers) {
+        final textTheme = Theme.of(context).textTheme;
+        Widget limitField(String title, String help, String settingKey) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('WebP 压缩质量', style: textTheme.bodyMedium),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(AppShape.pill),
+              Text(title, style: textTheme.bodyLarge),
+              const SizedBox(height: 8),
+              Semantics(
+                label: title,
+                child: TextField(
+                  controller: controllers[settingKey],
+                  keyboardType: TextInputType.number,
+                  onSubmitted: (val) {
+                    final num = int.tryParse(val) ?? 0;
+                    ref
+                        .read(systemSettingsProvider.notifier)
+                        .updateSetting(settingKey, num, category: 'storage');
+                  },
                 ),
-                child: Text(
-                  '$quality%',
-                  style: textTheme.labelMedium?.copyWith(
-                    color: colorScheme.onPrimaryContainer,
-                    fontWeight: FontWeight.bold,
-                  ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                help,
+                style: textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
-          ),
-        ),
-        Row(
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Icon(
-              Icons.image_not_supported_rounded,
-              size: 20,
-              color: colorScheme.outline,
+            SettingsSlider(
+              title: 'WebP 压缩质量',
+              value: quality.toDouble(),
+              min: 10,
+              max: 100,
+              divisions: 9,
+              formatValue: (value) => '${value.toInt()}%',
+              errorMessage: '压缩质量保存失败',
+              onSaved: (value) => ref
+                  .read(systemSettingsProvider.notifier)
+                  .updateSetting(
+                    'archive_image_webp_quality',
+                    value.toInt(),
+                    category: 'storage',
+                  ),
             ),
-            Expanded(
-              child: Slider(
-                value: quality.toDouble(),
-                min: 10,
-                max: 100,
-                divisions: 9, // 10, 20... 100
-                label: '$quality%',
-                onChanged: (val) {
-                  ref
-                      .read(systemSettingsProvider.notifier)
-                      .updateSetting(
-                        'archive_image_webp_quality',
-                        val.toInt(),
-                        category: 'storage',
-                      );
-                },
+            const SizedBox(height: 24),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
+                final columns = constraints.maxWidth >= 600 * scale ? 2 : 1;
+                final fieldWidth =
+                    (constraints.maxWidth - 24 * (columns - 1)) / columns;
+                return Wrap(
+                  spacing: 24,
+                  runSpacing: 24,
+                  children: [
+                    SizedBox(
+                      width: fieldWidth,
+                      child: limitField(
+                        '单条内容最多图片数',
+                        '0 表示不限数量；建议 20–50 张以节省空间。',
+                        'archive_image_max_count',
+                      ),
+                    ),
+                    SizedBox(
+                      width: fieldWidth,
+                      child: limitField(
+                        '单条内容最多视频数',
+                        '0 表示不限数量。',
+                        'archive_video_max_count',
+                      ),
+                    ),
+                    SizedBox(
+                      width: fieldWidth,
+                      child: limitField(
+                        '单个视频上限（字节）',
+                        '0 表示使用默认上限。',
+                        'archive_video_max_bytes',
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _AppAboutSection extends StatefulWidget {
+  const _AppAboutSection();
+  @override
+  State<_AppAboutSection> createState() => _AppAboutSectionState();
+}
+
+class _AppAboutSectionState extends State<_AppAboutSection> {
+  late final Future<PackageInfo> _packageInfo = PackageInfo.fromPlatform();
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<PackageInfo>(
+    future: _packageInfo,
+    builder: (context, snapshot) {
+      final info = snapshot.data;
+      final version = info == null
+          ? null
+          : '${info.version} (${info.buildNumber})';
+      final theme = Theme.of(context);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('VaultStream', style: theme.textTheme.titleMedium),
+                if (version != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '版本 $version',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+            shape: const RoundedRectangleBorder(
+              borderRadius: AppShape.cardMediaBorder,
+            ),
+            title: const Text('开源许可'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => Navigator.of(context, rootNavigator: true).push<void>(
+              MaterialPageRoute(
+                builder: (context) =>
+                    AppLicensesPage(applicationVersion: version),
               ),
             ),
-            Icon(
-              Icons.high_quality_rounded,
-              size: 20,
-              color: colorScheme.primary,
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
-        TextField(
-          controller: TextEditingController(text: maxCount.toString()),
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(
-            labelText: '单帖最大图片数限制',
-            helperText: '0 表示无限制，推荐设置为 20-50 以节省空间',
-            prefixIcon: const Icon(Icons.collections_rounded),
-            border: const OutlineInputBorder(
-              borderRadius: AppShape.cardMediaBorder,
-            ),
-            filled: true,
-            fillColor: colorScheme.surfaceContainerHighest.withValues(
-              alpha: 0.3,
-            ),
           ),
-          onSubmitted: (val) {
-            final num = int.tryParse(val) ?? 0;
-            ref
-                .read(systemSettingsProvider.notifier)
-                .updateSetting(
-                  'archive_image_max_count',
-                  num,
-                  category: 'storage',
-                );
-          },
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: TextEditingController(text: videoMaxCount.toString()),
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(
-            labelText: '单条最大视频数限制',
-            helperText: '0 表示无限制',
-            prefixIcon: const Icon(Icons.video_library_rounded),
-            border: const OutlineInputBorder(
-              borderRadius: AppShape.cardMediaBorder,
-            ),
-            filled: true,
-            fillColor: colorScheme.surfaceContainerHighest.withValues(
-              alpha: 0.3,
-            ),
-          ),
-          onSubmitted: (val) {
-            final num = int.tryParse(val) ?? 0;
-            ref
-                .read(systemSettingsProvider.notifier)
-                .updateSetting(
-                  'archive_video_max_count',
-                  num,
-                  category: 'storage',
-                );
-          },
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: TextEditingController(text: videoMaxBytes.toString()),
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(
-            labelText: '单个视频最大字节数',
-            helperText: '0 表示使用默认上限',
-            prefixIcon: const Icon(Icons.sd_storage_rounded),
-            border: const OutlineInputBorder(
-              borderRadius: AppShape.cardMediaBorder,
-            ),
-            filled: true,
-            fillColor: colorScheme.surfaceContainerHighest.withValues(
-              alpha: 0.3,
-            ),
-          ),
-          onSubmitted: (val) {
-            final num = int.tryParse(val) ?? 0;
-            ref
-                .read(systemSettingsProvider.notifier)
-                .updateSetting(
-                  'archive_video_max_bytes',
-                  num,
-                  category: 'storage',
-                );
-          },
-        ),
-      ],
-    );
-  }
-
-  String _getThemeModeName(ThemeMode mode) => switch (mode) {
-    ThemeMode.system => '跟随系统',
-    ThemeMode.light => '浅色模式',
-    ThemeMode.dark => '深色模式',
-  };
-
-  void _showThemePicker(
-    BuildContext context,
-    WidgetRef ref,
-    ThemeMode currentMode,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: AppShape.sheetTopBorder,
-        ),
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildPickerOption(
-              context,
-              '跟随系统',
-              Icons.brightness_auto_rounded,
-              currentMode == ThemeMode.system,
-              () => _setTheme(context, ref, ThemeMode.system),
-            ),
-            _buildPickerOption(
-              context,
-              '浅色模式',
-              Icons.light_mode_rounded,
-              currentMode == ThemeMode.light,
-              () => _setTheme(context, ref, ThemeMode.light),
-            ),
-            _buildPickerOption(
-              context,
-              '深色模式',
-              Icons.dark_mode_rounded,
-              currentMode == ThemeMode.dark,
-              () => _setTheme(context, ref, ThemeMode.dark),
-            ),
-            const SizedBox(height: 12),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPickerOption(
-    BuildContext context,
-    String title,
-    IconData icon,
-    bool isSelected,
-    VoidCallback onTap,
-  ) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-      leading: Icon(
-        icon,
-        color: isSelected ? Theme.of(context).colorScheme.primary : null,
-      ),
-      title: Text(
-        title,
-        style: TextStyle(fontWeight: isSelected ? FontWeight.bold : null),
-      ),
-      trailing: isSelected
-          ? Icon(
-              Icons.check_circle_rounded,
-              color: Theme.of(context).colorScheme.primary,
-            )
-          : null,
-      onTap: onTap,
-    );
-  }
-
-  void _setTheme(BuildContext context, WidgetRef ref, ThemeMode mode) {
-    ref.read(themeModeProvider.notifier).set(mode);
-    Navigator.pop(context);
-  }
-
-  Widget _buildAppInfo(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.primary.withValues(alpha: 0.05),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            Icons.inventory_2_rounded,
-            size: 48,
-            color: theme.colorScheme.primary,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          'VaultStream',
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        FutureBuilder<PackageInfo>(
-          future: PackageInfo.fromPlatform(),
-          builder: (context, snapshot) {
-            if (snapshot.hasData) {
-              final version = snapshot.data!.version;
-              final buildNumber = snapshot.data!.buildNumber;
-              return Text(
-                'Version $version ($buildNumber)',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.outline,
-                ),
-              );
-            }
-            return const SizedBox.shrink();
-          },
-        ),
-      ],
-    );
-  }
+        ],
+      );
+    },
+  );
 }

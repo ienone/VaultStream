@@ -3,10 +3,12 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/predictive_back_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../../../core/providers/local_settings_provider.dart';
+import '../../../../core/layout/responsive_layout.dart';
 import '../../../../core/utils/safe_url_launcher.dart';
+import '../../../../core/widgets/adaptive_form_dialog.dart';
 import '../../../../core/network/api_client.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/platform_auth_controller.dart';
@@ -14,6 +16,7 @@ import '../../providers/platform_health_provider.dart';
 import '../../models/system_setting.dart';
 import '../../utils/setting_value.dart';
 import '../widgets/setting_components.dart';
+import '../widgets/settings_editor_draft.dart';
 import '../../../../theme/design_tokens.dart';
 
 class ConnectionTab extends ConsumerWidget {
@@ -37,7 +40,10 @@ class ConnectionTab extends ConsumerWidget {
           ref
               .watch(systemSettingsProvider)
               .when(
-                data: (settings) => SwitchListTile.adaptive(
+                data: (settings) => SwitchListTile(
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: AppShape.cardMediaBorder,
+                  ),
                   contentPadding: EdgeInsets.zero,
                   title: const Text('自动检查登录状态'),
                   subtitle: const Text('关闭后停止后续定时检查，仍可手动检测'),
@@ -56,20 +62,10 @@ class ConnectionTab extends ConsumerWidget {
                 loading: () => const LinearProgressIndicator(),
                 error: (_, _) => const Text('登录检查策略暂时无法读取'),
               ),
-          const SizedBox(height: 32),
-          const SectionHeader(
-            title: '手动凭据',
-            icon: Icons.settings_ethernet_rounded,
-          ),
-          SettingGroup(
-            children: [
-              ExpandableSettingTile(
-                title: 'Bilibili 高级配置',
-                subtitle: '配置 SESSDATA / JCT / BuVid3',
-                icon: Icons.settings_ethernet_rounded,
-                expandedContent: _buildBiliAdvancedEditor(context, ref),
-              ),
-            ],
+          const SizedBox(height: 24),
+          ExpandableSettingTile(
+            title: 'Bilibili 手动凭据',
+            expandedContent: _buildBiliAdvancedEditor(context, ref),
           ),
           const SizedBox(height: 40),
         ],
@@ -79,16 +75,15 @@ class ConnectionTab extends ConsumerWidget {
     final localSettings = ref.watch(localSettingsProvider);
     final colorScheme = Theme.of(context).colorScheme;
 
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      children: [
-        const SectionHeader(title: '服务器与通信', icon: Icons.lan_rounded),
-        SettingGroup(
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           children: [
             ExpandableSettingTile(
               title: '服务器地址',
               subtitle: localSettings.baseUrl,
-              icon: Icons.cloud_done_rounded,
               expandedContent: _buildBaseUrlEditor(
                 context,
                 ref,
@@ -98,51 +93,47 @@ class ConnectionTab extends ConsumerWidget {
             ExpandableSettingTile(
               title: 'API 访问密钥',
               subtitle: _maskToken(localSettings.apiToken),
-              icon: Icons.key_rounded,
               expandedContent: _buildApiTokenEditor(
                 context,
                 ref,
                 localSettings.apiToken,
               ),
             ),
-            SettingTile(
-              title: '测试服务器连接',
-              icon: Icons.cell_tower_rounded,
-              onTap: () => _testConnection(
-                context,
-                ref,
-                localSettings.baseUrl,
-                localSettings.apiToken,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 12, 4, 24),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: FilledButton.tonalIcon(
+                  onPressed: () => _testConnection(
+                    context,
+                    ref,
+                    localSettings.baseUrl,
+                    localSettings.apiToken,
+                  ),
+                  icon: const Icon(Icons.cell_tower_rounded),
+                  label: const Text('测试服务器连接'),
+                ),
               ),
             ),
-          ],
-        ),
-        const SectionHeader(title: '高级连接设置', icon: Icons.tune_rounded),
-        SettingGroup(
-          children: [
             ExpandableSettingTile(
-              title: '网络代理配置',
+              title: '网络代理',
               subtitle: _getProxySubtitle(ref),
-              icon: Icons.lan_rounded,
               expandedContent: _buildProxyEditor(context, ref),
             ),
-          ],
-        ),
-        const SizedBox(height: 32),
-        SettingGroup(
-          children: [
-            SettingTile(
-              title: '退出登录',
-              subtitle: '清除本地认证并注销',
-              icon: Icons.logout_rounded,
-              iconColor: colorScheme.error,
-              onTap: () => _confirmLogout(context, ref),
-              showArrow: false,
+            const SizedBox(height: 32),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => _confirmLogout(context, ref),
+                style: TextButton.styleFrom(foregroundColor: colorScheme.error),
+                icon: const Icon(Icons.logout_rounded),
+                label: const Text('退出登录'),
+              ),
             ),
+            const SizedBox(height: 40),
           ],
         ),
-        const SizedBox(height: 40),
-      ],
+      ),
     );
   }
 
@@ -165,28 +156,35 @@ class ConnectionTab extends ConsumerWidget {
             ],
           );
         }
-        return SettingGroup(
-          children: [
-            for (final platform in health.platforms)
-              SettingTile(
-                title: platform.label,
-                subtitle: _platformHealthSubtitle(platform),
-                icon: _platformHealthIcon(platform),
-                iconColor: _platformHealthColor(context, platform),
-                stackTrailing: true,
-                trailing: _PlatformAccountActions(
-                  platform: platform,
-                  onLogin: () => _startPlatformLogin(context, ref, platform),
-                  onCheck: () => _checkPlatform(context, ref, platform),
-                  onLogout: () =>
-                      _confirmPlatformLogout(context, ref, platform),
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 24),
+          child: Column(
+            children: [
+              for (final platform in health.platforms)
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 12,
+                  ),
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: AppShape.cardMediaBorder,
+                  ),
+                  title: Text(
+                    platform.label,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  subtitle: Text(_platformHealthSubtitle(platform)),
+                  leading: Icon(
+                    _platformHealthIcon(platform),
+                    color: _platformHealthColor(context, platform),
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: onOpenPlatform == null
+                      ? null
+                      : () => onOpenPlatform!(platform),
                 ),
-                onTap: onOpenPlatform == null
-                    ? null
-                    : () => onOpenPlatform!(platform),
-                showArrow: false,
-              ),
-          ],
+            ],
+          ),
         );
       },
       loading: () => const LoadingGroup(),
@@ -225,31 +223,12 @@ class ConnectionTab extends ConsumerWidget {
         parts.add('收藏同步未启用');
       }
     }
-    final lastRun = platform.lastFavoritesRun;
-    if (lastRun != null) {
-      final status = lastRun['status']?.toString() ?? 'unknown';
-      parts.add('最近同步: ${_platformHealthLabel(status)}');
-    }
-    if (platform.issues.isNotEmpty) {
-      parts.add(platform.issues.first);
+    if (platform.health == 'error' &&
+        platform.browserAuthValid != false &&
+        platform.favoritesAuthenticated != false) {
+      parts.add('需要处理');
     }
     return parts.join(' · ');
-  }
-
-  String _platformHealthLabel(String status) {
-    switch (status) {
-      case 'ok':
-      case 'success':
-        return '正常';
-      case 'error':
-        return '异常';
-      case 'inactive':
-        return '未启用';
-      case 'running':
-        return '运行中';
-      default:
-        return status;
-    }
   }
 
   IconData _platformHealthIcon(PlatformHealthStatus platform) {
@@ -282,113 +261,20 @@ class ConnectionTab extends ConsumerWidget {
     }
   }
 
-  Future<void> _startPlatformLogin(
-    BuildContext context,
-    WidgetRef ref,
-    PlatformHealthStatus platform,
-  ) async {
-    final success = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => PlatformLoginDialog(
-        platform: platform.platform,
-        label: platform.label,
-      ),
-    );
-    if (success == true && context.mounted) {
-      ref.read(platformAuthActionsProvider.notifier).refreshHealth();
-      showToast(context, '${platform.label} 登录已更新');
-    }
-  }
-
-  Future<void> _checkPlatform(
-    BuildContext context,
-    WidgetRef ref,
-    PlatformHealthStatus platform,
-  ) async {
-    try {
-      final result = await ref
-          .read(platformAuthActionsProvider.notifier)
-          .check(platform.platform);
-      if (context.mounted) showToast(context, result.message);
-    } on PlatformAuthException catch (error) {
-      if (context.mounted) showToast(context, error.message);
-    }
-  }
-
-  Future<void> _confirmPlatformLogout(
-    BuildContext context,
-    WidgetRef ref,
-    PlatformHealthStatus platform,
-  ) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('退出 ${platform.label}'),
-        content: const Text('将清除 VaultStream 保存的该平台登录信息；不会修改平台账号本身。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('清除登录'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !context.mounted) return;
-
-    try {
-      final result = await ref
-          .read(platformAuthActionsProvider.notifier)
-          .logout(platform.platform);
-      if (context.mounted) showToast(context, result.message);
-    } on PlatformAuthException catch (error) {
-      if (context.mounted) showToast(context, error.message);
-    }
-  }
-
   Widget _buildBaseUrlEditor(
     BuildContext context,
     WidgetRef ref,
     String currentValue,
   ) {
-    final controller = TextEditingController(text: currentValue);
-    return Column(
-      children: [
-        TextField(
-          controller: controller,
-          decoration: InputDecoration(
-            hintText: 'http://example.com/api/v1',
-            prefixIcon: const Icon(Icons.link_rounded),
-            filled: true,
-            fillColor: Theme.of(
-              context,
-            ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-            border: OutlineInputBorder(
-              borderRadius: AppShape.cardBorder,
-              borderSide: BorderSide.none,
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Align(
-          alignment: Alignment.centerRight,
-          child: FilledButton.tonal(
-            onPressed: () async {
-              await ref
-                  .read(localSettingsProvider.notifier)
-                  .setBaseUrl(controller.text);
-              if (context.mounted) {
-                showToast(context, 'API 地址已保存');
-              }
-            },
-            child: const Text('保存配置'),
-          ),
-        ),
-      ],
+    return _ConnectionValueEditor(
+      initialValue: currentValue,
+      label: '服务器地址',
+      hint: 'http://example.com/api/v1',
+      buttonLabel: '保存地址',
+      onSave: (value) async {
+        await ref.read(localSettingsProvider.notifier).setBaseUrl(value);
+        if (context.mounted) showToast(context, 'API 地址已保存');
+      },
     );
   }
 
@@ -397,41 +283,15 @@ class ConnectionTab extends ConsumerWidget {
     WidgetRef ref,
     String currentValue,
   ) {
-    final controller = TextEditingController(text: currentValue);
-    return Column(
-      children: [
-        TextField(
-          controller: controller,
-          obscureText: true,
-          decoration: InputDecoration(
-            labelText: 'API Token',
-            prefixIcon: const Icon(Icons.password_rounded),
-            filled: true,
-            fillColor: Theme.of(
-              context,
-            ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-            border: OutlineInputBorder(
-              borderRadius: AppShape.cardBorder,
-              borderSide: BorderSide.none,
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Align(
-          alignment: Alignment.centerRight,
-          child: FilledButton.tonal(
-            onPressed: () async {
-              await ref
-                  .read(localSettingsProvider.notifier)
-                  .setApiToken(controller.text);
-              if (context.mounted) {
-                showToast(context, '密钥已更新');
-              }
-            },
-            child: const Text('更新密钥'),
-          ),
-        ),
-      ],
+    return _ConnectionValueEditor(
+      initialValue: currentValue,
+      label: 'API 访问密钥',
+      obscureText: true,
+      buttonLabel: '更新密钥',
+      onSave: (value) async {
+        await ref.read(localSettingsProvider.notifier).setApiToken(value);
+        if (context.mounted) showToast(context, '密钥已更新');
+      },
     );
   }
 
@@ -473,38 +333,17 @@ class ConnectionTab extends ConsumerWidget {
                     .value
                 as String? ??
             '';
-        final controller = TextEditingController(text: proxy);
-
-        return Column(
-          children: [
-            TextField(
-              controller: controller,
-              decoration: InputDecoration(
-                labelText: 'HTTP/HTTPS Proxy',
-                hintText: 'e.g. http://127.0.0.1:7890',
-                border: OutlineInputBorder(
-                  borderRadius: AppShape.cardMediaBorder,
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.tonal(
-                onPressed: () async {
-                  await ref
-                      .read(systemSettingsProvider.notifier)
-                      .updateSetting(
-                        'http_proxy',
-                        controller.text,
-                        category: 'network',
-                      );
-                  if (context.mounted) showToast(context, '代理已保存');
-                },
-                child: const Text('保存配置'),
-              ),
-            ),
-          ],
+        return _ConnectionValueEditor(
+          initialValue: proxy,
+          label: 'HTTP/HTTPS 代理地址',
+          hint: 'http://127.0.0.1:7890',
+          buttonLabel: '保存代理',
+          onSave: (value) async {
+            await ref
+                .read(systemSettingsProvider.notifier)
+                .updateSetting('http_proxy', value, category: 'network');
+            if (context.mounted) showToast(context, '代理已保存');
+          },
         );
       },
       loading: () => const SizedBox.shrink(),
@@ -544,69 +383,87 @@ class ConnectionTab extends ConsumerWidget {
                 as String? ??
             '';
 
-        final sessController = TextEditingController(text: sessdata);
-        final jctController = TextEditingController(text: jct);
-        final buvidController = TextEditingController(text: buvid);
+        return SettingsEditorDraft(
+          initialValues: {'sessdata': sessdata, 'jct': jct, 'buvid': buvid},
+          builder: (context, controllers) {
+            final sessController = controllers['sessdata']!;
+            final jctController = controllers['jct']!;
+            final buvidController = controllers['buvid']!;
 
-        return Column(
-          children: [
-            TextField(
-              controller: sessController,
-              decoration: InputDecoration(
-                labelText: 'SESSDATA (Cookie)',
-                helperText: '一般情况下无需配置，仅用于高画质/会员内容',
-                border: OutlineInputBorder(
-                  borderRadius: AppShape.cardMediaBorder,
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '一般情况下无需配置，仅用于高画质或会员内容。',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: jctController,
-              decoration: InputDecoration(
-                labelText: 'bili_jct (CSRF)',
-                border: OutlineInputBorder(
-                  borderRadius: AppShape.cardMediaBorder,
+                const SizedBox(height: 16),
+                const Text('SESSDATA（Cookie）'),
+                const SizedBox(height: 8),
+                Semantics(
+                  label: 'SESSDATA（Cookie）',
+                  child: TextField(
+                    controller: sessController,
+                    obscureText: true,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: buvidController,
-              decoration: InputDecoration(
-                labelText: 'buvid3',
-                border: OutlineInputBorder(
-                  borderRadius: AppShape.cardMediaBorder,
+                const SizedBox(height: 16),
+                const Text('bili_jct（CSRF）'),
+                const SizedBox(height: 8),
+                Semantics(
+                  label: 'bili_jct（CSRF）',
+                  child: TextField(
+                    controller: jctController,
+                    obscureText: true,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.tonal(
-                onPressed: () async {
-                  final notifier = ref.read(systemSettingsProvider.notifier);
-                  await notifier.updateSetting(
-                    'bilibili_cookie',
-                    sessController.text,
-                    category: 'platform',
-                  );
-                  await notifier.updateSetting(
-                    'bilibili_bili_jct',
-                    jctController.text,
-                    category: 'platform',
-                  );
-                  await notifier.updateSetting(
-                    'bilibili_buvid3',
-                    buvidController.text,
-                    category: 'platform',
-                  );
-                  if (context.mounted) showToast(context, 'B站高级配置已保存');
-                },
-                child: const Text('保存配置'),
-              ),
-            ),
-          ],
+                const SizedBox(height: 16),
+                const Text('buvid3'),
+                const SizedBox(height: 8),
+                Semantics(
+                  label: 'buvid3',
+                  child: TextField(
+                    controller: buvidController,
+                    obscureText: true,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.tonal(
+                    onPressed: () async {
+                      final notifier = ref.read(
+                        systemSettingsProvider.notifier,
+                      );
+                      await notifier.updateSetting(
+                        'bilibili_cookie',
+                        sessController.text,
+                        category: 'platform',
+                      );
+                      await notifier.updateSetting(
+                        'bilibili_bili_jct',
+                        jctController.text,
+                        category: 'platform',
+                      );
+                      await notifier.updateSetting(
+                        'bilibili_buvid3',
+                        buvidController.text,
+                        category: 'platform',
+                      );
+                      if (context.mounted) showToast(context, 'B站高级配置已保存');
+                    },
+                    child: const Text('保存配置'),
+                  ),
+                ),
+              ],
+            );
+          },
         );
       },
       loading: () => const SizedBox.shrink(),
@@ -646,104 +503,31 @@ class ConnectionTab extends ConsumerWidget {
   void _confirmLogout(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('退出登录'),
-        content: const Text('注销后将清除本地 API 密钥，需重新配置。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              await ref.read(localSettingsProvider.notifier).clearAuth();
-              if (context.mounted) {
-                context.go('/login');
-              }
-              if (ctx.mounted) {
-                Navigator.pop(ctx);
-                showToast(context, '已成功退出');
-              }
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
+      animationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
+      builder: (ctx) => PredictiveBackDialog(
+        child: AlertDialog(
+          title: const Text('退出登录'),
+          content: const Text('注销后将清除本地 API 密钥，需重新配置。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
             ),
-            child: const Text('退出'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PlatformAccountActions extends ConsumerWidget {
-  const _PlatformAccountActions({
-    required this.platform,
-    required this.onLogin,
-    required this.onCheck,
-    required this.onLogout,
-  });
-
-  final PlatformHealthStatus platform;
-  final VoidCallback onLogin;
-  final VoidCallback onCheck;
-  final VoidCallback onLogout;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (!platform.browserAuthSupported) {
-      return const Chip(label: Text('手动配置'));
-    }
-
-    final pending = ref.watch(platformAuthActionsProvider);
-    final loginPending = pending.contains('${platform.platform}:login');
-    final checkPending = pending.contains('${platform.platform}:check');
-    final logoutPending = pending.contains('${platform.platform}:logout');
-    final busy = loginPending || checkPending || logoutPending;
-    final loginLabel = !platform.hasCookie
-        ? '登录'
-        : platform.browserAuthValid == false
-        ? '重新登录'
-        : '更新登录';
-
-    return Wrap(
-      alignment: WrapAlignment.end,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        if (platform.hasCookie)
-          OutlinedButton.icon(
-            onPressed: busy ? null : onCheck,
-            icon: checkPending
-                ? const SizedBox.square(
-                    dimension: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.health_and_safety_outlined, size: 18),
-            label: const Text('检测'),
-          ),
-        if (platform.hasCookie)
-          TextButton(
-            onPressed: busy ? null : onLogout,
-            child: const Text('退出'),
-          ),
-        FilledButton.tonalIcon(
-          onPressed: busy ? null : onLogin,
-          icon: loginPending
-              ? const SizedBox.square(
-                  dimension: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Icon(
-                  platform.browserAuthValid == false
-                      ? Icons.refresh_rounded
-                      : Icons.qr_code_2_rounded,
-                  size: 18,
-                ),
-          label: Text(loginLabel),
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await ref.read(localSettingsProvider.notifier).clearAuth();
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+              child: const Text('退出'),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -767,33 +551,52 @@ class _PlatformLoginDialogState extends ConsumerState<PlatformLoginDialog> {
   PlatformAuthSession? _session;
   String? _error;
   bool _starting = true;
+  bool _polling = false;
   Timer? _pollTimer;
+  late final PlatformAuthActions _actions;
 
   @override
   void initState() {
     super.initState();
+    _actions = ref.read(platformAuthActionsProvider.notifier);
     Future<void>.microtask(_start);
+  }
+
+  // Closing must also release the server session when back/Escape dismisses
+  // the route, or when session creation finishes after the dialog was closed.
+  Future<void> _release(PlatformAuthSession? session) async {
+    if (session == null || session.isTerminal) return;
+    try {
+      await _actions.cancelSession(session.sessionId);
+    } on PlatformAuthException {
+      // The server timeout remains responsible if cancellation cannot reach it.
+    }
   }
 
   @override
   void dispose() {
     _pollTimer?.cancel();
+    unawaited(_release(_session));
     super.dispose();
   }
 
   Future<void> _start() async {
+    if (!mounted) return;
     _pollTimer?.cancel();
-    if (mounted) {
-      setState(() {
-        _starting = true;
-        _error = null;
-        _session = null;
-      });
-    }
+    final previous = _session;
+    setState(() {
+      _starting = true;
+      _error = null;
+      _session = null;
+    });
+    await _release(previous);
+    if (!mounted) return;
     try {
-      final session = await ref
-          .read(platformAuthActionsProvider.notifier)
-          .startSession(widget.platform);
+      final session = await _actions.startSession(widget.platform);
+      if (!mounted) {
+        await _release(session);
+        return;
+      }
       _accept(session);
     } on PlatformAuthException catch (error) {
       if (!mounted) return;
@@ -812,7 +615,7 @@ class _PlatformLoginDialogState extends ConsumerState<PlatformLoginDialog> {
       _session = session;
     });
     if (session.succeeded) {
-      ref.read(platformAuthActionsProvider.notifier).refreshHealth();
+      _actions.refreshHealth();
     } else if (!session.isTerminal) {
       _pollTimer = Timer(const Duration(seconds: 2), _poll);
     }
@@ -820,32 +623,19 @@ class _PlatformLoginDialogState extends ConsumerState<PlatformLoginDialog> {
 
   Future<void> _poll() async {
     final sessionId = _session?.sessionId;
-    if (sessionId == null || sessionId.isEmpty || !mounted) return;
+    if (sessionId == null || !mounted || _polling) return;
+    _polling = true;
+    setState(() => _error = null);
     try {
-      final session = await ref
-          .read(platformAuthActionsProvider.notifier)
-          .readSession(sessionId);
-      _accept(session);
+      _accept(await _actions.readSession(sessionId));
     } on PlatformAuthException catch (error) {
-      if (!mounted) return;
-      setState(() => _error = error.message);
+      if (mounted) setState(() => _error = error.message);
+    } finally {
+      _polling = false;
     }
   }
 
-  Future<void> _cancel() async {
-    _pollTimer?.cancel();
-    final sessionId = _session?.sessionId;
-    if (sessionId != null && sessionId.isNotEmpty && !_session!.isTerminal) {
-      try {
-        await ref
-            .read(platformAuthActionsProvider.notifier)
-            .cancelSession(sessionId);
-      } on PlatformAuthException {
-        // 关闭对话框仍应立即生效；服务端会按自身超时回收异常会话。
-      }
-    }
-    if (mounted) Navigator.pop(context, false);
-  }
+  void _cancel() => Navigator.pop(context, false);
 
   Uint8List? _decodeQr(String? value) {
     if (value == null || value.trim().isEmpty) return null;
@@ -865,90 +655,113 @@ class _PlatformLoginDialogState extends ConsumerState<PlatformLoginDialog> {
     final qrBytes = _decodeQr(session?.qrcodeB64);
     final succeeded = session?.succeeded == true;
     final failed = session?.isTerminal == true && !succeeded;
-
-    return AlertDialog(
-      icon: Icon(
-        succeeded
-            ? Icons.verified_rounded
-            : failed || _error != null
-            ? Icons.error_outline_rounded
-            : Icons.qr_code_2_rounded,
-        color: succeeded
-            ? scheme.primary
-            : failed || _error != null
-            ? scheme.error
-            : scheme.secondary,
-      ),
-      title: Text(succeeded ? '${widget.label} 登录成功' : '${widget.label} 扫码登录'),
-      content: SizedBox(
-        width: 360,
-        child: AnimatedSize(
-          duration: AppMotion.contentSwap,
-          curve: AppMotion.standardCurve,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_starting)
-                const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: CircularProgressIndicator(),
-                )
-              else if (qrBytes != null && !succeeded && !failed) ...[
-                Container(
-                  width: 220,
-                  height: 220,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: AppShape.paneBorder,
-                  ),
-                  child: Image.memory(
-                    qrBytes,
-                    fit: BoxFit.contain,
-                    gaplessPlayback: true,
-                    errorBuilder: (_, _, _) => const Icon(
-                      Icons.broken_image_outlined,
-                      color: Colors.black54,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-              if (!_starting)
-                Text(
-                  _error ?? session?.message ?? _statusLabel(session?.status),
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: _error != null || failed
-                        ? scheme.error
-                        : scheme.onSurfaceVariant,
-                  ),
-                ),
-              if (session?.captchaUrl?.trim().isNotEmpty == true) ...[
-                const SizedBox(height: 12),
-                FilledButton.tonalIcon(
-                  onPressed: () => SafeUrlLauncher.openExternal(
-                    context,
-                    session!.captchaUrl,
-                  ),
-                  icon: const Icon(Icons.open_in_new_rounded),
-                  label: const Text('完成安全验证'),
-                ),
-              ],
-            ],
+    final metrics = WindowMetrics.of(context);
+    final short = metrics.isShortLandscape;
+    final qrSize = short ? (metrics.height - 180).clamp(112.0, 220.0) : 220.0;
+    final hasQr = qrBytes != null && !succeeded && !failed;
+    final status = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          _error ?? session?.message ?? _statusLabel(session?.status),
+          textAlign: !hasQr || short ? TextAlign.start : TextAlign.center,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: _error != null || failed
+                ? scheme.error
+                : scheme.onSurfaceVariant,
           ),
         ),
-      ),
-      actions: [
-        if (!succeeded) TextButton(onPressed: _cancel, child: const Text('取消')),
-        if (failed || _error != null)
-          FilledButton.tonal(onPressed: _start, child: const Text('重试')),
-        if (succeeded)
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('完成'),
+        if (session?.captchaUrl?.trim().isNotEmpty == true) ...[
+          const SizedBox(height: 12),
+          FilledButton.tonalIcon(
+            onPressed: () =>
+                SafeUrlLauncher.openExternal(context, session!.captchaUrl),
+            icon: const Icon(Icons.open_in_new_rounded),
+            label: const Text('完成安全验证'),
           ),
+        ],
       ],
+    );
+
+    return AdaptiveFormDialog(
+      title: succeeded ? '${widget.label} 登录成功' : '${widget.label} 扫码登录',
+      maxWidth: short ? 560 : 408,
+      contentBuilder: (context, contentWidth, shortHeight) {
+        final qr = !hasQr
+            ? null
+            : Container(
+                width: qrSize.clamp(0.0, contentWidth),
+                height: qrSize.clamp(0.0, contentWidth),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: AppShape.paneBorder,
+                ),
+                child: Image.memory(
+                  qrBytes,
+                  fit: BoxFit.contain,
+                  gaplessPlayback: true,
+                  errorBuilder: (_, _, _) => const Icon(
+                    Icons.broken_image_outlined,
+                    color: Colors.black54,
+                  ),
+                ),
+              );
+        final content = Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_starting)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(),
+              )
+            else if (shortHeight && qr != null && contentWidth >= qrSize + 180)
+              Row(
+                children: [
+                  qr,
+                  const SizedBox(width: 20),
+                  Expanded(child: status),
+                ],
+              )
+            else ...[
+              if (qr != null) ...[qr, const SizedBox(height: 16)],
+              status,
+            ],
+          ],
+        );
+        return MediaQuery.disableAnimationsOf(context)
+            ? content
+            : AnimatedSize(
+                duration: AppMotion.contentSwap,
+                curve: AppMotion.standardCurve,
+                child: content,
+              );
+      },
+      actions: OverflowBar(
+        alignment: MainAxisAlignment.end,
+        overflowAlignment: OverflowBarAlignment.end,
+        spacing: 8,
+        overflowSpacing: 8,
+        children: [
+          if (!succeeded)
+            TextButton(onPressed: _cancel, child: const Text('取消')),
+          if (failed || _error != null)
+            FilledButton.tonal(
+              onPressed: _starting || _polling
+                  ? null
+                  : session != null && !session.isTerminal
+                  ? _poll
+                  : _start,
+              child: const Text('重试'),
+            ),
+          if (succeeded)
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('完成'),
+            ),
+        ],
+      ),
     );
   }
 
@@ -960,4 +773,56 @@ class _PlatformLoginDialogState extends ConsumerState<PlatformLoginDialog> {
     'failed' => '登录失败，请重试',
     _ => '正在等待平台确认…',
   };
+}
+
+class _ConnectionValueEditor extends StatelessWidget {
+  const _ConnectionValueEditor({
+    required this.initialValue,
+    required this.label,
+    required this.buttonLabel,
+    required this.onSave,
+    this.hint,
+    this.obscureText = false,
+  });
+
+  final String initialValue;
+  final String label;
+  final String buttonLabel;
+  final String? hint;
+  final bool obscureText;
+  final Future<void> Function(String value) onSave;
+
+  @override
+  Widget build(BuildContext context) => SettingsEditorDraft(
+    initialValues: {'value': initialValue},
+    builder: (context, controllers) {
+      final controller = controllers['value']!;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Semantics(
+            label: label,
+            child: TextField(
+              controller: controller,
+              obscureText: obscureText,
+              enableSuggestions: false,
+              autocorrect: false,
+              keyboardType: obscureText
+                  ? TextInputType.text
+                  : TextInputType.url,
+              decoration: InputDecoration(hintText: hint),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.tonal(
+              onPressed: () => onSave(controller.text),
+              child: Text(buttonLabel),
+            ),
+          ),
+        ],
+      );
+    },
+  );
 }

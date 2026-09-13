@@ -1,6 +1,8 @@
+import '../../routing/app_navigation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/widgets/predictive_back_dialog.dart';
 
 import '../../core/layout/responsive_layout.dart';
 import '../../core/network/api_client.dart';
@@ -20,6 +22,7 @@ class AccountDetailPage extends ConsumerWidget {
     final health = ref.watch(platformHealthProvider);
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBackButton(fallback: '/accounts'),
         title: Text(
           health.maybeWhen(
             data: (data) => _findPlatform(data, platform)?.label ?? '平台账号详情',
@@ -91,19 +94,24 @@ class _AccountDetailBody extends ConsumerWidget {
   Future<void> _logout(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('清除 ${account.label} 登录'),
-        content: const Text('只清除 VaultStream 保存的登录信息，不会修改平台账号本身。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('清除登录'),
-          ),
-        ],
+      animationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
+      builder: (dialogContext) => PredictiveBackDialog(
+        child: AlertDialog(
+          title: Text('清除 ${account.label} 登录'),
+          content: const Text('只清除 VaultStream 保存的登录信息，不会修改平台账号本身。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('清除登录'),
+            ),
+          ],
+        ),
       ),
     );
     if (confirmed != true || !context.mounted) return;
@@ -125,7 +133,7 @@ class _AccountDetailBody extends ConsumerWidget {
       );
       return Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
+          constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
           child: ListView(
             padding: EdgeInsets.all(
               metrics.isCompact ? AppSpacing.md : AppSpacing.xl,
@@ -140,11 +148,6 @@ class _AccountDetailBody extends ConsumerWidget {
                   onLogout: () => _logout(context, ref),
                 ),
               ),
-              if (account.issues.isNotEmpty)
-                ExpansionTile(
-                  title: const Text('如何修复'),
-                  children: [_RepairGuide(account: account)],
-                ),
             ],
           ),
         ),
@@ -168,35 +171,59 @@ class _AccountOverview extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          decoration: BoxDecoration(
-            color: status.color(scheme).withValues(alpha: 0.12),
-            borderRadius: AppShape.paneBorder,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(account.label, style: theme.textTheme.headlineSmall),
-              const SizedBox(height: AppSpacing.xs),
-              Text(status.label, style: theme.textTheme.titleMedium),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                status.description,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
+        Row(
+          children: [
+            Icon(status.icon, color: status.color(scheme)),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(status.label, style: theme.textTheme.titleLarge),
+            ),
+          ],
         ),
+        const SizedBox(height: AppSpacing.sm),
+        if (account.issues.isEmpty)
+          Text(
+            status.description,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          )
+        else
+          for (final issue in account.issues)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: Text(issue, style: theme.textTheme.bodyMedium),
+            ),
         const SizedBox(height: AppSpacing.md),
         controls,
+        if (account.issues.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.sm),
+          ExpansionTile(
+            key: const PageStorageKey('account-repair-guide'),
+            title: const Text('如何修复'),
+            tilePadding: EdgeInsets.zero,
+            shape: const RoundedRectangleBorder(
+              borderRadius: AppShape.cardMediaBorder,
+            ),
+            collapsedShape: const RoundedRectangleBorder(
+              borderRadius: AppShape.cardMediaBorder,
+            ),
+            clipBehavior: Clip.antiAlias,
+            expansionAnimationStyle: MediaQuery.disableAnimationsOf(context)
+                ? AnimationStyle.noAnimation
+                : AnimationStyle(
+                    duration: AppMotion.surfaceEnter,
+                    reverseDuration: AppMotion.surfaceExit,
+                    curve: AppMotion.standardCurve,
+                  ),
+            children: [_RepairGuide(account: account)],
+          ),
+        ],
         const SizedBox(height: AppSpacing.lg),
-        Text('能力与状态', style: theme.textTheme.titleLarge),
+        Text('能力与状态', style: theme.textTheme.titleMedium),
         const SizedBox(height: AppSpacing.sm),
         Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _CapabilityRow(
               title: '本地登录信息',
@@ -213,20 +240,12 @@ class _AccountOverview extends StatelessWidget {
             ),
           ],
         ),
-        if (account.issues.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.xl),
-          Text('当前问题', style: theme.textTheme.titleLarge),
-          const SizedBox(height: AppSpacing.sm),
-          for (final issue in account.issues)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.error_outline_rounded, color: scheme.error),
-              title: Text(issue),
-            ),
-        ],
         if (account.lastFavoritesRun != null) ...[
           const SizedBox(height: AppSpacing.xl),
-          _LastSyncCard(run: account.lastFavoritesRun!),
+          _LastSyncCard(
+            run: account.lastFavoritesRun!,
+            status: account.lastFavoritesStatus ?? 'unknown',
+          ),
         ],
       ],
     );
@@ -241,13 +260,34 @@ class _CapabilityRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          Expanded(child: Text(title)),
-          Text(value, style: Theme.of(context).textTheme.bodyMedium),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final label = Text(
+            title,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          );
+          final content = Text(value, style: theme.textTheme.bodyMedium);
+          if (constraints.maxWidth <
+              320 * MediaQuery.textScalerOf(context).scale(1)) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [label, const SizedBox(height: 4), content],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: label),
+              const SizedBox(width: AppSpacing.md),
+              Flexible(child: content),
+            ],
+          );
+        },
       ),
     );
   }
@@ -303,7 +343,7 @@ class _AccountControls extends ConsumerWidget {
               ),
             if (account.favoritesSupported)
               TextButton.icon(
-                onPressed: () => context.push('/automation/sync'),
+                onPressed: () => context.go('/automation/sync'),
                 icon: const Icon(Icons.sync_rounded),
                 label: const Text('管理收藏同步'),
               ),
@@ -333,10 +373,19 @@ class _RepairGuide extends StatelessWidget {
           )
         else
           for (var index = 0; index < steps.length; index++)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(radius: 14, child: Text('${index + 1}')),
-              title: Text(steps[index]),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${index + 1}.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(child: Text(steps[index])),
+                ],
+              ),
             ),
       ],
     );
@@ -344,36 +393,30 @@ class _RepairGuide extends StatelessWidget {
 }
 
 class _LastSyncCard extends StatelessWidget {
-  const _LastSyncCard({required this.run});
+  const _LastSyncCard({required this.run, required this.status});
 
   final Map<String, dynamic> run;
+  final String status;
 
   @override
   Widget build(BuildContext context) {
     final runId = run['run_id']?.toString();
-    final status = run['status']?.toString() ?? 'unknown';
     final startedAt = DateTime.tryParse(run['started_at']?.toString() ?? '');
-    return Card(
-      margin: EdgeInsets.zero,
-      child: ListTile(
-        leading: Icon(
-          status == 'success'
-              ? Icons.check_circle_outline_rounded
-              : status == 'error'
-              ? Icons.error_outline_rounded
-              : Icons.schedule_rounded,
-        ),
-        title: const Text('最近收藏同步'),
-        subtitle: Text(
-          '${_runStatus(status)}${startedAt == null ? '' : ' · ${_formatDate(startedAt)}'}',
-        ),
-        trailing: runId == null || runId.isEmpty
-            ? null
-            : const Icon(Icons.chevron_right_rounded),
-        onTap: runId == null || runId.isEmpty
-            ? null
-            : () => context.push('/tasks/${Uri.encodeComponent(runId)}'),
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      shape: const RoundedRectangleBorder(
+        borderRadius: AppShape.cardMediaBorder,
       ),
+      title: const Text('最近收藏同步'),
+      subtitle: Text(
+        '${_runStatus(status)}${startedAt == null ? '' : ' · ${_formatDate(startedAt)}'}',
+      ),
+      trailing: runId == null || runId.isEmpty
+          ? null
+          : const Icon(Icons.chevron_right_rounded),
+      onTap: runId == null || runId.isEmpty
+          ? null
+          : () => context.push('/tasks/${Uri.encodeComponent(runId)}'),
     );
   }
 }
@@ -497,7 +540,10 @@ List<String> _repairSteps(PlatformHealthStatus account) {
 
 String _runStatus(String status) => switch (status) {
   'success' || 'ok' => '成功',
-  'error' => '失败',
+  'error' || 'failed' => '失败',
+  'partial_success' => '部分失败',
+  'skipped' => '已跳过',
+  'unknown' => '状态未知',
   'running' => '运行中',
   _ => status,
 };
