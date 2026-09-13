@@ -128,12 +128,13 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
                     retryable=True,
                 ) from e
 
+            original_cookies = dict(cookies)
             merge_response_cookies(cookies, resp)
 
             if resp.status_code == 200:
                 self._verify_count = 0
                 try:
-                    return resp.json()
+                    payload = resp.json()
                 except ValueError as e:
                     raise FavoritesFetchError(
                         code="parse_failed",
@@ -141,6 +142,11 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
                         hint="接口返回异常，请稍后重试",
                         retryable=True,
                     ) from e
+                if isinstance(payload, dict) and payload.get("success") is True:
+                    await ConfigService().persist_refreshed_platform_cookies(
+                        "xiaohongshu", original_cookies, cookies,
+                    )
+                return payload
 
             if resp.status_code in (461, 471):
                 self._verify_count += 1
@@ -228,6 +234,8 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
         max_items: int = 50,
         cursor: Optional[str] = None,
     ) -> tuple[list[FavoriteItem], Optional[str]]:
+        if max_items < 1:
+            raise ValueError("max_items must be positive")
         cookies = await self._get_cookies()
         if not await self.check_auth():
             raise FavoritesFetchError(
@@ -253,6 +261,7 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
         items: list[FavoriteItem] = []
         current_cursor = cursor or ""
         seen_ids: set[str] = set()
+        seen_cursors = {current_cursor}
         session_refresh_attempted = False
 
         while len(items) < max_items:
@@ -299,13 +308,23 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
                         hint="接口返回失败，请稍后重试",
                     )
 
-            data = body.get("data", {}) or {}
-            notes = data.get("notes", []) or []
+            data = body.get("data")
+            if (not isinstance(data, dict) or not isinstance(data.get("notes"), list)
+                    or type(data.get("has_more")) is not bool):
+                raise FavoritesFetchError(code="invalid_pagination",
+                    message="小红书收藏响应缺少明确的列表或分页状态",
+                    hint="本轮游标未推进，请检查平台状态后重试", retryable=True)
+            notes = data["notes"]
+            if len(notes) > params["num"]:
+                raise FavoritesFetchError(code="invalid_pagination",
+                    message="小红书返回内容超过请求页大小，不能截断后推进游标",
+                    hint="本轮游标未推进，请检查平台分页行为", retryable=True)
             for note in notes:
-                if len(items) >= max_items:
-                    break
-                note_id = str(note.get("note_id", "") or "")
-                if not note_id or note_id in seen_ids:
+                if not isinstance(note, dict) or not isinstance(note.get("note_id"), str) or not note["note_id"]:
+                    raise FavoritesFetchError(code="parse_failed",
+                        message="小红书收藏项缺少内容 ID", hint="本轮游标未推进，请检查响应结构")
+                note_id = note["note_id"]
+                if note_id in seen_ids:
                     continue
                 seen_ids.add(note_id)
 
@@ -328,14 +347,19 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
                     )
                 )
 
-            if not data.get("has_more", False):
+            if not data["has_more"]:
                 current_cursor = None
                 break
 
             next_cursor = data.get("cursor", "")
-            if not next_cursor or next_cursor == current_cursor:
-                current_cursor = None
-                break
+            if not isinstance(next_cursor, str) or not next_cursor or next_cursor in seen_cursors:
+                raise FavoritesFetchError(
+                    code="invalid_pagination",
+                    message="小红书声明还有收藏但未返回可续接游标",
+                    hint="本轮游标未推进，请稍后重试",
+                    retryable=True,
+                )
+            seen_cursors.add(next_cursor)
             current_cursor = next_cursor
 
         return items, current_cursor

@@ -5,6 +5,19 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
+from pydantic import BaseModel
+
+
+class FavoritesCapability(BaseModel):
+    """Declared platform boundary, independent of transient account health."""
+
+    supported: bool
+    scope: str
+    pagination: bool
+    collection_metadata: bool
+    authentication: str
+    limitation: str | None = None
+
 
 @dataclass
 class FavoriteItem:
@@ -19,6 +32,9 @@ class FavoriteItem:
     media_urls: list[str] = field(default_factory=list)
     favorited_at: Optional[datetime] = None
     content_type: Optional[str] = None
+    collection_id: Optional[str] = None
+    collection_title: Optional[str] = None
+    skip_reason: Optional[str] = None
 
 
 class BaseFavoritesFetcher(ABC):

@@ -21,6 +21,7 @@ SENSITIVE_SETTING_KEYS = {
     "xiaohongshu_cookie",
     "zhihu_cookie",
     "weibo_cookie",
+    "twitter_cookie",
     "text_llm_api_key",
     "vision_llm_api_key",
     "agent_chat_api_key",

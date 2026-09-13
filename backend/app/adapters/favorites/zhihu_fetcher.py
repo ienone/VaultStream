@@ -137,11 +137,12 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
                         "x-xsrftoken": cookies.get("_xsrf", ""),
                     }
                     resp = await client.get(url, headers=headers, cookies=cookies)
+                    original_cookies = dict(cookies)
                     merge_response_cookies(cookies, resp)
 
                     if resp.status_code == 200:
                         try:
-                            return resp.json()
+                            payload = resp.json()
                         except ValueError as e:
                             raise FavoritesFetchError(
                                 code="parse_failed",
@@ -149,6 +150,10 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
                                 hint="知乎返回数据异常，请稍后重试",
                                 retryable=True,
                             ) from e
+                        await ConfigService().persist_refreshed_platform_cookies(
+                            "zhihu", original_cookies, cookies,
+                        )
+                        return payload
 
                     if resp.status_code in (401, 403):
                         risk_code = None
@@ -235,6 +240,17 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
             retryable=True,
         )
 
+    @staticmethod
+    def _page(data: object) -> tuple[list[dict], bool]:
+        if not isinstance(data, dict):
+            raise FavoritesFetchError(code="invalid_pagination", message="知乎未返回有效分页对象", hint="未推进游标，请检查平台状态后重试", retryable=True)
+        entries, paging = data.get("data"), data.get("paging")
+        if (not isinstance(entries, list) or any(not isinstance(entry, dict) for entry in entries)
+                or not isinstance(paging, dict) or type(paging.get("is_end")) is not bool
+                or (not entries and not paging["is_end"])):
+            raise FavoritesFetchError(code="invalid_pagination", message="知乎分页缺少有效列表或明确末页状态", hint="未推进游标，请检查平台状态后重试", retryable=True)
+        return entries, paging["is_end"]
+
     async def _fetch_user_collections(self, cookies: dict[str, str]) -> list[dict]:
         me_data = await self._api_get("https://www.zhihu.com/api/v4/me", cookies)
         if "url_token" not in me_data:
@@ -256,7 +272,8 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
                 f"?limit={self._PAGE_SIZE}&offset={offset}"
             )
             data = await self._api_get(url, cookies)
-            for item in data.get("data", []):
+            entries, is_end = self._page(data)
+            for item in entries:
                 collections.append(
                     {
                         "id": str(item.get("id", "")),
@@ -265,8 +282,7 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
                     }
                 )
 
-            paging = data.get("paging", {})
-            if paging.get("is_end", True):
+            if is_end:
                 break
             offset += self._PAGE_SIZE
 
@@ -331,6 +347,7 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
             coll_id = collection.get("id")
             if not coll_id:
                 continue
+            seen_urls.clear()
 
             offset = resume_offset if collection_index == 0 else 0
             while len(items) < max_items:
@@ -339,8 +356,7 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
                     f"?limit={self._PAGE_SIZE}&offset={offset}"
                 )
                 data = await self._api_get(url, cookies)
-                entries = data.get("data", [])
-                is_end = data.get("paging", {}).get("is_end", True)
+                entries, is_end = self._page(data)
                 for entry_index, entry in enumerate(entries):
                     if len(items) >= max_items:
                         break
@@ -388,6 +404,8 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
                             cover_url=content.get("title_image") or content.get("image_url"),
                             content_type=content_type or None,
                             favorited_at=favorited_at,
+                            collection_id=str(coll_id),
+                            collection_title=collection.get("title"),
                         )
                     )
 
@@ -400,8 +418,7 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
                             return items, None
                         return items, json.dumps(next_cursor, separators=(",", ":"))
 
-                paging = data.get("paging", {})
-                if paging.get("is_end", True):
+                if is_end:
                     break
                 offset += self._PAGE_SIZE
 

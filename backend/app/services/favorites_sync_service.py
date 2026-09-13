@@ -7,6 +7,7 @@ from typing import Any, Callable
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.favorites.base import FavoriteItem
+from app.adapters.favorites import FAVORITES_CAPABILITIES
 from app.adapters.favorites.errors import FavoritesFetchError
 from app.core.api_errors import build_error_payload
 from app.core.logging import logger
@@ -109,16 +110,14 @@ class FavoritesSyncService:
         enabled_platforms = await task.load_enabled_platforms()
 
         platforms: list[dict[str, Any]] = []
-        for platform in task.get_supported_platforms():
+        for platform, capability in FAVORITES_CAPABILITIES.items():
             fetcher_cls = task.get_fetcher_cls(platform)
-            if fetcher_cls is None:
-                continue
 
             authenticated = False
-            available = True
-            error: str | None = None
+            available = fetcher_cls is not None
+            error: str | None = capability.limitation if not available else None
             status_error: dict[str, Any] | None = None
-            if platform in enabled_platforms:
+            if fetcher_cls is not None and platform in enabled_platforms:
                 try:
                     authenticated = await fetcher_cls().check_auth()
                 except ImportError as exc:
@@ -180,6 +179,7 @@ class FavoritesSyncService:
                     "last_result": platform_state.last_result,
                     "error": error,
                     "status_error": status_error,
+                    "capabilities": capability.model_dump(),
                 }
             )
 
@@ -223,7 +223,7 @@ class FavoritesSyncService:
                     400,
                     message=f"Unknown platform: {normalized}",
                     code="unsupported_platform",
-                    hint="仅支持 zhihu / xiaohongshu / twitter",
+                    hint="支持的平台：" + " / ".join(FavoritesSyncTask.get_fetcher_registry()),
                     request_id=request_id,
                 )
             await self.require_manual_policy(
@@ -282,7 +282,7 @@ class FavoritesSyncService:
                     400,
                     message=f"Unknown platform: {normalized}",
                     code="unsupported_platform",
-                    hint="仅支持 zhihu / xiaohongshu / twitter",
+                    hint="支持的平台：" + " / ".join(FavoritesSyncTask.get_fetcher_registry()),
                     request_id=request_id,
                 )
             preview = await sync_task.preview_platform_by_name(normalized)
@@ -336,7 +336,7 @@ class FavoritesSyncService:
                 400,
                 message=f"Unsupported favorites sync scope: {scope}",
                 code="unsupported_platform",
-                hint="仅支持 zhihu / xiaohongshu / twitter",
+                hint="支持的平台：" + " / ".join(FavoritesSyncTask.get_fetcher_registry()),
                 request_id=request_id,
             )
         if platform:
@@ -394,7 +394,7 @@ class FavoritesSyncService:
                 400,
                 message=f"Unknown platform: {platform}",
                 code="unsupported_platform",
-                hint="仅支持 zhihu / xiaohongshu / twitter",
+                hint="支持的平台：" + " / ".join(FavoritesSyncTask.get_fetcher_registry()),
                 request_id=request_id,
             )
         task = policy_task or self.default_task()
@@ -417,14 +417,15 @@ class FavoritesSyncService:
         result = await self.default_task().import_items(
             db,
             platform=platform,
-            items=[FavoriteItem(url=url, title=body.title, item_id=body.item_id)],
-            source_name=f"favorites_sync:{platform}:retry",
+            items=[FavoriteItem(url=url, title=body.title, item_id=body.item_id,
+                collection_id=body.collection_id, collection_title=body.collection_title)],
+            source_name=f"favorites_sync:{platform}",
             source_run_id=body.source_run_id,
             retry_run_id=run["run_id"],
             include_item_note=True,
         )
         item_result = result["items"][0]
-        if item_result["status"] == "success":
+        if item_result["status"] in ("success", "skipped") and "content_id" in item_result:
             content_id = item_result["content_id"]
             await record_task_run_success(
                 "favorites_sync",
@@ -478,7 +479,7 @@ class FavoritesSyncService:
                 400,
                 message=f"Unknown platform: {platform}",
                 code="unsupported_platform",
-                hint="仅支持 zhihu / xiaohongshu / twitter",
+                hint="支持的平台：" + " / ".join(FavoritesSyncTask.get_fetcher_registry()),
                 request_id=request_id,
             )
         task = policy_task or self.default_task()
@@ -503,10 +504,12 @@ class FavoritesSyncService:
                     url=item.url,
                     title=item.title,
                     item_id=item.item_id,
+                    collection_id=item.collection_id,
+                    collection_title=item.collection_title,
                 )
                 for item in body.items
             ],
-            source_name=f"favorites_sync:{platform}:retry",
+            source_name=f"favorites_sync:{platform}",
             source_run_id=body.source_run_id,
             retry_run_id=run["run_id"],
             retry_mode="batch",

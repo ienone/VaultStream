@@ -1,200 +1,135 @@
-# 收藏读取逻辑参考自 twitter-cli:
-# https://github.com/jackwener/twitter-cli (Apache-2.0 License)
-# 当前采用 subprocess 桥接模式，远期可切换为原生 curl_cffi 实现。
+"""X bookmarks via the current web app and the saved platform cookie.
 
+The browser loads X's own client, so query IDs/features/request headers stay
+with that client. Only the documented Bookmarks GET variables are changed
+for pagination. No CLI login, browser-profile extraction or challenge bypass.
+"""
 from __future__ import annotations
 
-import asyncio
+import hashlib
 import json
-from typing import Optional
 
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from app.adapters.base import PlatformAdapter
 from app.adapters.favorites.base import BaseFavoritesFetcher, FavoriteItem
 from app.adapters.favorites.errors import FavoritesFetchError
-from app.core.logging import logger
+from app.services.config_service import ConfigService
 
 
-class TwitterFavoritesFetcher(BaseFavoritesFetcher):
-    """Twitter/X 书签拉取器（subprocess 桥接）。"""
+def _error(code, message):
+    return FavoritesFetchError(code=code, message=message,
+        hint="请在 X 网页确认登录，并在账号中心更新登录 Cookie" if code == "auth_required" else "请检查 X 网页状态后重试；未推进收藏游标",
+        auth_required=code == "auth_required", retryable=code != "auth_required")
 
-    def platform_name(self) -> str:
+
+class _Cursor(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+    session_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    cursor: str | None = None
+    offset: int = Field(default=0, ge=0)
+
+
+def parse_bookmarks(payload: dict) -> tuple[list[FavoriteItem], str | None]:
+    """Parse the current Timeline v2 contract; malformed is never empty success."""
+    if not isinstance(payload, dict):
+        raise _error("parse_failed", "X 书签响应不是对象")
+    if payload.get("errors"):
+        codes = {entry.get("code") for entry in payload["errors"] if isinstance(entry, dict)}
+        if codes & {32, 89, 215}:
+            raise _error("auth_required", "X 登录已失效")
+        raise _error("upstream_error", "X 未接受书签请求")
+    try:
+        from app.adapters.twitter_web import timeline_instructions
+        instructions = timeline_instructions(payload, "Bookmarks")
+        if not isinstance(instructions, list):
+            raise TypeError
+        entries = []
+        for instruction in instructions:
+            kind = instruction["type"]
+            if kind == "TimelineAddEntries":
+                entries.extend(instruction["entries"])
+            elif kind == "TimelineReplaceEntry":
+                entries.append(instruction["entry"])
+            elif kind not in ("TimelineClearCache", "TimelineTerminateTimeline"):
+                raise ValueError
+        items, bottom = [], None
+        for entry in entries:
+            content = entry["content"]
+            if content.get("entryType") == "TimelineTimelineCursor":
+                if content["cursorType"] == "Bottom":
+                    bottom = content["value"]
+                    if not isinstance(bottom, str) or not bottom:
+                        raise ValueError
+                continue
+            if content.get("entryType") != "TimelineTimelineItem":
+                raise ValueError
+            result = content["itemContent"]["tweet_results"]["result"]
+            if result.get("__typename") == "TweetWithVisibilityResults":
+                result = result["tweet"]
+            if result.get("__typename") != "Tweet":
+                # Do not silently discard unavailable entries with unknown IDs.
+                raise ValueError
+            tweet_id = result["rest_id"]
+            if not isinstance(tweet_id, str) or not tweet_id.isdigit():
+                raise ValueError
+            text = result["legacy"]["full_text"]
+            if not isinstance(text, str):
+                raise ValueError
+            items.append(FavoriteItem(url=f"https://x.com/i/status/{tweet_id}", platform="twitter",
+                item_id=tweet_id, title=text[:200], content_type="tweet"))
+        if items and bottom is None:
+            # A documented explicit termination is also a valid last page.
+            if not any(i.get("type") == "TimelineTerminateTimeline" and i.get("direction") == "Bottom" for i in instructions):
+                raise ValueError
+        return items, bottom if items else None
+    except (KeyError, TypeError, ValueError, AttributeError):
+        raise _error("parse_failed", "X 书签响应不符合已核对的时间线结构") from None
+
+
+class TwitterBookmarksFetcher(BaseFavoritesFetcher):
+    def platform_name(self):
         return "twitter"
 
-    async def check_auth(self) -> bool:
+    async def _cookies(self):
+        raw = await ConfigService().get_platform_cookie_string("twitter", fresh=True)
+        return PlatformAdapter.parse_cookie_str(raw or "")
+
+    async def check_auth(self):
+        cookies = await self._cookies()
+        return bool(cookies.get("auth_token") and cookies.get("ct0"))
+
+    async def fetch_favorites(self, *, max_items=50, cursor=None):
+        if max_items < 1:
+            raise ValueError("max_items must be positive")
+        cookies = await self._cookies()
+        if not cookies.get("auth_token") or not cookies.get("ct0"):
+            raise _error("auth_required", "X 书签需要已登录网页的 auth_token 和 ct0 Cookie")
+        session_hash = hashlib.sha256(cookies["auth_token"].encode()).hexdigest()
         try:
-            proc = await asyncio.create_subprocess_exec(
-                "twitter",
-                "bookmarks",
-                "--max",
-                "1",
-                "--json",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
-            if proc.returncode == 0:
-                return True
-            err_text = stderr.decode(errors="ignore")[:300]
-            logger.warning("[twitter favorites] check_auth failed: {}", err_text)
-            lower = err_text.lower()
-            if "login" in lower or "auth" in lower or "unauthorized" in lower:
-                raise FavoritesFetchError(
-                    code="auth_required",
-                    message="Twitter CLI is not authenticated",
-                    hint="请先使用 `twitter login` 完成登录后再同步收藏",
-                    auth_required=True,
-                )
-            return False
-        except FileNotFoundError as e:
-            logger.warning("[twitter favorites] cli unavailable: {}", e)
-            raise FavoritesFetchError(
-                code="cli_unavailable",
-                message="twitter cli is not installed",
-                hint="请安装并配置 twitter CLI，再执行收藏同步",
-            ) from e
-        except OSError as e:
-            logger.warning("[twitter favorites] cli execution failed: {}", e)
-            raise FavoritesFetchError(
-                code="cli_unavailable",
-                message="twitter cli is unavailable",
-                hint="请确认 twitter CLI 已正确安装，并可在命令行直接运行",
-            ) from e
-        except asyncio.TimeoutError as e:
-            logger.warning("[twitter favorites] check_auth timeout: {}", e)
-            raise FavoritesFetchError(
-                code="network_timeout",
-                message="Twitter CLI auth check timeout",
-                hint="网络连接超时，请稍后重试",
-                retryable=True,
-            ) from e
-        except Exception as e:
-            logger.warning("[twitter favorites] unexpected check_auth error: {}", e)
-            raise FavoritesFetchError(
-                code="auth_check_failed",
-                message="Twitter CLI auth check failed",
-                hint="Twitter 鉴权检查失败，请检查 CLI 登录状态和运行环境",
-                retryable=True,
-            ) from e
+            resume = _Cursor.model_validate_json(cursor) if cursor else _Cursor(session_hash=session_hash)
+        except ValidationError:
+            raise _error("invalid_cursor", "X 收藏游标无效，请重置") from None
+        if resume.session_hash != session_hash:
+            raise _error("invalid_cursor", "X 登录会话已替换，请重置书签游标")
+        # A fixed page count preserves offsets when max_items changes between runs.
+        payload, refreshed = await self._read_page(cookies, resume.cursor)
+        items, bottom = parse_bookmarks(payload)
+        if resume.offset > len(items):
+            raise _error("invalid_cursor", "X 书签页发生变化，请重置游标")
+        selected = items[resume.offset:resume.offset + max_items]
+        end = resume.offset + len(selected)
+        if end < len(items):
+            next_cursor = _Cursor(session_hash=session_hash, cursor=resume.cursor, offset=end).model_dump_json()
+        elif bottom:
+            if bottom == resume.cursor:
+                raise _error("invalid_pagination", "X 返回了重复书签游标")
+            next_cursor = _Cursor(session_hash=session_hash, cursor=bottom).model_dump_json()
+        else:
+            next_cursor = None
+        await ConfigService().persist_refreshed_platform_cookies("twitter", cookies, refreshed)
+        return selected, next_cursor
 
-    async def fetch_favorites(
-        self,
-        *,
-        max_items: int = 50,
-        cursor: Optional[str] = None,
-    ) -> tuple[list[FavoriteItem], Optional[str]]:
-        del cursor
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "twitter",
-                "bookmarks",
-                "--max",
-                str(max_items),
-                "--json",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
-        except FileNotFoundError as e:
-            logger.error("[twitter favorites] subprocess error: {}", e)
-            raise FavoritesFetchError(
-                code="cli_unavailable",
-                message="twitter cli is not installed",
-                hint="请安装并配置 twitter CLI，再执行收藏同步",
-            ) from e
-        except OSError as e:
-            logger.error("[twitter favorites] subprocess execution failed: {}", e)
-            raise FavoritesFetchError(
-                code="cli_unavailable",
-                message="twitter cli is unavailable",
-                hint="请确认 twitter CLI 已正确安装，并可在命令行直接运行",
-            ) from e
-        except asyncio.TimeoutError as e:
-            logger.error("[twitter favorites] subprocess timeout: {}", e)
-            raise FavoritesFetchError(
-                code="network_timeout",
-                message="Twitter CLI request timeout",
-                hint="请求超时，请稍后重试",
-                retryable=True,
-            ) from e
-        except Exception as e:
-            logger.error("[twitter favorites] unexpected subprocess error: {}", e)
-            raise FavoritesFetchError(
-                code="fetch_failed",
-                message="Twitter CLI command failed",
-                hint="Twitter 拉取异常，请检查 CLI 输出和运行环境",
-                retryable=True,
-            ) from e
-
-        if proc.returncode != 0:
-            err_text = stderr.decode(errors="ignore")[:500]
-            logger.error("[twitter favorites] command failed: {}", err_text)
-            lower = err_text.lower()
-            if "login" in lower or "auth" in lower or "unauthorized" in lower:
-                raise FavoritesFetchError(
-                    code="auth_required",
-                    message="Twitter CLI is not authenticated",
-                    hint="请先使用 `twitter login` 完成登录后再同步收藏",
-                    auth_required=True,
-                )
-            if "rate" in lower or "too many requests" in lower or "429" in lower:
-                raise FavoritesFetchError(
-                    code="rate_limited",
-                    message="Twitter API rate limited",
-                    hint="触发限流，建议稍后重试",
-                    retryable=True,
-                )
-            raise FavoritesFetchError(
-                code="fetch_failed",
-                message="Twitter CLI command failed",
-                hint="请检查 twitter CLI 输出日志和网络连通性",
-            )
-
-        try:
-            data = json.loads(stdout.decode(errors="ignore"))
-        except json.JSONDecodeError as e:
-            logger.error("[twitter favorites] invalid JSON output")
-            raise FavoritesFetchError(
-                code="parse_failed",
-                message="Twitter CLI returned invalid JSON",
-                hint="CLI 输出格式异常，请升级 CLI 或稍后重试",
-                retryable=True,
-            ) from e
-
-        tweets = data.get("data", data) if isinstance(data, dict) else data
-        if isinstance(tweets, dict):
-            tweets = [tweets]
-        if not isinstance(tweets, list):
-            tweets = []
-
-        items: list[FavoriteItem] = []
-        for tweet in tweets:
-            if len(items) >= max_items:
-                break
-            if not isinstance(tweet, dict):
-                continue
-
-            tweet_id = str(tweet.get("id", "") or "")
-            if not tweet_id:
-                continue
-
-            author = tweet.get("author", {}) or {}
-            screen_name = author.get("screen_name") or tweet.get("screen_name") or ""
-            author_name = author.get("name") or tweet.get("author_name") or screen_name
-            text = tweet.get("text") or tweet.get("full_text") or ""
-
-            if screen_name:
-                tweet_url = f"https://x.com/{screen_name}/status/{tweet_id}"
-            else:
-                tweet_url = f"https://x.com/i/web/status/{tweet_id}"
-
-            items.append(
-                FavoriteItem(
-                    url=tweet_url,
-                    title=(text or "")[:100] or f"Tweet {tweet_id}",
-                    platform=self.platform_name(),
-                    item_id=tweet_id,
-                    author=author_name,
-                    content_type="tweet",
-                )
-            )
-
-        return items, None
+    async def _read_page(self, cookies, cursor):
+        from app.adapters.twitter_web import read_x_page
+        return await read_x_page(cookies, cursor=cursor)

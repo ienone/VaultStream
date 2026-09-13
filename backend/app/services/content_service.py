@@ -90,6 +90,14 @@ class ContentService:
             client_context=client_context,
         )
 
+    async def ensure_parse_queued(self, content: Content) -> None:
+        """Retry the ingestion handoff without creating another source record."""
+        if content.status not in (ContentStatus.UNPROCESSED, ContentStatus.PARSE_FAILED):
+            return
+        enqueued = await task_queue.enqueue({'content_id': content.id, 'action': 'parse'})
+        if not enqueued:
+            raise ParseQueueUnavailableError(content.id)
+
     async def create_share(
         self, 
         url: str, 
@@ -221,11 +229,7 @@ class ContentService:
             ContentStatus.PARSE_FAILED,
         )
         if should_enqueue_parse:
-            enqueued = await task_queue.enqueue(
-                {'content_id': content.id, 'action': 'parse'}
-            )
-            if not enqueued:
-                raise ParseQueueUnavailableError(content.id)
+            await self.ensure_parse_queued(content)
             logger.info(f"New content enqueued: {content.id}")
             
             # 广播新增事件
@@ -631,11 +635,7 @@ class ContentService:
         await self.db.refresh(content)
 
         if enqueue_parse:
-            enqueued = await task_queue.enqueue(
-                {'content_id': content.id, 'action': 'parse'}
-            )
-            if not enqueued:
-                raise ParseQueueUnavailableError(content.id)
+            await self.ensure_parse_queued(content)
             logger.info(f"Content status reset to unprocessed, parse re-enqueued: {content.id}")
 
         await event_bus.publish("content_updated", {

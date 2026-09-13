@@ -23,3 +23,123 @@ async def test_cursor_clears_at_end_but_does_not_skip_failed_imports(monkeypatch
     assert cursor == ('current-page' if failed else None)
     assert result['next_cursor'] == cursor
     assert result['failed'] == int(failed)
+
+
+@pytest.mark.parametrize('next_cursor', ['', 'current-page', None])
+async def test_xhs_broken_pagination_preserves_saved_cursor(monkeypatch, next_cursor):
+    from app.adapters.favorites.xiaohongshu_fetcher import XiaohongshuFavoritesFetcher
+
+    cfg = ConfigService()
+    await cfg.set_favorites_sync_cursor('xiaohongshu', 'current-page')
+    fetcher = XiaohongshuFavoritesFetcher()
+    monkeypatch.setattr(fetcher, '_get_cookies', AsyncMock(return_value={'a1': 'fixture', 'web_session': 'fixture'}))
+    monkeypatch.setattr(fetcher, '_get_self_user_id', AsyncMock(return_value='fixture-user'))
+    monkeypatch.setattr(fetcher, '_request_signed_get', AsyncMock(return_value={
+        'success': True, 'data': {'notes': [], 'has_more': True, 'cursor': next_cursor},
+    }))
+    result = await FavoritesSyncTask()._sync_platform(fetcher)
+    assert result['status'] == 'failed'
+    assert result['error_code'] == 'invalid_pagination'
+    assert await cfg.get_value_fresh('favorites_sync_cursor_xiaohongshu') == 'current-page'
+
+
+@pytest.mark.parametrize('data', [
+    {}, {'notes': [], 'has_more': 'false'},
+    {'notes': [{'note_id': 'a'}, {'note_id': 'b'}], 'has_more': True, 'cursor': 'later'},
+])
+async def test_xhs_missing_or_truncated_page_does_not_advance(monkeypatch, data):
+    from app.adapters.favorites.xiaohongshu_fetcher import XiaohongshuFavoritesFetcher
+    from app.adapters.favorites.errors import FavoritesFetchError
+    fetcher = XiaohongshuFavoritesFetcher()
+    monkeypatch.setattr(fetcher, '_get_cookies', AsyncMock(return_value={'a1': 'fixture', 'web_session': 'fixture'}))
+    monkeypatch.setattr(fetcher, '_get_self_user_id', AsyncMock(return_value='fixture-user'))
+    monkeypatch.setattr(fetcher, '_request_signed_get', AsyncMock(return_value={'success': True, 'data': data}))
+    with pytest.raises(FavoritesFetchError, match='小红书'):
+        await fetcher.fetch_favorites(max_items=1, cursor='current-page')
+
+
+@pytest.mark.parametrize('strategy', ['skip', 'merge'])
+async def test_committed_content_with_failed_parse_handoff_can_resume(db_session, monkeypatch, strategy):
+    from uuid import uuid4
+    from sqlalchemy import select
+    from app.models import Content, ContentSource, ContentStatus
+
+    url = f'https://www.bilibili.com/video/BV{uuid4().hex[:10]}/'
+    item = FavoriteItem(url=url, platform='bilibili', collection_id='fixture-folder')
+    enqueue = AsyncMock(side_effect=[False, True])
+    monkeypatch.setattr('app.services.content_service.task_queue.enqueue', enqueue)
+    task = FavoritesSyncTask()
+    kwargs = dict(platform='bilibili', items=[item], source_name='bilibili_favorites', duplicate_strategy=strategy)
+    failed = await task.import_items(db_session, **kwargs)
+    assert failed['failed'] == 1
+    resumed = await task.import_items(db_session, **kwargs)
+    assert resumed['failed'] == 0 and resumed['imported'] == 1
+    assert enqueue.await_count == 2
+    content = await db_session.get(Content, resumed['items'][0]['content_id'])
+    sources = (await db_session.execute(select(ContentSource).where(ContentSource.content_id == content.id))).scalars().all()
+    assert len(sources) == 1
+    content.status = ContentStatus.PARSE_SUCCESS
+    await db_session.commit()
+    await db_session.refresh(content)
+    version = content.updated_at
+    repeated = await task.import_items(db_session, **kwargs)
+    assert repeated['duplicate_skipped'] == 1
+    await db_session.refresh(content)
+    assert content.updated_at == version
+    sources = (await db_session.execute(select(ContentSource).where(ContentSource.content_id == content.id))).scalars().all()
+    assert len(sources) == 1
+    enqueue.assert_awaited()
+    assert enqueue.await_count == 2
+
+
+@pytest.mark.parametrize('stage', ['collections', 'items'])
+@pytest.mark.parametrize('bad_page', [{}, {'data': [], 'paging': {}}, {'data': [], 'paging': {'is_end': False}}])
+async def test_zhihu_incomplete_page_is_not_end(monkeypatch, stage, bad_page):
+    from app.adapters.favorites.zhihu_fetcher import ZhihuFavoritesFetcher
+    from app.adapters.favorites.errors import FavoritesFetchError
+    fetcher = ZhihuFavoritesFetcher()
+    monkeypatch.setattr(fetcher, '_get_cookies', AsyncMock(return_value={'z_c0':'fixture'}))
+    async def api(url, cookies):
+        if url.endswith('/me'):
+            return {'url_token':'fixture-user'}
+        if '/items?' in url:
+            return bad_page
+        if stage == 'collections':
+            return bad_page
+        return {'data':[{'id':1,'title':'Fixture','item_count':1}], 'paging':{'is_end':True}}
+    monkeypatch.setattr(fetcher, '_api_get', api)
+    with pytest.raises(FavoritesFetchError) as error:
+        await fetcher.fetch_favorites(max_items=2)
+    assert error.value.code == 'invalid_pagination'
+
+
+async def test_item_retry_preserves_collection_and_repeated_success(client, db_session, monkeypatch):
+    from uuid import uuid4
+    from sqlalchemy import select
+    from app.models import Content, ContentSource, ContentStatus
+    cfg = ConfigService()
+    previous = await cfg.get_value_fresh('favorites_sync_platforms')
+    await cfg.set_value('favorites_sync_platforms', ['bilibili'])
+    monkeypatch.setattr('app.services.content_service.task_queue.enqueue', AsyncMock(return_value=True))
+    body = {'platform':'bilibili','url':f'https://www.bilibili.com/video/BV{uuid4().hex[:10]}/',
+            'collection_id':'fixture-collection','collection_title':'Fixture collection'}
+    try:
+        first = await client.post('/api/v1/favorites-sync/items/retry', json=body)
+        assert first.status_code == 200, first.text
+        content_id = first.json()['content_id']
+        content = await db_session.get(Content, content_id)
+        content.status = ContentStatus.PARSE_SUCCESS
+        await db_session.commit()
+        second = await client.post('/api/v1/favorites-sync/items/retry', json=body)
+        assert second.status_code == 200, second.text
+        assert second.json()['content_id'] == content_id
+        sources = (await db_session.execute(select(ContentSource).where(ContentSource.content_id == content_id))).scalars().all()
+        assert len(sources) == 1
+        assert sources[0].client_context['collection_id'] == 'fixture-collection'
+        assert sources[0].client_context['collection_title'] == 'Fixture collection'
+        assert sources[0].source == 'favorites_sync:bilibili'
+    finally:
+        if previous is None:
+            await cfg.delete_value('favorites_sync_platforms')
+        else:
+            await cfg.set_value('favorites_sync_platforms', previous)

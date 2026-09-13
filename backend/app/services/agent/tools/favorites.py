@@ -9,13 +9,13 @@ from app.services.agent.tool_registry import AgentToolContext, AgentToolRegistry
 
 
 class ImportFavoritesArgs(BaseModel):
-    platform: str = Field(min_length=1, description="zhihu/xiaohongshu/twitter")
+    platform: str = Field(min_length=1, description="/".join(FavoritesSyncTask.get_fetcher_registry()))
 
 
 def register_favorites_tool(registry: AgentToolRegistry) -> None:
     registry.register(
         name="import_favorites",
-        description="按平台触发一次收藏导入（zhihu/xiaohongshu/twitter）。",
+        description="按平台触发一次收藏导入（" + "/".join(FavoritesSyncTask.get_fetcher_registry()) + "）。",
         args_model=ImportFavoritesArgs,
         result_schema={
             "type": "object",

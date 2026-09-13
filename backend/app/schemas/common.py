@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 from app.models import Platform, ContentStatus, ReviewStatus, LayoutType
 from app.schemas.base import OptionalUtcDatetime, UtcDatetime
+from app.adapters.favorites.base import FavoritesCapability
 
 class APIResponse(BaseModel):
     """标准的 API 响应包裹体（如需扩展）"""
@@ -278,6 +279,18 @@ class PlatformParseTestResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class FavoritesPlatformStatusResponse(BaseModel):
+    platform: str
+    enabled: bool
+    available: bool
+    authenticated: bool
+    rate_per_minute: float
+    last_result: Any = None
+    error: str | None = None
+    status_error: Dict[str, Any] | None = None
+    capabilities: FavoritesCapability
+
+
 class FavoritesSyncStatusResponse(BaseModel):
     """Scheduler state; timestamps follow the shared UTC response contract."""
 
@@ -288,7 +301,7 @@ class FavoritesSyncStatusResponse(BaseModel):
     last_sync_at: OptionalUtcDatetime = None
     recent_runs: List[Dict[str, Any]]
     policies: Dict[str, str]
-    platforms: List[Dict[str, Any]]
+    platforms: List[FavoritesPlatformStatusResponse]
 
 
 class FavoritesSyncTriggerRequest(BaseModel):
@@ -321,6 +334,8 @@ class FavoritesSyncItemRetryEntry(BaseModel):
     url: str = Field(..., min_length=1)
     title: Optional[str] = None
     item_id: Optional[str] = None
+    collection_id: Optional[str] = None
+    collection_title: Optional[str] = None
 
 
 class FavoritesSyncItemRetryRequest(FavoritesSyncItemRetryEntry):

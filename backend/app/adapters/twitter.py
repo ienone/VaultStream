@@ -1,7 +1,7 @@
 """
 Twitter/X 平台适配器
 
-通过 FxTwitter API 获取推文内容，无需登录/cookies。
+已保存 X 登录时读取 X 网页；未配置登录的公开解析使用 FxTwitter。
 """
 import re
 from datetime import datetime
@@ -32,7 +32,7 @@ class TwitterAdapter(PlatformAdapter):
     """
     Twitter/X 平台适配器
     
-    使用 FxTwitter 实现，无需登录或 API key。
+    支持已登录网页读取及未配置登录的公开内容读取。
     """
     
     PLATFORM_NAME = "twitter"
@@ -46,10 +46,9 @@ class TwitterAdapter(PlatformAdapter):
         初始化 Twitter 适配器
         
         Args:
-            **kwargs: 兼容参数（Twitter 适配器不需要任何配置）
+            **kwargs: 工厂统一参数；登录态在每次解析时从 ConfigService 读取
         """
-        # FxTwitter API 不需要 cookies 或其他配置
-        # 忽略所有传入的参数
+        # 避免长期实例持有退出或重新登录前的凭据快照
         pass
     
     async def can_handle(self, url: str) -> bool:
@@ -135,6 +134,23 @@ class TwitterAdapter(PlatformAdapter):
             raise NonRetryableAdapterError(f"无法从 URL 提取推文信息: {url}")
         
         username, tweet_id = tweet_info
+        config = ConfigService()
+        cookie_text = await config.get_platform_cookie_string("twitter", fresh=True)
+        if cookie_text:
+            from app.adapters.twitter_web import read_x_page, parse_web_tweet
+            from app.adapters.favorites.errors import FavoritesFetchError
+            cookies = self.parse_cookie_str(cookie_text)
+            if not cookies.get("auth_token") or not cookies.get("ct0"):
+                raise NonRetryableAdapterError("X 登录缺少 auth_token 或 ct0，请更新登录")
+            try:
+                payload, refreshed = await read_x_page(cookies, tweet_id=tweet_id)
+                parsed = parse_web_tweet(payload, tweet_id)
+                await config.persist_refreshed_platform_cookies("twitter", cookies, refreshed)
+                return parsed
+            except FavoritesFetchError as error:
+                # A failed authenticated read must not silently use an
+                # anonymous third-party copy of a private tweet.
+                raise NonRetryableAdapterError(error.message) from None
         logger.info(f"解析 Twitter 推文: @{username}/status/{tweet_id}")
         
         # 构建 FxTwitter API URL

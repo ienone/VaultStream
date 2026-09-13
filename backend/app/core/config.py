@@ -77,7 +77,8 @@ class Settings(BaseSettings):
     weibo_cookie: Optional[SecretStr] = None
 
     # Twitter/X 配置
-    # FxTwitter API 无需凭证
+    # Public FxTwitter parsing is anonymous; private bookmarks use web login.
+    twitter_cookie: Optional[SecretStr] = None
 
     # LLM 配置 (Text)
     text_llm_api_key: Optional[SecretStr] = None

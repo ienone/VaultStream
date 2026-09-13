@@ -9,14 +9,12 @@ from app.adapters import AdapterFactory, open_adapter
 from app.adapters.favorites import (
     BaseFavoritesFetcher,
     FavoriteItem,
-    TwitterFavoritesFetcher,
-    XiaohongshuFavoritesFetcher,
-    ZhihuFavoritesFetcher,
+    FAVORITES_FETCHERS,
 )
 from app.adapters.favorites.errors import FavoritesFetchError
 from app.core.database import AsyncSessionLocal
 from app.core.logging import ensure_task_id, log_context, logger
-from app.models import Content
+from app.models import Content, ContentSource, ContentStatus
 from app.core.time_utils import utcnow
 from app.services.background_task_state import (
     record_task_run_error,
@@ -58,11 +56,7 @@ class FavoritesSyncTask:
 
     @staticmethod
     def get_fetcher_registry() -> dict[str, type[BaseFavoritesFetcher]]:
-        return {
-            "zhihu": ZhihuFavoritesFetcher,
-            "xiaohongshu": XiaohongshuFavoritesFetcher,
-            "twitter": TwitterFavoritesFetcher,
-        }
+        return dict(FAVORITES_FETCHERS)
 
     def get_supported_platforms(self) -> list[str]:
         return list(self._fetchers.keys())
@@ -458,7 +452,7 @@ class FavoritesSyncTask:
         }
 
     @staticmethod
-    async def _favorite_item_exists(session, url: str) -> bool:
+    async def _find_favorite_content(session, url: str) -> Content | None:
         platform = AdapterFactory.detect_platform(url)
         canonical_url = url
         if platform is not None:
@@ -473,8 +467,12 @@ class FavoritesSyncTask:
             filters.append(
                 and_(Content.platform == platform, Content.canonical_url == canonical_url)
             )
-        stmt = select(Content.id).where(or_(*filters)).limit(1)
-        return (await session.execute(stmt)).scalar_one_or_none() is not None
+        stmt = select(Content).where(or_(*filters)).limit(1)
+        return (await session.execute(stmt)).scalar_one_or_none()
+
+    @classmethod
+    async def _favorite_item_exists(cls, session, url: str) -> bool:
+        return await cls._find_favorite_content(session, url) is not None
 
     async def import_items(
         self,
@@ -498,7 +496,7 @@ class FavoritesSyncTask:
         failed = 0
         item_results: list[dict[str, Any]] = []
         failed_items: list[dict[str, Any]] = []
-        seen_urls: set[str] = set()
+        seen_sources: set[tuple[str, str | None]] = set()
 
         for item in items:
             url = (item.url or "").strip()
@@ -506,8 +504,15 @@ class FavoritesSyncTask:
                 "url": item.url,
                 "title": item.title,
                 "item_id": item.item_id,
+                "collection_id": item.collection_id,
+                "collection_title": item.collection_title,
             }
-            if not url or url in seen_urls:
+            if item.skip_reason:
+                skipped += 1
+                item_results.append({**base_result, "status": "skipped", "error": item.skip_reason})
+                continue
+            source_identity = (url, item.collection_id)
+            if not url or source_identity in seen_sources:
                 skipped += 1
                 item_results.append(
                     {
@@ -517,26 +522,45 @@ class FavoritesSyncTask:
                     }
                 )
                 continue
-            seen_urls.add(url)
+            seen_sources.add(source_identity)
 
             try:
-                if duplicate_strategy == "skip" and await self._favorite_item_exists(
-                    session,
-                    url,
-                ):
+                existing = await self._find_favorite_content(session, url)
+                if existing is not None and existing.deleted_at is not None:
                     skipped += 1
                     duplicate_skipped += 1
                     item_results.append({**base_result, "status": "skipped"})
                     continue
+                same_source = False
+                if existing is not None and duplicate_strategy == "merge":
+                    same_source = (await session.execute(select(ContentSource.id).where(
+                        ContentSource.content_id == existing.id,
+                        ContentSource.source == source_name,
+                        ContentSource.client_context["platform"].as_string() == platform,
+                        ContentSource.client_context["collection_id"].as_string() == item.collection_id,
+                    ).limit(1))).scalar_one_or_none() is not None
+                if existing is not None and (duplicate_strategy == "skip" or same_source):
+                    if existing.status in (ContentStatus.UNPROCESSED, ContentStatus.PARSE_FAILED):
+                        # Saving the content and queueing its parse are separate
+                        # effects. A failed handoff must remain retryable.
+                        await svc.ensure_parse_queued(existing)
+                        imported += 1
+                        item_results.append({**base_result, "status": "success", "content_id": existing.id})
+                    else:
+                        skipped += 1
+                        duplicate_skipped += 1
+                        item_results.append({**base_result, "status": "skipped", "content_id": existing.id})
+                    continue
 
-                client_context = None
+                client_context = {
+                    "platform": platform, "item_id": item.item_id,
+                    "collection_id": item.collection_id, "collection_title": item.collection_title,
+                }
                 if retry_run_id is not None:
-                    client_context = {
-                        "platform": platform,
-                        "item_id": item.item_id,
+                    client_context.update({
                         "source_run_id": source_run_id,
                         "retry_run_id": retry_run_id,
-                    }
+                    })
                     if retry_mode is not None:
                         client_context["retry_mode"] = retry_mode
 
@@ -547,8 +571,7 @@ class FavoritesSyncTask:
                 }
                 if include_item_note:
                     create_kwargs["note"] = item.title
-                if client_context is not None:
-                    create_kwargs["client_context"] = client_context
+                create_kwargs["client_context"] = client_context
                 content = await svc.create_share(**create_kwargs)
                 imported += 1
                 success_result = {

@@ -1,5 +1,5 @@
 from typing import List, Optional, Tuple, Dict, Any
-from sqlalchemy import select, and_, update, desc, delete, func
+from sqlalchemy import select, and_, update, desc, delete, func, type_coerce
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.system import SystemSetting, PushedRecord, ContentQueueItem, QueueItemStatus
 
@@ -37,6 +37,15 @@ class SystemRepository:
 
     async def delete_setting(self, setting: SystemSetting) -> None:
         await self.db.delete(setting)
+
+    async def replace_setting_if_unchanged(self, key: str, expected: Any, value: Any) -> bool:
+        result = await self.db.execute(
+            update(SystemSetting).where(
+                SystemSetting.key == key,
+                SystemSetting.value == type_coerce(expected, SystemSetting.value.type),
+            ).values(value=value).execution_options(synchronize_session=False)
+        )
+        return result.rowcount == 1
 
     # --- Pushed Records ---
 

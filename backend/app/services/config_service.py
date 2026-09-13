@@ -160,6 +160,7 @@ class ConfigService:
                 self._cache[key] = setting.value
                 return coerce_setting_value(setting.value)
 
+        self._cache.pop(key, None)
         return default
 
     async def set_value(
@@ -198,6 +199,33 @@ class ConfigService:
             for setting in settings_list:
                 self._cache[setting.key] = setting.value
                 self._sync_runtime_setting(setting.key, setting.value)
+
+    async def replace_value_if_unchanged(self, key: str, expected: Any, value: Any) -> bool:
+        """Persist a refreshed credential only while its original login remains current."""
+        async with self._session_factory() as db:
+            from app.repositories import SystemRepository
+
+            changed = await SystemRepository(db).replace_setting_if_unchanged(key, expected, value)
+            await db.commit()
+        self.invalidate(key)
+        if changed:
+            self._sync_runtime_setting(key, value)
+        return changed
+
+    async def persist_refreshed_platform_cookies(
+        self, platform: str, original: dict[str, str], refreshed: dict[str, str],
+    ) -> bool:
+        """Update the existing saved session, never create a second cookie store."""
+        from app.adapters.base import PlatformAdapter
+
+        if original == refreshed:
+            return False
+        key = f"{platform}_cookie"
+        saved = extract_secret_value(await self.get_value_fresh(key))
+        if not saved or PlatformAdapter.parse_cookie_str(saved) != original:
+            return False
+        value = "; ".join(f"{name}={cookie}" for name, cookie in refreshed.items())
+        return await self.replace_value_if_unchanged(key, saved, value)
 
     async def delete_value(self, key: str) -> bool:
         async with self._session_factory() as db:

@@ -127,7 +127,7 @@ class PlatformHealthService:
         enabled_favorites = await task.load_enabled_platforms()
         recent_runs = await get_recent_task_runs("favorites_sync", limit=20)
         supported_favorites = set(task.get_supported_platforms())
-        browser_platforms = set(browser_auth_service.platforms.keys())
+        browser_platforms = set(browser_auth_service.qr_platforms)
         ordered = ["zhihu", "xiaohongshu", "twitter", "weibo", "bilibili"]
         platforms = [
             platform

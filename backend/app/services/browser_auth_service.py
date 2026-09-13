@@ -63,6 +63,7 @@ class BrowserAuthService:
     ):
         self._config_service = config_service or ConfigService()
         self.sessions: dict[str, AuthSession] = {}
+        self._platform_session_locks: dict[str, asyncio.Lock] = {}
         self._zhihu_refresh_lock = asyncio.Lock()
         self._zhihu_refresh_inflight: Optional[asyncio.Task] = None
         self._zhihu_refresh_last_ts = 0.0
@@ -75,6 +76,7 @@ class BrowserAuthService:
             "zhihu": ZhihuQrLoginDriver,
         }
         self.platforms = {
+            "twitter": {"auth_cookie_names": ["auth_token", "ct0"], "domain": ".x.com"},
             "bilibili": {
                 "check_url": "https://api.bilibili.com/x/web-interface/nav",
                 "auth_cookie_names": ["SESSDATA", "bili_jct"],
@@ -90,16 +92,44 @@ class BrowserAuthService:
                 "domain": ".zhihu.com",
             },
             "weibo": {
-                "check_url": "https://passport.weibo.com/visitor/visitor?a=init",
+                "check_url": "https://m.weibo.cn/api/config",
                 "auth_cookie_names": ["SUB"],
                 "domain": ".weibo.com",
             },
         }
 
+    @property
+    def qr_platforms(self) -> frozenset[str]:
+        return frozenset(self._driver_factories)
+
+    async def _check_twitter_status(self, cookie_str: str) -> bool:
+        from app.adapters.base import PlatformAdapter
+        from app.adapters.favorites.twitter_fetcher import TwitterBookmarksFetcher, parse_bookmarks
+        from app.adapters.favorites.errors import FavoritesFetchError
+        cookies = PlatformAdapter.parse_cookie_str(cookie_str)
+        if not cookies.get("auth_token") or not cookies.get("ct0"):
+            return False
+        try:
+            payload, refreshed = await TwitterBookmarksFetcher()._read_page(cookies, None)
+            parse_bookmarks(payload)
+            await self._config_service.persist_refreshed_platform_cookies("twitter", cookies, refreshed)
+            return True
+        except FavoritesFetchError:
+            return False
+
     async def start_auth_session(self, platform: str) -> AuthSessionStatus:
         if platform not in self.platforms:
             raise ValueError(f"不支持的平台: {platform}")
+        async with self._platform_session_locks.setdefault(platform, asyncio.Lock()):
+            await self._cancel_platform_sessions(platform)
+            return await self._start_auth_session(platform)
 
+    async def _cancel_platform_sessions(self, platform: str) -> None:
+        for session in list(self.sessions.values()):
+            if session.platform == platform:
+                await self.cancel_session(session.session_id)
+
+    async def _start_auth_session(self, platform: str) -> AuthSessionStatus:
         session = AuthSession(platform)
         self.sessions[session.session_id] = session
         factory = self._driver_factories.get(platform)
@@ -144,11 +174,13 @@ class BrowserAuthService:
     async def logout_platform(self, platform: str) -> None:
         if platform not in self.platforms:
             return
-        keys = [f"{platform}_cookie"]
-        if platform == "bilibili":
-            keys.extend(["bilibili_bili_jct", "bilibili_buvid3"])
-        for key in keys:
-            await self._config_service.delete_value(key)
+        async with self._platform_session_locks.setdefault(platform, asyncio.Lock()):
+            await self._cancel_platform_sessions(platform)
+            keys = [f"{platform}_cookie"]
+            if platform == "bilibili":
+                keys.extend(["bilibili_bili_jct", "bilibili_buvid3"])
+            for key in keys:
+                await self._config_service.delete_value(key)
         logger.info("已清除 {} 平台登录配置", platform)
 
     async def cancel_session(self, session_id: str) -> None:
@@ -210,8 +242,8 @@ class BrowserAuthService:
                     if not result.cookie_str:
                         raise RuntimeError("平台登录成功但未返回可保存的 Cookie")
                     session.cookie_str = result.cookie_str
-                    session.status = "success"
                     await self._persist_cookie(session)
+                    session.status = "success"
                     return
                 session.status = "waiting_scan"
 
@@ -226,6 +258,7 @@ class BrowserAuthService:
             session.status = "failed"
             session.message = str(exc)
         finally:
+            session.cookie_str = None
             await driver.close()
 
     async def _check_bilibili_status(self, cookie_str: str) -> bool:
@@ -271,14 +304,13 @@ class BrowserAuthService:
             return False
 
     async def _check_weibo_status(self, cookie_str: str) -> bool:
+        from app.adapters.base import PlatformAdapter
+        from app.adapters.favorites.errors import FavoritesFetchError
+        from app.adapters.weibo_session import WeiboSession
         try:
-            async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
-                response = await client.get(
-                    self.platforms["weibo"]["check_url"],
-                    headers=self._cookie_headers(cookie_str),
-                )
-                return response.status_code == 200
-        except Exception:
+            await WeiboSession(PlatformAdapter.parse_cookie_str(cookie_str)).current_user_id()
+            return True
+        except FavoritesFetchError:
             return False
 
     async def _check_zhihu_status(self, cookie_str: str) -> bool:
@@ -377,11 +409,13 @@ class BrowserAuthService:
             return False
         merged = self._parse_cookies(normalized)
         merged.update(extracted)
-        await self._config_service.set_value(
-            key="zhihu_cookie",
-            value="; ".join(f"{name}={value}" for name, value in merged.items()),
-            category="platform",
+        changed = await self._config_service.replace_value_if_unchanged(
+            "zhihu_cookie", cookie_str,
+            "; ".join(f"{name}={value}" for name, value in merged.items()),
         )
+        if not changed:
+            logger.info("知乎登录已变化，丢弃旧会话的刷新结果")
+            return False
         logger.info("已成功合并并保存新的知乎 Cookie")
         return True
 
