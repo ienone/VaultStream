@@ -48,7 +48,9 @@ jobs:
           restore-keys: gradle-${{ runner.os }}-
 
       - name: Install dependencies
-        run: flutter pub get
+        run: |
+          flutter pub get
+          dart run tool/dependencies/ensure_inactive_branch_back_navigation.dart
         working-directory: frontend
 
       - name: Run code generation
@@ -100,7 +102,9 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        run: flutter pub get
+        run: |
+          flutter pub get
+          dart run tool/dependencies/ensure_inactive_branch_back_navigation.dart
         working-directory: frontend
 
       - name: Run code generation
@@ -140,7 +144,9 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        run: flutter pub get
+        run: |
+          flutter pub get
+          dart run tool/dependencies/ensure_inactive_branch_back_navigation.dart
         working-directory: frontend
 
       - name: Run code generation

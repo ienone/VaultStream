@@ -54,8 +54,9 @@ jobs:
       - name: Check release debug flag
         shell: bash
         run: |
-          if grep -R "DEBUG_LOG=true" -n .github frontend; then
-            echo "DEBUG_LOG=true must not be used in release automation"
+          debug_pattern='--dart-define=DEBUG''_LOG=true'
+          if grep -R -n -- "$debug_pattern" .github/workflows frontend/lib frontend/tool frontend/web; then
+            echo "Release automation must disable debug logging"
             exit 1
           fi
           pattern='--dart-define=API''_TOKEN'
@@ -121,6 +122,7 @@ jobs:
         working-directory: frontend
         run: |
           flutter pub get
+          dart run tool/dependencies/ensure_inactive_branch_back_navigation.dart
           dart run build_runner build --delete-conflicting-outputs
 
       - name: Decode Keystore
@@ -205,6 +207,7 @@ jobs:
         working-directory: frontend
         run: |
           flutter pub get
+          dart run tool/dependencies/ensure_inactive_branch_back_navigation.dart
           dart run build_runner build --delete-conflicting-outputs
 
       - name: Build Flutter Web
