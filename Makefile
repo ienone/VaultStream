@@ -9,10 +9,8 @@ ifeq ($(OS),Windows_NT)
 SHELL := cmd.exe
 .SHELLFLAGS := /C
 PYTHON ?= .venv/Scripts/python.exe
-BACKEND_START ?= powershell -NoProfile -ExecutionPolicy Bypass -File $(BACKEND_DIR)/start.ps1
 else
 PYTHON ?= .venv/bin/python
-BACKEND_START ?= cd $(BACKEND_DIR) && ./start.sh
 endif
 
 PIP ?= $(PYTHON) -m pip
@@ -20,9 +18,11 @@ PYTEST ?= $(PYTHON) -m pytest
 FLUTTER ?= flutter
 DART ?= dart
 DOCKER_COMPOSE ?= docker compose
+BACKEND_PYTHON := $(abspath $(PYTHON))
+FRONTEND_ADAPT := tool/dependencies/ensure_inactive_branch_back_navigation.dart
 
 .PHONY: help install backend-install frontend-install dev-backend dev-frontend \
-	test test-backend test-backend-fast test-frontend frontend-check frontend-analyze \
+	test test-backend test-frontend frontend-prepare frontend-check frontend-analyze \
 	codegen build-web docker-up docker-down docker-logs check-openapi check-schema
 
 help:
@@ -30,7 +30,7 @@ help:
 	@echo Setup:
 	@echo   make install             Install backend and frontend dependencies
 	@echo   make backend-install     Install backend dev dependencies with the repo venv
-	@echo   make frontend-install    Run flutter pub get
+	@echo   make frontend-install    Resolve Flutter dependencies and apply router adaptation
 	@echo Development:
 	@echo   make dev-backend         Start the FastAPI backend
 	@echo   make dev-frontend        Run the Flutter web app in Chrome
@@ -38,9 +38,13 @@ help:
 	@echo   make build-web           Build the Flutter web release bundle
 	@echo Verification:
 	@echo   make test                Run backend and frontend tests
-	@echo   make test-backend        Run all backend pytest tests
-	@echo   make test-backend-fast   Run backend tests excluding integration tests
+	@echo   make test-backend        Run maintained backend regressions without external integration
+	@echo   make test-frontend       Run maintained frontend regressions
+	@echo   make frontend-prepare    Apply required adaptation to resolved dependencies
+	@echo   make frontend-analyze    Run flutter analyze
 	@echo   make frontend-check      Run flutter analyze and flutter test
+	@echo   make check-openapi       Check endpoint docs and response contracts
+	@echo   make check-schema        Check fresh database schema
 	@echo Deployment:
 	@echo   make docker-up           Start backend/docker-compose.yml services
 	@echo   make docker-down         Stop backend/docker-compose.yml services
@@ -53,11 +57,15 @@ backend-install:
 
 frontend-install:
 	cd $(FRONTEND_DIR) && $(FLUTTER) pub get
+	cd $(FRONTEND_DIR) && $(DART) run $(FRONTEND_ADAPT)
+
+frontend-prepare:
+	cd $(FRONTEND_DIR) && $(DART) run $(FRONTEND_ADAPT)
 
 dev-backend:
-	$(BACKEND_START)
+	cd $(BACKEND_DIR) && "$(BACKEND_PYTHON)" -m app.main
 
-dev-frontend:
+dev-frontend: frontend-prepare
 	cd $(FRONTEND_DIR) && $(FLUTTER) run -d chrome
 
 test: test-backend test-frontend
@@ -65,22 +73,19 @@ test: test-backend test-frontend
 test-backend:
 	$(PYTEST) $(BACKEND_DIR)/tests -q
 
-test-backend-fast:
-	$(PYTEST) $(BACKEND_DIR)/tests -q -m "not integration"
-
-test-frontend:
+test-frontend: frontend-prepare
 	cd $(FRONTEND_DIR) && $(FLUTTER) test
 
 frontend-check: frontend-analyze test-frontend
 
-frontend-analyze:
+frontend-analyze: frontend-prepare
 	cd $(FRONTEND_DIR) && $(FLUTTER) analyze
 
 codegen:
 	cd $(FRONTEND_DIR) && $(DART) run build_runner build --delete-conflicting-outputs
 
-build-web:
-	cd $(FRONTEND_DIR) && $(FLUTTER) build web --release
+build-web: frontend-prepare
+	cd $(FRONTEND_DIR) && $(FLUTTER) build web --release --dart-define=DEBUG_LOG=false
 
 docker-up:
 	cd $(BACKEND_DIR) && $(DOCKER_COMPOSE) up -d
