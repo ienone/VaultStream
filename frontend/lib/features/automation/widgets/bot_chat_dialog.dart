@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/layout/responsive_layout.dart';
+import '../../../core/widgets/adaptive_form_dialog.dart';
 import '../../../core/utils/toast.dart';
 import '../../../theme/design_tokens.dart';
 import '../models/bot_chat.dart';
@@ -59,295 +59,164 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final metrics = WindowMetrics.of(context);
-
-    final content = ConstrainedBox(
-      constraints: BoxConstraints(
-        maxWidth: AppPane.formMaxWidth,
-        maxHeight: metrics.height * 0.9,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+    return AdaptiveFormDialog(
+      title: isEditing ? '编辑推送目标' : '添加推送目标',
+      contentBuilder: (context, width, short) => Form(
+        key: _formKey,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary.withValues(alpha: 0.1),
-                    borderRadius: AppShape.cardBorder,
-                  ),
-                  child: Icon(
-                    Icons.smart_toy_rounded,
-                    color: colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Text(
-                  isEditing ? '编辑群组配置' : '添加 Bot 群组',
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            Flexible(
-              child: Form(
-                key: _formKey,
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (!isEditing) ...[
-                        _buildExpressiveDropdown<String>(
-                          label: '群组类型',
-                          value: _chatType,
-                          icon: Icons.category_rounded,
-                          entries: const [
-                            DropdownMenuEntry(value: 'channel', label: 'TG 频道'),
-                            DropdownMenuEntry(value: 'group', label: 'TG 群组'),
-                            DropdownMenuEntry(
-                              value: 'supergroup',
-                              label: 'TG 超级群组',
-                            ),
-                            DropdownMenuEntry(value: 'qq_group', label: 'QQ 群'),
-                            DropdownMenuEntry(
-                              value: 'qq_private',
-                              label: 'QQ 私聊',
-                            ),
-                          ],
-                          onChanged: (v) => setState(() => _chatType = v!),
-                        ),
-                        const SizedBox(height: 20),
-                      ],
-                      _buildTextField(
-                        controller: _chatIdController,
-                        label: _isQQType
-                            ? (_chatType == 'qq_group' ? 'QQ 群号 *' : 'QQ 号 *')
-                            : 'Chat ID *',
-                        hint: _isQQType
-                            ? (_chatType == 'qq_group'
-                                  ? '例如: 123456789'
-                                  : '对方的 QQ 号')
-                            : '-1001234567890 或 @channel_name',
-                        icon: _isQQType
-                            ? Icons.forum_rounded
-                            : Icons.alternate_email_rounded,
-                        keyboardType: _isQQType ? TextInputType.number : null,
-                        validator: (v) {
-                          if (v == null || v.isEmpty) {
-                            return _isQQType ? '请输入 QQ 号' : '请输入 Chat ID';
-                          }
-                          final raw = v.trim();
-                          if (_isQQType) {
-                            final candidate =
-                                raw.startsWith('group:') ||
-                                    raw.startsWith('private:')
-                                ? raw.split(':').last
-                                : raw;
-                            if (int.tryParse(candidate) == null) {
-                              return 'QQ 号必须为纯数字';
-                            }
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 24),
-                      _buildTextField(
-                        controller: _titleController,
-                        label: '显示名称',
-                        hint: '可选：群组/频道备注名称',
-                        icon: Icons.title_rounded,
-                      ),
-                      const SizedBox(height: 24),
-                      _buildTextField(
-                        controller: _nsfwChatIdController,
-                        label: 'NSFW 备用频道 ID',
-                        hint: '例如: -1001234567890（规则中 NSFW 策略为“分离”时使用）',
-                        icon: Icons.call_split_rounded,
-                      ),
-                      const SizedBox(height: 24),
-                      _buildSwitchTile(
-                        title: '启用此配置',
-                        subtitle: _isQQType
-                            ? '控制是否向此 QQ 群/好友推送消息'
-                            : '控制 Bot 是否向此群组/频道推送消息',
-                        icon: Icons.power_settings_new_rounded,
-                        value: _enabled,
-                        onChanged: (v) => setState(() => _enabled = v),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                  ),
+            if (!isEditing) ...[
+              _fieldLabel('目标类型'),
+              const SizedBox(height: 8),
+              Semantics(
+                label: '目标类型',
+                child: DropdownButtonFormField<String>(
+                  initialValue: _chatType,
+                  isExpanded: true,
+                  itemHeight: null,
+                  menuMaxHeight: 400,
+                  borderRadius: AppShape.cardBorder,
+                  dropdownColor: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHigh,
+                  items: const [
+                    DropdownMenuItem(value: 'channel', child: Text('TG 频道')),
+                    DropdownMenuItem(value: 'group', child: Text('TG 群组')),
+                    DropdownMenuItem(
+                      value: 'supergroup',
+                      child: Text('TG 超级群组'),
+                    ),
+                    DropdownMenuItem(value: 'qq_group', child: Text('QQ 群')),
+                    DropdownMenuItem(value: 'qq_private', child: Text('QQ 私聊')),
+                  ],
+                  onTap: () => FocusScope.of(context).unfocus(),
+                  onChanged: (value) {
+                    if (value != null) setState(() => _chatType = value);
+                  },
                 ),
               ),
+              const SizedBox(height: 20),
+            ],
+            _textField(
+              controller: _chatIdController,
+              label: _isQQType
+                  ? (_chatType == 'qq_group' ? 'QQ 群号' : 'QQ 号')
+                  : 'Chat ID',
+              hint: _isQQType ? '例如：123456789' : '数字 ID 或 @名称',
+              keyboardType: _isQQType ? TextInputType.number : null,
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return _isQQType ? '请输入 QQ 号' : '请输入 Chat ID';
+                }
+                final raw = value.trim();
+                if (_isQQType) {
+                  final candidate =
+                      raw.startsWith('group:') || raw.startsWith('private:')
+                      ? raw.split(':').last
+                      : raw;
+                  if (int.tryParse(candidate) == null) return 'QQ 号必须为纯数字';
+                }
+                return null;
+              },
             ),
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            const SizedBox(height: 20),
+            _textField(
+              controller: _titleController,
+              label: '显示名称（可选）',
+              hint: '填写备注名称',
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              shape: const RoundedRectangleBorder(
+                borderRadius: AppShape.cardMediaBorder,
+              ),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('启用此目标'),
+              value: _enabled,
+              onChanged: (value) => setState(() => _enabled = value),
+            ),
+            const SizedBox(height: 8),
+            ExpansionTile(
+              title: const Text('敏感内容分流'),
+              subtitle: const Text('用于“分离”规则'),
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(top: 12, bottom: 8),
+              shape: const RoundedRectangleBorder(
+                borderRadius: AppShape.cardMediaBorder,
+              ),
+              collapsedShape: const RoundedRectangleBorder(
+                borderRadius: AppShape.cardMediaBorder,
+              ),
+              clipBehavior: Clip.antiAlias,
+              initiallyExpanded: _nsfwChatIdController.text.isNotEmpty,
+              maintainState: true,
+              expansionAnimationStyle: MediaQuery.disableAnimationsOf(context)
+                  ? AnimationStyle.noAnimation
+                  : AnimationStyle(
+                      duration: AppMotion.surfaceEnter,
+                      reverseDuration: AppMotion.surfaceExit,
+                      curve: AppMotion.standardCurve,
+                    ),
               children: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: AppShape.cardMediaBorder,
-                    ),
-                  ),
-                  child: const Text('取消'),
-                ),
-                const SizedBox(width: 12),
-                FilledButton(
-                  onPressed: () => _submit(),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 12,
-                    ),
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: AppShape.cardMediaBorder,
-                    ),
-                  ),
-                  child: Text(isEditing ? '保存修改' : '确认添加'),
+                _textField(
+                  controller: _nsfwChatIdController,
+                  label: '备用目标 ID',
+                  hint: '填写目标 ID',
                 ),
               ],
             ),
           ],
         ),
       ),
-    );
-
-    if (metrics.widthClass.isCompact) {
-      return Dialog.fullscreen(child: SafeArea(child: content));
-    }
-    return Dialog(
-      shape: const RoundedRectangleBorder(borderRadius: AppShape.sheetBorder),
-      child: content,
+      actions: OverflowBar(
+        alignment: MainAxisAlignment.end,
+        overflowAlignment: OverflowBarAlignment.end,
+        spacing: 8,
+        overflowSpacing: 8,
+        children: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: _submit,
+            child: Text(isEditing ? '保存修改' : '添加'),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildTextField({
+  Widget _fieldLabel(String label) =>
+      Text(label, style: Theme.of(context).textTheme.bodyMedium);
+
+  Widget _textField({
     required TextEditingController controller,
     required String label,
     required String hint,
-    required IconData icon,
-    int maxLines = 1,
     TextInputType? keyboardType,
     String? Function(String?)? validator,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return TextFormField(
-      controller: controller,
-      maxLines: maxLines,
-      keyboardType: keyboardType,
-      validator: validator,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        prefixIcon: Icon(icon, size: 20),
-        filled: true,
-        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-        border: OutlineInputBorder(
-          borderRadius: AppShape.cardBorder,
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: AppShape.cardBorder,
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: AppShape.cardBorder,
-          borderSide: BorderSide(color: colorScheme.primary, width: 2),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildExpressiveDropdown<T>({
-    required String label,
-    required T value,
-    required IconData icon,
-    required List<DropdownMenuEntry<T>> entries,
-    required ValueChanged<T?> onChanged,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return DropdownMenu<T>(
-      initialSelection: value,
-      dropdownMenuEntries: entries,
-      onSelected: onChanged,
-      leadingIcon: Icon(icon, size: 20),
-      label: Text(label),
-      expandedInsets: EdgeInsets.zero,
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-        border: OutlineInputBorder(
-          borderRadius: AppShape.cardBorder,
-          borderSide: BorderSide.none,
-        ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      ),
-    );
-  }
-
-  Widget _buildSwitchTile({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Material(
-      color: colorScheme.surfaceContainerLow,
-      shape: const RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
-      clipBehavior: Clip.antiAlias,
-      child: SwitchListTile(
-        title: Text(
-          title,
-          style: Theme.of(
-            context,
-          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
-        secondary: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: (value ? colorScheme.primary : colorScheme.outline)
-                .withValues(alpha: 0.1),
-            borderRadius: AppShape.cardMediaBorder,
-          ),
-          child: Icon(
-            icon,
-            size: 20,
-            color: value ? colorScheme.primary : colorScheme.outline,
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _fieldLabel(label),
+      const SizedBox(height: 8),
+      Semantics(
+        label: label,
+        child: TextFormField(
+          controller: controller,
+          keyboardType: keyboardType,
+          validator: validator,
+          decoration: InputDecoration(
+            hintText: hint,
+            hintMaxLines: 2,
+            errorMaxLines: 3,
           ),
         ),
-        value: value,
-        onChanged: onChanged,
-        thumbIcon: WidgetStateProperty.resolveWith<Icon?>((states) {
-          if (states.contains(WidgetState.selected)) {
-            return const Icon(Icons.check_rounded);
-          }
-          return const Icon(Icons.close_rounded);
-        }),
-        shape: const RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
       ),
-    );
-  }
+    ],
+  );
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;

@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import '../../../core/widgets/discard_changes_dialog.dart';
 
 import '../../../theme/design_tokens.dart';
+import '../../../core/widgets/browser_leave_guard.dart';
 import '../models/distribution_rule.dart';
 import '../models/bot_chat.dart';
 import '../models/render_config.dart';
@@ -35,10 +39,10 @@ class DistributionRuleEditor extends StatefulWidget {
   });
 
   @override
-  State<DistributionRuleEditor> createState() => _DistributionRuleEditorState();
+  State<DistributionRuleEditor> createState() => DistributionRuleEditorState();
 }
 
-class _DistributionRuleEditorState extends State<DistributionRuleEditor> {
+class DistributionRuleEditorState extends State<DistributionRuleEditor> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _descriptionController;
@@ -46,6 +50,8 @@ class _DistributionRuleEditorState extends State<DistributionRuleEditor> {
   late final TextEditingController _rateLimitController;
   late final TextEditingController _timeWindowController;
   late final TextEditingController _backfillRecentDaysController;
+  final _includeTagController = TextEditingController();
+  final _excludeTagController = TextEditingController();
 
   late String _nsfwPolicy;
   late bool _approvalRequired;
@@ -58,6 +64,61 @@ class _DistributionRuleEditorState extends State<DistributionRuleEditor> {
   late Set<int> _selectedTargetChatIds;
   late String _backfillMode;
   bool _saving = false;
+  bool _confirmingExit = false;
+  bool _exitAllowed = false;
+  late final String _initialDraft;
+
+  List<TextEditingController> get _controllers => [
+    _nameController,
+    _descriptionController,
+    _priorityController,
+    _rateLimitController,
+    _timeWindowController,
+    _backfillRecentDaysController,
+    _includeTagController,
+    _excludeTagController,
+  ];
+
+  String _draftSnapshot() => jsonEncode({
+    'text': _controllers.map((controller) => controller.text).toList(),
+    'nsfw': _nsfwPolicy,
+    'approval': _approvalRequired,
+    'enabled': _enabled,
+    'includeTags': _includeTags,
+    'excludeTags': _excludeTags,
+    'tagsMatchMode': _tagsMatchMode,
+    'renderConfig': _renderConfig,
+    'targets': _selectedTargetChatIds.toList()..sort(),
+    'backfill': _backfillMode,
+  });
+
+  bool get _hasChanges => _draftSnapshot() != _initialDraft;
+
+  void _draftChanged() => setState(() {});
+
+  Future<void> _requestClose() async {
+    if (await confirmExit() && mounted) widget.onCancel();
+  }
+
+  void allowExitAfterSave() => setState(() => _exitAllowed = true);
+
+  Future<bool> confirmExit() async {
+    if (_exitAllowed) return true;
+    if (_saving || _confirmingExit) return false;
+    if (!_hasChanges) return true;
+    _confirmingExit = true;
+    final discard = await showDiscardChangesDialog(
+      context,
+      title: '放弃未保存的修改？',
+      message: '退出后，本次修改不会保存。',
+    );
+    _confirmingExit = false;
+    if (discard == true && mounted) {
+      setState(() => _exitAllowed = true);
+      return true;
+    }
+    return false;
+  }
 
   bool get isEditing => widget.rule != null;
 
@@ -90,16 +151,17 @@ class _DistributionRuleEditorState extends State<DistributionRuleEditor> {
     _renderConfig = rule?.renderConfig ?? {};
     _selectedTargetChatIds = Set<int>.from(widget.initialSelectedChatIds);
     _backfillMode = 'new_only';
+    _initialDraft = _draftSnapshot();
+    for (final controller in _controllers) {
+      controller.addListener(_draftChanged);
+    }
   }
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _descriptionController.dispose();
-    _priorityController.dispose();
-    _rateLimitController.dispose();
-    _timeWindowController.dispose();
-    _backfillRecentDaysController.dispose();
+    for (final controller in _controllers) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -109,220 +171,266 @@ class _DistributionRuleEditorState extends State<DistributionRuleEditor> {
     final size = MediaQuery.sizeOf(context);
     final compact = size.width < 640;
 
-    return Container(
-      constraints: BoxConstraints(
-        maxWidth: compact ? double.infinity : AppPane.readableMaxWidth,
-        maxHeight: double.infinity,
-      ),
-      padding: compact
-          ? const EdgeInsets.fromLTRB(20, 20, 20, 16)
-          : const EdgeInsets.fromLTRB(24, 40, 24, 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Flexible(
-            child: Form(
-              key: _formKey,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.only(top: 6, bottom: 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildTextField(
-                      controller: _nameController,
-                      label: '规则名称',
-                      hint: '为规则起一个直观的名字',
-                      validator: (v) =>
-                          v == null || v.isEmpty ? '请输入规则名称' : null,
-                    ),
-                    const SizedBox(height: 24),
-                    _buildSubHeader('哪些内容'),
-                    const SizedBox(height: 16),
-                    _TagInput(
-                      label: '包含标签',
-                      tags: _includeTags,
-                      onChanged: (tags) => setState(() => _includeTags = tags),
-                      placeholder: '输入标签后回车',
-                      chipColor: colorScheme.primary,
-                    ),
-                    if (_includeTags.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      _buildExpressiveDropdown<String>(
-                        label: '匹配模式',
-                        value: _tagsMatchMode,
-                        icon: Icons.api_rounded,
-                        entries: const [
-                          DropdownMenuEntry(value: 'any', label: '包含任一'),
-                          DropdownMenuEntry(value: 'all', label: '包含全部'),
-                        ],
-                        onChanged: (v) => setState(() => _tagsMatchMode = v!),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    _TagInput(
-                      label: '排除标签',
-                      tags: _excludeTags,
-                      onChanged: (tags) => setState(() => _excludeTags = tags),
-                      placeholder: '输入要过滤的标签',
-                      chipColor: colorScheme.error,
-                    ),
-                    const SizedBox(height: 32),
-                    _buildNsfwSelector(),
-                    const SizedBox(height: 16),
-                    _buildSubHeader('发到哪里'),
-                    const SizedBox(height: 12),
-                    _buildTargetSelector(),
-                    const SizedBox(height: 24),
-                    _buildSwitchTile(
-                      title: '人工审批',
-                      subtitle: '开启后，符合规则的内容需在“待审批”中手动确认',
-                      icon: Icons.rate_review_rounded,
-                      value: _approvalRequired,
-                      onChanged: (v) => setState(() => _approvalRequired = v),
-                    ),
-                    _buildSwitchTile(
-                      title: '启用该规则',
-                      subtitle: '控制该规则是否立即生效',
-                      icon: Icons.power_settings_new_rounded,
-                      value: _enabled,
-                      onChanged: (v) => setState(() => _enabled = v),
-                    ),
-                    const SizedBox(height: 32),
-                    ExpansionTile(
-                      title: const Text('高级设置'),
-                      maintainState: true,
-                      tilePadding: EdgeInsets.zero,
-                      children: [
-                        _buildTextField(
-                          controller: _descriptionController,
-                          label: '规则描述',
-                          hint: '可选：描述该规则的用途',
-                          maxLines: 2,
-                        ),
-                        const SizedBox(height: 32),
-                        Row(
+    return BrowserLeaveGuard(
+      enabled: !_exitAllowed && (_saving || _hasChanges),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final shortViewport = constraints.maxHeight < 300;
+          return Container(
+            constraints: BoxConstraints(
+              maxWidth: compact ? double.infinity : AppPane.readableMaxWidth,
+              maxHeight: double.infinity,
+            ),
+            padding: shortViewport
+                ? EdgeInsets.symmetric(horizontal: compact ? 20 : AppSpacing.xl)
+                : compact
+                ? const EdgeInsets.fromLTRB(20, 20, 20, 16)
+                : const EdgeInsets.all(AppSpacing.xl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Flexible(
+                  child: Form(
+                    key: _formKey,
+                    canPop: _exitAllowed || (!_saving && !_hasChanges),
+                    onPopInvokedWithResult: (didPop, _) {
+                      if (!didPop) _requestClose();
+                    },
+                    child: AbsorbPointer(
+                      absorbing: _saving,
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.only(top: 6, bottom: 6),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: _buildTextField(
-                                controller: _priorityController,
-                                label: '优先级',
-                                hint: '0',
-                                keyboardType: TextInputType.number,
-                              ),
+                            _buildTextField(
+                              controller: _nameController,
+                              label: '规则名称',
+                              hint: '为规则起一个直观的名字',
+                              validator: (v) =>
+                                  v == null || v.isEmpty ? '请输入规则名称' : null,
                             ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _buildTextField(
-                                controller: _rateLimitController,
-                                label: '频率限制',
-                                hint: '最大推送数',
-                                keyboardType: TextInputType.number,
-                              ),
+                            const SizedBox(height: 24),
+                            _buildSubHeader('哪些内容'),
+                            const SizedBox(height: 16),
+                            _TagInput(
+                              controller: _includeTagController,
+                              label: '包含标签',
+                              tags: _includeTags,
+                              onChanged: (tags) =>
+                                  setState(() => _includeTags = tags),
+                              placeholder: '输入标签后回车',
+                              chipColor: colorScheme.primary,
                             ),
+                            if (_includeTags.isNotEmpty) ...[
+                              const SizedBox(height: 16),
+                              _buildExpressiveDropdown<String>(
+                                label: '匹配模式',
+                                value: _tagsMatchMode,
+                                icon: Icons.api_rounded,
+                                entries: const [
+                                  DropdownMenuEntry(
+                                    value: 'any',
+                                    label: '包含任一',
+                                  ),
+                                  DropdownMenuEntry(
+                                    value: 'all',
+                                    label: '包含全部',
+                                  ),
+                                ],
+                                onChanged: (v) =>
+                                    setState(() => _tagsMatchMode = v!),
+                              ),
+                            ],
+                            const SizedBox(height: 16),
+                            _TagInput(
+                              controller: _excludeTagController,
+                              label: '排除标签',
+                              tags: _excludeTags,
+                              onChanged: (tags) =>
+                                  setState(() => _excludeTags = tags),
+                              placeholder: '输入要过滤的标签',
+                              chipColor: colorScheme.error,
+                            ),
+                            const SizedBox(height: 32),
+                            _buildNsfwSelector(),
+                            const SizedBox(height: 16),
+                            _buildSubHeader('发到哪里'),
+                            const SizedBox(height: 12),
+                            _buildTargetSelector(),
+                            const SizedBox(height: 24),
+                            _buildSubHeader('如何执行'),
+                            const SizedBox(height: 8),
+                            _buildSwitchTile(
+                              title: '人工审批',
+                              subtitle: '开启后，符合规则的内容需在“待审批”中手动确认',
+                              icon: Icons.rate_review_rounded,
+                              value: _approvalRequired,
+                              onChanged: (v) =>
+                                  setState(() => _approvalRequired = v),
+                            ),
+                            _buildSwitchTile(
+                              title: '启用该规则',
+                              subtitle: '控制该规则是否立即生效',
+                              icon: Icons.power_settings_new_rounded,
+                              value: _enabled,
+                              onChanged: (v) => setState(() => _enabled = v),
+                            ),
+                            const SizedBox(height: 32),
+                            ExpansionTile(
+                              title: const Text('高级设置'),
+                              expansionAnimationStyle: _expansionStyle,
+                              shape: const Border(),
+                              collapsedShape: const Border(),
+                              childrenPadding: const EdgeInsets.only(
+                                top: AppSpacing.md,
+                              ),
+                              maintainState: true,
+                              tilePadding: EdgeInsets.zero,
+                              children: [
+                                _buildTextField(
+                                  controller: _descriptionController,
+                                  label: '规则描述',
+                                  hint: '可选：描述该规则的用途',
+                                  maxLines: 2,
+                                ),
+                                const SizedBox(height: 16),
+                                _buildNumericSettings(),
+                                const SizedBox(height: 24),
+                                _buildBackfillSelector(),
+                                const SizedBox(height: 16),
+                              ],
+                            ),
+                            _buildRenderConfigSection(),
+                            if (shortViewport) ...[
+                              const SizedBox(height: 24),
+                              _buildActions(),
+                            ],
                           ],
                         ),
-                        const SizedBox(height: 24),
-                        _buildTextField(
-                          controller: _timeWindowController,
-                          label: '时间窗口 (秒)',
-                          hint: '3600',
-                          keyboardType: TextInputType.number,
-                        ),
-                        const SizedBox(height: 24),
-                        _buildBackfillSelector(),
-                        const SizedBox(height: 32),
-                        _buildRenderConfigSection(),
-                        const SizedBox(height: 24),
-                      ],
+                      ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
+                if (!shortViewport) ...[
+                  const SizedBox(height: 24),
+                  _buildActions(),
+                ],
+              ],
             ),
-          ),
-          const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                onPressed: _saving ? null : widget.onCancel,
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: AppShape.cardMediaBorder,
-                  ),
-                ),
-                child: const Text('取消'),
-              ),
-              const SizedBox(width: 12),
-              FilledButton(
-                onPressed: _saving ? null : _submit,
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 32,
-                    vertical: 12,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: AppShape.cardMediaBorder,
-                  ),
-                ),
-                child: _saving
-                    ? const SizedBox.square(
-                        dimension: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(isEditing ? '保存修改' : '创建规则'),
-              ),
-            ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 
+  Widget _buildActions() => OverflowBar(
+    alignment: MainAxisAlignment.end,
+    spacing: AppSpacing.sm,
+    overflowSpacing: AppSpacing.xs,
+    children: [
+      TextButton(
+        onPressed: _saving ? null : _requestClose,
+        child: const Text('取消'),
+      ),
+      FilledButton(
+        onPressed: _saving ? null : _submit,
+        child: _saving
+            ? const SizedBox.square(
+                dimension: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Text(isEditing ? '保存修改' : '创建规则'),
+      ),
+    ],
+  );
+
+  AnimationStyle get _expansionStyle => MediaQuery.disableAnimationsOf(context)
+      ? AnimationStyle.noAnimation
+      : const AnimationStyle(
+          duration: AppMotion.surfaceEnter,
+          reverseDuration: AppMotion.surfaceExit,
+          curve: AppMotion.standardCurve,
+        );
+
+  Widget _buildNumericSettings() => LayoutBuilder(
+    builder: (context, constraints) {
+      final minWidth = 200 * MediaQuery.textScalerOf(context).scale(1);
+      final columns = ((constraints.maxWidth + 16) / (minWidth + 16))
+          .floor()
+          .clamp(1, 3);
+      final width = (constraints.maxWidth - (columns - 1) * 16) / columns;
+      return Wrap(
+        spacing: 16,
+        runSpacing: 16,
+        children: [
+          for (final field in [
+            _buildTextField(
+              controller: _priorityController,
+              label: '优先级',
+              hint: '0',
+              keyboardType: TextInputType.number,
+            ),
+            _buildTextField(
+              controller: _rateLimitController,
+              label: '频率限制',
+              hint: '最大推送数',
+              keyboardType: TextInputType.number,
+            ),
+            _buildTextField(
+              controller: _timeWindowController,
+              label: '时间窗口 (秒)',
+              hint: '3600',
+              keyboardType: TextInputType.number,
+            ),
+          ])
+            SizedBox(width: width, child: field),
+        ],
+      );
+    },
+  );
+
   Widget _buildTargetSelector() {
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
     final chats = widget.availableChats.where((c) => c.enabled).toList()
       ..sort((a, b) => a.displayName.compareTo(b.displayName));
-
     if (chats.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerLow,
-          borderRadius: AppShape.cardBorder,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('还没有可用推送目标'),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: widget.onManageTargets,
-              child: const Text('添加推送目标'),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '还没有可用推送目标',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 4),
+          TextButton.icon(
+            onPressed: widget.onManageTargets,
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('添加推送目标'),
+          ),
+        ],
       );
     }
-
-    return Material(
-      color: colorScheme.surfaceContainerLow,
-      borderRadius: AppShape.cardBorder,
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-            child: Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          children: [
+            Text(
+              '已选择 ${_selectedTargetChatIds.length} / ${chats.length}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            Wrap(
+              spacing: 4,
               children: [
-                Text('已选择 ${_selectedTargetChatIds.length} / ${chats.length}'),
-                const Spacer(),
                 TextButton(
                   onPressed: () => setState(() {
                     _selectedTargetChatIds = chats.map((c) => c.id).toSet();
@@ -336,120 +444,88 @@ class _DistributionRuleEditorState extends State<DistributionRuleEditor> {
                 ),
               ],
             ),
+          ],
+        ),
+        for (final chat in chats)
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            value: _selectedTargetChatIds.contains(chat.id),
+            title: Text(chat.displayName),
+            subtitle: Text(chat.chatTypeLabel),
+            onChanged: (checked) {
+              setState(() {
+                if (checked == true) {
+                  _selectedTargetChatIds.add(chat.id);
+                } else {
+                  _selectedTargetChatIds.remove(chat.id);
+                }
+              });
+            },
           ),
-          const Divider(height: 1),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 220),
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: chats.length,
-              itemBuilder: (context, index) {
-                final chat = chats[index];
-                final selected = _selectedTargetChatIds.contains(chat.id);
-                return CheckboxListTile(
-                  dense: true,
-                  value: selected,
-                  title: Text(chat.displayName),
-                  subtitle: Text(chat.chatTypeLabel),
-                  onChanged: (checked) {
-                    setState(() {
-                      if (checked == true) {
-                        _selectedTargetChatIds.add(chat.id);
-                      } else {
-                        _selectedTargetChatIds.remove(chat.id);
-                      }
-                    });
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      ),
+      ],
     );
   }
 
   Widget _buildBackfillSelector() {
     final colorScheme = Theme.of(context).colorScheme;
-    return Material(
-      color: colorScheme.surfaceContainerLow,
-      borderRadius: AppShape.cardBorder,
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.history_rounded,
-                  size: 20,
-                  color: colorScheme.outline,
-                ),
-                const SizedBox(width: 12),
-                Text('历史内容处理', style: Theme.of(context).textTheme.bodyMedium),
-              ],
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(
-                    value: 'new_only',
-                    label: Text('仅新内容'),
-                    icon: Icon(Icons.fiber_new_rounded, size: 18),
-                  ),
-                  ButtonSegment(
-                    value: 'recent_days',
-                    label: Text('最近 N 天'),
-                    icon: Icon(Icons.calendar_month_rounded, size: 18),
-                  ),
-                  ButtonSegment(
-                    value: 'all_history',
-                    label: Text('全部历史'),
-                    icon: Icon(Icons.all_inclusive_rounded, size: 18),
-                  ),
-                ],
-                selected: {_backfillMode},
-                onSelectionChanged: (selection) =>
-                    setState(() => _backfillMode = selection.first),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _backfillMode == 'new_only'
-                  ? '新目标只接收之后入库的内容。'
-                  : _backfillMode == 'recent_days'
-                  ? '为最近一段时间内已解析并已审批的内容补建队列。'
-                  : '为所有已解析并已审批的历史内容补建队列。',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-            if (_backfillMode == 'recent_days') ...[
-              const SizedBox(height: 12),
-              _buildTextField(
-                controller: _backfillRecentDaysController,
-                label: '回填天数',
-                hint: '30',
-                keyboardType: TextInputType.number,
-              ),
-            ],
+            Icon(Icons.history_rounded, size: 20, color: colorScheme.outline),
+            const SizedBox(width: 12),
+            Text('历史内容处理', style: Theme.of(context).textTheme.bodyMedium),
           ],
         ),
-      ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: AppSpacing.xs,
+          runSpacing: AppSpacing.xs,
+          children: [
+            for (final option in const {
+              'new_only': '仅新内容',
+              'recent_days': '最近 N 天',
+              'all_history': '全部历史',
+            }.entries)
+              ChoiceChip(
+                label: Text(option.value),
+                selected: _backfillMode == option.key,
+                onSelected: (_) => setState(() => _backfillMode = option.key),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _backfillMode == 'new_only'
+              ? '新目标只接收之后入库的内容。'
+              : _backfillMode == 'recent_days'
+              ? '为最近一段时间内已解析并已审批的内容补建队列。'
+              : '为所有已解析并已审批的历史内容补建队列。',
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+        ),
+        if (_backfillMode == 'recent_days') ...[
+          const SizedBox(height: 12),
+          _buildTextField(
+            controller: _backfillRecentDaysController,
+            label: '回填天数',
+            hint: '30',
+            keyboardType: TextInputType.number,
+          ),
+        ],
+      ],
     );
   }
 
   Widget _buildSubHeader(String title) {
     return Text(
       title,
-      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-        color: Theme.of(context).colorScheme.primary,
-        fontWeight: FontWeight.bold,
-      ),
+      style: Theme.of(
+        context,
+      ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
     );
   }
 
@@ -509,7 +585,6 @@ class _DistributionRuleEditorState extends State<DistributionRuleEditor> {
     TextInputType? keyboardType,
     String? Function(String?)? validator,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
     return TextFormField(
       controller: controller,
       maxLines: maxLines,
@@ -518,24 +593,7 @@ class _DistributionRuleEditorState extends State<DistributionRuleEditor> {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        filled: true,
-        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-        border: OutlineInputBorder(
-          borderRadius: AppShape.cardBorder,
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: AppShape.cardBorder,
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: AppShape.cardBorder,
-          borderSide: BorderSide(color: colorScheme.primary, width: 2),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
-        ),
+        contentPadding: const EdgeInsets.all(AppSpacing.md),
       ),
     );
   }
@@ -547,23 +605,27 @@ class _DistributionRuleEditorState extends State<DistributionRuleEditor> {
     required List<DropdownMenuEntry<T>> entries,
     required ValueChanged<T?> onChanged,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return DropdownMenu<T>(
-      initialSelection: value,
-      dropdownMenuEntries: entries,
-      onSelected: onChanged,
-      leadingIcon: Icon(icon, size: 20),
-      label: Text(label),
-      expandedInsets: EdgeInsets.zero,
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-        border: OutlineInputBorder(
-          borderRadius: AppShape.cardBorder,
-          borderSide: BorderSide.none,
-        ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    return DropdownButtonFormField<T>(
+      initialValue: value,
+      isExpanded: true,
+      itemHeight: null,
+      menuMaxHeight: 400,
+      borderRadius: AppShape.cardBorder,
+      dropdownColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, size: 20),
       ),
+      items: [
+        for (final entry in entries)
+          DropdownMenuItem<T>(
+            value: entry.value,
+            enabled: entry.enabled,
+            child: Text(entry.label),
+          ),
+      ],
+      onTap: () => FocusScope.of(context).unfocus(),
+      onChanged: onChanged,
     );
   }
 
@@ -574,7 +636,7 @@ class _DistributionRuleEditorState extends State<DistributionRuleEditor> {
     required bool value,
     required ValueChanged<bool> onChanged,
   }) {
-    return SwitchListTile.adaptive(
+    return SwitchListTile(
       contentPadding: EdgeInsets.zero,
       title: Text(title),
       subtitle: Text(subtitle),
@@ -583,54 +645,31 @@ class _DistributionRuleEditorState extends State<DistributionRuleEditor> {
     );
   }
 
-  Widget _buildRenderConfigSection() {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Material(
-      color: colorScheme.surfaceContainerLow,
-      borderRadius: AppShape.cardBorder,
-      clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        shape: RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
-        collapsedShape: RoundedRectangleBorder(
-          borderRadius: AppShape.cardBorder,
-        ),
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: colorScheme.tertiary.withValues(alpha: 0.1),
-            borderRadius: AppShape.cardMediaBorder,
-          ),
-          child: Icon(
-            Icons.palette_rounded,
-            size: 20,
-            color: colorScheme.tertiary,
-          ),
-        ),
-        title: Text(
-          '渲染配置',
-          style: Theme.of(
-            context,
-          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Text(
-          _renderConfig.isEmpty ? '使用默认渲染配置' : '已自定义',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: RenderConfigEditor(
-              config: _renderConfig,
-              onChanged: (cfg) => setState(() => _renderConfig = cfg),
-            ),
-          ),
-        ],
+  Widget _buildRenderConfigSection() => ExpansionTile(
+    title: const Text('消息样式'),
+    subtitle: Text(
+      _renderConfig.isEmpty ? '使用默认样式' : '已自定义',
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
       ),
-    );
-  }
+    ),
+    expansionAnimationStyle: _expansionStyle,
+    shape: const Border(),
+    collapsedShape: const Border(),
+    tilePadding: EdgeInsets.zero,
+    childrenPadding: const EdgeInsets.only(top: 16, bottom: 16),
+    maintainState: true,
+    children: [
+      RenderConfigEditor(
+        config: _renderConfig,
+        onChanged: (cfg) => setState(() => _renderConfig = cfg),
+      ),
+    ],
+  );
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
     final matchConditions = {
       if (_includeTags.isNotEmpty) 'tags': _includeTags,
       if (_excludeTags.isNotEmpty) 'tags_exclude': _excludeTags,
@@ -688,7 +727,8 @@ class _DistributionRuleEditorState extends State<DistributionRuleEditor> {
   }
 }
 
-class _TagInput extends StatefulWidget {
+class _TagInput extends StatelessWidget {
+  final TextEditingController controller;
   final String label;
   final List<String> tags;
   final ValueChanged<List<String>> onChanged;
@@ -696,6 +736,7 @@ class _TagInput extends StatefulWidget {
   final Color chipColor;
 
   const _TagInput({
+    required this.controller,
     required this.label,
     required this.tags,
     required this.onChanged,
@@ -703,87 +744,68 @@ class _TagInput extends StatefulWidget {
     required this.chipColor,
   });
 
-  @override
-  State<_TagInput> createState() => _TagInputState();
-}
-
-class _TagInputState extends State<_TagInput> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
   void _addTag() {
-    final text = _controller.text.trim();
-    if (text.isNotEmpty && !widget.tags.contains(text)) {
-      widget.onChanged([...widget.tags, text]);
-      _controller.clear();
+    final text = controller.text.trim();
+    if (text.isNotEmpty && !tags.contains(text)) {
+      onChanged([...tags, text]);
+      controller.clear();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextFormField(
-          controller: _controller,
+          controller: controller,
           decoration: InputDecoration(
-            labelText: widget.label,
-            hintText: widget.placeholder,
+            labelText: label,
+            hintText: placeholder,
             prefixIcon: const Icon(Icons.tag_rounded, size: 20),
-            filled: true,
-            fillColor: colorScheme.surfaceContainerHighest.withValues(
-              alpha: 0.3,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: AppShape.cardBorder,
-              borderSide: BorderSide.none,
-            ),
             suffixIcon: IconButton(
               onPressed: _addTag,
+              tooltip: '添加$label',
               icon: const Icon(Icons.add_circle_outline_rounded),
             ),
           ),
           onFieldSubmitted: (_) => _addTag(),
         ),
-        if (widget.tags.isNotEmpty) ...[
+        if (tags.isNotEmpty) ...[
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: widget.tags
+            children: tags
                 .map(
-                  (tag) => InputChip(
-                    label: Text(tag),
-                    labelStyle: Theme.of(context).textTheme.labelMedium
-                        ?.copyWith(
-                          color: widget.chipColor,
-                          fontWeight: FontWeight.bold,
-                        ),
-                    backgroundColor: widget.chipColor.withValues(alpha: 0.08),
-                    side: BorderSide(
-                      color: widget.chipColor.withValues(alpha: 0.15),
+                  (tag) => Tooltip(
+                    message: tag,
+                    child: Chip(
+                      label: Text(
+                        tag,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      deleteButtonTooltipMessage: '移除$label $tag',
+
+                      labelStyle: Theme.of(context).textTheme.labelMedium
+                          ?.copyWith(
+                            color: chipColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                      backgroundColor: chipColor.withValues(alpha: 0.08),
+                      side: BorderSide(
+                        color: chipColor.withValues(alpha: 0.15),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: AppShape.cardMediaBorder,
+                      ),
+                      onDeleted: () =>
+                          onChanged(List<String>.from(tags)..remove(tag)),
+                      deleteIcon: const Icon(Icons.close_rounded, size: 16),
+                      deleteIconColor: chipColor,
+                      visualDensity: VisualDensity.compact,
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: AppShape.cardMediaBorder,
-                    ),
-                    onDeleted: () => widget.onChanged(
-                      List<String>.from(widget.tags)..remove(tag),
-                    ),
-                    deleteIcon: const Icon(Icons.close_rounded, size: 16),
-                    deleteIconColor: widget.chipColor,
-                    visualDensity: VisualDensity.compact,
                   ),
                 )
                 .toList(),

@@ -6,6 +6,8 @@ import '../../settings/utils/setting_value.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/toast.dart';
+import '../../../core/widgets/adaptive_form_dialog.dart';
+import '../../../core/widgets/app_filter_menu.dart';
 import '../../../theme/design_tokens.dart';
 import '../../settings/providers/favorites_sync_provider.dart';
 import '../../settings/providers/settings_provider.dart';
@@ -41,19 +43,27 @@ class _FavoritesSyncAutomationPanelState
         _openHighlightedRunIfReady(status.recentRuns);
         return RefreshIndicator(
           onRefresh: () async => ref.invalidate(favoritesSyncStatusProvider),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
-            children: [
-              _SyncOverviewCard(status: status),
-              const SizedBox(height: 16),
-              _PlatformStatusGrid(platforms: status.platforms),
-              const SizedBox(height: 16),
-              _SyncCommandBar(status: status),
-              const SizedBox(height: 16),
-              _SyncPolicyCard(status: status),
-              const SizedBox(height: 24),
-              _RecentRunsList(runs: status.recentRuns),
-            ],
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: AppPane.readableMaxWidth,
+              ),
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+                children: [
+                  _SyncOverviewCard(status: status),
+                  const SizedBox(height: 16),
+                  const _SyncCommandBar(),
+                  const SizedBox(height: 24),
+                  _PlatformStatusGrid(platforms: status.platforms),
+                  const SizedBox(height: 24),
+                  _SyncPolicyCard(status: status),
+                  const SizedBox(height: 24),
+                  _RecentRunsList(runs: status.recentRuns),
+                ],
+              ),
+            ),
           ),
         );
       },
@@ -146,13 +156,30 @@ class _SyncPolicyCard extends ConsumerWidget {
     return ExpansionTile(
       title: const Text('同步策略'),
       tilePadding: EdgeInsets.zero,
+      shape: const RoundedRectangleBorder(
+        borderRadius: AppShape.cardMediaBorder,
+      ),
+      collapsedShape: const RoundedRectangleBorder(
+        borderRadius: AppShape.cardMediaBorder,
+      ),
+      clipBehavior: Clip.antiAlias,
+      expansionAnimationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : AnimationStyle(
+              duration: AppMotion.surfaceEnter,
+              reverseDuration: AppMotion.surfaceExit,
+              curve: AppMotion.standardCurve,
+            ),
       children: [
         settings.when(
           loading: () => const LinearProgressIndicator(),
           error: (error, _) => const Text('策略读取失败，请刷新后重试'),
           data: (values) => Column(
             children: [
-              SwitchListTile.adaptive(
+              SwitchListTile(
+                shape: const RoundedRectangleBorder(
+                  borderRadius: AppShape.cardMediaBorder,
+                ),
                 contentPadding: EdgeInsets.zero,
                 title: const Text('自动同步'),
                 value: parseBoolSetting(
@@ -170,7 +197,10 @@ class _SyncPolicyCard extends ConsumerWidget {
                   value: value,
                 ),
               ),
-              SwitchListTile.adaptive(
+              SwitchListTile(
+                shape: const RoundedRectangleBorder(
+                  borderRadius: AppShape.cardMediaBorder,
+                ),
                 contentPadding: EdgeInsets.zero,
                 title: const Text('允许手动同步未启用的平台'),
                 subtitle: const Text('每次同步仍需预览并确认'),
@@ -192,45 +222,86 @@ class _SyncPolicyCard extends ConsumerWidget {
             ],
           ),
         ),
-        _PolicyControlRow(
-          label: '同步间隔',
-          value: status.intervalMinutes,
-          values: const [60, 180, 360, 720, 1440],
-          suffix: '分钟',
-          onChanged: (value) => _updateFavoritesSyncSetting(
-            context,
-            ref,
-            key: 'favorites_sync_interval_minutes',
-            value: value,
-          ),
-        ),
-        _PolicyControlRow(
-          label: '单轮上限',
-          value: status.maxItems,
-          values: const [20, 50, 100, 200],
-          suffix: '条',
-          onChanged: (value) => _updateFavoritesSyncSetting(
-            context,
-            ref,
-            key: 'favorites_sync_max_items',
-            value: value,
-          ),
-        ),
-        _PolicyStringControlRow(
-          label: '重复内容',
-          value: status.duplicateStrategy,
-          options: const {'merge': '合并来源', 'skip': '跳过'},
-          description: _duplicateStrategyDescription(status.duplicateStrategy),
-          onChanged: (value) => _updateFavoritesSyncSetting(
-            context,
-            ref,
-            key: 'favorites_sync_duplicate_strategy',
-            value: value,
-          ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final columns =
+                constraints.maxWidth >=
+                    560 * MediaQuery.textScalerOf(context).scale(1)
+                ? 2
+                : 1;
+            final width = (constraints.maxWidth - (columns - 1) * 12) / columns;
+            final fields = <Widget>[
+              _PolicyControlRow(
+                label: '同步间隔',
+                value: status.intervalMinutes,
+                values: const [60, 180, 360, 720, 1440],
+                suffix: '分钟',
+                onChanged: (value) => _updateFavoritesSyncSetting(
+                  context,
+                  ref,
+                  key: 'favorites_sync_interval_minutes',
+                  value: value,
+                ),
+              ),
+              _PolicyControlRow(
+                label: '单轮上限',
+                value: status.maxItems,
+                values: const [20, 50, 100, 200],
+                suffix: '条',
+                onChanged: (value) => _updateFavoritesSyncSetting(
+                  context,
+                  ref,
+                  key: 'favorites_sync_max_items',
+                  value: value,
+                ),
+              ),
+              _PolicyStringControlRow(
+                label: '重复内容',
+                description: _duplicateStrategyDescription(
+                  status.duplicateStrategy,
+                ),
+                value: status.duplicateStrategy,
+                options: const {'merge': '合并来源', 'skip': '跳过'},
+                onChanged: (value) => _updateFavoritesSyncSetting(
+                  context,
+                  ref,
+                  key: 'favorites_sync_duplicate_strategy',
+                  value: value,
+                ),
+              ),
+              for (final platform in status.platforms)
+                _PolicyControlRow(
+                  label: '${_platformLabel(platform.platform)} 同步速率',
+                  value: platform.ratePerMinute.round(),
+                  values: const [1, 3, 5, 10, 20],
+                  suffix: '条/分钟',
+                  onChanged: (value) => _updateFavoritesSyncSetting(
+                    context,
+                    ref,
+                    key: 'favorites_sync_rate_${platform.platform}',
+                    value: value,
+                  ),
+                ),
+            ];
+            return Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final field in fields)
+                    SizedBox(width: width, child: field),
+                ],
+              ),
+            );
+          },
         ),
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 12),
-          child: Text('首次从最新一页开始同步。远端取消收藏后，本地内容仍保留。'),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text('首次从最新一页开始同步。远端取消收藏后，本地内容仍保留。'),
+          ),
         ),
       ],
     );
@@ -242,68 +313,28 @@ class _PolicyStringControlRow extends StatelessWidget {
     required this.label,
     required this.value,
     required this.options,
-    required this.description,
     required this.onChanged,
+    required this.description,
   });
-
+  final String description;
   final String label;
   final String value;
   final Map<String, String> options;
-  final String description;
   final ValueChanged<String> onChanged;
-
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final normalizedValue = options.containsKey(value)
-        ? value
-        : options.keys.first;
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.difference_rounded, size: 18, color: cs.onSurfaceVariant),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  description,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          DropdownButton<String>(
-            value: normalizedValue,
-            underline: const SizedBox.shrink(),
-            items: [
-              for (final entry in options.entries)
-                DropdownMenuItem(value: entry.key, child: Text(entry.value)),
-            ],
-            onChanged: (next) {
-              if (next != null && next != normalizedValue) {
-                onChanged(next);
-              }
-            },
-          ),
-        ],
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      AppFilterMenu(
+        label: label,
+        value: options.containsKey(value) ? value : options.keys.first,
+        options: options,
+        onSelected: onChanged,
       ),
-    );
-  }
+      const SizedBox(height: 4),
+      Text(description, style: Theme.of(context).textTheme.bodySmall),
+    ],
+  );
 }
 
 class _PolicyControlRow extends StatelessWidget {
@@ -314,57 +345,25 @@ class _PolicyControlRow extends StatelessWidget {
     required this.suffix,
     required this.onChanged,
   });
-
   final String label;
   final int value;
   final List<int> values;
   final String suffix;
   final ValueChanged<int> onChanged;
-
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final options = _withCurrentValue(values, value);
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Row(
-        children: [
-          Icon(Icons.tune_rounded, size: 18, color: cs.onSurfaceVariant),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              label,
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          DropdownButton<int>(
-            value: value,
-            underline: const SizedBox.shrink(),
-            items: [
-              for (final option in options)
-                DropdownMenuItem(value: option, child: Text('$option $suffix')),
-            ],
-            onChanged: (next) {
-              if (next != null && next != value) {
-                onChanged(next);
-              }
-            },
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => AppFilterMenu(
+    label: label,
+    value: '$value',
+    options: {
+      for (final option in _withCurrentValue(values, value))
+        '$option': '$option $suffix',
+    },
+    onSelected: (next) => onChanged(int.parse(next)),
+  );
 }
 
 class _SyncCommandBar extends ConsumerWidget {
-  const _SyncCommandBar({required this.status});
-
-  final FavoritesSyncStatus status;
+  const _SyncCommandBar();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -405,9 +404,9 @@ class _PlatformStatusGrid extends StatelessWidget {
 
     return Column(
       children: [
-        for (final platform in platforms) ...[
-          _PlatformStatusCard(status: platform),
-          const Divider(height: 24),
+        for (final entry in platforms.indexed) ...[
+          if (entry.$1 > 0) const Divider(height: 32),
+          _PlatformStatusCard(status: entry.$2),
         ],
       ],
     );
@@ -428,30 +427,26 @@ class _PlatformStatusCard extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Icon(_platformIcon(status.platform), size: 22),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                _platformLabel(status.platform),
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
-            Switch.adaptive(
-              value: status.enabled,
-              onChanged: settings.hasValue
-                  ? (value) => _updateFavoritesSyncSetting(
-                      context,
-                      ref,
-                      key: 'favorites_sync_platforms',
-                      value: value
-                          ? {...enabled, status.platform}.toList()
-                          : enabled.where((p) => p != status.platform).toList(),
-                    )
-                  : null,
-            ),
-          ],
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          shape: const RoundedRectangleBorder(
+            borderRadius: AppShape.cardMediaBorder,
+          ),
+          title: Text(
+            _platformLabel(status.platform),
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          value: status.enabled,
+          onChanged: settings.hasValue
+              ? (value) => _updateFavoritesSyncSetting(
+                  context,
+                  ref,
+                  key: 'favorites_sync_platforms',
+                  value: value
+                      ? {...enabled, status.platform}.toList()
+                      : enabled.where((p) => p != status.platform).toList(),
+                )
+              : null,
         ),
         Text(
           !status.authenticated ? '连接账号后可同步收藏' : _platformStateLabel(status),
@@ -488,30 +483,6 @@ class _PlatformStatusCard extends ConsumerWidget {
                 child: const Text('同步'),
               ),
             ],
-            DropdownButton<int>(
-              value: status.ratePerMinute.round(),
-              underline: const SizedBox.shrink(),
-              items: [
-                for (final rate in _withCurrentValue(const [
-                  1,
-                  3,
-                  5,
-                  10,
-                  20,
-                ], status.ratePerMinute.round()))
-                  DropdownMenuItem(value: rate, child: Text('$rate 条/分钟')),
-              ],
-              onChanged: (value) {
-                if (value != null) {
-                  _updateFavoritesSyncSetting(
-                    context,
-                    ref,
-                    key: 'favorites_sync_rate_${status.platform}',
-                    value: value,
-                  );
-                }
-              },
-            ),
           ],
         ),
       ],
@@ -541,21 +512,10 @@ class _RecentRunsList extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 8),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: AppShape.cardBorder,
-            border: Border.all(color: theme.colorScheme.outlineVariant),
-          ),
-          child: Column(
-            children: [
-              for (final entry in runs.take(8).indexed) ...[
-                _RunTile(run: entry.$2),
-                if (entry.$1 < runs.take(8).length - 1)
-                  const Divider(height: 1),
-              ],
-            ],
-          ),
-        ),
+        for (final entry in runs.take(8).indexed) ...[
+          if (entry.$1 > 0) const Divider(height: 24),
+          _RunTile(run: entry.$2),
+        ],
       ],
     );
   }
@@ -573,34 +533,50 @@ class _RunTile extends ConsumerWidget {
     final isError = status == 'error';
     final error = _runString(run, 'error');
 
-    return ListTile(
-      leading: Icon(
-        isError ? Icons.error_outline_rounded : Icons.task_alt_rounded,
-        color: isError
-            ? Theme.of(context).colorScheme.error
-            : Theme.of(context).colorScheme.primary,
-      ),
-      title: Text(
-        '${_runStatusLabel(status)} · ${_runString(run, 'scope') == 'all' ? '全部平台' : _platformLabel(_runString(run, 'scope') ?? '')}',
-      ),
-      subtitle: Text(
-        [
-          if (_runString(run, 'started_at') != null)
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${_runStatusLabel(status)} · ${_runString(run, 'scope') == 'all' ? '全部平台' : _platformLabel(_runString(run, 'scope') ?? '')}',
+          style: theme.textTheme.titleSmall,
+        ),
+        if (_runString(run, 'started_at') != null) ...[
+          const SizedBox(height: 4),
+          Text(
             _formatTime(_runString(run, 'started_at')),
-          if (error != null) '错误: $error',
-        ].join('\n'),
-        maxLines: 4,
-        overflow: TextOverflow.ellipsis,
-      ),
-      isThreeLine: true,
-      trailing: isError && runId != null
-          ? OutlinedButton.icon(
-              onPressed: () => _retryRun(context, ref, runId),
-              icon: const Icon(Icons.replay_rounded, size: 16),
-              label: const Text('重试'),
-            )
-          : null,
-      onTap: runId == null ? null : () => context.push('/tasks/$runId'),
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
+        if (error != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            error,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.error,
+            ),
+          ),
+        ],
+        if (runId != null) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              TextButton(
+                onPressed: () => context.push('/tasks/$runId'),
+                child: const Text('查看记录'),
+              ),
+              if (isError)
+                OutlinedButton.icon(
+                  onPressed: () => _retryRun(context, ref, runId),
+                  icon: const Icon(Icons.replay_rounded, size: 16),
+                  label: const Text('重试'),
+                ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 }
@@ -691,96 +667,146 @@ Future<bool> _showPreviewDialog(
       : _platformLabel(preview.platform);
   final result = await showDialog<bool>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: Text(confirmMode ? '确认同步 $label 收藏' : '$label 收藏同步预览'),
-      content: SizedBox(
-        width: 520,
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
+    builder: (dialogContext) => AdaptiveFormDialog(
+      title: confirmMode ? '同步$label收藏' : '$label收藏同步预览',
+      contentBuilder: (context, width, short) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '预计新增 ${preview.estimatedNew} 条',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 16,
+            runSpacing: 4,
             children: [
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  Text('拉取 ${preview.fetched}'),
-                  Text('预计新增 ${preview.estimatedNew}'),
-                  Text('已存在 ${preview.existing}'),
-                  Text('跳过 ${preview.skipped}'),
-                ],
-              ),
-              const SizedBox(height: 14),
-              for (final item in preview.platforms)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _PreviewPlatformSection(item: item),
-                ),
-              Text(
-                '确认前不会导入内容或改变同步进度。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                ),
-              ),
+              Text('已获取 ${preview.fetched}'),
+              Text('已存在 ${preview.existing}'),
+              Text('跳过 ${preview.skipped}'),
             ],
           ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(false),
-          child: Text(confirmMode ? '取消' : '关闭'),
-        ),
-        if (confirmMode)
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('确认同步'),
+          const SizedBox(height: 8),
+          Text(
+            '预览不会导入内容或改变同步进度。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
           ),
-      ],
+          const SizedBox(height: 20),
+          for (final item in preview.platforms)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _PreviewPlatformSection(
+                item: item,
+                initiallyExpanded: preview.platform != 'all',
+              ),
+            ),
+        ],
+      ),
+      actions: OverflowBar(
+        alignment: MainAxisAlignment.end,
+        overflowAlignment: OverflowBarAlignment.end,
+        spacing: 8,
+        overflowSpacing: 8,
+        children: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(confirmMode ? '取消' : '关闭'),
+          ),
+          if (confirmMode)
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('确认同步'),
+            ),
+        ],
+      ),
     ),
   );
   return result == true;
 }
 
 class _PreviewPlatformSection extends StatelessWidget {
-  const _PreviewPlatformSection({required this.item});
-
+  const _PreviewPlatformSection({
+    required this.item,
+    required this.initiallyExpanded,
+  });
   final FavoritesSyncPlatformPreview item;
+  final bool initiallyExpanded;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final failed = item.status == 'failed';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final title = Text(
+      _platformLabel(item.platform),
+      style: theme.textTheme.titleMedium,
+    );
+    if (item.status == 'failed') {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            title,
+            const SizedBox(height: 4),
+            Text(
+              item.errorHint ?? item.error ?? '预览失败',
+              style: theme.textTheme.bodyMedium?.copyWith(color: cs.error),
+            ),
+          ],
+        ),
+      );
+    }
+    final summary = '预计新增 ${item.estimatedNew} · 已存在 ${item.existing}';
+    if (item.items.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [title, const SizedBox(height: 4), Text(summary)],
+        ),
+      );
+    }
+    return ExpansionTile(
+      title: title,
+      subtitle: Text(summary),
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: const EdgeInsets.only(top: 8, bottom: 8),
+      shape: const RoundedRectangleBorder(
+        borderRadius: AppShape.cardMediaBorder,
+      ),
+      collapsedShape: const RoundedRectangleBorder(
+        borderRadius: AppShape.cardMediaBorder,
+      ),
+      clipBehavior: Clip.antiAlias,
+      initiallyExpanded: initiallyExpanded,
+      maintainState: true,
+      expansionAnimationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : AnimationStyle(
+              duration: AppMotion.surfaceEnter,
+              reverseDuration: AppMotion.surfaceExit,
+              curve: AppMotion.standardCurve,
+            ),
       children: [
-        Text(
-          failed
-              ? '${_platformLabel(item.platform)}: ${item.errorHint ?? item.error ?? '预览失败'}'
-              : '${_platformLabel(item.platform)}: 新增 ${item.estimatedNew}，重复 ${item.existing}',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: failed ? cs.error : null,
-            fontWeight: FontWeight.w700,
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            '候选样本 · ${item.items.take(5).length} 条',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
           ),
         ),
-        if (!failed && item.items.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(
-            '候选样本',
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: cs.onSurfaceVariant,
-              fontWeight: FontWeight.w700,
-            ),
+        for (final sample in item.items.take(5))
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: _PreviewFavoriteItem(item: sample),
           ),
-          const SizedBox(height: 6),
-          for (final sample in item.items.take(5))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: _PreviewFavoriteItem(item: sample),
-            ),
-        ],
       ],
     );
   }
@@ -788,7 +814,6 @@ class _PreviewPlatformSection extends StatelessWidget {
 
 class _PreviewFavoriteItem extends StatelessWidget {
   const _PreviewFavoriteItem({required this.item});
-
   final Map<String, dynamic> item;
 
   @override
@@ -798,57 +823,27 @@ class _PreviewFavoriteItem extends StatelessWidget {
     final title = _mapString(item, 'title');
     final url = _mapString(item, 'url') ?? '-';
     final exists = item['exists'] == true;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: AppShape.cardMediaBorder,
-        border: Border.all(color: cs.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              exists ? Icons.content_copy_rounded : Icons.add_circle_rounded,
-              size: 18,
-              color: exists ? cs.outline : cs.primary,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (title != null)
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  SelectableText(
-                    url,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              exists ? '已存在' : '预计新增',
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: exists ? cs.outline : cs.primary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          exists ? '已存在' : '预计新增',
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: exists ? cs.onSurfaceVariant : cs.primary,
+          ),
         ),
-      ),
+        if (title != null) ...[
+          const SizedBox(height: 4),
+          Text(title, style: theme.textTheme.bodyMedium),
+        ],
+        const SizedBox(height: 4),
+        SelectableText(
+          url,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: cs.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -958,15 +953,6 @@ String _platformLabel(String platform) {
     'xiaohongshu' => '小红书',
     'twitter' => 'Twitter / X',
     _ => platform,
-  };
-}
-
-IconData _platformIcon(String platform) {
-  return switch (platform) {
-    'zhihu' => Icons.question_answer_rounded,
-    'xiaohongshu' => Icons.menu_book_rounded,
-    'twitter' => Icons.alternate_email_rounded,
-    _ => Icons.bookmarks_rounded,
   };
 }
 

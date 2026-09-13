@@ -1,8 +1,11 @@
+import '../../routing/app_navigation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/widgets/discard_changes_dialog.dart';
 
-import '../../core/layout/responsive_layout.dart';
+import '../../core/widgets/adaptive_form_dialog.dart';
+import '../../core/widgets/browser_leave_guard.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/toast.dart';
 import '../../core/widgets/platform_badge.dart';
@@ -20,6 +23,7 @@ class EventDetailPage extends ConsumerWidget {
     final event = ref.watch(knowledgeEventDetailProvider(eventId));
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBackButton(fallback: '/collection'),
         title: const Text('事件详情'),
         actions: [
           event.maybeWhen(
@@ -40,61 +44,32 @@ class EventDetailPage extends ConsumerWidget {
 
 class _EventBody extends StatelessWidget {
   const _EventBody({required this.event});
-
   final KnowledgeEventDetail event;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final metrics = WindowMetrics.fromSize(
-        Size(constraints.maxWidth, constraints.maxHeight),
-      );
-      if (metrics.supportsSupportingPane) {
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: _EventTimeline(event: event, expanded: true)),
-            const VerticalDivider(width: 1),
-            SizedBox(
-              width: AppPane.supportingWidth,
-              child: _EventOverview(event: event),
-            ),
-          ],
-        );
-      }
-      return _EventTimeline(event: event, expanded: false);
-    },
-  );
-}
-
-class _EventTimeline extends StatelessWidget {
-  const _EventTimeline({required this.event, required this.expanded});
-
-  final KnowledgeEventDetail event;
-  final bool expanded;
-
-  @override
-  Widget build(BuildContext context) {
-    final padding = expanded ? AppSpacing.xl : AppSpacing.md;
-    return ListView(
-      key: const ValueKey('knowledge-event-timeline'),
-      padding: EdgeInsets.all(padding),
-      children: [
-        if (!expanded) ...[
+  Widget build(BuildContext context) => Center(
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(
+        maxWidth: AppPane.readableMaxWidth + AppSpacing.xl * 2,
+      ),
+      child: ListView(
+        key: PageStorageKey('knowledge-event-${event.id}'),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        children: [
           _EventHeader(event: event),
-          const SizedBox(height: AppSpacing.xl),
+          const SizedBox(height: AppSpacing.xxl),
+          Text('事件时间线', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: AppSpacing.lg),
+          for (var index = 0; index < event.members.length; index++)
+            _TimelineEntry(
+              event: event,
+              member: event.members[index],
+              isLast: index == event.members.length - 1,
+            ),
         ],
-        Text('事件时间线', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: AppSpacing.lg),
-        for (var index = 0; index < event.members.length; index++)
-          _TimelineEntry(
-            event: event,
-            member: event.members[index],
-            isLast: index == event.members.length - 1,
-          ),
-      ],
-    );
-  }
+      ),
+    ),
+  );
 }
 
 class _TimelineEntry extends ConsumerWidget {
@@ -109,33 +84,12 @@ class _TimelineEntry extends ConsumerWidget {
   final bool isLast;
 
   Future<void> _edit(BuildContext context, WidgetRef ref) async {
-    final result = await showDialog<_MemberEditResult>(
+    final saved = await showDialog<bool>(
       context: context,
-      builder: (_) => _MemberEditDialog(member: member),
+      animationStyle: _editAnimation(context),
+      builder: (_) => _EventEditDialog(event: event, member: member),
     );
-    if (result == null || !context.mounted) return;
-    try {
-      await ref
-          .read(knowledgeEventActionsProvider)
-          .updateMember(
-            eventId: event.id,
-            contentId: member.contentId,
-            changes: {
-              'role': result.role,
-              'evidence_state': result.evidenceState,
-              'note': result.note,
-            },
-          );
-      if (context.mounted) Toast.show(context, '事件关系已更新');
-    } catch (error) {
-      if (context.mounted) {
-        Toast.show(
-          context,
-          formatApiErrorMessage(error, fallbackMessage: '更新事件关系失败'),
-          isError: true,
-        );
-      }
-    }
+    if (saved == true && context.mounted) Toast.show(context, '事件关系已更新');
   }
 
   Future<void> _remove(BuildContext context, WidgetRef ref) async {
@@ -253,23 +207,33 @@ class _TimelineEntry extends ConsumerWidget {
                             ),
                           ],
                         ),
-                        Text(
-                          title == null || title.isEmpty ? '无标题内容' : title,
-                          style: Theme.of(context).textTheme.titleMedium,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                title == null || title.isEmpty
+                                    ? '无标题内容'
+                                    : title,
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.xs),
+                            const Icon(Icons.chevron_right_rounded, size: 20),
+                          ],
                         ),
                         const SizedBox(height: AppSpacing.xs),
                         Wrap(
                           spacing: AppSpacing.xs,
                           runSpacing: AppSpacing.xs,
                           children: [
-                            Chip(label: Text(_roleLabel(member.role))),
-                            Chip(
-                              avatar: Icon(
-                                _evidenceIcon(member.evidenceState),
-                                size: 17,
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Text(
+                                _roleLabel(member.role),
+                                style: Theme.of(context).textTheme.labelLarge,
                               ),
-                              label: Text(_evidenceLabel(member.evidenceState)),
                             ),
+                            _EvidenceTag(state: member.evidenceState),
                             if ([
                               'http',
                               'https',
@@ -277,7 +241,6 @@ class _TimelineEntry extends ConsumerWidget {
                               PlatformBadge(platform: member.platform),
                           ],
                         ),
-                        const SizedBox(height: AppSpacing.sm),
                         if (member.summary?.trim() case final summary?
                             when summary.isNotEmpty) ...[
                           const SizedBox(height: AppSpacing.xs),
@@ -300,16 +263,6 @@ class _TimelineEntry extends ConsumerWidget {
                             child: Text('关系说明：$note'),
                           ),
                         ],
-                        const SizedBox(height: AppSpacing.sm),
-                        Row(
-                          children: [
-                            const Icon(Icons.article_outlined, size: 18),
-                            const SizedBox(width: AppSpacing.xs),
-                            const Text('查看原内容'),
-                            const Spacer(),
-                            const Icon(Icons.chevron_right_rounded),
-                          ],
-                        ),
                       ],
                     ),
                   ),
@@ -323,36 +276,41 @@ class _TimelineEntry extends ConsumerWidget {
   }
 }
 
-class _EventOverview extends StatelessWidget {
-  const _EventOverview({required this.event});
-
-  final KnowledgeEventDetail event;
+class _EvidenceTag extends StatelessWidget {
+  const _EvidenceTag({required this.state, this.count});
+  final String state;
+  final int? count;
 
   @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(AppSpacing.md),
-    children: [
-      _EventHeader(event: event),
-      const SizedBox(height: AppSpacing.lg),
-      Text('证据概览', style: Theme.of(context).textTheme.titleMedium),
-      const SizedBox(height: AppSpacing.sm),
-      for (final state in const [
-        'confirmed',
-        'unverified',
-        'disputed',
-        'viewpoint',
-      ])
-        ListTile(
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(_evidenceIcon(state)),
-          title: Text(_evidenceLabel(state)),
-          trailing: Text(
-            '${event.members.where((member) => member.evidenceState == state).length}',
-          ),
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: AppShape.cardMediaBorder,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _evidenceIcon(state),
+              size: 16,
+              color: _evidenceColor(theme.colorScheme, state),
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                '${_evidenceLabel(state)}${count == null ? '' : ' $count'}',
+                style: theme.textTheme.labelLarge,
+              ),
+            ),
+          ],
         ),
-    ],
-  );
+      ),
+    );
+  }
 }
 
 class _EventHeader extends StatelessWidget {
@@ -366,7 +324,14 @@ class _EventHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(event.title, style: Theme.of(context).textTheme.headlineSmall),
+        Semantics(
+          container: true,
+          header: true,
+          child: Text(
+            event.title,
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+        ),
         if (event.description?.trim() case final description?
             when description.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.sm),
@@ -379,6 +344,19 @@ class _EventHeader extends StatelessWidget {
             context,
           ).textTheme.labelLarge?.copyWith(color: scheme.onSurfaceVariant),
         ),
+        const SizedBox(height: AppSpacing.md),
+        Wrap(
+          spacing: AppSpacing.xs,
+          runSpacing: AppSpacing.xs,
+          children: [
+            for (final state in _evidenceLabels.keys)
+              if (event.members
+                      .where((member) => member.evidenceState == state)
+                      .length
+                  case final count when count > 0)
+                _EvidenceTag(state: state, count: count),
+          ],
+        ),
       ],
     );
   }
@@ -390,26 +368,12 @@ class _EventMenu extends ConsumerWidget {
   final KnowledgeEventDetail event;
 
   Future<void> _edit(BuildContext context, WidgetRef ref) async {
-    final result = await showDialog<(String, String?)>(
+    final saved = await showDialog<bool>(
       context: context,
+      animationStyle: _editAnimation(context),
       builder: (_) => _EventEditDialog(event: event),
     );
-    if (result == null || !context.mounted) return;
-    try {
-      await ref.read(knowledgeEventActionsProvider).updateEvent(event.id, {
-        'title': result.$1,
-        'description': result.$2,
-      });
-      if (context.mounted) Toast.show(context, '事件信息已更新');
-    } catch (error) {
-      if (context.mounted) {
-        Toast.show(
-          context,
-          formatApiErrorMessage(error, fallbackMessage: '更新事件失败'),
-          isError: true,
-        );
-      }
-    }
+    if (saved == true && context.mounted) Toast.show(context, '事件信息已更新');
   }
 
   Future<void> _setStatus(
@@ -454,24 +418,127 @@ class _EventMenu extends ConsumerWidget {
   );
 }
 
-class _EventEditDialog extends StatefulWidget {
-  const _EventEditDialog({required this.event});
+AnimationStyle _editAnimation(BuildContext context) =>
+    MediaQuery.disableAnimationsOf(context)
+    ? AnimationStyle.noAnimation
+    : const AnimationStyle(
+        duration: AppMotion.surfaceEnter,
+        reverseDuration: AppMotion.surfaceExit,
+        curve: AppMotion.standardCurve,
+      );
 
+class _EventEditDialog extends ConsumerStatefulWidget {
+  const _EventEditDialog({required this.event, this.member});
   final KnowledgeEventDetail event;
+  final KnowledgeEventMember? member;
 
   @override
-  State<_EventEditDialog> createState() => _EventEditDialogState();
+  ConsumerState<_EventEditDialog> createState() => _EventEditDialogState();
 }
 
-class _EventEditDialogState extends State<_EventEditDialog> {
+class _EventEditDialogState extends ConsumerState<_EventEditDialog> {
   late final TextEditingController _title;
   late final TextEditingController _description;
+  late String _role;
+  late String _evidenceState;
+  bool _saving = false;
+  bool _confirmingExit = false;
+  String? _error;
+  bool get _editingMember => widget.member != null;
+  String get _initialDescription =>
+      (_editingMember ? widget.member!.note : widget.event.description) ?? '';
 
   @override
   void initState() {
     super.initState();
-    _title = TextEditingController(text: widget.event.title);
-    _description = TextEditingController(text: widget.event.description);
+    _title = TextEditingController(text: widget.event.title)
+      ..addListener(_changed);
+    _description = TextEditingController(text: _initialDescription)
+      ..addListener(_changed);
+    _role = widget.member?.role ?? '';
+    _evidenceState = widget.member?.evidenceState ?? '';
+  }
+
+  void _changed() => setState(() {});
+
+  Map<String, dynamic> get _changes {
+    final description = _description.text.trim();
+    return {
+      if (!_editingMember && _title.text.trim() != widget.event.title)
+        'title': _title.text.trim(),
+      if (description != _initialDescription)
+        (_editingMember ? 'note' : 'description'): description.isEmpty
+            ? null
+            : description,
+      if (_editingMember && _role != widget.member!.role) 'role': _role,
+      if (_editingMember && _evidenceState != widget.member!.evidenceState)
+        'evidence_state': _evidenceState,
+    };
+  }
+
+  bool get _dirty =>
+      (!_editingMember && _title.text != widget.event.title) ||
+      _description.text != _initialDescription ||
+      (_editingMember &&
+          (_role != widget.member!.role ||
+              _evidenceState != widget.member!.evidenceState));
+
+  Future<void> _close() async {
+    if (_saving || _confirmingExit) return;
+    if (!_dirty) {
+      Navigator.pop(context);
+      return;
+    }
+    _confirmingExit = true;
+    final editingFocus = FocusManager.instance.primaryFocus;
+    editingFocus?.unfocus();
+    final discard = await showDiscardChangesDialog(
+      context,
+      title: '放弃未保存的修改？',
+      message: '退出后，本次编辑不会保存。',
+      animationStyle: _editAnimation(context),
+    );
+    _confirmingExit = false;
+    if (!mounted) return;
+    if (discard == true) {
+      Navigator.pop(context);
+    } else if (editingFocus?.context != null) {
+      editingFocus!.requestFocus();
+    }
+  }
+
+  Future<void> _save() async {
+    if (_saving ||
+        _changes.isEmpty ||
+        (!_editingMember && _title.text.trim().isEmpty)) {
+      return;
+    }
+    final changes = _changes;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final actions = ref.read(knowledgeEventActionsProvider);
+      if (_editingMember) {
+        await actions.updateMember(
+          eventId: widget.event.id,
+          contentId: widget.member!.contentId,
+          changes: changes,
+        );
+      } else {
+        await actions.updateEvent(widget.event.id, changes);
+      }
+      if (mounted) Navigator.pop(context, true);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = formatApiErrorMessage(error, fallbackMessage: '保存失败，请重试');
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -481,172 +548,114 @@ class _EventEditDialogState extends State<_EventEditDialog> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('编辑事件'),
-    content: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: AppPane.formMaxWidth),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _title,
-            maxLength: 240,
-            decoration: const InputDecoration(
-              labelText: '标题',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          TextField(
-            controller: _description,
-            maxLength: 4000,
-            minLines: 2,
-            maxLines: 5,
-            decoration: const InputDecoration(
-              labelText: '事件说明',
-              border: OutlineInputBorder(),
-            ),
-          ),
-        ],
-      ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('取消'),
-      ),
-      FilledButton(
-        onPressed: () {
-          final title = _title.text.trim();
-          if (title.isEmpty) return;
-          final description = _description.text.trim();
-          Navigator.pop(context, (
-            title,
-            description.isEmpty ? null : description,
-          ));
-        },
-        child: const Text('保存'),
-      ),
+  Widget _selector(
+    String label,
+    String value,
+    Map<String, String> options,
+    ValueChanged<String> onChanged,
+  ) => DropdownButtonFormField<String>(
+    initialValue: value,
+    isExpanded: true,
+    itemHeight: null,
+    menuMaxHeight: 400,
+    borderRadius: AppShape.cardBorder,
+    dropdownColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+    decoration: InputDecoration(labelText: label),
+    items: [
+      for (final item in options.entries)
+        DropdownMenuItem(value: item.key, child: Text(item.value)),
     ],
+    onChanged: _saving
+        ? null
+        : (value) {
+            if (value != null) onChanged(value);
+          },
   );
-}
-
-class _MemberEditResult {
-  const _MemberEditResult(this.role, this.evidenceState, this.note);
-
-  final String role;
-  final String evidenceState;
-  final String? note;
-}
-
-class _MemberEditDialog extends StatefulWidget {
-  const _MemberEditDialog({required this.member});
-
-  final KnowledgeEventMember member;
 
   @override
-  State<_MemberEditDialog> createState() => _MemberEditDialogState();
-}
-
-class _MemberEditDialogState extends State<_MemberEditDialog> {
-  late String _role;
-  late String _evidenceState;
-  late final TextEditingController _note;
-
-  @override
-  void initState() {
-    super.initState();
-    _role = widget.member.role;
-    _evidenceState = widget.member.evidenceState;
-    _note = TextEditingController(text: widget.member.note);
-  }
-
-  @override
-  void dispose() {
-    _note.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('编辑事件关系'),
-    content: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: AppPane.formMaxWidth),
-      child: SingleChildScrollView(
-        child: Column(
+  Widget build(BuildContext context) => BrowserLeaveGuard(
+    enabled: _saving || _dirty,
+    child: PopScope<bool>(
+      canPop: !_saving && !_dirty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _close();
+      },
+      child: AdaptiveFormDialog(
+        title: _editingMember ? '编辑事件关系' : '编辑事件',
+        contentBuilder: (context, width, short) => Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            DropdownButtonFormField<String>(
-              initialValue: _role,
-              decoration: const InputDecoration(
-                labelText: '内容角色',
-                border: OutlineInputBorder(),
+            if (_editingMember) ...[
+              _selector(
+                '内容角色',
+                _role,
+                _roleLabels,
+                (value) => setState(() => _role = value),
               ),
-              items: [
-                for (final value in _roleLabels.keys)
-                  DropdownMenuItem(
-                    value: value,
-                    child: Text(_roleLabel(value)),
-                  ),
-              ],
-              onChanged: (value) {
-                if (value != null) setState(() => _role = value);
-              },
-            ),
-            const SizedBox(height: AppSpacing.md),
-            DropdownButtonFormField<String>(
-              initialValue: _evidenceState,
-              decoration: const InputDecoration(
-                labelText: '证据状态',
-                border: OutlineInputBorder(),
+              const SizedBox(height: AppSpacing.md),
+              _selector(
+                '证据状态',
+                _evidenceState,
+                _evidenceLabels,
+                (value) => setState(() => _evidenceState = value),
               ),
-              items: [
-                for (final value in _evidenceLabels.keys)
-                  DropdownMenuItem(
-                    value: value,
-                    child: Text(_evidenceLabel(value)),
-                  ),
-              ],
-              onChanged: (value) {
-                if (value != null) setState(() => _evidenceState = value);
-              },
-            ),
+            ] else
+              TextField(
+                controller: _title,
+                enabled: !_saving,
+                minLines: 1,
+                maxLines: short ? 1 : 3,
+                maxLength: 240,
+                decoration: InputDecoration(
+                  labelText: '标题',
+                  errorText: _title.text.trim().isEmpty ? '请输入事件标题' : null,
+                ),
+              ),
             const SizedBox(height: AppSpacing.md),
             TextField(
-              controller: _note,
-              maxLength: 2000,
-              minLines: 2,
-              maxLines: 5,
-              decoration: const InputDecoration(
-                labelText: '关系说明',
-                border: OutlineInputBorder(),
+              controller: _description,
+              enabled: !_saving,
+              maxLength: _editingMember ? 2000 : 4000,
+              minLines: short ? 1 : 3,
+              maxLines: short ? 2 : 6,
+              decoration: InputDecoration(
+                labelText: _editingMember ? '关系说明' : '事件说明',
               ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: Wrap(
+          spacing: AppSpacing.xs,
+          runSpacing: AppSpacing.xs,
+          alignment: WrapAlignment.end,
+          children: [
+            TextButton(
+              onPressed: _saving ? null : _close,
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed:
+                  _saving ||
+                      _changes.isEmpty ||
+                      (!_editingMember && _title.text.trim().isEmpty)
+                  ? null
+                  : _save,
+              child: Text(_saving ? '正在保存' : '保存'),
             ),
           ],
         ),
       ),
     ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('取消'),
-      ),
-      FilledButton(
-        onPressed: () {
-          final note = _note.text.trim();
-          Navigator.pop(
-            context,
-            _MemberEditResult(
-              _role,
-              _evidenceState,
-              note.isEmpty ? null : note,
-            ),
-          );
-        },
-        child: const Text('保存'),
-      ),
-    ],
   );
 }
 

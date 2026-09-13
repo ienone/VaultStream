@@ -28,7 +28,9 @@ class DistributionRules extends _$DistributionRules {
     final dio = ref.watch(apiClientProvider);
     final response = await dio.post('/distribution-rules', data: rule.toJson());
     final newRule = DistributionRule.fromJson(response.data);
-    ref.invalidateSelf();
+    // A deep-linked editor may be the only consumer of this write method.
+    // If the list provider was released while saving, its next read is fresh.
+    if (ref.mounted) ref.invalidateSelf();
     return newRule;
   }
 

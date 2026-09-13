@@ -30,7 +30,10 @@ class PushedRecordTile extends StatelessWidget {
           size: 20,
         ),
       ),
-      title: Row(
+      title: Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           Text(
             record.targetPlatform,
@@ -38,7 +41,6 @@ class PushedRecordTile extends StatelessWidget {
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(

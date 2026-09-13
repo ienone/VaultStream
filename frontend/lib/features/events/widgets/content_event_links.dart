@@ -19,31 +19,53 @@ class ContentEventLinks extends ConsumerWidget {
       data: (data) {
         if (data.items.isEmpty) return const SizedBox.shrink();
         final theme = Theme.of(context);
-        return Container(
-          width: double.infinity,
-          margin: const EdgeInsets.only(bottom: AppSpacing.md),
-          padding: const EdgeInsets.all(AppSpacing.md),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.45),
-            borderRadius: AppShape.cardBorder,
-          ),
+        return Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.md),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('所属事件', style: theme.textTheme.titleSmall),
               const SizedBox(height: AppSpacing.xs),
-              Wrap(
-                spacing: AppSpacing.xs,
-                runSpacing: AppSpacing.xs,
-                children: [
-                  for (final event in data.items)
-                    ActionChip(
-                      avatar: const Icon(Icons.hub_outlined, size: 18),
-                      label: Text(event.title),
-                      onPressed: () => context.push('/events/${event.id}'),
+              for (final event in data.items)
+                Semantics(
+                  button: true,
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: InkWell(
+                      borderRadius: AppShape.cardBorder,
+                      onTap: () => context.push('/events/${event.id}'),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppSpacing.sm,
+                        ),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 40),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.hub_outlined,
+                                size: 20,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              Expanded(
+                                child: Text(
+                                  event.title,
+                                  style: theme.textTheme.bodyLarge,
+                                ),
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              Icon(
+                                Icons.chevron_right_rounded,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
-                ],
-              ),
+                  ),
+                ),
             ],
           ),
         );

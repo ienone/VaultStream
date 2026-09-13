@@ -71,28 +71,29 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
       children: [
         if (widget.showPresetSelector)
           presetsAsync.when(
-            data: (presets) => _buildPresetSelector(presets),
+            data: (presets) => presets.isEmpty
+                ? const SizedBox.shrink()
+                : Padding(
+                    padding: const EdgeInsets.only(bottom: 24),
+                    child: _buildPresetSelector(presets),
+                  ),
             loading: () => const SizedBox.shrink(),
             error: (error, stackTrace) => const SizedBox.shrink(),
           ),
-        if (widget.showPresetSelector) const SizedBox(height: 24),
         _sectionLabel('显示控制'),
         const SizedBox(height: 8),
         _switchTile(
           title: '显示平台 ID',
-          icon: Icons.fingerprint_rounded,
           value: _getBool('show_platform_id', true),
           onChanged: (v) => _updateField('show_platform_id', v),
         ),
         _switchTile(
           title: '显示标题',
-          icon: Icons.title_rounded,
           value: _getBool('show_title', true),
           onChanged: (v) => _updateField('show_title', v),
         ),
         _switchTile(
           title: '显示标签',
-          icon: Icons.label_rounded,
           value: _getBool('show_tags'),
           onChanged: (v) => _updateField('show_tags', v),
         ),
@@ -101,7 +102,6 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
         const SizedBox(height: 12),
         _modeSelector(
           label: '作者显示',
-          icon: Icons.person_rounded,
           value: _getString('author_mode', 'full'),
           options: const {'none': '隐藏', 'name': '昵称', 'full': '完整'},
           onChanged: (v) => _updateField('author_mode', v),
@@ -109,7 +109,6 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
         const SizedBox(height: 16),
         _modeSelector(
           label: '正文模式',
-          icon: Icons.article_rounded,
           value: _getString('content_mode', 'summary'),
           options: const {'hidden': '隐藏', 'summary': '摘要', 'full': '完整'},
           onChanged: (v) => _updateField('content_mode', v),
@@ -117,7 +116,6 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
         const SizedBox(height: 16),
         _modeSelector(
           label: '媒体模式',
-          icon: Icons.image_rounded,
           value: _getString('media_mode', 'auto'),
           options: const {'none': '不含', 'auto': '自动', 'all': '全部'},
           onChanged: (v) => _updateField('media_mode', v),
@@ -125,7 +123,6 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
         const SizedBox(height: 16),
         _modeSelector(
           label: '链接模式',
-          icon: Icons.link_rounded,
           value: _getString('link_mode', 'clean'),
           options: const {'none': '不含', 'clean': '精简', 'original': '原始'},
           onChanged: (v) => _updateField('link_mode', v),
@@ -137,7 +134,6 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
           controller: _headerController,
           label: '头部文本',
           hint: '支持变量: {{date}}, {{title}}',
-          icon: Icons.vertical_align_top_rounded,
           onChanged: (v) => _updateField('header_text', v),
         ),
         const SizedBox(height: 16),
@@ -145,7 +141,6 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
           controller: _footerController,
           label: '尾部文本',
           hint: '支持变量: {{date}}, {{title}}',
-          icon: Icons.vertical_align_bottom_rounded,
           onChanged: (v) => _updateField('footer_text', v),
         ),
       ],
@@ -155,94 +150,64 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
   Widget _sectionLabel(String text) {
     return Text(
       text,
-      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-        color: Theme.of(context).colorScheme.primary,
-        fontWeight: FontWeight.bold,
-      ),
+      style: Theme.of(
+        context,
+      ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
     );
   }
 
   Widget _switchTile({
     required String title,
-    required IconData icon,
     required bool value,
     required ValueChanged<bool> onChanged,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Material(
-        color: colorScheme.surfaceContainerLow,
-        shape: const RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
-        clipBehavior: Clip.antiAlias,
-        child: SwitchListTile(
-          title: Text(
-            title,
-            style: Theme.of(
-              context,
-            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-          ),
-          secondary: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: (value ? colorScheme.primary : colorScheme.outline)
-                  .withValues(alpha: 0.1),
-              borderRadius: AppShape.cardMediaBorder,
-            ),
-            child: Icon(
-              icon,
-              size: 20,
-              color: value ? colorScheme.primary : colorScheme.outline,
-            ),
-          ),
-          value: value,
-          onChanged: onChanged,
-          shape: const RoundedRectangleBorder(
-            borderRadius: AppShape.cardBorder,
-          ),
-        ),
-      ),
+    return SwitchListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(title),
+      value: value,
+      onChanged: onChanged,
     );
   }
 
   Widget _modeSelector({
     required String label,
-    required IconData icon,
     required String value,
     required Map<String, String> options,
     required ValueChanged<String> onChanged,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final labelWidget = Text(
+      label,
+      style: Theme.of(context).textTheme.bodyLarge,
+    );
+    final choices = Wrap(
+      spacing: 8,
+      runSpacing: 4,
       children: [
-        Row(
-          children: [
-            Icon(icon, size: 20, color: colorScheme.outline),
-            const SizedBox(width: 12),
-            Text(label, style: Theme.of(context).textTheme.bodyMedium),
-          ],
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: SegmentedButton<String>(
-            segments: options.entries
-                .map(
-                  (e) =>
-                      ButtonSegment<String>(value: e.key, label: Text(e.value)),
-                )
-                .toList(),
-            selected: {value},
-            onSelectionChanged: (sel) => onChanged(sel.first),
-            style: SegmentedButton.styleFrom(
-              visualDensity: VisualDensity.comfortable,
-              selectedBackgroundColor: colorScheme.primary,
-              selectedForegroundColor: colorScheme.onPrimary,
-            ),
+        for (final option in options.entries)
+          ChoiceChip(
+            label: Text(option.value),
+            selected: value == option.key,
+            showCheckmark: true,
+            onSelected: (_) => onChanged(option.key),
           ),
-        ),
       ],
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final textScale = MediaQuery.textScalerOf(context).scale(1);
+        if (constraints.maxWidth >= 520 * textScale) {
+          return Row(
+            children: [
+              SizedBox(width: 144 * textScale, child: labelWidget),
+              Expanded(child: choices),
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [labelWidget, const SizedBox(height: 8), choices],
+        );
+      },
     );
   }
 
@@ -250,35 +215,19 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
     required TextEditingController controller,
     required String label,
     required String hint,
-    required IconData icon,
     required ValueChanged<String> onChanged,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
     return TextFormField(
       controller: controller,
       onChanged: onChanged,
+      minLines: 2,
+      maxLines: 4,
+      keyboardType: TextInputType.multiline,
       decoration: InputDecoration(
         labelText: label,
+        alignLabelWithHint: true,
         hintText: hint,
-        prefixIcon: Icon(icon, size: 20),
-        filled: true,
-        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-        border: OutlineInputBorder(
-          borderRadius: AppShape.cardBorder,
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: AppShape.cardBorder,
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: AppShape.cardBorder,
-          borderSide: BorderSide(color: colorScheme.primary, width: 2),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
-        ),
+        contentPadding: const EdgeInsets.all(AppSpacing.md),
       ),
     );
   }
@@ -289,23 +238,7 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Icon(
-              Icons.auto_awesome_rounded,
-              size: 20,
-              color: colorScheme.primary,
-            ),
-            const SizedBox(width: 12),
-            Text(
-              '预设模板',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: colorScheme.primary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
+        _sectionLabel('预设模板'),
         const SizedBox(height: 12),
         Wrap(
           spacing: 8,
@@ -320,13 +253,6 @@ class _RenderConfigEditorState extends ConsumerState<RenderConfigEditor> {
               label: Text(preset.name),
               tooltip: preset.description,
               onPressed: () => _applyPreset(preset),
-              backgroundColor: colorScheme.surfaceContainerLow,
-              side: BorderSide(
-                color: colorScheme.outline.withValues(alpha: 0.2),
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: AppShape.cardMediaBorder,
-              ),
             );
           }).toList(),
         ),

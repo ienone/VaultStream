@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/widgets/predictive_back_dialog.dart';
 
 import '../../core/utils/toast.dart';
 import '../../theme/design_tokens.dart';
@@ -10,10 +11,13 @@ import 'providers/bot_chats_provider.dart';
 import 'providers/distribution_rules_provider.dart';
 import 'providers/distribution_targets_provider.dart';
 import 'providers/queue_provider.dart';
+import 'providers/rule_editor_key_provider.dart';
 import 'widgets/distribution_rule_editor.dart';
 
 class DistributionRulePage extends ConsumerWidget {
-  const DistributionRulePage({super.key, this.ruleId});
+  const DistributionRulePage({super.key, required this.routeKey, this.ruleId});
+
+  final ValueKey<String> routeKey;
 
   final int? ruleId;
 
@@ -21,6 +25,7 @@ class DistributionRulePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final editorKey = ref.watch(ruleEditorKeyProvider(routeKey));
     final chatsAsync = ref.watch(botChatsProvider);
     final ruleAsync = ruleId == null
         ? const AsyncValue<DistributionRule?>.data(null)
@@ -32,11 +37,7 @@ class DistributionRulePage extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(isEditing ? '编辑分发规则' : '创建分发规则'),
-        leading: IconButton(
-          tooltip: '返回分发',
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.go('/automation/distribution'),
-        ),
+        leading: BackButton(onPressed: () => Navigator.of(context).maybePop()),
       ),
       body: SafeArea(
         child: switch ((chatsAsync, ruleAsync, targetsAsync)) {
@@ -47,13 +48,14 @@ class DistributionRulePage extends ConsumerWidget {
           ) =>
             Center(
               child: DistributionRuleEditor(
+                key: editorKey,
                 rule: rule,
                 onManageTargets: () => context.push('/settings?tab=targets'),
                 availableChats: chats,
                 initialSelectedChatIds: targets
                     .map((target) => target.botChatId)
                     .toList(growable: false),
-                onCancel: () => context.go('/automation/distribution'),
+                onCancel: () => context.pop(),
                 onCreate: (data, chatIds, mode, recentDays) =>
                     _createRule(context, ref, data, chatIds, mode, recentDays),
                 onUpdate: (id, data, chatIds, mode, recentDays) => _updateRule(
@@ -111,7 +113,11 @@ class DistributionRulePage extends ConsumerWidget {
       if (!confirmed) {
         if (context.mounted) {
           Toast.show(context, '规则已创建，目标回填已取消');
-          context.go('/automation/distribution');
+          ref
+              .read(ruleEditorKeyProvider(routeKey))
+              .currentState
+              ?.allowExitAfterSave();
+          context.pop();
         }
         return;
       }
@@ -136,7 +142,11 @@ class DistributionRulePage extends ConsumerWidget {
           context,
           backfilledCount > 0 ? '规则创建成功，已补建 $backfilledCount 条队列' : '规则创建成功',
         );
-        context.go('/automation/distribution');
+        ref
+            .read(ruleEditorKeyProvider(routeKey))
+            .currentState
+            ?.allowExitAfterSave();
+        context.pop();
       }
     } catch (error) {
       if (context.mounted) {
@@ -176,7 +186,11 @@ class DistributionRulePage extends ConsumerWidget {
       if (!confirmed) {
         if (context.mounted) {
           Toast.show(context, '规则已更新，目标回填已取消');
-          context.go('/automation/distribution');
+          ref
+              .read(ruleEditorKeyProvider(routeKey))
+              .currentState
+              ?.allowExitAfterSave();
+          context.pop();
         }
         return;
       }
@@ -213,7 +227,11 @@ class DistributionRulePage extends ConsumerWidget {
         if (removedCount > 0) parts.add('移除 $removedCount 个目标');
         if (backfilledCount > 0) parts.add('补建 $backfilledCount 条队列');
         Toast.show(context, parts.join('，'));
-        context.go('/automation/distribution');
+        ref
+            .read(ruleEditorKeyProvider(routeKey))
+            .currentState
+            ?.allowExitAfterSave();
+        context.pop();
       }
     } catch (error) {
       if (context.mounted) {
@@ -250,20 +268,25 @@ class DistributionRulePage extends ConsumerWidget {
         : '全部历史';
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('确认回填历史内容'),
-        content: Text('将为 $modeLabel 中匹配规则的内容补建约 $candidateCount 条分发队列。'),
-        shape: RoundedRectangleBorder(borderRadius: AppShape.sheetBorder),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('确认回填'),
-          ),
-        ],
+      animationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
+      builder: (dialogContext) => PredictiveBackDialog(
+        child: AlertDialog(
+          title: const Text('确认回填历史内容'),
+          content: Text('将为 $modeLabel 中匹配规则的内容补建约 $candidateCount 条分发队列。'),
+          shape: RoundedRectangleBorder(borderRadius: AppShape.sheetBorder),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('确认回填'),
+            ),
+          ],
+        ),
       ),
     );
     return confirmed == true;

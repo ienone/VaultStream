@@ -12,7 +12,7 @@ final knowledgeEventsProvider = FutureProvider.autoDispose
             queryParameters: {
               'page': 1,
               'size': 100,
-              if (contentId != null) 'content_id': contentId,
+              'content_id': ?contentId,
             },
           );
       return KnowledgeEventListResponse.fromJson(
@@ -93,7 +93,7 @@ class KnowledgeEventActions {
             'content_id': contentId,
             'role': role,
             'evidence_state': evidenceState,
-            if (note != null) 'note': note,
+            'note': ?note,
           },
         );
     final event = _detail(response.data);

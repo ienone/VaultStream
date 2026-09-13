@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/widgets/predictive_back_dialog.dart';
 import '../../core/layout/responsive_layout.dart';
 import '../../core/network/sse_service.dart';
 import '../../core/network/api_client.dart';
 import '../../theme/design_tokens.dart';
+import '../../routing/app_navigation.dart';
 import 'models/distribution_rule.dart';
 import 'models/pushed_record.dart';
 import 'models/queue_item.dart';
@@ -26,6 +28,7 @@ import 'widgets/processing_automation_panel.dart';
 import 'widgets/queue_content_list.dart';
 import 'widgets/rule_list_tile.dart';
 import '../../core/utils/toast.dart';
+import '../../core/widgets/app_filter_menu.dart';
 
 class AutomationPage extends ConsumerStatefulWidget {
   const AutomationPage({super.key, this.initialTab, this.highlightRunId});
@@ -40,6 +43,64 @@ class AutomationPage extends ConsumerStatefulWidget {
 enum _AutomationSection { overview, sync, distribution, processing }
 
 enum _DistributionDomainView { queue, history }
+
+class _DistributionDomainTabs extends StatefulWidget {
+  const _DistributionDomainTabs({required this.view});
+
+  final _DistributionDomainView view;
+
+  @override
+  State<_DistributionDomainTabs> createState() =>
+      _DistributionDomainTabsState();
+}
+
+class _DistributionDomainTabsState extends State<_DistributionDomainTabs>
+    with SingleTickerProviderStateMixin {
+  late final TabController _controller = TabController(
+    length: 2,
+    initialIndex: widget.view.index,
+    vsync: this,
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // The parent queue page stays mounted beneath history. Restore its own
+    // selection when it becomes current again after browser or system back.
+    if (ModalRoute.isCurrentOf(context) ?? true) {
+      _controller.index = widget.view.index;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _DistributionDomainTabs oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.view != widget.view) _controller.index = widget.view.index;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => TabBar.secondary(
+    controller: _controller,
+    isScrollable: true,
+    tabAlignment: TabAlignment.start,
+    dividerColor: Colors.transparent,
+    tabs: const [
+      Tab(text: '队列与规则'),
+      Tab(text: '推送历史'),
+    ],
+    onTap: (index) => context.go(
+      index == _DistributionDomainView.history.index
+          ? '/automation/distribution/history'
+          : '/automation/distribution',
+    ),
+  );
+}
 
 class _AutomationDomainEntry extends StatelessWidget {
   const _AutomationDomainEntry({
@@ -66,6 +127,7 @@ class _AutomationPageState extends ConsumerState<AutomationPage> {
   late _AutomationSection _section;
   _DistributionDomainView _distributionView = _DistributionDomainView.queue;
   int? _selectedRuleId;
+  final _queueListKey = GlobalKey();
   StreamSubscription<SseEvent>? _sseSub;
   DateTime? _lastToastAt;
 
@@ -148,15 +210,9 @@ class _AutomationPageState extends ConsumerState<AutomationPage> {
             : null,
         leading: _section == _AutomationSection.overview
             ? null
-            : IconButton(
-                icon: const Icon(Icons.arrow_back_rounded),
-                tooltip: '返回自动化总览',
-                onPressed: () => context.go('/automation'),
-              ),
+            : const AppBackButton(fallback: '/automation'),
       ),
-      body: _buildSectionBody().animate().fadeIn(
-        duration: AppMotion.contentSwap,
-      ),
+      body: _buildSectionBody(),
     );
   }
 
@@ -267,120 +323,113 @@ class _AutomationPageState extends ConsumerState<AutomationPage> {
         final short = WindowMetrics.fromSize(
           constraints.biggest,
         ).isShortLandscape;
-        final policy = ref
-            .watch(systemSettingsProvider)
-            .when(
-              data: (settings) => SwitchListTile.adaptive(
-                title: const Text('自动分发'),
-                subtitle: short ? null : const Text('暂停后停止新的自动发送，仍可审核队列'),
-                value:
-                    getSettingValue(settings, 'distribution_mode', 'auto') !=
-                    'paused',
-                onChanged: (value) => ref
-                    .read(systemSettingsProvider.notifier)
-                    .updateSetting(
-                      'distribution_mode',
-                      value ? 'auto' : 'paused',
-                      category: 'automation',
-                    ),
-              ),
-              loading: () => const LinearProgressIndicator(),
-              error: (_, _) => const Text('分发策略暂时无法读取'),
-            );
-        final views = SegmentedButton<_DistributionDomainView>(
-          segments: const [
-            ButtonSegment(
-              value: _DistributionDomainView.queue,
-              label: Text('队列与规则'),
-            ),
-            ButtonSegment(
-              value: _DistributionDomainView.history,
-              label: Text('推送历史'),
-            ),
+        final wide = ResponsiveLayout.widthClassFor(
+          constraints.maxWidth,
+        ).supportsSupportingPane;
+        final header = <Widget>[
+          _buildDistributionHeader(short),
+          if (_distributionView == _DistributionDomainView.queue) ...[
+            if (!wide) _buildRuleSelector(),
+            _buildStatusTabs(),
           ],
-          selected: {_distributionView},
-          onSelectionChanged: (selection) => context.go(
-            selection.first == _DistributionDomainView.history
-                ? '/automation/distribution/history'
-                : '/automation/distribution',
-          ),
-          showSelectedIcon: false,
-        );
-        return Column(
+        ];
+        final content = _distributionView == _DistributionDomainView.queue
+            ? _buildQueueList(header)
+            : _buildHistoryTab(header);
+        if (!wide || _distributionView == _DistributionDomainView.history) {
+          return content;
+        }
+        return Row(
           children: [
-            if (short &&
-                constraints.maxWidth >= ResponsiveLayout.mediumBreakpoint)
-              Padding(
-                padding: const EdgeInsets.only(right: 16),
-                child: Row(
-                  children: [
-                    SizedBox(width: 220, child: policy),
-                    const Spacer(),
-                    views,
-                  ],
-                ),
-              )
-            else ...[
-              policy,
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: views,
-              ),
-            ],
-            Expanded(
-              child: switch (_distributionView) {
-                _DistributionDomainView.queue => _buildQueueTab(),
-                _DistributionDomainView.history => _buildHistoryTab(),
-              },
+            SizedBox(
+              width: AppPane.supportingWidth,
+              child: _buildRuleSidebar(),
             ),
+            Expanded(child: content),
           ],
         );
       },
     );
   }
 
-  Widget _buildQueueTab() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isWideScreen = ResponsiveLayout.widthClassFor(
-          constraints.maxWidth,
-        ).supportsSupportingPane;
-
-        if (isWideScreen) {
-          return Row(
-            children: [
-              SizedBox(
-                width: AppPane.supportingWidth,
-                child: _buildRuleSidebar(),
-              ),
-              VerticalDivider(
-                width: 1,
-                thickness: 1,
-                color: Theme.of(
-                  context,
-                ).colorScheme.outlineVariant.withValues(alpha: 0.3),
-              ),
-              Expanded(child: _buildQueueContent()),
-            ],
-          );
-        } else {
+  Widget _buildDistributionHeader(bool short) {
+    final policy = ref
+        .watch(systemSettingsProvider)
+        .when(
+          data: (settings) {
+            final enabled =
+                getSettingValue(settings, 'distribution_mode', 'auto') !=
+                'paused';
+            void change(bool value) => ref
+                .read(systemSettingsProvider.notifier)
+                .updateSetting(
+                  'distribution_mode',
+                  value ? 'auto' : 'paused',
+                  category: 'automation',
+                );
+            if (short) {
+              return MergeSemantics(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('自动分发'),
+                    const SizedBox(width: 8),
+                    Switch.adaptive(value: enabled, onChanged: change),
+                  ],
+                ),
+              );
+            }
+            return SwitchListTile.adaptive(
+              title: const Text('自动分发'),
+              subtitle: const Text('暂停后停止新的自动发送，仍可审核队列'),
+              contentPadding: EdgeInsets.zero,
+              value: enabled,
+              onChanged: change,
+            );
+          },
+          loading: () => const LinearProgressIndicator(),
+          error: (_, _) => const Text('分发策略暂时无法读取'),
+        );
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final tabs = _DistributionDomainTabs(view: _distributionView);
+          if (short &&
+              constraints.maxWidth >=
+                  MediaQuery.textScalerOf(context).scale(320)) {
+            return Row(
+              children: [
+                policy,
+                const SizedBox(width: 24),
+                Expanded(child: tabs),
+              ],
+            );
+          }
           return Column(
-            children: [
-              _buildRuleSelector(),
-              Expanded(child: _buildQueueContent()),
-            ],
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [policy, tabs],
           );
-        }
-      },
-    ).animate().fadeIn(duration: AppMotion.slow);
+        },
+      ),
+    );
   }
+
+  Widget _buildDistributionState(List<Widget> header, Widget state) =>
+      CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          for (final section in header) SliverToBoxAdapter(child: section),
+          SliverFillRemaining(hasScrollBody: false, child: state),
+        ],
+      );
 
   Widget _buildRuleSidebar() {
     final rulesAsync = ref.watch(distributionRulesProvider);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Container(
+    return Material(
       color: colorScheme.surfaceContainerLow,
       child: Column(
         children: [
@@ -506,25 +555,19 @@ class _AutomationPageState extends ConsumerState<AutomationPage> {
               child: Row(
                 children: [
                   Expanded(
-                    child: DropdownButton<int>(
-                      value: selected?.id,
-                      hint: const Text('全部内容'),
-                      isExpanded: true,
-                      underline: const SizedBox.shrink(),
-                      items: [
-                        const DropdownMenuItem<int>(child: Text('全部内容')),
-                        for (final rule in rules)
-                          DropdownMenuItem(
-                            value: rule.id,
-                            child: Text(
-                              rule.name,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                      ],
-                      onChanged: (value) {
-                        setState(() => _selectedRuleId = value);
-                        ref.read(queueFilterProvider.notifier).setRuleId(value);
+                    child: AppFilterMenu(
+                      label: '分发规则',
+                      value: selected?.id.toString() ?? 'all',
+                      options: {
+                        'all': '全部内容',
+                        for (final rule in rules) rule.id.toString(): rule.name,
+                      },
+                      onSelected: (value) {
+                        final ruleId = value == 'all' ? null : int.parse(value);
+                        setState(() => _selectedRuleId = ruleId);
+                        ref
+                            .read(queueFilterProvider.notifier)
+                            .setRuleId(ruleId);
                       },
                     ),
                   ),
@@ -544,15 +587,6 @@ class _AutomationPageState extends ConsumerState<AutomationPage> {
             );
           },
         );
-  }
-
-  Widget _buildQueueContent() {
-    return Column(
-      children: [
-        _buildStatusTabs(),
-        Expanded(child: _buildQueueList()),
-      ],
-    );
   }
 
   Widget _buildStatusTabs() {
@@ -607,33 +641,41 @@ class _AutomationPageState extends ConsumerState<AutomationPage> {
     );
   }
 
-  Widget _buildQueueList() {
+  Widget _buildQueueList(List<Widget> header) {
     final queueAsync = ref.watch(contentQueueProvider);
     final filter = ref.watch(queueFilterProvider);
 
     return queueAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, st) => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.error_outline_rounded,
-              size: 48,
-              color: Theme.of(context).colorScheme.error,
-            ),
-            const SizedBox(height: 16),
-            Text(formatApiErrorMessage(e, fallbackMessage: '加载失败，请重试')),
-            const SizedBox(height: 16),
-            FilledButton.tonal(
-              onPressed: () => ref.invalidate(contentQueueProvider),
-              child: const Text('重试'),
-            ),
-          ],
+      loading: () => _buildDistributionState(
+        header,
+        const Center(child: CircularProgressIndicator()),
+      ),
+      error: (e, st) => _buildDistributionState(
+        header,
+        Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline_rounded,
+                size: 48,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              const SizedBox(height: 16),
+              Text(formatApiErrorMessage(e, fallbackMessage: '加载失败，请重试')),
+              const SizedBox(height: 16),
+              FilledButton.tonal(
+                onPressed: () => ref.invalidate(contentQueueProvider),
+                child: const Text('重试'),
+              ),
+            ],
+          ),
         ),
       ),
       data: (response) {
         return QueueContentList(
+          key: _queueListKey,
+          header: header,
           items: response.items,
           currentStatus: filter.status,
           onRefresh: () {
@@ -645,50 +687,70 @@ class _AutomationPageState extends ConsumerState<AutomationPage> {
     );
   }
 
-  Widget _buildHistoryTab() {
+  Widget _buildHistoryTab(List<Widget> header) {
     final recordsAsync = ref.watch(pushedRecordsProvider);
 
     return recordsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, st) => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.error_outline_rounded,
-              size: 48,
-              color: Theme.of(context).colorScheme.error,
-            ),
-            const SizedBox(height: 16),
-            Text(formatApiErrorMessage(e, fallbackMessage: '加载失败，请重试')),
-            const SizedBox(height: 16),
-            FilledButton.tonal(
-              onPressed: () => ref.invalidate(pushedRecordsProvider),
-              child: const Text('重试'),
-            ),
-          ],
+      loading: () => _buildDistributionState(
+        header,
+        const Center(child: CircularProgressIndicator()),
+      ),
+      error: (e, st) => _buildDistributionState(
+        header,
+        Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline_rounded,
+                size: 48,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              const SizedBox(height: 16),
+              Text(formatApiErrorMessage(e, fallbackMessage: '加载失败，请重试')),
+              const SizedBox(height: 16),
+              FilledButton.tonal(
+                onPressed: () => ref.invalidate(pushedRecordsProvider),
+                child: const Text('重试'),
+              ),
+            ],
+          ),
         ),
       ),
       data: (records) {
         if (records.isEmpty) {
-          return const Center(child: Text('暂无推送记录'));
+          return _buildDistributionState(
+            header,
+            const Center(child: Text('暂无推送记录')),
+          );
         }
 
         return RefreshIndicator(
           onRefresh: () async => ref.invalidate(pushedRecordsProvider),
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            itemCount: records.length,
-            separatorBuilder: (context, index) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final record = records[index];
-              return PushedRecordTile(
-                record: record,
-                onRetry: record.isFailed ? () => _retryPush(record) : null,
-              ).animate().fadeIn(
-                delay: AppMotion.listItemStagger * (index % 15),
-              );
-            },
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              for (final section in header) SliverToBoxAdapter(child: section),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                sliver: SliverList.separated(
+                  itemCount: records.length,
+                  separatorBuilder: (context, index) =>
+                      const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final record = records[index];
+                    return PushedRecordTile(
+                      record: record,
+                      onRetry: record.isFailed
+                          ? () => _retryPush(record)
+                          : null,
+                    ).animate().fadeIn(
+                      delay: AppMotion.listItemStagger * (index % 15),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -706,45 +768,50 @@ class _AutomationPageState extends ConsumerState<AutomationPage> {
   void _confirmDeleteRule(DistributionRule rule) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('确认删除'),
-        content: Text('确定要删除规则"${rule.name}" 吗？'),
-        shape: RoundedRectangleBorder(borderRadius: AppShape.sheetBorder),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              try {
-                await ref
-                    .read(distributionRulesProvider.notifier)
-                    .deleteRule(rule.id);
-                if (_selectedRuleId == rule.id) {
-                  setState(() => _selectedRuleId = null);
-                  ref.read(queueFilterProvider.notifier).setRuleId(null);
-                }
-                if (mounted) {
-                  Toast.show(context, '规则已删除');
-                }
-              } catch (e) {
-                if (mounted) {
-                  Toast.show(
-                    context,
-                    formatApiErrorMessage(e, fallbackMessage: '删除失败，请重试'),
-                    isError: true,
-                  );
-                }
-              }
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
+      animationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
+      builder: (ctx) => PredictiveBackDialog(
+        child: AlertDialog(
+          title: const Text('确认删除'),
+          content: Text('确定要删除规则"${rule.name}" 吗？'),
+          shape: RoundedRectangleBorder(borderRadius: AppShape.sheetBorder),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
             ),
-            child: const Text('删除'),
-          ),
-        ],
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                try {
+                  await ref
+                      .read(distributionRulesProvider.notifier)
+                      .deleteRule(rule.id);
+                  if (_selectedRuleId == rule.id) {
+                    setState(() => _selectedRuleId = null);
+                    ref.read(queueFilterProvider.notifier).setRuleId(null);
+                  }
+                  if (mounted) {
+                    Toast.show(context, '规则已删除');
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    Toast.show(
+                      context,
+                      formatApiErrorMessage(e, fallbackMessage: '删除失败，请重试'),
+                      isError: true,
+                    );
+                  }
+                }
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+              child: const Text('删除'),
+            ),
+          ],
+        ),
       ),
     );
   }

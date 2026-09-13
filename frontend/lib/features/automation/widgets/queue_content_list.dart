@@ -11,6 +11,7 @@ import '../../../core/media/media_asset.dart';
 import '../../../theme/design_tokens.dart';
 import '../models/queue_item.dart';
 import '../providers/queue_provider.dart';
+import 'schedule_time_picker.dart';
 
 class QueueContentList extends ConsumerStatefulWidget {
   const QueueContentList({
@@ -18,22 +19,31 @@ class QueueContentList extends ConsumerStatefulWidget {
     required this.items,
     required this.currentStatus,
     required this.onRefresh,
+    this.header = const [],
   });
 
   final List<QueueItem> items;
   final QueueStatus currentStatus;
   final VoidCallback onRefresh;
+  final List<Widget> header;
 
   @override
   ConsumerState<QueueContentList> createState() => _QueueContentListState();
 }
 
 class _QueueContentListState extends ConsumerState<QueueContentList> {
+  final _scrollController = ScrollController();
   List<QueueItem> _localItems = [];
   final Set<int> _selectedIds = {};
   bool _isSelectionMode = false;
   bool _isReordering = false; // 拖动中标记，防止外部数据覆盖
   bool _hasAnimatedOnce = false; // 入场动画只播放一次
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -76,13 +86,31 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
 
   @override
   Widget build(BuildContext context) {
-    if (_localItems.isEmpty) {
-      return _buildEmptyState();
-    }
-
     return Stack(
       children: [
-        _buildMainList(),
+        CustomScrollView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            for (final section in widget.header)
+              SliverToBoxAdapter(child: section),
+            if (_localItems.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _buildEmptyState(),
+              )
+            else
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  16,
+                  16,
+                  _isSelectionMode ? 120 : 24,
+                ),
+                sliver: _buildMainList(),
+              ),
+          ],
+        ),
         if (_isSelectionMode) _buildBatchActionBar(),
       ],
     );
@@ -94,9 +122,9 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
       QueueStatus.filtered => '暂无不推送内容',
       QueueStatus.pushed => '暂无已推送内容',
     };
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -110,95 +138,72 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
   }
 
   Widget _buildMainList() {
-    final isWillPush = widget.currentStatus == QueueStatus.willPush;
-
-    if (!isWillPush) {
-      return _buildNormalList();
-    }
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return ClipRect(
-          child: SizedBox(
-            height: constraints.maxHeight,
-            width: constraints.maxWidth,
-            child: ReorderableListView.builder(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                16,
-                16,
-                _isSelectionMode ? 120 : 24,
+    if (widget.currentStatus != QueueStatus.willPush) return _buildNormalList();
+    return SliverReorderableList(
+      itemCount: _localItems.length,
+      onReorderItem: _onReorderItem,
+      proxyDecorator: (child, index, animation) {
+        return AnimatedBuilder(
+          animation: animation,
+          builder: (context, _) {
+            final animValue = AppMotion.emphasizedCurve.transform(
+              animation.value,
+            );
+            final elevation = lerpDouble(0, 12, animValue)!;
+            return Material(
+              elevation: elevation,
+              shape: const RoundedRectangleBorder(
+                borderRadius: AppShape.sheetBorder,
               ),
-              itemCount: _localItems.length,
-              onReorderItem: _onReorderItem,
-              buildDefaultDragHandles: false,
-              proxyDecorator: (child, index, animation) {
-                return AnimatedBuilder(
-                  animation: animation,
-                  builder: (context, _) {
-                    final animValue = AppMotion.emphasizedCurve.transform(
-                      animation.value,
-                    );
-                    final elevation = lerpDouble(0, 12, animValue)!;
-                    return Material(
-                      elevation: elevation,
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: AppShape.sheetBorder,
-                      ),
-                      color: Colors.transparent,
-                      shadowColor: Colors.black.withValues(alpha: 0.2),
-                      child: Transform.scale(
-                        scale: lerpDouble(1, 1.05, animValue)!,
-                        child: child,
-                      ),
-                    );
-                  },
-                );
-              },
-              itemBuilder: (context, index) {
-                final item = _localItems[index];
-                final shouldAnimate = !_hasAnimatedOnce;
-                if (index == _localItems.length - 1 && !_hasAnimatedOnce) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) _hasAnimatedOnce = true;
-                  });
-                }
-                return _QueueItemCard(
-                  key: ValueKey(item.id),
-                  item: item,
-                  index: index,
-                  currentStatus: widget.currentStatus,
-                  isSelected: _selectedIds.contains(item.id),
-                  isSelectionMode: _isSelectionMode,
-                  animateEntry: shouldAnimate,
-                  onToggleSelect: () => _toggleSelect(item.id),
-                  onLongPress: () => _startSelection(item.id),
-                  onMoveToFiltered: () => _moveItem(item, QueueStatus.filtered),
-                  onUpdateSchedule: (newTime) => _updateSchedule(item, newTime),
-                  onPushNow: () async {
-                    if (!context.mounted) return;
-                    final runId = await ref
-                        .read(contentQueueProvider.notifier)
-                        .pushNow(item.id);
-                    if (context.mounted) {
-                      final suffix = runId == null
-                          ? ''
-                          : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
-                      Toast.show(context, '已加入立即推送$suffix');
-                    }
-                  },
-                );
-              },
-            ),
-          ),
+              color: Colors.transparent,
+              shadowColor: Colors.black.withValues(alpha: 0.2),
+              child: Transform.scale(
+                scale: lerpDouble(1, 1.05, animValue)!,
+                child: child,
+              ),
+            );
+          },
+        );
+      },
+      itemBuilder: (context, index) {
+        final item = _localItems[index];
+        final shouldAnimate = !_hasAnimatedOnce;
+        if (index == _localItems.length - 1 && !_hasAnimatedOnce) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _hasAnimatedOnce = true;
+          });
+        }
+        return _QueueItemCard(
+          key: ValueKey(item.id),
+          item: item,
+          index: index,
+          currentStatus: widget.currentStatus,
+          isSelected: _selectedIds.contains(item.id),
+          isSelectionMode: _isSelectionMode,
+          animateEntry: shouldAnimate,
+          onToggleSelect: () => _toggleSelect(item.id),
+          onLongPress: () => _startSelection(item.id),
+          onMoveToFiltered: () => _moveItem(item, QueueStatus.filtered),
+          onUpdateSchedule: (newTime) => _updateSchedule(item, newTime),
+          onPushNow: () async {
+            if (!context.mounted) return;
+            final runId = await ref
+                .read(contentQueueProvider.notifier)
+                .pushNow(item.id);
+            if (context.mounted) {
+              final suffix = runId == null
+                  ? ''
+                  : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
+              Toast.show(context, '已加入立即推送$suffix');
+            }
+          },
         );
       },
     );
   }
 
   Widget _buildNormalList() {
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
+    return SliverList.separated(
       itemCount: _localItems.length,
       separatorBuilder: (context, index) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
@@ -305,53 +310,77 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
         elevation: 8,
         shadowColor: colorScheme.shadow.withValues(alpha: 0.2),
         shape: const RoundedRectangleBorder(borderRadius: AppShape.sheetBorder),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: colorScheme.onPrimaryContainer.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(AppShape.pill),
-                ),
-                child: Text(
-                  '已选 ${_selectedIds.length}',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: colorScheme.onPrimaryContainer,
-                    fontWeight: FontWeight.bold,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact =
+                constraints.maxWidth <
+                MediaQuery.textScalerOf(context).scale(500);
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colorScheme.onPrimaryContainer.withValues(
+                        alpha: 0.1,
+                      ),
+                      borderRadius: BorderRadius.circular(AppShape.pill),
+                    ),
+                    child: Text(
+                      '已选 ${_selectedIds.length}',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: colorScheme.onPrimaryContainer,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
-                ),
+                  const Spacer(),
+                  if (compact)
+                    IconButton.filled(
+                      tooltip: '立即推送',
+                      onPressed: _batchPushNow,
+                      icon: const Icon(Icons.flash_on_rounded),
+                    )
+                  else
+                    FilledButton.icon(
+                      onPressed: _batchPushNow,
+                      icon: const Icon(Icons.flash_on_rounded, size: 18),
+                      label: const Text('立即推送'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: colorScheme.onPrimaryContainer,
+                        foregroundColor: colorScheme.primaryContainer,
+                      ),
+                    ),
+                  const SizedBox(width: 8),
+                  if (compact)
+                    IconButton.filledTonal(
+                      tooltip: '批量排期',
+                      onPressed: _batchReschedule,
+                      icon: const Icon(Icons.schedule_send_rounded),
+                    )
+                  else
+                    FilledButton.tonalIcon(
+                      onPressed: _batchReschedule,
+                      icon: const Icon(Icons.schedule_send_rounded, size: 18),
+                      label: const Text('批量排期'),
+                    ),
+                  const SizedBox(width: 8),
+                  IconButton.filledTonal(
+                    tooltip: '取消选择',
+                    onPressed: () => setState(() {
+                      _isSelectionMode = false;
+                      _selectedIds.clear();
+                    }),
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                  ),
+                ],
               ),
-              const Spacer(),
-              FilledButton.icon(
-                onPressed: _batchPushNow,
-                icon: const Icon(Icons.flash_on_rounded, size: 18),
-                label: const Text('立即推送'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: colorScheme.onPrimaryContainer,
-                  foregroundColor: colorScheme.primaryContainer,
-                ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.tonalIcon(
-                onPressed: _batchReschedule,
-                icon: const Icon(Icons.schedule_send_rounded, size: 18),
-                label: const Text('批量排期'),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filledTonal(
-                onPressed: () => setState(() {
-                  _isSelectionMode = false;
-                  _selectedIds.clear();
-                }),
-                icon: const Icon(Icons.close_rounded, size: 20),
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     ).animate().slideY(
@@ -418,10 +447,10 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
   Future<void> _batchReschedule() async {
     final ids = _selectedIds.toList();
     final now = DateTime.now();
-    final picked = await showTimePicker(
+    final picked = await showScheduleTimePicker(
       context: context,
       initialTime: TimeOfDay.now(),
-      helpText: '选择批量排期的起始时间',
+      helpText: '批量排期起始时间',
     );
 
     if (picked == null) return;
@@ -566,129 +595,152 @@ class _QueueItemCard extends StatelessWidget {
     final reasonText = (item.displayReason ?? '').trim();
     final coverCandidates = _coverCandidates;
 
-    final card = Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: AnimatedContainer(
-        duration: AppMotion.stateChange,
-        decoration: BoxDecoration(
-          color: isSelected
-              ? colorScheme.primary.withValues(alpha: 0.05)
-              : colorScheme.surfaceContainerLow,
-          borderRadius: AppShape.paneBorder,
-          border: Border.all(
-            color: isSelected
-                ? colorScheme.primary
-                : colorScheme.outlineVariant.withValues(alpha: 0.3),
-            width: isSelected ? 2 : 1,
+    final card = LayoutBuilder(
+      builder: (context, constraints) {
+        final compact =
+            constraints.maxWidth < MediaQuery.textScalerOf(context).scale(480);
+        final body = Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              if (coverCandidates.isNotEmpty) ...[
+                _buildCover(coverCandidates),
+                const SizedBox(width: 12),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.title ?? '无标题内容',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        PlatformBadge(platform: item.displayPlatform),
+                        if (item.isNsfw)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: _Badge(
+                              label: 'NSFW',
+                              color: colorScheme.error,
+                            ),
+                          ),
+                        if (!isWillPush && item.scheduledTime != null)
+                          Text(
+                            DateFormat(
+                              'MM-dd HH:mm',
+                            ).format(item.scheduledTime!.toLocal()),
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: colorScheme.outline,
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (!isWillPush && reasonText.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        reasonText,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: colorScheme.error,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ),
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: isSelectionMode ? onToggleSelect : null,
-            onLongPress: onLongPress,
-            borderRadius: AppShape.paneBorder,
-            child: IntrinsicHeight(
-              child: Row(
-                children: [
-                  if (isWillPush) _buildTimeSection(context),
+        );
+        final controls = <Widget>[
+          if (isSelectionMode)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Checkbox(
+                value: isSelected,
+                onChanged: (_) => onToggleSelect?.call(),
+              ),
+            )
+          else
+            _buildActions(context),
 
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
+          if (isWillPush && !isSelectionMode)
+            ReorderableDragStartListener(
+              index: index,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Icon(
+                  Icons.drag_indicator_rounded,
+                  size: 20,
+                  color: colorScheme.outline.withValues(alpha: 0.3),
+                ),
+              ),
+            ),
+        ];
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: AnimatedContainer(
+            duration: AppMotion.stateChange,
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? colorScheme.primary.withValues(alpha: 0.05)
+                  : colorScheme.surfaceContainerLow,
+              borderRadius: AppShape.paneBorder,
+              border: Border.all(
+                color: isSelected
+                    ? colorScheme.primary
+                    : colorScheme.outlineVariant.withValues(alpha: 0.3),
+                width: isSelected ? 2 : 1,
+              ),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: isSelectionMode ? onToggleSelect : null,
+                onLongPress: onLongPress,
+                borderRadius: AppShape.paneBorder,
+                child: compact
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          if (coverCandidates.isNotEmpty)
-                            _buildCover(coverCandidates),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                          body,
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 0, 4, 8),
+                            child: Row(
                               children: [
-                                Text(
-                                  item.title ?? '无标题内容',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    PlatformBadge(
-                                      platform: item.displayPlatform,
-                                    ),
-                                    if (item.isNsfw)
-                                      Padding(
-                                        padding: const EdgeInsets.only(left: 8),
-                                        child: _Badge(
-                                          label: 'NSFW',
-                                          color: colorScheme.error,
-                                        ),
-                                      ),
-                                    const Spacer(),
-                                    if (!isWillPush &&
-                                        item.scheduledTime != null)
-                                      Text(
-                                        DateFormat(
-                                          'MM-dd HH:mm',
-                                        ).format(item.scheduledTime!.toLocal()),
-                                        style: theme.textTheme.labelSmall
-                                            ?.copyWith(
-                                              color: colorScheme.outline,
-                                            ),
-                                      ),
-                                  ],
-                                ),
-                                if (!isWillPush && reasonText.isNotEmpty) ...[
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    reasonText,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      color: colorScheme.error,
-                                    ),
-                                  ),
-                                ],
+                                if (isWillPush)
+                                  _buildTimeSection(context, detached: true),
+                                const Spacer(),
+                                ...controls,
                               ],
                             ),
                           ),
                         ],
-                      ),
-                    ),
-                  ),
-
-                  if (isSelectionMode)
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Checkbox(
-                        value: isSelected,
-                        onChanged: (_) => onToggleSelect?.call(),
-                      ),
-                    )
-                  else
-                    _buildActions(context),
-
-                  if (isWillPush && !isSelectionMode)
-                    ReorderableDragStartListener(
-                      index: index,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Icon(
-                          Icons.drag_indicator_rounded,
-                          size: 20,
-                          color: colorScheme.outline.withValues(alpha: 0.3),
+                      )
+                    : IntrinsicHeight(
+                        child: Row(
+                          children: [
+                            if (isWillPush) _buildTimeSection(context),
+                            Expanded(child: body),
+                            ...controls,
+                          ],
                         ),
                       ),
-                    ),
-                ],
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
 
     if (animateEntry) {
@@ -700,7 +752,7 @@ class _QueueItemCard extends StatelessWidget {
     return card;
   }
 
-  Widget _buildTimeSection(BuildContext context) {
+  Widget _buildTimeSection(BuildContext context, {bool detached = false}) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final localTime = item.scheduledTime?.toLocal();
@@ -708,13 +760,23 @@ class _QueueItemCard extends StatelessWidget {
         ? DateFormat('HH:mm').format(localTime)
         : '--:--';
 
-    return Theme(
-      data: theme.copyWith(
-        hoverColor: Colors.transparent,
-        splashColor: Colors.transparent,
-        highlightColor: Colors.transparent,
-      ),
+    final borderRadius = detached
+        ? AppShape.cardBorder
+        : const BorderRadius.only(
+            topLeft: Radius.circular(AppShape.pane),
+            bottomLeft: Radius.circular(AppShape.pane),
+          );
+    return Material(
+      color: colorScheme.primary.withValues(alpha: 0.08),
+      borderRadius: borderRadius,
+      clipBehavior: Clip.antiAlias,
       child: PopupMenuButton<dynamic>(
+        useRootNavigator: true,
+        borderRadius: borderRadius,
+        clipBehavior: Clip.antiAlias,
+        popUpAnimationStyle: MediaQuery.disableAnimationsOf(context)
+            ? AnimationStyle.noAnimation
+            : null,
         tooltip: '调整时间',
         offset: const Offset(72, 0),
         shape: const RoundedRectangleBorder(borderRadius: AppShape.paneBorder),
@@ -767,37 +829,30 @@ class _QueueItemCard extends StatelessWidget {
             ),
           ),
         ],
-        child: Material(
-          color: colorScheme.primary.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(AppShape.pane),
-            bottomLeft: const Radius.circular(AppShape.pane),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: null,
-            child: Container(
-              width: 72,
-              alignment: Alignment.center,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    timeStr,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      color: colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Icon(
-                    Icons.timer_outlined,
-                    size: 14,
-                    color: colorScheme.primary.withValues(alpha: 0.5),
-                  ),
-                ],
+        child: Container(
+          width: MediaQuery.textScalerOf(context).scale(48) + 24,
+          padding: detached
+              ? const EdgeInsets.symmetric(vertical: 8)
+              : EdgeInsets.zero,
+          alignment: Alignment.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                timeStr,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: colorScheme.primary,
+                ),
               ),
-            ),
+              const SizedBox(height: 4),
+              Icon(
+                Icons.timer_outlined,
+                size: 14,
+                color: colorScheme.primary.withValues(alpha: 0.5),
+              ),
+            ],
           ),
         ),
       ),
@@ -811,17 +866,9 @@ class _QueueItemCard extends StatelessWidget {
         ? TimeOfDay.fromDateTime(localTime)
         : TimeOfDay.now();
 
-    final picked = await showTimePicker(
+    final picked = await showScheduleTimePicker(
       context: context,
       initialTime: initialTime,
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: Theme.of(context).colorScheme.copyWith(
-            primary: Theme.of(context).colorScheme.primary,
-          ),
-        ),
-        child: child!,
-      ),
     );
 
     if (picked != null) {
@@ -863,6 +910,7 @@ class _QueueItemCard extends StatelessWidget {
         padding: const EdgeInsets.only(right: 8),
         child: IconButton.filledTonal(
           onPressed: onMoveToFiltered,
+          tooltip: '移至不推送',
           icon: Icon(
             Icons.delete_sweep_rounded,
             color: colorScheme.error,
@@ -878,6 +926,7 @@ class _QueueItemCard extends StatelessWidget {
       padding: const EdgeInsets.only(right: 8),
       child: IconButton.filledTonal(
         onPressed: onRestore,
+        tooltip: '恢复待推送',
         icon: const Icon(Icons.restore_page_rounded, size: 20),
       ),
     );
