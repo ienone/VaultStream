@@ -4,6 +4,8 @@
 
 active
 
+本文记录当前路由，不是目标导航规范。2026-09-14 重审建议动态/资料库/关注为主目的地、来源与账号/自动任务为二级工作区，详见[目标方案](../plans/2026-06-10-frontend-information-architecture-redesign.plan.md)；关注能力与新导航必须一起实施，目前代码仍为下列结构。
+
 ## 当前实现
 
 路由定义位于 `frontend/lib/routing/app_router.dart`，外壳位于 `frontend/lib/layout/app_shell.dart`。
@@ -59,7 +61,7 @@ Root Shell 主导航分支：
 
 ## 计划扩展
 
-- 无导航文档单独计划；Root Shell、动态候选信息流、通知中心和设置入口迁移以 `../plans/2026-06-10-frontend-information-architecture-redesign.plan.md` 为准。
+- 不在现状文档另立方案；页面职责与路由迁移以[前端目标设计](../plans/2026-06-10-frontend-information-architecture-redesign.plan.md)为准，跨端依赖与验收出口见[整体实施次序](../plans/2026-09-14-product-architecture-review.plan.md#sequence)。优先保留现有内容/事件地址和分支状态，不并存两套壳或同步编辑器。
 
 工具页及账号/事件/任务详情在深链接刷新后保留返回入口；有来源栈时返回来源，无栈时回对应主入口。
 

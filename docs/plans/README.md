@@ -1,60 +1,28 @@
-# Plans
+# 设计与实施计划
 
-## 文档状态
+## 产品方案
 
-active
+- [系统构想](2026-07-15-vaultstream-system-concept.plan.md)
+- [前端信息架构与体验设计](2026-06-10-frontend-information-architecture-redesign.plan.md)
+- [产品、体验与架构整体改进方案](2026-09-14-product-architecture-review.plan.md)：当前能力判定、结构取舍、持续自动化与跨端实施顺序。
 
-本目录保存产品构想和具体实施计划。用户于 2026-09-05 明确确认下列两份构想基本覆盖产品真实期望和功能需求，以两者为目标依据；功能目标确认不等于当前已实现或本次全量实施。当前实现事实仍以代码、可重复验证结果和 `docs/frontend/`、`docs/backend/` 为准。
+两份原设计已按整体重审同步修订，目标为动态/资料库/关注及来源与账号、自动任务工作区；这是设计提案，不代表当前导航已经迁移。整体方案统一维护完成度与依据，不另建相互矛盾的产品蓝图。
 
-## 当前构想
+## 当前实施与待核对范围
 
-| 文档 | 角色 |
-| --- | --- |
-| `2026-07-15-vaultstream-system-concept.plan.md` | 定义 VaultStream 的理想产品形态、能力边界和长期原则 |
-| `2026-06-10-frontend-information-architecture-redesign.plan.md` | 定义前端信息架构、页面职责、自适应行为和体验目标 |
+- [来源接入、处理与分发](2026-09-13-source-processing-delivery.plan.md) · [进展](2026-09-13-source-processing-delivery.process.md)
+- [UI 与动效续作](2026-09-12-ui-motion-continuation.plan.md) · [进展](2026-09-12-ui-motion-continuation.process.md)
+- [统一媒体访问](2026-07-26-unified-media-access.plan.md)
+- [Bilibili 媒体与时间点](2026-09-10-bilibili-real-media.plan.md) · [进展](2026-09-10-bilibili-real-media.process.md)
+- [文档原生文本](2026-09-10-document-native-text.plan.md) · [进展](2026-09-10-document-native-text.process.md)
 
-这两份构想不预设全局开发顺序，也不代表其中能力已经实现。具体开发从用户当前选择的部分开始，不由 AI 自动生成总路线或阶段编号。
+是否仍有未完成工作，以各计划的具体范围、当前代码和最新证据核对，不从旧状态标签推断。
 
-## 专项实施计划
+## 历史范围参考
 
-| 文档 | 状态 | 范围 |
-| --- | --- | --- |
-| `2026-07-26-unified-media-access.plan.md` | active | 已建立资产/变体与部分客户端迁移；manifest 刷新、分发迁移和旧字段退出仍未完成 |
-| `2026-07-28-platform-parser-reliability.plan.md` | completed-with-known-limit | 2026-07-28 的 16 个历史样本验收；不代表当前全部平台持续可用 |
-| `simplification-and-ux.plan.md` | completed-with-known-limit | 2026-09-05 已完成 In scope；原生端、真实平台、部署和 CI Python 3.13 未验证 |
+- [平台解析可靠性](2026-07-28-platform-parser-reliability.plan.md)
+- [精简与 UX 实施](simplification-and-ux.plan.md)
 
-## 开发方式
+已完成的分 P 身份、微博 URL/身份/运行修复和知乎续页小计划已移出当前目录，稳定行为在平台知识和模块文档维护，逐次验收可从 Git 历史查阅。
 
-每次只选择一个边界清晰、可独立验收的功能切片：
-
-1. 从系统构想和前端 IA 中确认目标与非目标。
-2. 读取对应当前实现文档、代码、API/数据库 contract 和相关 issue。
-3. 重新验证 issue 是否仍然成立，不把旧记录直接当作事实。
-4. 同时处理该切片必要的前端、后端、测试和文档，不按历史页面或模块边界机械拆开。
-5. 验收后更新当前实现文档，关闭、改写或归档相关 issue，再选择下一部分。
-
-## 何时创建 Plan
-
-只有当前功能切片满足任一条件时才创建专项 plan：
-
-- 跨多个模块或前后端，需要明确共同边界。
-- 涉及数据迁移、外部副作用、安全或较高回归风险。
-- 需要多轮、跨会话推进。
-- 存在需要用户确认的范围或取舍。
-
-小型修复、单文件调整和边界明确的问题通常直接使用 issue、提交或 PR，不额外创建 plan。
-
-## 何时创建 Process
-
-Process 不是 plan 的自动伴生文件。只有计划已经实际开始，并且需要跨会话记录真实进展、关键决策、偏离、验证和剩余工作时，才创建同名 process。
-
-- 不为构想文档创建 process。
-- 不为尚未启动的计划预写 process。
-- 不把 AI 推测的执行过程写成已经发生的事实。
-- Process 只记录真实执行和验证，不复制完整命令输出或逐文件清单。
-
-## 完成、归档与删除
-
-- 完成前记录验收结论和未验证项。
-- 有长期决策价值的专项 plan/process 一起移入 `archive/`。
-- AI 自动生成、未被采用或没有可靠事实价值的计划与过程应删除，依赖 Git 历史追溯。
+只在需要表达多模块取舍或跨会话接续时新建实施计划；过程文件记录当前进展与必要证据，不复制逐步命令输出。完成后将稳定结论放回所属文档，清理失去用途的计划和过程。

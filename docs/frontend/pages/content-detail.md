@@ -59,9 +59,9 @@ active
 - 领域：`../../backend/api/contents-search-media.md`、`../../backend/api/agent-system-events.md`
 - 媒体访问必须复用统一 `local://` 转换和代理策略。
 
-## 当前问题
+## 历史决策
 
-- 媒体访问与失败态修复记录：`../../issues/archive/media-proxy-image-access.md`
+- [已关闭问题的历史决策](../../issues/archive/README.md)。
 
 ## PDF 阅读（2026-09-10）
 

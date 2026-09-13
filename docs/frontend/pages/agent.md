@@ -71,11 +71,9 @@ Agent 工作台可从三个主页的页头工具菜单进入。`search_content` 
 - 领域：`../../backend/api/agent-system-events.md`
 - 主要资源：Agent sessions、messages、runs、tools、confirmations 和 Agent SSE。
 
-## 当前问题
+## 历史决策
 
-- 用户级策略和权限边界修复记录见 `../../issues/archive/frontend-control-policy-gaps.md`。
-- 页面请求、会话 intent、SSE 解析和 timeline 状态已进入 controller；结构修复记录见 `../../issues/archive/frontend-agent-page-controller-and-sse-boundary.md`。2026-09-09 本机已有 Agent LLM 配置，浏览器真实只读检索、引用导航、消息恢复和 final 回复唯一性已验收；其他模型、工具和完整 RAG 质量仍未据此验收。
-- 后端工具桥接边界的关闭记录见 `../../issues/archive/backend-agent-api-bridge-policy-bypass.md`。
+- [已关闭问题的历史决策](../../issues/archive/README.md)。
 
 ## 文档页码引用（2026-09-10）
 

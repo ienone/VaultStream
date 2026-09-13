@@ -6,7 +6,7 @@ in_progress。2026-09-10 用户明确授权创建持续 Goal，使用已登录�
 
 ## 依据与边界
 
-- [独立复审及整改记录](archive/2026-09-06-implementation-review.md)：原链接已归档，旧问题及旧验收不是当前结论。
+- [已关闭问题的历史决策](archive/README.md)。
 - [系统构想](../plans/2026-07-15-vaultstream-system-concept.plan.md)。
 - [前端信息架构](../plans/2026-06-10-frontend-information-architecture-redesign.plan.md)。
 - 延续共享 checkout，不提交、推送或部署。不做用户明确排除的折叠屏专项。

@@ -81,11 +81,9 @@ Bot 配置保存、Telegram 服务控制和群组同步由设置领域的 typed 
 - 敏感字段不得出现在日志、URL query 或普通错误文本中。
 - 前端只轮询会话状态并展示后端生成的二维码；不读取或导入浏览器 Cookie、Local Storage 或密码。
 
-## 当前问题
+## 历史决策
 
-- UI 写操作边界修复记录：`../../issues/archive/frontend-ui-layer-api-write-boundary.md`
-- 用户控制面修复记录：`../../issues/archive/frontend-control-policy-gaps.md`
-- Bot 配置写入与运行时副作用回执修复记录：`../../issues/archive/backend-bot-config-router-side-effects.md`
+- [已关闭问题的历史决策](../../issues/archive/README.md)。
 
 ### 推送目标表单（2026-09-13）
 

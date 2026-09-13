@@ -10,7 +10,7 @@ active
 
 本地媒体与控制 API 又共用同一个全局 API Token。普通 JSON API 可以稳定发送鉴权头，浏览器原生图片、视频、音频、缓存和 Range 请求却不适合携带这一全局凭证。继续为单个图片组件增加例外无法覆盖未来的音视频播放，也会把安全策略、URL 规则和失败降级散落到各个模板。
 
-关联问题：`../issues/archive/media-proxy-image-access.md`。
+关联问题：`../issues/archive/README.md`。
 
 ## 目标
 
@@ -288,7 +288,7 @@ poster 是独立的图片资产或图片变体，不从视频 URL 临时猜测�
 
 - `./2026-07-15-vaultstream-system-concept.plan.md`
 - `./2026-06-10-frontend-information-architecture-redesign.plan.md`
-- `../issues/archive/media-proxy-image-access.md`
+- [已关闭问题的历史决策](../issues/archive/README.md)。
 - `../backend/modules/media.md`
 - `../backend/api/contents-search-media.md`
 - `../backend/database/content-search.md`

@@ -55,7 +55,7 @@ active
 
 ## 关联文档
 
-- 测试套件治理记录：`./archive/backend-test-suite-value-density.md`
+- [已关闭问题的历史决策](archive/README.md)。
 - 后端总览：`../backend/README.md`
 
 ## 修复建议

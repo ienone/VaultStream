@@ -62,7 +62,7 @@ active
 
 ## 当前问题
 
-图片代理和媒体访问修复记录见 `../../issues/archive/media-proxy-image-access.md`。
+图片代理和媒体访问修复记录见 `../../issues/archive/README.md`。
 
 ## 尚未实现 / 计划扩展
 
