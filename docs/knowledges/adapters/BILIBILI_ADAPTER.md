@@ -32,6 +32,10 @@ Bilibili 内容类型包含视频、动态、专栏、番剧、直播等多种 U
 
 ## 已知限制
 
+2026-09-10：视频解析新增按 URL 的分 P 选择 cid，读取 player/playurl 的单段 MP4 来源、player/v2 的章节及字幕。字幕由不含平台 Cookie 的独立客户端经 safe_fetch 下载，限 4 MiB；ai-zh 明确标注平台 AI 字幕。媒体及时间片按 `bilibili:{bvid}:{cid}` 关联。可选接口失败或不支持的分段流写入 rich_payload.media_status，不伪装成完整成功。真实样本已得到一个视频候选、10 个章节、661 条字幕；正式入库、远端播放失效刷新、浏览器播放和时间点搜索仍待验收。
+
+同日正式入库复核发现旧 player/v2 返回过不相干的字幕，已替换为 player/wbi/v2，并校验 bvid/cid 与 view 声明的字幕轨 ID。内容 16 已完成正式导入、视频归档、正确字幕及时间点搜索；浏览器播放仍待验收。字幕以可读时间段进入 chunks，并在每段 cues 中保留原始逐条时间与文字，避免把数百条短字幕逐条调用 embedding。
+
 - 平台接口和动态结构可能变化。
 - Cookie、代理和反爬策略可能影响真实抓取。
 - 下文部分平台细节可能随 Bilibili 上游变更而过期，需要以测试样本和当前代码复核。
@@ -165,3 +169,7 @@ BILIBILI_COOKIE=\"SESSDATA=...; bili_jct=...; buid=...\"
 - 视频和直播使用 `video` 布局；视频时长写入 `extra_stats.duration_seconds`，分区名写入 `source_tags`。
 - 直播映射开播时间、父/子分区和标签；封面优先 `cover`，其次 `background`。本次直播样本这两个字段均为空，因此不伪造封面；当前房间接口也未返回主播头像。
 - 番剧本次保持 `gallery`；后续若需要播放型布局，应先明确“只有封面”与“可播放媒体”的前端 contract。
+
+视频 canonical 使用 `https://www.bilibili.com/video/{视频ID}/`；默认 p=1 省略，其他正整数分 P 保留并去掉前导零。网页/移动域名、尾斜杠、追踪参数不再使同一分 P 重复收藏，无效分 P 明确报错。该规则不实现 AV/BV 互转，其他历史库的旧 canonical 需单独核对。
+
+多分 P 视频标题包含平台分集序号和 pages.part 名称，单分 P 保持原视频标题；rich_payload 同时保存 video_page、video_page_title、video_page_count。真实 BV1Gr4y187aS 前两节分别显示“P1 课程简介”“P2 01 线性方程组”，时长 82/631 秒，媒体 cid 分别 710789626/31541103270；没有将合集总时长误用为当前分 P 时长。

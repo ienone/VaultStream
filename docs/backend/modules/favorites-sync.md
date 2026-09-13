@@ -29,6 +29,8 @@ active
 
 系统配置决定启用平台和同步策略。同步任务调用平台 fetcher 获取收藏项，再按重复策略写入内容库。正常同步、单项重试和批量重试共用 `FavoritesSyncTask.import_items`，最终均通过 `ContentService` 的 canonical URL 去重与 `ContentSource` 流水写入；部分失败仍保留逐项结果。
 
+只有本轮导入没有失败项时才提交下一游标，包括显式保存 None 清除已到末页的旧游标。导入失败时保留当前页游标，并在结果 next_cursor 中返回实际保留值，下次可重新处理该页；已成功内容继续按重复策略去重，不因失败越过未导入收藏。
+
 同步状态、手动策略、预览、trigger、run retry、单项 retry 和批量 retry 由 `FavoritesSyncService` 统一编排；router 不再直接创建协程、检查平台认证或调用内容导入。动作使用命名响应且所有执行路径稳定返回 `run_id`。`202` 只表示任务已受理，单项/批量同步执行的 `200` 则同时返回导入、跳过和失败统计。
 
 ## 测试

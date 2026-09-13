@@ -110,6 +110,11 @@ REQUIRED_ACTION_RESPONSE_MODELS = {
     ): "ContentReparseAcceptedResponse",
     (
         "post",
+        "/api/v1/contents/{content_id}/document-text/extract",
+        "202",
+    ): "DocumentExtractionAcceptedResponse",
+    (
+        "post",
         "/api/v1/bot-config",
         "201",
     ): "BotConfigMutationResponse",

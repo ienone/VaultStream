@@ -21,6 +21,7 @@ active
 - `POST /api/v1/captures/files` 接收同一次分享中的 1–32 个 `uploads`。所有文件归入同一个内容对象并按顺序建立独立 `MediaAsset`；多张图片形成 gallery，其他混合文件形成带附件的 document。单个文件仍受 `CAPTURE_UPLOAD_MAX_BYTES` 限制；来源说明和 `client_context_json` 写入同一条 `ContentSource`，无效上下文返回稳定错误码。
 - `GET /api/v1/contents` 提供分页、平台、状态、标签、作者、日期、关键词和 NSFW 筛选。
 - `GET /api/v1/contents/{content_id}` 返回单条内容详情。若 `rich_payload.chunks[]` 含显式章节/转写时间点，响应会额外返回经过媒体归属、类型和时长校验的 `media_segments`；调用方不应自行解析原始 payload 猜测可播放位置。
+- `media_segments[].excerpt` 是至多 280 字的预览，`full_text` 是同一已校验切片的完整原文，供逐字稿展开阅读。两者均不代表模型校正后的事实；无原文时为空字符串。
 - `GET, POST /api/v1/contents/{content_id}/media-bookmarks` 按明确 `media_asset_id` 列出或创建用户时间点书签；`PATCH, DELETE /api/v1/contents/{content_id}/media-bookmarks/{bookmark_id}` 编辑可选笔记或删除书签。服务端验证内容存在、资产归属、audio/video 类型、非负秒数和已知媒体时长；同一资产的同一毫秒位置只保留一个书签。
 - `PATCH /api/v1/contents/{content_id}` 更新允许人工维护的内容字段。只有值实际变化的标题、正文、作者、封面、标签和模板会记为人工修订；`layout_type_override=null` 会恢复自动模板并解除对应保护。
 - `POST /api/v1/contents/{content_id}/parse-candidate/resolve` 逐字段处理重新解析候选。`accept_parsed` 采用新解析并解除该字段保护，`keep_current` 保留人工值，`merge` 必须提交 `merged_value` 并继续保护合并值。不存在对应候选时返回 `409`。
@@ -46,7 +47,7 @@ active
 - `timepoints` 只接受 `rich_payload.chunks[]` 上单一显式 contract：`segment_type=chapter|transcript`、同内容的音频/视频 `media_asset_id`、非负 `start_seconds`，以及可选且大于起点的 `end_seconds`。响应保留内容/资产 ID、媒体与片段类型、标题、摘录、秒数、匹配来源和分数。发布日期、媒体总时长、无效资产与越界秒数均不会转成时间点。
 - `GET /api/v1/search/semantic/index-status` 返回索引能力和当前状态。
 - `POST /api/v1/search/semantic/reindex` 在 `dry_run=true` 时只估算候选和调用量；实际执行时返回 `run_id`。
-- `POST /api/v1/search/semantic/embeddings/{embedding_id}/retry` 同步重试单个失败分块，返回命名结果及必需 `run_id`，并结算对应 `semantic_reindex` 运行记录。
+- `POST /api/v1/search/semantic/embeddings/{embedding_id}/retry` 同步重试单个失败分块，返回命名结果及必需 `run_id`，并结算对应 `semantic_reindex` 运行记录。计算期间原文版本变化时回滚，返回 409 和“原文已变化，请刷新后重新索引”，不提交旧结果。
 
 搜索结果必须保留内容 ID 和匹配来源，时间点还必须保留媒体资产 ID 与显式秒数，便于界面回到存档证据；不能只返回模型生成文本。
 
@@ -76,3 +77,21 @@ active
 - 先读取 router、schema、service 返回值、现有客户端和相关测试。
 - API 字段或状态码变化必须同时更新 OpenAPI、前端类型和本分册。
 - 不允许在前端通过猜测多个响应形态维持兼容。
+
+## PDF 原生阅读（2026-09-10）
+
+- GET `/api/v1/contents/{content_id}/document-text` 返回 DocumentTextResponse：content_id 与 documents；每份文件含 media_asset_id、filename、status、page_count、text_page_count、pages。页面包含 chunk_index、从 1 起的 page_number、完整 text 与固定 source_kind=pdf_native_text。只返回当前所属 PDF 原变体校验通过的页码。
+- POST `/api/v1/contents/{content_id}/document-text/extract` 无请求体，返回 202 DocumentExtractionAcceptedResponse（content_id、非空 run_id、status=processing）。不存在内容返回 404，没有归档 PDF 返回 400。结果以 document_extract 账本和重新读取的文档状态为准。
+- 文件状态为 pending/ready/partial/no_text/encrypted/invalid_pdf/limit_exceeded/timeout/missing/source_changed/failed；ready 仅表示原生文本提取成功，不表示视觉版面或 OCR 识别完成。
+- unified search 新增 kind=document_pages 与 document_pages 数组。每条含内容、文件资产、filename、page_number、excerpt、match_source、score、route。route 绑定 document_asset 与 page，不猜测其他文件的同页码。
+- 摘要生成期间源内容改变返回 409；既有 PDF 原页、章节和字幕不会被新摘要的模型切片替换。
+
+文件捕获对缺省、无效或通用 application/octet-stream MIME 使用文件名推断格式；明确的具体 MIME 保留。PDF 提取仍检查真实文件头与校验和，扩展名不被视为内容已解析的证据。
+
+手动生成摘要失败时不返回成功回执：未配置摘要密钥返回 503，模型调用失败或空摘要返回 502，运行账本记为 error；原有摘要及切片保留。供应商请求细节不进入 API 错误文本或运行错误字段。
+
+PDF 摘要在正文尚未提取或没有可读取页面时返回 409，提示先提取或无法生成；部分可读文档的摘要固定注明未覆盖页面/附件。
+
+摘要成功保存时在同一事务撤销该内容的旧向量索引，防止切片替换后仍召回旧解释；失败时原摘要、原切片和原索引均保留。手动摘要成功后使用既有 PostIngest 自动索引调度，遵循 enable_auto_semantic_indexing；关闭时不调用 embedding 模型，用户仍可显式重建。摘要成功回执不等于索引已完成。
+
+POST /contents/{id}/patrol-score 在评分期间内容或处理状态变化时返回409，迟到结果不覆盖用户决定。

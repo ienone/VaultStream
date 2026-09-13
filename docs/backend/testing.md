@@ -12,7 +12,8 @@ active
 - API/媒体鉴权、SSRF、签名绑定与到期、路径逃逸：`test_core/test_safe_fetch.py`、`test_api/test_media.py`、`test_api/test_media_manifest.py`、`test_services/test_media_access.py`；Bot 访问控制：`test_bot/test_permissions.py`。
 - 批量文件回滚和共享对象保留、范围先于候选截断：`test_content_lifecycles.py`；人工编辑保护：`test_tasks/test_parsing_task.py`；事件最后成员及并发删除：`test_api/test_knowledge_events.py`。
 - 策略关闭后的副作用限制：`test_automation_policy.py`；任务排他领取、准确结算及新队列实例接续：`test_queue_concurrency.py`；运行中任务和通知引用保留：`test_background_task_state.py`。
-- 前端仅保留 `discovery_feed_provider_test.dart`、`playback_restore_test.dart`、`api_client_log_redaction_test.dart`，分别验证查询竞态、暂停恢复及日志脱敏。播放器测试只替换 OS 解码边界，不证明真实播放质量。
+- 前端保留查询竞态、播放恢复／主动暂停、日志脱敏、失效凭据隔离、PDF 资源凭据隔离、批量操作不重放、编辑字段完整性、登录会话释放和嵌套导航草稿保护。相关测试位于 `frontend/test/unit/` 与 `frontend/test/widgets/`；播放器只替换 OS 解码边界，不证明真实播放质量。
+- 后续新增的后端边界包括平台内容／媒体身份、收藏分页游标不漏项、文档和语义索引拒绝迟到写入、Agent 原文／图片归属与凭据隔离、失败任务不覆盖既有结果，以及外部网络等待不阻塞事件循环。不是逐页面布局或真实平台样本套件。
 
 测试复用实际 SQLite 引擎、外键、ORM、文件存储和 ASGI 路由。独立测试数据库在 `backend/.test-runtime/` 内创建并清理；不启动应用 lifespan/worker，不访问用户数据库。外部模型在调用边界替换。默认禁止非回环网络，并把资源未释放警告视为错误。
 

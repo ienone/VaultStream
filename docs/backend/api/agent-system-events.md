@@ -55,6 +55,7 @@ Agent API 只提供受控编排能力，不代表 Agent 可以绕过收藏、同
 - `POST /api/v1/ai/connectivity-test` 执行真实连通性测试并记录 `run_id`。
 - AI 连通性响应稳定包含 `run_id`、`target`、`status`、`ok` 和 `elapsed_ms`，供应商相关结果或错误按目标落在明确可选字段；`POST /api/v1/ai/models` 返回目标与模型名列表。
 - `POST /api/v1/platform-health/parse-test` 执行只读真实解析测试，不创建收藏内容、不推进同步 cursor。它与生产解析共用数据库平台凭据和适配器构造逻辑；成功结果包含内容/布局类型、作者字段、封面与媒体、正文长度、发布时间、统计、来源标签，以及结构化扩展和私有归档的键名，便于区分“请求成功”与“字段完整”。响应不返回 Cookie 或完整原始平台 payload。
+- `GET /api/v1/platform-health` 中 `favorites_sync.last_run` 保留相关整批任务账本，用于追踪任务；`last_run_status` 是该平台在此任务中的结果状态，无相关结果时为 null。单平台任务未产出结果时使用其任务状态；多平台任务仅使用 results 内该平台的状态。账号状态显示与失败判断使用 last_run_status，不把整批任务失败传播到已成功的平台。
 - 平台解析测试无论业务成功或失败都返回同一个具名诊断响应，并保留 `run_id`、平台、耗时和显式 `ok/status/error`；HTTP 失败仍按公共错误规则处理。
 
 “已配置”“健康检查通过”“真实业务调用成功”是三个不同层级，界面不得合并为一个布尔状态。

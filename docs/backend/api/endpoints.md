@@ -64,6 +64,8 @@ active
 | `POST` | `/api/v1/cards/{card_id}/review` |
 | `GET` | `/api/v1/contents` |
 | `DELETE, GET, PATCH` | `/api/v1/contents/{content_id}` |
+| `GET` | `/api/v1/contents/{content_id}/document-text` |
+| `POST` | `/api/v1/contents/{content_id}/document-text/extract` |
 | `POST` | `/api/v1/contents/{content_id}/generate-summary` |
 | `GET, POST` | `/api/v1/contents/{content_id}/media-bookmarks` |
 | `DELETE, PATCH` | `/api/v1/contents/{content_id}/media-bookmarks/{bookmark_id}` |

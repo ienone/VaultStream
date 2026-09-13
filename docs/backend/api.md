@@ -37,7 +37,7 @@ active
 - 长耗时或外部副作用动作通常返回 `run_id`。
 - 返回 `run_id` 只表示已经受理或调度，除非 contract 明确说明同步执行完成。
 - 最终状态通过任务结果、领域资源或事件提示后的重新读取获得。
-- 所有写动作的 2xx 成功响应必须使用命名 response model，或像目标删除一样明确声明 bodyless `204`；不得以 inline dict 绕过 OpenAPI contract。当前文档门禁除 148 条端点覆盖外，还固定校验 56 个动作的成功状态码、schema 名称或无响应体约束。
+- 所有写动作的 2xx 成功响应必须使用命名 response model，或像目标删除一样明确声明 bodyless `204`；不得以 inline dict 绕过 OpenAPI contract。当前文档门禁除 150 条端点覆盖外，还固定校验 57 个动作的成功状态码、schema 名称或无响应体约束。
 
 ### 错误
 
