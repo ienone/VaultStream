@@ -1,4 +1,9 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:audio_service/audio_service.dart';
+import 'features/player/android_media_session.dart';
+import 'features/player/android_picture_in_picture.dart';
+import 'features/player/global_playback_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,7 +14,9 @@ import 'package:timeago/timeago.dart' as timeago;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'theme/app_theme.dart';
+import 'theme/dynamic_color_adapter.dart';
 import 'routing/app_router.dart';
+import 'routing/app_navigation.dart';
 import 'core/providers/theme_provider.dart';
 import 'features/share_receiver/share_receiver_service.dart';
 
@@ -78,8 +85,32 @@ void main() async {
     }
   }
 
+  final container = ProviderContainer();
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    final handler = await AudioService.init(
+      builder: () => AndroidMediaSession(container),
+      config: const AudioServiceConfig(
+        androidNotificationChannelId: 'com.vaultstream.frontend.playback',
+        androidNotificationChannelName: '媒体播放',
+        androidNotificationIcon: 'drawable/ic_media_notification',
+        androidStopForegroundOnPause: true,
+      ),
+    );
+    await handler.listenForAudioRouteChanges();
+    await container.read(pictureInPictureProvider.notifier).initialize();
+    AudioService.notificationClicked.listen((clicked) {
+      if (!clicked || container.read(globalPlaybackProvider).request == null) {
+        return;
+      }
+      final router = container.read(goRouterProvider);
+      if (router.routeInformationProvider.value.uri.path != '/player') {
+        router.push('/player');
+      }
+    });
+  }
   runApp(
-    ProviderScope(
+    UncontrolledProviderScope(
+      container: container,
       child: VaultStreamApp(initialSharedMedia: _initialSharedMedia),
     ),
   );
@@ -152,10 +183,18 @@ class _VaultStreamAppState extends ConsumerState<VaultStreamApp> {
           // 它是MaterialApp的一个变体，专门用于处理路由配置
           // routerConfig参数用于传递应用的路由配置，这里传递的是前面获取的router变量
           title: 'VaultStream',
-          theme: AppTheme.light(lightDynamic), // 默认主题，使用浅色动态颜色
-          darkTheme: AppTheme.dark(darkDynamic), // 深色主题，使用深色动态颜色
+          theme: AppTheme.light(
+            flutterDynamicColors(lightDynamic),
+          ), // 默认主题，使用浅色动态颜色
+          darkTheme: AppTheme.dark(
+            flutterDynamicColors(darkDynamic),
+          ), // 深色主题，使用深色动态颜色
           themeMode: themeMode, // 主题模式
           routerConfig: router, // 应用的路由配置是叫router
+          builder: (context, child) =>
+              AndroidPictureInPictureHost(child: child!),
+          onNavigationNotification: (notification) =>
+              handleAppNavigationNotification(router, notification),
           debugShowCheckedModeBanner: false,
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,

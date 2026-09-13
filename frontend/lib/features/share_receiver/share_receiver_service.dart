@@ -34,17 +34,26 @@ class SharedContent {
 }
 
 /// 分享接收状态
-@riverpod
+@Riverpod(keepAlive: true)
 class ShareReceiverState extends _$ShareReceiverState {
+  final _pending = <SharedContent>[];
+
   @override
   SharedContent? build() => null;
 
-  void setSharedContent(SharedContent? content) {
-    state = content;
+  void setSharedContent(SharedContent content) {
+    if (content.isEmpty) return;
+    if (state == null) {
+      state = content;
+    } else {
+      _pending.add(content);
+    }
   }
 
-  void clear() {
-    state = null;
+  bool complete(SharedContent content) {
+    if (!identical(state, content)) return false;
+    state = _pending.isEmpty ? null : _pending.removeAt(0);
+    return true;
   }
 }
 
@@ -102,9 +111,11 @@ class ShareReceiverService {
     }
   }
 
-  void clearSharedContent() {
-    _ref.read(shareReceiverStateProvider.notifier).clear();
-    if (!kIsWeb) {
+  void completeSharedContent(SharedContent content) {
+    final completed = _ref
+        .read(shareReceiverStateProvider.notifier)
+        .complete(content);
+    if (completed && _ref.read(shareReceiverStateProvider) == null && !kIsWeb) {
       ReceiveSharingIntent.instance.reset();
     }
   }
@@ -116,7 +127,7 @@ class ShareReceiverService {
 }
 
 /// 分享接收服务 Provider
-@riverpod
+@Riverpod(keepAlive: true)
 ShareReceiverService shareReceiverService(Ref ref) {
   final service = ShareReceiverService(ref);
   ref.onDispose(() => service.dispose());

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'navigation_scope.dart';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -7,11 +8,14 @@ import 'package:flutter/foundation.dart';
 
 import '../features/collection/collection_page.dart';
 import '../features/collection/content_detail_page.dart';
+import '../features/collection/content_edit_page.dart';
+import '../features/collection/providers/content_editor_key_provider.dart';
 import '../features/collection/models/content.dart';
 import '../features/dashboard/dashboard_page.dart';
 import '../features/dashboard/task_result_page.dart';
 import '../features/automation/automation_page.dart';
 import '../features/automation/distribution_rule_page.dart';
+import '../features/automation/providers/rule_editor_key_provider.dart';
 import '../features/settings/settings_page.dart';
 import '../features/agent/agent_page.dart';
 import '../features/accounts/account_center_page.dart';
@@ -22,12 +26,12 @@ import '../features/search/search_page.dart';
 import '../features/player/player_page.dart';
 import '../features/player/global_playback_controller.dart';
 import '../features/player/global_player_widgets.dart';
+import '../features/player/playback_route_observer.dart';
 import '../features/auth/presentation/connect_page.dart';
 import '../features/auth/presentation/onboarding_page.dart';
 import '../layout/app_shell.dart';
 import '../core/providers/local_settings_provider.dart';
 import '../core/providers/system_status_provider.dart';
-import '../theme/design_tokens.dart';
 
 part 'app_router.g.dart';
 
@@ -44,20 +48,48 @@ GoRouter goRouter(Ref ref) {
 
   // 当配置或系统状态发生改变时，通知路由重新验证
   ref.listen(localSettingsProvider, (previous, next) {
+    if (previous?.apiToken.isNotEmpty == true &&
+        next.apiToken.isEmpty &&
+        ref.exists(globalPlaybackProvider)) {
+      unawaited(ref.read(globalPlaybackProvider.notifier).close());
+    }
     listenable.value++;
   });
   ref.listen(systemStatusProvider, (previous, next) {
     listenable.value++;
   });
 
+  Future<bool> confirmRuleExit(
+    BuildContext context,
+    GoRouterState state,
+  ) async {
+    // Authentication loss must always remove private pages. Switching to another
+    // stateful branch keeps this form mounted and does not discard its draft.
+    if (ref.read(localSettingsProvider).apiToken.isEmpty) return true;
+    final destination = GoRouter.of(
+      context,
+    ).routeInformationProvider.value.uri.path;
+    if (destination == '/home' || destination == '/collection') return true;
+    return await ref
+            .read(ruleEditorKeyProvider(state.pageKey))
+            .currentState
+            ?.confirmExit() ??
+        true;
+  }
+
   final router = GoRouter(
     navigatorKey: _rootNavigatorKey,
     observers: [
-      _PlaybackNavigationObserver(
-        (settled) => ref
+      if (kIsWeb) ref.read(playbackRouteObserverProvider),
+      _PlaybackNavigationObserver((settled) async {
+        if (ref.read(localSettingsProvider).apiToken.isEmpty ||
+            !ref.exists(globalPlaybackProvider)) {
+          return;
+        }
+        await ref
             .read(globalPlaybackProvider.notifier)
-            .preservePlaybackOnViewRemoval(settled),
-      ),
+            .preservePlaybackOnViewRemoval(settled);
+      }),
     ],
     initialLocation: '/home',
     refreshListenable: listenable,
@@ -97,17 +129,37 @@ GoRouter goRouter(Ref ref) {
       );
     },
     routes: [
+      GoRoute(path: '/player', builder: (context, state) => const PlayerPage()),
+      GoRoute(
+        path: '/tasks/:runId',
+        builder: (context, state) => GlobalPlaybackChrome(
+          child: TaskResultPage(runId: state.pathParameters['runId']!),
+        ),
+      ),
+      GoRoute(
+        path: '/events/:id',
+        builder: (context, state) => GlobalPlaybackChrome(
+          child: EventDetailPage(
+            eventId: int.parse(state.pathParameters['id']!),
+          ),
+        ),
+      ),
       ShellRoute(
         builder: (context, state, child) {
-          final location = state.matchedLocation;
+          final location = state.uri.path;
+          if (location == '/connect' || location == '/onboarding') {
+            return AppNavigationScope(child: child);
+          }
           final appShellOwnsMiniPlayer =
               location == '/home' ||
               location == '/collection' ||
               location.startsWith('/automation') ||
               location.startsWith('/collection/');
-          return GlobalPlaybackChrome(
-            showMiniPlayer: location != '/player' && !appShellOwnsMiniPlayer,
-            child: child,
+          return AppNavigationScope(
+            child: GlobalPlaybackChrome(
+              showMiniPlayer: !appShellOwnsMiniPlayer,
+              child: child,
+            ),
           );
         },
         routes: [
@@ -141,10 +193,6 @@ GoRouter goRouter(Ref ref) {
             ),
           ),
           GoRoute(
-            path: '/player',
-            builder: (context, state) => const PlayerPage(),
-          ),
-          GoRoute(
             path: '/accounts',
             builder: (context, state) => const AccountCenterPage(),
           ),
@@ -157,17 +205,6 @@ GoRouter goRouter(Ref ref) {
             path: '/notifications',
             builder: (context, state) => const NotificationCenterPage(),
           ),
-          GoRoute(
-            path: '/events/:id',
-            builder: (context, state) => EventDetailPage(
-              eventId: int.parse(state.pathParameters['id']!),
-            ),
-          ),
-          GoRoute(
-            path: '/tasks/:runId',
-            builder: (context, state) =>
-                TaskResultPage(runId: state.pathParameters['runId']!),
-          ),
           StatefulShellRoute.indexedStack(
             // builder用于构建StatefulShellRoute的UI
             // context参数是用于构建Widget的BuildContext对象
@@ -175,9 +212,8 @@ GoRouter goRouter(Ref ref) {
             // navigationShell参数是StatefulNavigationShell对象，表示当前的导航壳，可以用于管理子路由的导航状态
             // 返回一个AppShell Widget，传入navigationShell参数
             builder: (context, state, navigationShell) {
-              return AppShell(
-                navigationShell: navigationShell,
-                currentLocation: state.uri.path,
+              return AppNavigationScope(
+                child: AppShell(navigationShell: navigationShell),
               );
             },
             branches: [
@@ -216,10 +252,11 @@ GoRouter goRouter(Ref ref) {
                           final mediaAssetId = int.tryParse(
                             state.uri.queryParameters['media_asset'] ?? '',
                           );
-                          final preview = state.extra is ShareCard
-                              ? state.extra as ShareCard
+                          final extra = state.extra;
+                          final preview = extra is ShareCard && extra.id == id
+                              ? extra
                               : null;
-                          return CustomTransitionPage(
+                          return MaterialPage<void>(
                             key: state.pageKey,
                             child: ContentDetailPage(
                               contentId: id,
@@ -228,43 +265,39 @@ GoRouter goRouter(Ref ref) {
                               initialPlaybackSeconds: playbackSeconds,
                               initialMediaAssetId: mediaAssetId,
                             ),
-                            transitionDuration: preview == null
-                                ? AppMotion.routeTransition
-                                : AppMotion.containerTransform,
-                            reverseTransitionDuration: preview == null
-                                ? AppMotion.routeTransition
-                                : AppMotion.containerTransformBack,
-                            transitionsBuilder:
-                                (
-                                  context,
-                                  animation,
-                                  secondaryAnimation,
-                                  child,
-                                ) {
-                                  // 共享容器先展开，页面内容从动画后半段渐入；
-                                  // 返回时页面先淡出，再由容器收拢回源卡片。
-                                  final curved = CurvedAnimation(
-                                    parent: animation,
-                                    curve: preview == null
-                                        ? AppMotion.standardCurve
-                                        : const Interval(
-                                            0.45,
-                                            1,
-                                            curve: AppMotion.standardCurve,
-                                          ),
-                                  );
-                                  return FadeTransition(
-                                    opacity: preview == null
-                                        ? Tween<double>(
-                                            begin: 0.96,
-                                            end: 1,
-                                          ).animate(curved)
-                                        : curved,
-                                    child: child,
-                                  );
-                                },
                           );
                         },
+                        routes: [
+                          GoRoute(
+                            path: 'edit',
+                            parentNavigatorKey: _rootNavigatorKey,
+                            builder: (context, state) => ContentEditPage(
+                              key: ValueKey(state.pathParameters['id']),
+                              contentId: int.parse(state.pathParameters['id']!),
+                              routeKey: state.pageKey,
+                            ),
+                            onExit: (context, state) async {
+                              if (ref
+                                  .read(localSettingsProvider)
+                                  .apiToken
+                                  .isEmpty) {
+                                return true;
+                              }
+                              return await ref
+                                      .read(
+                                        contentEditorKeyProvider((
+                                          state.pageKey,
+                                          int.parse(
+                                            state.pathParameters['id']!,
+                                          ),
+                                        )),
+                                      )
+                                      .currentState
+                                      ?.confirmExit() ??
+                                  true;
+                            },
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -278,38 +311,48 @@ GoRouter goRouter(Ref ref) {
                       initialTab: state.uri.queryParameters['tab'],
                       highlightRunId: state.uri.queryParameters['run'],
                     ),
-                  ),
-                  GoRoute(
-                    path: '/automation/sync',
-                    builder: (context, state) => AutomationPage(
-                      initialTab: 'sync',
-                      highlightRunId: state.uri.queryParameters['run'],
-                    ),
-                  ),
-                  GoRoute(
-                    path: '/automation/distribution',
-                    builder: (context, state) =>
-                        const AutomationPage(initialTab: 'distribution'),
-                  ),
-                  GoRoute(
-                    path: '/automation/distribution/history',
-                    builder: (context, state) =>
-                        const AutomationPage(initialTab: 'history'),
-                  ),
-                  GoRoute(
-                    path: '/automation/distribution/rules/new',
-                    builder: (context, state) => const DistributionRulePage(),
-                  ),
-                  GoRoute(
-                    path: '/automation/distribution/rules/:ruleId',
-                    builder: (context, state) => DistributionRulePage(
-                      ruleId: int.parse(state.pathParameters['ruleId']!),
-                    ),
-                  ),
-                  GoRoute(
-                    path: '/automation/processing',
-                    builder: (context, state) =>
-                        const AutomationPage(initialTab: 'processing'),
+                    routes: [
+                      GoRoute(
+                        path: 'sync',
+                        builder: (context, state) => AutomationPage(
+                          initialTab: 'sync',
+                          highlightRunId: state.uri.queryParameters['run'],
+                        ),
+                      ),
+                      GoRoute(
+                        path: 'distribution',
+                        builder: (context, state) =>
+                            const AutomationPage(initialTab: 'distribution'),
+                        routes: [
+                          GoRoute(
+                            path: 'history',
+                            builder: (context, state) =>
+                                const AutomationPage(initialTab: 'history'),
+                          ),
+                          GoRoute(
+                            path: 'rules/new',
+                            onExit: confirmRuleExit,
+                            builder: (context, state) =>
+                                DistributionRulePage(routeKey: state.pageKey),
+                          ),
+                          GoRoute(
+                            path: 'rules/:ruleId',
+                            onExit: confirmRuleExit,
+                            builder: (context, state) => DistributionRulePage(
+                              routeKey: state.pageKey,
+                              ruleId: int.parse(
+                                state.pathParameters['ruleId']!,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      GoRoute(
+                        path: 'processing',
+                        builder: (context, state) =>
+                            const AutomationPage(initialTab: 'processing'),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -349,6 +392,7 @@ class _PlaybackNavigationObserver extends NavigatorObserver {
 
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (route is PopupRoute) return;
     unawaited(
       onNavigation(
         route is TransitionRoute ? route.completed : Future<void>.value(),
@@ -358,6 +402,7 @@ class _PlaybackNavigationObserver extends NavigatorObserver {
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (route is PopupRoute) return;
     final animation = route is TransitionRoute ? route.animation : null;
     if (animation == null || animation.isCompleted) return;
     final settled = Completer<void>();

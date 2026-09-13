@@ -43,7 +43,9 @@ ApiErrorInfo parseApiErrorInfo(
 
     requestId ??= response?.headers.value('x-request-id');
     final resolvedMessage = (message == null || message.trim().isEmpty)
-        ? fallbackMessage
+        ? response?.statusCode == null
+              ? fallbackMessage
+              : '$fallbackMessage（HTTP ${response!.statusCode}）'
         : message.trim();
     return ApiErrorInfo(
       message: resolvedMessage,
@@ -125,8 +127,15 @@ Dio apiClient(Ref ref) {
 
   dio.interceptors.add(
     InterceptorsWrapper(
-      onError: (DioException e, handler) {
+      onError: (DioException e, handler) async {
         final info = parseApiErrorInfo(e);
+        if (e.response?.statusCode == 401 &&
+            info.code == 'invalid_api_token' &&
+            ref.mounted &&
+            settings.apiToken.isNotEmpty &&
+            ref.read(localSettingsProvider).apiToken == settings.apiToken) {
+          await ref.read(localSettingsProvider.notifier).clearAuth();
+        }
         if (EnvConfig.debugLog) {
           // ignore: avoid_print
           print(

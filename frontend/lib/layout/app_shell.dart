@@ -12,13 +12,8 @@ import '../core/utils/toast.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   final StatefulNavigationShell navigationShell;
-  final String currentLocation;
 
-  const AppShell({
-    required this.navigationShell,
-    required this.currentLocation,
-    super.key,
-  });
+  const AppShell({required this.navigationShell, super.key});
 
   @override
   ConsumerState<AppShell> createState() => _AppShellState();
@@ -27,17 +22,43 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   bool _isShowingSheet = false;
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // A share can arrive before the connection flow mounts the main shell.
+      final pending = ref.read(shareReceiverStateProvider);
+      if (pending != null && !pending.isEmpty) {
+        _showShareSheet(pending);
+      }
+    });
+  }
+
   void _onDestinationSelected(int index) {
     final currentIndex = widget.navigationShell.currentIndex;
-    widget.navigationShell.goBranch(
-      index,
-      initialLocation: index == currentIndex,
-    );
+    if (index != currentIndex) {
+      widget.navigationShell.goBranch(index);
+      return;
+    }
+    final navigator =
+        widget.navigationShell.route.branches[index].navigatorKey.currentState;
+    if (navigator == null) return;
+    var blocked = false;
+    navigator.popUntil((route) {
+      if (route.isFirst) return true;
+      blocked = route.popDisposition == RoutePopDisposition.doNotPop;
+      return blocked;
+    });
+    // Stop at an unsaved form or an operation in progress. Its own back
+    // handler decides whether to stay or discard and return to its parent.
+    if (blocked) navigator.maybePop();
   }
 
   Future<void> _showShareSheet(SharedContent content) async {
     if (_isShowingSheet) return;
     setState(() => _isShowingSheet = true);
+    final shareService = ref.read(shareReceiverServiceProvider);
 
     try {
       final sharedText = (content.text ?? '').trim();
@@ -69,10 +90,10 @@ class _AppShellState extends ConsumerState<AppShell> {
         );
       }
     } finally {
-      ref.read(shareReceiverServiceProvider).clearSharedContent();
       if (mounted) {
         setState(() => _isShowingSheet = false);
       }
+      shareService.completeSharedContent(content);
     }
   }
 
@@ -85,21 +106,11 @@ class _AppShellState extends ConsumerState<AppShell> {
       }
     });
 
-    final isAutomationDetail =
-        widget.navigationShell.currentIndex == 2 &&
-        widget.currentLocation != '/automation';
-    final automationBackLocation =
-        widget.currentLocation.startsWith('/automation/distribution/rules/')
-        ? '/automation/distribution'
-        : '/automation';
-
     return PopScope(
       canPop: widget.navigationShell.currentIndex == 0,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        if (isAutomationDetail) {
-          context.go(automationBackLocation);
-        } else if (widget.navigationShell.currentIndex != 0) {
+        if (widget.navigationShell.currentIndex != 0) {
           widget.navigationShell.goBranch(0);
         }
       },
@@ -145,8 +156,19 @@ class _AppShellState extends ConsumerState<AppShell> {
                     left: !useRail,
                     child: Column(
                       children: [
-                        Expanded(child: widget.navigationShell),
-                        const GlobalMiniPlayer(),
+                        Expanded(
+                          // Route barriers belong to the content pane. Without
+                          // this boundary they also hide the preceding rail
+                          // from the accessibility tree.
+                          child: Semantics(
+                            container: true,
+                            child: widget.navigationShell,
+                          ),
+                        ),
+                        Offstage(
+                          offstage: MediaQuery.viewInsetsOf(context).bottom > 0,
+                          child: const GlobalMiniPlayer(),
+                        ),
                       ],
                     ),
                   ),
