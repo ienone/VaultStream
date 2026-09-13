@@ -831,6 +831,8 @@ Future<void> _retryFavoriteItem(
           url: url,
           title: _mapText(item, 'title'),
           itemId: _mapText(item, 'item_id'),
+          collectionId: _mapText(item, 'collection_id'),
+          collectionTitle: _mapText(item, 'collection_title'),
           sourceRunId: sourceRunId,
         );
     if (!context.mounted) return;
@@ -869,6 +871,8 @@ Future<void> _retryFavoriteItems(
           'url': _mapText(item, 'url'),
           'title': ?_mapText(item, 'title'),
           'item_id': ?_mapText(item, 'item_id'),
+          'collection_id': ?_mapText(item, 'collection_id'),
+          'collection_title': ?_mapText(item, 'collection_title'),
         },
       )
       .toList(growable: false);

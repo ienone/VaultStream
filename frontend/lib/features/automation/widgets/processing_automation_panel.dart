@@ -116,6 +116,19 @@ class ProcessingAutomationPanel extends ConsumerWidget {
       true,
     );
     final summaryEnabled = _boolSetting(settings, 'enable_auto_summary', false);
+    final aggregationEnabled = _boolSetting(
+      settings,
+      'enable_content_aggregation',
+      false,
+    );
+    final aggregationPushEnabled = _boolSetting(
+      settings,
+      'enable_aggregation_push',
+      false,
+    );
+    final aggregationRun = _latestRun(diagnostics, const {
+      'content_aggregation',
+    });
     final semanticEnabled = _boolSetting(
       settings,
       'enable_auto_semantic_indexing',
@@ -214,6 +227,57 @@ class ProcessingAutomationPanel extends ConsumerWidget {
         latestRun: summaryRun,
         settingsPath: '/settings?tab=automation',
         settingsLabel: '模型配置',
+      ),
+      _ProcessingStageSection(
+        title: '多来源自动聚合',
+        policyEnabled: settingsReady ? aggregationEnabled : null,
+        onPolicyChanged: (value) => ref
+            .read(systemSettingsProvider.notifier)
+            .updateSetting(
+              'enable_content_aggregation',
+              value,
+              category: 'automation',
+            ),
+        icon: Icons.hub_rounded,
+        tone: settingsState.hasError
+            ? _StageTone.warning
+            : !settingsReady
+            ? _StageTone.loading
+            : aggregationEnabled
+            ? _toneForRun(aggregationRun)
+            : _StageTone.inactive,
+        status: !settingsReady
+            ? '正在读取聚合策略'
+            : aggregationEnabled
+            ? '每小时检查新解析内容，使用文本模型生成带来源引句的事件综合；结果待核实'
+            : '已关闭；开启后每批发送最多 20 条新内容及 10 条关联材料（优先既有事件，其余取近七天），每条正文前 6000 字符；首次新内容取最近 24 小时',
+        latestRun: aggregationRun,
+        settingsPath: '/settings?tab=automation',
+        settingsLabel: '模型配置',
+      ),
+      _ProcessingStageSection(
+        title: '聚合结果推送',
+        policyEnabled: settingsReady ? aggregationPushEnabled : null,
+        onPolicyChanged: (value) => ref
+            .read(systemSettingsProvider.notifier)
+            .updateSetting(
+              'enable_aggregation_push',
+              value,
+              category: 'automation',
+            ),
+        icon: Icons.outbound_rounded,
+        tone: settingsState.hasError
+            ? _StageTone.warning
+            : !settingsReady
+            ? _StageTone.loading
+            : aggregationPushEnabled
+            ? _StageTone.ok
+            : _StageTone.inactive,
+        status: !settingsReady
+            ? '正在读取推送策略'
+            : aggregationPushEnabled
+            ? '允许新聚合结果按分发规则审批和推送；仍遵守全局暂停及目标开关'
+            : '已关闭；聚合结果可在收藏和知识事件中查看，已有队列也暂停发送',
       ),
       _ProcessingStageSection(
         title: '全文 / 语义索引',
