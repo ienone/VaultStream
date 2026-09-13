@@ -269,7 +269,9 @@ class _SyncPolicyCard extends ConsumerWidget {
                   value: value,
                 ),
               ),
-              for (final platform in status.platforms)
+              for (final platform in status.platforms.where(
+                (p) => p.capabilities.supported,
+              ))
                 _PolicyControlRow(
                   label: '${_platformLabel(platform.platform)} 同步速率',
                   value: platform.ratePerMinute.round(),
@@ -437,7 +439,7 @@ class _PlatformStatusCard extends ConsumerWidget {
             style: Theme.of(context).textTheme.titleMedium,
           ),
           value: status.enabled,
-          onChanged: settings.hasValue
+          onChanged: settings.hasValue && status.capabilities.supported
               ? (value) => _updateFavoritesSyncSetting(
                   context,
                   ref,
@@ -449,11 +451,19 @@ class _PlatformStatusCard extends ConsumerWidget {
               : null,
         ),
         Text(
-          !status.authenticated ? '连接账号后可同步收藏' : _platformStateLabel(status),
+          !status.capabilities.supported
+              ? '暂未接入收藏同步'
+              : !status.authenticated
+              ? '连接账号后可同步收藏'
+              : _platformStateLabel(status),
         ),
-        if (!status.available)
+        Text(status.capabilities.scope),
+        if (status.capabilities.limitation != null)
+          Text(status.capabilities.limitation!),
+        if (!status.available && status.capabilities.supported)
           Text(
             status.statusError?['error_hint']?.toString() ??
+                status.error ??
                 '暂时无法检查账号，请到账号页重新检查',
             style: TextStyle(color: Theme.of(context).colorScheme.error),
           ),
@@ -463,12 +473,13 @@ class _PlatformStatusCard extends ConsumerWidget {
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            if (!status.authenticated || !status.available)
+            if (status.capabilities.supported &&
+                (!status.authenticated || !status.available))
               FilledButton.tonal(
                 onPressed: () => context.push('/accounts/${status.platform}'),
                 child: const Text('连接 / 检查账号'),
               )
-            else ...[
+            else if (status.capabilities.supported) ...[
               OutlinedButton(
                 onPressed: () =>
                     _showPreview(context, ref, platform: status.platform),
@@ -952,6 +963,8 @@ String _platformLabel(String platform) {
     'zhihu' => '知乎',
     'xiaohongshu' => '小红书',
     'twitter' => 'Twitter / X',
+    'bilibili' => 'Bilibili',
+    'weibo' => '微博',
     _ => platform,
   };
 }

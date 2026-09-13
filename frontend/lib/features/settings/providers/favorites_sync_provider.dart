@@ -2,6 +2,35 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 
+class FavoritesCapability {
+  const FavoritesCapability({
+    required this.supported,
+    required this.scope,
+    required this.pagination,
+    required this.collectionMetadata,
+    required this.authentication,
+    required this.limitation,
+  });
+
+  final bool supported;
+  final String scope;
+  final bool pagination;
+  final bool collectionMetadata;
+  final String authentication;
+  final String? limitation;
+
+  factory FavoritesCapability.fromJson(Map<String, dynamic> json) {
+    return FavoritesCapability(
+      supported: json['supported'] as bool,
+      scope: json['scope'] as String,
+      pagination: json['pagination'] as bool,
+      collectionMetadata: json['collection_metadata'] as bool,
+      authentication: json['authentication'] as String,
+      limitation: json['limitation'] as String?,
+    );
+  }
+}
+
 class FavoritesPlatformStatus {
   const FavoritesPlatformStatus({
     required this.platform,
@@ -12,6 +41,7 @@ class FavoritesPlatformStatus {
     required this.lastResult,
     required this.error,
     required this.statusError,
+    required this.capabilities,
   });
 
   final String platform;
@@ -22,6 +52,7 @@ class FavoritesPlatformStatus {
   final Map<String, dynamic>? lastResult;
   final String? error;
   final Map<String, dynamic>? statusError;
+  final FavoritesCapability capabilities;
 
   factory FavoritesPlatformStatus.fromJson(Map<String, dynamic> json) {
     final rawRate = json['rate_per_minute'];
@@ -41,6 +72,9 @@ class FavoritesPlatformStatus {
       statusError: json['status_error'] is Map<String, dynamic>
           ? json['status_error'] as Map<String, dynamic>
           : null,
+      capabilities: FavoritesCapability.fromJson(
+        json['capabilities'] as Map<String, dynamic>,
+      ),
     );
   }
 }
@@ -290,6 +324,8 @@ class FavoritesSyncActions {
     required String url,
     String? title,
     String? itemId,
+    String? collectionId,
+    String? collectionTitle,
     String? sourceRunId,
   }) async {
     final dio = _ref.read(apiClientProvider);
@@ -300,6 +336,8 @@ class FavoritesSyncActions {
         'url': url,
         if (title != null && title.isNotEmpty) 'title': title,
         if (itemId != null && itemId.isNotEmpty) 'item_id': itemId,
+        'collection_id': ?collectionId,
+        'collection_title': ?collectionTitle,
         if (sourceRunId != null && sourceRunId.isNotEmpty)
           'source_run_id': sourceRunId,
       },

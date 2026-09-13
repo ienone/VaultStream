@@ -71,8 +71,12 @@ class _AccountDetailBody extends ConsumerWidget {
     final success = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) =>
-          PlatformLoginDialog(platform: account.platform, label: account.label),
+      builder: (_) => account.platform == 'twitter'
+          ? const XSessionCookieDialog()
+          : PlatformLoginDialog(
+              platform: account.platform,
+              label: account.label,
+            ),
     );
     if (success == true && context.mounted) {
       ref.read(platformAuthActionsProvider.notifier).refreshHealth();
@@ -317,19 +321,26 @@ class _AccountControls extends ConsumerWidget {
           spacing: AppSpacing.sm,
           runSpacing: AppSpacing.sm,
           children: [
-            if (account.browserAuthSupported)
+            if (account.browserAuthSupported || account.platform == 'twitter')
               FilledButton.tonalIcon(
                 onPressed: busy ? null : onLogin,
-                icon: const Icon(Icons.qr_code_2_rounded),
+                icon: Icon(
+                  account.platform == 'twitter'
+                      ? Icons.key_rounded
+                      : Icons.qr_code_2_rounded,
+                ),
                 label: Text(
-                  !account.hasCookie
+                  account.platform == 'twitter'
+                      ? '保存网页登录'
+                      : !account.hasCookie
                       ? '连接账号'
                       : account.browserAuthValid == false
                       ? '重新登录'
                       : '更新登录',
                 ),
               ),
-            if (account.hasCookie && account.browserAuthSupported)
+            if (account.hasCookie &&
+                (account.browserAuthSupported || account.platform == 'twitter'))
               OutlinedButton.icon(
                 onPressed: busy ? null : onCheck,
                 icon: const Icon(Icons.health_and_safety_outlined),
@@ -520,7 +531,9 @@ List<String> _repairSteps(PlatformHealthStatus account) {
   final steps = <String>[];
   if (!account.hasCookie) {
     steps.add(
-      account.browserAuthSupported
+      account.platform == 'twitter'
+          ? '点击“保存网页登录”，填写你已登录 X 网页的 auth_token 和 ct0。'
+          : account.browserAuthSupported
           ? '使用“连接账号”完成平台扫码登录。'
           : '返回账号中心，在该平台的手动凭据区域完成配置。',
     );

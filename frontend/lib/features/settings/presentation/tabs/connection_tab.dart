@@ -826,3 +826,96 @@ class _ConnectionValueEditor extends StatelessWidget {
     },
   );
 }
+
+/// Explicit credential entry; never reads a browser profile or echoes saved secrets.
+class XSessionCookieDialog extends ConsumerStatefulWidget {
+  const XSessionCookieDialog({super.key});
+  @override
+  ConsumerState<XSessionCookieDialog> createState() =>
+      _XSessionCookieDialogState();
+}
+
+class _XSessionCookieDialogState extends ConsumerState<XSessionCookieDialog> {
+  final _controller = TextEditingController();
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.clear();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final value = _controller.text.trim();
+    final names = value
+        .split(';')
+        .map((part) => part.split('=').first.trim())
+        .toSet();
+    if (!names.containsAll({'auth_token', 'ct0'})) {
+      setState(() => _error = '需要同时包含 auth_token 和 ct0');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await ref
+          .read(systemSettingsProvider.notifier)
+          .updateSetting('twitter_cookie', value, category: 'platform');
+      _controller.clear();
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _error = '保存失败，请检查服务器连接后重试';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('保存 X 网页登录'),
+    content: SizedBox(
+      width: 480,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '在你已登录的 x.com 网页中取得 auth_token 和 ct0，按下方格式填写。登录保存在当前 VaultStream 服务器；可在账号页清除。',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _controller,
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              enabled: !_saving,
+              decoration: InputDecoration(
+                labelText: '登录 Cookie',
+                hintText: 'auth_token=…; ct0=…',
+                errorText: _error,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: _saving ? null : () => Navigator.of(context).pop(),
+        child: const Text('取消'),
+      ),
+      FilledButton(
+        onPressed: _saving ? null : _save,
+        child: Text(_saving ? '正在保存' : '保存'),
+      ),
+    ],
+  );
+}
