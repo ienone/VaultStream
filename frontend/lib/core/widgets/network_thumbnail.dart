@@ -8,6 +8,7 @@ import '../media/media_asset.dart';
 import '../media/media_manifest_client.dart';
 import '../media/media_source_session.dart';
 import '../network/api_client.dart';
+import '../../theme/design_tokens.dart';
 
 class NetworkThumbnail extends ConsumerStatefulWidget {
   const NetworkThumbnail({
@@ -48,6 +49,7 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
   bool _advanceScheduled = false;
   bool _refreshing = false;
   MediaFailureKind? _failure;
+  int _requestRevision = 0;
 
   @override
   void initState() {
@@ -175,6 +177,7 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
 
   void _retry() {
     setState(() {
+      _requestRevision++;
       _session.resetForManualRetry();
       _failure = null;
     });
@@ -183,6 +186,17 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
 
   @override
   Widget build(BuildContext context) {
+    final image = _buildImage(context);
+    return SizedBox(
+      width: widget.width,
+      height: widget.height,
+      child: widget.borderRadius == null
+          ? image
+          : ClipRRect(borderRadius: widget.borderRadius!, child: image),
+    );
+  }
+
+  Widget _buildImage(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final source = _session.current;
     if (source == null) {
@@ -190,7 +204,9 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
         colorScheme: colorScheme,
         errorIcon: widget.errorIcon,
         failure: _failure ?? MediaFailureKind.unavailable,
-        onRetry: _retry,
+        onRetry: _session.assets.isNotEmpty || _session.sources.isNotEmpty
+            ? _retry
+            : null,
       );
     }
     if (_session.currentSignatureExpired() &&
@@ -209,7 +225,7 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
         // 字节解码路径；裸 URL 只用于非资产化的普通公开图片。
         ? Image.network(
             imageUrl,
-            key: ValueKey(imageUrl),
+            key: ValueKey((imageUrl, _requestRevision)),
             width: widget.width,
             height: widget.height,
             fit: widget.fit,
@@ -222,7 +238,7 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
                 _onError(colorScheme, error),
           )
         : CachedNetworkImage(
-            key: ValueKey(imageUrl),
+            key: ValueKey((imageUrl, _requestRevision)),
             imageUrl: imageUrl,
             width: widget.width,
             height: widget.height,
@@ -234,11 +250,7 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
             errorWidget: (context, url, error) => _onError(colorScheme, error),
           );
 
-    final radius = widget.borderRadius;
-    if (radius == null) {
-      return image;
-    }
-    return ClipRRect(borderRadius: radius, child: image);
+    return image;
   }
 }
 
@@ -271,28 +283,80 @@ class _ErrorThumbnail extends StatelessWidget {
   final ColorScheme colorScheme;
   final IconData errorIcon;
   final MediaFailureKind failure;
-  final VoidCallback onRetry;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
-    final label = mediaFailureLabel(failure, audioOnly: false);
+    final label = onRetry == null
+        ? '暂无图片'
+        : failure == MediaFailureKind.formatUnsupported
+        ? '当前设备不支持此图片格式'
+        : mediaFailureLabel(failure, audioOnly: false);
+    final description = onRetry == null ? label : '$label，重试加载';
     return Semantics(
-      label: label,
-      button: true,
-      child: Tooltip(
-        message: '$label，点击重试',
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
+      label: description,
+      button: onRetry != null,
+      onTap: onRetry,
+      excludeSemantics: true,
+      child: Material(
+        color: colorScheme.surfaceContainerHighest,
+        child: InkWell(
           onTap: onRetry,
-          child: ColoredBox(
-            color: colorScheme.errorContainer,
-            child: Center(
-              child: Icon(
-                errorIcon,
-                color: colorScheme.onErrorContainer,
-                size: 20,
-              ),
-            ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final detailed =
+                  constraints.maxWidth >= 240 &&
+                  constraints.maxHeight >=
+                      160 * MediaQuery.textScalerOf(context).scale(14) / 14;
+              final content = Center(
+                child: Padding(
+                  padding: EdgeInsets.all(
+                    detailed ? AppSpacing.xl : AppSpacing.xxs,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        errorIcon,
+                        color: colorScheme.onSurfaceVariant,
+                        size: detailed
+                            ? 32
+                            : (constraints.biggest.shortestSide - 8).clamp(
+                                0.0,
+                                20.0,
+                              ),
+                      ),
+                      if (detailed) ...[
+                        const SizedBox(height: AppSpacing.sm),
+                        Text(
+                          label,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: colorScheme.onSurfaceVariant),
+                        ),
+                        if (onRetry != null) ...[
+                          const SizedBox(height: AppSpacing.xs),
+                          Text(
+                            '重试加载',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(color: colorScheme.primary),
+                          ),
+                        ],
+                      ],
+                    ],
+                  ),
+                ),
+              );
+              return detailed
+                  ? content
+                  : Tooltip(
+                      message: description,
+                      excludeFromSemantics: true,
+                      child: content,
+                    );
+            },
           ),
         ),
       ),

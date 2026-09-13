@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'design_tokens.dart';
+import '../routing/navigation_scope.dart';
 
 /// AppTheme manages the application's visual identity using Material 3 Expressive principles.
 class AppTheme {
@@ -36,11 +38,31 @@ class AppTheme {
     final isDark = brightness == Brightness.dark;
     final textTheme = _buildTextTheme(brightness);
 
+    // Keep space around labels when text scaling increases their height.
+    const actionButtonStyle = ButtonStyle(
+      padding: WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      ),
+    );
+    const textButtonStyle = ButtonStyle(
+      padding: WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      ),
+    );
+
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
       brightness: brightness,
       textTheme: textTheme,
+      filledButtonTheme: const FilledButtonThemeData(style: actionButtonStyle),
+      elevatedButtonTheme: const ElevatedButtonThemeData(
+        style: actionButtonStyle,
+      ),
+      outlinedButtonTheme: const OutlinedButtonThemeData(
+        style: actionButtonStyle,
+      ),
+      textButtonTheme: const TextButtonThemeData(style: textButtonStyle),
 
       // Surface & Background
       scaffoldBackgroundColor: scheme.surface,
@@ -48,6 +70,9 @@ class AppTheme {
 
       // Enhanced AppBar for Expressive M3
       appBarTheme: AppBarTheme(
+        systemOverlayStyle: isDark
+            ? SystemUiOverlayStyle.light
+            : SystemUiOverlayStyle.dark,
         backgroundColor: Colors
             .transparent, // Usually used with glassmorphism or scrolledUnderElevation
         surfaceTintColor: scheme.surfaceTint,
@@ -252,6 +277,7 @@ class AppTheme {
         selectedColor: scheme.primaryContainer,
         labelStyle: textTheme.labelMedium?.copyWith(
           fontWeight: FontWeight.bold,
+          height: 1.5,
         ),
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.sm,
@@ -262,9 +288,11 @@ class AppTheme {
       // Transitions - Using built-in physics
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
-          TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
+          TargetPlatform.android: AppPredictiveBackTransitionsBuilder(),
           TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.windows: ZoomPageTransitionsBuilder(),
+          TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.macOS: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
         },
       ),
     );

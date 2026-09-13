@@ -149,20 +149,8 @@ class ResponsiveLayout {
   /// 依据组件自身可用宽度而不是屏幕宽度，因此在 NavigationRail、
   /// 辅助 pane 或 side sheet 存在时也能得到正确列数。
   static int contentGridColumns(double availableWidth) {
-    final widthClass = widthClassFor(availableWidth);
-    switch (widthClass) {
-      case WindowWidthClass.compact:
-        // 手机按阅读顺序使用单列，避免长标题被挤成窄卡片。
-        return 1;
-      case WindowWidthClass.medium:
-        return 2;
-      case WindowWidthClass.expanded:
-        return 3;
-      case WindowWidthClass.large:
-        return 4;
-      case WindowWidthClass.extraLarge:
-        // 超宽屏限制列数，避免卡片过窄导致标题不可读。
-        return availableWidth >= 2000 ? 6 : 5;
-    }
+    // 一个槽位约 400dp，包含卡片、缩略图、内边距和列间距。
+    // 列数由阅读空间决定，不随全局窗口类别直接增加。
+    return (availableWidth / 400).floor().clamp(1, 4);
   }
 }
