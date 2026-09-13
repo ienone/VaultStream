@@ -64,10 +64,9 @@ active
 - 系统设置应区分普通参数、用户可见能力状态、后端强制策略。
 - 自动化策略应横切任务、手动触发和 Agent 工具。
 
-## 当前问题
+## 历史决策
 
-- System router 职责收敛记录：`../../issues/archive/backend-system-router-boundary-pollution.md`
-- 当前写动作的成功响应已全部进入命名 JSON response 或显式 bodyless 204 门禁，修复记录见 `../../issues/archive/backend-diagnostic-api-contract-is-inline.md`。
+- [已关闭问题的历史决策](../../issues/archive/README.md)。
 
 ## 尚未实现 / 计划扩展
 

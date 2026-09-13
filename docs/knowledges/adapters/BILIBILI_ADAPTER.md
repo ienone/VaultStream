@@ -17,6 +17,12 @@ Bilibili 内容类型包含视频、动态、专栏、番剧、直播等多种 U
 
 ## 当前事实
 
+2026-09-13 新增 `favorites/bilibili_fetcher.py`，读取已保存 SESSDATA，通过 nav 验证当前账号，发现本人创建的视频收藏夹并按固定 20 项页面续接。游标包含 mid、收藏夹 ID、页码和页内偏移，防止切换账号后误用旧进度。只覆盖视频收藏夹，不包含收藏的他人合集、课程或其他平台收藏类型。不可用/非视频项在同步结果中明确跳过，不删除本地内容。
+
+契约参考作者发布的 [bpi-rs 收藏夹结构](https://docs.rs/bpi-rs/latest/src/bpi_rs/fav/info.rs.html)、[内容分页实现](https://docs.rs/bpi-rs/latest/src/bpi_rs/fav/list.rs.html)、[nav 结构](https://docs.rs/bpi-rs/latest/src/bpi_rs/login/login_info/nav.rs.html)。无登录公开请求验证：示例用户 7792521 的 created/list-all 与示例收藏夹 1052622027 的 resource/list 均返回 HTTP 200/code=0；内容页明确包含 medias/has_more 和 bvid/fav_time/upper 等字段，匿名 nav 返回 -101。私人收藏与长期账号态未进行真实账号验收。
+
+已导入内容按规范视频 URL 去重，并在来源上下文保留收藏夹 ID/标题。完整扫描到末页后清空游标，下轮重新从首页扫描新增收藏；分页是实时列表，平台并发增删时不是一致性快照，下一轮扫描负责补齐，不能宣称平台级增量快照保证。
+
 当前适配器由 `BilibiliAdapter` 实现，并通过 `ParsedContent` 输出标准内容结构。下文平台细节来源于迁移前 adapter 文档，作为知识库参考；如与代码不一致，以当前代码和测试为准。
 
 ## 与代码的关系
@@ -173,3 +179,5 @@ BILIBILI_COOKIE=\"SESSDATA=...; bili_jct=...; buid=...\"
 视频 canonical 使用 `https://www.bilibili.com/video/{视频ID}/`；默认 p=1 省略，其他正整数分 P 保留并去掉前导零。网页/移动域名、尾斜杠、追踪参数不再使同一分 P 重复收藏，无效分 P 明确报错。该规则不实现 AV/BV 互转，其他历史库的旧 canonical 需单独核对。
 
 多分 P 视频标题包含平台分集序号和 pages.part 名称，单分 P 保持原视频标题；rich_payload 同时保存 video_page、video_page_title、video_page_count。真实 BV1Gr4y187aS 前两节分别显示“P1 课程简介”“P2 01 线性方程组”，时长 82/631 秒，媒体 cid 分别 710789626/31541103270；没有将合集总时长误用为当前分 P 时长。
+
+2026-09-13 后续已获账号授权，Bilibili 本人收藏实际读取两条并返回续接游标及集合身份；此小批正向验收不等于全量或长期会话验收。

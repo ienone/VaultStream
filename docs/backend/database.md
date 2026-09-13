@@ -61,4 +61,4 @@ active
 - Agent context summary 等外键列的索引检查。
 - `schema_metadata.schema_version` 与当前要求的版本比较。
 
-当前 schema gate 版本为 33，并以 manifest 检查内容编辑/语义索引、任务账本、消息盒子、知识事件、播放书签和 Agent 上下文摘要的关键结构。仓库实验数据库仍需同时通过完整性、外键与 FTS 一致性检查。原先由启动过程自我提升版本的问题已[归档](../issues/archive/backend-schema-gate-database-doc-drift.md)。
+当前 schema gate 版本为 33，并以 manifest 检查内容编辑/语义索引、任务账本、消息盒子、知识事件、播放书签和 Agent 上下文摘要的关键结构。仓库实验数据库仍需同时通过完整性、外键与 FTS 一致性检查。原先由启动过程自我提升版本的问题已[归档](../issues/archive/README.md)。

@@ -70,7 +70,7 @@ active
 
 播放书签是独立持久事实，不写回解析器拥有的 `rich_payload`，也不复用内容捕获备注或知识事件成员说明。删除内容或媒体资产时由外键级联清理对应书签。
 
-媒体失败态和代理访问修复记录见 `../../issues/archive/media-proxy-image-access.md`。
+媒体失败态和代理访问修复记录见 `../../issues/archive/README.md`。
 
 ## 变更检查
 

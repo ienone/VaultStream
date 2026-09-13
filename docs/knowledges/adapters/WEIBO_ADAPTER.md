@@ -140,3 +140,13 @@ WEIBO_COOKIE=\"SUB=...; _s_tentry=...;\"
 实际公开样本 `I5WmvFCMq` 返回 60 字正文和 9 张图片；`/2/detail/5331437486081232` 返回 237 字正文和 9 张图片。此前正则将后者的 detail 误当博文 ID，现优先识别 `/2/detail/{id}` 并净化到 `/detail/{id}`，保留标准博文和用户主页入口。只验证解析，不代表图片下载、长期可达性或页面展示完成。
 
 博文 canonical URL 统一为 `/detail/{数字MID}`：按微博分段 Base62 规则将短 BID 转为数字 MID，解析调用使用同一数字 ID；用户主页仍为 `/u/{uid}`。真实上游同时返回的 5331437486081232 / RdbPCpw0o 已交叉核验，SQLite 收藏入口验证复用同一内容并保留不同来源。算法规则参考 [weibo-mid 项目](https://github.com/node-modules/weibo-mid)。现有其他数据库若含旧 URL 身份仍需单独迁移评估，本次没有批量改写历史内容。
+
+## 2026-09-13 收藏与统一会话
+
+新增 `weibo_session.py` 和 `favorites/weibo_fetcher.py`。使用既有 SUB 登录：`https://m.weibo.cn/api/config` 的明确 login/uid 字段识别本人，再读取 `https://weibo.com/ajax/favorites/all_fav?uid=…&page=…`。列表响应必须为明确成功和数组，空数组结束；持久游标包含账号、页码和页内偏移，账号切换、重复页、格式错误均失败并保留进度。集合标签未接入。
+
+依据：[RSSHub 作者实现](https://github.com/DIYgod/RSSHub/blob/master/lib/routes/weibo/user-bookmarks.ts)、[作者发布的收藏备份源码](https://greasyfork.org/zh-CN/scripts/445022-%E7%82%B8%E5%8F%B7%E5%BE%AE%E5%8D%9A%E5%A4%87%E4%BB%BD/code)。本轮匿名只读实测：移动 config HTTP 200、ok=1、login=false；桌面收藏跳转登录，不能把游客 HTTP 200 当成认证成功。健康检测已改为明确账号识别。登录刷新沿用 ConfigService 条件写入，不能覆盖退出或新登录。
+
+五项隔离 HTTP/数据库回归覆盖连续分页、页内恢复、失效、格式错误及账号变化；真实私人收藏读取尚待账号授权，不把隔离响应作为平台正向验收。
+
+后续授权验收已通过：真实持久账号读取两批各两条，页内游标续接无重复；一条实际微博解析得到正文和媒体。未执行外部收藏修改，未全量扫描收藏。

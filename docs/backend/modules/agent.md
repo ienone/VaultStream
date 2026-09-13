@@ -73,11 +73,9 @@ Agent service 构建上下文消息，注册内置工具，运行模型，记录
 - 通用 API bridge 的写能力仅包含内容字段更新与卡片审核。收藏同步、分发、外部发送、服务启停、设置和队列写入不属于通用 bridge。
 - `push_batch` 即使获得单次确认，也必须服从 `distribution_mode` 暂停策略。
 
-## 当前问题
+## 历史决策
 
-- 用户控制面与自动化策略修复记录：`../../issues/archive/frontend-control-policy-gaps.md`
-- 已关闭的页面状态边界：`../../issues/archive/frontend-agent-page-controller-and-sse-boundary.md`
-- 已关闭的 API bridge 权限问题：`../../issues/archive/backend-agent-api-bridge-policy-bypass.md`
+- [已关闭问题的历史决策](../../issues/archive/README.md)。
 
 ## 尚未实现 / 计划扩展
 
@@ -105,3 +103,5 @@ Agent service 构建上下文消息，注册内置工具，运行模型，记录
 search_content 增加 document_pages（包含文件名、media_asset_id、page_number、excerpt 和 route）。read_content 使用 document_asset_id 与 page_number 成对定位当前资产原页，不能同时传媒体时间段；每次最多返回 12000 字符，next_offset 支持继续读取。普通读取列出文件与提取状态，不能把无原生文本页面当作已识别。前端文档引用卡片保留同一文件与页码；真实 DeepSeek 已完成一个自制 PDF 指定页的价格问答，回答 128 元并附正确页码 route，工具及回答已持久化；开放式多文档问答质量仍待验收。
 
 read_content 的 segments 每项返回经过归属/时长校验的 media_asset_id，供前端建立时间点引用；普通正文读取同时提供内容引用。
+
+多来源模型综合现由[默认关闭的周期工作流](content-aggregation.md)实现，产物仍可由既有内容检索/读取和事件工具访问。Agent 没有新的隐式模型执行或推送授权。push_batch 遵守聚合推送开关，不重置正在发送的队列项，排期使用数据库状态条件更新。

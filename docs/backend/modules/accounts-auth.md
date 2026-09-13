@@ -39,6 +39,10 @@ Cookie 保活的三个长期调度循环随应用生命周期启动，但每次�
 
 该二维码流程不读取 Codex 内置浏览器的 Cookie、Local Storage 或会话存储。平台凭据只由用户主动扫码产生，并通过现有敏感配置通道保存。
 
+同平台再次发起登录会取消并释放旧二维码会话；清除登录先等待该平台二维码任务取消，再删除持久凭据，避免晚到扫码结果恢复已退出账号。二维码只有在 Cookie 已保存后才报告 success；结束后清理会话内的 Cookie 副本。隔离验证使用实际配置数据库和替换的二维码协议，包含新服务实例读取已保存登录。
+
+知乎浏览器 Cookie 刷新，以及知乎/小红书收藏响应中的会话更新，通过 SystemRepository 的条件更新提交：只有请求使用的原登录仍是数据库当前值才替换。退出、重新登录或并发更新后，迟到刷新结果丢弃；不创建另一个 Cookie 仓库，也不将仅环境变量提供的 Cookie 自动迁入数据库。此验证证明本地持久化与竞态约束，不保证平台不会主动使登录失效。
+
 Bot 配置 CRUD、保存后的 Telegram 进程同步、手动启停以及 Napcat 二维码/chat 同步均由可注入 service 承担；router 不再直接持久化 BotConfig，也不访问进程或外部 HTTP。自动测试注入 fake service 隔离外部副作用，不使用测试环境变量改变生产 service 行为。进程控制与 chat sync 写入统一 run；配置写响应直接引用后续 run，配置事务不会被进程失败伪装成回滚。QQ 自动同步在加入后台队列前先创建 run，避免响应与任务账本之间出现不可观察窗口。
 
 ## 测试
@@ -73,10 +77,9 @@ Bot 配置 CRUD、保存后的 Telegram 进程同步、手动启停以及 Napcat
 - Cookie、平台 enabled 和保活设置来自系统配置。
 - 平台健康只报告账号/认证/解析能力，不应决定业务页面职责。
 
-## 当前问题
+## 历史决策
 
-- Bot 配置、运行时控制和外部同步副作用边界修复记录：`../../issues/archive/backend-bot-config-router-side-effects.md`
-- 用户控制面与后端策略修复记录：`../../issues/archive/frontend-control-policy-gaps.md`
+- [已关闭问题的历史决策](../../issues/archive/README.md)。
 
 ## 尚未实现 / 计划扩展
 

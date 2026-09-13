@@ -73,11 +73,9 @@ Telegram Bot 的显式 `/save` 也是该 contract 的生产者：回复图片、
 - 解析、摘要、语义索引、媒体归档和分发是否执行应受系统配置和自动化策略约束。
 - 内容详情只暴露当前状态，不应绕过后端策略触发外部副作用。
 
-## 当前问题
+## 历史决策
 
-- 详情后处理面板副作用：`../../issues/frontend-post-processing-panel-side-effects.md`
-- 统一任务结果 contract 解决记录：`../../issues/archive/task-run-result-contract-missing.md`
-- 媒体代理与图片访问修复记录：`../../issues/archive/media-proxy-image-access.md`
+- [已关闭问题的历史决策](../../issues/archive/README.md)。
 
 ## 尚未实现 / 计划扩展
 

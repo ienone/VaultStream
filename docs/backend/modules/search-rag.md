@@ -19,7 +19,7 @@ active
 - 语义搜索。
 - 内容摘要和 RAG chunk 生成。
 - 语义索引状态、重建和失败 embedding 重试。
-- 内容与人工知识事件的统一分组搜索。
+- 内容与知识事件的统一分组搜索；事件可人工创建，也可来自自动聚合。
 - 命中内容的人物/主题聚合，以及带显式媒体资产和秒数的章节/转写时间点。
 
 ## 不承担职责
@@ -44,7 +44,7 @@ active
 
 发现同步使用的 `has_current_content_index` 复用重建估算，核验全部当前单元的文本指纹、模型签名和 indexed 状态；只存在一个成功向量不足以跳过补建。内容不存在或未解析成功也不算就绪。该判断不调用模型，不改变自动索引策略开关。
 
-`GET /search/unified` 复用上述内容检索，并独立查询人工知识事件。事件只搜索事件标题、描述、成员备注和成员内容文本，返回 `title`、`description` 或 `member` 匹配来源；事件没有向量索引时不得标成语义命中。`kind` 可避免调用未请求的结果域，例如 `events` 不执行 embedding 搜索。
+`GET /search/unified` 复用上述内容检索，并独立查询知识事件。事件只搜索事件标题、描述、成员备注和成员内容文本，返回 `title`、`description` 或 `member` 匹配来源；事件没有向量索引时不得标成语义命中。`kind` 可避免调用未请求的结果域，例如 `events` 不执行 embedding 搜索。
 
 人物和主题是可导航的内容字段聚合，不是新实体。候选同时来自混合内容检索和 `author_name` / `tags` 精确字段召回，因此直接查询作者或标签时不依赖 embedding。时间点只从命中的 `rich_payload.chunks[]` 提取：切片必须声明 `segment_type=chapter|transcript`、`media_asset_id` 和 `start_seconds`，可选 `end_seconds`；搜索和内容详情共用同一个校验器，核验资产属于该内容、媒体类型是 audio/video、区间合法且起点未越过已知时长。查询明确命中切片文本，或向量召回明确命中该 chunk 时才返回；发布日期和推断秒数不参与。
 
@@ -81,11 +81,14 @@ Agent 的 `search_content` 直接调用同一 unified service，并把内容、�
 
 ## 当前问题
 
-- 无单独 active issue；当前实现仍以搜索模式为主，不能描述为完整 RAG 问答。
+- 向量分支按索引时间降序截取候选行，再在 Python 中计算相似度；默认 `embedding_search_max_rows=5000`，不是全库 ANN。近期多分块会挤占旧材料召回，需按真实规模验证；有全文兜底不代表语义覆盖完整。
+- 已有真实 Agent 读取、回答和可点击引用，但尚不足以保证开放式多材料问答、无答案行为和持续质量。判断依据集中在[整体能力评估](../../plans/2026-09-14-product-architecture-review.plan.md#capabilities)。
 
 ## 尚未实现 / 计划扩展
 
-混合检索和显式音视频时间点定位已经实现，但本轮没有验证真实 embedding 模型的召回质量，当前解析/摘要流程也不生产转写或章节时间字段。带稳定引用的问答、PDF 页码定位、转写生产和统一模型调用治理尚未形成完整 RAG 闭环；开始这些功能切片前，需要重新核对数据规模、评估集和当前实现。
+混合检索、显式音视频时间点和 PDF 页码定位已实现。[Bilibili 解析](../../../backend/app/adapters/bilibili_parser/video_media.py)生产平台章节/字幕，[文档提取](../../../backend/app/services/document_text.py)生产经过原件校验的 PDF 原生页；摘要保留这些来源片段。[真实验收](../../issues/2026-09-10-real-world-acceptance.md)包含长文末段语义召回、媒体定位、PDF 模型回答与引用点击，不再沿用“所有时间字段和页码问答未实现”的旧判断。
+
+尚缺通用 ASR/OCR、稳定来源修订引用、系统化的召回/拒答质量验证和统一模型使用治理。已有局部样本不能外推为全部平台、任意问题或长期质量；演进见[整体方案](../../plans/2026-09-14-product-architecture-review.plan.md#automation)。
 
 主题与时间点的精确候选在同一 SQLite 查询中应用解析状态、收藏/发现范围、平台和日期后再 LIMIT；不再先截断全库 ID 后二次过滤。
 

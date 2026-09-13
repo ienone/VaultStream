@@ -6,6 +6,8 @@ active
 
 后端位于 `backend/app/`，核心栈为 FastAPI、SQLAlchemy async、SQLite、后台任务、平台适配器、媒体处理和推送分发。
 
+本目录记录当前实现；目标边界与按用户任务组织的改造顺序见[产品与架构整体方案](../plans/2026-09-14-product-architecture-review.plan.md#backend)。本轮复现的解析/分发中断接续及事件证据清理缺口见[持续处理完整性问题](../issues/2026-09-14-continuous-processing-integrity.md)，尚未修复，不能以现有回归通过代替持续能力完成。
+
 ## 基础入口
 
 - `api.md`：API 通用约定和领域索引。
@@ -33,6 +35,7 @@ active
 - `modules/events-tasks.md`：SSE、后台任务状态和运行结果。
 - `modules/notification-inbox.md`：持久化消息、去重和用户消息状态。
 - `modules/knowledge-events.md`：跨内容事件、成员角色和证据状态。
+- [多来源自动聚合](modules/content-aggregation.md)：默认关闭的事件综合工作流、证据和独立分发边界。
 
 ## 阅读规则
 

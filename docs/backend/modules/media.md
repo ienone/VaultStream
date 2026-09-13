@@ -96,7 +96,7 @@ active
 
 ## 当前问题
 
-- 图片代理与媒体访问修复记录：`../../issues/archive/media-proxy-image-access.md`
+- [已关闭问题的历史决策](../../issues/archive/README.md)。
 - 统一资产表、签名访问、解析后写入和旧数据回填已建立；代理 MIME/错误阶段、事件循环阻塞边界、冷请求并发和低频配额已收敛；前端嵌套内容、队列预览及后端 Telegram/QQ 分发 payload 已迁移。前端资产图片会单次刷新过期 manifest，本地 404 会触发服务端核验；签名 blob 的 Range 回归已覆盖。仓库实验数据库/存储的真实 FastAPI 探针已依次得到 Range 206、过期 410、刷新后完整读取 200，并把实际缺失变体从 ready 校正为 missing/repairable。真实平台媒体发送以及浏览器/原生端长音视频播放与后台恢复仍未验收。
 
 ## 尚未实现 / 计划扩展

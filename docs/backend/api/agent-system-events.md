@@ -21,7 +21,7 @@ active
 - `organize_knowledge_event` 是专用写工具：`create` 必须提供内容 ID 与标题，`add_member` 必须提供内容 ID 与事件 ID；两种动作都可显式设置成员角色、证据状态和关系说明。工具在 confirmation 批准后复用 `KnowledgeEventService`，成员来源记为 `agent`，结果返回可恢复的内容/事件引用。
 - 通用 `api_mutation` 只允许内容字段更新和卡片审核；外部同步、发送、Bot 进程、设置和队列写操作必须走领域工具或确定性页面，不能借路径前缀进入。
 
-Agent API 只提供受控编排能力，不代表 Agent 可以绕过收藏、同步、分发或媒体策略。`push_batch` 在确认后仍检查分发暂停策略；通用桥接边界的修复记录见 `../../issues/archive/backend-agent-api-bridge-policy-bypass.md`。
+Agent API 只提供受控编排能力，不代表 Agent 可以绕过收藏、同步、分发或媒体策略。`push_batch` 在确认后仍检查分发暂停策略；通用桥接边界的修复记录见 `../../issues/archive/README.md`。
 
 ## 后台运行与诊断
 

@@ -21,6 +21,7 @@ active
 ## 收藏同步
 
 - `GET /api/v1/favorites-sync/status` 返回平台状态和当前策略。
+- platforms 使用命名 `FavoritesPlatformStatusResponse`，capabilities 明确 supported/scope/pagination/collection_metadata/authentication/limitation。未接入的平台仍返回能力说明，但 available=false，不能启用或执行。当前可执行平台注册为知乎、小红书、Bilibili、微博、X；X 需要服务端浏览器及显式保存的网页登录；未知/未接入平台的执行请求明确失败。
 - `POST /api/v1/favorites-sync/preview` 只预估，不推进同步 cursor。
 - `POST /api/v1/favorites-sync/sync` 创建可观察运行。
 - 单条和批量失败重试只重新处理指定候选，不重新拉取整个收藏夹。
@@ -64,3 +65,9 @@ active
 - 写操作必须区分预览、调度、执行和最终成功。
 - 批量接口要有数量上限、逐项结果和可观察 run。
 - 外部副作用必须经过用户可见策略和权限边界。
+
+聚合复用 `PUT /settings/{key}`：`enable_content_aggregation`、`enable_aggregation_push` 均为 boolean，默认 false，category=automation。状态与产物 ID 复用 background task diagnostics 的 `content_aggregation` 运行记录；不新增平行调用接口。内部 `content_aggregation_cursor`、`content_aggregation_last_attempt` 为恢复进度，不是用户配置项。
+
+队列状态变更（重试、取消、状态切换、排期、重推）使用条件更新保护正在发送的租约；任务已 processing 或读取后状态变化返回 HTTP 409，调用方应刷新列表。批量请求遇到此冲突整批事务回滚，不返回部分成功数量。
+
+收藏单项/批量重试条目支持可选 collection_id、collection_title，调用方从失败项原样传回；重试复用正常同步的来源身份。已存在且处理完成的单项重试返回既有 content_id 与新的 run_id，不重复创建来源。
