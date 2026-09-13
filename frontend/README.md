@@ -49,7 +49,12 @@ flutter doctor
 ```bash
 # 获取最新依赖
 flutter pub get
+dart run tool/dependencies/ensure_inactive_branch_back_navigation.dart
 ```
+
+安装后补丁直接修正已解析的 GoRouter 分支返回拦截，不复制依赖。清理 pub 缓存或更新依赖后需重新执行；CI 也执行此步骤。若上游代码已变化，脚本会要求重新核对并更新或移除补丁。
+
+`tool/dependencies/` 存放构建前的依赖适配入口，按解决的具体行为命名；它不属于测试脚本。Web 运行时的无障碍适配放在 `web/accessibility/`，随标准 Web 构建复制，保留上游修复后的移除条件。
 
 ### 3. 代码生成
 
@@ -385,6 +390,8 @@ flutter build web --release
 
 # 输出目录: build/web/
 ```
+
+Web 入口会自动加载 `web/accessibility/slider_label_association.js`，补齐当前 Flutter Web 内部滑块与现有名称的关联；普通构建会一并打包。SDK 更新后若已原生修复名称传递，应移除该脚本及入口引用，复验真实滑块的名称与键盘操作。
 
 ### Android APK
 
