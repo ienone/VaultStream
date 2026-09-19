@@ -18,7 +18,7 @@ async def test_history_prunes_only_unreferenced_finished_runs(db_session):
                                       title='结果回执', source_type='background_task_run',
                                       source_id=terminal[0].run_id, route=f'/tasks/{terminal[0].run_id}'))
     await db_session.commit()
-    await state._upsert_run(task, {'run_id': f'{task}-new', 'status': 'running'}, terminal=False)
+    await state.record_task_run_started(task, run_id=f'{task}-new')
     assert (await state.get_task_run(running.run_id))['original'] is True
     assert await state.get_task_run(terminal[0].run_id) is not None
     assert await state.get_task_run(terminal[1].run_id) is None

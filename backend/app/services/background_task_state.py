@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from uuid import uuid4
 from typing import Any
 
@@ -109,17 +108,7 @@ async def record_task_run_started(
     run_id: str | None = None,
     **metadata: Any,
 ) -> dict[str, Any]:
-    run = {
-        "run_id": run_id or uuid4().hex,
-        "task": task_name,
-        "status": "running",
-        "started_at": _now_iso(),
-        "finished_at": None,
-        "error": None,
-        **metadata,
-    }
-    saved, _ = await _upsert_run(task_name, run, terminal=False)
-    return saved
+    return await _upsert_run(task_name, run_id or uuid4().hex, status="running", metadata=metadata)
 
 
 async def record_task_run_success(
@@ -127,26 +116,7 @@ async def record_task_run_success(
     run_id: str,
     **result: Any,
 ) -> dict[str, Any]:
-    run = await _load_run(task_name, run_id)
-    run.update(
-        {
-            "run_id": run_id,
-            "task": task_name,
-            "status": "success",
-            "finished_at": _now_iso(),
-            "error": None,
-            "result": result,
-        }
-    )
-    saved, transition_applied = await _upsert_run(task_name, run, terminal=True)
-    await _publish_diagnostics_update(
-        task_name,
-        str(saved["status"]),
-        run_id=run_id,
-    )
-    if transition_applied:
-        await _record_run_notification(saved)
-    return saved
+    return await _upsert_run(task_name, run_id, status="success", result=result)
 
 
 async def record_task_run_error(
@@ -155,26 +125,7 @@ async def record_task_run_error(
     error: BaseException | str,
     **result: Any,
 ) -> dict[str, Any]:
-    run = await _load_run(task_name, run_id)
-    run.update(
-        {
-            "run_id": run_id,
-            "task": task_name,
-            "status": "error",
-            "finished_at": _now_iso(),
-            "error": str(error)[:1000],
-            "result": result,
-        }
-    )
-    saved, transition_applied = await _upsert_run(task_name, run, terminal=True)
-    await _publish_diagnostics_update(
-        task_name,
-        str(saved["status"]),
-        run_id=run_id,
-    )
-    if transition_applied:
-        await _record_run_notification(saved)
-    return saved
+    return await _upsert_run(task_name, run_id, status="error", error=str(error)[:1000], result=result)
 
 
 async def get_recent_task_runs(task_name: str, limit: int = _MAX_RECENT_RUNS) -> list[dict[str, Any]]:
@@ -231,44 +182,29 @@ async def _save_state(task_name: str, state: dict[str, Any]) -> dict[str, Any]:
     return state
 
 
-async def _load_run(task_name: str, run_id: str) -> dict[str, Any]:
-    run = await get_task_run(run_id)
-    if run is not None and run.get("task") == task_name:
-        return run
-    return {"run_id": run_id, "task": task_name}
-
-
 async def _upsert_run(
     task_name: str,
-    run: dict[str, Any],
+    run_id: str,
     *,
-    terminal: bool,
-) -> tuple[dict[str, Any], bool]:
-    run_id = str(run["run_id"])
-    started_at = _parse_run_datetime(run.get("started_at")) or utcnow()
-    finished_at = _parse_run_datetime(run.get("finished_at"))
-    known = {
-        "run_id",
-        "task",
-        "status",
-        "started_at",
-        "finished_at",
-        "error",
-        "result",
-        "presentation",
-    }
-    metadata = {key: value for key, value in run.items() if key not in known}
+    status: str,
+    metadata: dict[str, Any] | None = None,
+    result: dict[str, Any] | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
+    """Write lifecycle fields directly; API serialization is output-only."""
+    now = utcnow()
+    terminal = status != "running"
     values = {
         "run_id": run_id,
         "task": task_name,
-        "status": str(run.get("status") or "unknown"),
-        "started_at": started_at,
-        "finished_at": finished_at,
-        "error": run.get("error"),
-        "run_metadata": metadata,
-        "result": run.get("result"),
-        "created_at": started_at,
-        "updated_at": finished_at or utcnow(),
+        "status": status,
+        "started_at": now,
+        "finished_at": now if terminal else None,
+        "error": error,
+        "run_metadata": metadata or {},
+        "result": result,
+        "created_at": now,
+        "updated_at": now,
     }
     insert_statement = sqlite_insert(BackgroundTaskRun).values(**values)
     if terminal:
@@ -278,7 +214,6 @@ async def _upsert_run(
                 "status": values["status"],
                 "finished_at": values["finished_at"],
                 "error": values["error"],
-                "metadata": values["run_metadata"],
                 "result": values["result"],
                 "updated_at": values["updated_at"],
             },
@@ -323,22 +258,12 @@ async def _upsert_run(
         raise RuntimeError(
             f"Background task run id belongs to another task: {run_id}"
         )
-    return _serialize_run(saved), bool(write_result.rowcount)
-
-
-def _parse_run_datetime(value: Any) -> datetime | None:
-    if isinstance(value, datetime):
-        parsed = value
-    elif isinstance(value, str) and value.strip():
-        try:
-            parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
-        except ValueError:
-            return None
-    else:
-        return None
-    if parsed.tzinfo is not None:
-        return parsed.astimezone(timezone.utc).replace(tzinfo=None)
-    return parsed
+    serialized = _serialize_run(saved)
+    if terminal:
+        await _publish_diagnostics_update(task_name, saved.status, run_id=run_id)
+        if write_result.rowcount:
+            await _record_run_notification(serialized)
+    return serialized
 
 
 def _serialize_run(row: BackgroundTaskRun) -> dict[str, Any]:
