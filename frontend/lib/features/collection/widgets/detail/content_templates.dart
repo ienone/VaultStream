@@ -898,65 +898,86 @@ class _PagedMediaViewerState extends State<_PagedMediaViewer> {
   Widget build(BuildContext context) {
     final ctx = widget.ctx;
     final scheme = Theme.of(context).colorScheme;
+    final asset = ctx.imageAssets[ctx.images[_index]];
+    final width = asset?.width;
+    final height = asset?.height;
+    final aspectRatio =
+        width != null && height != null && width > 0 && height > 0
+        ? width / height
+        : 1.0;
     return Column(
       children: [
-        AspectRatio(
-          aspectRatio: 4 / 5,
-          child: ClipRRect(
-            borderRadius: AppShape.paneBorder,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                PageView.builder(
-                  controller: _controller,
-                  itemCount: ctx.images.length,
-                  onPageChanged: _pageChanged,
-                  itemBuilder: (context, index) {
-                    final image = ctx.images[index];
-                    return MediaImageButton(
-                      label: '查看第 ${index + 1} 张图片，共 ${ctx.images.length} 张',
-                      onPressed: _openFullScreen,
-                      child: NetworkThumbnail(
-                        imageUrl: image,
-                        fallbackUrls: ctx.imageFallbacks[image] ?? const [],
-                        mediaAsset: ctx.imageAssets[image],
-                        purpose: MediaPurpose.detail,
-                        fit: BoxFit.contain,
-                      ),
-                    );
-                  },
-                ),
-                Positioned(
-                  bottom: AppSpacing.sm,
-                  right: AppSpacing.sm,
-                  child: FilledButton.tonalIcon(
-                    onPressed: _openFullScreen,
-                    icon: const Icon(Icons.fullscreen_rounded),
-                    label: const Text('查看大图'),
-                  ),
-                ),
-                if (ctx.images.length > 1)
-                  Positioned(
-                    top: AppSpacing.sm,
-                    right: AppSpacing.sm,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.xs,
-                        vertical: AppSpacing.xxs,
-                      ),
-                      decoration: BoxDecoration(
-                        color: scheme.inverseSurface.withValues(alpha: 0.72),
-                        borderRadius: BorderRadius.circular(AppShape.pill),
-                      ),
-                      child: Text(
-                        '${_index + 1} / ${ctx.images.length}',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: scheme.onInverseSurface,
-                        ),
+        AnimatedSize(
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : AppMotion.contentSwap,
+          curve: AppMotion.standardCurve,
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.7,
+            ),
+            child: AspectRatio(
+              aspectRatio: aspectRatio,
+              child: ClipRRect(
+                borderRadius: AppShape.paneBorder,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    PageView.builder(
+                      controller: _controller,
+                      itemCount: ctx.images.length,
+                      onPageChanged: _pageChanged,
+                      itemBuilder: (context, index) {
+                        final image = ctx.images[index];
+                        return MediaImageButton(
+                          label:
+                              '查看第 ${index + 1} 张图片，共 ${ctx.images.length} 张',
+                          onPressed: _openFullScreen,
+                          child: NetworkThumbnail(
+                            imageUrl: image,
+                            fallbackUrls: ctx.imageFallbacks[image] ?? const [],
+                            mediaAsset: ctx.imageAssets[image],
+                            purpose: MediaPurpose.detail,
+                            fit: BoxFit.contain,
+                          ),
+                        );
+                      },
+                    ),
+                    Positioned(
+                      bottom: AppSpacing.sm,
+                      right: AppSpacing.sm,
+                      child: FilledButton.tonalIcon(
+                        onPressed: _openFullScreen,
+                        icon: const Icon(Icons.fullscreen_rounded),
+                        label: const Text('查看大图'),
                       ),
                     ),
-                  ),
-              ],
+                    if (ctx.images.length > 1)
+                      Positioned(
+                        top: AppSpacing.sm,
+                        right: AppSpacing.sm,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.xs,
+                            vertical: AppSpacing.xxs,
+                          ),
+                          decoration: BoxDecoration(
+                            color: scheme.inverseSurface.withValues(
+                              alpha: 0.72,
+                            ),
+                            borderRadius: BorderRadius.circular(AppShape.pill),
+                          ),
+                          child: Text(
+                            '${_index + 1} / ${ctx.images.length}',
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(color: scheme.onInverseSurface),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
