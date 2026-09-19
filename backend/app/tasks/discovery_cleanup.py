@@ -6,7 +6,8 @@
 import asyncio
 
 from loguru import logger
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, exists, select, update
+from sqlalchemy.orm import aliased
 
 from app.core.db_adapter import AsyncSessionLocal
 from app.core.time_utils import utcnow
@@ -20,12 +21,25 @@ from app.services.background_task_state import (
 from app.models import (
     Content,
     ContentDiscoveryLink,
-    ContentEmbedding,
     ContentQueueItem,
     ContentSource,
     DiscoveryState,
+    KnowledgeEventMember,
     PushedRecord,
 )
+
+
+def _has_no_retained_dependency():
+    """Return the shared retention predicate for automatic candidate cleanup."""
+    child = aliased(Content)
+    return (
+        Content.parent_id.is_(None)
+        & ~exists().where(child.parent_id == Content.id)
+        & ~exists().where(KnowledgeEventMember.content_id == Content.id)
+        & ~exists().where(ContentSource.content_id == Content.id)
+        & ~exists().where(ContentQueueItem.content_id == Content.id)
+        & ~exists().where(PushedRecord.content_id == Content.id)
+    )
 
 
 class DiscoveryCleanupTask:
@@ -62,21 +76,25 @@ class DiscoveryCleanupTask:
 
     async def _cleanup_expired(self) -> int:
         """Apply configured cleanup policy to expired inbox candidates."""
+        cleanup_mode = await get_setting_value(
+            "discovery_cleanup_mode",
+            settings.discovery_cleanup_mode,
+        )
+        if cleanup_mode not in {"hard_delete", "expire_only", "archive"}:
+            cleanup_mode = settings.discovery_cleanup_mode
+
         async with AsyncSessionLocal() as db:
             now = utcnow()
-            cleanup_mode = await get_setting_value(
-                "discovery_cleanup_mode",
-                settings.discovery_cleanup_mode,
-            )
-            if cleanup_mode not in {"hard_delete", "expire_only", "archive"}:
-                cleanup_mode = settings.discovery_cleanup_mode
+            retained_dependency = _has_no_retained_dependency()
 
-            # Mark expired visible items
+            # This first UPDATE acquires SQLite's writer lock before evaluating
+            # dependencies and holds it through archive/delete and commit.
             await db.execute(
                 update(Content)
                 .where(Content.discovery_state == DiscoveryState.VISIBLE)
                 .where(Content.expire_at != None)  # noqa: E711
                 .where(Content.expire_at < now)
+                .where(retained_dependency)
                 .values(discovery_state=DiscoveryState.EXPIRED)
             )
 
@@ -98,6 +116,7 @@ class DiscoveryCleanupTask:
                     .where(Content.expire_at != None)  # noqa: E711
                     .where(Content.expire_at < now)
                     .where(Content.deleted_at == None)  # noqa: E711
+                    .where(retained_dependency)
                     .values(
                         deleted_at=now,
                         context_data={
@@ -126,6 +145,7 @@ class DiscoveryCleanupTask:
                     )
                     .where(Content.expire_at != None)  # noqa: E711
                     .where(Content.expire_at < now)
+                    .where(retained_dependency)
                 )
             ).scalars().all()
 
@@ -133,19 +153,11 @@ class DiscoveryCleanupTask:
                 await db.commit()
                 return 0
 
-            await db.execute(
-                update(Content)
-                .where(Content.parent_id.in_(target_ids))
-                .values(parent_id=None)
-            )
-            for model in (
-                ContentDiscoveryLink,
-                ContentEmbedding,
-                ContentQueueItem,
-                ContentSource,
-                PushedRecord,
-            ):
-                await db.execute(delete(model).where(model.content_id.in_(target_ids)))
+            # Discovery links lack ON DELETE CASCADE. Embeddings/media cascade;
+            # saved sources and delivery references were excluded under this lock.
+            await db.execute(delete(ContentDiscoveryLink).where(
+                ContentDiscoveryLink.content_id.in_(target_ids)
+            ))
 
             result = await db.execute(
                 delete(Content).where(Content.id.in_(target_ids))
