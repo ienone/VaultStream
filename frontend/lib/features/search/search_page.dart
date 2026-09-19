@@ -8,20 +8,17 @@ import '../../core/widgets/app_filter_menu.dart';
 import '../../routing/app_navigation.dart';
 import '../../theme/design_tokens.dart';
 import '../collection/providers/search_history_provider.dart';
+import '../collection/widgets/dialogs/collection_filter_sheet.dart';
 import 'search_models.dart';
 import 'search_provider.dart';
 
 class SearchPage extends ConsumerStatefulWidget {
   const SearchPage({
     super.key,
-    this.initialQuery = '',
-    this.initialKind = 'all',
-    this.initialContentScope = 'library',
+    this.initialRequest = const UnifiedSearchRequest(),
   });
 
-  final String initialQuery;
-  final String initialKind;
-  final String initialContentScope;
+  final UnifiedSearchRequest initialRequest;
 
   @override
   ConsumerState<SearchPage> createState() => _SearchPageState();
@@ -31,21 +28,14 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   late final TextEditingController _controller;
   final FocusNode _queryFocus = FocusNode(debugLabel: 'global-search-query');
   late final ScrollController _resultsScrollController;
-  late String _kind;
-  late String _contentScope;
-  UnifiedSearchRequest? _request;
+  late UnifiedSearchRequest _request;
 
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: widget.initialQuery);
+    _request = widget.initialRequest;
+    _controller = TextEditingController(text: _request.query);
     _resultsScrollController = ScrollController();
-    _kind = _validKind(widget.initialKind);
-    _contentScope = _validScope(widget.initialContentScope);
-    final query = widget.initialQuery.trim();
-    if (query.isNotEmpty) {
-      _request = (query: query, kind: _kind, contentScope: _contentScope);
-    }
   }
 
   @override
@@ -59,50 +49,20 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   @override
   void didUpdateWidget(covariant SearchPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialQuery == widget.initialQuery &&
-        oldWidget.initialKind == widget.initialKind &&
-        oldWidget.initialContentScope == widget.initialContentScope) {
-      return;
-    }
-    final query = widget.initialQuery.trim();
-    _controller.text = query;
-    _kind = _validKind(widget.initialKind);
-    _contentScope = _validScope(widget.initialContentScope);
-    final nextRequest = query.isEmpty
-        ? null
-        : (query: query, kind: _kind, contentScope: _contentScope);
-    if (_request != nextRequest) _resetResultScroll();
-    _request = nextRequest;
+    if (oldWidget.initialRequest == widget.initialRequest) return;
+    if (_request != widget.initialRequest) _resetResultScroll();
+    _request = widget.initialRequest;
+    _controller.text = _request.query;
   }
 
   void _search() {
     final query = _controller.text.trim();
     FocusScope.of(context).unfocus();
-    if (query.isEmpty) {
-      _resetResultScroll();
-      setState(() => _request = null);
-      context.replace(
-        Uri(
-          path: "/search",
-          queryParameters: {"kind": _kind, "content_scope": _contentScope},
-        ).toString(),
-      );
-      return;
-    }
-    final request = (query: query, kind: _kind, contentScope: _contentScope);
+    final request = _request.copyWith(query: query, page: 1);
     if (_request != request) _resetResultScroll();
     setState(() => _request = request);
     ref.read(searchHistoryProvider.notifier).add(query);
-    GoRouter.maybeOf(context)?.replace(
-      Uri(
-        path: '/search',
-        queryParameters: {
-          'q': query,
-          'kind': _kind,
-          'content_scope': _contentScope,
-        },
-      ).toString(),
-    );
+    context.replace(request.toUri('/search').toString());
   }
 
   void _resetResultScroll() {
@@ -112,13 +72,30 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   }
 
   void _setKind(String value) {
-    setState(() => _kind = value);
-    if (_controller.text.trim().isNotEmpty) _search();
+    _resetResultScroll();
+    _request = _request.copyWith(kind: value);
+    _search();
   }
 
   void _setContentScope(String value) {
-    setState(() => _contentScope = value);
-    if (_controller.text.trim().isNotEmpty) _search();
+    _resetResultScroll();
+    _request = _request.copyWith(contentScope: value);
+    _search();
+  }
+
+  void _goPage(int page) {
+    _resetResultScroll();
+    setState(() => _request = _request.copyWith(page: page));
+    context.replace(_request.toUri('/search').toString());
+  }
+
+  Future<void> _openFilters() async {
+    _queryFocus.unfocus();
+    final result = await editSearchFilters(context, _request);
+    if (result == null || !mounted) return;
+    _resetResultScroll();
+    _request = result;
+    _search();
   }
 
   void _openAgent() {
@@ -134,12 +111,20 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
   @override
   Widget build(BuildContext context) {
-    final request = _request;
+    final request = _request.query.isEmpty && _request.kind != 'contents'
+        ? null
+        : _request;
     return Scaffold(
       appBar: AppBar(
         leading: const AppBackButton(),
         title: const Text('搜索'),
         actions: [
+          if (_request.kind != 'events')
+            IconButton(
+              tooltip: '搜索筛选',
+              onPressed: _openFilters,
+              icon: const Icon(Icons.tune_rounded),
+            ),
           IconButton(
             tooltip: '询问 Agent',
             onPressed: _controller.text.trim().isEmpty ? null : _openAgent,
@@ -222,7 +207,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                                           width: width,
                                           child: AppFilterMenu(
                                             label: '结果类型',
-                                            value: _kind,
+                                            value: _request.kind,
                                             options: const {
                                               'all': '全部类型',
                                               'contents': '内容',
@@ -236,12 +221,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                                             onSelected: _setKind,
                                           ),
                                         ),
-                                        if (_kind != 'events')
+                                        if (_request.kind != 'events')
                                           SizedBox(
                                             width: width,
                                             child: AppFilterMenu(
                                               label: '内容范围',
-                                              value: _contentScope,
+                                              value: _request.contentScope,
                                               options: const {
                                                 'library': '收藏库',
                                                 'discovery': '发现',
@@ -251,12 +236,53 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                                               onSelected: _setContentScope,
                                             ),
                                           ),
+                                        if (_request.kind != 'events')
+                                          SizedBox(
+                                            width: width,
+                                            child: AppFilterMenu(
+                                              label: '搜索方式',
+                                              value: _request.mode,
+                                              options: const {
+                                                'keyword': '关键词',
+                                                'semantic': '语义',
+                                              },
+                                              onOpened: _queryFocus.unfocus,
+                                              onSelected: (mode) {
+                                                _request = _request.copyWith(
+                                                  mode: mode,
+                                                );
+                                                _search();
+                                              },
+                                            ),
+                                          ),
                                       ],
                                     ),
                                   ),
                                 );
                               },
                             ),
+                            if (_request.kind != 'events')
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  [
+                                    ..._request.platforms.map(
+                                      (p) => searchPlatformLabels[p] ?? p,
+                                    ),
+                                    ..._request.statuses.map(
+                                      (s) => '状态：${searchStatusLabels[s] ?? s}',
+                                    ),
+                                    ..._request.tags.map((tag) => '#$tag'),
+                                    if (_request.author != null)
+                                      '作者：${_request.author}',
+                                    if (_request.dateFrom != null)
+                                      '从 ${_request.dateFrom!.toLocal().toString().split(' ').first}',
+                                    if (_request.dateTo != null)
+                                      '至 ${_request.dateTo!.toLocal().toString().split(' ').first}',
+                                  ].join(' · '),
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ),
                           ],
                         ),
                       ),
@@ -303,9 +329,42 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                                   ),
                                 ),
                               ),
-                              data: (results) => _SearchResultsView(
-                                results: results,
-                                onAgent: _openAgent,
+                              data: (results) => SliverMainAxisGroup(
+                                slivers: [
+                                  _SearchResultsView(
+                                    results: results,
+                                    onAgent: _openAgent,
+                                  ),
+                                  if (results.contentHasMore ||
+                                      results.page > 1)
+                                    SliverToBoxAdapter(
+                                      child: Wrap(
+                                        alignment: WrapAlignment.center,
+                                        crossAxisAlignment:
+                                            WrapCrossAlignment.center,
+                                        spacing: 16,
+                                        children: [
+                                          TextButton(
+                                            onPressed: results.page > 1
+                                                ? () =>
+                                                      _goPage(results.page - 1)
+                                                : null,
+                                            child: const Text('上一页'),
+                                          ),
+                                          Text(
+                                            '第 ${results.page} 页 · ${results.contentTotal} 条内容',
+                                          ),
+                                          TextButton(
+                                            onPressed: results.contentHasMore
+                                                ? () =>
+                                                      _goPage(results.page + 1)
+                                                : null,
+                                            child: const Text('下一页'),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
                 ),
@@ -316,22 +375,6 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       ),
     );
   }
-
-  static String _validKind(String value) =>
-      const {
-        'all',
-        'contents',
-        'events',
-        'people',
-        'topics',
-        'timepoints',
-        'document_pages',
-      }.contains(value)
-      ? value
-      : 'all';
-
-  static String _validScope(String value) =>
-      const {'library', 'discovery', 'all'}.contains(value) ? value : 'library';
 }
 
 class _SearchResultsView extends StatelessWidget {
@@ -499,18 +542,19 @@ class _ContentResultTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final description = [
-      if (item.authorName?.isNotEmpty == true) item.authorName!,
+      if (item.card.authorName?.isNotEmpty == true) item.card.authorName!,
       if (item.summary?.isNotEmpty == true) item.summary!,
     ].join(' · ');
     return ListTile(
       title: Text(
-        item.title?.trim().isNotEmpty == true ? item.title! : '未命名内容',
+        item.card.title?.trim().isNotEmpty == true ? item.card.title! : '未命名内容',
       ),
       subtitle: description.isEmpty
           ? null
           : Text(description, maxLines: 3, overflow: TextOverflow.ellipsis),
       trailing: const Icon(Icons.chevron_right_rounded),
-      onTap: () => context.push('/collection/${item.id}'),
+      onTap: () =>
+          context.push('/collection/${item.card.id}', extra: item.card),
     );
   }
 }
@@ -544,6 +588,7 @@ class _FacetResultTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isPerson = kind == 'people';
+    final request = UnifiedSearchRequest.fromUri(GoRouterState.of(context).uri);
     return ListTile(
       title: Text(isPerson ? item.name : '#${item.name}'),
       subtitle: Text(
@@ -556,11 +601,16 @@ class _FacetResultTile extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
       trailing: const Icon(Icons.filter_alt_outlined),
-      onTap: () => context.go(
-        Uri(
-          path: '/collection',
-          queryParameters: {isPerson ? 'author' : 'tag': item.name},
-        ).toString(),
+      onTap: () => context.replace(
+        request
+            .copyWith(
+              kind: 'contents',
+              page: 1,
+              author: isPerson ? item.name : request.author,
+              tags: isPerson ? request.tags : [item.name],
+            )
+            .toUri('/search')
+            .toString(),
       ),
     );
   }

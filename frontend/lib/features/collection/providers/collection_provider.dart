@@ -1,15 +1,17 @@
 import 'dart:async';
-import 'package:dio/dio.dart';
+
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+
 import '../../../core/network/api_client.dart';
 import '../../../core/network/sse_service.dart';
+import '../../search/search_models.dart';
+import '../../search/search_provider.dart';
 import '../models/content.dart';
 import '../models/processing_status.dart';
 import 'collection_filter_provider.dart';
 
 part 'collection_provider.g.dart';
 
-/// 收藏库相关的 SSE 事件类型
 const _collectionEventTypes = {
   'content_created',
   'content_updated',
@@ -18,342 +20,78 @@ const _collectionEventTypes = {
 
 @riverpod
 class Collection extends _$Collection {
-  Timer? _debounceTimer;
-  StreamSubscription? _sseSub;
-  final List<SseEvent> _pendingEvents = [];
-  bool _isDraining = false;
+  UnifiedSearchRequest? _request;
+  int _loadedPages = 1;
+  int _generation = 0;
 
   @override
-  FutureOr<ShareCardListResponse> build() async {
-    final filter = ref.watch(collectionFilterProvider);
-
-    // 启动 SSE 服务（确保服务已初始化）
+  Future<ShareCardListResponse> build() async {
+    final request = ref.watch(collectionFilterProvider).toSearchRequest();
+    _generation++;
+    if (request != _request) _loadedPages = 1;
+    _request = request;
     ref.watch(sseServiceProvider.notifier);
-
-    // 监听 SSE 事件：先入队，再批量防抖处理，避免事件丢失
-    _sseSub?.cancel();
-    _sseSub = SseEventBus().eventStream.listen((event) {
-      if (_collectionEventTypes.contains(event.type)) {
-        _pendingEvents.add(event);
-        _debounceTimer?.cancel();
-        _debounceTimer = Timer(const Duration(milliseconds: 300), () {
-          _drainPendingEvents();
-        });
-      }
+    Timer? refreshTimer;
+    final subscription = SseEventBus().eventStream.listen((event) {
+      if (!_collectionEventTypes.contains(event.type)) return;
+      refreshTimer?.cancel();
+      refreshTimer = Timer(
+        const Duration(milliseconds: 300),
+        ref.invalidateSelf,
+      );
     });
-
     ref.onDispose(() {
-      _sseSub?.cancel();
-      _debounceTimer?.cancel();
+      refreshTimer?.cancel();
+      subscription.cancel();
     });
 
-    return _fetch(
-      page: 1,
-      query: filter.searchQuery.isEmpty ? null : filter.searchQuery,
-      platforms: filter.platforms.isNotEmpty ? filter.platforms : null,
-      statuses: filter.statuses.isNotEmpty ? filter.statuses : null,
-      author: filter.author,
-      startDate: filter.dateRange?.start,
-      endDate: filter.dateRange?.end,
-      tags: filter.tags.isNotEmpty ? filter.tags : null,
-      searchMode: filter.searchMode,
-      semanticTopK: filter.semanticTopK,
-      semanticScope: filter.semanticScope,
+    // 后端拥有筛选和排序。实时刷新重读已加载页，不在客户端猜测归属，
+    // 也不把阅读中的长列表缩回第一页。
+    final pages = _loadedPages;
+    final generation = _generation;
+    var result = await _fetch(request);
+    for (var page = 2; page <= pages && result.hasMore; page++) {
+      if (!ref.mounted || generation != _generation) return result;
+      final next = await _fetch(request.copyWith(page: page));
+      result = next.copyWith(items: [...result.items, ...next.items]);
+    }
+    return result;
+  }
+
+  Future<ShareCardListResponse> _fetch(UnifiedSearchRequest request) async {
+    final result = await fetchUnifiedSearch(
+      ref.read(apiClientProvider),
+      request,
     );
-  }
-
-  Future<void> _drainPendingEvents() async {
-    if (_isDraining) return;
-    _isDraining = true;
-    try {
-      while (_pendingEvents.isNotEmpty) {
-        final batch = List<SseEvent>.from(_pendingEvents);
-        _pendingEvents.clear();
-
-        bool needFullRefresh = false;
-
-        // 同一 content 仅保留最后一条事件，减少重复处理
-        final Map<int, SseEvent> latestById = {};
-        for (final event in batch) {
-          final id = _extractEventId(event);
-          if (id == null) {
-            needFullRefresh = true;
-            continue;
-          }
-          latestById[id] = event;
-        }
-
-        for (final event in latestById.values) {
-          final ok = await _applyIncrementalEvent(event);
-          if (!ok) {
-            needFullRefresh = true;
-          }
-        }
-
-        if (needFullRefresh) {
-          ref.invalidateSelf();
-        }
-      }
-    } finally {
-      _isDraining = false;
-    }
-  }
-
-  int? _extractEventId(SseEvent event) {
-    final raw = event.data['id'];
-    if (raw is int) return raw;
-    if (raw is String) return int.tryParse(raw);
-    return null;
-  }
-
-  bool _canEvaluateFilterLocally(CollectionFilterState filter) {
-    // status 与 q 在 /cards 事件增量场景下无法与后端完全等价判断，回退全量刷新更安全
-    if (filter.statuses.isNotEmpty) return false;
-    if (filter.searchQuery.trim().isNotEmpty) return false;
-    return true;
-  }
-
-  bool _matchesLocalFilter(ShareCard card, CollectionFilterState filter) {
-    if (filter.platforms.isNotEmpty) {
-      final normalized = filter.platforms.map((e) => e.toLowerCase()).toSet();
-      if (!normalized.contains(card.platform.toLowerCase())) {
-        return false;
-      }
-    }
-
-    if (filter.author != null && filter.author!.trim().isNotEmpty) {
-      final keyword = filter.author!.trim().toLowerCase();
-      final author = (card.authorName ?? '').toLowerCase();
-      if (!author.contains(keyword)) {
-        return false;
-      }
-    }
-
-    if (filter.tags.isNotEmpty) {
-      final cardTags = card.tags.map((e) => e.toLowerCase()).toSet();
-      final hasAnyTag = filter.tags.any(
-        (tag) => cardTags.contains(tag.toLowerCase()),
-      );
-      if (!hasAnyTag) {
-        return false;
-      }
-    }
-
-    if (filter.dateRange != null && card.createdAt != null) {
-      final start = filter.dateRange!.start;
-      final end = filter.dateRange!.end;
-      final createdAt = card.createdAt!;
-      if (createdAt.isBefore(start) || createdAt.isAfter(end)) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  Future<bool> _applyIncrementalEvent(SseEvent event) async {
-    final current = state.value;
-    if (current == null) return false;
-
-    final id = _extractEventId(event);
-    if (id == null) return false;
-
-    if (event.type == 'content_deleted') {
-      final updated = current.items.where((c) => c.id != id).toList();
-      if (updated.length < current.items.length) {
-        state = AsyncData(
-          current.copyWith(
-            items: updated,
-            total: current.total > 0 ? current.total - 1 : 0,
-          ),
-        );
-      }
-      return true;
-    }
-
-    if (event.type != 'content_created' && event.type != 'content_updated') {
-      return false;
-    }
-
-    final filter = ref.read(collectionFilterProvider);
-    if (!_canEvaluateFilterLocally(filter)) {
-      return false;
-    }
-
-    try {
-      final dio = ref.read(apiClientProvider);
-      final resp = await dio.get('/cards/$id');
-      final card = ShareCard.fromJson(resp.data);
-
-      final refreshed = state.value;
-      if (refreshed == null) return false;
-
-      final items = [...refreshed.items];
-      final idx = items.indexWhere((c) => c.id == id);
-      final matches = _matchesLocalFilter(card, filter);
-
-      if (matches) {
-        if (idx == -1) {
-          items.insert(0, card);
-          state = AsyncData(
-            refreshed.copyWith(items: items, total: refreshed.total + 1),
-          );
-        } else {
-          items[idx] = card;
-          state = AsyncData(refreshed.copyWith(items: items));
-        }
-      } else {
-        if (idx != -1) {
-          items.removeAt(idx);
-          state = AsyncData(
-            refreshed.copyWith(
-              items: items,
-              total: refreshed.total > 0 ? refreshed.total - 1 : 0,
-            ),
-          );
-        }
-      }
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  Future<ShareCardListResponse> _fetch({
-    int page = 1,
-    int size = 20,
-    List<String>? tags,
-    List<String>? platforms,
-    List<String>? statuses,
-    String? author,
-    DateTime? startDate,
-    DateTime? endDate,
-    String? query,
-    String searchMode = 'keyword',
-    int semanticTopK = 20,
-    String semanticScope = 'library',
-  }) async {
-    final dio = ref.read(apiClientProvider);
-
-    final useSemantic =
-        searchMode == 'semantic' && (query ?? '').trim().isNotEmpty;
-    if (useSemantic) {
-      final response = await dio.get(
-        '/search/semantic',
-        queryParameters: {
-          'q': query,
-          'top_k': semanticTopK,
-          'scope': semanticScope,
-          if (platforms != null && platforms.isNotEmpty)
-            'platform': platforms.join(','),
-          if (tags != null && tags.isNotEmpty) 'tag': tags.join(','),
-          if (statuses != null && statuses.isNotEmpty)
-            'status': statuses.join(','),
-          if (author != null && author.trim().isNotEmpty)
-            'author': author.trim(),
-          if (startDate != null) 'date_from': startDate.toIso8601String(),
-          if (endDate != null) 'date_to': endDate.toIso8601String(),
-        },
-        options: Options(
-          sendTimeout: const Duration(seconds: 10),
-          receiveTimeout: const Duration(seconds: 10),
-        ),
-      );
-
-      final rows = (response.data['results'] as List<dynamic>? ?? [])
-          .whereType<Map<String, dynamic>>()
-          .toList();
-      final cards = rows.map(_semanticToShareCard).toList();
-
-      return ShareCardListResponse(
-        items: cards,
-        total: cards.length,
-        page: 1,
-        size: cards.length,
-        hasMore: false,
-      );
-    }
-
-    final response = await dio.get(
-      '/cards',
-      queryParameters: {
-        'page': page,
-        'size': size,
-        if (tags case final tags? when tags.isNotEmpty) 'tag': tags.join(','),
-        if (platforms case final platforms? when platforms.isNotEmpty)
-          'platform': platforms.join(','),
-        if (statuses case final statuses? when statuses.isNotEmpty)
-          'status': statuses.join(','),
-        'author': ?author,
-        if (startDate != null) 'start_date': startDate.toIso8601String(),
-        if (endDate != null) 'end_date': endDate.toIso8601String(),
-        'q': ?query,
-      },
-    );
-
-    return ShareCardListResponse.fromJson(response.data);
-  }
-
-  ShareCard _semanticToShareCard(Map<String, dynamic> row) {
-    return ShareCard(
-      id: (row['content_id'] as num?)?.toInt() ?? 0,
-      platform: (row['platform'] as String?) ?? '',
-      url: (row['url'] as String?) ?? '',
-      status: row['status'] as String?,
-      title: row['title'] as String?,
-      authorName: row['author_name'] as String?,
-      coverUrl: row['cover_url'] as String?,
-      reviewStatus: row['review_status'] as String?,
-      discoveryState: row['discovery_state'] as String?,
-      contentType: row['content_type'] as String?,
-      layoutType: row['effective_layout_type'] as String?,
-      semanticScore: (row['score'] as num?)?.toDouble(),
-      semanticMatchSource: row['match_source'] as String?,
-      semanticChunkTitle: row['chunk_title'] as String?,
-      semanticSourceText: row['source_text'] as String?,
-      tags: (row['tags'] as List<dynamic>? ?? [])
-          .map((e) => e.toString())
-          .toList(),
-      createdAt: row['created_at'] != null
-          ? DateTime.tryParse(row['created_at'])
-          : null,
-      publishedAt: row['published_at'] != null
-          ? DateTime.tryParse(row['published_at'])
-          : null,
+    return ShareCardListResponse(
+      items: result.contents.map((hit) => hit.card).toList(growable: false),
+      total: result.contentTotal,
+      page: result.page,
+      size: result.size,
+      hasMore: result.contentHasMore,
     );
   }
 
   Future<void> fetchMore() async {
-    if (state.isLoading || state.isRefreshing || state.isReloading) return;
-
-    final currentData = state.value;
-    if (currentData == null || !currentData.hasMore) return;
-
+    if (state.isLoading) return;
+    final current = state.value;
+    if (current == null || !current.hasMore) return;
+    final generation = _generation;
+    final request = _request!.copyWith(page: current.page + 1);
     // ignore: invalid_use_of_internal_member
     state = const AsyncLoading<ShareCardListResponse>().copyWithPrevious(state);
-
     try {
-      final filter = ref.read(collectionFilterProvider);
-      final nextData = await _fetch(
-        page: currentData.page + 1,
-        query: filter.searchQuery.isEmpty ? null : filter.searchQuery,
-        platforms: filter.platforms.isNotEmpty ? filter.platforms : null,
-        statuses: filter.statuses.isNotEmpty ? filter.statuses : null,
-        author: filter.author,
-        startDate: filter.dateRange?.start,
-        endDate: filter.dateRange?.end,
-        tags: filter.tags.isNotEmpty ? filter.tags : null,
-        searchMode: filter.searchMode,
-        semanticTopK: filter.semanticTopK,
-        semanticScope: filter.semanticScope,
-      );
-
+      final next = await _fetch(request);
+      if (!ref.mounted || generation != _generation) return;
+      _loadedPages = next.page;
       state = AsyncData(
-        nextData.copyWith(items: [...currentData.items, ...nextData.items]),
+        next.copyWith(items: [...current.items, ...next.items]),
       );
-    } catch (e, st) {
+    } catch (error, stack) {
+      if (!ref.mounted || generation != _generation) return;
+      final failure = AsyncError<ShareCardListResponse>(error, stack);
       // ignore: invalid_use_of_internal_member
-      state = AsyncError<ShareCardListResponse>(e, st).copyWithPrevious(state);
+      state = failure.copyWithPrevious(state);
     }
   }
 }
@@ -365,10 +103,7 @@ Future<ContentDetail> contentDetail(Ref ref, int id) async {
   return ContentDetail.fromJson(response.data);
 }
 
-/// 内容后处理状态。
-///
-/// 返回后端 `/contents/{id}/processing-status` 的 typed contract，
-/// 调用方不再解析裸 Map，也不根据状态字符串推断可执行动作。
+/// 后处理状态使用正式 contract，不推断后台任务是否完成。
 @riverpod
 Future<ContentProcessingStatus> contentProcessingStatus(Ref ref, int id) async {
   final dio = ref.watch(apiClientProvider);

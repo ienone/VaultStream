@@ -1,25 +1,23 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/layout/responsive_layout.dart';
 import '../../../../theme/design_tokens.dart';
 
 /// 收藏库加载骨架。
 ///
-/// 与 `CollectionGrid` 使用同一套列数和节奏，避免加载完成后布局跳动。
+/// 与浏览网格或阅读侧列使用相同列数。
 /// 骨架只用于真实等待，不与内容同时显示。
 class CollectionSkeleton extends StatelessWidget {
-  const CollectionSkeleton({super.key});
+  const CollectionSkeleton({super.key, this.columns = 1});
+
+  final int columns;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = constraints.maxWidth;
         final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
-        final columns = ResponsiveLayout.contentGridColumns(width / textScale);
-        final isCompact = columns == 1;
-        final gutter = isCompact ? AppSpacing.xs : AppSpacing.sm;
-        final horizontalPadding = isCompact ? AppSpacing.sm : AppSpacing.md;
+        final gutter = columns == 1 ? AppSpacing.xs : AppSpacing.sm;
+        final horizontalPadding = columns == 1 ? AppSpacing.sm : AppSpacing.md;
         final itemHeight = 132.0 * textScale;
         return GridView.builder(
           padding: EdgeInsets.fromLTRB(

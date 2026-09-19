@@ -23,6 +23,7 @@ import '../features/accounts/account_detail_page.dart';
 import '../features/notifications/notification_center_page.dart';
 import '../features/events/event_detail_page.dart';
 import '../features/search/search_page.dart';
+import '../features/search/search_models.dart';
 import '../features/player/player_page.dart';
 import '../features/player/global_playback_controller.dart';
 import '../features/player/global_player_widgets.dart';
@@ -186,10 +187,7 @@ GoRouter goRouter(Ref ref) {
           GoRoute(
             path: '/search',
             builder: (context, state) => SearchPage(
-              initialQuery: state.uri.queryParameters['q'] ?? '',
-              initialKind: state.uri.queryParameters['kind'] ?? 'all',
-              initialContentScope:
-                  state.uri.queryParameters['content_scope'] ?? 'library',
+              initialRequest: UnifiedSearchRequest.fromUri(state.uri),
             ),
           ),
           GoRoute(
@@ -238,6 +236,9 @@ GoRouter goRouter(Ref ref) {
                       initialAuthor: state.uri.queryParameters['author'],
                       initialTags: _queryList(state, 'tag'),
                       initialDateRange: _queryDateRange(state),
+                      selectedContentId: int.tryParse(
+                        state.uri.queryParameters['item'] ?? '',
+                      ),
                     ),
                     routes: [
                       GoRoute(
@@ -377,7 +378,6 @@ List<String> _queryList(GoRouterState state, String key) {
   final values = state.uri.queryParametersAll[key];
   if (values == null || values.isEmpty) return const [];
   return values
-      .expand((value) => value.split(','))
       .map((value) => value.trim())
       .where((value) => value.isNotEmpty)
       .toList(growable: false);

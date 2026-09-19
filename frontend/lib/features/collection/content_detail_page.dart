@@ -40,6 +40,9 @@ class ContentDetailPage extends ConsumerStatefulWidget {
     this.preview,
     this.initialPlaybackSeconds,
     this.initialMediaAssetId,
+    this.onClose,
+    this.onToggleFocus,
+    this.focused = false,
   });
 
   final int contentId;
@@ -53,6 +56,11 @@ class ContentDetailPage extends ConsumerStatefulWidget {
   /// 搜索时间点深链；只在显式秒数非负且目标媒体存在时生效。
   final double? initialPlaybackSeconds;
   final int? initialMediaAssetId;
+
+  /// 工作区内的阅读器保持单一阅读流，不再嵌套辅助双栏。
+  final VoidCallback? onClose;
+  final VoidCallback? onToggleFocus;
+  final bool focused;
 
   @override
   ConsumerState<ContentDetailPage> createState() => _ContentDetailPageState();
@@ -154,16 +162,13 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           Size(constraints.maxWidth, constraints.maxHeight),
         );
         return Scaffold(
-          appBar: AppBar(
-            title: Text(
-              (preview?.title ?? '').trim().isEmpty
-                  ? '正在打开内容'
-                  : preview!.title!.trim(),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+          appBar: _buildAppBar(
+            null,
+            title: (preview?.title ?? '').trim().isEmpty
+                ? '正在打开内容'
+                : preview!.title!.trim(),
           ),
-          body: metrics.supportsSupportingPane
+          body: widget.onClose == null && metrics.supportsSupportingPane
               ? _previewUsesImmersiveMedia(preview)
                     ? _buildLoadingImmersive(preview!)
                     : _buildLoadingTwoPane(preview)
@@ -261,7 +266,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
   Widget _buildError(Object error, StackTrace _) {
     return Scaffold(
-      appBar: AppBar(title: const Text('内容详情')),
+      appBar: _buildAppBar(null),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.xl),
@@ -329,13 +334,15 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         );
 
         final body =
-            metrics.supportsSupportingPane && detail.hasExternalOriginal
+            widget.onClose == null &&
+                metrics.supportsSupportingPane &&
+                detail.hasExternalOriginal
             ? templateContext.usesImmersiveMediaLayout
                   ? _buildImmersiveMediaPane(templateContext)
                   : _buildTwoPane(templateContext)
             : _buildSinglePane(templateContext);
         return Scaffold(
-          appBar: _buildAppBar(detail, metrics),
+          appBar: _buildAppBar(detail),
           // Text selection must not compete with document pinch/pan gestures.
           body: detail.template == ContentTemplate.document
               ? body
@@ -348,29 +355,47 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   // --- 顶栏与动作层级 ---
 
   /// 顶栏只保留返回、标题和一个主动作，其余动作进入"更多"菜单。
-  PreferredSizeWidget _buildAppBar(
-    ContentDetail detail,
-    WindowMetrics metrics,
-  ) {
+  PreferredSizeWidget _buildAppBar(ContentDetail? detail, {String? title}) {
     return AppBar(
-      // 手机横屏高度不足时压缩顶栏。
-      toolbarHeight: metrics.isShortLandscape ? 48 : null,
-      title: const Text('内容详情'),
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      scrolledUnderElevation: 0,
+      toolbarHeight: WindowMetrics.of(context).heightClass.isCompact
+          ? 48
+          : null,
+      leading: widget.onClose == null
+          ? null
+          : BackButton(onPressed: widget.onClose),
+      title: Text(
+        title ?? (widget.onClose == null ? '内容详情' : '阅读'),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
       actions: [
-        if (detail.hasExternalOriginal)
+        if (widget.onToggleFocus != null)
+          IconButton(
+            tooltip: widget.focused ? '显示列表' : '专注阅读',
+            icon: Icon(
+              widget.focused
+                  ? Icons.view_sidebar_outlined
+                  : Icons.fullscreen_rounded,
+            ),
+            onPressed: widget.onToggleFocus,
+          ),
+        if (detail != null && detail.hasExternalOriginal)
           TextButton.icon(
             onPressed: () => SafeUrlLauncher.openExternal(context, detail.url),
             icon: const Icon(Icons.open_in_new_rounded, size: 18),
             label: const Text('原文'),
           ),
-        _MoreMenu(
-          detail: detail,
-          onEdit: () => _edit(detail),
-          onAddToEvent: () => _addToEvent(detail),
-          onReParse: () => _reParse(detail),
-          onDelete: () => _confirmDelete(detail),
-          onChangeTemplate: () => _changeTemplate(detail),
-        ),
+        if (detail != null)
+          _MoreMenu(
+            detail: detail,
+            onEdit: () => _edit(detail),
+            onAddToEvent: () => _addToEvent(detail),
+            onReParse: () => _reParse(detail),
+            onDelete: () => _confirmDelete(detail),
+            onChangeTemplate: () => _changeTemplate(detail),
+          ),
         const SizedBox(width: AppSpacing.xs),
       ],
     );
@@ -664,7 +689,13 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         .deleteContent(detail.id);
     if (!mounted) return;
     _report(result);
-    if (result.ok) Navigator.of(context).pop();
+    if (result.ok) {
+      if (widget.onClose != null) {
+        widget.onClose!();
+      } else {
+        Navigator.of(context).pop();
+      }
+    }
   }
 
   void _report(ContentActionResult result) {

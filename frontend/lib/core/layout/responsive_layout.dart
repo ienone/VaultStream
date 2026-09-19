@@ -143,14 +143,4 @@ class ResponsiveLayout {
 
   static bool isMobile(BuildContext context) =>
       !widthClassOf(context).atLeast(WindowWidthClass.expanded);
-
-  /// 收藏库内容网格列数。
-  ///
-  /// 依据组件自身可用宽度而不是屏幕宽度，因此在 NavigationRail、
-  /// 辅助 pane 或 side sheet 存在时也能得到正确列数。
-  static int contentGridColumns(double availableWidth) {
-    // 一个槽位约 400dp，包含卡片、缩略图、内边距和列间距。
-    // 列数由阅读空间决定，不随全局窗口类别直接增加。
-    return (availableWidth / 400).floor().clamp(1, 4);
-  }
 }

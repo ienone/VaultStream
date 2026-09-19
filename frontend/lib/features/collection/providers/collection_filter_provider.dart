@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../../search/search_models.dart';
+
 part 'collection_filter_provider.g.dart';
 
 @immutable
@@ -61,9 +63,24 @@ class CollectionFilterState {
       statuses.isNotEmpty ||
       author != null ||
       dateRange != null ||
-      tags.isNotEmpty;
+      tags.isNotEmpty ||
+      semanticScope != 'library';
 
   bool get isSemantic => searchMode == 'semantic';
+
+  UnifiedSearchRequest toSearchRequest() => UnifiedSearchRequest(
+    query: searchQuery,
+    kind: 'contents',
+    mode: searchMode,
+    contentScope: semanticScope,
+    topK: semanticTopK,
+    platforms: platforms,
+    statuses: statuses,
+    tags: tags,
+    author: author,
+    dateFrom: dateRange?.start,
+    dateTo: dateRange?.end,
+  );
 }
 
 @riverpod

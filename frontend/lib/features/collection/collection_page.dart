@@ -1,21 +1,24 @@
 import '../../layout/root_page_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/layout/responsive_layout.dart';
 import '../../theme/design_tokens.dart';
+import '../search/search_models.dart';
+import 'models/content.dart';
 import 'providers/batch_selection_provider.dart';
 import 'providers/collection_filter_provider.dart';
 import 'providers/collection_provider.dart';
 import 'providers/search_history_provider.dart';
 import 'widgets/detail/detail_sections.dart';
 import 'widgets/dialogs/batch_action_sheet.dart';
-import 'widgets/dialogs/collection_filter_form.dart';
 import 'widgets/dialogs/collection_filter_sheet.dart';
-import 'widgets/list/collection_grid.dart';
+import 'widgets/list/collection_list.dart';
 import 'widgets/list/collection_search_entry.dart';
 import 'widgets/list/collection_skeleton.dart';
+import 'widgets/list/collection_workspace.dart';
 
 /// 收藏库。
 ///
@@ -30,6 +33,7 @@ class CollectionPage extends ConsumerStatefulWidget {
     this.initialAuthor,
     this.initialTags = const [],
     this.initialDateRange,
+    this.selectedContentId,
   });
 
   final List<String> initialPlatforms;
@@ -37,6 +41,7 @@ class CollectionPage extends ConsumerStatefulWidget {
   final String? initialAuthor;
   final List<String> initialTags;
   final DateTimeRange? initialDateRange;
+  final int? selectedContentId;
 
   @override
   ConsumerState<CollectionPage> createState() => _CollectionPageState();
@@ -44,8 +49,10 @@ class CollectionPage extends ConsumerStatefulWidget {
 
 class _CollectionPageState extends ConsumerState<CollectionPage> {
   final ScrollController _scrollController = ScrollController();
-  final SearchController _searchController = SearchController();
+  final TextEditingController _searchController = TextEditingController();
   String? _lastAppliedRouteFilterSignature;
+  LocalHistoryEntry? _readerHistory;
+  ShareCard? _preview;
 
   @override
   void initState() {
@@ -54,6 +61,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _applyRouteFilters();
       if (mounted) {
+        _syncReaderHistory();
         _syncSearchText(ref.read(collectionFilterProvider).searchQuery);
       }
     });
@@ -62,7 +70,55 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   @override
   void didUpdateWidget(covariant CollectionPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _applyRouteFilters());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _applyRouteFilters();
+      if (mounted) _syncReaderHistory();
+    });
+  }
+
+  void _syncReaderHistory() {
+    if (widget.selectedContentId == null) {
+      final entry = _readerHistory;
+      _readerHistory = null;
+      entry?.remove();
+    } else if (_readerHistory == null) {
+      late final LocalHistoryEntry entry;
+      entry = LocalHistoryEntry(
+        impliesAppBarDismissal: false,
+        onRemove: () {
+          if (_readerHistory != entry) return;
+          _readerHistory = null;
+          _closeReader();
+        },
+      );
+      _readerHistory = entry;
+      ModalRoute.of(context)!.addLocalHistoryEntry(entry);
+    }
+  }
+
+  void _openContent(ShareCard content) {
+    if (content.id == widget.selectedContentId) return;
+    _preview = content;
+    final uri = GoRouterState.of(context).uri;
+    final location = uri
+        .replace(
+          queryParameters: {
+            ...uri.queryParametersAll,
+            'item': [content.id.toString()],
+          },
+        )
+        .toString();
+    if (widget.selectedContentId == null) {
+      context.go(location);
+    } else {
+      context.replace(location);
+    }
+  }
+
+  void _closeReader() {
+    final uri = GoRouterState.of(context).uri;
+    final query = {...uri.queryParametersAll}..remove('item');
+    context.replace(uri.replace(queryParameters: query).toString());
   }
 
   /// 路由 query 是筛选的可分享表示，只在 query 真正变化时覆盖当前筛选。
@@ -103,6 +159,9 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   @override
   void dispose() {
     // 离开页面时不清空筛选：从详情返回必须恢复原有查询与结果。
+    final entry = _readerHistory;
+    _readerHistory = null;
+    entry?.remove();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _searchController.dispose();
@@ -119,17 +178,14 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
 
   Future<void> _refresh() => ref.refresh(collectionProvider.future);
 
-  void _performSearch(String query, {String? mode}) {
+  void _performSearch(String query) {
     final trimmed = query.trim();
     if (trimmed.isNotEmpty) {
       ref.read(searchHistoryProvider.notifier).add(trimmed);
     }
     final notifier = ref.read(collectionFilterProvider.notifier);
-    if (mode != null) notifier.setSearchMode(mode);
     notifier.updateSearchQuery(trimmed);
-    if (_searchController.isAttached && _searchController.isOpen) {
-      _searchController.closeView(trimmed);
-    }
+    FocusScope.of(context).unfocus();
   }
 
   void _syncSearchText(String query) {
@@ -140,24 +196,13 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     );
   }
 
-  Future<void> _openSearchPage() async {
-    final initialQuery = ref.read(collectionFilterProvider).searchQuery;
-    final result = await Navigator.of(context, rootNavigator: true)
-        .push<CollectionSearchSelection>(
-          MaterialPageRoute(
-            builder: (_) => CollectionSearchPage(initialQuery: initialQuery),
-          ),
-        );
-    if (!mounted) return;
-    if (result != null) {
-      _performSearch(result.query, mode: result.mode);
-    }
-    _restoreSearchText();
-  }
-
-  void _restoreSearchText() {
-    _syncSearchText(ref.read(collectionFilterProvider).searchQuery);
-    _searchController.selection = const TextSelection.collapsed(offset: 0);
+  void _openSearchPage() {
+    final request = ref
+        .read(collectionFilterProvider)
+        .toSearchRequest()
+        .copyWith(query: _searchController.text.trim(), kind: 'all');
+    FocusScope.of(context).unfocus();
+    context.push(request.toUri('/search').toString());
   }
 
   @override
@@ -167,90 +212,106 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
       collectionFilterProvider.select((state) => state.searchQuery),
       (_, query) => _syncSearchText(query),
     );
-    if (_searchController.isAttached && !_searchController.isOpen) {
-      _syncSearchText(filter.searchQuery);
-    }
     final collectionAsync = ref.watch(collectionProvider);
     final selection = ref.watch(batchSelectionProvider);
-    final compact = _searchBelowToolbar(context);
-
-    return Scaffold(
-      appBar: selection.isSelectionMode
-          ? _buildSelectionAppBar(selection)
-          : _buildAppBar(filter),
-      body: Column(
-        children: [
-          if (!selection.isSelectionMode && compact)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md,
-                AppSpacing.sm,
-                AppSpacing.md,
-                AppSpacing.sm,
-              ),
-              child: CollectionSearchEntry(
-                controller: _searchController,
-                filter: filter,
-                onSubmit: _performSearch,
-                onClose: _restoreSearchText,
-                onOpenPage: _openSearchPage,
-              ),
-            ),
-          if (!selection.isSelectionMode)
-            _ActiveFilterBar(
-              filter: filter,
-              resultTotal: collectionAsync.value?.total,
-            ),
-          Expanded(
-            child: collectionAsync.when(
-              skipLoadingOnRefresh: true,
-              data: (response) => CollectionGrid(
-                items: response.items,
-                scrollController: _scrollController,
-                hasMore: response.hasMore,
-                isLoadingMore:
-                    collectionAsync.isLoading && response.items.isNotEmpty,
-                onRefresh: _refresh,
-                isSelectionMode: selection.isSelectionMode,
-                selectedIds: selection.selectedIds,
-                onToggleSelection: (id) => ref
-                    .read(batchSelectionProvider.notifier)
-                    .toggleSelection(id),
-                onLongPress: (id) {
-                  final notifier = ref.read(batchSelectionProvider.notifier);
-                  notifier.enterSelectionMode();
-                  notifier.toggleSelection(id);
-                },
-                emptyState: _buildEmptyState(filter),
-              ),
-              loading: () => const CollectionSkeleton(),
-              error: (error, _) => Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.xl),
-                  child: ContentEmptyState(
-                    icon: Icons.cloud_off_rounded,
-                    message: '无法加载收藏库',
-                    hint: error.toString(),
-                    action: FilledButton.tonal(
-                      onPressed: () => ref.invalidate(collectionProvider),
-                      child: const Text('重试'),
+    return CollectionWorkspace(
+      selectedId: widget.selectedContentId,
+      preview: _preview?.id == widget.selectedContentId ? _preview : null,
+      onClose: _closeReader,
+      list: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = _searchBelowToolbar(constraints.maxWidth);
+          final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+          final columns = widget.selectedContentId == null
+              ? (constraints.maxWidth / (360 * textScale)).floor().clamp(1, 4)
+              : 1;
+          return Scaffold(
+            appBar: selection.isSelectionMode
+                ? _buildSelectionAppBar(selection)
+                : _buildAppBar(filter, constraints.maxWidth),
+            body: Column(
+              children: [
+                if (!selection.isSelectionMode && compact)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.md,
+                      AppSpacing.sm,
+                      AppSpacing.md,
+                      AppSpacing.sm,
+                    ),
+                    child: CollectionSearchEntry(
+                      controller: _searchController,
+                      onSubmit: _performSearch,
+                      onOpenPage: _openSearchPage,
+                    ),
+                  ),
+                if (!selection.isSelectionMode)
+                  _ActiveFilterBar(
+                    filter: filter,
+                    resultTotal: collectionAsync.value?.total,
+                  ),
+                Expanded(
+                  child: collectionAsync.when(
+                    skipLoadingOnRefresh: true,
+                    data: (response) => CollectionList(
+                      items: response.items,
+                      columns: columns,
+                      onOpenContent: _openContent,
+                      activeId: widget.selectedContentId,
+                      scrollController: _scrollController,
+                      isLoadingMore:
+                          collectionAsync.isLoading &&
+                          response.items.isNotEmpty,
+                      onLoadMore: response.hasMore
+                          ? ref.read(collectionProvider.notifier).fetchMore
+                          : null,
+                      onRefresh: _refresh,
+                      isSelectionMode: selection.isSelectionMode,
+                      selectedIds: selection.selectedIds,
+                      onToggleSelection: (id) => ref
+                          .read(batchSelectionProvider.notifier)
+                          .toggleSelection(id),
+                      onLongPress: (id) {
+                        if (widget.selectedContentId != null) _closeReader();
+                        final notifier = ref.read(
+                          batchSelectionProvider.notifier,
+                        );
+                        notifier.enterSelectionMode();
+                        notifier.toggleSelection(id);
+                      },
+                      emptyState: _buildEmptyState(filter),
+                    ),
+                    loading: () => CollectionSkeleton(columns: columns),
+                    error: (error, _) => Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppSpacing.xl),
+                        child: ContentEmptyState(
+                          icon: Icons.cloud_off_rounded,
+                          message: '无法加载收藏库',
+                          hint: error.toString(),
+                          action: FilledButton.tonal(
+                            onPressed: () => ref.invalidate(collectionProvider),
+                            child: const Text('重试'),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
-          ),
-        ],
+            floatingActionButton: selection.isSelectionMode
+                ? FloatingActionButton.extended(
+                    onPressed: selection.isProcessing || selection.count == 0
+                        ? null
+                        : () => showBatchActions(context),
+                    icon: const Icon(Icons.checklist_rounded),
+                    label: Text('操作 (${selection.count})'),
+                  )
+                : null,
+          );
+        },
       ),
-      floatingActionButton: selection.isSelectionMode
-          ? FloatingActionButton.extended(
-              onPressed: selection.isProcessing || selection.count == 0
-                  ? null
-                  : () => showBatchActions(context),
-              icon: const Icon(Icons.checklist_rounded),
-              label: Text('操作 (${selection.count})'),
-            )
-          : null,
     );
   }
 
@@ -278,16 +339,17 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
 
   // --- 顶栏 ---
 
-  bool _searchBelowToolbar(BuildContext context) =>
-      MediaQuery.sizeOf(context).width /
-          (MediaQuery.textScalerOf(context).scale(16) / 16) <
-      ResponsiveLayout.largeBreakpoint;
+  bool _searchBelowToolbar(double width) =>
+      width / (MediaQuery.textScalerOf(context).scale(16) / 16) <
+      ResponsiveLayout.expandedBreakpoint;
 
-  PreferredSizeWidget _buildAppBar(CollectionFilterState filter) {
-    final width = MediaQuery.sizeOf(context).width;
-    final compact = _searchBelowToolbar(context);
+  PreferredSizeWidget _buildAppBar(CollectionFilterState filter, double width) {
+    final compact = _searchBelowToolbar(width);
 
     return AppBar(
+      leading: buildRootPageLeading(context),
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      scrolledUnderElevation: 0,
       toolbarHeight: WindowMetrics.of(context).heightClass.isCompact
           ? 48
           : null,
@@ -304,9 +366,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
                       width: width < 840 ? 260 : 360,
                       child: CollectionSearchEntry(
                         controller: _searchController,
-                        filter: filter,
                         onSubmit: _performSearch,
-                        onClose: _restoreSearchText,
                         onOpenPage: _openSearchPage,
                       ),
                     ),
@@ -368,37 +428,22 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   /// 高级筛选：Compact 使用接近全高的 bottom sheet，Expanded 使用 side sheet。
   Future<void> _openFilters() async {
     final filter = ref.read(collectionFilterProvider);
-    final items = ref.read(collectionProvider).value?.items ?? const [];
-    final availableTags = <String>{
-      for (final item in items) ...item.tags,
-    }.toList();
-
-    final dialog = CollectionFilterForm(
-      initialPlatforms: filter.platforms,
-      initialStatuses: filter.statuses,
-      initialAuthor: filter.author,
-      initialDateRange: filter.dateRange,
-      initialTags: filter.tags,
-      initialSearchMode: filter.searchMode,
-      initialSemanticTopK: filter.semanticTopK,
-      initialSemanticScope: filter.semanticScope,
-      availableTags: availableTags,
-    );
-
-    final result = await showCollectionFilters(context, child: dialog);
+    final result = await editSearchFilters(context, filter.toSearchRequest());
 
     if (result == null || !mounted) return;
     ref
         .read(collectionFilterProvider.notifier)
         .setFilters(
-          platforms: (result['platforms'] as List<dynamic>?)?.cast<String>(),
-          statuses: (result['statuses'] as List<dynamic>?)?.cast<String>(),
-          author: result['author'] as String?,
-          dateRange: result['dateRange'] as DateTimeRange?,
-          tags: (result['tags'] as List<dynamic>?)?.cast<String>(),
-          searchMode: result['searchMode'] as String?,
-          semanticTopK: result['semanticTopK'] as int?,
-          semanticScope: result['semanticScope'] as String?,
+          platforms: result.platforms,
+          statuses: result.statuses,
+          author: result.author,
+          dateRange: result.dateFrom == null || result.dateTo == null
+              ? null
+              : DateTimeRange(start: result.dateFrom!, end: result.dateTo!),
+          tags: result.tags,
+          searchMode: result.mode,
+          semanticTopK: result.topK,
+          semanticScope: result.contentScope,
         );
   }
 }
@@ -418,6 +463,14 @@ class _ActiveFilterBar extends ConsumerWidget {
     final theme = Theme.of(context);
     final chips = <Widget>[];
 
+    if (filter.semanticScope != 'library') {
+      chips.add(
+        _FilterChip(
+          label: filter.semanticScope == 'discovery' ? '范围：发现' : '范围：全部内容',
+          onRemove: () => notifier.setSemanticScope('library'),
+        ),
+      );
+    }
     if (filter.searchQuery.isNotEmpty) {
       chips.add(
         _FilterChip(
@@ -430,7 +483,7 @@ class _ActiveFilterBar extends ConsumerWidget {
     for (final platform in filter.platforms) {
       chips.add(
         _FilterChip(
-          label: platform,
+          label: searchPlatformLabels[platform] ?? platform,
           onRemove: () => notifier.removePlatform(platform),
         ),
       );
@@ -438,7 +491,7 @@ class _ActiveFilterBar extends ConsumerWidget {
     for (final status in filter.statuses) {
       chips.add(
         _FilterChip(
-          label: status,
+          label: searchStatusLabels[status] ?? status,
           onRemove: () => notifier.removeStatus(status),
         ),
       );

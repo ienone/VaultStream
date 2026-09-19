@@ -4,30 +4,12 @@ import 'package:intl/intl.dart';
 import '../../../../core/widgets/predictive_back_dialog.dart';
 import '../../providers/tag_provider.dart';
 import '../../../../theme/design_tokens.dart';
+import '../../../search/search_models.dart';
 
 class CollectionFilterForm extends ConsumerStatefulWidget {
-  final List<String> initialPlatforms;
-  final List<String> initialStatuses;
-  final String? initialAuthor;
-  final DateTimeRange? initialDateRange;
-  final List<String> initialTags;
-  final List<String> availableTags;
-  final String initialSearchMode;
-  final int initialSemanticTopK;
-  final String initialSemanticScope;
+  final UnifiedSearchRequest request;
 
-  const CollectionFilterForm({
-    super.key,
-    this.initialPlatforms = const [],
-    this.initialStatuses = const [],
-    this.initialAuthor,
-    this.initialDateRange,
-    this.initialTags = const [],
-    this.availableTags = const [],
-    this.initialSearchMode = 'keyword',
-    this.initialSemanticTopK = 20,
-    this.initialSemanticScope = 'library',
-  });
+  const CollectionFilterForm({super.key, required this.request});
 
   @override
   ConsumerState<CollectionFilterForm> createState() =>
@@ -45,55 +27,29 @@ class _CollectionFilterFormState extends ConsumerState<CollectionFilterForm> {
   late String _searchMode;
   late double _semanticTopK;
   late String _semanticScope;
-
-  final List<String> _platforms = [
-    'bilibili',
-    'twitter',
-    'xiaohongshu',
-    'douyin',
-    'weibo',
-    'zhihu',
-  ];
-  final List<String> _statuses = [
-    'unprocessed',
-    'processing',
-    'parse_success',
-    'parse_failed',
-  ];
-
-  final Map<String, String> _platformLabels = {
-    'bilibili': 'Bilibili',
-    'twitter': 'Twitter/X',
-    'xiaohongshu': '小红书',
-    'douyin': '抖音',
-    'weibo': '微博',
-    'zhihu': '知乎',
-  };
-
-  final Map<String, String> _statusLabels = {
-    'unprocessed': '未处理',
-    'processing': '处理中',
-    'parse_success': '解析成功',
-    'parse_failed': '解析失败',
-  };
+  bool _dateChanged = false;
 
   @override
   void initState() {
     super.initState();
-    _selectedPlatforms = Set<String>.from(widget.initialPlatforms);
-    _selectedStatuses = Set<String>.from(widget.initialStatuses);
-    _authorController = TextEditingController(text: widget.initialAuthor);
+    final request = widget.request;
+    _selectedPlatforms = Set<String>.from(request.platforms);
+    _selectedStatuses = Set<String>.from(request.statuses);
+    _authorController = TextEditingController(text: request.author);
     _tagInputController = TextEditingController();
-    _dateRange = widget.initialDateRange;
-    _selectedTags = Set<String>.from(widget.initialTags);
-    _searchMode = widget.initialSearchMode == 'semantic'
-        ? 'semantic'
-        : 'keyword';
-    _semanticTopK = widget.initialSemanticTopK.toDouble().clamp(1.0, 100.0);
-    _semanticScope =
-        ['library', 'discovery', 'all'].contains(widget.initialSemanticScope)
-        ? widget.initialSemanticScope
-        : 'library';
+    _dateRange =
+        request.dateFrom != null &&
+            request.dateTo != null &&
+            !request.dateFrom!.isAfter(request.dateTo!)
+        ? DateTimeRange(
+            start: request.dateFrom!.toLocal(),
+            end: request.dateTo!.toLocal(),
+          )
+        : null;
+    _selectedTags = Set<String>.from(request.tags);
+    _searchMode = request.mode;
+    _semanticTopK = request.topK.toDouble().clamp(1, 100);
+    _semanticScope = request.contentScope;
   }
 
   @override
@@ -110,6 +66,7 @@ class _CollectionFilterFormState extends ConsumerState<CollectionFilterForm> {
       _authorController.clear();
       _tagInputController.clear();
       _dateRange = null;
+      _dateChanged = true;
       _selectedTags.clear();
       _searchMode = 'keyword';
       _semanticTopK = 20;
@@ -207,7 +164,7 @@ class _CollectionFilterFormState extends ConsumerState<CollectionFilterForm> {
             children: [
               Expanded(
                 child: Text(
-                  '筛选收藏',
+                  '搜索筛选',
                   style: theme.textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
@@ -242,10 +199,10 @@ class _CollectionFilterFormState extends ConsumerState<CollectionFilterForm> {
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
-                        children: _platforms
+                        children: searchPlatformLabels.keys
                             .map(
                               (p) => _buildFilterChip(
-                                _platformLabels[p] ?? p.toUpperCase(),
+                                searchPlatformLabels[p]!,
                                 _selectedPlatforms.contains(p),
                                 (selected) => setState(
                                   () => selected
@@ -261,10 +218,10 @@ class _CollectionFilterFormState extends ConsumerState<CollectionFilterForm> {
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
-                        children: _statuses
+                        children: searchStatusLabels.keys
                             .map(
                               (s) => _buildFilterChip(
-                                _statusLabels[s] ?? s,
+                                searchStatusLabels[s]!,
                                 _selectedStatuses.contains(s),
                                 (selected) => setState(
                                   () => selected
@@ -391,8 +348,14 @@ class _CollectionFilterFormState extends ConsumerState<CollectionFilterForm> {
                         children: [
                           _buildChoiceChip(
                             '全部时间',
-                            _dateRange == null,
-                            (s) => setState(() => _dateRange = null),
+                            _dateRange == null &&
+                                (_dateChanged ||
+                                    (widget.request.dateFrom == null &&
+                                        widget.request.dateTo == null)),
+                            (s) => setState(() {
+                              _dateRange = null;
+                              _dateChanged = true;
+                            }),
                           ),
                           _buildDatePresetChip('今天', 0),
                           _buildDatePresetChip('过去 7 天', 7),
@@ -461,7 +424,7 @@ class _CollectionFilterFormState extends ConsumerState<CollectionFilterForm> {
                           }),
                         ],
                       ),
-                      if (_searchMode == 'semantic') ...[
+                      ...[
                         const SizedBox(height: 12),
                         Text('检索范围', style: theme.textTheme.bodyMedium),
                         const SizedBox(height: 8),
@@ -496,6 +459,8 @@ class _CollectionFilterFormState extends ConsumerState<CollectionFilterForm> {
                             }),
                           ],
                         ),
+                      ],
+                      if (_searchMode == 'semantic') ...[
                         const SizedBox(height: 12),
                         Text(
                           '最多显示 ${_semanticTopK.round()} 条结果',
@@ -542,18 +507,33 @@ class _CollectionFilterFormState extends ConsumerState<CollectionFilterForm> {
         flex: 2,
         child: FilledButton(
           onPressed: () {
-            Navigator.of(context).pop({
-              'platforms': _selectedPlatforms.toList(),
-              'statuses': _selectedStatuses.toList(),
-              'author': _authorController.text.trim().isEmpty
-                  ? null
-                  : _authorController.text.trim(),
-              'dateRange': _dateRange,
-              'tags': _selectedTags.toList(),
-              'searchMode': _searchMode,
-              'semanticTopK': _semanticTopK.round(),
-              'semanticScope': _semanticScope,
-            });
+            final end = _dateRange?.end;
+            Navigator.of(context).pop(
+              widget.request.copyWith(
+                page: 1,
+                platforms: _selectedPlatforms.toList(),
+                statuses: _selectedStatuses.toList(),
+                author: _authorController.text.trim().isEmpty
+                    ? null
+                    : _authorController.text.trim(),
+                dateFrom: _dateChanged
+                    ? _dateRange?.start
+                    : widget.request.dateFrom,
+                dateTo: _dateChanged
+                    ? (end == null
+                          ? null
+                          : DateTime(
+                              end.year,
+                              end.month,
+                              end.day + 1,
+                            ).subtract(const Duration(microseconds: 1)))
+                    : widget.request.dateTo,
+                tags: _selectedTags.toList(),
+                mode: _searchMode,
+                topK: _semanticTopK.round(),
+                contentScope: _semanticScope,
+              ),
+            );
           },
           style: FilledButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 16),
@@ -616,7 +596,10 @@ class _CollectionFilterFormState extends ConsumerState<CollectionFilterForm> {
     return _buildChoiceChip(
       label,
       isSelected,
-      (s) => setState(() => _dateRange = s ? range : null),
+      (s) => setState(() {
+        _dateRange = s ? range : null;
+        _dateChanged = true;
+      }),
     );
   }
 
@@ -635,7 +618,12 @@ class _CollectionFilterFormState extends ConsumerState<CollectionFilterForm> {
         child: _DateRangeSurface(initialRange: _dateRange),
       ),
     );
-    if (picked != null && mounted) setState(() => _dateRange = picked);
+    if (picked != null && mounted) {
+      setState(() {
+        _dateRange = picked;
+        _dateChanged = true;
+      });
+    }
   }
 }
 

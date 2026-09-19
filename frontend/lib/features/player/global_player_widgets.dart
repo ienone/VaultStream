@@ -32,16 +32,28 @@ class GlobalPlaybackChrome extends StatelessWidget {
   final bool showMiniPlayer;
 
   @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      Expanded(child: child),
-      if (showMiniPlayer)
-        Offstage(
-          offstage: MediaQuery.viewInsetsOf(context).bottom > 0,
-          child: const GlobalMiniPlayer(),
-        ),
-    ],
+  Widget build(BuildContext context) => _PlaybackPage(
+    route: ModalRoute.of(context),
+    child: Column(
+      children: [
+        Expanded(child: child),
+        if (showMiniPlayer)
+          Offstage(
+            offstage: MediaQuery.viewInsetsOf(context).bottom > 0,
+            child: const GlobalMiniPlayer(),
+          ),
+      ],
+    ),
   );
+}
+
+/// 子 Navigator 内的阅读器也必须在根级播放器页面打开时交出视频视图。
+class _PlaybackPage extends InheritedWidget {
+  const _PlaybackPage({required this.route, required super.child});
+  final Route<dynamic>? route;
+
+  @override
+  bool updateShouldNotify(_PlaybackPage oldWidget) => route != oldWidget.route;
 }
 
 class GlobalPlaybackSurface extends ConsumerStatefulWidget {
@@ -1262,12 +1274,16 @@ class _PlaybackVideoView extends ConsumerWidget {
       return _PlaybackVideoMount(controller: controller, active: enabled);
     }
     final route = ModalRoute.of(context);
+    final rootRoute = context
+        .dependOnInheritedWidgetOfExactType<_PlaybackPage>()
+        ?.route;
     final observer = ref.watch(playbackRouteObserverProvider);
     return ValueListenableBuilder(
       valueListenable: observer.topPage,
       builder: (context, _, _) => _PlaybackVideoMount(
         controller: controller,
-        active: enabled && observer.ownsPage(route),
+        active:
+            enabled && observer.ownsPage(route) && observer.ownsPage(rootRoute),
         prepareView: ref
             .read(globalPlaybackProvider.notifier)
             .preservePlaybackOnViewRemoval,

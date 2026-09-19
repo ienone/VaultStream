@@ -2,14 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/layout/responsive_layout.dart';
 import '../../../../theme/design_tokens.dart';
+import '../../../search/search_models.dart';
+import 'collection_filter_form.dart';
 
-Future<Map<String, dynamic>?> showCollectionFilters(
-  BuildContext context, {
-  required Widget child,
-}) {
+Future<UnifiedSearchRequest?> editSearchFilters(
+  BuildContext context,
+  UnifiedSearchRequest request,
+) {
+  final child = CollectionFilterForm(request: request);
   final reducedMotion = MediaQuery.disableAnimationsOf(context);
   if (!WindowMetrics.of(context).widthClass.supportsSupportingPane) {
-    return showModalBottomSheet<Map<String, dynamic>>(
+    return showModalBottomSheet<UnifiedSearchRequest>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
@@ -87,7 +90,7 @@ Future<Map<String, dynamic>?> showCollectionFilters(
   );
 }
 
-class _FilterSideSheetRoute extends RawDialogRoute<Map<String, dynamic>> {
+class _FilterSideSheetRoute extends RawDialogRoute<UnifiedSearchRequest> {
   _FilterSideSheetRoute({
     required this.reducedMotion,
     required super.barrierLabel,
