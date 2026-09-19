@@ -1,6 +1,6 @@
 # 覆盖矩阵
 
-[返回主报告](README.md) · [逐项分析](pages.md) · [原图索引](image-index.md)
+[返回主报告](README.md) · [逐项分析](pages.md)
 
 ## 路由入口（22 个）
 
@@ -89,4 +89,4 @@
 | 52 | [深色：设置与收藏](pages.md) | settings-dark、collection-dark | 1280×900 + 390×844 |
 | 53 | [深色 Agent 与正文下半部](pages.md) | agent-dark、article-structured-lower | 1280×900 + 390×844 |
 
-总计 53 个图组、194 张页面原图。settings-middle 为 900×900；player-landscape 为 844×390。其余图组与状态的精确关系以原图索引为准。
+保留 53 个对照图组，状态映射见上表。settings-middle 为 900×900；player-landscape 为 844×390。具体截图尺寸标在图内，不重复存储原图与生成索引。

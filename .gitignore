@@ -66,6 +66,9 @@ frontend/.flutter-plugins-dependencies
 .codex-security-scans/
 reference-animeko/
 
+# Browser verification artifacts
+/.playwright-mcp/
+
 # Temporary files
 *.tmp
 *.bak
