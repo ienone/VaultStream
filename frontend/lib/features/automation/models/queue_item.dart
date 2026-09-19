@@ -41,6 +41,7 @@ abstract class QueueItem with _$QueueItem {
     required String status,
     @JsonKey(name: 'reason_code') String? reasonCode,
     @JsonKey(name: 'last_error') String? reason,
+    @JsonKey(name: 'last_error_at') DateTime? lastErrorAt,
     @JsonKey(name: 'scheduled_at') DateTime? scheduledTime,
     @JsonKey(name: 'completed_at') DateTime? pushedAt,
     @Default(0) int priority,
@@ -49,6 +50,9 @@ abstract class QueueItem with _$QueueItem {
   const QueueItem._();
 
   String get displayPlatform => sourcePlatform ?? platform;
+
+  bool get needsDeliveryReview => reasonCode == 'delivery_unknown';
+  bool get isProcessing => status == 'processing';
 
   String? get displayReason {
     final message = reason?.trim();

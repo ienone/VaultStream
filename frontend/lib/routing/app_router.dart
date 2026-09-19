@@ -321,8 +321,12 @@ GoRouter goRouter(Ref ref) {
                       ),
                       GoRoute(
                         path: 'distribution',
-                        builder: (context, state) =>
-                            const AutomationPage(initialTab: 'distribution'),
+                        builder: (context, state) => AutomationPage(
+                          initialTab: 'distribution',
+                          reviewItemId: int.tryParse(
+                            state.uri.queryParameters['review_item'] ?? '',
+                          ),
+                        ),
                         routes: [
                           GoRoute(
                             path: 'history',

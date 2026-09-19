@@ -169,6 +169,8 @@ class ContentQueue extends _$ContentQueue {
       // 检查状态与错误信息是否变化
       if (oldItems[i].status != newItems[i].status) return true;
       if (oldItems[i].reason != newItems[i].reason) return true;
+      if (oldItems[i].reasonCode != newItems[i].reasonCode) return true;
+      if (oldItems[i].lastErrorAt != newItems[i].lastErrorAt) return true;
       if (oldItems[i].priority != newItems[i].priority) return true;
     }
 
@@ -212,7 +214,41 @@ class ContentQueue extends _$ContentQueue {
     ref.invalidate(queueStatsProvider(filter.ruleId));
   }
 
-  Future<String?> pushNow(int itemId) async {
+  Future<QueueItem> loadItem(int itemId) async {
+    final response = await ref
+        .read(apiClientProvider)
+        .get('/distribution-queue/items/$itemId');
+    return QueueItem.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<QueueItem> reconcileDelivery(
+    QueueItem item, {
+    required bool delivered,
+    String? messageId,
+  }) async {
+    if (!item.needsDeliveryReview || item.lastErrorAt == null) {
+      throw StateError('待核对记录不完整，请刷新后重试');
+    }
+    final response = await ref
+        .read(apiClientProvider)
+        .post(
+          '/distribution-queue/items/${item.id}/reconcile',
+          data: {
+            'outcome': delivered ? 'delivered' : 'not_sent',
+            'observed_error_at': item.lastErrorAt!.toUtc().toIso8601String(),
+            if (delivered) 'message_id': messageId,
+          },
+        );
+    final result = QueueItem.fromJson(response.data as Map<String, dynamic>);
+    if (ref.mounted) {
+      final filter = ref.read(queueFilterProvider);
+      ref.invalidate(queueStatsProvider(filter.ruleId));
+      ref.invalidateSelf();
+    }
+    return result;
+  }
+
+  Future<QueueItem> pushNow(int itemId) async {
     final dio = ref.read(apiClientProvider);
     final response = await dio.post(
       '/distribution-queue/items/$itemId/push-now',
@@ -220,11 +256,7 @@ class ContentQueue extends _$ContentQueue {
     _safeInvalidate();
     final filter = ref.read(queueFilterProvider);
     ref.invalidate(queueStatsProvider(filter.ruleId));
-    final data = response.data;
-    if (data is Map && data['run_id'] != null) {
-      return data['run_id'].toString();
-    }
-    return null;
+    return QueueItem.fromJson(response.data as Map<String, dynamic>);
   }
 
   Future<void> updateSchedule(int itemId, DateTime scheduledAt) async {

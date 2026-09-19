@@ -11,6 +11,7 @@ import '../../../core/media/media_asset.dart';
 import '../../../theme/design_tokens.dart';
 import '../models/queue_item.dart';
 import '../providers/queue_provider.dart';
+import 'delivery_review_dialog.dart';
 import 'schedule_time_picker.dart';
 
 class QueueContentList extends ConsumerStatefulWidget {
@@ -78,7 +79,10 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
         });
       }
 
-      final currentIds = _localItems.map((e) => e.id).toSet();
+      final currentIds = _localItems
+          .where((item) => !item.isProcessing && !item.needsDeliveryReview)
+          .map((e) => e.id)
+          .toSet();
       _selectedIds.retainAll(currentIds);
       if (_selectedIds.isEmpty) _isSelectionMode = false;
     }
@@ -181,22 +185,15 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
           isSelected: _selectedIds.contains(item.id),
           isSelectionMode: _isSelectionMode,
           animateEntry: shouldAnimate,
-          onToggleSelect: () => _toggleSelect(item.id),
-          onLongPress: () => _startSelection(item.id),
+          onToggleSelect: item.isProcessing
+              ? null
+              : () => _toggleSelect(item.id),
+          onLongPress: item.isProcessing
+              ? null
+              : () => _startSelection(item.id),
           onMoveToFiltered: () => _moveItem(item, QueueStatus.filtered),
           onUpdateSchedule: (newTime) => _updateSchedule(item, newTime),
-          onPushNow: () async {
-            if (!context.mounted) return;
-            final runId = await ref
-                .read(contentQueueProvider.notifier)
-                .pushNow(item.id);
-            if (context.mounted) {
-              final suffix = runId == null
-                  ? ''
-                  : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
-              Toast.show(context, '已加入立即推送$suffix');
-            }
-          },
+          onPushNow: () => _pushNow(item),
         );
       },
     );
@@ -217,6 +214,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
           onRestore: () => _moveItem(item, QueueStatus.willPush),
           onApprove: () => _moveItem(item, QueueStatus.willPush),
           onReject: () => _moveItem(item, QueueStatus.filtered),
+          onReview: () => showDeliveryReview(context, ref, item.id),
         );
       },
     );
@@ -491,6 +489,25 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
     }
   }
 
+  Future<void> _pushNow(QueueItem item) async {
+    try {
+      final result = await ref
+          .read(contentQueueProvider.notifier)
+          .pushNow(item.id);
+      if (!mounted) return;
+      Toast.show(
+        context,
+        result.needsDeliveryReview
+            ? '发送结果未知，请到不推送列表逐条核对'
+            : result.status == 'success'
+            ? '已推送成功'
+            : result.displayReason ?? '尚未发送，请查看队列状态',
+      );
+    } catch (error) {
+      if (mounted) Toast.show(context, '发送未确认，请刷新队列核对：$error');
+    }
+  }
+
   Future<void> _updateSchedule(QueueItem item, DateTime newTime) async {
     try {
       await ref
@@ -551,6 +568,7 @@ class _QueueItemCard extends StatelessWidget {
     this.onReject,
     this.onUpdateSchedule,
     this.onPushNow,
+    this.onReview,
   });
 
   final QueueItem item;
@@ -567,6 +585,7 @@ class _QueueItemCard extends StatelessWidget {
   final VoidCallback? onReject;
   final Function(DateTime)? onUpdateSchedule;
   final VoidCallback? onPushNow;
+  final VoidCallback? onReview;
 
   List<MediaAsset> get _coverAssets => item.mediaAssets
       .where(
@@ -626,6 +645,8 @@ class _QueueItemCard extends StatelessWidget {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         PlatformBadge(platform: item.displayPlatform),
+                        if (item.needsDeliveryReview)
+                          _Badge(label: '结果待核对', color: colorScheme.error),
                         if (item.isNsfw)
                           Padding(
                             padding: const EdgeInsets.only(left: 8),
@@ -649,8 +670,7 @@ class _QueueItemCard extends StatelessWidget {
                       const SizedBox(height: 6),
                       Text(
                         reasonText,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        maxLines: item.needsDeliveryReview ? null : 2,
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: colorScheme.error,
                         ),
@@ -668,13 +688,15 @@ class _QueueItemCard extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               child: Checkbox(
                 value: isSelected,
-                onChanged: (_) => onToggleSelect?.call(),
+                onChanged: onToggleSelect == null
+                    ? null
+                    : (_) => onToggleSelect?.call(),
               ),
             )
           else
             _buildActions(context),
 
-          if (isWillPush && !isSelectionMode)
+          if (isWillPush && !isSelectionMode && !item.isProcessing)
             ReorderableDragStartListener(
               index: index,
               child: Padding(
@@ -718,7 +740,7 @@ class _QueueItemCard extends StatelessWidget {
                             padding: const EdgeInsets.fromLTRB(12, 0, 4, 8),
                             child: Row(
                               children: [
-                                if (isWillPush)
+                                if (isWillPush && !item.isProcessing)
                                   _buildTimeSection(context, detached: true),
                                 const Spacer(),
                                 ...controls,
@@ -730,7 +752,8 @@ class _QueueItemCard extends StatelessWidget {
                     : IntrinsicHeight(
                         child: Row(
                           children: [
-                            if (isWillPush) _buildTimeSection(context),
+                            if (isWillPush && !item.isProcessing)
+                              _buildTimeSection(context),
                             Expanded(child: body),
                             ...controls,
                           ],
@@ -905,6 +928,21 @@ class _QueueItemCard extends StatelessWidget {
 
   Widget _buildActions(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    if (item.needsDeliveryReview) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: FilledButton.tonal(
+          onPressed: onReview,
+          child: const Text('核对结果'),
+        ),
+      );
+    }
+    if (item.isProcessing || item.status == 'success') {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Text(item.isProcessing ? '正在发送' : '已送达'),
+      );
+    }
     if (currentStatus == QueueStatus.willPush) {
       return Padding(
         padding: const EdgeInsets.only(right: 8),

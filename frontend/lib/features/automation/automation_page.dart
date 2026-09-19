@@ -26,15 +26,22 @@ import 'widgets/pushed_record_tile.dart';
 import 'widgets/favorites_sync_automation_panel.dart';
 import 'widgets/processing_automation_panel.dart';
 import 'widgets/queue_content_list.dart';
+import 'widgets/delivery_review_dialog.dart';
 import 'widgets/rule_list_tile.dart';
 import '../../core/utils/toast.dart';
 import '../../core/widgets/app_filter_menu.dart';
 
 class AutomationPage extends ConsumerStatefulWidget {
-  const AutomationPage({super.key, this.initialTab, this.highlightRunId});
+  const AutomationPage({
+    super.key,
+    this.initialTab,
+    this.highlightRunId,
+    this.reviewItemId,
+  });
 
   final String? initialTab;
   final String? highlightRunId;
+  final int? reviewItemId;
 
   @override
   ConsumerState<AutomationPage> createState() => _AutomationPageState();
@@ -137,11 +144,23 @@ class _AutomationPageState extends ConsumerState<AutomationPage> {
     _section = _sectionFromTab(widget.initialTab);
     _distributionView = _distributionViewFromTab(widget.initialTab);
     _bindRealtimeEvents();
+    _openDeliveryReview();
+  }
+
+  void _openDeliveryReview() {
+    final itemId = widget.reviewItemId;
+    if (itemId == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(queueFilterProvider.notifier).setStatus(QueueStatus.filtered);
+      showDeliveryReview(context, ref, itemId);
+    });
   }
 
   @override
   void didUpdateWidget(AutomationPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.reviewItemId != widget.reviewItemId) _openDeliveryReview();
     if (oldWidget.initialTab != widget.initialTab) {
       setState(() {
         _section = _sectionFromTab(widget.initialTab);
