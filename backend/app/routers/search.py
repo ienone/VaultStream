@@ -2,9 +2,9 @@
 语义检索 API
 """
 from datetime import datetime
-from typing import Optional
+from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -17,8 +17,7 @@ from app.schemas import (
     SemanticIndexStatusResponse,
     SemanticReindexRequest,
     SemanticReindexResponse,
-    SemanticSearchResponse,
-    SemanticSearchItem,
+    UnifiedSearchContentItem,
     UnifiedSearchEventItem,
     UnifiedSearchFacetItem,
     UnifiedSearchResponse,
@@ -26,18 +25,21 @@ from app.schemas import (
 )
 from app.services.embedding_service import EmbeddingService
 from app.services.search_service import UnifiedSearchService
-from app.services.content_presenter import compute_effective_layout_type
+from app.services.content_presenter import compute_effective_layout_type, transform_media_url
+from app.schemas.media import MediaPurpose
+from app.services.media_manifest import build_content_media_manifests, resolve_media_base_url
 from app.services.background_task_state import (
     record_task_run_error,
     record_task_run_started,
     record_task_run_success,
 )
+from app.utils.datetime_utils import normalize_datetime_for_db
 
 router = APIRouter()
 
 
-def _serialize_content_hit(hit) -> SemanticSearchItem:
-    return SemanticSearchItem(
+def _serialize_content_hit(hit, media_assets, base_url) -> UnifiedSearchContentItem:
+    return UnifiedSearchContentItem(
         content_id=hit.content.id,
         score=float(hit.score),
         match_source=hit.match_source,
@@ -53,126 +55,68 @@ def _serialize_content_hit(hit) -> SemanticSearchItem:
         title=hit.content.title,
         summary=hit.content.summary,
         author_name=hit.content.author_name,
-        cover_url=hit.content.cover_url,
+        author_avatar_url=transform_media_url(hit.content.author_avatar_url, base_url),
+        cover_url=transform_media_url(hit.content.cover_url, base_url),
+        cover_color=hit.content.cover_color,
+        media_assets=media_assets,
+        is_nsfw=hit.content.is_nsfw,
+        view_count=hit.content.view_count or 0,
+        like_count=hit.content.like_count or 0,
         tags=(hit.content.tags or []),
         created_at=hit.content.created_at,
         published_at=hit.content.published_at,
     )
 
 
-def _parse_list_param(values: Optional[list[str]]) -> list[str] | None:
-    if not values:
-        return None
-    parsed: list[str] = []
-    for value in values:
-        if "," in value:
-            parsed.extend(part.strip() for part in value.split(",") if part.strip())
-        elif value.strip():
-            parsed.append(value.strip())
-    return parsed or None
-
-
-@router.get("/search/semantic", response_model=SemanticSearchResponse)
-async def semantic_search(
-    q: str = Query(..., min_length=1, description="检索关键词"),
-    top_k: int = Query(20, ge=1, le=100, description="返回结果数量"),
-    platforms: Optional[list[str]] = Query(None, alias="platform", description="平台过滤，如 bilibili/zhihu/twitter"),
-    statuses: Optional[list[str]] = Query(None, alias="status", description="内容处理状态过滤"),
-    tags: Optional[list[str]] = Query(None, alias="tag", description="标签过滤"),
-    author: Optional[str] = Query(None, description="作者名关键词"),
-    date_from: Optional[datetime] = Query(None, description="开始时间（ISO8601）"),
-    date_to: Optional[datetime] = Query(None, description="结束时间（ISO8601）"),
-    scope: str = Query("library", description="检索范围：library/discovery/all"),
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    platform_values = _parse_list_param(platforms)
-    if platform_values:
-        valid_platforms = {p.value for p in Platform}
-        normalized_platforms = [platform.strip().lower() for platform in platform_values]
-        invalid_platforms = [platform for platform in normalized_platforms if platform not in valid_platforms]
-        if invalid_platforms:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid platform: {invalid_platforms[0]}. valid={sorted(valid_platforms)}",
-            )
-        platform_values = normalized_platforms
-
-    status_values = _parse_list_param(statuses)
-    if status_values:
-        valid_statuses = {s.value for s in ContentStatus}
-        normalized_statuses = [status.strip().lower() for status in status_values]
-        invalid_statuses = [status for status in normalized_statuses if status not in valid_statuses]
-        if invalid_statuses:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid status: {invalid_statuses[0]}. valid={sorted(valid_statuses)}",
-            )
-        status_values = normalized_statuses
-
-    tag_values = _parse_list_param(tags)
-    normalized_scope = scope.strip().lower()
-    if normalized_scope not in {"library", "discovery", "all"}:
-        raise HTTPException(status_code=400, detail="scope must be library, discovery or all")
-
-    svc = EmbeddingService()
-    hits = await svc.search(
-        query=q,
-        top_k=top_k,
-        platforms=platform_values,
-        statuses=status_values,
-        tags=tag_values,
-        author=author.strip() if author and author.strip() else None,
-        date_from=date_from,
-        date_to=date_to,
-        scope=normalized_scope,
-        session=db,
-    )
-
-    results = [_serialize_content_hit(hit) for hit in hits]
-
-    return SemanticSearchResponse(
-        query=q,
-        top_k=top_k,
-        scope=normalized_scope,
-        results=results,
-    )
-
-
 @router.get("/search/unified", response_model=UnifiedSearchResponse)
 async def unified_search(
-    q: str = Query(..., min_length=1, description="检索关键词"),
+    request: Request,
+    q: str = Query("", description="检索词；空查询只允许 contents，返回筛选后的内容列表"),
     top_k: int = Query(20, ge=1, le=100, description="每类结果返回数量"),
-    kind: str = Query(
+    kind: Literal["all", "contents", "events", "people", "topics", "timepoints", "document_pages"] = Query(
         "all",
         description="结果类型：all/contents/events/people/topics/timepoints/document_pages",
     ),
-    content_scope: str = Query(
+    content_scope: Literal["library", "discovery", "all"] = Query(
         "library",
         description="内容范围：library/discovery/all；不影响事件结果",
     ),
+    mode: Literal["keyword", "semantic"] = Query("semantic"),
+    page: int = Query(1, ge=1, description="关键词内容分页；语义检索只支持第 1 页"),
+    size: int = Query(20, ge=1, le=100),
+    platforms: list[Platform] | None = Query(None, alias="platform"),
+    statuses: list[ContentStatus] | None = Query(None, alias="status"),
+    tags: list[str] | None = Query(None, alias="tag"),
+    author: str | None = Query(None),
+    date_from: datetime | None = Query(None),
+    date_to: datetime | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
-    normalized_kind = kind.strip().lower()
-    valid_kinds = {"all", "contents", "events", "people", "topics", "timepoints", "document_pages"}
-    if normalized_kind not in valid_kinds:
-        raise HTTPException(
-            status_code=400,
-            detail="kind must be all, contents, events, people, topics, timepoints or document_pages",
-        )
-    normalized_scope = content_scope.strip().lower()
-    if normalized_scope not in {"library", "discovery", "all"}:
-        raise HTTPException(
-            status_code=400,
-            detail="content_scope must be library, discovery or all",
-        )
+    if not q.strip() and kind != "contents":
+        raise HTTPException(status_code=422, detail="空查询只支持内容浏览")
+    if q.strip() and mode == "semantic" and page != 1:
+        raise HTTPException(status_code=422, detail="语义检索使用 top_k，不支持分页")
+    # SQLite 保存无时区 UTC；先归一化再比较，允许有/无偏移的 ISO 输入。
+    date_from = normalize_datetime_for_db(date_from)
+    date_to = normalize_datetime_for_db(date_to)
+    if date_from is not None and date_to is not None and date_from > date_to:
+        raise HTTPException(status_code=422, detail="开始日期不得晚于结束日期")
 
     results = await UnifiedSearchService(db).search(
         query=q.strip(),
         top_k=top_k,
-        kind=normalized_kind,
-        content_scope=normalized_scope,
+        kind=kind,
+        content_scope=content_scope,
+        mode=mode, page=page, size=size,
+        platforms=platforms, statuses=statuses, tags=tags,
+        author=author.strip() if author else None,
+        date_from=date_from, date_to=date_to,
+    )
+    base_url = resolve_media_base_url(str(request.base_url))
+    manifests = await build_content_media_manifests(
+        db, [hit.content.id for hit in results.contents], purpose=MediaPurpose.CARD,
+        base_url=base_url,
     )
     events = []
     for hit in results.events:
@@ -199,9 +143,12 @@ async def unified_search(
         )
     return UnifiedSearchResponse(
         query=q.strip(),
-        kind=normalized_kind,
-        content_scope=normalized_scope,
-        contents=[_serialize_content_hit(hit) for hit in results.contents],
+        kind=kind,
+        content_scope=content_scope,
+        mode=mode, page=page, size=size,
+        content_total=results.content_total,
+        content_has_more=results.content_has_more,
+        contents=[_serialize_content_hit(hit, manifests.get(hit.content.id, []), base_url) for hit in results.contents],
         document_pages=results.document_pages,
         events=events,
         people=[

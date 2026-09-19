@@ -30,7 +30,9 @@ active
 
 ## 实现逻辑
 
-内容入库后按配置生成摘要和语义 chunk，写入 `content_embeddings`。自动索引由 `enable_auto_semantic_indexing` 统一约束，关闭时 post-ingest 在创建 background task run 和调用 embedding provider 前停止；已有索引读取与用户显式发起的重建/失败重试不受该自动化开关影响。异步生成向量期间如果内容已被删除，索引任务在持久化前重新核对内容存在性并以 `indexed=false` 正常终止；提交阶段的删除竞争也按同一语义处理，不写孤立 embedding、不产生虚假失败通知。`GET /search/semantic` 在存在当前模型签名的有效索引时执行向量召回，同时执行 SQLite FTS5/LIKE 召回，并用 RRF 合并；无当前索引时退化为关键词召回。返回的 `match_source` 明确区分 `vector`、`fts` 和 `hybrid`。
+内容入库后按配置生成摘要和语义 chunk，写入 `content_embeddings`。自动索引由 `enable_auto_semantic_indexing` 统一约束，关闭时 post-ingest 在创建 background task run 和调用 embedding provider 前停止；已有索引读取与用户显式发起的重建/失败重试不受该自动化开关影响。异步生成向量期间如果内容已被删除，索引任务在持久化前重新核对内容存在性并以 `indexed=false` 正常终止；提交阶段的删除竞争也按同一语义处理，不写孤立 embedding、不产生虚假失败通知。`GET /search/unified?mode=semantic` 在存在当前模型签名的有效索引时执行向量召回，同时执行 SQLite FTS5/LIKE 召回，并用 RRF 合并；无当前索引时退化为关键词召回。返回的 `match_source` 明确区分 `vector`、`fts` 和 `hybrid`。
+
+收藏列表、全局搜索和 Agent 共用 unified service。关键词模式与空内容查询调用 ContentRepository 分页，不触发 embedding。`build_conditions` 统一平台、状态、原子标签、作者、创建时间和收藏/发现范围；向量、FTS、人物、主题、时间点和文档精确召回均在限制候选数量前应用条件，不再各自维护范围过滤器。关键词分页以创建时间和 ID 降序稳定排序；语义仍为有限 top_k 召回。完整 contract 见 [搜索接口](../api/contents-search-media.md#搜索与语义索引)。
 
 单分块 retry 在响应前完成 provider 调用和持久化，并以 `SemanticEmbeddingRetryResponse` 返回分块最新状态与必需 `run_id`；它不是后台 accepted 响应。
 
@@ -68,7 +70,6 @@ Agent 的 `search_content` 直接调用同一 unified service，并把内容、�
 
 ## API 接口
 
-- `GET /api/v1/search/semantic`
 - `GET /api/v1/search/unified`
 - `GET /api/v1/search/semantic/index-status`
 - `POST /api/v1/search/semantic/reindex`

@@ -3,18 +3,17 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import or_, select, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
     Content,
     ContentStatus,
-    DiscoveryState,
     KnowledgeEvent,
     MediaAsset,
     MediaType,
-    Platform,
 )
+from app.repositories.content_repository import ContentRepository
 from app.repositories.knowledge_event_repository import KnowledgeEventRepository
 from app.services.embedding_service import EmbeddingService, SemanticSearchHit
 from app.services.media_segments import extract_media_segments
@@ -60,6 +59,8 @@ class UnifiedSearchResultSet:
     topics: list[UnifiedContentFacetHit]
     timepoints: list[UnifiedTimepointSearchHit]
     document_pages: list[DocumentPageSearchItem] = field(default_factory=list)
+    content_total: int = 0
+    content_has_more: bool = False
 
 
 class UnifiedSearchService:
@@ -76,20 +77,43 @@ class UnifiedSearchService:
         platforms: list[str] | None = None,
         date_from: datetime | None = None,
         date_to: datetime | None = None,
+        statuses: list[str] | None = None,
+        tags: list[str] | None = None,
+        author: str | None = None,
+        mode: str = "semantic",
+        page: int = 1,
+        size: int = 20,
     ) -> UnifiedSearchResultSet:
+        query = query.strip()
+        repo = ContentRepository(self.db)
+        content_total = 0
+        content_has_more = False
         contents: list[SemanticSearchHit] = []
         events: list[UnifiedEventSearchHit] = []
+        filters = await repo.build_conditions(
+            scope=content_scope, platforms=platforms, statuses=statuses or (
+                [ContentStatus.PARSE_SUCCESS] if mode == "semantic" and query else None
+            ), tags=tags, author=author, start_date=date_from, end_date=date_to,
+        )
         if kind in {"all", "contents", "people", "topics", "timepoints", "document_pages"}:
-            contents = await EmbeddingService().search(
-                query=query,
-                top_k=top_k,
-                platforms=platforms,
-                date_from=date_from,
-                date_to=date_to,
-                scope=content_scope,
-                session=self.db,
-            )
-        if kind in {"all", "events"}:
+            if mode == "keyword" or not query:
+                rows, content_total = await repo.list_contents(
+                    q=query, page=page, size=size, scope=content_scope,
+                    platforms=platforms, statuses=statuses, tags=tags, author=author,
+                    start_date=date_from, end_date=date_to,
+                )
+                contents = [SemanticSearchHit(content=row, score=0,
+                            match_source="fts" if query else "browse") for row in rows]
+                content_has_more = content_total > page * size
+            else:
+                contents = await EmbeddingService().search(
+                    query=query, top_k=top_k, platforms=platforms,
+                    statuses=statuses, tags=tags, author=author,
+                    date_from=date_from, date_to=date_to,
+                    scope=content_scope, session=self.db,
+                )
+                content_total = len(contents)
+        if query and kind in {"all", "events"}:
             rows = await KnowledgeEventRepository(self.db).search_events(
                 query=query,
                 limit=top_k,
@@ -107,10 +131,7 @@ class UnifiedSearchService:
                 contents,
                 await self._exact_people_contents(
                     query=query,
-                    content_scope=content_scope,
-                    platforms=platforms,
-                    date_from=date_from,
-                    date_to=date_to,
+                    filters=filters,
                     limit=max(50, top_k * 6),
                 ),
             )
@@ -125,10 +146,7 @@ class UnifiedSearchService:
                 contents,
                 await self._exact_topic_contents(
                     query=query,
-                    content_scope=content_scope,
-                    platforms=platforms,
-                    date_from=date_from,
-                    date_to=date_to,
+                    filters=filters,
                     limit=max(50, top_k * 6),
                 ),
             )
@@ -137,18 +155,14 @@ class UnifiedSearchService:
             await self._timepoint_hits(
                 contents,
                 query=query,
-                content_scope=content_scope,
-                platforms=platforms,
-                date_from=date_from,
-                date_to=date_to,
+                filters=filters,
                 limit=top_k,
             )
             if kind in {"all", "timepoints"}
             else []
         )
         document_pages = await self._document_page_hits(
-            contents, query=query, content_scope=content_scope, platforms=platforms,
-            date_from=date_from, date_to=date_to, limit=top_k,
+            contents, query=query, filters=filters, limit=top_k,
         ) if kind in {"all", "document_pages"} else []
         return UnifiedSearchResultSet(
             contents=contents if kind in {"all", "contents"} else [],
@@ -157,13 +171,14 @@ class UnifiedSearchService:
             topics=topics,
             timepoints=timepoints,
             document_pages=document_pages,
+            content_total=content_total if kind in {"all", "contents"} else 0,
+            content_has_more=content_has_more if kind in {"all", "contents"} else False,
         )
 
-    async def _document_page_hits(self, hits, *, query, content_scope, platforms, date_from, date_to, limit):
+    async def _document_page_hits(self, hits, *, query, filters, limit):
         candidates = {hit.content.id: hit for hit in hits}
         exact = (await self.db.scalars(select(Content).where(
-            *self._content_filters(content_scope=content_scope, platforms=platforms,
-                                  date_from=date_from, date_to=date_to),
+            *filters,
             text("""EXISTS (
                 SELECT 1 FROM json_each(contents.rich_payload, '$.chunks') AS chunk
                 WHERE json_extract(chunk.value, '$.source_kind') = 'pdf_native_text'
@@ -276,20 +291,14 @@ class UnifiedSearchService:
         hits: list[SemanticSearchHit],
         *,
         query: str,
-        content_scope: str,
-        platforms: list[str] | None,
-        date_from: datetime | None,
-        date_to: datetime | None,
+        filters: list,
         limit: int,
     ) -> list[UnifiedTimepointSearchHit]:
         candidates = list(hits)
         seen_content_ids = {hit.content.id for hit in candidates}
         for content in await self._exact_timepoint_contents(
             query=query,
-            content_scope=content_scope,
-            platforms=platforms,
-            date_from=date_from,
-            date_to=date_to,
+            filters=filters,
             limit=max(50, limit * 6),
         ):
             if content.id in seen_content_ids:
@@ -355,10 +364,7 @@ class UnifiedSearchService:
         self,
         *,
         query: str,
-        content_scope: str,
-        platforms: list[str] | None,
-        date_from: datetime | None,
-        date_to: datetime | None,
+        filters: list,
         limit: int,
     ) -> list[Content]:
         needle = query.strip()
@@ -369,12 +375,7 @@ class UnifiedSearchService:
                 await self.db.execute(
                     select(Content)
                     .where(
-                        *self._content_filters(
-                            content_scope=content_scope,
-                            platforms=platforms,
-                            date_from=date_from,
-                            date_to=date_to,
-                        ),
+                        *filters,
                         text("""EXISTS (
                         SELECT 1 FROM json_each(contents.rich_payload, '$.chunks') AS chunk
                         WHERE json_extract(chunk.value, '$.segment_type') IN ('chapter', 'transcript')
@@ -397,10 +398,7 @@ class UnifiedSearchService:
         self,
         *,
         query: str,
-        content_scope: str,
-        platforms: list[str] | None,
-        date_from: datetime | None,
-        date_to: datetime | None,
+        filters: list,
         limit: int,
     ) -> list[Content]:
         needle = query.strip()
@@ -411,12 +409,7 @@ class UnifiedSearchService:
                 await self.db.execute(
                     select(Content)
                     .where(
-                        *self._content_filters(
-                            content_scope=content_scope,
-                            platforms=platforms,
-                            date_from=date_from,
-                            date_to=date_to,
-                        ),
+                        *filters,
                         Content.author_name.icontains(needle, autoescape=True),
                     )
                     .order_by(Content.updated_at.desc(), Content.id.desc())
@@ -429,10 +422,7 @@ class UnifiedSearchService:
         self,
         *,
         query: str,
-        content_scope: str,
-        platforms: list[str] | None,
-        date_from: datetime | None,
-        date_to: datetime | None,
+        filters: list,
         limit: int,
     ) -> list[Content]:
         needle = query.strip()
@@ -443,12 +433,7 @@ class UnifiedSearchService:
                 await self.db.execute(
                     select(Content)
                     .where(
-                        *self._content_filters(
-                            content_scope=content_scope,
-                            platforms=platforms,
-                            date_from=date_from,
-                            date_to=date_to,
-                        ),
+                        *filters,
                         text("""EXISTS (
                         SELECT 1 FROM json_each(contents.tags) AS tag
                         WHERE instr(lower(CAST(tag.value AS TEXT)), lower(:query)) > 0
@@ -480,49 +465,6 @@ class UnifiedSearchService:
             )
             seen_content_ids.add(content.id)
         return merged
-
-    @staticmethod
-    def _content_scope_filter(content_scope: str):
-        active_discovery_states = [
-            DiscoveryState.INGESTED,
-            DiscoveryState.SCORED,
-            DiscoveryState.VISIBLE,
-        ]
-        if content_scope == "discovery":
-            return Content.discovery_state.in_(active_discovery_states)
-        if content_scope == "all":
-            return or_(
-                Content.discovery_state.is_(None),
-                Content.discovery_state == DiscoveryState.PROMOTED,
-                Content.discovery_state.in_(active_discovery_states),
-            )
-        return or_(
-            Content.discovery_state.is_(None),
-            Content.discovery_state == DiscoveryState.PROMOTED,
-        )
-
-    @classmethod
-    def _content_filters(
-        cls,
-        *,
-        content_scope: str,
-        platforms: list[str] | None,
-        date_from: datetime | None,
-        date_to: datetime | None,
-    ) -> list:
-        filters = [
-            Content.status == ContentStatus.PARSE_SUCCESS,
-            cls._content_scope_filter(content_scope),
-        ]
-        if platforms:
-            filters.append(
-                Content.platform.in_([Platform(platform) for platform in platforms])
-            )
-        if date_from is not None:
-            filters.append(Content.created_at >= date_from)
-        if date_to is not None:
-            filters.append(Content.created_at <= date_to)
-        return filters
 
     @staticmethod
     def _sort_content_facets(

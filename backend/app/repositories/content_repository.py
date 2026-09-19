@@ -1,5 +1,5 @@
 from typing import List, Optional, Tuple
-from sqlalchemy import select, and_, or_, func, desc, text, bindparam
+from sqlalchemy import select, and_, or_, func, desc
 from sqlalchemy.orm import defer
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Content, ContentStatus, ReviewStatus, DiscoveryState
@@ -10,27 +10,21 @@ class ContentRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def _fetch_tagged_content_ids(self, tags: List[str]) -> list[int]:
-        tag_subquery = text(
-            "SELECT DISTINCT c.id FROM contents c, json_each(c.tags) AS je "
-            "WHERE je.value IN :tags"
-        ).bindparams(bindparam("tags", expanding=True))
-        tag_ids_result = await self.db.execute(tag_subquery, {"tags": tags})
-        return [row[0] for row in tag_ids_result.all()]
-
-    async def _build_conditions(
+    async def build_conditions(
         self,
         *,
-        platforms: Optional[List[str]],
-        statuses: Optional[List[str]],
-        review_status: Optional[ReviewStatus],
-        tags: Optional[List[str]],
-        q: Optional[str],
-        is_nsfw: Optional[bool],
-        author: Optional[str],
-        start_date: Optional[datetime],
-        end_date: Optional[datetime],
+        platforms: Optional[List[str]] = None,
+        statuses: Optional[List[str]] = None,
+        review_status: Optional[ReviewStatus] = None,
+        tags: Optional[List[str]] = None,
+        q: Optional[str] = None,
+        is_nsfw: Optional[bool] = None,
+        author: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        scope: str = "library",
     ) -> list:
+        """共享内容范围；过滤在分页、向量候选和字段召回截断前执行。"""
         conditions: list = []
         if platforms:
             conditions.append(Content.platform.in_(platforms))
@@ -47,28 +41,33 @@ class ContentRepository:
         if end_date:
             conditions.append(Content.created_at <= end_date)
 
-        # 默认隔离 discovery 缓冲区：只有 discovery_state 为 NULL（正式收藏）或 PROMOTED 的内容进入主库视图
-        conditions.append(
-            or_(
-                Content.discovery_state.is_(None),
-                Content.discovery_state == DiscoveryState.PROMOTED,
-            )
+        library = or_(
+            Content.discovery_state.is_(None),
+            Content.discovery_state == DiscoveryState.PROMOTED,
         )
+        discovery = Content.discovery_state.in_([
+            DiscoveryState.INGESTED, DiscoveryState.SCORED, DiscoveryState.VISIBLE,
+        ])
+        conditions.append({
+            "library": library, "discovery": discovery, "all": or_(library, discovery),
+        }[scope])
 
+        tag_values = func.json_each(Content.tags).table_valued("value")
         if tags:
-            tag_ids = await self._fetch_tagged_content_ids(tags)
-            if tag_ids:
-                conditions.append(Content.id.in_(tag_ids))
-            else:
-                conditions.append(text("0 = 1"))
+            conditions.append(
+                select(1).select_from(tag_values).where(tag_values.c.value.in_(tags))
+                .correlate(Content).exists()
+            )
 
         if q:
             conditions.append(
-                await build_fts_or_like_condition(
+                or_(await build_fts_or_like_condition(
                     session=self.db,
                     query=q,
-                    like_columns=(Content.title, Content.body, Content.author_name),
-                )
+                    like_columns=(Content.title, Content.summary, Content.body, Content.author_name),
+                ), select(1).select_from(tag_values)
+                   .where(tag_values.c.value.icontains(q, autoescape=True))
+                   .correlate(Content).exists())
             )
 
         return conditions
@@ -87,9 +86,10 @@ class ContentRepository:
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         include_archive_metadata: bool = False,
+        scope: str = "library",
     ) -> Tuple[List[Content], int]:
         """统一的内容查询逻辑，支持 FTS5 搜索"""
-        conditions = await self._build_conditions(
+        conditions = await self.build_conditions(
             platforms=platforms,
             statuses=statuses,
             review_status=review_status,
@@ -99,6 +99,7 @@ class ContentRepository:
             author=author,
             start_date=start_date,
             end_date=end_date,
+            scope=scope,
         )
 
         # 统计总数
@@ -109,7 +110,7 @@ class ContentRepository:
         stmt = (
             select(Content)
             .where(and_(*conditions))
-            .order_by(desc(Content.created_at))
+            .order_by(desc(Content.created_at), desc(Content.id))
             .offset((page - 1) * size)
             .limit(size)
         )
@@ -136,7 +137,7 @@ class ContentRepository:
         end_date: Optional[datetime] = None,
     ) -> Tuple[List[Content], int]:
         """轻量级卡片查询 — 延迟加载大字段，仅返回展示所需列"""
-        conditions = await self._build_conditions(
+        conditions = await self.build_conditions(
             platforms=platforms,
             statuses=statuses,
             review_status=review_status,

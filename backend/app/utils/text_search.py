@@ -59,16 +59,17 @@ async def fetch_fts_content_ids(
     session: AsyncSession,
     query: str,
     limit: int | None = None,
+    filters: Iterable = (),
 ) -> list[int]:
-    sql = "SELECT content_id FROM contents_fts WHERE contents_fts MATCH :q"
-    params: dict = {"q": _fts_query(query)}
+    stmt = select(Content.id).where(
+        Content.id.in_(text("SELECT content_id FROM contents_fts WHERE contents_fts MATCH :q")),
+        *filters,
+    )
     if limit is not None:
-        sql += " LIMIT :limit"
-        params["limit"] = int(limit)
+        stmt = stmt.limit(limit)
     global _fts_warning_emitted
     try:
-        rows = (await session.execute(text(sql), params)).all()
-        return [int(r[0]) for r in rows]
+        return list(await session.scalars(stmt, {"q": _fts_query(query)}))
     except Exception as e:
         if not _fts_warning_emitted:
             logger.warning("FTS search unavailable, falling back to LIKE queries: {}", e)
@@ -101,24 +102,14 @@ async def rank_ids_by_fts_or_like(
     """
     Return ranked Content IDs using FTS when available, else fallback to LIKE ranking.
 
-    - FTS path: preserve FTS ordering, then apply `filters` by intersecting IDs.
+    - FTS path: apply content filters before limiting candidates.
     - Fallback path: query by LIKE over `like_columns` with `filters`, order by `order_by` (default created_at desc).
     """
-    try:
-        raw_ids = await fetch_fts_content_ids(session=session, query=query, limit=limit)
-        if raw_ids:
-            filtered_ids = (
-                await session.execute(select(Content.id).where(Content.id.in_(raw_ids), and_(*filters)))
-            ).scalars().all()
-            filtered_set = {int(cid) for cid in filtered_ids}
-            ranked = [cid for cid in raw_ids if cid in filtered_set]
-            if len(ranked) >= limit:
-                return ranked[:limit]
-        else:
-            ranked = []
-    except Exception as e:
-        logger.debug("FTS ranking failed, fallback to LIKE ranking: {}", e)
-        ranked = []
+    ranked = await fetch_fts_content_ids(
+        session=session, query=query, limit=limit, filters=filters,
+    )
+    if len(ranked) >= limit:
+        return ranked
 
     like_cond = build_like_condition(query, columns=like_columns)
     if order_by is None:

@@ -144,7 +144,6 @@ active
 | `DELETE` | `/api/v1/pushed-records/{record_id}` |
 | `GET` | `/api/v1/render-config-presets` |
 | `GET` | `/api/v1/render-config-presets/{preset_id}` |
-| `GET` | `/api/v1/search/semantic` |
 | `POST` | `/api/v1/search/semantic/embeddings/{embedding_id}/retry` |
 | `GET` | `/api/v1/search/semantic/index-status` |
 | `POST` | `/api/v1/search/semantic/reindex` |

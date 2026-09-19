@@ -42,6 +42,7 @@ _READ_ALLOWED_PREFIXES = (
     "/api/v1/bot-config",
     "/api/v1/storage/stats",
     "/api/v1/search/semantic",
+    "/api/v1/search/unified",
     "/api/v1/settings",
     "/api/v1/favorites-sync",
     "/api/v1/health",

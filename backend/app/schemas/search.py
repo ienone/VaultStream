@@ -7,12 +7,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.base import OptionalUtcDatetime
 from app.schemas.document import DocumentPageSearchItem
+from app.schemas.media import MediaAssetManifest
 
 
-class SemanticSearchItem(BaseModel):
+class UnifiedSearchContentItem(BaseModel):
     content_id: int
     score: float
-    match_source: str  # vector | fts | hybrid
+    match_source: str  # browse | fts | vector | hybrid
     chunk_title: Optional[str] = None
     source_text: Optional[str] = None
 
@@ -26,19 +27,18 @@ class SemanticSearchItem(BaseModel):
     title: Optional[str] = None
     summary: Optional[str] = None
     author_name: Optional[str] = None
+    author_avatar_url: Optional[str] = None
     cover_url: Optional[str] = None
+    cover_color: Optional[str] = None
+    media_assets: list[MediaAssetManifest]
+    is_nsfw: bool = False
+    view_count: int = 0
+    like_count: int = 0
     tags: List[str] = []
     created_at: OptionalUtcDatetime = None
     published_at: OptionalUtcDatetime = None
 
     model_config = ConfigDict(from_attributes=True)
-
-
-class SemanticSearchResponse(BaseModel):
-    query: str
-    top_k: int
-    scope: str = "library"
-    results: List[SemanticSearchItem]
 
 
 class UnifiedSearchEventItem(BaseModel):
@@ -78,7 +78,12 @@ class UnifiedSearchResponse(BaseModel):
     query: str
     kind: str
     content_scope: str
-    contents: List[SemanticSearchItem]
+    mode: str
+    page: int
+    size: int
+    content_total: int = Field(description="关键词为完整匹配总数；语义为 top_k 内返回数，不代表全库总数")
+    content_has_more: bool
+    contents: List[UnifiedSearchContentItem]
     events: List[UnifiedSearchEventItem]
     people: List[UnifiedSearchFacetItem]
     topics: List[UnifiedSearchFacetItem]

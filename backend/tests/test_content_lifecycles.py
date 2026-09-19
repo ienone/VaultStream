@@ -9,6 +9,7 @@ from app.adapters.storage import LocalStorageBackend
 from app.adapters.storage.manager import StorageObjectTooLargeError
 from app.core.time_utils import utcnow
 from app.models import Content, ContentStatus, DiscoveryState, Platform
+from app.repositories.content_repository import ContentRepository
 from app.services.content_service import CaptureFileInput, ContentService
 from app.services.search_service import UnifiedSearchService
 
@@ -79,7 +80,10 @@ async def test_exact_search_applies_scope_before_candidate_limit(db_session):
     db_session.add_all(items)
     await db_session.commit()
     service = UnifiedSearchService(db_session)
+    filters = await ContentRepository(db_session).build_conditions(
+        scope='library', platforms=['universal'], statuses=['parse_success'],
+        start_date=now - timedelta(days=1), end_date=now + timedelta(days=1),
+    )
     for lookup in (service._exact_topic_contents, service._exact_timepoint_contents):
-        result = await lookup(query=needle, content_scope='library', platforms=['universal'],
-                              date_from=now - timedelta(days=1), date_to=now + timedelta(days=1), limit=50)
+        result = await lookup(query=needle, filters=filters, limit=50)
         assert [item.id for item in result] == [items[0].id]

@@ -41,8 +41,11 @@ active
 
 ## 搜索与语义索引
 
-- `GET /api/v1/search/semantic` 执行语义/混合检索；结果同时返回 `content_type` 与 `effective_layout_type`，保证搜索卡片和普通收藏卡片采用相同内容模板。
-- `GET /api/v1/search/unified` 按 `kind=all|contents|events|people|topics|timepoints` 分组返回内容、人工知识事件和结构化导航结果。`content_scope=library|discovery|all` 约束内容及其派生结果，不影响事件。内容保留 `fts|vector|hybrid`，事件保留 `title|description|member` 匹配来源，调用方不得把两种检索解释成同一语义能力。
+- `GET /api/v1/search/unified` 是收藏列表与全局搜索共用的检索接口；旧 `GET /search/semantic` 已移除，索引管理接口不变。内容返回 `content_type`、`effective_layout_type`、作者头像与 CARD 用途的 `media_assets`，前端复用普通内容卡片模型。
+- `kind=all|contents|events|people|topics|timepoints|document_pages` 选择结果域。`content_scope=library|discovery|all` 约束内容及其派生结果，不影响事件。library 包含普通收藏与 promoted；discovery 包含 ingested/scored/visible；all 是二者并集，不包含 snoozed/ignored/merged/expired。
+- `mode=keyword|semantic`：关键词不调用 embedding，内容使用 `page>=1`、`size=1..100` 分页，返回准确的 `content_total` 与 `content_has_more`。非空语义查询使用 `top_k=1..100`，只接受 page=1；其 total 表示本次召回数量而非语料总数，has_more=false。`q` 为空只允许 kind=contents，按筛选浏览并分页，不调用 embedding。
+- 重复参数 `platform`、`status`、`tag` 表示多选（同类条件 OR，不同类条件 AND）；标签保持原子字符串，不按逗号拆分。`author` 匹配作者名称，`date_from`/`date_to` 为创建时间的包含边界；有偏移的 ISO 时间先转为 UTC，无时区输入按 UTC 解释。筛选统一在分页、FTS/向量候选与精确字段召回的数量限制之前执行。枚举、日期区间和分页无效返回 422。
+- 内容保留 `browse|fts|vector|hybrid`，事件保留 `title|description|member` 匹配来源，调用方不得把两种检索解释成同一语义能力。除内容外的分组由 top_k 限制；内容分页不意味着人物/主题聚合是全量统计。
 - `people` 从混合检索命中及 `author_name` 精确字段召回的内容聚合，`topics` 从混合检索命中及 `tags` 精确字段召回的内容聚合；精确字段召回不依赖 embedding。二者返回命中内容数和最近内容 ID，调用方应进入内容筛选，不得假设存在独立人物/主题实体。
 - `timepoints` 只接受 `rich_payload.chunks[]` 上单一显式 contract：`segment_type=chapter|transcript`、同内容的音频/视频 `media_asset_id`、非负 `start_seconds`，以及可选且大于起点的 `end_seconds`。响应保留内容/资产 ID、媒体与片段类型、标题、摘录、秒数、匹配来源和分数。发布日期、媒体总时长、无效资产与越界秒数均不会转成时间点。
 - `GET /api/v1/search/semantic/index-status` 返回索引能力和当前状态。

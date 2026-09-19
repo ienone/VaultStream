@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import and_, bindparam, delete, desc, func, or_, select, text, update
+from sqlalchemy import and_, delete, desc, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.exc import StaleDataError
@@ -20,9 +20,8 @@ from app.models import (
     Content,
     ContentEmbedding,
     ContentStatus,
-    DiscoveryState,
-    Platform,
 )
+from app.repositories.content_repository import ContentRepository
 from app.services.config_service import ConfigService, EmbeddingAIConfig
 
 
@@ -681,14 +680,13 @@ class EmbeddingService:
         session: AsyncSession,
     ) -> list[SemanticSearchHit]:
         started_at = time.perf_counter()
-        filters = await self._build_content_filters(
-            session=session,
+        filters = await ContentRepository(session).build_conditions(
             platforms=platforms,
-            statuses=statuses,
+            statuses=statuses or [ContentStatus.PARSE_SUCCESS],
             tags=tags,
             author=author,
-            date_from=date_from,
-            date_to=date_to,
+            start_date=date_from,
+            end_date=date_to,
             scope=scope,
         )
         candidate_limit = max(50, top_k * 6)
@@ -870,75 +868,6 @@ class EmbeddingService:
 
         merged = sorted(scores.items(), key=lambda item: item[1], reverse=True)
         return merged[:top_k]
-
-    async def _build_content_filters(
-        self,
-        *,
-        session: AsyncSession,
-        platforms: Optional[list[str]],
-        statuses: Optional[list[str]],
-        tags: Optional[list[str]],
-        author: Optional[str],
-        date_from: Optional[datetime],
-        date_to: Optional[datetime],
-        scope: str,
-    ) -> list:
-        filters = []
-        if statuses:
-            filters.append(Content.status.in_([ContentStatus(status) for status in statuses]))
-        else:
-            filters.append(Content.status == ContentStatus.PARSE_SUCCESS)
-
-        normalized_scope = (scope or "library").strip().lower()
-        active_discovery_states = [
-            DiscoveryState.INGESTED,
-            DiscoveryState.SCORED,
-            DiscoveryState.VISIBLE,
-        ]
-        if normalized_scope == "discovery":
-            filters.append(Content.discovery_state.in_(active_discovery_states))
-        elif normalized_scope == "all":
-            filters.append(
-                or_(
-                    Content.discovery_state.is_(None),
-                    Content.discovery_state == DiscoveryState.PROMOTED,
-                    Content.discovery_state.in_(active_discovery_states),
-                )
-            )
-        else:
-            filters.append(
-                or_(
-                    Content.discovery_state.is_(None),
-                    Content.discovery_state == DiscoveryState.PROMOTED,
-                )
-            )
-
-        if platforms:
-            filters.append(Content.platform.in_([Platform(platform) for platform in platforms]))
-        if author:
-            filters.append(Content.author_name.ilike(f"%{author.strip()}%"))
-        if date_from is not None:
-            filters.append(Content.created_at >= date_from)
-        if date_to is not None:
-            filters.append(Content.created_at <= date_to)
-        if tags:
-            tag_ids = await self._fetch_tagged_content_ids(session, tags)
-            if tag_ids:
-                filters.append(Content.id.in_(tag_ids))
-            else:
-                filters.append(text("0 = 1"))
-        return filters
-
-    async def _fetch_tagged_content_ids(self, session: AsyncSession, tags: list[str]) -> list[int]:
-        normalized = [tag.strip() for tag in tags if isinstance(tag, str) and tag.strip()]
-        if not normalized:
-            return []
-        tag_subquery = text(
-            "SELECT DISTINCT c.id FROM contents c, json_each(c.tags) AS je "
-            "WHERE je.value IN :tags"
-        ).bindparams(bindparam("tags", expanding=True))
-        rows = await session.execute(tag_subquery, {"tags": normalized})
-        return [int(row[0]) for row in rows.all()]
 
     async def _has_current_content_index_impl(self, content_id: int, session: AsyncSession) -> bool:
         content = await session.get(Content, content_id)
