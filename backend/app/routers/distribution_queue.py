@@ -29,6 +29,10 @@ from app.schemas import (
     QueueStatsResponse,
 )
 from app.schemas.media import MediaAssetManifest, MediaPurpose
+from app.schemas.queue import QueueDeliveryReconcileRequest
+from app.services.distribution.delivery_state import (
+    delivery_is_resolved, reconcile_delivery,
+)
 from app.services.background_task_state import (
     record_task_run_error,
     record_task_run_started,
@@ -55,10 +59,14 @@ async def _lock_queue_item_for_edit(db: AsyncSession, item: ContentQueueItem) ->
             ContentQueueItem.id == item.id,
             ContentQueueItem.status == item.status,
             ContentQueueItem.status != QueueItemStatus.PROCESSING,
+            delivery_is_resolved(),
         ).values(status=item.status).execution_options(synchronize_session=False)
     )
     if result.rowcount != 1:
-        raise HTTPException(status_code=409, detail="Queue item is processing or changed; refresh before editing")
+        raise HTTPException(status_code=409, detail={
+            "code": "queue_item_requires_review",
+            "message": "队列项正在发送、结果待核对或状态已变化，请刷新后逐条处理。",
+        })
 
 
 
@@ -503,6 +511,32 @@ async def retry_queue_item(
         "timestamp": utcnow().isoformat(),
     })
     return await _queue_item_response_with_media(db, item, content, http_request)
+
+
+@router.post("/items/{item_id}/reconcile", response_model=ContentQueueItemResponse)
+async def reconcile_queue_delivery(
+    item_id: int,
+    http_request: Request,
+    request: QueueDeliveryReconcileRequest,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """Record one verified delivery outcome without contacting an external platform."""
+    if (request.outcome == "delivered") != bool(request.message_id):
+        raise HTTPException(status_code=400, detail="确认已送达必须填写消息 ID；确认未发送不能填写消息 ID。")
+    try:
+        item = await reconcile_delivery(
+            db, item_id, outcome=request.outcome,
+            observed_error_at=request.observed_error_at, message_id=request.message_id,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    await db.commit()
+    await event_bus.publish("queue_updated", {"action": "delivery_reconciled", "queue_item_id": item.id})
+    await event_bus.publish("notification_updated", {"source_type": "distribution_delivery"})
+    content = await db.get(Content, item.content_id)
+    return await _queue_item_response_with_media(db, item, content, http_request)
+
 
 @router.post("/items/{item_id}/cancel", response_model=QueueCancelResponse)
 async def cancel_queue_item(

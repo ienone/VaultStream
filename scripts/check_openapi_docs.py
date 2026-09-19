@@ -220,6 +220,11 @@ REQUIRED_ACTION_RESPONSE_MODELS = {
     ): "QueueCancelResponse",
     (
         "post",
+        "/api/v1/distribution-queue/items/{item_id}/reconcile",
+        "200",
+    ): "ContentQueueItemResponse",
+    (
+        "post",
         "/api/v1/distribution-queue/batch-retry",
         "200",
     ): "BatchQueueRetryResponse",

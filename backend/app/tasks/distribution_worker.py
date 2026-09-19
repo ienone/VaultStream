@@ -6,6 +6,7 @@
 import asyncio
 from datetime import datetime, timedelta
 from typing import Optional, List
+from uuid import uuid4
 
 from sqlalchemy import select, and_, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,13 +38,17 @@ from app.services.background_task_state import (
 )
 from app.services.automation_policy import AutomationPolicyService
 from app.services.distribution.decision import should_distribute, DECISION_WILL_PUSH
+from app.services.distribution.delivery_state import (
+    DELIVERY_PREPARING, DELIVERY_SENDING, DELIVERY_UNKNOWN, LOCK_TIMEOUT,
+    UNKNOWN_MESSAGE, delivery_is_resolved, owns_delivery,
+    record_delivery_unknown, recover_expired_deliveries,
+)
 from app.tasks.distributor import ContentDistributor
 from app.core.events import event_bus
 
 # ── 常量 ──────────────────────────────────────────────
 POLL_INTERVAL = 5        # 轮询间隔（秒）
-BATCH_SIZE = 10          # 每次轮询最多领取的队列项
-LOCK_TIMEOUT = 600       # 锁超时（秒），10 分钟内未完成视为过期
+BATCH_SIZE = 1           # 每个 worker 只领取马上执行的项，不让租约在本地排队过期
 
 
 async def compute_auto_scheduled_at(
@@ -162,6 +167,7 @@ class DistributionQueueWorker:
     async def process_item_now(self, item_id: int, worker_name: str = "api-manual"):
         """立即处理指定队列项（绕过轮询，复用同一推送逻辑）。"""
         async with AsyncSessionLocal() as session:
+            await recover_expired_deliveries(session)
             result = await session.execute(
                 select(ContentQueueItem).where(ContentQueueItem.id == item_id)
             )
@@ -173,14 +179,18 @@ class DistributionQueueWorker:
             claimed = await session.execute(update(ContentQueueItem).where(
                 ContentQueueItem.id == item.id,
                 ContentQueueItem.status.in_([QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED]),
+                delivery_is_resolved(),
                 self._no_delivery_in_flight(item),
-            ).values(status=QueueItemStatus.PROCESSING, locked_at=now, locked_by=worker_name,
+            ).values(status=QueueItemStatus.PROCESSING, locked_at=now, locked_by=uuid4().hex,
+                last_error_type=DELIVERY_PREPARING, last_error=None,
+                attempt_count=ContentQueueItem.attempt_count + 1, next_attempt_at=None,
                 scheduled_at=now, started_at=func.coalesce(ContentQueueItem.started_at, now))
                 .execution_options(synchronize_session=False))
             if claimed.rowcount != 1:
                 raise ValueError("Queue item or the same content target is already processing/completed")
-            await session.commit()
+            # Snapshot our own token before commit; never refresh into a later claim.
             await session.refresh(item)
+            await session.commit()
             await self._process_item(session, item, worker_name, manual=True)
 
     @staticmethod
@@ -189,7 +199,8 @@ class DistributionQueueWorker:
         return ~select(peer.id).where(
             peer.id != item.id, peer.content_id == item.content_id,
             peer.target_platform == item.target_platform, peer.target_id == item.target_id,
-            peer.status == QueueItemStatus.PROCESSING,
+            or_(peer.status == QueueItemStatus.PROCESSING,
+                peer.last_error_type == DELIVERY_UNKNOWN),
         ).exists()
 
     # ── 主循环 ────────────────────────────────────────
@@ -214,6 +225,11 @@ class DistributionQueueWorker:
 
     async def _poll_once(self, worker_name: str) -> dict:
         """领取并处理一批到期分发队列项。空轮询不创建运行记录。"""
+        # Classifying abandoned sends is safe even while automatic delivery is paused.
+        async with AsyncSessionLocal() as recovery_session:
+            if await recover_expired_deliveries(recovery_session):
+                await event_bus.publish("queue_updated", {"action": "delivery_recovered"})
+                await event_bus.publish("notification_updated", {"source_type": "distribution_delivery"})
         policy = await AutomationPolicyService().distribution_worker_poll()
         if not policy.allowed:
             logger.bind(worker=worker_name, policy=policy.as_dict()).info(
@@ -258,6 +274,8 @@ class DistributionQueueWorker:
                 try:
                     await self._process_item(session, item, worker_name)
                     processed_count += 1
+                    # A fenced-out attempt rolls back and expires its ORM snapshot.
+                    await session.refresh(item)
                     status = item.status.value if item.status else "unknown"
                     status_counts[status] = status_counts.get(status, 0) + 1
                 except Exception as e:
@@ -314,11 +332,29 @@ class DistributionQueueWorker:
         - SCHEDULED 状态，或 FAILED 且已到重试时间
         - 已到排期时间（scheduled_at <= now）
         - 未被锁定，或锁已过期
+        - 规则和对应目标关联仍启用
         """
+        await recover_expired_deliveries(session)
         now = utcnow()
         lock_expire = now - timedelta(seconds=LOCK_TIMEOUT)
 
+        enabled_rule_target = select(DistributionTarget.id).join(
+            DistributionRule, DistributionRule.id == DistributionTarget.rule_id,
+        ).where(
+            DistributionTarget.rule_id == ContentQueueItem.rule_id,
+            DistributionTarget.bot_chat_id == ContentQueueItem.bot_chat_id,
+            DistributionTarget.enabled.is_(True),
+            DistributionRule.enabled.is_(True),
+        ).exists()
+
         base_conditions = [
+            enabled_rule_target,
+            delivery_is_resolved(),
+            self._no_delivery_in_flight(ContentQueueItem),
+            # Explicit rescheduling grants another attempt without resetting
+            # historical counts; only automatic failed-item retries are bounded.
+            or_(ContentQueueItem.status == QueueItemStatus.SCHEDULED,
+                ContentQueueItem.attempt_count < ContentQueueItem.max_attempts),
             or_(
                 ContentQueueItem.scheduled_at.is_(None),
                 ContentQueueItem.scheduled_at <= now,
@@ -404,8 +440,14 @@ class DistributionQueueWorker:
                     target_id=item.target_id,
                 )
                 if next_allowed > now:
-                    item.scheduled_at = next_allowed
-                    deferred += 1
+                    result = await session.execute(update(ContentQueueItem).where(
+                        ContentQueueItem.id == item.id,
+                        ContentQueueItem.status == item.status,
+                        ContentQueueItem.scheduled_at == item.scheduled_at,
+                        delivery_is_resolved(),
+                    ).values(scheduled_at=next_allowed)
+                        .execution_options(synchronize_session=False))
+                    deferred += result.rowcount
                     continue
 
             if item.status == QueueItemStatus.SCHEDULED:
@@ -459,7 +501,14 @@ class DistributionQueueWorker:
                 )
 
             claim_result = await session.execute(claim_stmt.where(
-                self._no_delivery_in_flight(item)
+                enabled_rule_target,
+                self._no_delivery_in_flight(item), delivery_is_resolved(),
+                or_(ContentQueueItem.status == QueueItemStatus.SCHEDULED,
+                    ContentQueueItem.attempt_count < ContentQueueItem.max_attempts),
+            ).values(
+                locked_by=uuid4().hex, last_error_type=DELIVERY_PREPARING,
+                last_error=None, next_attempt_at=None,
+                attempt_count=ContentQueueItem.attempt_count + 1,
             ).execution_options(synchronize_session=False))
             if int(claim_result.rowcount or 0) == 0:
                 continue
@@ -495,6 +544,40 @@ class DistributionQueueWorker:
 
     # ── 处理单个队列项 ────────────────────────────────
 
+    async def _transition(self, session: AsyncSession, item: ContentQueueItem, **values) -> bool:
+        """Fence every worker write; the caller commits related facts together."""
+        result = await session.execute(update(ContentQueueItem).where(
+            owns_delivery(item),
+        ).values(**values).execution_options(synchronize_session=False))
+        if result.rowcount != 1:
+            await session.rollback()
+            return False
+        await session.refresh(item)
+        return True
+
+    async def _defer(self, session, item, reason, code, *, terminal=False):
+        if await self._transition(
+            session, item,
+            status=QueueItemStatus.FAILED if terminal else QueueItemStatus.SCHEDULED,
+            last_error=reason, last_error_type=code, next_attempt_at=None,
+            locked_at=None, locked_by=None,
+            # Policy blocking is not a failed send attempt.
+            attempt_count=max(0, item.attempt_count - 1),
+        ):
+            await session.commit()
+
+    async def _mark_unknown(self, session: AsyncSession, item: ContentQueueItem):
+        if not await self._transition(
+            session, item, status=QueueItemStatus.FAILED,
+            last_error=UNKNOWN_MESSAGE, last_error_type=DELIVERY_UNKNOWN,
+            last_error_at=utcnow(), next_attempt_at=None, locked_at=None, locked_by=None,
+        ):
+            return
+        await record_delivery_unknown(session, item)
+        await session.commit()
+        await event_bus.publish("queue_updated", {"action": DELIVERY_UNKNOWN, "queue_item_id": item.id})
+        await event_bus.publish("notification_updated", {"source_type": "distribution_delivery"})
+
     async def _process_item(
         self,
         session: AsyncSession,
@@ -525,17 +608,7 @@ class DistributionQueueWorker:
 
         # 1.1 目标可用性兜底（防止领取后被关闭/失联）
         if not bot_chat or not bool(bot_chat.enabled) or not bool(bot_chat.is_accessible):
-            item.status = QueueItemStatus.SCHEDULED
-            item.last_error = "Target disabled or inaccessible"
-            item.last_error_type = "target_unavailable"
-            item.locked_at = None
-            item.locked_by = None
-            await session.commit()
-            logger.info(
-                "队列项暂缓(目标不可用) item_id=%s bot_chat_id=%s",
-                item.id,
-                item.bot_chat_id,
-            )
+            await self._defer(session, item, "Target disabled or inaccessible", "target_unavailable")
             return
 
         # 2. 资格检查
@@ -543,16 +616,7 @@ class DistributionQueueWorker:
             ReviewStatus.APPROVED,
             ReviewStatus.AUTO_APPROVED,
         ) or content.status != ContentStatus.PARSE_SUCCESS:
-            item.status = QueueItemStatus.FAILED
-            item.last_error = "Content not eligible"
-            item.last_error_type = "content_not_eligible"
-            item.next_attempt_at = None
-            item.locked_at = None
-            item.locked_by = None
-            await session.commit()
-            logger.info(
-                f"队列项跳过(不符合) item_id={item.id} content_id={item.content_id}"
-            )
+            await self._defer(session, item, "Content not eligible", "content_not_eligible", terminal=True)
             return
 
         # 3. 去重检查
@@ -566,16 +630,7 @@ class DistributionQueueWorker:
             ).limit(1)
         )
         if dedupe_result.scalar_one_or_none():
-            item.status = QueueItemStatus.FAILED
-            item.last_error = "Already pushed (dedupe)"
-            item.last_error_type = "already_pushed_dedupe"
-            item.next_attempt_at = None
-            item.locked_at = None
-            item.locked_by = None
-            await session.commit()
-            logger.info(
-                f"队列项跳过(重复) item_id={item.id} content_id={item.content_id} target_id={item.target_id}"
-            )
+            await self._defer(session, item, "Already pushed (dedupe)", "already_pushed_dedupe", terminal=True)
             return
 
         # 4. 确定实际推送目标
@@ -586,12 +641,15 @@ class DistributionQueueWorker:
                 actual_target_id = routed_id
 
         # 5. 构建推送 payload
-        content_dict = await self._distributor._build_content_payload(
-            content,
-            rule,
-            media_assets=content.media_assets,
-            target_platform=item.target_platform,
-        )
+        try:
+            content_dict = await self._distributor._build_content_payload(
+                content, rule, media_assets=content.media_assets,
+                target_platform=item.target_platform,
+            )
+            push_service = get_push_service(item.target_platform)
+        except Exception as error:
+            await self._handle_failure(session, item, error)
+            return
 
         # End the read transaction before rechecking controls that may have
         # changed while rendering. No external send has happened yet.
@@ -627,39 +685,39 @@ class DistributionQueueWorker:
             if not policy.allowed:
                 reason, code = policy.reason, policy.code
         if reason:
-            item.status = QueueItemStatus.SCHEDULED
-            item.last_error = reason
-            item.last_error_type = code
-            item.locked_at = None
-            item.locked_by = None
-            await session.commit()
+            await self._defer(session, item, reason, code)
             return
 
-        # 6. 推送
+        # Persist the send boundary before IO. Neither a lost response nor a
+        # process death after this commit proves the platform did not accept it.
+        if not await self._transition(session, item, last_error_type=DELIVERY_SENDING):
+            return
+        await session.commit()
+        remaining = max(0, (item.locked_at + timedelta(seconds=LOCK_TIMEOUT) - utcnow()).total_seconds())
         try:
-            push_service = get_push_service(item.target_platform)
-            message_id = await push_service.push(content_dict, actual_target_id)
-        except Exception as e:
-            await self._handle_failure(session, item, e)
+            message_id = await asyncio.wait_for(
+                push_service.push(content_dict, actual_target_id), timeout=remaining,
+            )
+        except asyncio.CancelledError:
+            await self._mark_unknown(session, item)
+            raise
+        except Exception:
+            await self._mark_unknown(session, item)
             return
 
         if not message_id:
-            await self._handle_failure(
-                session, item, RuntimeError("Push returned no message_id")
-            )
+            await self._mark_unknown(session, item)
             return
 
         # 7. 成功处理
         now = utcnow()
-        item.status = QueueItemStatus.SUCCESS
-        item.message_id = str(message_id)
-        item.completed_at = now
-        item.last_error = None
-        item.last_error_type = None
-        item.last_error_at = None
-        item.next_attempt_at = None
-        item.locked_at = None
-        item.locked_by = None
+        if not await self._transition(
+            session, item, status=QueueItemStatus.SUCCESS,
+            message_id=str(message_id), completed_at=now,
+            last_error=None, last_error_type=None, last_error_at=None,
+            next_attempt_at=None, locked_at=None, locked_by=None,
+        ):
+            return
 
         # 写入推送记录
         pushed = PushedRecord(
@@ -673,8 +731,9 @@ class DistributionQueueWorker:
 
         # 更新 BotChat 统计
         if bot_chat:
-            bot_chat.total_pushed = (bot_chat.total_pushed or 0) + 1
-            bot_chat.last_pushed_at = now
+            await session.execute(update(BotChat).where(BotChat.id == bot_chat.id).values(
+                total_pushed=BotChat.total_pushed + 1, last_pushed_at=now,
+            ))
 
         await session.commit()
 
@@ -720,32 +779,18 @@ class DistributionQueueWorker:
         item: ContentQueueItem,
         error: Exception,
     ):
-        """处理推送失败：更新重试计数、计算退避延迟。"""
+        """Retry only failures before the durable send boundary."""
         now = utcnow()
-        item.attempt_count = (item.attempt_count or 0) + 1
-        item.last_error = str(error)
-        item.last_error_type = type(error).__name__
-        item.last_error_at = now
-        item.locked_at = None
-        item.locked_by = None
-
-        if item.attempt_count >= (item.max_attempts or 3):
-            item.status = QueueItemStatus.FAILED
-            logger.error(
-                f"推送最终失败(已达最大重试) item_id={item.id} "
-                f"content_id={item.content_id} attempts={item.attempt_count} "
-                f"error={error}"
-            )
-        else:
-            item.status = QueueItemStatus.FAILED
-            delay = min(60 * (2 ** item.attempt_count), 3600)
-            item.next_attempt_at = now + timedelta(seconds=delay)
-            logger.warning(
-                f"推送失败将重试 item_id={item.id} "
-                f"content_id={item.content_id} attempt={item.attempt_count} "
-                f"next_attempt_at={item.next_attempt_at} error={error}"
-            )
-
+        next_attempt = (
+            now + timedelta(seconds=min(60 * (2 ** item.attempt_count), 3600))
+            if item.attempt_count < item.max_attempts else None
+        )
+        if not await self._transition(
+            session, item, status=QueueItemStatus.FAILED,
+            last_error="发送准备失败，尚未调用发送服务。", last_error_type=type(error).__name__,
+            last_error_at=now, locked_at=None, locked_by=None, next_attempt_at=next_attempt,
+        ):
+            return
         await session.commit()
 
         await event_bus.publish("distribution_push_failed", {

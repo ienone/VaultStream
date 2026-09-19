@@ -14,6 +14,7 @@ from app.services.agent.tool_registry import (
 )
 from app.services.automation_policy import AutomationPolicyService
 from app.services.distribution import DistributionService
+from app.services.distribution.delivery_state import delivery_is_resolved
 
 
 class PushBatchArgs(BaseModel):
@@ -107,6 +108,7 @@ async def _push_batch_tool(args: Dict[str, Any], context: AgentToolContext) -> D
             values["message_id"] = None
         updated = await context.db.execute(update(ContentQueueItem).where(
             ContentQueueItem.id == item.id, ContentQueueItem.status == item.status,
+            delivery_is_resolved(),
         ).values(**values).execution_options(synchronize_session=False))
         if updated.rowcount == 1:
             changed += 1

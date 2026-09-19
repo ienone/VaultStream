@@ -75,6 +75,15 @@ class QueueItemRetryRequest(BaseModel):
     reset_attempts: bool = False
 
 
+class QueueDeliveryReconcileRequest(BaseModel):
+    """A human observation, not permission to perform another external send."""
+    outcome: Literal["delivered", "not_sent"]
+    observed_error_at: UtcDatetime
+    message_id: Optional[str] = Field(default=None, min_length=1, max_length=200)
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+
 class QueueStatsResponse(BaseModel):
     """分发队列状态统计响应"""
     will_push: int

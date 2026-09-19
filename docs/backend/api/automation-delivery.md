@@ -39,6 +39,17 @@ active
 
 立即排期和外部推送成功是两个不同阶段。调度接口返回的 `run_id` 不能被解释为消息已经送达。
 
+发送未知结果沿用 `status=failed`，以 `reason_code/last_error_type=delivery_unknown` 明确标识，并提供带时区的 `last_error_at`。未知记录属于 `filtered` 列表，普通重试、取消、批量排期/重推不能修改它。单项 push-now 是同步执行路径，调用方必须读取返回资源状态，不能无论结果如何都提示“已加入队列”。
+
+`POST /api/v1/distribution-queue/items/{item_id}/reconcile` 是仅记录人工核对的动作：
+
+- 请求模型 `QueueDeliveryReconcileRequest`：`outcome` 为 `delivered` 或 `not_sent`；`observed_error_at` 原样对应最近读取的 `last_error_at`；`message_id` 为 1–200 字符、去除首尾空白的可选字符串。未知字段拒绝。
+- `delivered` 必须有目标消息 ID；`not_sent` 不允许携带消息 ID，否则 400。缺字段、无效枚举/时间或超长输入按 schema 返回 422。
+- 以该项当前未知状态和同一观察时间做条件校验；记录不存在、状态/观察时间已变化或发送记录冲突返回 409。重复确认不会再写一条推送记录。
+- 200 返回 `ContentQueueItemResponse`，不创建运行、不发送消息。确认已送达原子更新 SUCCESS、PushedRecord、目标统计并关闭核对通知，记录时间为人工核对时间。确认未发送保留 FAILED、`delivery_not_sent` 和 `next_attempt_at=null`，清零尝试计数，须另行排期才执行。
+- 确认未发送还会在同一事务停止当前同内容、平台、目标的其他已排期或待自动重试项，标记为 FAILED、`delivery_not_sent`、`next_attempt_at=null` 并保留其历史尝试计数；任一停止项均可通过现有单项排期接口恢复。其他未知、发送中、已送达记录与其他内容或目标不受影响。
+- 消息深链 `/automation/distribution?review_item={id}` 打开同一个逐条核对界面；前端不从消息里的旧快照直接确认，而是重新读取单项。
+
 ## 规则与目标
 
 - `/api/v1/distribution-rules` 管理匹配与渲染规则。

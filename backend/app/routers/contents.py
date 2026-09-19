@@ -58,6 +58,7 @@ from app.services.content_service import (
     ContentService,
     ParseQueueUnavailableError,
 )
+from app.services.distribution.delivery_state import DELIVERY_UNKNOWN
 from app.repositories.content_repository import ContentRepository
 from app.services.content_presenter import (
     compute_effective_layout_type, compute_display_title, compute_author_avatar_url,
@@ -339,7 +340,14 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
         "already_pushed_dedupe",
         "manual_canceled",
         "manual_filtered",
+        DELIVERY_UNKNOWN,
     }
+    unknown_deliveries = int((await db.execute(
+        select(func.count(ContentQueueItem.id)).where(
+            ContentQueueItem.content_id == content.id,
+            ContentQueueItem.last_error_type == DELIVERY_UNKNOWN,
+        )
+    )).scalar_one())
     retryable_queue_items = [
         row
         for row in failed_queue_items
@@ -361,7 +369,11 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
     )
     distribution_failed = queue_counts.get(QueueItemStatus.FAILED.value, 0)
     distribution_success = queue_counts.get(QueueItemStatus.SUCCESS.value, 0)
-    if distribution_failed > 0 and (distribution_success > 0 or pushed_records > 0):
+    if unknown_deliveries:
+        distribution_status = DELIVERY_UNKNOWN
+        distribution_state = ProcessingStageState.BLOCKED
+        distribution_message = f"{unknown_deliveries} 条发送结果待核对，不会自动重发"
+    elif distribution_failed > 0 and (distribution_success > 0 or pushed_records > 0):
         distribution_status = "partial"
         distribution_state = ProcessingStageState.PARTIAL
         distribution_message = f"{distribution_failed} 条分发失败，其余已推送"
@@ -488,7 +500,10 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
     distribution_issues: list[str] = []
     distribution_hints: list[str] = []
     distribution_actions: list[ProcessingStageAction] = []
-    if distribution_status in {"failed", "partial"}:
+    if distribution_status == DELIVERY_UNKNOWN:
+        distribution_issues.append("平台可能已收到消息，不能按普通失败重试")
+        distribution_hints.append("进入分发队列的“不推送”，逐条核对发送结果；消息盒子也可直接打开对应记录")
+    elif distribution_status in {"failed", "partial"}:
         distribution_issues.append("存在失败或被过滤的分发队列项")
         if retryable_queue_items:
             distribution_actions.append(

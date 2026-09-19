@@ -208,34 +208,24 @@ class TelegramPushService(BasePushService):
                     reply_markup,
                 )
             
-            try:
-                messages = await bot.send_media_group(
-                    chat_id=chat_id,
-                    media=media_group,
-                    read_timeout=120,
-                    write_timeout=120
-                )
-                if messages:
-                    # 如果有按钮,发送一条回复消息
-                    if reply_markup:
-                        await bot.send_message(
-                            chat_id=chat_id,
-                            text="管理操作:",
-                            reply_to_message_id=messages[0].message_id,
-                            reply_markup=reply_markup
-                        )
-                    return messages[0]
-                return None
-            except TelegramError as e:
-                logger.warning(f"发送媒体组失败，降级为单个媒体: {e}")
-                # 降级处理：只发送第一个媒体
-                return await self._send_single_media(
-                    bot,
-                    chat_id,
-                    resolved_items[0],
-                    text,
-                    reply_markup,
-                )
+            # A transport error may occur after Telegram accepted the album.
+            # Do not send a second representation without a verified outcome.
+            messages = await bot.send_media_group(
+                chat_id=chat_id,
+                media=media_group,
+                read_timeout=120,
+                write_timeout=120,
+            )
+            if messages:
+                if reply_markup:
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text="管理操作:",
+                        reply_to_message_id=messages[0].message_id,
+                        reply_markup=reply_markup,
+                    )
+                return messages[0]
+            return None
     
     async def _send_single_media(
         self,
@@ -307,16 +297,6 @@ class TelegramPushService(BasePushService):
                     write_timeout=120,
                     reply_markup=reply_markup
                 )
-        except TelegramError as e:
-            logger.warning(f"发送单个媒体失败，降级为文本: {e}")
-            # 降级为纯文本消息
-            return await bot.send_message(
-                chat_id=chat_id,
-                text=caption,
-                parse_mode='HTML',
-                disable_web_page_preview=False,
-                reply_markup=reply_markup
-            )
         finally:
             if file_handle:
                 file_handle.close()

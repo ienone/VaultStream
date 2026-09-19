@@ -22,6 +22,7 @@ from app.models import (
 )
 from app.repositories import ContentRepository, DistributionRepository
 from app.services.automation_policy import AutomationPolicyService
+from app.services.distribution.delivery_state import delivery_is_resolved
 from app.services.distribution.decision import (
     DECISION_FILTERED,
     check_match_conditions,
@@ -261,6 +262,7 @@ class DistributionService:
                         reset = await self.db.execute(update(ContentQueueItem).where(
                             ContentQueueItem.id == existing.id,
                             ContentQueueItem.status == QueueItemStatus.FAILED,
+                            delivery_is_resolved(),
                         ).values(
                             status=QueueItemStatus.SCHEDULED, attempt_count=0,
                             last_error=None, last_error_type=None, last_error_at=None,

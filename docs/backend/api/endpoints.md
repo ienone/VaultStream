@@ -101,6 +101,7 @@ active
 | `GET` | `/api/v1/distribution-queue/items/{item_id}` |
 | `POST` | `/api/v1/distribution-queue/items/{item_id}/cancel` |
 | `POST` | `/api/v1/distribution-queue/items/{item_id}/push-now` |
+| `POST` | `/api/v1/distribution-queue/items/{item_id}/reconcile` |
 | `POST` | `/api/v1/distribution-queue/items/{item_id}/reorder` |
 | `POST` | `/api/v1/distribution-queue/items/{item_id}/retry` |
 | `POST` | `/api/v1/distribution-queue/items/{item_id}/schedule` |

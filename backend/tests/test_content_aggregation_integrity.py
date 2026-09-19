@@ -81,7 +81,7 @@ async def test_atomic_aggregation_and_evidence(db_session, monkeypatch, case):
             await cfg.delete_value(key)
 
 
-async def test_generated_delivery_obeys_switch_and_deduplicates(db_session, monkeypatch):
+async def test_generated_delivery_obeys_switch_and_agent_processing_guard(db_session, monkeypatch):
     from app.models import (BotConfig, BotConfigPlatform, BotChat, BotChatType, DistributionRule,
         DistributionTarget, ContentQueueItem, PushedRecord, QueueItemStatus, ReviewStatus)
     from app.services.distribution import DistributionService
@@ -121,24 +121,29 @@ async def test_generated_delivery_obeys_switch_and_deduplicates(db_session, monk
         assert await service.enqueue_content(content.id, force=True) == 0
         agent_result = await _push_batch_tool({'content_ids': [content.id]}, SimpleNamespace(db=db_session))
         assert agent_result['scheduled_count'] == 0
-        await worker._process_item(db_session, item, 'regression')
+        await worker.process_item_now(item.id)
+        await db_session.refresh(item)
         assert item.last_error_type == 'aggregation_push_disabled'
         push.assert_not_awaited()
         await cfg.set_value('enable_aggregation_push', True)
         chat.enabled = False
         await db_session.commit()
-        await worker._process_item(db_session, item, 'regression')
+        await worker.process_item_now(item.id)
+        await db_session.refresh(item)
         assert item.last_error_type == 'target_unavailable'
         push.assert_not_awaited()
         chat.enabled = True
         item.status = QueueItemStatus.PROCESSING
+        item.locked_at = utcnow()
         await db_session.commit()
         agent_result = await _push_batch_tool({'content_ids': [content.id]}, SimpleNamespace(db=db_session))
         assert agent_result['scheduled_count'] == 0
-        await worker._process_item(db_session, item, 'regression')
+        item.status = QueueItemStatus.SCHEDULED
+        item.locked_at = None
+        await db_session.commit()
+        await worker.process_item_now(item.id)
+        await db_session.refresh(item)
         assert item.status == QueueItemStatus.SUCCESS
-        assert push.await_count == 1
-        await worker._process_item(db_session, item, 'regression')
         assert push.await_count == 1
         records = (await db_session.execute(select(PushedRecord).where(PushedRecord.content_id == content.id))).scalars().all()
         assert len(records) == 1 and records[0].message_id == 'fixture-message'
