@@ -1,19 +1,9 @@
-from typing import Optional, Literal
+from typing import Optional
 from loguru import logger
-from pydantic import Field, ConfigDict
 
 # LangChain 导入
 from langchain_openai import ChatOpenAI
 from app.services.config_service import ConfigService
-
-class ChatOpenAICompatible(ChatOpenAI):
-    """
-    兼容性补丁类：
-    1. 允许 Pydantic 动态添加属性 (extra='allow')，解决 browser-use 的 monkey-patch 问题。
-    2. 强制注入 provider 字段，满足 browser-use 的类型检查。
-    """
-    model_config = ConfigDict(extra='allow', frozen=False) 
-    provider: str = Field(default="openai")
 
 class LLMFactory:
     """
@@ -21,9 +11,9 @@ class LLMFactory:
     """
 
     @staticmethod
-    async def get_vision_llm() -> Optional[ChatOpenAICompatible]:
+    async def get_vision_llm() -> Optional[ChatOpenAI]:
         """
-        获取视觉大模型 (用于 Browser Use / 复杂 Agent 任务)
+        获取视觉大模型 (用于 Agent 图片读取)
         读取 VISION_LLM_* 配置
         """
         config = await ConfigService().get_vision_llm_config()
@@ -35,10 +25,11 @@ class LLMFactory:
         logger.info(f"LLMFactory: Loading Vision Model ({config.model}) from {config.base_url}")
         
         try:
-            return ChatOpenAICompatible(
+            return ChatOpenAI(
                 model=config.model,
                 api_key=config.api_key,
                 base_url=config.base_url,
+                use_responses_api=False,
                 temperature=0.0, # Agent 任务通常需要低温度以保证确定性
             )
         except Exception as e:
@@ -46,9 +37,9 @@ class LLMFactory:
             return None
 
     @staticmethod
-    async def get_text_llm() -> Optional[ChatOpenAICompatible]:
+    async def get_text_llm() -> Optional[ChatOpenAI]:
         """
-        获取文本大模型 (用于 Crawl4AI 提取 / 摘要生成 / 清洗)
+        获取文本大模型 (用于巡逻评分与内容聚合)
         读取 TEXT_LLM_* 配置
         """
         config = await ConfigService().get_text_llm_config()
@@ -61,10 +52,11 @@ class LLMFactory:
         logger.info(f"LLMFactory: Loading Text Model ({config.model}) from {config.base_url}")
 
         try:
-            return ChatOpenAICompatible(
+            return ChatOpenAI(
                 model=config.model,
                 api_key=config.api_key,
                 base_url=config.base_url,
+                use_responses_api=False,
                 temperature=0.3, # 文本生成稍微增加一点创造性
             )
         except Exception as e:
@@ -72,7 +64,7 @@ class LLMFactory:
             return None
 
     @staticmethod
-    async def get_agent_chat_llm() -> Optional[ChatOpenAICompatible]:
+    async def get_agent_chat_llm() -> Optional[ChatOpenAI]:
         """
         获取 Agent 对话模型。
 
@@ -88,7 +80,7 @@ class LLMFactory:
         logger.info(f"LLMFactory: Loading Agent Chat Model ({config.model}) from {config.base_url}")
 
         try:
-            return ChatOpenAICompatible(
+            return ChatOpenAI(
                 model=config.model,
                 api_key=config.api_key,
                 base_url=config.base_url,
@@ -97,28 +89,3 @@ class LLMFactory:
         except Exception as e:
             logger.error(f"LLMFactory: Failed to initialize Agent Chat LLM - {e}")
             return None
-
-    @staticmethod
-    async def get_crawl4ai_config(model_type: Literal["vision", "text"] = "text") -> dict:
-        """
-        专门为 Crawl4AI 获取 LLM 配置字典 (Crawl4AI 不需要 LangChain 对象，而是需要 dict)
-        """
-        config_service = ConfigService()
-        config = (
-            await config_service.get_vision_llm_config()
-            if model_type == "vision"
-            else await config_service.get_text_llm_config()
-        )
-        
-        # 兼容性处理：Crawl4AI 的 provider 格式通常是 "openai/model-name"
-        # 如果我们用的是兼容接口，provider 写 openai 即可
-        
-        if not config.api_key:
-            logger.warning(f"LLMFactory: Missing API Key for {model_type} config.")
-            return {}
-
-        return {
-            "provider": f"openai/{config.model}", # 这里的格式取决于 liteLLM
-            "api_token": config.api_key,
-            "base_url": config.base_url
-        }

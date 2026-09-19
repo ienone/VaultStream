@@ -1,8 +1,7 @@
 """Generated output cannot advance progress on invalid evidence or changed sources."""
-import json
 from datetime import timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
@@ -10,6 +9,7 @@ from sqlalchemy import select
 
 from app.core.time_utils import utcnow
 from app.models import Content, ContentStatus, Platform, KnowledgeEventMember
+from app.schemas.content_aggregation import AggregationOutput
 from app.services.config_service import ConfigService
 from app.services.content_aggregation_service import ContentAggregationService
 
@@ -49,8 +49,9 @@ async def test_atomic_aggregation_and_evidence(db_session, monkeypatch, case):
             await db_session.commit()
         if case == 'disabled':
             await cfg.set_value('enable_content_aggregation', False)
-        return SimpleNamespace(content=json.dumps(output, ensure_ascii=False))
-    llm = SimpleNamespace(ainvoke=AsyncMock(side_effect=invoke))
+        return AggregationOutput.model_validate(output)
+    llm = Mock()
+    llm.with_structured_output.return_value.ainvoke = AsyncMock(side_effect=invoke)
     monkeypatch.setattr('app.services.content_aggregation_service.LLMFactory.get_text_llm', AsyncMock(return_value=llm))
     try:
         service = ContentAggregationService(config_service=cfg)
@@ -181,9 +182,11 @@ async def test_late_source_extends_only_untouched_automatic_event(db_session, mo
             await db_session.commit()
         output = {'groups': [{'event_id': event_id, 'title': '事件进展', 'source_ids': [row.id for row in target_rows], 'tags': [],
             'claims': [{'text': '这些来源报告同一事件的进展。', 'evidence': [{'content_id': row.id, 'quote': row.body} for row in target_rows]}]}]}
-        return SimpleNamespace(content=json.dumps(output, ensure_ascii=False))
+        return AggregationOutput.model_validate(output)
+    llm = Mock()
+    llm.with_structured_output.return_value.ainvoke = AsyncMock(side_effect=invoke)
     monkeypatch.setattr('app.services.content_aggregation_service.LLMFactory.get_text_llm', AsyncMock(
-        return_value=SimpleNamespace(ainvoke=AsyncMock(side_effect=invoke))))
+        return_value=llm))
     try:
         service = ContentAggregationService(config_service=cfg)
         first = await service.run_if_due(now=reference)

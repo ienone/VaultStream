@@ -11,15 +11,17 @@ Pipeline:
 """
 
 import re
-import json
-from typing import Optional, Tuple, Dict, List
-from dataclasses import dataclass, field
+from typing import Literal
+from dataclasses import dataclass
 from urllib.parse import urljoin, urlsplit, urlunsplit, quote
 from loguru import logger
 
 from bs4 import BeautifulSoup
+from langchain_openai import ChatOpenAI
 from markdownify import markdownify
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.utils.html_preprocess import preprocess_code_blocks
+from app.services.config_service import LLMConfig
 
 
 # ============================================================
@@ -63,6 +65,106 @@ _CONTENT_SELECTOR_CANDIDATES = [
     "main article",
     "article",
 ]
+
+
+class TargetSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
+    content_selector: str = Field(min_length=1)
+    cover_image_url: str | None = None
+    reasoning: str | None = None
+
+
+class MetadataBlock(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
+    start_line: int = Field(gt=0)
+    end_line: int = Field(gt=0)
+    location: Literal["header", "footer"]
+    type: Literal["byline", "stats", "tags", "navigation", "related", "copyright", "other"]
+    hint: str
+
+    @model_validator(mode="after")
+    def validate_range(self):
+        if self.end_line < self.start_line:
+            raise ValueError("metadata block ends before it starts")
+        return self
+
+
+class StructuralScan(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    body_start_line: int = Field(gt=0)
+    body_end_line: int = Field(gt=0)
+    metadata_blocks: list[MetadataBlock]
+
+    @model_validator(mode="after")
+    def validate_range(self):
+        if self.body_end_line < self.body_start_line:
+            raise ValueError("article body ends before it starts")
+        return self
+
+
+class CommonFields(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
+    title: str | None = None
+    author_name: str | None = None
+    author_id: str | None = None
+    author_avatar_url: str | None = None
+    published_at: str | None = None
+    cover_url: str | None = None
+    view_count: int | None = Field(default=None, ge=0)
+    like_count: int | None = Field(default=None, ge=0)
+    collect_count: int | None = Field(default=None, ge=0)
+    share_count: int | None = Field(default=None, ge=0)
+    comment_count: int | None = Field(default=None, ge=0)
+
+
+class ExtensionFields(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
+    editor: str | None = None
+    source: str | None = None
+    source_url: str | None = None
+    category: str | None = None
+    copyright: str | None = None
+    collection: str | None = None
+    original_author: str | None = None
+    column_name: str | None = None
+    photographer: str | None = None
+    disclaimer: str | None = None
+
+
+class HeadingFix(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
+    line: int = Field(gt=0)
+    level: Literal[2, 3]
+    text: str = Field(min_length=1)
+
+
+class ContentExtraction(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
+    common_fields: CommonFields
+    extension_fields: ExtensionFields
+    tags: list[str]
+    heading_fixes: list[HeadingFix]
+    lines_to_remove: list[int]
+    summary: str
+
+
+def _content_llm(config: LLMConfig) -> ChatOpenAI:
+    return ChatOpenAI(
+        model=config.model,
+        api_key=config.api_key,
+        base_url=config.base_url,
+        temperature=0,
+        use_responses_api=False,
+    )
+
+
+async def _structured_call(llm: ChatOpenAI, schema: type[BaseModel], messages, *, timeout: float = 60):
+    result = await llm.with_structured_output(
+        schema, method="function_calling"
+    ).ainvoke(messages, timeout=timeout)
+    if result is None:
+        raise ValueError(f"模型未调用结构化输出工具 {schema.__name__}")
+    return result
 
 
 # ============================================================
@@ -326,7 +428,7 @@ def _cleanup_markdown(md_text: str) -> str:
 # ============================================================
 
 _TARGETING_PROMPT = """You are an expert at analyzing web page structure for content extraction.
-Find CSS selectors for the MAIN article content. Return valid JSON only.
+Find a CSS selector for the MAIN article content.
 
 URL: {url}
 
@@ -336,31 +438,19 @@ HTML Structure:
 Images:
 {image_summary}
 
-Return:
-{{
-  "content_selector": "CSS selector for main article body",
-  "cover_image_url": "URL of cover/hero image or null",
-  "reasoning": "Brief explanation"
-}}
-
 Rules:
 - Choose tightest container around article text
 - Exclude nav/sidebar/ads/comments
 - Prefer id/class selectors over tag-only
 - Cover image: large hero/banner/featured image at top
 
-JSON:"""
+Return the result through the supplied structured-output tool."""
 
 
 async def llm_target_selector(
-    url: str, dom_info: dict, llm_config: dict, verbose: bool = True
-) -> dict:
+    url: str, dom_info: dict, llm: ChatOpenAI, verbose: bool = True
+) -> TargetSelection:
     """Lightweight LLM call for CSS selector. Only used when auto-detect fails."""
-    from openai import AsyncOpenAI
-
-    model = llm_config["provider"].split("/")[-1]
-    client = AsyncOpenAI(api_key=llm_config["api_token"], base_url=llm_config["base_url"])
-
     prompt = _TARGETING_PROMPT.format(
         url=url,
         dom_summary=dom_info["dom_summary"],
@@ -368,25 +458,11 @@ async def llm_target_selector(
     )
 
     if verbose:
-        logger.debug("LLM targeting ({})", model)
-
-    try:
-        resp = await client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        content = resp.choices[0].message.content or ""
-        match = re.search(r"\{.*\}", content, re.DOTALL)
-        if match:
-            result = json.loads(match.group())
-            if verbose:
-                logger.info("selector: {}", result.get('content_selector', 'body'))
-            return result
-    except Exception as e:
-        if verbose:
-            logger.warning("targeting failed: {}", e)
-
-    return {"content_selector": "body"}
+        logger.debug("LLM targeting ({})", llm.model_name)
+    result = await _structured_call(llm, TargetSelection, prompt)
+    if verbose:
+        logger.info("selector: {}", result.content_selector)
+    return result
 
 
 # ============================================================
@@ -427,27 +503,11 @@ _LAYER1_SYSTEM = """You are a document structure analyzer. Given the first and l
 - If no clear header/footer, body starts at line 1 / ends at last line
 - Tag lists at the very end: mark them as a metadata_block (type=tags) so we can extract the tags, but set body_end_line BEFORE them
 
-Return JSON ONLY:"""
+Return the result through the supplied structured-output tool."""
 
 _LAYER1_USER = """Total: {total_lines} lines
 
-{preview}
-
-Return:
-{{
-  "body_start_line": <first line of article body>,
-  "body_end_line": <last line of article body>,
-  "metadata_blocks": [
-    {{
-      "start_line": <int>,
-      "end_line": <int>,
-      "location": "header|footer",
-      "type": "byline|stats|tags|navigation|related|copyright|other",
-      "hint": "brief content description"
-    }}
-  ]
-}}
-JSON:"""
+{preview}"""
 
 
 def _build_scan_preview(lines: list[str], window: int = 40) -> str:
@@ -476,55 +536,31 @@ def _build_scan_preview(lines: list[str], window: int = 40) -> str:
 
 
 async def layer1_scan(
-    markdown: str, llm_config: dict, verbose: bool = True
-) -> dict:
+    markdown: str, llm: ChatOpenAI, verbose: bool = True
+) -> StructuralScan:
     """
     Layer 1: Structural boundary detection.
     Identifies header/footer regions and metadata block locations.
     """
-    from openai import AsyncOpenAI
-
-    model = llm_config["provider"].split("/")[-1]
-    client = AsyncOpenAI(api_key=llm_config["api_token"], base_url=llm_config["base_url"])
-
     lines = markdown.split("\n")
     total = len(lines)
     preview = _build_scan_preview(lines)
 
     if verbose:
-        logger.debug("Layer 1: structural scan ({} lines, {})", total, model)
+        logger.debug("Layer 1: structural scan ({} lines, {})", total, llm.model_name)
 
     messages = [
         {"role": "system", "content": _LAYER1_SYSTEM},
         {"role": "user", "content": _LAYER1_USER.format(total_lines=total, preview=preview)},
     ]
 
-    try:
-        resp = await client.chat.completions.create(model=model, messages=messages, timeout=30.0)
-        msg = resp.choices[0].message
-
-        content = msg.content or ""
-        match = re.search(r"\{.*\}", content, re.DOTALL)
-        if match:
-            result = json.loads(match.group())
-            # Sanitize boundaries
-            result["body_start_line"] = max(1, min(result.get("body_start_line", 1), total))
-            result["body_end_line"] = max(
-                result["body_start_line"],
-                min(result.get("body_end_line", total), total),
-            )
-
-            if verbose:
-                start = result["body_start_line"]
-                end = result["body_end_line"]
-                blocks = result.get("metadata_blocks", [])
-                logger.info("body range: L{}-L{} ({} lines)", start, end, end - start + 1)
-            return result
-    except Exception as e:
-        if verbose:
-            logger.warning("Layer 1 failed: {}", e)
-
-    return {"body_start_line": 1, "body_end_line": len(lines), "metadata_blocks": []}
+    result = await _structured_call(llm, StructuralScan, messages, timeout=30)
+    if result.body_end_line > total or any(block.end_line > total for block in result.metadata_blocks):
+        raise ValueError("结构扫描返回了超出输入范围的行号")
+    if verbose:
+        logger.info("body range: L{}-L{} ({} lines)", result.body_start_line,
+                    result.body_end_line, result.body_end_line - result.body_start_line + 1)
+    return result
 
 
 # ============================================================
@@ -572,7 +608,7 @@ Map to these database fields:
 - Only include fields with actual non-null values
 - The title from the body's first # heading should be extracted as common_fields.title
 
-Return JSON ONLY:"""
+Return the result through the supplied structured-output tool."""
 
 _LAYER2_USER = """## Metadata Blocks:
 
@@ -581,37 +617,10 @@ _LAYER2_USER = """## Metadata Blocks:
 ## Article Body ({body_line_count} lines):
 
 {body_preview}
-
-Return:
-{{
-  "common_fields": {{
-    "title": "...",
-    "author_name": "person name or null",
-    "author_avatar_url": "url or null",
-    "published_at": "YYYY-MM-DD or null",
-    "cover_url": "url or null",
-    "view_count": "integer or null",
-    "like_count": "integer or null",
-    "collect_count": "integer or null",
-    "share_count": "integer or null",
-    "comment_count": "integer or null"
-  }},
-  "extension_fields": {{
-    "editor": "...",
-    "source": "...",
-    "column_name": "..."
-  }},
-  "tags": ["tag1", "tag2"],
-  "heading_fixes": [
-    {{"line": 27, "level": 2, "text": "clean heading text without ** markers"}}
-  ],
-  "lines_to_remove": [55, 56],
-  "summary": "brief description"
-}}
-JSON:"""
+"""
 
 
-def _build_metadata_section(lines: list[str], blocks: list[dict], dom_info: dict = None) -> str:
+def _build_metadata_section(lines: list[str], blocks: list[MetadataBlock], dom_info: dict = None) -> str:
     """Extract and format metadata block texts for Layer 2."""
     sections = []
     
@@ -634,11 +643,8 @@ def _build_metadata_section(lines: list[str], blocks: list[dict], dom_info: dict
         return "(no metadata blocks identified)"
 
     for i, block in enumerate(blocks):
-        start = block.get("start_line", 1) - 1
-        end = block.get("end_line", 1)
-        location = block.get("location", "?")
-        block_type = block.get("type", "?")
-        hint = block.get("hint", "")
+        start = block.start_line - 1
+        end = block.end_line
 
         block_lines = []
         for j in range(start, min(end, len(lines))):
@@ -646,7 +652,7 @@ def _build_metadata_section(lines: list[str], blocks: list[dict], dom_info: dict
         text = "\n".join(block_lines)
 
         sections.append(
-            f"### Block {i + 1} [{location}] type={block_type}: {hint}\n```\n{text}\n```"
+            f"### Block {i + 1} [{block.location}] type={block.type}: {block.hint}\n```\n{text}\n```"
         )
 
     return "\n\n".join(sections)
@@ -668,24 +674,19 @@ def _build_body_preview(lines: list[str], body_start: int, body_end: int) -> str
 
 async def layer2_extract(
     lines: list[str],
-    scan_result: dict,
-    llm_config: dict,
+    scan_result: StructuralScan,
+    llm: ChatOpenAI,
     verbose: bool = True,
     dom_info: dict = None,
-) -> Tuple[dict, dict, list, list, list, str]:
+) -> ContentExtraction:
     """
     Layer 2: Metadata extraction + content cleaning.
 
-    Returns: (common_fields, extension_fields, tags, heading_fixes, lines_to_remove, summary)
+    Returns validated metadata and cleanup operations.
     """
-    from openai import AsyncOpenAI
-
-    model = llm_config["provider"].split("/")[-1]
-    client = AsyncOpenAI(api_key=llm_config["api_token"], base_url=llm_config["base_url"])
-
-    body_start = scan_result.get("body_start_line", 1)
-    body_end = scan_result.get("body_end_line", len(lines))
-    blocks = scan_result.get("metadata_blocks", [])
+    body_start = scan_result.body_start_line
+    body_end = scan_result.body_end_line
+    blocks = scan_result.metadata_blocks
 
     body_line_count = body_end - body_start + 1
     metadata_section = _build_metadata_section(lines, blocks, dom_info)
@@ -706,7 +707,7 @@ async def layer2_extract(
     if verbose:
         logger.debug(
             f"Layer 2: extract+clean "
-            f"({body_line_count} 行正文, {len(blocks)} 个元数据块, {model})..."
+            f"({body_line_count} 行正文, {len(blocks)} 个元数据块, {llm.model_name})..."
         )
 
     messages = [
@@ -721,49 +722,15 @@ async def layer2_extract(
         },
     ]
 
-    try:
-        resp = await client.chat.completions.create(model=model, messages=messages, timeout=60.0)
-        msg = resp.choices[0].message
-
-        content = msg.content or ""
-        match = re.search(r"\{.*\}", content, re.DOTALL)
-        if match:
-            result = json.loads(match.group())
-
-            # Parse common fields
-            common_fields = {}
-            for k, v in result.get("common_fields", {}).items():
-                if v and str(v).lower() not in ("null", "none"):
-                    if k.endswith("_count"):
-                        digits = re.sub(r"[^\d]", "", str(v))
-                        if digits:
-                            common_fields[k] = int(digits)
-                    else:
-                        common_fields[k] = v
-
-            # Parse extension fields
-            extension_fields = {}
-            for k, v in result.get("extension_fields", {}).items():
-                if v and str(v).lower() not in ("null", "none"):
-                    extension_fields[k] = v
-
-            tags = result.get("tags", [])
-            heading_fixes = result.get("heading_fixes", [])
-            lines_to_remove = result.get("lines_to_remove", [])
-            summary = result.get("summary", "")
-
-            if verbose:
-                logger.info(
-                    "extracted: {} common, {} ext, {} tags",
-                    len(common_fields), len(extension_fields), len(tags),
-                )
-
-            return common_fields, extension_fields, tags, heading_fixes, lines_to_remove, summary
-    except Exception as e:
-        if verbose:
-            logger.warning("Layer 2 failed: {}", e)
-
-    return {}, {}, [], [], [], ""
+    result = await _structured_call(llm, ContentExtraction, messages)
+    affected_lines = [fix.line for fix in result.heading_fixes] + result.lines_to_remove
+    if any(line < body_start or line > body_end for line in affected_lines):
+        raise ValueError("内容清理返回了正文范围之外的行号")
+    if verbose:
+        logger.info("extracted: {} common, {} ext, {} tags",
+                    len(result.common_fields.model_dump(exclude_none=True)),
+                    len(result.extension_fields.model_dump(exclude_none=True)), len(result.tags))
+    return result
 
 
 # ============================================================
@@ -772,13 +739,13 @@ async def layer2_extract(
 
 def _apply_results(
     lines: list[str],
-    scan_result: dict,
-    heading_fixes: list,
+    scan_result: StructuralScan,
+    heading_fixes: list[HeadingFix],
     body_lines_to_remove: list,
 ) -> str:
     """Apply Layer 1 boundaries + Layer 2 fixes to produce clean markdown."""
-    body_start = scan_result.get("body_start_line", 1)
-    body_end = scan_result.get("body_end_line", len(lines))
+    body_start = scan_result.body_start_line
+    body_end = scan_result.body_end_line
 
     remove_set = set()
     replace_map = {}
@@ -798,11 +765,8 @@ def _apply_results(
 
     # 4. Heading fixes
     for h in heading_fixes:
-        idx = h.get("line", 0) - 1
-        level = h.get("level", 2)
-        text = h.get("text", "")
-        if 0 <= idx < len(lines) and text:
-            replace_map[idx] = f"{'#' * level} {text}"
+        idx = h.line - 1
+        replace_map[idx] = f"{'#' * h.level} {h.text}"
 
     # 5. Build output
     new_lines = []
@@ -834,7 +798,7 @@ def _apply_results(
 async def process_content(
     url: str,
     fetch_result,
-    llm_config: dict,
+    llm_config: LLMConfig,
     verbose: bool = True,
 ) -> ProcessResult:
     """
@@ -847,6 +811,7 @@ async def process_content(
     selector = ""
     cover_url = ""
     dom_info = {}
+    llm = _content_llm(llm_config)
 
     if fetch_result.content_type == "markdown":
         # ═══ Markdown Path: skip DOM analysis + conversion ═══
@@ -870,9 +835,9 @@ async def process_content(
         if auto_sel:
             selector = auto_sel
         else:
-            targeting = await llm_target_selector(url, dom_info, llm_config, verbose)
-            selector = targeting.get("content_selector", "body")
-            cover_url = cover_url or targeting.get("cover_image_url", "") or ""
+            targeting = await llm_target_selector(url, dom_info, llm, verbose)
+            selector = targeting.content_selector
+            cover_url = cover_url or targeting.cover_image_url or ""
             llm_calls += 1
 
         # Tool: HTML → Markdown
@@ -881,14 +846,17 @@ async def process_content(
         markdown = tool_convert_html(html, url, selector, verbose)
 
     # ═══ Layer 1: Structural Scan ═══
-    scan_result = await layer1_scan(markdown, llm_config, verbose)
+    scan_result = await layer1_scan(markdown, llm, verbose)
     llm_calls += 1
 
     # ═══ Layer 2: Extract + Clean ═══
     lines = markdown.split("\n")
-    common_fields, extension_fields, tags, heading_fixes, body_removals, summary = (
-        await layer2_extract(lines, scan_result, llm_config, verbose, dom_info=dom_info)
-    )
+    extraction = await layer2_extract(lines, scan_result, llm, verbose, dom_info=dom_info)
+    common_fields = extraction.common_fields.model_dump(exclude_none=True)
+    extension_fields = extraction.extension_fields.model_dump(exclude_none=True)
+    tags = extraction.tags
+    heading_fixes = extraction.heading_fixes
+    body_removals = extraction.lines_to_remove
     llm_calls += 1
 
     # Merge tags & cover
@@ -902,20 +870,20 @@ async def process_content(
 
     # Build ops log
     ops_log = []
-    body_start = scan_result.get("body_start_line", 1)
-    body_end = scan_result.get("body_end_line", len(lines))
+    body_start = scan_result.body_start_line
+    body_end = scan_result.body_end_line
     if body_start > 1:
         ops_log.append({"op": "remove_header", "lines": f"1-{body_start - 1}"})
     if body_end < len(lines):
         ops_log.append({"op": "remove_footer", "lines": f"{body_end + 1}-{len(lines)}"})
-    for block in scan_result.get("metadata_blocks", []):
-        ops_log.append({"op": "metadata_block", **block})
+    for block in scan_result.metadata_blocks:
+        ops_log.append({"op": "metadata_block", **block.model_dump()})
     for k, v in common_fields.items():
         ops_log.append({"op": "extract_common", "field": k, "value": str(v)[:60]})
     for k, v in extension_fields.items():
         ops_log.append({"op": "extract_extension", "field": k, "value": str(v)[:60]})
     for h in heading_fixes:
-        ops_log.append({"op": "heading_fix", **h})
+        ops_log.append({"op": "heading_fix", **h.model_dump()})
     for ln in body_removals:
         ops_log.append({"op": "remove_body_line", "line": ln})
 

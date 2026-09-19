@@ -3,9 +3,7 @@ AI 巡逻评分服务
 
 对发现缓冲区中的内容进行 LLM 评分，根据阈值决定是否展示。
 """
-import json
-from typing import Optional
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field
 
 from langchain_core.messages import SystemMessage, HumanMessage
 from sqlalchemy import select, update
@@ -43,7 +41,7 @@ Consider:
 - Community discussion quality
 - Engagement signals"""
 
-_CONTENT_ANALYSIS_USER = """Analyze the following content and provide a JSON response with:
+_CONTENT_ANALYSIS_USER = """Analyze the following content and provide:
 - score (0-10): Importance score
 - reason: Brief explanation for the score
 - tags: Relevant topic tags (3-5 tags)
@@ -54,19 +52,13 @@ Source: {source}
 Author: {author}
 URL: {url}
 Content: {content}
-
-Respond with valid JSON only:
-{{
-  "score": <number>,
-  "reason": "<explanation>",
-  "tags": ["<tag1>", "<tag2>"]
-}}"""
+Return the result through the supplied structured-output tool."""
 
 
 class PatrolScore(BaseModel):
-    model_config = ConfigDict(strict=True)
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
     score: float = Field(ge=0, le=10, allow_inf_nan=False)
-    reason: str
+    reason: str = Field(min_length=1)
     tags: list[str]
 
 
@@ -100,15 +92,6 @@ class PatrolService:
             content=(content.body or "")[:4000],
         )
 
-    def _parse_scoring_response(self, response_text: str) -> Optional[dict]:
-        """Parse JSON response, return None on failure."""
-        try:
-            data = json.loads(response_text)
-            return PatrolScore.model_validate(data).model_dump()
-        except (json.JSONDecodeError, ValidationError, ValueError, TypeError):
-            logger.warning("巡逻评分响应不符合分数或字段约定")
-            return None
-
     async def score_item(self, content: Content, interest_profile: str = "", *, db: AsyncSession) -> bool:
         """
         Score a single discovery item.
@@ -124,27 +107,25 @@ class PatrolService:
         user_prompt = self._build_user_prompt(content)
 
         try:
-            response = await llm.ainvoke([
+            parsed = await llm.with_structured_output(
+                PatrolScore, method="function_calling"
+            ).ainvoke([
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=user_prompt),
             ])
-            result_text = response.content.strip()
+            if parsed is None:
+                raise ValueError("模型未调用巡逻评分结构化输出工具")
         except Exception as e:
             logger.error(f"巡逻评分 LLM 调用失败: {e}")
             return False
 
-        parsed = self._parse_scoring_response(result_text)
-        if parsed is None:
-            logger.warning(f"巡逻评分响应解析失败, content_id={content.id}")
-            return False
-
         threshold = await self._get_score_threshold()
-        state = DiscoveryState.VISIBLE if parsed["score"] >= threshold else DiscoveryState.IGNORED
+        state = DiscoveryState.VISIBLE if parsed.score >= threshold else DiscoveryState.IGNORED
         with db.no_autoflush:
             result = await db.execute(update(Content).where(
                 Content.id == content.id, Content.updated_at == revision,
-            ).values(ai_score=parsed["score"], ai_reason=parsed["reason"],
-                     ai_tags=parsed["tags"], discovery_state=state
+            ).values(ai_score=parsed.score, ai_reason=parsed.reason,
+                     ai_tags=parsed.tags, discovery_state=state
             ).execution_options(synchronize_session=False))
         if result.rowcount != 1:
             await db.commit()
@@ -154,7 +135,7 @@ class PatrolService:
 
         logger.info(
             f"巡逻评分完成: content_id={content.id}, "
-            f"score={parsed['score']}, state={content.discovery_state.value}"
+            f"score={parsed.score}, state={content.discovery_state.value}"
         )
         return True
 

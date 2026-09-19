@@ -1,4 +1,3 @@
-import re
 import json
 import asyncio
 import hashlib
@@ -46,27 +45,6 @@ async def _get_summary_llm_config() -> tuple[str | None, str, str]:
         summary_config.model,
         summary_config.api_version,
     )
-
-
-def strip_markdown(text: str) -> str:
-    """移除 Markdown 标记，返回纯文本"""
-    if not text:
-        return ""
-    # Remove images
-    text = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', text)
-    # Remove links, keep text
-    text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
-    # Remove headers
-    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
-    # Remove bold/italic/strikethrough
-    text = re.sub(r'[*_~`]+', '', text)
-    # Remove blockquote markers
-    text = re.sub(r'^>\s+', '', text, flags=re.MULTILINE)
-    # Remove horizontal rules
-    text = re.sub(r'^---+\s*$', '', text, flags=re.MULTILINE)
-    # Collapse whitespace
-    text = re.sub(r'\n{2,}', '\n', text)
-    return text.strip()
 
 
 async def generate_summary_for_content(

@@ -5,7 +5,6 @@
 # 2. 解析层 (Content Agent): Layer 1 (结构扫描) -> Layer 2 (元数据提取/清洗)
 # 3. 编排层 (Orchestrator): 统一协调获取与解析流程
 
-import os
 import sys
 import asyncio
 import hashlib
@@ -16,13 +15,12 @@ from urllib.parse import urljoin
 from loguru import logger
 
 from app.adapters.base import PlatformAdapter, ParsedContent, LAYOUT_ARTICLE, LAYOUT_VIDEO, LAYOUT_GALLERY, LAYOUT_AUDIO
-from app.adapters.errors import RetryableAdapterError
-from app.core.llm_factory import LLMFactory
+from app.services.config_service import ConfigService, LLMConfig
 from app.adapters.utils.tiered_fetcher import tiered_fetch
 from app.adapters.utils.content_agent import process_content
 
 
-def _run_crawl_in_process(url: str, cookies: dict, llm_config: dict, user_data_dir: str, max_retries: int, use_magic: bool = False) -> ParsedContent:
+def _run_crawl_in_process(url: str, cookies: dict, llm_config: LLMConfig) -> ParsedContent:
     """在独立进程中运行爬取（Windows 兼容）"""
     if sys.platform == 'win32':
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -30,10 +28,8 @@ def _run_crawl_in_process(url: str, cookies: dict, llm_config: dict, user_data_d
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        adapter = UniversalAdapter(cookies=cookies, use_magic=use_magic)
+        adapter = UniversalAdapter(cookies=cookies)
         adapter.llm_config = llm_config
-        adapter.user_data_dir = user_data_dir
-        adapter.max_retries = max_retries
         return loop.run_until_complete(adapter._do_parse(url))
     finally:
         loop.close()
@@ -58,10 +54,6 @@ class UniversalAdapter(PlatformAdapter):
     def __init__(self, **kwargs):
         self.cookies = kwargs.get("cookies", {})
         self.llm_config = None # Will be initialized in parse
-        self.user_data_dir = os.getenv("CHROME_USER_DATA_DIR")
-        self.max_retries = 2
-        # magic=True 可能导致 Pjax 站点页面导航错误，默认关闭
-        self.use_magic = kwargs.get("use_magic", False)
         
     async def detect_content_type(self, url: str) -> Optional[str]:
         return "webpage"
@@ -70,7 +62,9 @@ class UniversalAdapter(PlatformAdapter):
         return url
 
     async def parse(self, url: str) -> ParsedContent:
-        self.llm_config = await LLMFactory.get_crawl4ai_config("text")
+        self.llm_config = await ConfigService().get_text_llm_config()
+        if not self.llm_config.api_key:
+            raise ValueError("通用解析未配置文本模型 API Key")
         if sys.platform == 'win32':
             return await self._parse_in_thread(url)
         else:
@@ -85,9 +79,6 @@ class UniversalAdapter(PlatformAdapter):
                 url, 
                 self.cookies, 
                 self.llm_config, 
-                self.user_data_dir,
-                self.max_retries,
-                self.use_magic
             )
 
     async def _do_parse(self, url: str) -> ParsedContent:
@@ -95,21 +86,10 @@ class UniversalAdapter(PlatformAdapter):
         logger.info(f"UniversalAdapter: 开始解析 {url}")
 
         # 1. 分层获取 (Cloudflare MD -> 直接 HTTP -> Crawl4AI)
-        try:
-            # 根据需要跳过某些层（可选）
-            fetch_result = await tiered_fetch(url, cookies=self.cookies, verbose=True)
-        except Exception as e:
-            logger.error(f"UniversalAdapter: 获取失败: {e}")
-            raise RetryableAdapterError(f"获取失败: {e}")
+        fetch_result = await tiered_fetch(url, cookies=self.cookies, verbose=True)
 
         # 2. 内容 Agent 处理 (结构扫描 -> 元数据提取 -> 清洗)
-        try:
-            process_result = await process_content(url, fetch_result, self.llm_config, verbose=True)
-        except Exception as e:
-            logger.error(f"UniversalAdapter: Agent 处理失败: {e}")
-            # 降级方案：如果 Agent 失败但有内容，进行简单映射
-            process_result = None
-            raise RetryableAdapterError(f"Agent 处理失败: {e}")
+        process_result = await process_content(url, fetch_result, self.llm_config, verbose=True)
 
         # 3. 将结果映射到 ParsedContent
         

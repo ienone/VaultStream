@@ -25,14 +25,15 @@ active
 1. `UniversalAdapter.parse()` 接收 URL。
 2. 调用 `tiered_fetch()` 获取原始内容。
 3. `tiered_fetch()` 采用多级获取策略，例如 Cloudflare markdown、direct HTTP、浏览器后备路径。
-4. 将获取结果交给 `process_content_agent()`。
+4. 将获取结果交给 `process_content()`。
 5. content agent 生成标准化 `ParsedContent`。
 
 ## 核心能力
 
 - 处理未被特定平台识别的 URL。
 - 多级抓取，尽量先使用低成本路径。
-- 使用内容 agent 将网页内容转为标准内容模型。
+- 使用 LangChain function calling 和本地 Pydantic contract 完成选择器、结构扫描与字段抽取；缺失工具调用、字段类型错误或越界行号直接失败，不使用正则 JSON 提取或静默回退。
+- 内容处理过程复用同一个 `ChatOpenAI`，OpenAI 兼容端点使用 chat completions，并保留完整模型名。
 - 输出统一 `ParsedContent`，供内容服务入库。
 
 ## 与代码的关系
@@ -40,11 +41,11 @@ active
 - 适配器注册：`backend/app/adapters/__init__.py`
 - 抓取层：`backend/app/adapters/utils/tiered_fetcher.py`
 - Agent 处理：`backend/app/adapters/utils/content_agent.py`
-- LLM 配置：`backend/app/core/llm_factory.py`
+- LLM 配置：`backend/app/services/config_service.py::LLMConfig`
 
 ## 配置
 
-通用适配器可能读取文本模型配置和代理配置。具体配置以 `backend/app/core/config.py` 和 `backend/app/core/llm_factory.py` 为准。
+通用适配器直接读取文本模型的 `LLMConfig`，保留完整模型名，不经过已退休的 Crawl4AI provider 字符串转换。抓取与 Agent 处理异常保持原始类型，不一律标为可重试；未生效的 `use_magic/user_data_dir/max_retries` 参数已移除。
 
 ## 已知限制
 
