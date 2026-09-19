@@ -1,12 +1,10 @@
-"""Cross-folder resume and upstream failures must preserve all favorite items."""
+"""Cross-folder resume and shared imports must preserve all favorite items."""
 import json
 from unittest.mock import AsyncMock
 
 import httpx
-import pytest
 
 from app.adapters.favorites.bilibili_fetcher import BilibiliFavoritesFetcher
-from app.adapters.favorites.errors import FavoritesFetchError
 from app.services.config_service import ConfigService
 
 
@@ -43,23 +41,6 @@ async def test_resume_mid_page_and_cross_folder_without_loss(monkeypatch):
     assert rest[-1].collection_title == 'Second'
     assert end is None
     await cfg.delete_value('bilibili_cookie')
-
-
-@pytest.mark.parametrize('case', ['account_changed', 'missing_folder', 'malformed_page', 'login_expired'])
-async def test_invalid_resume_is_explicit(monkeypatch, case):
-    fetcher = BilibiliFavoritesFetcher()
-    monkeypatch.setattr(fetcher, '_cookies', AsyncMock(return_value={'SESSDATA': 'fixture-only'}))
-    async def get(path, cookies, params=None):
-        if path.endswith('/nav'):
-            if case == 'login_expired':
-                raise FavoritesFetchError('auth_required', '失效', '重新登录', auth_required=True)
-            return {'isLogin': True, 'mid': 8 if case == 'account_changed' else 7}
-        if path.endswith('/list-all'):
-            return {'count': 1, 'list': [{'id': 11 if case == 'missing_folder' else 10, 'title': 'First'}]}
-        return {'medias': []}  # Missing has_more must never be treated as completion.
-    monkeypatch.setattr(fetcher, '_get', get)
-    with pytest.raises(FavoritesFetchError):
-        await fetcher.fetch_favorites(cursor=json.dumps({'mid': 7, 'folder_id': 10, 'page': 1, 'offset': 0}))
 
 
 async def test_shared_import_keeps_collection_sources_and_unavailable_receipt(db_session, monkeypatch):

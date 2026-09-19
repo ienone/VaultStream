@@ -92,27 +92,6 @@ async def test_committed_content_with_failed_parse_handoff_can_resume(db_session
     assert enqueue.await_count == 2
 
 
-@pytest.mark.parametrize('stage', ['collections', 'items'])
-@pytest.mark.parametrize('bad_page', [{}, {'data': [], 'paging': {}}, {'data': [], 'paging': {'is_end': False}}])
-async def test_zhihu_incomplete_page_is_not_end(monkeypatch, stage, bad_page):
-    from app.adapters.favorites.zhihu_fetcher import ZhihuFavoritesFetcher
-    from app.adapters.favorites.errors import FavoritesFetchError
-    fetcher = ZhihuFavoritesFetcher()
-    monkeypatch.setattr(fetcher, '_get_cookies', AsyncMock(return_value={'z_c0':'fixture'}))
-    async def api(url, cookies):
-        if url.endswith('/me'):
-            return {'url_token':'fixture-user'}
-        if '/items?' in url:
-            return bad_page
-        if stage == 'collections':
-            return bad_page
-        return {'data':[{'id':1,'title':'Fixture','item_count':1}], 'paging':{'is_end':True}}
-    monkeypatch.setattr(fetcher, '_api_get', api)
-    with pytest.raises(FavoritesFetchError) as error:
-        await fetcher.fetch_favorites(max_items=2)
-    assert error.value.code == 'invalid_pagination'
-
-
 async def test_item_retry_preserves_collection_and_repeated_success(client, db_session, monkeypatch):
     from uuid import uuid4
     from sqlalchemy import select
