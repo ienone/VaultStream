@@ -72,7 +72,7 @@ class TaskWorker:
         if not content_id:
             logger.warning("任务数据缺少 content_id")
             await task_queue.mark_failed(
-                claimed_task.db_id,
+                claimed_task,
                 reason="missing_content_id",
             )
             return
@@ -80,7 +80,7 @@ class TaskWorker:
         await self.parser.process_parse_task(
             task_data,
             task_id,
-            task_db_id=claimed_task.db_id,
+            claimed_task=claimed_task,
         )
 
     async def retry_parse(self, content_id: int, max_retries: int = 3, force: bool = False):

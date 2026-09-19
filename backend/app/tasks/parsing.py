@@ -4,21 +4,19 @@
 处理内容解析、元数据提取、媒体下载等逻辑
 """
 import asyncio
-import copy
 import html
 import json
 import traceback
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, Dict, Any
 from urllib.parse import unquote
-from sqlalchemy import select
+from sqlalchemy import String, cast, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.logging import logger, log_context
 from app.core.database import AsyncSessionLocal
 from app.core.time_utils import utcnow
-from app.models import Content, ContentStatus, Platform
+from app.models import Content, ContentStatus, Platform, Task, TaskStatus
 from app.adapters import close_adapter
 from app.adapters.errors import AdapterError, RetryableAdapterError
 from app.adapters.storage import get_storage_backend
@@ -26,6 +24,7 @@ from app.media.extractor import sanitize_media_urls
 from app.media.processor import store_archive_images_as_webp, store_archive_videos
 from app.media.color import extract_cover_color
 from app.core.queue import task_queue
+from app.core.queue_adapter import ClaimedTask, TaskQueue
 from app.utils.datetime_utils import normalize_datetime_for_db
 from app.utils.url_utils import normalize_share_url_input
 from app.services.post_ingest import PostIngestService
@@ -57,7 +56,7 @@ class ContentParser:
         task_data: dict,
         task_id: str,
         *,
-        task_db_id: int,
+        claimed_task: ClaimedTask,
     ) -> None:
         """处理解析任务"""
         schema_version = int(task_data.get("schema_version") or 1)
@@ -68,7 +67,7 @@ class ContentParser:
         
         if not content_id:
             logger.warning("任务数据缺少 content_id")
-            await task_queue.mark_failed(task_db_id, reason="missing_content_id")
+            await task_queue.mark_failed(claimed_task, reason="missing_content_id")
             return
 
         run = await record_task_run_started(
@@ -89,24 +88,27 @@ class ContentParser:
                     f"开始处理任务: schema={schema_version}, action={action}, "
                     f"attempt={attempt}/{max_attempts}"
                 )
-                result = await self.execute_parse(
-                    content_id,
-                    action=action,
-                    current_attempt=attempt,
-                    max_attempts=max_attempts,
-                    force=False,
+                remaining_lease = (
+                    claimed_task.started_at + TaskQueue.LEASE_DURATION - utcnow()
+                ).total_seconds()
+                result = await asyncio.wait_for(
+                    self.execute_parse(
+                        content_id,
+                        action=action,
+                        current_attempt=attempt,
+                        max_attempts=max_attempts,
+                        force=False,
+                        claimed_task=claimed_task,
+                    ),
+                    timeout=max(0, remaining_lease),
                 )
-                if not await task_queue.mark_complete(task_db_id):
-                    raise RuntimeError(
-                        f"parse task settlement failed: task_db_id={task_db_id}"
-                    )
                 await record_task_run_success(
                     "content_parse",
                     run_id,
                     trigger="queue",
                     content_id=content_id,
                     task_id=task_id,
-                    task_db_id=task_db_id,
+                    task_db_id=claimed_task.db_id,
                     action=action,
                     skipped=result.skipped,
                     reason=result.reason,
@@ -114,7 +116,7 @@ class ContentParser:
                     title=result.title,
                 )
             except asyncio.CancelledError:
-                await task_queue.mark_failed(task_db_id, reason="cancelled")
+                await self._settle_parse_error(content_id, claimed_task, RuntimeError("Parsing cancelled"), "cancelled")
                 await record_task_run_error(
                     "content_parse",
                     run_id,
@@ -122,16 +124,16 @@ class ContentParser:
                     trigger="queue",
                     content_id=content_id,
                     task_id=task_id,
-                    task_db_id=task_db_id,
+                    task_db_id=claimed_task.db_id,
                     action=action,
                     error_type="CancelledError",
                 )
                 raise
             except Exception as e:
                 reason = self._task_failure_reason(e)
-                await task_queue.mark_failed(
-                    task_db_id,
-                    reason=f"{reason}: {type(e).__name__}: {e}",
+                await self._settle_parse_error(
+                    content_id, claimed_task, e,
+                    f"{reason}: {type(e).__name__}: {e}",
                 )
                 await record_task_run_error(
                     "content_parse",
@@ -140,7 +142,7 @@ class ContentParser:
                     trigger="queue",
                     content_id=content_id,
                     task_id=task_id,
-                    task_db_id=task_db_id,
+                    task_db_id=claimed_task.db_id,
                     action=action,
                     attempt=attempt,
                     max_attempts=max_attempts,
@@ -156,29 +158,45 @@ class ContentParser:
         current_attempt: int = 0,
         max_attempts: int = 3,
         force: bool = False,
+        claimed_task: ClaimedTask | None = None,
     ) -> ParseExecutionResult:
-        """Execute the single parse/retry path without queue settlement."""
+        """Execute one parse path and atomically settle claimed parse results."""
         async with AsyncSessionLocal() as session:
+            if claimed_task is not None:
+                if not await task_queue.owns(session, claimed_task):
+                    await session.rollback()
+                    raise RuntimeError("parse lease lost before execution")
+            else:
+                await session.execute(update(Content).where(
+                    Content.id == content_id,
+                ).values(id=Content.id))
             result = await session.execute(select(Content).where(Content.id == content_id))
             content = result.scalar_one_or_none()
-            if content is None:
+            if content is None or content.deleted_at is not None:
                 logger.warning(f"内容不存在: {content_id}")
-                return ParseExecutionResult(
+                skipped = ParseExecutionResult(
                     found=False,
                     skipped=True,
-                    reason="content_not_found",
+                    reason="content_deleted" if content is not None else "content_not_found",
                 )
+                if claimed_task is not None and not await task_queue.mark_complete(claimed_task, session=session):
+                    raise RuntimeError("parse lease lost before deleted-content settlement")
+                await session.commit()
+                return skipped
 
             if not force and action == "parse" and content.status == ContentStatus.PARSE_SUCCESS:
-                await self._handle_archived_media_fix(session, content)
                 logger.info("内容已解析完成，跳过解析")
-                return ParseExecutionResult(
+                skipped = ParseExecutionResult(
                     found=True,
                     skipped=True,
                     reason="already_parse_success",
                     status=content.status.value,
                     title=content.title,
                 )
+                if claimed_task is not None and not await task_queue.mark_complete(claimed_task, session=session):
+                    raise RuntimeError("parse lease lost before skip settlement")
+                await session.commit()
+                return skipped
 
             content.status = ContentStatus.PROCESSING
             await session.commit()
@@ -190,27 +208,19 @@ class ContentParser:
                     current_attempt,
                     max_attempts,
                 )
-                await self._update_content(session, content, parsed, adapter)
-                await self._check_auto_approval(session, content)
-            except asyncio.CancelledError:
-                await self._record_parse_error(
-                    session,
-                    content,
-                    RuntimeError("Parsing cancelled"),
+                return await self._update_content(
+                    session, content, parsed, adapter, claimed_task=claimed_task,
                 )
+            except asyncio.CancelledError:
+                if claimed_task is None:
+                    await self._record_parse_error(session, content_id, RuntimeError("Parsing cancelled"))
                 raise
             except Exception as error:
-                await self._record_parse_error(session, content, error)
+                if claimed_task is None:
+                    await self._record_parse_error(session, content_id, error)
                 raise
             finally:
                 await close_adapter(adapter)
-
-            return ParseExecutionResult(
-                found=True,
-                skipped=False,
-                status=content.status.value if content.status else None,
-                title=content.title,
-            )
 
     async def _execute_parse_with_retry(self, content: Content, current_attempt: int, max_attempts: int) -> tuple[Any, Any]:
         """执行解析逻辑，包含重试机制"""
@@ -225,13 +235,12 @@ class ContentParser:
             try:
                 adapter = await create_configured_adapter(content.platform)
 
-                normalized_parse_url = normalize_share_url_input(content.url)
-                if normalized_parse_url and normalized_parse_url != content.url:
+                parse_url = normalize_share_url_input(content.url) or content.url
+                if parse_url != content.url:
                     logger.info(f"检测到混合分享文案，已修正解析 URL: content_id={content.id}")
-                    content.url = normalized_parse_url
 
                 logger.info(f"开始解析内容 (try={current_attempt + i + 1}/{max_attempts})")
-                parsed = await adapter.parse(content.url)
+                parsed = await adapter.parse(parse_url)
                 last_err = None
                 return parsed, adapter
             except AdapterError as e:
@@ -254,21 +263,11 @@ class ContentParser:
             details={"last_error": str(last_err) if last_err else None},
         )
 
-    async def _update_content(self, session: AsyncSession, content: Content, parsed: Any, adapter: Any):
+    async def _update_content(
+        self, session: AsyncSession, content: Content, parsed: Any, adapter: Any,
+        *, claimed_task: ClaimedTask | None = None,
+    ) -> ParseExecutionResult:
         """更新内容数据到数据库"""
-        content.clean_url = parsed.clean_url
-        content.content_type = parsed.content_type
-        content.layout_type = parsed.layout_type  # 新增: 保存布局类型
-        content.author_id = parsed.author_id
-        content.author_avatar_url = parsed.author_avatar_url
-        content.author_url = parsed.author_url
-        content.source_tags = parsed.source_tags or []
-        content.published_at = normalize_datetime_for_db(parsed.published_at)
-        
-        # 保存结构化扩展字段
-        content.context_data = getattr(parsed, 'context_data', None)
-        content.rich_payload = getattr(parsed, 'rich_payload', None)
-
         # 私有归档媒体处理（可能更新 parsed.body / media_urls / cover_url 等）
         archive_config = await ConfigService().get_archive_media_config()
         if archive_config.enabled:
@@ -286,6 +285,48 @@ class ContentParser:
         # 补充封面颜色（本地 URL 跳过，后续从已存储的图片读取）
         if not getattr(parsed, "cover_color", None) and parsed.cover_url and not parsed.cover_url.startswith("local://"):
             parsed.cover_color = await extract_cover_color(parsed.cover_url)
+
+        # Network/media preparation is complete. Re-read current user fields and
+        # acquire the fenced SQLite write lock before changing persistent facts.
+        content_id = content.id
+        with session.no_autoflush:
+            if claimed_task is not None:
+                owns_write_lock = await task_queue.owns(session, claimed_task)
+            else:
+                lock = await session.execute(
+                    update(Content)
+                    .where(Content.id == content_id)
+                    .values(id=Content.id)
+                )
+                owns_write_lock = lock.rowcount == 1
+        if not owns_write_lock:
+            await session.rollback()
+            if claimed_task is not None:
+                raise RuntimeError("parse lease lost before result commit")
+            return ParseExecutionResult(found=False, skipped=True, reason="content_not_found")
+
+        session.expire_all()
+        content = await session.get(Content, content_id)
+        if content is None or content.deleted_at is not None:
+            reason = "content_deleted" if content is not None else "content_not_found"
+            if claimed_task is not None:
+                if not await task_queue.mark_complete(claimed_task, session=session):
+                    raise RuntimeError("parse lease lost while skipping deleted content")
+                await session.commit()
+            else:
+                await session.rollback()
+            return ParseExecutionResult(found=False, skipped=True, reason=reason)
+
+        content.clean_url = parsed.clean_url
+        content.content_type = parsed.content_type
+        content.layout_type = parsed.layout_type
+        content.author_id = parsed.author_id
+        content.author_avatar_url = parsed.author_avatar_url
+        content.author_url = parsed.author_url
+        content.source_tags = parsed.source_tags or []
+        content.published_at = normalize_datetime_for_db(parsed.published_at)
+        content.context_data = getattr(parsed, 'context_data', None)
+        content.rich_payload = getattr(parsed, 'rich_payload', None)
 
         # 同步回内容记录（在媒体处理之后，确保拿到更新后的值）
         # P2-4: 防止超大正文导致单行数据膨胀
@@ -354,8 +395,19 @@ class ContentParser:
             source="parse",
         )
 
+        if claimed_task is not None and not await task_queue.mark_complete(claimed_task, session=session):
+            await session.rollback()
+            raise RuntimeError("parse lease lost during result settlement")
+
         await session.commit()
         logger.info("内容解析完成")
+
+        execution_result = ParseExecutionResult(
+            found=True,
+            skipped=False,
+            status=ContentStatus.PARSE_SUCCESS.value,
+            title=content.title,
+        )
 
         await PostIngestService().run_for_content(
             session,
@@ -366,6 +418,7 @@ class ContentParser:
             patrol=False,
             distribution=False,
         )
+        await self._check_auto_approval(session, content)
 
         # 广播更新事件
         from app.core.events import event_bus
@@ -376,24 +429,63 @@ class ContentParser:
             "platform": content.platform.value if content.platform else None,
             "cover_url": content.cover_url
         })
+        return execution_result
 
-    def _schedule_embedding_index(self, content_id: int) -> None:
-        PostIngestService().schedule_embedding_index(content_id)
+    async def _settle_parse_error(
+        self, content_id: int, claim: ClaimedTask, error: Exception, reason: str,
+    ) -> bool:
+        """Fence content failure and queue failure in one short transaction."""
+        async with AsyncSessionLocal() as session:
+            if not await task_queue.owns(session, claim):
+                await session.rollback()
+                return False
+            content = await session.get(Content, content_id)
+            other_running = (await session.execute(
+                select(Task.id).where(
+                    Task.id != claim.db_id,
+                    Task.status == TaskStatus.RUNNING,
+                    cast(Task.payload["content_id"], String) == str(content_id),
+                ).limit(1)
+            )).first() is not None
+            if (
+                content is not None
+                and content.deleted_at is None
+                and content.status != ContentStatus.PARSE_SUCCESS
+                and not other_running
+            ):
+                self._apply_parse_error(content, error)
+            changed = await task_queue.mark_failed(claim, reason=reason, session=session)
+            if changed:
+                await session.commit()
+            else:
+                await session.rollback()
+            return changed
 
-    async def _record_parse_error(self, session, content, error) -> None:
-        """Record content failure; queue settlement is owned by the caller."""
-        logger.error(f"处理任务失败: content_id={content.id}, 错误: {error}")
-        
-        # 更新数据库中的失败状态
+    @staticmethod
+    def _apply_parse_error(content: Content, error: Exception) -> None:
         content.status = ContentStatus.PARSE_FAILED
         content.failure_count = (content.failure_count or 0) + 1
         content.last_error = str(error)
         content.last_error_type = type(error).__name__
+        content.last_error_detail = {"message": str(error)}
+        content.last_error_at = utcnow()
+
+    async def _record_parse_error(self, session, content_id: int, error) -> None:
+        """Record content failure; queue settlement is owned by the caller."""
+        logger.error(f"处理任务失败: content_id={content_id}, 错误: {error}")
+
+        await session.rollback()
+        await session.execute(update(Content).where(
+            Content.id == content_id,
+        ).values(id=Content.id))
+        content = await session.get(Content, content_id)
+        if content is None or content.deleted_at is not None or content.status == ContentStatus.PARSE_SUCCESS:
+            return
+        self._apply_parse_error(content, error)
         content.last_error_detail = {
             "message": str(error),
             "traceback": traceback.format_exc(limit=50),
         }
-        content.last_error_at = utcnow()
         await session.commit()
 
         try:
@@ -758,98 +850,6 @@ class ContentParser:
                     v_url = v.get("url") or (f"local://{v['key']}" if v.get("key") else None)
                     if v_url and v_url not in parsed.media_urls:
                         parsed.media_urls.append(v_url)
-
-    async def _handle_archived_media_fix(self, session: AsyncSession, content: Content):
-        """补处理归档媒体（针对已解析但未归档的情况）"""
-        archive_config = await ConfigService().get_archive_media_config()
-        if not archive_config.enabled:
-            return
-
-        meta = content.archive_metadata
-        archive = self._extract_archive_blob(meta)
-        images = archive.get("images") if isinstance(archive, dict) else None
-        videos = archive.get("videos") if isinstance(archive, dict) else None
-
-        def _has_unstored_media(items: Any) -> bool:
-            return isinstance(items, list) and any(
-                isinstance(item, dict)
-                and item.get("url")
-                and not item.get("stored_key")
-                for item in items
-            )
-
-        need_images = archive_config.images_enabled and _has_unstored_media(images)
-        need_videos = archive_config.videos_enabled and _has_unstored_media(videos)
-        need_media = need_images or need_videos
-
-        need_reference_fix = False
-        if isinstance(archive, dict):
-            url_mapping = self._build_stored_image_mapping(archive)
-            if url_mapping:
-                if self._rewrite_text_with_mapping(content.body, url_mapping) != content.body:
-                    need_reference_fix = True
-                elif self._map_url_with_mapping(content.cover_url, url_mapping):
-                    need_reference_fix = True
-                elif self._map_url_with_mapping(content.author_avatar_url, url_mapping):
-                    need_reference_fix = True
-                elif isinstance(content.media_urls, list) and any(
-                    self._map_url_with_mapping(u, url_mapping) for u in content.media_urls
-                ):
-                    need_reference_fix = True
-
-        if need_media or need_reference_fix:
-            if need_media:
-                media_types = "图片和视频" if need_images and need_videos else "图片" if need_images else "视频"
-                logger.info("内容已解析完成，但存在未处理{}；开始补处理归档媒体", media_types)
-            else:
-                logger.info("内容已解析完成，检测到历史远程引用；开始回写本地映射")
-            try:
-                @dataclass
-                class _ParsedLike:
-                    # 保持与 _maybe_process_private_archive_media 依赖字段一致，
-                    # 避免后续扩展时因 mock 字段缺失引发隐藏错误。
-                    archive_metadata: Dict[str, Any]
-                    rich_payload: Optional[Dict[str, Any]] = None
-                    cover_url: Optional[str] = None
-                    media_urls: list[str] = field(default_factory=list)
-                    body: Optional[str] = None
-                    author_avatar_url: Optional[str] = None
-
-                parsed_like = _ParsedLike(
-                    archive_metadata=meta,
-                    rich_payload=content.rich_payload if isinstance(content.rich_payload, dict) else None,
-                    cover_url=content.cover_url,
-                    media_urls=list(content.media_urls) if isinstance(content.media_urls, list) else [],
-                    body=content.body,
-                    author_avatar_url=content.author_avatar_url,
-                )
-                if need_media:
-                    await self._maybe_process_private_archive_media(parsed_like)
-                else:
-                    self._apply_stored_mapping_to_record(parsed_like, archive)
-                
-                content.archive_metadata = meta
-                flag_modified(content, "archive_metadata")
-                if parsed_like.body:
-                    content.body = parsed_like.body
-                if parsed_like.cover_url:
-                    content.cover_url = parsed_like.cover_url
-                if parsed_like.author_avatar_url:
-                    content.author_avatar_url = parsed_like.author_avatar_url
-                if isinstance(parsed_like.rich_payload, dict):
-                    # 需要新对象触发 ORM 脏检查，避免 JSON 原地修改不落库。
-                    content.rich_payload = copy.deepcopy(parsed_like.rich_payload)
-                    flag_modified(content, "rich_payload")
-                if parsed_like.media_urls:
-                    content.media_urls = sanitize_media_urls(
-                        parsed_like.media_urls,
-                        author_avatar_url=parsed_like.author_avatar_url or content.author_avatar_url,
-                    )
-                    
-                await session.commit()
-                logger.info("补处理归档媒体完成")
-            except Exception as e:
-                logger.warning("补处理归档媒体失败，跳过: {}", f"{type(e).__name__}: {e}")
 
     async def retry_parse(
         self,
