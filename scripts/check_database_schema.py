@@ -5,7 +5,6 @@ import asyncio
 import json
 import os
 import sys
-import tempfile
 from pathlib import Path
 
 
@@ -19,20 +18,12 @@ async def _run() -> int:
     parser.add_argument(
         "--db",
         type=Path,
-        default=None,
-        help="SQLite DB path to validate. Defaults to a temporary fresh DB.",
+        default=os.environ.get("VAULTSTREAM_TEST_DB", str(BACKEND_ROOT / ".test-runtime" / "regression.db")),
+        help="Test SQLite path to upgrade and validate; defaults to the reusable regression database.",
     )
     args = parser.parse_args()
 
-    temp_dir: tempfile.TemporaryDirectory[str] | None = None
-    if args.db is None:
-        temp_dir = tempfile.TemporaryDirectory()
-        db_path = Path(temp_dir.name) / "schema_gate.sqlite"
-    else:
-        db_path = args.db.resolve()
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-
-    os.environ["SQLITE_DB_PATH"] = str(db_path)
+    os.environ["SQLITE_DB_PATH"] = str(args.db.resolve())
 
     from app.core.database import init_db
     from app.core.db_adapter import engine
@@ -46,8 +37,6 @@ async def _run() -> int:
         return 0 if result["status"] == "ok" else 1
     finally:
         await engine.dispose()
-        if temp_dir is not None:
-            temp_dir.cleanup()
 
 
 if __name__ == "__main__":

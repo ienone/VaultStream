@@ -12,7 +12,7 @@ active
 - Digest task: `backend/app/tasks/notification_digest.py`
 - Router: `backend/app/routers/notifications.py`
 - Schema: `backend/app/schemas/notifications.py`
-- Migration: `backend/migrations/m31_notification_inbox.py`
+- Migrations: `backend/migrations/versions/`，不再执行旧账本消息回填。
 
 ## 当前职责
 

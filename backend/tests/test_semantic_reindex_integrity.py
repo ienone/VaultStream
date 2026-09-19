@@ -27,17 +27,14 @@ async def test_reindex_removes_old_chunks_without_touching_other_content(db_sess
     assert await db_session.scalar(select(ContentEmbedding.id).where(ContentEmbedding.content_id == other.id)) is not None
 
 
-async def test_remote_embedding_wait_does_not_hold_sqlite_writer_lock(tmp_path, monkeypatch):
+async def test_remote_embedding_wait_does_not_hold_sqlite_writer_lock(db_session, monkeypatch):
     from sqlalchemy import update
     from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-    from app.models import Base
     from app.services import embedding_service as module
 
-    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "concurrent.db"}', connect_args={'timeout': 0.1})
+    engine = create_async_engine(db_session.bind.url, connect_args={'timeout': 0.1})
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     try:
-        async with engine.begin() as connection:
-            await connection.run_sync(Base.metadata.create_all)
         async with sessions() as session:
             content = Content(url='https://example.com/slow-index', platform=Platform.UNIVERSAL,
                 status=ContentStatus.PARSE_SUCCESS, body='简介', rich_payload={'chunks': [{'content': '字幕'}]})

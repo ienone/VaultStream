@@ -20,6 +20,9 @@ class ContentEmbedding(Base):
         Index("ix_content_embeddings_content_chunk", "content_id", "chunk_index"),
         Index("ix_content_embeddings_indexed_at", "indexed_at"),
         Index("ix_content_embeddings_model", "embedding_model"),
+        Index("ix_content_embeddings_signature", "embedding_model_signature"),
+        Index("ix_content_embeddings_status", "index_status"),
+        Index("ix_content_embeddings_attempted_at", "last_attempted_at"),
     )
 
 
@@ -34,11 +37,11 @@ class ContentEmbedding(Base):
     chunk_title: Mapped[Optional[str]] = mapped_column(Text, default=None)
 
     embedding_model: Mapped[str] = mapped_column(String(200), default="gemini-embedding-2")
-    embedding_model_signature: Mapped[Optional[str]] = mapped_column(String(240), default=None, index=True)
+    embedding_model_signature: Mapped[Optional[str]] = mapped_column(String(240), default=None)
     embedding: Mapped[Any] = mapped_column(JSON, default=list)
     text_hash: Mapped[Optional[str]] = mapped_column(String(64), default=None)
     source_text: Mapped[Optional[str]] = mapped_column(Text, default=None)
-    index_status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    index_status: Mapped[str] = mapped_column(String(40), default="pending")
     failure_reason: Mapped[Optional[str]] = mapped_column(Text, default=None)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     last_attempted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)

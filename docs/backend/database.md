@@ -16,10 +16,9 @@ active
 ## 事实优先级
 
 1. `backend/app/models/` 中的当前 ORM 模型。
-2. `backend/app/core/database.py` 创建的运行期 SQLite 结构，例如 FTS5、触发器和兼容补列。
+2. `backend/app/core/database.py` 中的 FTS5、触发器与 SSE 初始结构，以及 `backend/migrations/versions/` 中的后续增量迁移。
 3. 可重复执行的 schema/完整性检查结果。
 4. 本文档。
-5. 历史数据库和旧迁移记录。
 
 文档与代码不一致时必须更新文档或创建 issue，不能让调用方兼容多个猜测结构。
 
@@ -34,20 +33,24 @@ active
 | Bot | `bot_configs`、`bot_chats`、`bot_runtime` |
 | Agent | `agent_sessions`、`agent_messages`、`agent_runs`、`agent_tool_calls`、`agent_confirmations`、`agent_context_summaries` |
 | 知识事件 | `knowledge_events`、`knowledge_event_members` |
-| 运行期门禁 | `schema_metadata`、FTS5 表与触发器、兼容补列及关键索引 |
+| 迁移与事件 | `alembic_version`、`realtime_events`、FTS5 表与触发器 |
 
 ## 初始化与升级边界
 
-应用启动通过 SQLAlchemy metadata 创建 ORM 表，并在数据库初始化代码中处理当前运行所需结构。历史迁移脚本不是新环境的基线，也不应在本文中列为手动必跑步骤。
+`init_db()` 对空库使用 SQLAlchemy `Base.metadata.create_all()` 创建当前 ORM 结构，补充 FTS/SSE 后执行 Alembic `stamp head`；已有 Alembic 库只执行 `upgrade head`。不保存重复的全量结构快照，目前尚无增量 revision，版本处于 Alembic `base`。
 
-`ensure_schema_metadata()` 只保证运行期元数据表存在，不代表某个迁移已完成。历史迁移必须在自身结构变更成功后用 `record_schema_version()` 显式记录对应版本；该写入不会把较新的库降级。当前启动流程完成 ORM 建表、兼容补齐和 FTS 初始化后，先检查完整性、外键、关键表/列/索引及 FTS，再决定是否把版本推进到当前值。版本号本身不能替代结构检查。
+当前历史数据库均为测试数据，不支持旧 `schema_metadata` 库的自动接管或历史数据转换。旧测试库须清空重建；应用不会自动清库，也不会对已有业务表执行 `create_all()` 或 `stamp head` 冒充升级。
 
-升级早期数据库前必须：
+新库由应用启动的 `init_db()` 初始化，也可运行 `scripts/check_database_schema.py --db 路径`。以下 Alembic 命令用于已初始化的库；在仓库根目录使用根虚拟环境，`SQLITE_DB_PATH` 选择目标库：
 
-- 备份数据库及配套媒体。
-- 对比目标 ORM 与实际 schema。
-- 为该版本建立独立、可验证的迁移计划。
-- 执行完整性、外键、索引和核心查询验证。
+```sh
+.venv/bin/python -m alembic -c backend/alembic.ini upgrade head
+.venv/bin/python -m alembic -c backend/alembic.ini current
+.venv/bin/python -m alembic -c backend/alembic.ini check
+.venv/bin/python -m alembic -c backend/alembic.ini revision --autogenerate -m "变更说明"
+```
+
+修改模型后生成并审阅新 revision，再执行升级。SQLite 结构变更使用 Alembic batch；FTS/SSE 不属于 ORM 自动生成范围，变更时同步更新新库初始化定义及已有库的增量 revision。Docker 镜像包含同一配置与迁移目录。
 
 ## 验证
 
@@ -59,6 +62,6 @@ active
 - `contents` 与 FTS 索引的一致性。
 - 分发队列领取、重试和唯一性查询计划。
 - Agent context summary 等外键列的索引检查。
-- `schema_metadata.schema_version` 与当前要求的版本比较。
+- Alembic 当前 revision 与迁移目录 head 比较。
 
-当前 schema gate 版本为 33，并以 manifest 检查内容编辑/语义索引、任务账本、消息盒子、知识事件、播放书签和 Agent 上下文摘要的关键结构。仓库实验数据库仍需同时通过完整性、外键与 FTS 一致性检查。原先由启动过程自我提升版本的问题已[归档](../issues/archive/README.md)。
+健康检查只读，使用 SQLAlchemy Inspector 检查实际表、列和索引，FTS 与 SQLite 完整性单独检查。`scripts/check_database_schema.py --db 路径` 对指定测试库执行升级和检查；默认复用 `backend/.test-runtime/regression.db`，不创建随机临时数据库。

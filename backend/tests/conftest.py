@@ -1,20 +1,19 @@
 """Small regressions use the real SQLite engine and ASGI app, with no workers."""
 import os
-import tempfile
 from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from loguru import logger
+from sqlalchemy import delete, text
 
 # Set paths before importing the app; never point regression writes at user data.
-_runtime_parent = Path(__file__).resolve().parents[1] / '.test-runtime'
-_runtime_parent.mkdir(exist_ok=True)
-_runtime = tempfile.TemporaryDirectory(prefix='regression-', dir=_runtime_parent)
+_runtime = Path(__file__).resolve().parents[1] / '.test-runtime'
+_runtime.mkdir(exist_ok=True)
 os.environ.update({
-    'SQLITE_DB_PATH': str(Path(_runtime.name) / 'vaultstream.db'),
-    'STORAGE_LOCAL_ROOT': str(Path(_runtime.name) / 'storage'),
-    'VAULTSTREAM_LOG_DIR': str(Path(_runtime.name) / 'logs'),
+    'SQLITE_DB_PATH': os.environ.get('VAULTSTREAM_TEST_DB', str(_runtime / 'regression.db')),
+    'STORAGE_LOCAL_ROOT': str(_runtime / 'storage'),
+    'VAULTSTREAM_LOG_DIR': str(_runtime / 'logs'),
     'API_TOKEN': 'regression-control-token',
     'MEDIA_SIGNING_SECRET': 'regression-media-secret',
     'ENABLE_AUTO_SUMMARY': 'false',
@@ -22,24 +21,24 @@ os.environ.update({
     'ENABLE_ARCHIVE_MEDIA_PROCESSING': 'false',
 })
 
-from app.core.database import ensure_content_embeddings_schema, ensure_content_fts
+from app.core.database import init_db
 from app.core.db_adapter import AsyncSessionLocal, engine
 from app.main import app
-from app.core.events import EventBus
 from app.models import Base
 
 
 @pytest.fixture(scope='session', autouse=True)
 async def database():
+    await init_db()
+    # Reuse one test database, clearing previous test rows rather than creating
+    # another timestamped SQLite file for every invocation.
     async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-        await ensure_content_embeddings_schema(connection)
-        await ensure_content_fts(connection)
-    await EventBus._ensure_event_table()
+        for table in reversed(Base.metadata.sorted_tables):
+            await connection.execute(delete(table))
+        await connection.execute(text('DELETE FROM realtime_events'))
     yield
     await engine.dispose()
     logger.remove()
-    _runtime.cleanup()
 
 
 @pytest.fixture

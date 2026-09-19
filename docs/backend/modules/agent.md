@@ -84,10 +84,6 @@ Agent service 构建上下文消息，注册内置工具，运行模型，记录
 确认执行通过数据库 pending 条件更新领取，批准/拒绝/取消相互排斥。批准后先提交工具与 run 的 running 状态再调用副作用；执行中崩溃不会自动重放已领取确认。通用 bridge 拒绝点段、百分号编码、重复斜杠、内嵌 query/fragment 与反斜杠，query 必须通过独立参数传入。
 
 
-## 历史工具消息格式迁移
-
-`init_db` 用 `_migration:agent_tool_message_payload` 标记一次迁移：工具消息中的旧 JSON 或纯文本转入统一 payload，保留原 content 和已有 result/error。前端只解释 payload，已删除 JSON 字符串与纯文本的运行时多路径。此前真实 SQLite 验收确认迁移保留数据且再次执行不改变消息；该一次性验收测试已在后续精简中删除。
-
 ## 同一轮工具并发与失败事务（2026-09-10）
 
 真实 DeepSeek 一轮产生多个检索调用时，LangGraph 会并发调度。工具共享该轮 AsyncSession，因此工具包装器按轮次串行执行完整工具数据库操作，避免并发 flush。开始调用模型前先提交 run 和用户消息；数据库事务失败后先 rollback、重新读取已持久化 run，再保存失败状态，避免错误处理中再次触发 PendingRollbackError。不同运行不共用此锁。

@@ -47,7 +47,6 @@ class EventBus:
         if cls._running:
             return
 
-        await cls._ensure_event_table()
         await cls._init_last_seen_event_id()
 
         cls._running = True
@@ -168,23 +167,6 @@ class EventBus:
             logger.debug(
                 f"已向 {len(subscribers) - len(failed_queues)} 个订阅者发布事件 '{message.get('event')}' ({elapsed_ms:.1f}ms)"
             )
-
-    @classmethod
-    async def _ensure_event_table(cls) -> None:
-        async with AsyncSessionLocal() as session:
-            await session.execute(text("""
-                CREATE TABLE IF NOT EXISTS realtime_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_type VARCHAR(100) NOT NULL,
-                    payload TEXT NOT NULL,
-                    source_instance VARCHAR(64) NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """))
-            await session.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_realtime_events_created_at ON realtime_events(created_at)"
-            ))
-            await session.commit()
 
     @classmethod
     async def _init_last_seen_event_id(cls) -> None:

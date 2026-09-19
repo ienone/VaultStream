@@ -51,8 +51,8 @@ class BackgroundTaskRun(Base):
     )
 
     run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    task: Mapped[str] = mapped_column(String(100), index=True)
-    status: Mapped[str] = mapped_column(String(32), index=True)
+    task: Mapped[str] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(32))
     started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
     error: Mapped[Optional[str]] = mapped_column(Text, default=None)

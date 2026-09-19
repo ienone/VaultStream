@@ -36,6 +36,8 @@ RUN pip install --no-cache-dir --upgrade pip \
 # 复制项目代码
 COPY app /app/app
 COPY systemd /app/systemd
+COPY alembic.ini /app/alembic.ini
+COPY migrations /app/migrations
 
 # 创建运行用户和数据目录
 RUN groupadd --system vaultstream \
