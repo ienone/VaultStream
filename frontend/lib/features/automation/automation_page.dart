@@ -228,7 +228,7 @@ class _AutomationPageState extends ConsumerState<AutomationPage> {
             ? const [RootPageActions()]
             : null,
         leading: _section == _AutomationSection.overview
-            ? null
+            ? buildRootPageLeading(context)
             : const AppBackButton(fallback: '/automation'),
       ),
       body: _buildSectionBody(),

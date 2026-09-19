@@ -239,6 +239,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           );
     return Scaffold(
       appBar: AppBar(
+        leading: buildRootPageLeading(context),
         toolbarHeight: metrics.heightClass.isCompact ? 48 : null,
         title: const Text('动态'),
         actions: [
