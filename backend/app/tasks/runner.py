@@ -6,7 +6,7 @@
 import asyncio
 from app.core.logging import logger, ensure_task_id
 from app.core.queue import task_queue
-from app.core.queue_adapter import ClaimedTask
+from app.models import Task
 from app.services.background_task_state import (
     record_task_error,
     record_task_started,
@@ -58,7 +58,7 @@ class TaskWorker:
         self.running = False
         logger.info("Task worker stopped")
     
-    async def process_task(self, claimed_task: ClaimedTask):
+    async def process_task(self, claimed_task: Task):
         """
         处理单个任务
         
@@ -83,10 +83,10 @@ class TaskWorker:
             claimed_task=claimed_task,
         )
 
-    async def retry_parse(self, content_id: int, max_retries: int = 3, force: bool = False):
+    async def retry_parse(self, content_id: int, force: bool = False):
         """
         手动触发重试解析 (代理到 Parser)
         
         这是给 API 调用的便捷方法
         """
-        return await self.parser.retry_parse(content_id, max_retries=max_retries, force=force)
+        return await self.parser.retry_parse(content_id, force=force)

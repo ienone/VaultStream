@@ -330,9 +330,6 @@ class FailedParseTask {
   const FailedParseTask({
     required this.id,
     required this.taskType,
-    required this.retryCount,
-    required this.maxRetries,
-    required this.retryable,
     this.contentId,
     this.lastError,
   });
@@ -342,9 +339,6 @@ class FailedParseTask {
       id: (json['id'] as num?)?.toInt() ?? 0,
       taskType: json['task_type']?.toString() ?? '',
       contentId: (json['content_id'] as num?)?.toInt(),
-      retryCount: (json['retry_count'] as num?)?.toInt() ?? 0,
-      maxRetries: (json['max_retries'] as num?)?.toInt() ?? 0,
-      retryable: json['retryable'] == true,
       lastError: json['last_error']?.toString(),
     );
   }
@@ -352,9 +346,6 @@ class FailedParseTask {
   final int id;
   final String taskType;
   final int? contentId;
-  final int retryCount;
-  final int maxRetries;
-  final bool retryable;
   final String? lastError;
 }
 

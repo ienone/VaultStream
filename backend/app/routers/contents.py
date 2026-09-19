@@ -666,7 +666,7 @@ async def _run_reparse_job(content_id: int, run_id: str, *, force: bool) -> None
         await record_task_run_error(
             "content_reparse",
             run_id,
-            "Re-parse failed or reached retry limit",
+            "Re-parse failed",
             content_id=content_id,
             force=force,
         )
@@ -1168,7 +1168,6 @@ async def delete_content(
 @router.post("/contents/{content_id}/retry", response_model=ContentRetryResponse)
 async def retry_content(
     content_id: int,
-    max_retries: int = 3,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
@@ -1180,10 +1179,10 @@ async def retry_content(
         if not content:
             raise HTTPException(status_code=404, detail="内容不存在")
 
-        ok = await worker.retry_parse(content_id, max_retries=max_retries)
+        ok = await worker.retry_parse(content_id)
 
         if not ok:
-            raise HTTPException(status_code=500, detail="重试失败或达到最大重试次数")
+            raise HTTPException(status_code=500, detail="重新解析失败")
 
         await db.refresh(content)
         return {"success": True, "content_id": content_id, "status": content.status}

@@ -31,7 +31,7 @@ active
 
 ## 后处理动作
 
-- `POST /api/v1/contents/{content_id}/retry` 同步执行解析重试，成功时返回内容最新状态；它不是后台受理 contract。
+- `POST /api/v1/contents/{content_id}/retry` 同步重新解析一次，成功时返回内容最新状态；不再接受执行预算 `max_retries`，也不是后台受理 contract。
 - `POST /api/v1/contents/{content_id}/re-parse` 创建可观察 run 并调度后台重新解析，`ContentReparseAcceptedResponse` 的 `processing` 只表示已受理。人工修订字段不会被解析器静默覆盖；差异写入详情的 `parse_candidate.fields`，并保留最新候选时间。
 - `POST /api/v1/contents/{content_id}/generate-summary` 在响应前完成摘要生成并结算 run，返回摘要与 `run_id`。
 - `POST /api/v1/contents/{content_id}/patrol-score` 在响应前完成评分并结算 run，仅适用于发现流内容；非发现流内容返回业务错误。

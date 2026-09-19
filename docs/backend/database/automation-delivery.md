@@ -12,7 +12,7 @@ active
 
 ## 系统与任务
 
-- `tasks` 保存解析等持久化任务的类型、载荷、状态、优先级、重试与时间戳。
+- `tasks` 保存一次性解析任务的类型、载荷、状态、优先级与时间戳；不再保存重领世代和重试预算。
 - `system_settings` 以 key 和 JSON value 保存持久化配置，并记录分类、说明和更新时间。
 - `background_task_runs` 以全局 `run_id` 保存一次可观察运行；`notification_messages` 保存从可靠运行结果产生的去重消息和用户已读、静默、稍后、移除状态。
 

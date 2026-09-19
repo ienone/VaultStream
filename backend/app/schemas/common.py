@@ -72,9 +72,6 @@ class FailedParseTaskResponse(BaseModel):
     id: int
     task_type: str
     content_id: Optional[int] = None
-    retry_count: int
-    max_retries: int
-    retryable: bool
     last_error: Optional[str] = None
     created_at: OptionalUtcDatetime
     started_at: OptionalUtcDatetime

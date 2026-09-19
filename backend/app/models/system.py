@@ -21,8 +21,6 @@ class Task(Base):
     payload: Mapped[Any] = mapped_column(JSON)  # {"content_id": 123}
     status: Mapped[Optional[TaskStatus]] = mapped_column(SQLEnum(TaskStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=TaskStatus.PENDING, index=True)
     priority: Mapped[int] = mapped_column(Integer, default=0, index=True)
-    retry_count: Mapped[int] = mapped_column(Integer, default=0)
-    max_retries: Mapped[int] = mapped_column(Integer, default=3)
     last_error: Mapped[Optional[str]] = mapped_column(Text, default=None)
     
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, index=True)

@@ -173,10 +173,6 @@ class SystemDiagnosticsService:
                         if content_id_raw is not None
                         else None
                     ),
-                    "retry_count": task.retry_count or 0,
-                    "max_retries": task.max_retries or 0,
-                    "retryable": (task.retry_count or 0)
-                    < (task.max_retries or 0),
                     "last_error": task.last_error,
                     "created_at": task.created_at,
                     "started_at": task.started_at,
