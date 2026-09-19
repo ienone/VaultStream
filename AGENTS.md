@@ -50,7 +50,7 @@ VaultStream 分为 Python 后端和 Flutter 前端：
 - 前端检查：`cd frontend && flutter analyze && flutter test`
 - Docker 服务栈：`cd backend && docker compose up -d`
 
-在 Codex 或其他受限沙盒环境中，任何 `flutter` 或 `dart` 命令都必须申请提权并在沙盒外执行，不要在默认沙盒中直接运行。这包括但不限于 `flutter pub get`、`flutter analyze`、`flutter test`、`flutter run`、`dart run build_runner ...`。如果无法提权运行，必须在结果中明确说明未验证。
+在 Codex 或其他受限沙盒环境中，任何 `flutter` 或 `dart` 命令都必须申请提权并在沙盒外执行，不要在默认沙盒中直接运行。这包括但不限于 `flutter pub get`、`flutter analyze`、`flutter test`、`flutter run`、`dart run build_runner ...`。如果无法提权运行，必须在结果中明确说明未验证。本机非沙盒 Amp CLI 可直接执行；沙盒外执行不等于 sudo
 
 ## 编码风格与命名约定
 
