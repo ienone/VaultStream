@@ -2,6 +2,8 @@
 
 2026-09-13 开始调查，2026-09-14 汇总。本文保留判定依据，不另立产品方案；结论与实施次序见[整体改进方案](../../plans/2026-09-14-product-architecture-review.plan.md)，目标体验与语义分别回到已修订的[前端原方案](../../plans/2026-06-10-frontend-information-architecture-redesign.plan.md)和[系统构想](../../plans/2026-07-15-vaultstream-system-concept.plan.md)。
 
+下文是审查时的代码与运行快照，不作为当前实现清单。三个失败探针对应的 P0 缺口已完成本地修复，后续状态以[持续处理问题](../../issues/2026-09-14-continuous-processing-integrity.md)和[实施进度](../../plans/2026-09-14-product-architecture-review.process.md)为准；当前前后端契约见各模块文档。
+
 ## 基线与证据强度
 
 - 代码基线：[b98815ba](https://github.com/ienone/VaultStream/commit/b98815ba1842414f43036d58bb27bb8359d84ade) 加审查时已有的未提交变更，含五平台收藏、会话刷新、TG 媒体/增量与自动聚合；不当作已发布版本。本轮未修改这些业务代码，也未撤销已有文档整理和截图删除。
@@ -116,7 +118,7 @@
 | 超时发送中状态不能永久悬挂 | 可用目标的 PROCESSING，过期锁及 dead-worker；新 worker._claim_items | 空领取且仍 PROCESSING，预期断言失败 |
 | 事件成员证据不受候选 TTL 独立删除 | 两个过期 VISIBLE SOURCE + 一个 REPORT；真实 hard_delete 清理 | 只剩 report 关系，预期断言失败 |
 
-最终临时运行结果为 **3 failed in 1.26s**；没有把失败视为通过，没有削弱断言。复现字段、根因、正常取消与硬中断的区别、发送结果未知边界及关闭条件详见[持续处理完整性问题](../../issues/2026-09-14-continuous-processing-integrity.md)。临时脚本已删除，问题未修；后续修复应将这些数据完整性/外部副作用场景转为有意义的长期回归。
+审查时临时运行结果为 **3 failed**；没有把失败视为通过或削弱断言。临时脚本已删除，后续修复及保留回归见[持续处理完整性问题](../../issues/2026-09-14-continuous-processing-integrity.md)，本文只保留修复前复现。
 
 <a id="e8"></a>
 ## E8 · 后端收敛要按真实调用者，不按名字删复杂代码
@@ -159,12 +161,12 @@
 
 借鉴到任务路径就是：连接一次后持续接入，从上次读/播的位置继续，自动判断有局部状态与人工覆盖，不要求用户去另一个后台页面才能理解结果。颜色、圆角和 hover 只是承载这些关系的形式。
 
-## 本轮验证结果与未做事项
+## 原始审查阶段的验证边界
 
 | 检查 | 结果与边界 |
 | --- | --- |
-| 根虚拟环境 `python -m pytest backend/tests -q -m "not integration"` | **160 passed in 5.64s**，临时探针移除后的现有长期回归；不是功能完成率 |
-| 三个针对中断/证据保留的临时探针 | **3 failed**，真实失败见 E7；本轮没有修复或隐藏这些缺口 |
+| 根虚拟环境 `python -m pytest backend/tests -q -m "not integration"` | 当时 **160 passed**，但未覆盖 E7 的三个缺口；不是当前测试数量或功能完成率 |
+| 三个针对中断/证据保留的临时探针 | 修复前 **3 failed**，复现见 E7；后续修复不改写原始观察 |
 | 运行 UI | 合成数据的入口、来源分区与菜单操作；复用旧构建，不包括较新账号/聚合控制面的重新视觉验收 |
 | 文档与素材 | 修改范围的本地链接、锚点、代码行号范围和引用图片解码检查通过；`git diff --check` 通过。这些检查不替代调用链与图像内容审查 |
 | Flutter analyze/test/build | **本轮未运行**：仓库要求沙盒外提权，此会话没有提权执行通道；没有将旧记录写成本轮验证 |

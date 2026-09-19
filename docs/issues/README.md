@@ -5,7 +5,7 @@
 - [交互问题](2026-09-07-interaction-failures.md)
 - [真实场景验收与剩余边界](2026-09-10-real-world-acceptance.md)
 - [分发队列日期显示](2026-09-13-ui-queue-date.md)
-- [持续处理接续与事件证据保留](2026-09-14-continuous-processing-integrity.md)：本轮隔离复现的解析、分发中断与候选清理问题，尚未修复。
+- [持续处理接续与事件证据保留](2026-09-14-continuous-processing-integrity.md)：P0 的解析/分发租约、未知结果核对与 TTL 保护已本地修复；继续跟踪耐久后处理、稳定证据版本和主动擦除边界。
 - [后端 CI 环境可复现性](backend-ci-environment-reproducibility.md)
 - [仓库审计](repository-audit.md)
 
