@@ -581,16 +581,18 @@ async def test_source_quality(
     )
     started = time.perf_counter()
     try:
-        scraper = DiscoverySyncTask()._get_scraper(source)
-        if scraper is None:
-            raise RuntimeError(f"Unsupported discovery source kind: {_source_kind_value(source.kind)}")
-
-        items, new_cursor = await scraper.fetch(last_cursor=None)
+        if (source.config or {}).get("transport") == "mtproto":
+            if not request.app.state.periodic_tasks_started:
+                raise ValueError("当前进程不承担账号读取")
+            items, new_cursor = await request.app.state.telegram_account_sync_task.preview(source)
+            samples = items[:_SOURCE_TEST_SAMPLE_LIMIT]
+        else:
+            scraper = DiscoverySyncTask()._get_scraper(source)
+            if scraper is None:
+                raise RuntimeError(f"Unsupported discovery source kind: {_source_kind_value(source.kind)}")
+            items, new_cursor = await scraper.fetch(last_cursor=None)
+            samples = [_serialize_source_test_item(item) for item in items[:_SOURCE_TEST_SAMPLE_LIMIT]]
         elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
-        samples = [
-            _serialize_source_test_item(item)
-            for item in items[:_SOURCE_TEST_SAMPLE_LIMIT]
-        ]
         payload = {
             "source_id": source.id,
             "source_name": source.name,

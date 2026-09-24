@@ -49,6 +49,31 @@ class TelegramAccountSyncTask:
                 self._running.cancel()
                 await asyncio.gather(self._running, return_exceptions=True)
 
+    async def preview(self, source):
+        from app.adapters.telegram_account import TelegramAccountReader
+        from telethon import utils
+        async with self._start_lock:
+            if self.running or self.login.active:
+                raise ValueError("Telegram 同步或登录正在进行")
+            client = create_account_client()
+            try:
+                async with asyncio.timeout(30):
+                    await client.connect()
+                    me = await client.get_me()
+                    if me is None or me.bot or me.id != source.config["account_id"]:
+                        raise ValueError("请连接该来源所属的 Telegram 账号")
+                    posts, cursor = await TelegramAccountReader(client).read_page(source.config["peer_id"], after=None, limit=20)
+                    peer_id, _ = utils.resolve_id(source.config["peer_id"])
+                    prefix = source.config.get("username") or f"c/{peer_id}"
+                    samples = [{"url": f"https://t.me/{prefix}/{post.address.message_id}",
+                                "title": post.body[:160] or None, "author": source.name,
+                                "published_at": post.messages[0].date.isoformat(), "tag_count": 0,
+                                "media_count": sum(bool(m.photo or m.document) for m in post.messages)}
+                               for post in posts]
+                    return samples, cursor
+            finally:
+                await client.disconnect()
+
     async def start_login(self):
         async with self._start_lock:
             if self.running:
