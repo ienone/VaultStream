@@ -12,6 +12,7 @@ from app.core.events import event_bus
 from app.core.dependencies import require_api_token
 from app.core.api_errors import build_error_payload
 from app.core.time_utils import utcnow
+from app.utils.text_formatters import strip_markdown
 from app.core.config import settings
 from app.services.background_task_state import (
     record_task_run_error,
@@ -203,7 +204,7 @@ def _with_item_sources(schema, sources: dict[str, object]):
 def _feed_preview(content: Content, limit: int = 280) -> str | None:
     """Return a compact source-derived preview without pretending it is a summary."""
     raw = content.summary or content.body or ""
-    text_value = " ".join(str(raw).split()).strip()
+    text_value = " ".join(strip_markdown(str(raw)).split()).strip()
     if not text_value:
         return None
     if len(text_value) <= limit:

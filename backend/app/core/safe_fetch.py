@@ -41,7 +41,7 @@ def _is_disallowed_ip(raw_ip: str) -> bool:
     # Fake-IP ranges are commonly used by local proxy stacks. They are not
     # routable private targets, and blocking them breaks otherwise safe proxy use.
     fake_ipv4 = addr.ipv4_mapped if isinstance(addr, ipaddress.IPv6Address) else addr
-    if fake_ipv4.version == 4 and fake_ipv4 in ipaddress.ip_network("198.18.0.0/15"):
+    if isinstance(fake_ipv4, ipaddress.IPv4Address) and fake_ipv4 in ipaddress.ip_network("198.18.0.0/15"):
         return False
 
     return (
