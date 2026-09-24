@@ -120,3 +120,7 @@ PDF 读取只接受当前内容所属 document 资产的 ready original_archive/
 历史媒体补齐使用 `scripts/backfill_media_assets.py --db <数据库> --storage-root <媒体目录> --repair-media` 只读统计；加 `--apply` 后按归档开关入队，由现有 worker 执行，入队数量不代表完成数量。无资产的旧内容先使用同一脚本的普通 `--apply` 回填资产。
 
 图片代理复用媒体签名，签名绑定原始目标地址和有效期，不再维护 Origin/Referer 白名单。生成 manifest 和缓存命中不做 DNS 查询；实际下载继续执行地址及重定向 SSRF 校验。代理候选提供 expires_at，前端复用已有一次 manifest 刷新逻辑。
+
+## Telegram 原生媒体
+
+账号同步按 Telegram 媒体 ID 和类型复用资产，文字编辑不重复下载；缺少主文件或缩略图时补归档，同一变体键复用原数据库记录。关闭归档或超过限制的附件仍保留媒体身份，后续回查可按新策略补齐。远端确实换图时替换对应资产引用，旧文件由既有无引用回收处理；关闭归档不会删除已归档文件。未新增第二套 HTTP 媒体下载器。
