@@ -111,8 +111,7 @@ def _thumbnail_from_bytes(data: bytes) -> bytes | None:
 async def _store_thumbnail(storage: LocalStorageBackend, namespace: str, data: bytes) -> dict[str, Any]:
     digest = hashlib.sha256(data).hexdigest()
     key = _content_addressed_key(namespace, digest, "webp")
-    if not await storage.exists(key=key):
-        await storage.put_bytes(key=key, data=data, content_type="image/webp")
+    await storage.put_bytes(key=key, data=data, content_type="image/webp")
     with Image.open(BytesIO(data)) as image:
         width, height = image.size
     return {"thumb_key": key, "thumb_url": storage.get_url(key=key),
@@ -219,8 +218,7 @@ async def _store_download(
         info = {"content_type": mime}
     digest = hashlib.sha256(data).hexdigest()
     key = _content_addressed_key(namespace, digest, extension)
-    if not await storage.exists(key=key):
-        await storage.put_bytes(key=key, data=data, content_type=info["content_type"])
+    await storage.put_bytes(key=key, data=data, content_type=info["content_type"])
     result = {f"stored_{name}": value for name, value in info.items()}
     result.update(stored_key=key, stored_url=storage.get_url(key=key),
                   stored_sha256=digest, stored_size=len(data))

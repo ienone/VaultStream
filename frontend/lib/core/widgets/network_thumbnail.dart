@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../media/media_asset.dart';
+import '../media/asset_image_provider.dart';
 import '../media/media_manifest_client.dart';
 import '../media/media_source_session.dart';
 import '../network/api_client.dart';
@@ -86,15 +87,20 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
     if (asset == null || _refreshing || _session.automaticRefreshAttempted) {
       return;
     }
+    final session = _session;
+    final client = ref.read(apiClientProvider);
+    final scope = ref.read(mediaImageCacheScopeProvider);
     _session.markAutomaticRefreshAttempted();
     setState(() => _refreshing = true);
     try {
       final refreshed = await refreshMediaManifest(
-        ref.read(apiClientProvider),
+        client,
         assetId: asset.id,
         purpose: widget.purpose,
       );
-      if (!mounted || !_session.assets.any((item) => item.id == asset.id)) {
+      if (!mounted ||
+          !identical(_session, session) ||
+          !identical(ref.read(mediaImageCacheScopeProvider), scope)) {
         return;
       }
       setState(() {
@@ -103,7 +109,9 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
         _failure = null;
       });
     } catch (_) {
-      if (!mounted || !_session.assets.any((item) => item.id == asset.id)) {
+      if (!mounted ||
+          !identical(_session, session) ||
+          !identical(ref.read(mediaImageCacheScopeProvider), scope)) {
         return;
       }
       setState(() {
@@ -186,6 +194,9 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(mediaImageCacheScopeProvider, (_, _) {
+      setState(_resetResolver);
+    });
     final image = _buildImage(context);
     return SizedBox(
       width: widget.width,
@@ -220,17 +231,24 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
     }
     final imageUrl = source.url;
     final useFlutterNetworkImage = _session.assets.isNotEmpty;
+    final cacheScope = ref.watch(mediaImageCacheScopeProvider);
     final image = useFlutterNetworkImage
         // 资产来源需要捕获 HTTP 失败并刷新 manifest，因此使用 Flutter
         // 字节解码路径；裸 URL 只用于非资产化的普通公开图片。
-        ? Image.network(
-            imageUrl,
+        ? Image(
+            image: ResizeImage.resizeIfNeeded(
+              widget.maxWidthDiskCache,
+              widget.maxHeightDiskCache,
+              AssetImageProvider(
+                imageUrl,
+                cacheKey: source.cacheKey ?? imageUrl,
+                scope: cacheScope,
+              ),
+            ),
             key: ValueKey((imageUrl, _requestRevision)),
             width: widget.width,
             height: widget.height,
             fit: widget.fit,
-            cacheHeight: widget.maxHeightDiskCache,
-            cacheWidth: widget.maxWidthDiskCache,
             loadingBuilder: (context, child, progress) => progress == null
                 ? child
                 : _LoadingThumbnail(colorScheme: colorScheme),

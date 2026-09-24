@@ -149,6 +149,7 @@ def build_media_manifest(
         sources.append(
             MediaSource(
                 url=url,
+                cache_key=f"{asset.id}:{variant.id}:{variant.storage_key}",
                 source_kind=MediaSourceKind.LOCAL_SIGNED,
                 variant_id=variant.id,
                 variant_kind=variant.variant_kind,

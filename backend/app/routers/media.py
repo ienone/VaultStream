@@ -670,6 +670,7 @@ async def report_local_media_failure(
         elif asset.media_type.value != "image":
             outcome = "not_server_verifiable"
 
+    repair_queued = False
     if next_status is not None:
         variant.status = next_status
         has_other_ready_variant = any(
@@ -682,8 +683,11 @@ async def report_local_media_failure(
             asset.archive_status = MediaArchiveStatus.MISSING
         else:
             asset.archive_status = MediaArchiveStatus.FAILED
-        asset.repairable = True
+        asset.repairable = bool(asset.original_url)
         asset.last_error = f"{report.error_code.value}:variant:{variant.id}"
+        if asset.repairable:
+            from app.services.media_repair import enqueue_media_repair
+            repair_queued = await enqueue_media_repair(db, asset.content_id)
         await db.commit()
 
     return MediaLocalFailureResult(
@@ -693,6 +697,7 @@ async def report_local_media_failure(
         variant_status=variant.status,
         archive_status=asset.archive_status,
         repairable=asset.repairable,
+        repair_queued=repair_queued,
     )
 
 

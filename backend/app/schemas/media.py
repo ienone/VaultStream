@@ -30,6 +30,7 @@ class MediaSourceKind(str, Enum):
 
 class MediaSource(BaseModel):
     url: str
+    cache_key: Optional[str] = None
     source_kind: MediaSourceKind
     variant_id: Optional[int] = None
     variant_kind: Optional[MediaVariantKind] = None
@@ -128,3 +129,4 @@ class MediaLocalFailureResult(BaseModel):
     variant_status: MediaVariantStatus
     archive_status: MediaArchiveStatus
     repairable: bool
+    repair_queued: bool = False

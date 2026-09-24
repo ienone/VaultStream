@@ -28,6 +28,10 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Persist candidates. Without this flag the command is read-only.",
     )
+    parser.add_argument("--repair-media", action="store_true",
+                        help="Queue missing-media repair for existing assets, respecting archive settings.")
+    parser.add_argument("--storage-root", type=Path,
+                        help="Existing media storage directory (defaults to the database directory/storage).")
     return parser.parse_args()
 
 
@@ -37,7 +41,7 @@ async def _run() -> int:
     if not db_path.is_file():
         raise SystemExit(f"Database does not exist: {db_path}")
     os.environ["SQLITE_DB_PATH"] = str(db_path)
-    os.environ.setdefault("STORAGE_LOCAL_ROOT", str(BACKEND_ROOT / "data" / "storage"))
+    os.environ["STORAGE_LOCAL_ROOT"] = str((args.storage_root or db_path.parent / "storage").resolve())
 
     from app.adapters.storage import get_storage_backend
     from app.core.database import init_db
@@ -48,6 +52,24 @@ async def _run() -> int:
         if args.apply:
             await init_db()
         async with AsyncSessionLocal() as session:
+            if args.repair_media:
+                from sqlalchemy import select
+                from app.models import Content
+                from app.models.media import MediaAsset, MediaType
+                from app.services.media_repair import enqueue_media_repair
+                ids = list((await session.scalars(select(Content.id).join(MediaAsset).where(
+                    Content.deleted_at.is_(None), MediaAsset.original_url.is_not(None),
+                    MediaAsset.media_type.in_([MediaType.IMAGE, MediaType.VIDEO]),
+                ).distinct())).all())
+                queued = 0
+                if args.apply:
+                    for content_id in ids:
+                        queued += await enqueue_media_repair(session, content_id)
+                        await session.commit()
+                print(json.dumps({"mode": "apply" if args.apply else "dry_run",
+                                  "candidate_contents": len(ids), "queued_or_pending": queued,
+                                  "execution": "existing task worker; archive settings apply"}))
+                return 0
             report = await backfill_media_assets(
                 session,
                 get_storage_backend(),

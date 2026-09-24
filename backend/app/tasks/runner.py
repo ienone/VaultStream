@@ -62,6 +62,10 @@ class TaskWorker:
         Args:
             claimed_task: 已领取的数据库任务行及其外部 payload
         """
+        if claimed_task.task_type == "repair_media":
+            from app.services.media_repair import process_media_repair_task
+            await process_media_repair_task(claimed_task)
+            return
         task_data = claimed_task.payload
         content_id = task_data.get('content_id')
         task_id = ensure_task_id(task_data.get("task_id"))

@@ -411,10 +411,14 @@ async def replace_content_media_assets(
     storage: LocalStorageBackend,
     *,
     source: str,
+    media_types: set[MediaType] | None = None,
 ) -> list[MediaAsset]:
     candidates = build_media_candidates(content)
+    if media_types is not None:
+        candidates = [item for item in candidates if item.media_type in media_types]
     existing = list((await session.scalars(
         select(MediaAsset).where(MediaAsset.content_id == content.id)
+        .where(MediaAsset.media_type.in_(media_types) if media_types is not None else True)
         .options(selectinload(MediaAsset.variants))
     )).all())
     # Vacate positions before a cover change or reorder reuses existing IDs.

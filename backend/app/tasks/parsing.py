@@ -154,6 +154,8 @@ class ContentParser:
                 return skipped
 
             if not force and content.status == ContentStatus.PARSE_SUCCESS:
+                from app.services.media_repair import enqueue_media_repair
+                await enqueue_media_repair(session, content_id)
                 logger.info("内容已解析完成，跳过解析")
                 skipped = ParseExecutionResult(
                     found=True,

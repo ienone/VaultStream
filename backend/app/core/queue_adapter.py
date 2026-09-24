@@ -61,15 +61,16 @@ class TaskQueue:
                             status=TaskStatus.FAILED,
                             last_error="Parsing timed out",
                             completed_at=now,
-                        ).returning(Task.payload)
-                    )).scalars().all()
+                        ).returning(Task.payload, Task.task_type)
+                    )).all()
                     if expired:
                         other_running = select(Task.id).where(
                             Task.status == TaskStatus.RUNNING,
                             Task.payload["content_id"].as_integer() == Content.id,
                         ).exists()
                         await session.execute(update(Content).where(
-                            Content.id.in_([payload["content_id"] for payload in expired if payload.get("content_id")]),
+                            Content.id.in_([payload["content_id"] for payload, kind in expired
+                                            if kind == "parse_content" and payload.get("content_id")]),
                             Content.deleted_at.is_(None),
                             Content.status == ContentStatus.PROCESSING,
                             ~other_running,

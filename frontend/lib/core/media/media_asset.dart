@@ -10,6 +10,7 @@ class MediaSource {
   const MediaSource({
     required this.url,
     required this.sourceKind,
+    this.cacheKey,
     this.variantId,
     this.variantKind,
     this.mimeType,
@@ -25,6 +26,7 @@ class MediaSource {
 
   factory MediaSource.fromJson(Map<String, dynamic> json) => MediaSource(
     url: json['url'] as String,
+    cacheKey: json['cache_key'] as String?,
     sourceKind: switch (json['source_kind']) {
       'local_signed' => MediaSourceKind.localSigned,
       'remote_proxy' => MediaSourceKind.remoteProxy,
@@ -50,6 +52,7 @@ class MediaSource {
 
   Map<String, dynamic> toJson() => {
     'url': url,
+    'cache_key': cacheKey,
     'source_kind': switch (sourceKind) {
       MediaSourceKind.localSigned => 'local_signed',
       MediaSourceKind.remoteProxy => 'remote_proxy',
@@ -69,6 +72,7 @@ class MediaSource {
   };
 
   final String url;
+  final String? cacheKey;
   final MediaSourceKind sourceKind;
   final int? variantId;
   final String? variantKind;
