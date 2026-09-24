@@ -1,3 +1,4 @@
+import 'telegram_account_page.dart';
 import '../../routing/app_navigation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +20,7 @@ class AccountDetailPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (platform == 'telegram') return const TelegramAccountPage();
     final health = ref.watch(platformHealthProvider);
     return Scaffold(
       appBar: AppBar(

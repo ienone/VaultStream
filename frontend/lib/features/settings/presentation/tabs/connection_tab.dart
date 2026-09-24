@@ -1,3 +1,4 @@
+import 'package:go_router/go_router.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -36,6 +37,17 @@ class ConnectionTab extends ConsumerWidget {
       return ListView(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
         children: [
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 4,
+              vertical: 12,
+            ),
+            leading: const Icon(Icons.telegram_rounded),
+            title: const Text('Telegram'),
+            subtitle: const Text('频道动态与收藏夹'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => context.push('/accounts/telegram'),
+          ),
           _buildPlatformHealthSection(context, ref, platformHealthAsync),
           ref
               .watch(systemSettingsProvider)

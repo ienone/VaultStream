@@ -10,6 +10,7 @@ TASK_TERMINAL_STATUSES = TASK_ERROR_STATUSES | TASK_SUCCESS_STATUSES | {"cancell
 
 _TASK_TITLES = {
     "favorites_sync": "收藏同步",
+    "telegram_account_sync": "Telegram 同步",
     "content_parse": "内容解析",
     "content_reparse": "重新解析内容",
     "content_summary": "生成内容摘要",
@@ -81,6 +82,10 @@ def _summary_for_task(
     if status in TASK_ERROR_STATUSES:
         return f"{title}未完成：{error}" if error else f"{title}未完成。"
 
+    if task == "telegram_account_sync":
+        return (f"已检查 {_int(result.get('channels'))} 个频道，"
+                f"新增 {_int(result.get('created'))} 条，更新 {_int(result.get('updated'))} 条，"
+                f"收藏 {_int(result.get('saved'))} 条。")
     if task == "favorites_sync":
         totals = _favorites_totals(result)
         if totals["imported"] or totals["skipped"] or totals["failed"]:
@@ -358,6 +363,8 @@ def _allowed_actions(
     if content_link:
         actions.append({"id": "open_content", "label": "查看内容", "href": content_link["href"], "emphasis": "primary"})
 
+    if task == "telegram_account_sync":
+        actions.append({"id": "open_accounts", "label": "查看账号", "href": "/accounts/telegram", "emphasis": "primary"})
     if task == "favorites_sync":
         actions.append({"id": "open_sync", "label": "查看收藏同步", "href": "/automation/sync", "emphasis": "primary" if not actions else "secondary"})
         if status in TASK_ERROR_STATUSES:
@@ -393,7 +400,7 @@ def _task_kind(task: str) -> str:
         return "distribution"
     if task in {"platform_parse_test", "ai_connectivity_test"}:
         return "connectivity_test"
-    if task == "bot_chats_sync":
+    if task in {"bot_chats_sync", "telegram_account_sync"}:
         return "account_sync"
     if task == "bot_runtime_control":
         return "account_control"
