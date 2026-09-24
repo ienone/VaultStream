@@ -14,6 +14,7 @@ active
 - `WEIBO_ADAPTER.md`
 - `XIAOHONGSHU_ADAPTER.md`
 - `ZHIHU_ADAPTER.md`
+- [Telegram 消息关系与订阅适配依据](TELEGRAM_MESSAGE_SEMANTICS.md)
 
 ## 代码对应
 
