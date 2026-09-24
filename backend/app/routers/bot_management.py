@@ -409,8 +409,17 @@ async def bot_heartbeat(
     """Bot 心跳上报"""
     now = utcnow()
 
+    config = await db.get(BotConfig, heartbeat.bot_config_id)
+    if config is None or config.platform != heartbeat.platform or not config.enabled:
+        raise HTTPException(409, "Heartbeat configuration is unavailable")
+    if config.platform == BotConfigPlatform.TELEGRAM and (
+        (config.bot_token or "").split(":", 1)[0] != heartbeat.bot_id
+    ):
+        raise HTTPException(409, "Heartbeat belongs to a different bot")
+    config.bot_id = heartbeat.bot_id
+    config.bot_username = heartbeat.bot_username
     result = await db.execute(
-        select(BotRuntime).where(BotRuntime.platform == heartbeat.platform)
+        select(BotRuntime).where(BotRuntime.bot_config_id == config.id)
     )
     runtime = result.scalar_one_or_none()
 
@@ -426,6 +435,7 @@ async def bot_heartbeat(
             runtime.last_error_at = now
     else:
         runtime = BotRuntime(
+            bot_config_id=config.id,
             platform=heartbeat.platform,
             bot_id=heartbeat.bot_id,
             bot_username=heartbeat.bot_username,
@@ -449,8 +459,9 @@ async def get_bot_runtime(
     _: None = Depends(require_api_token),
 ):
     """获取 Bot 运行时状态"""
+    config = await get_primary_bot_config(db, platform, enabled_only=True)
     result = await db.execute(
-        select(BotRuntime).where(BotRuntime.platform == platform)
+        select(BotRuntime).where(BotRuntime.bot_config_id == (config.id if config else None))
     )
     runtime = result.scalar_one_or_none()
 
@@ -507,7 +518,7 @@ async def get_bot_status(
 
     # 获取运行时状态
     runtime_result = await db.execute(
-        select(BotRuntime).where(BotRuntime.platform == BotConfigPlatform.TELEGRAM)
+        select(BotRuntime).where(BotRuntime.bot_config_id == (primary_tg_cfg.id if primary_tg_cfg else None))
     )
     runtime = runtime_result.scalar_one_or_none()
     

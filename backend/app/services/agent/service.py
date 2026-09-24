@@ -136,7 +136,6 @@ class AgentService:
         session = AgentSession(
             id=session_id,
             title=title or "新会话",
-            context_budget=await self._context_budget(),
             created_at=utcnow(),
             updated_at=utcnow(),
         )
@@ -275,7 +274,6 @@ class AgentService:
             id=_new_id("run"),
             session_id=session.id,
             status="running",
-            input_message=user_message,
             created_at=now,
             updated_at=now,
         )
@@ -332,7 +330,6 @@ class AgentService:
             await self.db.refresh(run)
             if run.status == "stopped":
                 final_message = "已停止当前 run。"
-                run.output_message = final_message
                 run.updated_at = utcnow()
                 await self.db.commit()
                 emit_event(
@@ -364,7 +361,6 @@ class AgentService:
                             payload={"status": "waiting_confirmation"},
                         )
                     )
-                run.output_message = final_message
                 run.usage = usage
                 run.updated_at = utcnow()
                 await self.db.commit()
@@ -390,7 +386,6 @@ class AgentService:
                 )
 
             run.status = "completed"
-            run.output_message = final_message
             run.usage = usage
             run.completed_at = utcnow()
             run.updated_at = run.completed_at
@@ -400,7 +395,7 @@ class AgentService:
                     run_id=run.id,
                     role="assistant",
                     content=final_message,
-                    payload={"usage": usage},
+                    payload={},
                 )
             )
             await self.db.commit()
@@ -464,7 +459,6 @@ class AgentService:
             id=_new_id("run"),
             session_id=session.id,
             status="running",
-            input_message=f"invoke:{tool_name}",
         )
         self.db.add(run)
         await self.db.flush()
@@ -518,7 +512,6 @@ class AgentService:
             await self.db.commit()
             raise error
         run.status = "completed"
-        run.output_message = json.dumps(result, ensure_ascii=False, default=str)
         run.completed_at = utcnow()
         await self.db.commit()
         emit_event({"type": "final", "session_id": session.id, "run_id": run.id, "status": "completed", "result": result})
@@ -587,14 +580,14 @@ class AgentService:
             call.status = "denied"
             call.completed_at = confirmation.decided_at
             run.status = "completed"
-            run.output_message = "已拒绝执行该操作。"
+            output_message = "已拒绝执行该操作。"
             run.completed_at = utcnow()
             self.db.add(
                 AgentMessage(
                     session_id=session.id,
                     run_id=run.id,
                     role="assistant",
-                    content=run.output_message,
+                    content=output_message,
                     payload={"confirmation_id": confirmation.id, "approved": False},
                 )
             )
@@ -603,13 +596,13 @@ class AgentService:
                 [confirmation.id],
                 status="rejected",
             )
-            emit_event({"type": "final", "status": run.status, "message": run.output_message})
+            emit_event({"type": "final", "status": run.status, "message": output_message})
             return AgentRunResult(
                 session_id=session.id,
                 run_id=run.id,
                 status=run.status,
                 tool=confirmation.tool_name,
-                message=run.output_message,
+                message=output_message,
                 events=events,
             )
 
@@ -632,16 +625,15 @@ class AgentService:
             error = self._tool_result_error(result)
             if error is not None:
                 raise error
-            confirmation.result = _jsonable(result)
             run.status = "completed"
-            run.output_message = f"已执行 {confirmation.tool_name}。"
+            output_message = f"已执行 {confirmation.tool_name}。"
             run.completed_at = utcnow()
             self.db.add(
                 AgentMessage(
                     session_id=session.id,
                     run_id=run.id,
                     role="assistant",
-                    content=run.output_message,
+                    content=output_message,
                     payload={"confirmation_id": confirmation.id, "approved": True},
                 )
             )
@@ -656,7 +648,7 @@ class AgentService:
                     "session_id": session.id,
                     "run_id": run.id,
                     "status": run.status,
-                    "message": run.output_message,
+                    "message": output_message,
                     "result": result,
                 }
             )
@@ -665,13 +657,15 @@ class AgentService:
                 run_id=run.id,
                 status=run.status,
                 tool=confirmation.tool_name,
-                message=run.output_message,
+                message=output_message,
                 result=result,
                 events=events,
             )
         except AgentToolError as exc:
             confirmation.status = "failed"
-            confirmation.error = exc.to_payload()
+            call.error = exc.to_payload()
+            call.status = "failed"
+            call.completed_at = utcnow()
             await self._fail_run(run, exc)
             await self.db.commit()
             await self._resolve_confirmation_notifications(
@@ -828,8 +822,6 @@ class AgentService:
                 run=run,
                 session=session,
                 call=call,
-                tool_name=tool_name,
-                payload=payload,
             )
             await self.db.commit()
             emit_event(
@@ -849,8 +841,6 @@ class AgentService:
             run=run,
             session=session,
             call=call,
-            tool_name=tool_name,
-            payload={"ok": True, "result": result},
         )
         await self.db.commit()
         payload = {"ok": True, "result": result}
@@ -865,28 +855,11 @@ class AgentService:
         return result
 
     def _persist_tool_message(
-        self,
-        *,
-        run: AgentRun,
-        session: AgentSession,
-        call: AgentToolCall,
-        tool_name: str,
-        payload: Dict[str, Any],
+        self, *, run: AgentRun, session: AgentSession, call: AgentToolCall,
     ) -> None:
-        json_payload = _jsonable(payload)
-        self.db.add(
-            AgentMessage(
-                session_id=session.id,
-                run_id=run.id,
-                role="tool",
-                content=json.dumps(json_payload, ensure_ascii=False, default=str),
-                payload={
-                    "tool": tool_name,
-                    "tool_call_id": call.id,
-                    **json_payload,
-                },
-            )
-        )
+        self.db.add(AgentMessage(
+            session_id=session.id, run_id=run.id, role="tool", tool_call=call,
+        ))
 
     async def _record_tool_call(
         self,
@@ -919,18 +892,14 @@ class AgentService:
         call: AgentToolCall,
         args: Dict[str, Any],
     ) -> AgentConfirmation:
-        spec = self.registry.get(call.tool_name)
         run.status = "waiting_confirmation"
         run.updated_at = utcnow()
         confirmation = AgentConfirmation(
             id=_new_id("confirm"),
             session_id=session.id,
             run_id=run.id,
-            tool_call_id=call.id,
-            tool_name=call.tool_name,
-            permission_level=spec.permission_level.value,
+            tool_call=call,
             status="pending",
-            args=_jsonable(args),
             summary=self._confirmation_summary(call.tool_name, args),
         )
         self.db.add(confirmation)
@@ -956,7 +925,7 @@ class AgentService:
         ).scalars().all()
 
         budget = await self._context_budget()
-        token_estimate = self._estimate_tokens(m.content for m in rows)
+        token_estimate = self._estimate_tokens(m.rendered_content for m in rows)
         messages = rows
         latest_summary = (
             await self.db.execute(
@@ -976,7 +945,7 @@ class AgentService:
                 run_id=run_id,
                 summary=summary_text,
                 covered_message_count=len(covered),
-                token_estimate=self._estimate_tokens(m.content for m in covered),
+                token_estimate=self._estimate_tokens(m.rendered_content for m in covered),
             )
             self.db.add(summary)
             await self.db.flush()
@@ -1222,7 +1191,7 @@ class AgentService:
     def _compress_messages(self, rows: list[AgentMessage]) -> str:
         parts = []
         for row in rows[-20:]:
-            content = " ".join((row.content or "").split())
+            content = " ".join((row.rendered_content or "").split())
             if len(content) > 120:
                 content = content[:120] + "..."
             parts.append(f"{row.role}: {content}")

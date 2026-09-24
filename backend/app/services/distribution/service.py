@@ -267,7 +267,6 @@ class DistributionService:
                             status=QueueItemStatus.SCHEDULED, attempt_count=0,
                             last_error=None, last_error_type=None, last_error_at=None,
                             next_attempt_at=None, target_id=target_id,
-                            nsfw_routing_result=decision.nsfw_routing_result,
                             scheduled_at=utcnow(), updated_at=utcnow(),
                         ).execution_options(synchronize_session=False))
                         if reset.rowcount != 1:
@@ -291,7 +290,6 @@ class DistributionService:
                     status=QueueItemStatus.SCHEDULED,
                     priority=rule.priority + content.queue_priority,
                     scheduled_at=utcnow(),
-                    nsfw_routing_result=decision.nsfw_routing_result,
                 )
                 self.db.add(item)
                 count += 1

@@ -16,6 +16,11 @@ def include_object(obj, name, type_, reflected, compare_to):
 
 
 def run_migrations(connection):
+    # This dedicated migration connection closes after the transaction. Disable
+    # FK actions before any DML so SQLite batch DROP cannot cascade into children.
+    connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+    if connection.exec_driver_sql("PRAGMA foreign_keys").scalar():
+        raise RuntimeError("Migrations require a fresh connection without an active write transaction")
     context.configure(
         connection=connection,
         target_metadata=Base.metadata,
@@ -24,6 +29,9 @@ def run_migrations(connection):
     )
     with context.begin_transaction():
         context.run_migrations()
+        violations = connection.exec_driver_sql("PRAGMA foreign_key_check").fetchall()
+        if violations:
+            raise RuntimeError(f"Migration left foreign key violations: {violations[:10]}")
 
 
 async def run_async_migrations():

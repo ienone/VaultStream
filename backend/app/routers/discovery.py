@@ -244,14 +244,15 @@ async def list_discovery_items(
         ]))
 
     if source_kind or source_name:
-        query = query.join(
+        sources = select(ContentDiscoveryLink.content_id).join(
             DiscoverySource,
-            Content.discovery_source_id == DiscoverySource.id,
+            ContentDiscoveryLink.discovery_source_id == DiscoverySource.id,
         )
         if source_kind:
-            query = query.where(DiscoverySource.kind == source_kind)
+            sources = sources.where(DiscoverySource.kind == source_kind)
         if source_name:
-            query = query.where(DiscoverySource.name == source_name)
+            sources = sources.where(DiscoverySource.name == source_name)
+        query = query.where(Content.id.in_(sources))
     if score_min is not None:
         query = query.where(Content.ai_score >= score_min)
     if score_max is not None:

@@ -8,9 +8,7 @@ from app.core.logging import logger, ensure_task_id
 from app.core.queue import task_queue
 from app.models import Task
 from app.services.background_task_state import (
-    record_task_error,
-    record_task_started,
-    record_task_success,
+    record_task_run_error,
 )
 from app.services.automation_policy import AutomationPolicyService
 
@@ -27,7 +25,7 @@ class TaskWorker:
     async def start(self):
         """启动worker"""
         self.running = True
-        await record_task_started("parse_worker")
+
         logger.info("Task worker started")
         
         while self.running:
@@ -46,11 +44,10 @@ class TaskWorker:
                 
                 if claimed_task:
                     await self.process_task(claimed_task)
-                    await record_task_success("parse_worker")
                     
             except Exception as e:
                 logger.error(f"Worker error: {e}")
-                await record_task_error("parse_worker", e)
+                await record_task_run_error("parse_worker", None, e)
                 await asyncio.sleep(1)
     
     async def stop(self):

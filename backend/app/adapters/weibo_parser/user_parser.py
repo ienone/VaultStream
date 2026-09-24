@@ -179,15 +179,9 @@ def _parse_user_sync(uid: str, url: str, headers: Dict[str, str], cookies: Dict[
             "archive": archive  # worker需要此字段进行颜色提取
         },
         stats={
-            # 映射用户指标到标准统计键供前端显示
-            # followers -> view (粉丝)
-            # friends/following -> share (关注)
-            # statuses -> reply (博文)
-            "view": user_info.get('followers_count', 0),
-            "share": user_info.get('friends_count', 0),
-            "reply": user_info.get('statuses_count', 0),
-            "like": 0,
-            "favorite": 0
+            "followers": user_info.get('followers_count', 0),
+            "friends": user_info.get('friends_count', 0),
+            "statuses": user_info.get('statuses_count', 0),
         }
     )
 

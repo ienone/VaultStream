@@ -122,7 +122,7 @@ async def test_parallel_model_tools_serialize_shared_session_writes(db_session):
     service = AgentService(db_session)
     service.registry = registry
     session = await service.ensure_session(None, title='parallel tool regression')
-    run = AgentRun(id='parallel-tool-regression', session_id=session.id, status='running', input_message='read twice')
+    run = AgentRun(id='parallel-tool-regression', session_id=session.id, status='running')
     db_session.add(run)
     await db_session.commit()
     tools = service._build_langchain_tools(session=session, run=run, emit_event=lambda event: None)
@@ -145,8 +145,8 @@ async def test_failed_tool_transaction_preserves_run_and_structured_error(db_ses
 
     class BrokenGraph:
         async def ainvoke(self, *args, **kwargs):
-            run = await db_session.scalar(select(AgentRun).where(AgentRun.input_message == 'transaction regression'))
-            db_session.add(AgentRun(id=run.id, session_id=run.session_id, status='running', input_message='duplicate'))
+            run = await db_session.scalar(select(AgentRun).join(AgentMessage, AgentMessage.run_id == AgentRun.id).where(AgentMessage.content == 'transaction regression'))
+            db_session.add(AgentRun(id=run.id, session_id=run.session_id, status='running'))
             from sqlalchemy.exc import SAWarning
             with pytest.warns(SAWarning, match="conflicts with persistent instance"):
                 await db_session.flush()
@@ -157,7 +157,7 @@ async def test_failed_tool_transaction_preserves_run_and_structured_error(db_ses
         await service.run_message(message='transaction regression')
     assert error.value.error_code == 'agent_execution_failed'
     assert db_session.is_active
-    run = await db_session.scalar(select(AgentRun).where(AgentRun.input_message == 'transaction regression'))
+    run = await db_session.scalar(select(AgentRun).join(AgentMessage, AgentMessage.run_id == AgentRun.id).where(AgentMessage.content == 'transaction regression'))
     assert run.status == 'failed'
     assert run.completed_at is not None
     messages = (await db_session.execute(select(AgentMessage).where(AgentMessage.run_id == run.id))).scalars().all()
@@ -191,7 +191,7 @@ async def test_model_tool_progress_is_durable_without_holding_writer_lock(db_ses
     service = AgentService(db_session); service.registry = registry
     session = await service.ensure_session(None, title='durable model tool')
     independent = await service.ensure_session(None, title='unrelated session')
-    run = AgentRun(id=f'durable-model-tool-regression-{failed}', session_id=session.id, status='running', input_message='read')
+    run = AgentRun(id=f'durable-model-tool-regression-{failed}', session_id=session.id, status='running')
     db_session.add(run); await db_session.commit()
     tool = service._build_langchain_tools(session=session, run=run, emit_event=lambda event: None)[0]
     result = await tool.ainvoke({})
@@ -210,7 +210,7 @@ async def test_tool_database_failure_rolls_back_and_finishes_ledger(db_session):
 
     async def broken_database_write(args, context):
         # Fail the actual transaction without touching user data or mocking SQL.
-        context.db.add(AgentRun(id=context.run_id, session_id=context.session_id, status='running', input_message='duplicate'))
+        context.db.add(AgentRun(id=context.run_id, session_id=context.session_id, status='running'))
         from sqlalchemy.exc import SAWarning
         with pytest.warns(SAWarning, match='conflicts with persistent instance'):
             await context.db.flush()
@@ -226,5 +226,5 @@ async def test_tool_database_failure_rolls_back_and_finishes_ledger(db_session):
     assert call.status == run.status == 'failed'
     assert call.completed_at is not None and run.completed_at is not None
     message = await db_session.scalar(select(AgentMessage).where(AgentMessage.run_id == run.id, AgentMessage.role == 'tool'))
-    assert message.payload['ok'] is False
-    assert message.payload['error']['details']['exception'] == 'IntegrityError'
+    assert message.rendered_payload['ok'] is False
+    assert message.rendered_payload['error']['details']['exception'] == 'IntegrityError'

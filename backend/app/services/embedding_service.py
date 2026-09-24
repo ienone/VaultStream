@@ -650,7 +650,6 @@ class EmbeddingService:
         record.last_attempted_at = datetime.utcnow()
         if index_status == "indexed":
             record.last_indexed_at = datetime.utcnow()
-            record.indexed_at = record.last_indexed_at
         else:
             record.retry_count = int(record.retry_count or 0) + 1
         if existing is None:
@@ -817,7 +816,7 @@ class EmbeddingService:
         row_scan_limit = await self._get_embedding_search_max_rows()
         row_scan_limit = max(limit, row_scan_limit)
         if row_scan_limit > 0:
-            stmt = stmt.order_by(ContentEmbedding.indexed_at.desc()).limit(row_scan_limit)
+            stmt = stmt.order_by(ContentEmbedding.last_indexed_at.desc()).limit(row_scan_limit)
         
         rows = (await session.execute(stmt)).all()
         logger.bind(

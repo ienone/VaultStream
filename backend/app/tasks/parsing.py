@@ -243,7 +243,7 @@ class ContentParser:
                 await session.rollback()
             return ParseExecutionResult(found=False, skipped=True, reason=reason)
 
-        content.clean_url = parsed.clean_url
+        content.resolved_url = parsed.clean_url if parsed.clean_url != content.canonical_url else None
         content.content_type = parsed.content_type
         content.layout_type = parsed.layout_type
         content.author_id = parsed.author_id

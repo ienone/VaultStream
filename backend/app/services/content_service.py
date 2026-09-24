@@ -140,7 +140,6 @@ class ContentService:
                 platform=platform,
                 url=url_for_detect,
                 canonical_url=canonical_url,
-                clean_url=canonical_url,
                 tags=normalized_tags,
                 source=source_name,
                 is_nsfw=is_nsfw,
@@ -157,8 +156,6 @@ class ContentService:
             content.tags = list(existing_tags.union(incoming_tags))
             if content.url != url_for_detect:
                 content.url = url_for_detect
-            if content.clean_url != canonical_url:
-                content.clean_url = canonical_url
             if source_name:
                 content.source = source_name
             # 如果提供了 override，更新它
@@ -194,8 +191,6 @@ class ContentService:
             content.tags = list(existing_tags.union(incoming_tags))
             if content.url != url_for_detect:
                 content.url = url_for_detect
-            if content.clean_url != canonical_url:
-                content.clean_url = canonical_url
             if source_name:
                 content.source = source_name
             
@@ -284,7 +279,6 @@ class ContentService:
             platform=Platform.UNIVERSAL,
             url=internal_url,
             canonical_url=internal_url,
-            clean_url=internal_url,
             title=normalized_title,
             body=body,
             content_type="note",
@@ -487,7 +481,6 @@ class ContentService:
                 platform=Platform.UNIVERSAL,
                 url=internal_url,
                 canonical_url=internal_url,
-                clean_url=internal_url,
                 title=normalized_title,
                 body=normalized_note,
                 content_type=content_type,

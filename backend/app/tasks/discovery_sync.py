@@ -33,12 +33,9 @@ from app.models import (
 from app.services.embedding_service import EmbeddingService
 from app.services.post_ingest import PostIngestService
 from app.services.background_task_state import (
-    record_task_error,
     record_task_run_error,
     record_task_run_started,
     record_task_run_success,
-    record_task_started,
-    record_task_success,
 )
 from app.services.automation_policy import AutomationPolicyService
 from app.services.config_service import ConfigService
@@ -69,7 +66,6 @@ class DiscoverySyncTask:
         if self._task and not self._task.done():
             return
         self._task = asyncio.create_task(self._sync_loop())
-        asyncio.create_task(record_task_started("discovery_sync"))
 
     async def stop(self):
         if self._task and not self._task.done():
@@ -88,7 +84,7 @@ class DiscoverySyncTask:
                 await self._aggregation.run_if_due()
             except Exception as e:
                 logger.error(f"Discovery sync error: {e}")
-                await record_task_error("discovery_sync", e)
+                await record_task_run_error("discovery_sync", None, e)
             await asyncio.sleep(60)
 
     async def _sync_due_sources(self):
@@ -102,7 +98,6 @@ class DiscoverySyncTask:
             sources = result.scalars().all()
 
             now = utcnow()
-            checked = 0
             for source in sources:
                 if source.last_sync_at:
                     next_sync = source.last_sync_at + timedelta(
@@ -111,7 +106,6 @@ class DiscoverySyncTask:
                     if now < next_sync:
                         continue
 
-                checked += 1
                 run = await self.create_run(source, trigger="scheduled")
                 await self._sync_single_source(
                     db,
@@ -119,11 +113,6 @@ class DiscoverySyncTask:
                     run_id=run["run_id"],
                     trigger="scheduled",
                 )
-            await record_task_success(
-                "discovery_sync",
-                checked_sources=checked,
-                source_count=len(sources),
-            )
 
     async def create_run(self, source: DiscoverySource, *, trigger: str) -> dict:
         return await record_task_run_started(
@@ -187,13 +176,6 @@ class DiscoverySyncTask:
             source.last_error = f"Unsupported discovery source kind: {source_kind}"
             source.last_sync_at = utcnow()
             await db.commit()
-            await record_task_error(
-                "discovery_sync",
-                source.last_error,
-                source_id=source.id,
-                source_name=source.name,
-                source_kind=source_kind,
-            )
             if run_id:
                 await record_task_run_error(
                     "discovery_sync",
@@ -256,10 +238,6 @@ class DiscoverySyncTask:
                             discovery_source_id=source.id,
                             url=item.url,
                         ))
-
-                    # 回填冗余外键（首次被发现源匹配时设置）
-                    if existing_content.discovery_source_id is None:
-                        existing_content.discovery_source_id = source.id
 
                     existing_media_urls = (
                         existing_content.media_urls
@@ -335,7 +313,6 @@ class DiscoverySyncTask:
                     rich_payload=item.rich_payload,
                     extra_stats=item.extra_stats,
                     context_data=None,
-                    discovery_source_id=source.id,
                 )
                 db.add(content)
                 await db.flush()
@@ -388,12 +365,6 @@ class DiscoverySyncTask:
                         )
                 if ingested_count > 0:
                     await pipeline.score_discovery(db)
-            await record_task_success(
-                "discovery_sync",
-                source_id=source.id,
-                source_name=source.name,
-                ingested_count=ingested_count,
-            )
             if run_id:
                 await record_task_run_success(
                     "discovery_sync",
@@ -411,12 +382,6 @@ class DiscoverySyncTask:
             source.last_sync_at = utcnow()
             await db.commit()
             logger.warning(f"Discovery sync [{source.name}] failed: {e}")
-            await record_task_error(
-                "discovery_sync",
-                e,
-                source_id=source.id,
-                source_name=source.name,
-            )
             if run_id:
                 await record_task_run_error(
                     "discovery_sync",

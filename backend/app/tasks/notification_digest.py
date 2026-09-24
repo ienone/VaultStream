@@ -9,9 +9,8 @@ from loguru import logger
 
 from app.core.time_utils import utcnow
 from app.services.background_task_state import (
-    record_task_error,
-    record_task_started,
-    record_task_success,
+    record_task_run_error,
+    record_task_run_success,
 )
 from app.services.config_service import ConfigService
 from app.services.notification_digest import (
@@ -37,7 +36,6 @@ class NotificationDigestTask:
         if self._task and not self._task.done():
             return
         self._task = asyncio.create_task(self._run_loop())
-        asyncio.create_task(record_task_started("notification_digest"))
 
     async def stop(self) -> None:
         if self._task and not self._task.done():
@@ -67,7 +65,7 @@ class NotificationDigestTask:
             now=reference,
             config_service=self._config_service,
         )
-        await record_task_success(
+        await record_task_run_success(
             "notification_digest",
             created=result["created"],
             discovery_count=result["discovery_count"],
@@ -82,5 +80,5 @@ class NotificationDigestTask:
                 await self.run_if_due()
             except Exception as error:
                 logger.exception("Notification digest task failed")
-                await record_task_error("notification_digest", error)
+                await record_task_run_error("notification_digest", None, error)
             await asyncio.sleep(self._poll_interval_seconds)

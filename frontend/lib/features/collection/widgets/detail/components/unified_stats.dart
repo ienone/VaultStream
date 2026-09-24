@@ -31,11 +31,9 @@ class UnifiedStats extends StatelessWidget {
       if (isXiaohongshu) {
         // 小红书用户统计
         final xhsStats = stats;
-        final followers =
-            xhsStats['followers'] ?? xhsStats['follower_count'] ?? 0;
-        final following =
-            xhsStats['following'] ?? xhsStats['following_count'] ?? 0;
-        final liked = xhsStats['liked'] ?? xhsStats['liked_count'] ?? 0;
+        final followers = xhsStats['followers'] ?? 0;
+        final following = xhsStats['following'] ?? 0;
+        final liked = xhsStats['liked'] ?? 0;
 
         if (followers is num && followers > 0) {
           items.add(
@@ -65,49 +63,49 @@ class UnifiedStats extends StatelessWidget {
           );
         }
       } else if (isWeibo) {
-        if (detail.viewCount > 0) {
+        if ((stats['followers'] as num? ?? 0) > 0) {
           items.add(
             UnifiedStatItem(
               icon: Icons.people_outline,
               label: '粉丝',
-              value: formatCount(detail.viewCount),
+              value: formatCount((stats['followers'] as num? ?? 0)),
             ),
           );
         }
-        if (detail.shareCount > 0) {
+        if ((stats['friends'] as num? ?? 0) > 0) {
           items.add(
             UnifiedStatItem(
               icon: Icons.person_add_alt_1_outlined,
               label: '关注',
-              value: formatCount(detail.shareCount),
+              value: formatCount((stats['friends'] as num? ?? 0)),
             ),
           );
         }
-        if (detail.commentCount > 0) {
+        if ((stats['statuses'] as num? ?? 0) > 0) {
           items.add(
             UnifiedStatItem(
               icon: Icons.article_outlined,
               label: '微博',
-              value: formatCount(detail.commentCount),
+              value: formatCount((stats['statuses'] as num? ?? 0)),
             ),
           );
         }
       } else if (isZhihu) {
-        if (detail.viewCount > 0) {
+        if ((stats['follower_count'] as num? ?? 0) > 0) {
           items.add(
             UnifiedStatItem(
               icon: Icons.people_outline,
               label: '粉丝',
-              value: formatCount(detail.viewCount),
+              value: formatCount((stats['follower_count'] as num? ?? 0)),
             ),
           );
         }
-        if (detail.shareCount > 0) {
+        if ((stats['following_count'] as num? ?? 0) > 0) {
           items.add(
             UnifiedStatItem(
               icon: Icons.person_add_alt_1_outlined,
               label: '关注',
-              value: formatCount(detail.shareCount),
+              value: formatCount((stats['following_count'] as num? ?? 0)),
             ),
           );
         }
@@ -140,7 +138,6 @@ class UnifiedStats extends StatelessWidget {
         'following_columns_count': '关注专栏',
         'following_topic_count': '关注话题',
         'following_favlists_count': '关注收藏夹',
-        'statuses': '动态',
         'credit_score': '信用',
         'urank': '等级',
       };
@@ -161,21 +158,21 @@ class UnifiedStats extends StatelessWidget {
       }
     } else if (isColumn) {
       // 专栏统计
-      if (detail.viewCount > 0) {
+      if ((stats['followers'] as num? ?? 0) > 0) {
         items.add(
           UnifiedStatItem(
             icon: Icons.people_outline,
             label: '关注者',
-            value: formatCount(detail.viewCount),
+            value: formatCount((stats['followers'] as num? ?? 0)),
           ),
         );
       }
-      if (detail.commentCount > 0) {
+      if ((stats['articles_count'] as num? ?? 0) > 0) {
         items.add(
           UnifiedStatItem(
             icon: Icons.article_outlined,
             label: '文章数',
-            value: formatCount(detail.commentCount),
+            value: formatCount((stats['articles_count'] as num? ?? 0)),
           ),
         );
       }
@@ -190,12 +187,12 @@ class UnifiedStats extends StatelessWidget {
       }
     } else if (isCollection) {
       // 收藏夹统计
-      if (detail.collectCount > 0) {
+      if ((stats['follower_count'] as num? ?? 0) > 0) {
         items.add(
           UnifiedStatItem(
             icon: Icons.people_outline,
             label: '关注者',
-            value: formatCount(detail.collectCount),
+            value: formatCount((stats['follower_count'] as num? ?? 0)),
           ),
         );
       }
@@ -315,15 +312,6 @@ class UnifiedStats extends StatelessWidget {
               icon: Icons.person_add_alt,
               label: '关注',
               value: formatCount(stats['follower_count']),
-            ),
-          );
-        }
-        if (stats['visit_count'] != null && detail.viewCount == 0) {
-          items.add(
-            UnifiedStatItem(
-              icon: Icons.remove_red_eye_outlined,
-              label: '浏览',
-              value: formatCount(stats['visit_count']),
             ),
           );
         }

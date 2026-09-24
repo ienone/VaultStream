@@ -643,6 +643,12 @@ class BotConfigService:
                 )
                 .values(is_primary=False, updated_at=utcnow())
             )
+        if "bot_token" in update_data and update_data["bot_token"] != cfg.bot_token:
+            from sqlalchemy import delete
+            from app.models import BotRuntime
+            await db.execute(delete(BotRuntime).where(BotRuntime.bot_config_id == cfg.id))
+            cfg.bot_id = None
+            cfg.bot_username = None
         for key, value in update_data.items():
             setattr(cfg, key, value)
         cfg.updated_at = utcnow()

@@ -5,9 +5,8 @@ from collections.abc import Awaitable, Callable
 from loguru import logger
 from app.services.browser_auth_service import browser_auth_service
 from app.services.background_task_state import (
-    record_task_error,
-    record_task_started,
-    record_task_success,
+    record_task_run_error,
+    record_task_run_success,
 )
 from app.services.automation_policy import AutomationPolicyService
 from app.services.notification_inbox import safely_sync_account_auth_notification
@@ -23,14 +22,14 @@ async def _recorded_platform_check(
         success = await check_coro
     except Exception as e:
         logger.warning("{} keepalive raised: {}", label, e)
-        await record_task_error(task_name, e)
+        await record_task_run_error(task_name, None, e)
         await safely_sync_account_auth_notification(platform, is_valid=False)
         return False
 
     if success:
-        await record_task_success(task_name)
+        await record_task_run_success(task_name)
     else:
-        await record_task_error(task_name, f"{label} keepalive check failed")
+        await record_task_run_error(task_name, None, f"{label} keepalive check failed")
     await safely_sync_account_auth_notification(platform, is_valid=success)
     return success
 
@@ -149,14 +148,6 @@ class CookieKeepAliveTask:
 
     async def _start(self):
         try:
-            policy = await AutomationPolicyService().cookie_keepalive()
-            if policy.allowed:
-                for task_name in (
-                    "cookie_keepalive_zhihu",
-                    "cookie_keepalive_xiaohongshu",
-                    "cookie_keepalive_weibo",
-                ):
-                    asyncio.create_task(record_task_started(task_name))
             self._tasks = [
                 asyncio.create_task(zhihu_keepalive_loop()),
                 asyncio.create_task(xiaohongshu_keepalive_loop()),

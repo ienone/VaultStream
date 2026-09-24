@@ -18,7 +18,7 @@ class ContentEmbedding(Base):
     __tablename__ = "content_embeddings"
     __table_args__ = (
         Index("ix_content_embeddings_content_chunk", "content_id", "chunk_index"),
-        Index("ix_content_embeddings_indexed_at", "indexed_at"),
+        Index("ix_content_embeddings_last_indexed_at", "last_indexed_at"),
         Index("ix_content_embeddings_model", "embedding_model"),
         Index("ix_content_embeddings_signature", "embedding_model_signature"),
         Index("ix_content_embeddings_status", "index_status"),
@@ -47,7 +47,6 @@ class ContentEmbedding(Base):
     last_attempted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
     last_indexed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
 
-    indexed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 

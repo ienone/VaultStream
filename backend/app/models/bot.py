@@ -111,9 +111,12 @@ class BotChat(Base):
 
 
 class BotRuntime(Base):
-    """Bot 运行时状态（按平台唯一）"""
+    """每个 Bot 配置独立的运行状态。"""
     __tablename__ = "bot_runtime"
 
+    bot_config_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("bot_configs.id", ondelete="CASCADE"), unique=True, index=True,
+    )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     platform: Mapped[BotConfigPlatform] = mapped_column(
         SQLEnum(BotConfigPlatform, native_enum=False, values_callable=lambda x: [e.value for e in x]),

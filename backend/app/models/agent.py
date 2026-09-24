@@ -1,6 +1,7 @@
 """
 Agent runtime persistence models.
 """
+import json
 from datetime import datetime
 from typing import Any, Optional
 
@@ -23,7 +24,6 @@ class AgentSession(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     title: Mapped[str] = mapped_column(String(200), default="新会话")
     status: Mapped[str] = mapped_column(String(40), default="active", index=True)
-    context_budget: Mapped[int] = mapped_column(Integer, default=6000)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
     last_message_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
@@ -47,13 +47,40 @@ class AgentMessage(Base):
         ForeignKey("agent_sessions.id", ondelete="CASCADE"),
         index=True,
     )
-    run_id: Mapped[Optional[str]] = mapped_column(String(64), index=True, default=None)
+    run_id: Mapped[Optional[str]] = mapped_column(
+        String(64), ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True, default=None,
+    )
+    tool_call_id: Mapped[Optional[str]] = mapped_column(
+        String(64), ForeignKey("agent_tool_calls.id", ondelete="CASCADE"), index=True, default=None,
+    )
     role: Mapped[str] = mapped_column(String(40), index=True)
     content: Mapped[str] = mapped_column(Text, default="")
     payload: Mapped[Optional[Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
     session = relationship("AgentSession", back_populates="messages")
+    tool_call = relationship("AgentToolCall", lazy="joined")
+    run = relationship("AgentRun", lazy="joined")
+
+    @property
+    def rendered_payload(self) -> dict:
+        if self.tool_call_id:
+            call = self.tool_call
+            outcome = {"ok": False, "error": call.error} if call.error else {"ok": True, "result": call.result}
+            return {"tool": call.tool_name, "tool_call_id": call.id, **outcome}
+        payload = dict(self.payload or {})
+        if self.role == "assistant" and self.run and self.run.usage:
+            payload["usage"] = self.run.usage
+        return payload
+
+    @property
+    def rendered_content(self) -> str:
+        if self.tool_call_id:
+            payload = self.rendered_payload
+            return json.dumps({key: value for key, value in payload.items()
+                               if key not in {"tool", "tool_call_id"}}, ensure_ascii=False, default=str)
+        return self.content
+
 
 
 class AgentRun(Base):
@@ -71,8 +98,6 @@ class AgentRun(Base):
         index=True,
     )
     status: Mapped[str] = mapped_column(String(40), default="running", index=True)
-    input_message: Mapped[str] = mapped_column(Text, default="")
-    output_message: Mapped[Optional[str]] = mapped_column(Text, default=None)
     error_code: Mapped[Optional[str]] = mapped_column(String(120), default=None)
     error_message: Mapped[Optional[str]] = mapped_column(Text, default=None)
     usage: Mapped[Optional[Any]] = mapped_column(JSON, default=dict)
@@ -118,15 +143,33 @@ class AgentConfirmation(Base):
     session_id: Mapped[str] = mapped_column(String(64), ForeignKey("agent_sessions.id", ondelete="CASCADE"), index=True)
     run_id: Mapped[str] = mapped_column(String(64), ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True)
     tool_call_id: Mapped[str] = mapped_column(String(64), ForeignKey("agent_tool_calls.id", ondelete="CASCADE"), index=True)
-    tool_name: Mapped[str] = mapped_column(String(120), index=True)
-    permission_level: Mapped[str] = mapped_column(String(60), default="write")
     status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
-    args: Mapped[Optional[Any]] = mapped_column(JSON, default=dict)
     summary: Mapped[str] = mapped_column(Text, default="")
-    result: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
-    error: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
+
+
+    tool_call = relationship("AgentToolCall", lazy="joined")
+
+    @property
+    def tool_name(self):
+        return self.tool_call.tool_name
+
+    @property
+    def permission_level(self):
+        return self.tool_call.permission_level
+
+    @property
+    def args(self):
+        return self.tool_call.args
+
+    @property
+    def result(self):
+        return self.tool_call.result
+
+    @property
+    def error(self):
+        return self.tool_call.error
 
 
 class AgentContextSummary(Base):

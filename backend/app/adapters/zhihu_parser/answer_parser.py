@@ -94,8 +94,6 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
         "like": answer_data.get('voteupCount', 0),
         "reply": answer_data.get('commentCount', 0),
         "thanks_count": answer_data.get('thanksCount', 0),
-        "voteup_count": answer_data.get('voteupCount', 0),
-        "comment_count": answer_data.get('commentCount', 0),
     }
 
     # 归档仅保留必要审计信息；前端消费的关联信息由 context_data 提供。

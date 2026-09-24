@@ -290,7 +290,6 @@ class DistributionRuleService:
                     status=QueueItemStatus.SCHEDULED,
                     priority=rule.priority + content.queue_priority,
                     scheduled_at=utcnow(),
-                    nsfw_routing_result=decision.nsfw_routing_result,
                 )
             )
             inserted += 1

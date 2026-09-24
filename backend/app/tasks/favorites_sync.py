@@ -20,9 +20,6 @@ from app.services.background_task_state import (
     record_task_run_error,
     record_task_run_started,
     record_task_run_success,
-    record_task_error,
-    record_task_started,
-    record_task_success,
 )
 from app.services.content_service import ContentService
 from app.services.automation_policy import AutomationPolicyService
@@ -98,7 +95,6 @@ class FavoritesSyncTask:
         if self.is_running():
             return
         self._task = asyncio.create_task(self._sync_loop())
-        asyncio.create_task(record_task_started("favorites_sync"))
         logger.info("FavoritesSyncTask started")
 
     async def stop(self):
@@ -127,17 +123,12 @@ class FavoritesSyncTask:
                     logger.bind(policy=policy.as_dict()).info(
                         "Favorites sync scheduler skipped by automation policy"
                     )
-                    await record_task_success(
-                        "favorites_sync",
-                        policy_blocked=True,
-                        policy=policy.as_dict(),
-                    )
                     await asyncio.sleep(interval * 60)
                     continue
                 await self.sync_all_platforms_once()
             except Exception as e:
                 logger.exception("Favorites sync loop failed: {}", e)
-                await record_task_error("favorites_sync", e)
+                await record_task_run_error("favorites_sync", None, e)
             await asyncio.sleep(interval * 60)
 
     async def sync_all_platforms_once(
@@ -197,25 +188,12 @@ class FavoritesSyncTask:
                             ),
                         )
 
-                now_iso = utcnow().isoformat()
-                await self._config_service.set_favorites_sync_last_sync_at(now_iso)
-                await self._config_service.set_favorites_sync_last_result(results)
                 failed_platforms = [
                     platform
                     for platform, result in results.items()
                     if result.get("status") not in ("success", "skipped")
                 ]
-                await record_task_success(
-                    "favorites_sync",
-                    platform_count=len(results),
-                    failed_platforms=failed_platforms,
-                )
                 if failed_platforms:
-                    await record_task_error(
-                        "favorites_sync",
-                        f"Failed platforms: {', '.join(failed_platforms)}",
-                        failed_platforms=failed_platforms,
-                    )
                     await record_task_run_error(
                         "favorites_sync",
                         run_id,
@@ -254,20 +232,8 @@ class FavoritesSyncTask:
             run_id = str(run["run_id"])
             try:
                 result = await self._sync_platform_by_name_inner(platform)
-                await record_task_success(
-                    "favorites_sync",
-                    platform_count=1,
-                    last_platform=platform,
-                    failed_platforms=[] if result.get("status") == "success" else [platform],
-                )
                 if result.get("status") != "success":
                     error = result.get("error") or result.get("error_message") or result.get("status")
-                    await record_task_error(
-                        "favorites_sync",
-                        error,
-                        failed_platforms=[platform],
-                        last_platform=platform,
-                    )
                     await record_task_run_error(
                         "favorites_sync",
                         run_id,
@@ -289,13 +255,7 @@ class FavoritesSyncTask:
 
     async def _sync_platform_by_name_inner(self, platform: str) -> dict:
         fetcher_cls = self._fetchers[platform]
-        result = await self._sync_platform(fetcher_cls())
-        await self._config_service.set_favorites_sync_platform_last_result(
-            platform,
-            result,
-        )
-        await self._config_service.set_favorites_sync_last_sync_at(utcnow().isoformat())
-        return result
+        return await self._sync_platform(fetcher_cls())
 
     async def preview_all_platforms(self) -> dict:
         enabled = await self.load_enabled_platforms()
@@ -462,12 +422,9 @@ class FavoritesSyncTask:
             except Exception:
                 canonical_url = url
 
-        filters = [Content.url == url, Content.clean_url == canonical_url]
+        stmt = select(Content).where(Content.canonical_url == canonical_url)
         if platform is not None:
-            filters.append(
-                and_(Content.platform == platform, Content.canonical_url == canonical_url)
-            )
-        stmt = select(Content).where(or_(*filters)).limit(1)
+            stmt = stmt.where(Content.platform == platform)
         return (await session.execute(stmt)).scalar_one_or_none()
 
     @classmethod

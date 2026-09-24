@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.db_adapter import AsyncSessionLocal
+from app.models import BackgroundTaskRun
 
 from app.adapters.favorites.base import FavoriteItem
 from app.adapters.favorites import FAVORITES_CAPABILITIES
@@ -19,6 +22,7 @@ from app.schemas import (
 from app.services.automation_policy import AutomationPolicyService
 from app.services.background_task_state import (
     get_recent_task_runs,
+    latest_favorites_runs,
     record_task_run_error,
     record_task_run_started,
     record_task_run_success,
@@ -109,6 +113,17 @@ class FavoritesSyncService:
         )
         enabled_platforms = await task.load_enabled_platforms()
 
+        recent_runs = await get_recent_task_runs("favorites_sync", limit=10)
+        latest = latest_favorites_runs()
+        async with AsyncSessionLocal() as db:
+            latest_rows = (await db.execute(select(BackgroundTaskRun, latest.c.platform).join(
+                latest, latest.c.run_id == BackgroundTaskRun.run_id,
+            ))).all()
+        last_results = {
+            platform: run.result["results"][platform] if "results" in run.result else run.result["result"]
+            for run, platform in latest_rows
+        }
+        last_sync_at = max((run.finished_at for run, _ in latest_rows), default=None)
         platforms: list[dict[str, Any]] = []
         for platform, capability in FAVORITES_CAPABILITIES.items():
             fetcher_cls = task.get_fetcher_cls(platform)
@@ -176,7 +191,7 @@ class FavoritesSyncService:
                     "available": available,
                     "authenticated": authenticated,
                     "rate_per_minute": platform_state.rate_per_minute,
-                    "last_result": platform_state.last_result,
+                    "last_result": last_results.get(platform),
                     "error": error,
                     "status_error": status_error,
                     "capabilities": capability.model_dump(),
@@ -188,8 +203,8 @@ class FavoritesSyncService:
             "interval_minutes": config.interval_minutes,
             "max_items": config.max_items,
             "enabled_platforms": enabled_platforms,
-            "last_sync_at": config.last_sync_at,
-            "recent_runs": await get_recent_task_runs("favorites_sync", limit=10),
+            "last_sync_at": last_sync_at,
+            "recent_runs": recent_runs,
             "policies": {
                 "duplicate_strategy": config.duplicate_strategy,
                 "scope_strategy": config.scope_strategy,

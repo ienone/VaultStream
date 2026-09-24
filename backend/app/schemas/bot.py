@@ -227,6 +227,7 @@ class BotChatUpsert(BaseModel):
 
 class BotHeartbeat(BaseModel):
     """Bot 心跳请求"""
+    bot_config_id: int = Field(ge=1)
     platform: BotConfigPlatform = BotConfigPlatform.TELEGRAM
     bot_id: str
     bot_username: str

@@ -149,7 +149,7 @@ class ContentAggregationRepository:
                 self.db.add(event)
                 await self.db.flush()
             content = Content(
-                platform=Platform.UNIVERSAL, url=url, canonical_url=url, clean_url=url,
+                platform=Platform.UNIVERSAL, url=url, canonical_url=url,
                 status=ContentStatus.PARSE_SUCCESS, layout_type=LayoutType.ARTICLE,
                 content_type="article", title=group.title, body=body,
                 source="content_aggregation", source_type="ai_aggregation", is_synthesis=True,

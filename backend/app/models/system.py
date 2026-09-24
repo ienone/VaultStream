@@ -160,11 +160,6 @@ class ContentQueueItem(Base):
     priority: Mapped[int] = mapped_column(Integer, default=0, index=True)
     scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True, default=None)
     
-    # 预处理缓存
-    rendered_payload: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
-    nsfw_routing_result: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
-    passed_rate_limit: Mapped[bool] = mapped_column(Boolean, default=True)
-    rate_limit_reason: Mapped[Optional[str]] = mapped_column(String(200), default=None)
     
     approved_by: Mapped[Optional[str]] = mapped_column(String(100), default=None)
     

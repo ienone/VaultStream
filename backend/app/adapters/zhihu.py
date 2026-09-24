@@ -950,42 +950,19 @@ class ZhihuAdapter(PlatformAdapter):
                 raise RetryableAdapterError(f"网络请求错误: {e}")
 
     def map_stats_to_content(self, content, parsed: ParsedContent) -> None:
-        """知乎统计字段映射"""
-        stats = parsed.stats or {}
-
+        """Use standard counters for their actual meaning, retain platform-only metrics."""
+        stats = dict(parsed.stats or {})
         if parsed.content_type == "user_profile":
-            content.view_count = self._to_int(stats.get("follower_count", 0))
-            content.share_count = self._to_int(stats.get("following_count", 0))
-            content.like_count = self._to_int(stats.get("voteup_count", 0))
-            content.collect_count = self._to_int(stats.get("favorited_count", 0))
-            content.comment_count = self._to_int(stats.get("reply", 0))
-            content.extra_stats = {
-                "follower_count": self._to_int(stats.get("follower_count", 0)),
-                "following_count": self._to_int(stats.get("following_count", 0)),
-                "voteup_count": self._to_int(stats.get("voteup_count", 0)),
-                "thanked_count": self._to_int(stats.get("thanked_count", 0)),
-                "favorited_count": self._to_int(stats.get("favorited_count", 0)),
-                "favorite_count": self._to_int(stats.get("favorite_count", 0)),  # 用户自己收藏数
-                "answer_count": self._to_int(stats.get("answer_count", 0)),
-                "articles_count": self._to_int(stats.get("articles_count", 0)),
-                "pins_count": self._to_int(stats.get("pins_count", 0)),
-                "question_count": self._to_int(stats.get("question_count", 0)),
-            }
-            return
-
+            stats.update(view=0, share=0, reply=0,
+                         like=stats.get("voteup_count", 0),
+                         favorite=stats.get("favorited_count", 0))
+        elif parsed.content_type == "question":
+            stats.update(view=stats.get("visit_count", 0),
+                         reply=stats.get("comment_count", 0), favorite=0)
+        elif parsed.content_type == "column":
+            stats.update(view=0, reply=0)
+        elif parsed.content_type == "collection":
+            stats["favorite"] = 0
+        for alias in ("voteup_count", "comment_count", "visit_count", "favorited_count"):
+            stats.pop(alias, None)
         self.map_common_stats(content, stats)
-        content.extra_stats = {
-            "voteup_count": self._to_int(stats.get("voteup_count", 0)),
-            "thanks_count": self._to_int(stats.get("thanks_count", 0)),
-            "follower_count": self._to_int(stats.get("follower_count", 0)),
-        }
-
-        if parsed.content_type == "question":
-            content.collect_count = self._to_int(stats.get("follower_count", content.collect_count))
-            content.view_count = self._to_int(stats.get("visit_count", content.view_count))
-            content.comment_count = self._to_int(stats.get("answer_count", content.comment_count))
-        elif parsed.content_type == "pin":
-            content.collect_count = self._to_int(stats.get("favorite", 0))
-            content.share_count = self._to_int(stats.get("share", 0))
-        elif parsed.content_type == "article":
-            content.collect_count = self._to_int(stats.get("favorited_count", 0))

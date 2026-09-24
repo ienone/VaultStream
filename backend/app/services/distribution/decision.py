@@ -24,7 +24,6 @@ class DistributionDecision:
     reason_code: Optional[str] = None
     reason: Optional[str] = None
     target_id: Optional[str] = None
-    nsfw_routing_result: Optional[Dict[str, Any]] = None
 
 
 def check_match_conditions(content: Content, conditions: Dict[str, Any]) -> DistributionDecision:
@@ -95,7 +94,6 @@ def should_distribute(
         return condition_decision
 
     target_id = bot_chat.chat_id if bot_chat else None
-    nsfw_routing_result: Optional[Dict[str, Any]] = None
 
     if content.is_nsfw:
         nsfw_policy = str(rule.nsfw_policy or "block").strip().lower() or "block"
@@ -116,10 +114,6 @@ def should_distribute(
                 )
 
             target_id = routed_target
-            nsfw_routing_result = {
-                "policy": "separate_channel",
-                "target_id": routed_target,
-            }
 
     if require_approval and rule.approval_required:
         if content.review_status not in (ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED):
@@ -128,7 +122,6 @@ def should_distribute(
                 reason_code="approval_required",
                 reason=f"需要人工审批 (当前状态: {content.review_status.value})",
                 target_id=target_id,
-                nsfw_routing_result=nsfw_routing_result,
             )
 
     return DistributionDecision(
@@ -136,5 +129,4 @@ def should_distribute(
         reason_code="rule_matched",
         reason=None,
         target_id=target_id,
-        nsfw_routing_result=nsfw_routing_result,
     )

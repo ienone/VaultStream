@@ -101,7 +101,6 @@ class FavoritesSyncConfig:
     scope_strategy: str
     first_sync_strategy: str
     unfavorite_strategy: str
-    last_sync_at: Any
 
 
 @dataclass(frozen=True)
@@ -109,7 +108,6 @@ class FavoritesSyncPlatformState:
     platform: str
     rate_per_minute: float
     cursor: str | None
-    last_result: Any
 
 
 @dataclass(frozen=True)
@@ -510,7 +508,6 @@ class ConfigService:
             scope_strategy=scope_strategy,
             first_sync_strategy=first_sync_strategy,
             unfavorite_strategy=unfavorite_strategy,
-            last_sync_at=await read("favorites_sync_last_sync_at"),
         )
 
     async def get_favorites_sync_platform_state(
@@ -535,32 +532,6 @@ class ConfigService:
                 default_rate_per_minute,
             ),
             cursor=cursor,
-            last_result=await read(f"favorites_sync_last_result_{platform}"),
-        )
-
-    async def set_favorites_sync_last_sync_at(self, value: Any) -> SystemSetting:
-        return await self.set_value(
-            "favorites_sync_last_sync_at",
-            value,
-            category="favorites_sync",
-        )
-
-    async def set_favorites_sync_last_result(self, value: Any) -> SystemSetting:
-        return await self.set_value(
-            "favorites_sync_last_result",
-            value,
-            category="favorites_sync",
-        )
-
-    async def set_favorites_sync_platform_last_result(
-        self,
-        platform: str,
-        value: Any,
-    ) -> SystemSetting:
-        return await self.set_value(
-            f"favorites_sync_last_result_{platform}",
-            value,
-            category="favorites_sync",
         )
 
     async def set_favorites_sync_cursor(

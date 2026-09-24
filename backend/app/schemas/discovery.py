@@ -34,7 +34,6 @@ class DiscoveryItemListItem(BaseModel):
         default_factory=list,
         validation_alias="media_asset_manifests",
     )
-    discovery_source_id: Optional[int] = None
     source_names: List[str] = Field(default_factory=list)
     source_kinds: List[str] = Field(default_factory=list)
     source_count: int = 0
@@ -78,7 +77,6 @@ class DiscoveryItemResponse(BaseModel):
     rich_payload: Optional[dict] = None
     extra_stats: dict = Field(default_factory=dict)
     context_data: Optional[dict] = None
-    discovery_source_id: Optional[int] = None
     source_names: List[str] = Field(default_factory=list)
     source_kinds: List[str] = Field(default_factory=list)
     source_count: int = 0

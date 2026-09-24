@@ -112,6 +112,7 @@ class VaultStreamBot:
                 return
             
             payload = {
+                "bot_config_id": self.bot_config_id,
                 "platform": "telegram",
                 "bot_id": str(bot_info.id),
                 "bot_username": bot_info.username,

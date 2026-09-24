@@ -90,8 +90,8 @@ class AgentMessageItem(BaseModel):
     session_id: str
     run_id: Optional[str] = None
     role: str
-    content: str
-    payload: Dict[str, Any] = Field(default_factory=dict)
+    content: str = Field(validation_alias="rendered_content")
+    payload: Dict[str, Any] = Field(default_factory=dict, validation_alias="rendered_payload")
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

@@ -14,9 +14,8 @@ from app.core.time_utils import utcnow
 from app.core.config import settings
 from app.services.settings_service import get_setting_value
 from app.services.background_task_state import (
-    record_task_error,
-    record_task_started,
-    record_task_success,
+    record_task_run_error,
+    record_task_run_success,
 )
 from app.models import (
     Content,
@@ -52,7 +51,6 @@ class DiscoveryCleanupTask:
         if self._task and not self._task.done():
             return
         self._task = asyncio.create_task(self._cleanup_loop())
-        asyncio.create_task(record_task_started("discovery_cleanup"))
 
     async def stop(self):
         if self._task and not self._task.done():
@@ -68,10 +66,10 @@ class DiscoveryCleanupTask:
         while True:
             try:
                 deleted = await self._cleanup_expired()
-                await record_task_success("discovery_cleanup", deleted_count=deleted)
+                await record_task_run_success("discovery_cleanup", deleted_count=deleted)
             except Exception as e:
                 logger.error(f"Discovery cleanup error: {e}")
-                await record_task_error("discovery_cleanup", e)
+                await record_task_run_error("discovery_cleanup", None, e)
             await asyncio.sleep(6 * 3600)
 
     async def _cleanup_expired(self) -> int:

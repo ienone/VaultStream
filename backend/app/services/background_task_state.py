@@ -6,99 +6,71 @@ from typing import Any
 from pydantic import TypeAdapter
 from app.schemas.base import OptionalUtcDatetime
 
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, case, delete, func, select, true, union_all
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.core.db_adapter import AsyncSessionLocal
 from app.core.events import event_bus
 from app.core.logging import logger
 from app.core.time_utils import utcnow
-from app.models import BackgroundTaskRun, NotificationMessage, SystemSetting
-from app.services.config_service import ConfigService
+from app.models import BackgroundTaskRun, NotificationMessage
 from app.services.task_run_presentation import build_task_run_presentation, TASK_TERMINAL_STATUSES
 
 _UTC_DATETIME = TypeAdapter(OptionalUtcDatetime)
-_PREFIX = "background_task_state:"
-_CATEGORY = "background_tasks"
 _MAX_RECENT_RUNS = 200
 
 
-def _setting_key(task_name: str) -> str:
-    return f"{_PREFIX}{task_name}"
-
-
-def _now_iso() -> str:
-    return utcnow().isoformat()
-
-
-def _config_service() -> ConfigService:
-    return ConfigService()
-
-
-async def record_task_started(task_name: str, **metrics: Any) -> dict[str, Any]:
-    state = await _load_state(task_name)
-    state.update(
-        {
-            "task": task_name,
-            "status": "running",
-            "last_started_at": _now_iso(),
-            **metrics,
-        }
+def latest_favorites_runs():
+    """Keep each platform's latest result even when other platforms fill the history window."""
+    run = BackgroundTaskRun
+    items = func.json_each(run.result, "$.results").table_valued("key", "value")
+    criteria = (run.task == "favorites_sync", run.status.in_(TASK_TERMINAL_STATUSES))
+    single = select(run.run_id, run.result["platform"].as_string().label("platform"), run.finished_at).where(
+        *criteria, func.json_type(run.result, "$.result") == "object",
+        run.result["platform"].as_string().is_not(None),
     )
-    return await _save_state(task_name, state)
-
-
-async def record_task_success(task_name: str, **metrics: Any) -> dict[str, Any]:
-    state = await _load_state(task_name)
-    state.update(
-        {
-            "task": task_name,
-            "status": "ok",
-            "last_success_at": _now_iso(),
-            "last_error": None,
-            **metrics,
-        }
-    )
-    state["run_count"] = int(state.get("run_count") or 0) + 1
-    saved = await _save_state(task_name, state)
-    await _publish_diagnostics_update(task_name, "ok")
-    return saved
-
-
-async def record_task_error(task_name: str, error: BaseException | str, **metrics: Any) -> dict[str, Any]:
-    state = await _load_state(task_name)
-    state.update(
-        {
-            "task": task_name,
-            "status": "error",
-            "last_error_at": _now_iso(),
-            "last_error": str(error)[:1000],
-            **metrics,
-        }
-    )
-    state["error_count"] = int(state.get("error_count") or 0) + 1
-    saved = await _save_state(task_name, state)
-    await _publish_diagnostics_update(task_name, "error")
-    return saved
+    multiple = select(run.run_id, items.c.key.label("platform"), run.finished_at).join(
+        items, true(),
+    ).where(*criteria)
+    results = union_all(single, multiple).subquery()
+    ranked = select(results.c.run_id, results.c.platform, func.row_number().over(
+        partition_by=results.c.platform,
+        order_by=(results.c.finished_at.desc(), results.c.run_id.desc()),
+    ).label("rank")).subquery()
+    return select(ranked.c.run_id, ranked.c.platform).where(ranked.c.rank == 1).subquery()
 
 
 async def get_background_task_states() -> dict[str, dict[str, Any]]:
+    """Project current status and retained-history counts from the run ledger."""
+    latest = select(
+        BackgroundTaskRun.run_id,
+        func.row_number().over(partition_by=BackgroundTaskRun.task,
+            order_by=(BackgroundTaskRun.started_at.desc(), BackgroundTaskRun.run_id.desc())).label("rank"),
+    ).subquery()
+    history = select(
+        BackgroundTaskRun.task,
+        func.max(BackgroundTaskRun.started_at).label("last_started_at"),
+        func.max(case((BackgroundTaskRun.status == "success", BackgroundTaskRun.finished_at))).label("last_success_at"),
+        func.max(case((BackgroundTaskRun.status == "error", BackgroundTaskRun.finished_at))).label("last_error_at"),
+        func.count().label("run_count"),
+        func.sum(case((BackgroundTaskRun.status == "error", 1), else_=0)).label("error_count"),
+    ).group_by(BackgroundTaskRun.task).subquery()
     async with AsyncSessionLocal() as db:
-        rows = (
-            await db.execute(
-                select(SystemSetting.key, SystemSetting.value)
-                .where(SystemSetting.category == _CATEGORY)
-                .where(SystemSetting.key.like(f"{_PREFIX}%"))
-            )
-        ).all()
-
-    states: dict[str, dict[str, Any]] = {}
-    for key, value in rows:
-        task_name = key[len(_PREFIX) :]
-        if isinstance(value, dict):
-            states[task_name] = value
-        else:
-            states[task_name] = {"task": task_name, "status": "unknown", "raw": value}
+        rows = (await db.execute(select(BackgroundTaskRun, history).join(
+            latest, latest.c.run_id == BackgroundTaskRun.run_id,
+        ).join(history, history.c.task == BackgroundTaskRun.task).where(latest.c.rank == 1))).all()
+    states = {}
+    for row in rows:
+        run = row[0]
+        stats = dict(row._mapping)
+        stats.pop("BackgroundTaskRun")
+        states[run.task] = {
+            **(run.run_metadata or {}),
+            **{key: value for key, value in (run.result or {}).items() if key not in {"result", "results"}},
+            **stats,
+            "status": "ok" if run.status == "success" else run.status,
+            "last_error": run.error,
+        }
     return states
 
 
@@ -113,19 +85,19 @@ async def record_task_run_started(
 
 async def record_task_run_success(
     task_name: str,
-    run_id: str,
+    run_id: str | None = None,
     **result: Any,
 ) -> dict[str, Any]:
-    return await _upsert_run(task_name, run_id, status="success", result=result)
+    return await _upsert_run(task_name, run_id or uuid4().hex, status="success", result=result)
 
 
 async def record_task_run_error(
     task_name: str,
-    run_id: str,
+    run_id: str | None,
     error: BaseException | str,
     **result: Any,
 ) -> dict[str, Any]:
-    return await _upsert_run(task_name, run_id, status="error", error=str(error)[:1000], result=result)
+    return await _upsert_run(task_name, run_id or uuid4().hex, status="error", error=str(error)[:1000], result=result)
 
 
 async def get_recent_task_runs(task_name: str, limit: int = _MAX_RECENT_RUNS) -> list[dict[str, Any]]:
@@ -165,21 +137,6 @@ async def get_task_run(run_id: str) -> dict[str, Any] | None:
     async with AsyncSessionLocal() as db:
         row = await db.get(BackgroundTaskRun, run_id)
     return _serialize_run(row) if row is not None else None
-
-
-async def _load_state(task_name: str) -> dict[str, Any]:
-    state = await _config_service().get_value_fresh(_setting_key(task_name), {})
-    return dict(state) if isinstance(state, dict) else {}
-
-
-async def _save_state(task_name: str, state: dict[str, Any]) -> dict[str, Any]:
-    await _config_service().set_value(
-        _setting_key(task_name),
-        state,
-        category=_CATEGORY,
-        description=f"Runtime state for background task {task_name}",
-    )
-    return state
 
 
 async def _upsert_run(
@@ -239,6 +196,10 @@ async def _upsert_run(
                 .order_by(BackgroundTaskRun.started_at.desc(), BackgroundTaskRun.run_id.desc())
                 .offset(_MAX_RECENT_RUNS)
             )
+            if task_name == "favorites_sync":
+                stale_run_ids = stale_run_ids.where(
+                    ~BackgroundTaskRun.run_id.in_(select(latest_favorites_runs().c.run_id))
+                )
             await db.execute(
                 delete(BackgroundTaskRun).where(
                     BackgroundTaskRun.run_id.in_(stale_run_ids),

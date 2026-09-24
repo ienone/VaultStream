@@ -46,7 +46,7 @@ class Content(Base):
     platform: Mapped[Platform] = mapped_column(SQLEnum(Platform, native_enum=False, values_callable=lambda x: [e.value for e in x]), index=True)
     url: Mapped[str] = mapped_column(Text)
     canonical_url: Mapped[Optional[str]] = mapped_column(Text, index=True, default=None)
-    clean_url: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    resolved_url: Mapped[Optional[str]] = mapped_column(Text, default=None)
     status: Mapped[Optional[ContentStatus]] = mapped_column(
         SQLEnum(ContentStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]),
         default=ContentStatus.UNPROCESSED,
@@ -86,11 +86,6 @@ class Content(Base):
     )
     expire_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
     promoted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=None)
-
-    # 冗余外键：记录第一个写入该内容的发现源，避免通过 content_discovery_links 做二次 JOIN
-    discovery_source_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("discovery_sources.id"), default=None, index=True
-    )
 
     platform_id: Mapped[Optional[str]] = mapped_column(String(100), index=True, default=None)
     
@@ -137,13 +132,17 @@ class Content(Base):
     pushed_records = relationship("PushedRecord", back_populates="content")
     sources = relationship("ContentSource", back_populates="content")
     discovery_links = relationship("ContentDiscoveryLink", back_populates="content")
-    discovery_source = relationship("DiscoverySource", foreign_keys="[Content.discovery_source_id]")
     media_assets = relationship(
         "MediaAsset",
         back_populates="content",
         cascade="all, delete-orphan",
         order_by="MediaAsset.position",
     )
+
+    @property
+    def clean_url(self) -> str:
+        """Public link: resolved destination when distinct from the ingestion identity."""
+        return self.resolved_url or self.canonical_url or self.url
 
 
 class ContentSource(Base):
