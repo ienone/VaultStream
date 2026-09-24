@@ -37,7 +37,7 @@ active
 
 ## 初始化与升级边界
 
-`init_db()` 对空库使用 SQLAlchemy `Base.metadata.create_all()` 创建当前 ORM 结构，补充 FTS/SSE 后执行 Alembic `stamp head`；已有 Alembic 库只执行 `upgrade head`。不保存重复的全量结构快照，目前尚无增量 revision，版本处于 Alembic `base`。
+`init_db()` 对空库使用 SQLAlchemy `Base.metadata.create_all()` 创建当前 ORM 结构，补充 FTS/SSE 后执行 Alembic `stamp head`；已有 Alembic 库只执行 `upgrade head`。不保存重复的全量结构快照。`20260920_media_archive_items` 合并重复媒体索引；`20260920_single_facts` 收敛来源、Agent、队列、Bot、索引和同步结果的重复事实，保留关联 ID 并恢复 SQLite FTS 触发器。迁移连接在事务前关闭外键动作以避免 batch 重建级联删除，提交前执行外键完整性检查；常规连接仍开启外键。
 
 当前历史数据库均为测试数据，不支持旧 `schema_metadata` 库的自动接管或历史数据转换。旧测试库须清空重建；应用不会自动清库，也不会对已有业务表执行 `create_all()` 或 `stamp head` 冒充升级。
 

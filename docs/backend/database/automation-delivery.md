@@ -34,7 +34,7 @@ active
 | :--- | :--- |
 | 目标 | `content_id`、`rule_id`、`bot_chat_id`、`target_platform`、`target_id` |
 | 状态与排期 | `status`、`priority`、`scheduled_at` |
-| 渲染与策略 | `rendered_payload`、`nsfw_routing_result`、`passed_rate_limit`、`rate_limit_reason`、`approved_by` |
+| 审批 | `approved_by` |
 | 重试与锁 | `attempt_count`、`max_attempts`、`next_attempt_at`、`locked_at`、`locked_by` |
 | 结果 | `message_id`、`last_error*`、`started_at`、`completed_at` |
 
@@ -48,7 +48,7 @@ active
 
 - `bot_configs` 保存 Telegram 或 Napcat 连接配置、启用/主配置状态和 Bot 身份。
 - `bot_chats` 保存某个配置发现的群组或频道、权限、用途开关、同步状态和推送统计。
-- `bot_runtime` 保存进程运行身份、心跳、版本与最近错误。
+- `bot_runtime` 通过唯一 `bot_config_id` 关联具体配置，保存实际运行身份、心跳、版本与最近错误；状态接口只读取当前主配置的运行记录。
 
 凭证字段属于敏感数据。文档只描述职责，不记录真实值；导出、日志和测试夹具不得包含生产 token。
 
@@ -57,3 +57,5 @@ active
 - 队列项的唯一业务边界是内容、规则、目标组合。
 - worker 领取和更新队列项时必须维护锁、重试次数和最终状态的一致性。
 - 删除 BotConfig 前必须遵守 BotChat 级联关系，并确认不会留下仍被分发目标引用的孤儿状态。
+
+队列 `target_id` 是路由后的唯一发送目标，领取、去重和发送共用该字段。配置中不再保存任务状态或收藏同步结果副本；运行结果由 `background_task_runs` 保存。

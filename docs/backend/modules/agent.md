@@ -27,7 +27,7 @@ active
 
 ## 实现逻辑
 
-Agent service 构建上下文消息，注册内置工具，运行模型，记录 tool calls、confirmations、runs 和 messages。确认是持久化资源：等待项同时投影到消息盒子，页面可按 session 恢复；停止 run、清空或删除 session 会取消其待确认项。工具完成或失败后，结构化结果也作为 `tool` 消息保存，刷新会话后仍能恢复来源与错误，而不是只依赖当次 SSE。
+Agent service 构建上下文消息，注册内置工具，运行模型，记录 tool calls、confirmations、runs 和 messages。确认是持久化资源：等待项同时投影到消息盒子，页面可按 session 恢复；停止 run、清空或删除 session 会取消其待确认项。工具完成或失败后，`tool` 消息引用调用记录中的结构化结果，刷新会话后仍能恢复来源与错误，而不是只依赖当次 SSE。
 
 会话清空与软删除都是同步动作，统一返回 `AgentSessionActionResponse`；成功响应只确认目标 session 已处理，不虚构后台 run。
 

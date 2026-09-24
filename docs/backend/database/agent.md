@@ -10,19 +10,19 @@ active
 
 ## 会话与消息
 
-- `agent_sessions` 保存会话标题、状态、上下文预算和软删除时间。
-- `agent_messages` 保存会话中的 user、assistant、tool 等消息，可通过 `run_id` 关联一次运行，并用 payload 承载结构化事件。工具完成或失败时同时保存 `tool`、`tool_call_id`、`ok` 以及 `result` / `error`，使刷新后的会话能恢复引用和诊断；`agent_tool_calls` 仍是调用状态与完整审计记录。
+- `agent_sessions` 保存会话标题、状态和软删除时间；上下文预算直接读取全局设置。
+- `agent_messages` 保存 user/assistant 正文及事件引用。工具消息只关联 `tool_call_id`，结果和错误只存在 `agent_tool_calls`；API 读取时生成原有 content/payload 结构，刷新后的消息仍能恢复完整引用和诊断。
 
 会话是长期容器，run 是一次执行。清空或删除会话时应明确消息、运行、工具调用和摘要的级联行为。
 
 ## 运行
 
-`agent_runs` 保存输入、输出、状态、错误和 usage。`usage` 是结构化模型消耗记录，不应只保存一个总 token 数；供应商、模型、缓存和不同 token 类型的日志设计属于后续独立计划。
+`agent_runs` 保存状态、错误和 usage；输入输出只存消息，消息中的 usage 在读取时由所属 run 生成。`usage` 是结构化模型消耗记录，不应只保存一个总 token 数；供应商、模型、缓存和不同 token 类型的日志设计属于后续独立计划。
 
 ## 工具与确认
 
 - `agent_tool_calls` 保存工具名、权限级别、参数、结果、错误和状态。
-- `agent_confirmations` 把高风险决定关联到 session、run 和 tool call，并保存用户决定与时间。
+- `agent_confirmations` 把高风险决定关联到 session、run 和 tool call，只保存用户决定、说明与时间；工具名、权限、参数、结果和错误均读取关联调用。
 
 确认记录不是普通聊天消息的替代品。任何批准都必须能回到原调用参数，且不得被后续 run 复用。等待状态可以转为 `approved`、`rejected`、`failed` 或 `cancelled`；停止 run、清空或删除 session 会取消仍在等待的记录，防止失去上下文后继续执行。
 

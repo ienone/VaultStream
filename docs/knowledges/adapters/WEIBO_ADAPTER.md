@@ -9,7 +9,7 @@ active
 - 平台：微博
 - 当前代码：`backend/app/adapters/weibo.py`
 - 当前类：`WeiboAdapter`
-- 测试：`backend/tests/test_adapters/test_weibo.py`
+- 测试：`backend/tests/test_public_parser_integrity.py`
 
 ## 背景
 
@@ -57,7 +57,7 @@ VaultStream 的微博适配器通过模拟移动端和 Web 端的 AJAX 接口，
 
 ## 2. 解析策略
 
-微博的 API 环境较为复杂。我们采用了“访客模式优先 + 移动端还原”的策略。
+博文主路径读取 `weibo.com/ajax/statuses/show`，使用已配置的 Cookie/代理；APP 分享链接先还原身份。2026-09-19 匿名桌面 API 返回 403，移动端 `m.weibo.cn/statuses/show` 返回 HTTP 200 访客验证页，尚无可替换主路径的匿名成功证据。
 
 ### 2.1 核心接口
 
@@ -66,6 +66,8 @@ VaultStream 的微博适配器通过模拟移动端和 Web 端的 AJAX 接口，
 | 博文详情 | `ajax/statuses/show` | 主力接口，获取完整的推文文本、媒体列表和互动统计 |
 | 长文获取 | `ajax/statuses/longtext` | 针对 `isLongText=true` 的博文，获取被折叠的完整内容 |
 | 用户信息 | `ajax/profile/info` | 获取博主头像、昵称、粉丝数等元数据 |
+
+`isLongText=true` 时必须成功取得非空 `longTextContent` 才能归档；第二次请求沿用代理。请求失败或正文缺失明确失败，不再把首页截断文本当作完整长文保存。该修复经故障注入回归验证，未宣称本轮完成真实账号长文验收。
 
 ### 2.2 自动链路还原
 针对来源不明的 `mapp.api.weibo.cn` 等 APP 分享链接，适配器会自动：

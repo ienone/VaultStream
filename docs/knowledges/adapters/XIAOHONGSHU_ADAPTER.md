@@ -9,7 +9,7 @@ active
 - 平台：小红书
 - 当前代码：`backend/app/adapters/xiaohongshu.py`
 - 当前类：`XiaohongshuAdapter`
-- 测试：`backend/tests/test_adapters/test_xiaohongshu.py`
+- 测试：`backend/tests/test_public_parser_integrity.py`
 
 ## 背景
 
@@ -23,7 +23,7 @@ active
 
 - 适配器注册：`backend/app/adapters/__init__.py`
 - 解析实现：`backend/app/adapters/xiaohongshu.py`
-- 测试样本：`backend/tests/data/xiaohongshu/`
+- 笔记实现：`backend/app/adapters/xiaohongshu_parser/note_parser.py`
 
 ## 使用方式
 
@@ -49,22 +49,31 @@ VaultStream 的小红书适配器通过调用小红书内部 API（配合 `xhsho
 | :--- | :--- | :--- |
 | 笔记详情 (Web) | `xiaohongshu.com/explore/{note_id}` | 支持 `discover/item` 兼容 |
 | 短链接 (APP 分享) | `xhslink.com/{code}` | 自动解析还原 |
-| 用户主页 | `xiaohongshu.com/user/profile/{user_id}` | 需要 `xsec_token` |
+| 用户主页 | `xiaohongshu.com/user/profile/{user_id}` | 部分主页可匿名直读；保留链接提供的 `xsec_token` |
 
 ---
 
 ## 2. 解析逻辑与策略
 
-由于小红书的接口安全性较高，适配器采用了双重兜底解析逻辑：
+带 `xsec_token` 的笔记在无账号时直接读取公开 SSR；有账号时沿用签名 API，失败后尝试 SSR。无访问 token 时不猜测或伪造 token。
+
+用户主页在无账号时读取 SSR；保存账号时保留现有 `otherinfo` 签名 API。匿名资料取自 `user.userPageData`，同时核对 `user.noteQueries[].userId`、加载状态与资料结果。主页不能用推荐用户或登录者资料替代。2026-09-19 样本 `6a55a850000000000e03cc02` 无 token/无 Cookie 成功，三次完整解析中位数约 0.40 秒；另一个样本被重定向到空壳，仍明确失败，不能推断所有主页免登录。
 
 ### 2.1 签名 API 请求 (Hybrid)
 适配器集成了 `xhshow` 库来生成必要的签名头（如 `x-s`）。
 - 主要接口: `/api/sns/web/v1/feed` (笔记)、`/api/sns/web/v1/user/otherinfo` (用户信息)。
 - 优势: 返回数据结构最完整，包含高清视频流、互动数等。
 
-### 2.2 SSR 数据提取 (Fallback)
-当 API 被风控或签名校验失败时，适配器会尝试访问网页原文，并从 `window.__INITIAL_STATE__` 中提取 JSON 数据。
-- 作用: 提高解析笔记的成功率。
+### 2.2 SSR 数据提取
+
+使用网页导航请求头访问原文，从 `window.__INITIAL_STATE__.note.noteDetailMap[note_id].note` 提取目标。2026-09-19 对照发现，仅 User-Agent/Accept 得到 HTTP 200 空壳；加入正常浏览器的 client hints 与 `Upgrade-Insecure-Requests` 后，同一图文与视频笔记返回详情。不能仅凭 HTTP 200 判定成功。
+
+- 必须匹配请求 note_id；不再选择响应中的第一条推荐笔记。
+- 共用状态提取器只转换实测出现的 JavaScript 值 `undefined`、`new Set([])`，正文字符串中的同名文字保持原样；不执行网页脚本。
+- SSR 的 `userId`、`xsecToken` 和 H.264 流 `masterUrl` 在边界转换为 API 字段，避免作者丢失和视频被误存为图文。
+- 网页真实 `/api/sns/web/v1/feed` 响应已确认 `data.items[].id` 与 `note_card.note_id`；API 解析同样按目标身份选择。
+
+匿名实测图文取回 18 张图片；视频取回封面与 H.264 视频地址，作者 ID 均存在。图片和视频各读取 1 KB 得到对应媒体类型；这不代表完成媒体全量下载。详情见[验收记录](../../plans/2026-09-19-public-parser-exploration.process.md)。
 
 ---
 
@@ -72,7 +81,7 @@ VaultStream 的小红书适配器通过调用小红书内部 API（配合 `xhsho
 
 ### 3.1 媒体获取
 - 多图抓取: 自动识别图文笔记中的所有图片，并优先选择高清、无水印版本。
-- 视频解析: 支持获取小红书原生视频的最高清晰度 MP4 流，并提取封面。
+- 视频解析: 从平台返回的 H.264 列表读取首个有效视频 URL，保留该流的尺寸和时长，并提取封面；不宣称一定是平台最高画质。
 - WebP 转化: 适配系统媒体处理层，自动本地化缓存图片。
 
 ### 3.2 文本净化
@@ -95,8 +104,8 @@ VaultStream 的小红书适配器通过调用小红书内部 API（配合 `xhsho
 
 ## 5. 配置说明
 
-### 5.1 Cookie 配置 (必需)
-小红书适配器必须配置登录状态下的 Cookie 才能稳定解析。
+### 5.1 Cookie 配置
+签名 API 与账号功能使用有效 Cookie。带有效 `xsec_token` 的公开笔记可独立读取 SSR，本轮已验证无 Cookie 图文与视频；这不代表所有分享链接都免登录。
 
 ```env
 # .env 文件
@@ -109,8 +118,8 @@ XIAOHONGSHU_COOKIE="webId=...; gid=...; a1=...; web_session=...;"
 
 - 核心代码: `backend/app/adapters/xiaohongshu.py`
 - 主要逻辑: 
-    - `_fetch_note`: 优先 API，失败则回退至 SSR。
-- `_build_note_archive`: 跨平台通用的归档模型构建流程。
+    - `fetch_note`: 按账号和访问 token 选择 API / SSR。
+- `build_note_archive`: 跨平台通用的归档模型构建流程。
 
 ## 7. 2026-07-28 真实验证与字段修正
 

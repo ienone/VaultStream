@@ -16,7 +16,7 @@ active
 
 | 职责 | 主要字段 |
 | :--- | :--- |
-| 身份与去重 | `platform`、`url`、`canonical_url`、`clean_url`、`platform_id` |
+| 身份与去重 | `platform`、`url`、`canonical_url`、`resolved_url`、`platform_id` |
 | 解析与人工状态 | `status`、`failure_count`、`last_error*`、`review_status`、`reviewed_*` |
 | 展示语义 | `layout_type`、`layout_type_override`、`content_type`、`title`、`body`、`summary` |
 | 作者与媒体 | `author_*`、`cover_url`、`cover_color`、`media_urls` |
@@ -35,6 +35,8 @@ active
 - `media_variants` 保存本地 storage key、变体类型、格式/编解码信息、尺寸、状态和校验值。
 - `media_bookmarks` 保存用户对明确 audio/video 资产创建的毫秒级播放位置和可选笔记；内容与资产外键都使用级联删除，同一资产同一位置唯一。
 - API 返回的短期签名 URL 与代理 URL 不入库，由 manifest service 按用途生成。
+
+归档 images/videos 条目保留来源与处理结果；旧 stored_images/stored_videos 索引已通过增量迁移合并，运行时不再读取或写入这两份列表。
 
 现有内容数据尚未完成回填，`cover_url`、`author_avatar_url`、`media_urls` 和 `archive_metadata` 当前仍是迁移输入；不得在新代码中将这些旧字段当作媒体资产表的等价事实。
 
@@ -75,3 +77,5 @@ active
 - 内容删除时，来源、发现关联、语义索引和分发引用必须按各自外键/服务规则处理。
 - 本地媒体引用必须同时覆盖旧 `local://` 字段和 `media_variants.storage_key`；删除内容后只清理没有其他内容/变体引用的物理对象。
 - FTS 行数和内容表活跃记录数出现异常差异时，应先修复索引而不是在查询侧静默兼容。
+
+`canonical_url` 是入库去重身份；`resolved_url` 只保存与之不同的解析落地地址。API 的 `clean_url` 是两者生成的展示值，不再独立存储。发现来源的展示与筛选都使用 `content_discovery_links`，内容表不再保存单个来源副本。索引成功时间统一为 `last_indexed_at`。
