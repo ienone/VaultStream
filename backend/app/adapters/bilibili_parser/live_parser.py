@@ -123,7 +123,6 @@ async def parse_live(
             "markdown": room_info.get('description', ''),
             "images": [{"url": cover_url}] if cover_url else [],
             "links": [],
-            "stored_images": []
         }
 
         # 添加头像（标记为type:avatar，避免被添加到media_urls）

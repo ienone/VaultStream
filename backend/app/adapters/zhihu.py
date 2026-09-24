@@ -639,7 +639,6 @@ class ZhihuAdapter(PlatformAdapter):
                 "markdown": markdown_content,
                 "images": archive_images,
                 "links": [],
-                "stored_images": [],
             }
         }
         
@@ -806,7 +805,6 @@ class ZhihuAdapter(PlatformAdapter):
             "markdown": markdown,
             "images": archive_images,
             "links": [],
-            "stored_images": []
         }
 
     # ==================== 主解析方法 ====================

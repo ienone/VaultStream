@@ -109,16 +109,19 @@ class LocalStorageBackend:
 
     async def put_bytes(self, *, key: str, data: bytes, content_type: str) -> StoredObject:
         path = self._full_path(key)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-
-        tmp_path = path + ".tmp"
 
         def write_atomic() -> None:
-            with open(tmp_path, "wb") as f:
-                f.write(data)
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp_path, path)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            tmp_path = f"{path}.{uuid.uuid4().hex}.tmp"
+            try:
+                with open(tmp_path, "xb") as f:
+                    f.write(data)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp_path, path)
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
 
         await asyncio.to_thread(write_atomic)
         return StoredObject(key=key, size=len(data), content_type=content_type, url=self.get_url(key=key))

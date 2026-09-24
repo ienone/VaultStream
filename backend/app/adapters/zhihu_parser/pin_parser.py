@@ -170,8 +170,6 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
             "markdown": description, # Pins are simple, just use plain text as markdown
             "images": archive_images,
             "links": [],
-            "stored_images": [],
-            "stored_videos": []
         }
         pin_data['archive'] = archive
 

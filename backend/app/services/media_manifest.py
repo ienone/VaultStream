@@ -71,8 +71,8 @@ def _content_asset_priority(asset: MediaAsset, purpose: MediaPurpose) -> tuple[i
         )
         return (
             0 if asset.media_type == MediaType.IMAGE else 1,
-            0 if has_ready_local else 1,
             role_priority,
+            0 if has_ready_local else 1,
             asset.position,
             asset.id,
         )

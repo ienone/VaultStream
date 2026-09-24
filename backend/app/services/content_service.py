@@ -612,7 +612,8 @@ class ContentService:
                 continue
 
             if field == "cover_url":
-                content.cover_url = value
+                from app.services.media_backfill import set_content_cover
+                await set_content_cover(self.db, content, value)
                 from app.media.color import extract_cover_color
                 content.cover_color = await extract_cover_color(value)
             elif field == "status":
@@ -682,6 +683,8 @@ class ContentService:
             raise ValueError("Unsupported parse candidate action")
 
         if field == "cover_url" and action in {"accept_parsed", "merge"}:
+            from app.services.media_backfill import set_content_cover
+            await set_content_cover(self.db, content, content.cover_url)
             from app.media.color import extract_cover_color
             content.cover_color = await extract_cover_color(content.cover_url)
 

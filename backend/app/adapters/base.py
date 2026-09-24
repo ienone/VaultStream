@@ -185,8 +185,6 @@ class PlatformAdapter(ABC):
             "images": images_list,
             "videos": [],
             "links": [],
-            "stored_images": [],
-            "stored_videos": []
         }
         
         archive_metadata = copy.deepcopy(item) if isinstance(item, dict) else {"item": copy.deepcopy(item)}

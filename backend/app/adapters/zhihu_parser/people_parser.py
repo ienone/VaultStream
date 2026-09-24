@@ -62,7 +62,6 @@ def parse_people(html_content: str, url: str) -> Optional[ParsedContent]:
         "plain_text": description,
         "images": [],
         "links": [],
-        "stored_images": []
     }
     if avatar_url:
         archive["images"].append({"url": avatar_url, "type": "avatar"})

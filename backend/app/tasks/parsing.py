@@ -4,12 +4,10 @@
 处理内容解析、元数据提取、媒体下载等逻辑
 """
 import asyncio
-import html
 import json
 import traceback
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
-from urllib.parse import unquote
 from sqlalchemy import String, cast, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,8 +19,9 @@ from app.adapters import close_adapter
 from app.adapters.errors import AdapterError, RetryableAdapterError
 from app.adapters.storage import get_storage_backend
 from app.media.extractor import sanitize_media_urls
-from app.media.processor import store_archive_images_as_webp, store_archive_videos
+from app.media.processor import store_archive_images, store_archive_videos
 from app.media.color import extract_cover_color
+from app.media.references import apply_archive_media
 from app.core.queue import task_queue
 from app.core.queue_adapter import TaskQueue
 from app.utils.datetime_utils import normalize_datetime_for_db
@@ -209,8 +208,8 @@ class ContentParser:
             if isinstance(archive_blob, dict) and archive_blob.get("markdown"):
                 parsed.body = archive_blob["markdown"]
 
-        # 补充封面颜色（本地 URL 跳过，后续从已存储的图片读取）
-        if not getattr(parsed, "cover_color", None) and parsed.cover_url and not parsed.cover_url.startswith("local://"):
+        # 未在归档中取得颜色时，复用本地图片或读取远程封面
+        if not getattr(parsed, "cover_color", None) and parsed.cover_url:
             parsed.cover_color = await extract_cover_color(parsed.cover_url)
 
         # Network/media preparation is complete. Re-read current user fields and
@@ -501,149 +500,6 @@ class ContentParser:
         )
         return metadata
 
-    def _iter_url_candidates(self, url: str) -> list[str]:
-        candidates: list[str] = []
-        if not isinstance(url, str) or not url:
-            return candidates
-
-        stripped = url.strip()
-        if not stripped:
-            return candidates
-        candidates.append(stripped)
-
-        decoded = unquote(stripped)
-        if decoded and decoded not in candidates:
-            candidates.append(decoded)
-
-        unescaped = html.unescape(stripped)
-        if unescaped and unescaped not in candidates:
-            candidates.append(unescaped)
-
-        return candidates
-
-    def _map_url_with_mapping(self, url: Any, url_mapping: Dict[str, str]) -> Optional[str]:
-        if not isinstance(url, str) or not url_mapping:
-            return None
-        for candidate in self._iter_url_candidates(url):
-            mapped = url_mapping.get(candidate)
-            if isinstance(mapped, str) and mapped:
-                return mapped
-        return None
-
-    def _build_stored_image_mapping(self, archive: Dict[str, Any]) -> Dict[str, str]:
-        """从 archive 中构建原图 URL -> 本地可访问 URL 的映射。"""
-        mapping: Dict[str, str] = {}
-
-        def _add_mapping(orig_url: Any, mapped_url: Any) -> None:
-            if not isinstance(orig_url, str) or not isinstance(mapped_url, str):
-                return
-            orig = orig_url.strip()
-            mapped = mapped_url.strip()
-            if not orig or not mapped:
-                return
-            if orig.startswith("local://"):
-                return
-            mapping[orig] = mapped
-
-        stored_images = archive.get("stored_images")
-        if isinstance(stored_images, list):
-            for img in stored_images:
-                if not isinstance(img, dict):
-                    continue
-                orig_url = img.get("orig_url") or img.get("source_url") or img.get("url")
-                key = img.get("key") or img.get("stored_key")
-                mapped_url = f"local://{key}" if isinstance(key, str) and key else img.get("url") or img.get("stored_url")
-                _add_mapping(orig_url, mapped_url)
-
-        # 回退：有些历史数据只在 images 中带了 stored_key。
-        images = archive.get("images")
-        if isinstance(images, list):
-            for img in images:
-                if not isinstance(img, dict):
-                    continue
-                orig_url = img.get("url")
-                key = img.get("stored_key")
-                mapped_url = f"local://{key}" if isinstance(key, str) and key else img.get("stored_url")
-                _add_mapping(orig_url, mapped_url)
-
-        return mapping
-
-    def _rewrite_text_with_mapping(self, text: Optional[str], url_mapping: Dict[str, str]) -> Optional[str]:
-        if not isinstance(text, str) or not text or not url_mapping:
-            return text
-
-        rewritten = text
-        for orig_url, mapped_url in url_mapping.items():
-            for candidate in self._iter_url_candidates(orig_url):
-                rewritten = rewritten.replace(f"({candidate})", f"({mapped_url})")
-                rewritten = rewritten.replace(candidate, mapped_url)
-        return rewritten
-
-    def _apply_stored_mapping_to_record(self, record: Any, archive: Dict[str, Any]) -> bool:
-        """将 archive 的已存储映射回写到正文/封面/头像/媒体字段。"""
-        url_mapping = self._build_stored_image_mapping(archive)
-        if not url_mapping:
-            return False
-
-        changed = False
-
-        body = getattr(record, "body", None)
-        rewritten_body = self._rewrite_text_with_mapping(body, url_mapping)
-        if isinstance(rewritten_body, str) and rewritten_body != body:
-            record.body = rewritten_body
-            changed = True
-
-        cover_url = getattr(record, "cover_url", None)
-        mapped_cover = self._map_url_with_mapping(cover_url, url_mapping)
-        if mapped_cover and mapped_cover != cover_url:
-            record.cover_url = mapped_cover
-            changed = True
-
-        avatar_url = getattr(record, "author_avatar_url", None)
-        mapped_avatar = self._map_url_with_mapping(avatar_url, url_mapping)
-        if mapped_avatar and mapped_avatar != avatar_url:
-            record.author_avatar_url = mapped_avatar
-            changed = True
-
-        media_urls = getattr(record, "media_urls", None)
-        if isinstance(media_urls, list) and media_urls:
-            mapped_media: list[str] = []
-            media_changed = False
-            for media_url in media_urls:
-                mapped = self._map_url_with_mapping(media_url, url_mapping) or media_url
-                if mapped != media_url:
-                    media_changed = True
-                if isinstance(mapped, str):
-                    mapped_media.append(mapped)
-            if media_changed:
-                record.media_urls = mapped_media
-                changed = True
-
-        rich_payload = getattr(record, "rich_payload", None)
-        blocks = rich_payload.get("blocks") if isinstance(rich_payload, dict) else None
-        if isinstance(blocks, list):
-            payload_changed = False
-            for block in blocks:
-                if not isinstance(block, dict):
-                    continue
-                data = block.get("data")
-                if not isinstance(data, dict):
-                    continue
-                if isinstance(data.get("author_avatar_url"), str):
-                    mapped = self._map_url_with_mapping(data["author_avatar_url"], url_mapping)
-                    if mapped and mapped != data["author_avatar_url"]:
-                        data["author_avatar_url"] = mapped
-                        payload_changed = True
-                if isinstance(data.get("cover_url"), str):
-                    mapped = self._map_url_with_mapping(data["cover_url"], url_mapping)
-                    if mapped and mapped != data["cover_url"]:
-                        data["cover_url"] = mapped
-                        payload_changed = True
-            if payload_changed:
-                changed = True
-
-        return changed
-
     async def _maybe_process_private_archive_media(self, parsed) -> None:
         """处理私有归档媒体"""
         meta = getattr(parsed, "archive_metadata", None)
@@ -656,17 +512,12 @@ class ContentParser:
 
         storage = get_storage_backend()
         
-        # MinIO/S3: 确保bucket存在
-        ensure_bucket = getattr(storage, "ensure_bucket", None)
-        if callable(ensure_bucket):
-            await ensure_bucket()
-
         namespace = "vaultstream"
         archive_config = await ConfigService().get_archive_media_config()
 
         # 处理图片
         if archive_config.images_enabled:
-            await store_archive_images_as_webp(
+            await store_archive_images(
                 archive=archive,
                 storage=storage,
                 namespace=namespace,
@@ -674,109 +525,15 @@ class ContentParser:
                 max_images=archive_config.image_max_count,
             )
         
-        # 更新 markdown 引用
-        if archive.get("markdown"):
-            parsed.body = archive["markdown"]
-
-        # 基于已存储映射修正正文/封面/头像等字段（兼容历史数据已存储但正文未改写场景）
-        self._apply_stored_mapping_to_record(parsed, archive)
-        
-        # 更新 media_urls — 优先使用本地 local:// 协议
-        stored_images = archive.get("stored_images", [])
-        if stored_images:
-            local_urls = []
-            for img in stored_images:
-                # 排除头像和非内容相关的图片（如知乎精选回答的头像与配图）
-                img_type = img.get("type")
-                if img_type and img_type not in ("image", "gallery", "cover"):
-                    continue
-                if img.get("is_avatar"):
-                    continue
-                # 优先使用 local:// 协议（内容寻址存储），回退到远程 url
-                if img.get("key"):
-                    local_urls.append(f"local://{img['key']}")
-                elif img.get("url"):
-                    local_urls.append(img["url"])
-
-            if local_urls:
-                unique_local_urls = list(dict.fromkeys(local_urls))
-                parsed.media_urls = unique_local_urls
-
-            # 构建原始URL到存储URL的映射
-            url_mapping = {}
-            for img in stored_images:
-                orig_url = img.get("orig_url") or img.get("url")
-                stored_url = f"local://{img['key']}" if img.get("key") else img.get("url")
-                if orig_url and stored_url:
-                    url_mapping[orig_url] = stored_url
-
-            # 同步更新封面
-            for img in stored_images:
-                stored_url = f"local://{img['key']}" if img.get("key") else img.get("url")
-                if stored_url and img.get("type") == "cover":
-                    parsed.cover_url = stored_url
-                    break
-            
-            # 如果没有明确的 cover_url，回退映射
-            if parsed.cover_url and not parsed.cover_url.startswith("local://"):
-                if parsed.cover_url in url_mapping:
-                    parsed.cover_url = url_mapping[parsed.cover_url]
-            # 如果依然为空，取 local_urls 第一张
-            if not parsed.cover_url and local_urls:
-                parsed.cover_url = local_urls[0]
-
-            # 同步更新头像
-            for img in stored_images:
-                stored_url = f"local://{img['key']}" if img.get("key") else img.get("url")
-                if stored_url and (img.get("type") == "avatar" or img.get("is_avatar")):
-                    parsed.author_avatar_url = stored_url
-                    break
-            
-            # 如果没有明确的 avatar，回退映射
-            if parsed.author_avatar_url and not parsed.author_avatar_url.startswith("local://"):
-                if parsed.author_avatar_url in url_mapping:
-                    parsed.author_avatar_url = url_mapping[parsed.author_avatar_url]
-            
-            # 同步更新 rich_payload 子项中的头像和封面（如知乎问题精选回答）
-            payload = getattr(parsed, "rich_payload", None)
-            blocks = payload.get("blocks") if isinstance(payload, dict) else []
-            if isinstance(blocks, list) and blocks:
-                # 构建原始URL到存储URL的映射
-                url_mapping = {}
-                for img in stored_images:
-                    orig_url = img.get("orig_url")
-                    stored_url = img.get("url") or (f"local://{img['key']}" if img.get("key") else None)
-                    if orig_url and stored_url:
-                        url_mapping[orig_url] = stored_url
-                
-                # 更新 rich_payload blocks 中的 URL
-                for block in blocks:
-                    if not isinstance(block, dict):
-                        continue
-                    data = block.get("data")
-                    if not isinstance(data, dict):
-                        continue
-                    if data.get("author_avatar_url") in url_mapping:
-                        data["author_avatar_url"] = url_mapping[data["author_avatar_url"]]
-                    if data.get("cover_url") in url_mapping:
-                        data["cover_url"] = url_mapping[data["cover_url"]]
-        
-        # 处理视频
-        if archive_config.videos_enabled and archive.get("videos"):
+        if archive_config.videos_enabled:
             await store_archive_videos(
-                archive=archive,
-                storage=storage,
-                namespace=namespace,
+                archive=archive, storage=storage, namespace=namespace,
                 max_videos=archive_config.video_max_count,
                 max_bytes=archive_config.video_max_bytes,
             )
-            
-            stored_videos = archive.get("stored_videos", [])
-            if stored_videos:
-                for v in stored_videos:
-                    v_url = v.get("url") or (f"local://{v['key']}" if v.get("key") else None)
-                    if v_url and v_url not in parsed.media_urls:
-                        parsed.media_urls.append(v_url)
+        if archive.get("markdown"):
+            parsed.body = archive["markdown"]
+        apply_archive_media(parsed, archive)
 
     async def retry_parse(
         self,

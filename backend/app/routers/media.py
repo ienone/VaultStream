@@ -7,7 +7,6 @@ import asyncio
 import mimetypes
 import os
 import threading
-import urllib.parse
 import weakref
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -803,9 +802,6 @@ async def proxy_image(
     2. 后续访问：直接返回本地缓存（速度提升100倍+）
     """
     import hashlib
-
-    # 还原 URL 编码以确保 hash 一致性 (前端通过 query 参数传过来往往会被 encode)
-    url = urllib.parse.unquote(url)
 
     # SSRF 防护：禁止访问内网地址
     if not _is_safe_url(url):

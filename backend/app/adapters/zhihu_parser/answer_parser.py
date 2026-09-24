@@ -116,7 +116,6 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
             "markdown": markdown_content,
             "images": archive_images,
             "links": [],
-            "stored_images": []
         }
         answer_data['archive'] = archive
 

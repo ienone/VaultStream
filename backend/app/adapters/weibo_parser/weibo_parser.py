@@ -230,8 +230,6 @@ def build_weibo_archive(data: Dict[str, Any]) -> Dict[str, Any]:
         "images": [],
         "videos": [],
         "links": [],
-        "stored_images": [],
-        "stored_videos": []
     }
     
     # 提取图片

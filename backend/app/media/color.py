@@ -1,115 +1,63 @@
-"""
-颜色提取模块
-
-从图片中提取主色调信息
-"""
-import httpx
+"""封面颜色提取；归档时直接复用已解码的图片。"""
+import asyncio
+from io import BytesIO
 from pathlib import Path
-from typing import Optional
 from urllib.parse import urlparse
 
+import httpx
+from PIL import Image, ImageOps
+
+from app.adapters.storage import get_storage_backend
 from app.core.logging import logger
-from app.core.config import settings
 from app.core.safe_fetch import safe_client_get
+from app.services.config_service import ConfigService
 
-_MAX_COLOR_IMAGE_BYTES = 20 * 1024 * 1024
+
+def dominant_color(image: Image.Image) -> str:
+    rgb = ImageOps.exif_transpose(image).convert("RGB")
+    rgb.thumbnail((50, 50))
+    red, green, blue = rgb.resize((1, 1), Image.Resampling.LANCZOS).getpixel((0, 0))
+    return f"#{red:02x}{green:02x}{blue:02x}"
 
 
-def _get_dominant_color(data: bytes) -> str:
-    """
-    获取图片的主色调 (Hex 格式)
-    
-    使用PIL提取图片的主要颜色
-    
-    Args:
-        data: 图片的二进制数据
-        
-    Returns:
-        主色调的Hex字符串，如 "#FF5733"
-    """
+def _color_from_bytes(data: bytes) -> str:
+    with Image.open(BytesIO(data)) as image:
+        if not 0 < image.width * image.height <= 40_000_000:
+            raise ValueError("Cover exceeds pixel limit")
+        return dominant_color(image)
+
+
+def _try_read_local_media(url: str) -> bytes | None:
+    parsed = urlparse(url)
+    if url.startswith("local://"):
+        key = url.removeprefix("local://")
+    elif not parsed.netloc and parsed.path.startswith("/media/"):
+        key = parsed.path.removeprefix("/media/")
+    else:
+        return None
+    storage = get_storage_backend()
+    root = Path(storage.root_dir).resolve()
+    path = Path(storage._full_path(key)).resolve()
+    path.relative_to(root)
+    return path.read_bytes()
+
+
+async def extract_cover_color(url: str, timeout_seconds: float = 10.0) -> str | None:
+    from app.media.processor import _build_request_url, _request_headers_for_url
+
     try:
-        from PIL import Image
-        from io import BytesIO
-        
-        img = Image.open(BytesIO(data))
-        img = img.convert("RGB")
-        img = img.resize((100, 100))  # 缩小以提高性能
-        
-        # 获取颜色直方图
-        pixels = list(img.getdata())
-        color_count = {}
-        for pixel in pixels:
-            if pixel in color_count:
-                color_count[pixel] += 1
-            else:
-                color_count[pixel] = 1
-        
-        # 找到最常见的颜色
-        dominant_color = max(color_count, key=color_count.get)
-        return f"#{dominant_color[0]:02x}{dominant_color[1]:02x}{dominant_color[2]:02x}"
-    except Exception as e:
-        logger.warning(f"提取主色调失败: {e}")
-        return "#000000"
-
-
-def _try_read_local_media(url: str) -> Optional[bytes]:
-    """
-    尝试从本地存储读取媒体文件
-    
-    如果URL指向本地媒体路径，直接从磁盘读取避免HTTP回环请求
-    """
-    try:
-        parsed = urlparse(url)
-        # 检查是否是本地媒体路径 (如 /media/vaultstream/blobs/...)
-        if parsed.path.startswith("/media/"):
-            relative_path = parsed.path[7:]  # 去掉 "/media/" 前缀
-            storage_root = Path(settings.storage_local_root).resolve()
-            local_path = (storage_root / relative_path).resolve()
-            local_path.relative_to(storage_root)
-            if local_path.exists() and local_path.is_file():
-                return local_path.read_bytes()
-    except Exception:
-        pass
-    return None
-
-
-async def extract_cover_color(url: str, timeout_seconds: float = 10.0) -> Optional[str]:
-    """
-    从 URL 提取封面主色调（无需启用完整的归档处理）
-    
-    Args:
-        url: 图片URL
-        timeout_seconds: 超时时间（秒）
-        
-    Returns:
-        主色调Hex字符串，失败返回None
-        
-    Examples:
-        >>> await extract_cover_color("https://example.com/image.jpg")
-        "#FF5733"
-    """
-    try:
-        # 优先尝试本地读取，避免HTTP回环请求导致502错误
-        local_data = _try_read_local_media(url)
-        if local_data:
-            return _get_dominant_color(local_data)
-        
-        # 远程URL通过HTTP获取
-        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
-            resp = await safe_client_get(
-                client,
-                url,
-                max_bytes=_MAX_COLOR_IMAGE_BYTES,
-                allowed_content_type_prefixes=("image/",),
-            )
-            if resp.status_code >= 400:
-                raise httpx.HTTPStatusError(
-                    f"Unexpected status code: {resp.status_code}",
-                    request=httpx.Request("GET", resp.url),
-                    response=httpx.Response(resp.status_code),
+        data = await asyncio.to_thread(_try_read_local_media, url)
+        if data is None:
+            proxy = await ConfigService().get_http_proxy()
+            async with httpx.AsyncClient(proxy=proxy, timeout=timeout_seconds) as client:
+                response = await safe_client_get(
+                    client, _build_request_url(url), headers=_request_headers_for_url(url),
+                    max_bytes=20 * 1024 * 1024, allowed_content_type_prefixes=("image/",),
                 )
-            data = resp.content
-            return _get_dominant_color(data)
-    except Exception as e:
-        logger.warning(f"提取封面颜色失败 ({url}): {e}")
+                if response.status_code >= 400:
+                    return None
+                data = response.content
+        return await asyncio.to_thread(_color_from_bytes, data)
+    except Exception as error:
+        logger.warning("Cover color extraction failed: {}", type(error).__name__)
         return None

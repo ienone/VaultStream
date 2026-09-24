@@ -169,8 +169,6 @@ class RssAdapter(PlatformAdapter):
             "images": archive_images,
             "videos": archive_videos,
             "links": body_links,
-            "stored_images": [],
-            "stored_videos": [],
         }
 
         archive_metadata = {

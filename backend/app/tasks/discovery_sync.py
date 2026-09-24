@@ -5,9 +5,7 @@
 """
 import asyncio
 from copy import deepcopy
-import html
 from datetime import timedelta
-from urllib.parse import unquote
 
 from loguru import logger
 from sqlalchemy import select
@@ -20,7 +18,8 @@ from app.core.db_adapter import AsyncSessionLocal
 from app.core.time_utils import utcnow
 from app.adapters.storage import get_storage_backend
 from app.core.config import settings
-from app.media.processor import store_archive_images_as_webp, store_archive_videos
+from app.media.processor import store_archive_images, store_archive_videos
+from app.media.references import apply_archive_media
 from app.models import (
     Content,
     ContentDiscoveryLink,
@@ -439,10 +438,6 @@ class DiscoverySyncTask:
             return
 
         storage = get_storage_backend()
-        ensure_bucket = getattr(storage, "ensure_bucket", None)
-        if callable(ensure_bucket):
-            await ensure_bucket()
-
         namespace = "vaultstream"
         stmt = select(Content).where(Content.id.in_(content_ids))
         result = await db.execute(stmt)
@@ -458,7 +453,7 @@ class DiscoverySyncTask:
                     # RSS discovery's untyped media contract contains images.
                     archive = {"images": [{"url": url, "type": "image"} for url in content.media_urls]}
                 if archive_config.images_enabled:
-                    await store_archive_images_as_webp(
+                    await store_archive_images(
                         archive=archive, storage=storage, namespace=namespace,
                         quality=archive_config.image_webp_quality,
                         max_images=archive_config.image_max_count,
@@ -471,57 +466,10 @@ class DiscoverySyncTask:
                     )
                 metadata["archive"] = archive
                 content.archive_metadata = metadata
-                stored_images = archive.get("stored_images", [])
-                stored_media = stored_images + archive.get("stored_videos", [])
-                if not stored_media:
-                    continue
-
-                local_urls = []
-                url_mapping = {}
-                for img in stored_media:
-                    if img.get("key"):
-                        local_url = f"local://{img['key']}"
-                        local_urls.append(local_url)
-                        orig_url = img.get("orig_url") or img.get("url")
-                        if orig_url:
-                            url_mapping[orig_url] = local_url
-
-                if local_urls:
-                    content.media_urls = list(dict.fromkeys(url_mapping.get(url, url) for url in content.media_urls))
-                    flag_modified(content, "media_urls")
-
-                if content.cover_url and content.cover_url in url_mapping:
-                    content.cover_url = url_mapping[content.cover_url]
-                elif not content.cover_url and stored_images:
-                    image_key = stored_images[0].get("key")
-                    if image_key:
-                        content.cover_url = f"local://{image_key}"
-
-                # Rewrite inline markdown image URLs in body to local:// keys.
-                if content.body and url_mapping:
-                    rewritten = content.body
-                    for orig_url, local_url in url_mapping.items():
-                        candidates = [orig_url]
-                        decoded = unquote(orig_url or "")
-                        if decoded and decoded not in candidates:
-                            candidates.append(decoded)
-                        unescaped = html.unescape(orig_url or "")
-                        if unescaped and unescaped not in candidates:
-                            candidates.append(unescaped)
-
-                        for candidate in candidates:
-                            if not candidate:
-                                continue
-                            rewritten = rewritten.replace(f"({candidate})", f"({local_url})")
-                            rewritten = rewritten.replace(candidate, local_url)
-
-                    if rewritten != content.body:
-                        content.body = rewritten
-
-                # M4/M5: 提取并保留主色调 (cover_color)
-                dominant_color = archive.get("dominant_color")
-                if dominant_color:
-                    content.cover_color = dominant_color
+                apply_archive_media(content, archive)
+                flag_modified(content, "media_urls")
+                if content.rich_payload:
+                    flag_modified(content, "rich_payload")
 
             except Exception as e:
                 logger.warning(f"Discovery media archive failed for content {content.id}: {e}")

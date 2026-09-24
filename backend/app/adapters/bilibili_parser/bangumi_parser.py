@@ -104,7 +104,6 @@ async def parse_bangumi(
             "markdown": item.get('evaluate', ''),
             "images": [{"url": item.get('cover')}] if item.get('cover') else [],
             "links": [],
-            "stored_images": []
         }
 
         # 构建ParsedContent

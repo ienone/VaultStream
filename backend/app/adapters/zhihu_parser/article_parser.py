@@ -85,7 +85,6 @@ def parse_article(html_content: str, url: str) -> Optional[ParsedContent]:
             "markdown": markdown_content,
             "images": archive_images,
             "links": [],
-            "stored_images": []
         }
         article_data['archive'] = archive
     

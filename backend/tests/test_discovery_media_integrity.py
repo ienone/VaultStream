@@ -22,8 +22,8 @@ async def test_image_archiving_preserves_video_and_media_types(db_session, monke
     monkeypatch.setattr('app.tasks.discovery_sync.get_storage_backend', lambda: SimpleNamespace())
     async def archive_images(*, archive, **kwargs):
         assert [entry['url'] for entry in archive['images']] == [photo]
-        archive['stored_images']=[{'key':'fixture/photo.webp','orig_url':photo}]
-    monkeypatch.setattr('app.tasks.discovery_sync.store_archive_images_as_webp', archive_images)
+        archive['images'][0]['stored_key'] = 'fixture/photo.webp'
+    monkeypatch.setattr('app.tasks.discovery_sync.store_archive_images', archive_images)
     video_store = AsyncMock()
     monkeypatch.setattr('app.tasks.discovery_sync.store_archive_videos', video_store)
     await DiscoverySyncTask()._archive_discovery_media(db_session,[content.id])

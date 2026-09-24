@@ -1,33 +1,24 @@
-"""媒体处理工具
-
-当前范围：
-- 下载私有存档引用的远程图片，通过存储后端转换为WebP格式存储
-- 就地更新存档中的存储资产引用
-
-未来范围：
-- 视频/音频下载、转码和衍生变体（HLS、缩略图、波形图）
-"""
-
+"""归档媒体：下载、压缩、原子存储，成功后发布本地引用。"""
 from __future__ import annotations
 
 import asyncio
 import hashlib
-import html
-from dataclasses import dataclass
-from typing import Any, Optional
-from urllib.parse import quote, unquote, urlsplit, urlunsplit
+from io import BytesIO
+from typing import Any
+from urllib.parse import quote, urlsplit, urlunsplit
 
 import httpx
+from PIL import Image, ImageOps
 
-from app.core.logging import logger
-from app.core.safe_fetch import UnsafeUrlError, safe_client_get
 from app.adapters.storage import LocalStorageBackend
+from app.core.logging import logger
+from app.core.safe_fetch import SafeFetchResult, safe_client_get
+from app.media.color import dominant_color
 from app.services.config_service import ConfigService
 
-_URL_PATH_SAFE_CHARS = "/%:@!$&'()*+,;=-._~"
-_URL_QUERY_SAFE_CHARS = "/?:@!$&'()*+,;=-._~%="
 _MAX_ARCHIVE_IMAGE_BYTES = 20 * 1024 * 1024
 _MAX_ARCHIVE_VIDEO_BYTES = 200 * 1024 * 1024
+_MAX_IMAGE_PIXELS = 40_000_000
 
 
 def _request_headers_for_url(url: str) -> dict[str, str]:
@@ -53,37 +44,14 @@ def _request_headers_for_url(url: str) -> dict[str, str]:
     return headers
 
 
-@dataclass(frozen=True)
-class StoredImageInfo:
-    """存储的图片信息"""
-    orig_url: str
-    key: str
-    url: Optional[str]
-    sha256: str
-    size: int
-    width: Optional[int] = None
-    height: Optional[int] = None
-    content_type: str = "image/webp"
-
-
-def _sha256_bytes(data: bytes) -> str:
-    """计算字节数据的SHA256哈希值"""
-    return hashlib.sha256(data).hexdigest()
-
-
 def _build_request_url(raw_url: str) -> str:
-    """Build a request URL while preserving RFC3986 path/query delimiters."""
-    candidate = (raw_url or "").strip()
-    if not candidate:
-        return candidate
-
-    # Decode first to avoid double-encoding user-provided URLs that already contain %xx.
-    decoded = unquote(candidate)
-    parts = urlsplit(decoded)
-    encoded_path = quote(parts.path, safe=_URL_PATH_SAFE_CHARS)
-    encoded_query = quote(parts.query, safe=_URL_QUERY_SAFE_CHARS)
-    encoded_fragment = quote(parts.fragment, safe=_URL_QUERY_SAFE_CHARS)
-    return urlunsplit((parts.scheme, parts.netloc, encoded_path, encoded_query, encoded_fragment))
+    parts = urlsplit(raw_url.strip())
+    return urlunsplit((
+        parts.scheme, parts.netloc,
+        quote(parts.path, safe="/%:@!$&'()*+,;=-._~"),
+        quote(parts.query, safe="/?:@!$&'()*+,;=-._~%="),
+        parts.fragment,
+    ))
 
 
 def _content_addressed_key(namespace: str, sha256_hex: str, ext: str) -> str:
@@ -93,562 +61,249 @@ def _content_addressed_key(namespace: str, sha256_hex: str, ext: str) -> str:
     return f"{prefix}blobs/sha256/{sha256_hex[:2]}/{sha256_hex[2:4]}/{sha256_hex}.{ext.lstrip('.')}"
 
 
-def _image_to_webp_ffmpeg(data: bytes, quality: int = 80) -> Optional[tuple[bytes, int, int]]:
-    """使用 ffmpeg 转码动画为 WebP（高性能）
-    
-    性能对比：
-    - PNG 单帧：ffmpeg 1.4x 快，但输出大 3.8x（不推荐）
-    - GIF 动画：ffmpeg 25x 快，输出大 3.9x（推荐）
-    """
-    import subprocess
-    import tempfile
-    import os
-    from io import BytesIO
-    
-    try:
-        with tempfile.NamedTemporaryFile(delete=False) as tmp_in:
-            tmp_in.write(data)
-            tmp_in_path = tmp_in.name
-        
-        with tempfile.NamedTemporaryFile(suffix=".webp", delete=False) as tmp_out:
-            tmp_out_path = tmp_out.name
-        
+def _encode_webp(image: Image.Image, quality: int) -> bytes:
+    options: dict[str, Any] = {"quality": quality, "method": 4}
+    if getattr(image, "n_frames", 1) > 1:
+        durations = []
+        for index in range(image.n_frames):
+            image.seek(index)
+            durations.append(image.info.get("duration", 100))
+        image.seek(0)
+        options.update(save_all=True, duration=durations, loop=image.info.get("loop", 0))
+    else:
+        image = ImageOps.exif_transpose(image)
+    out = BytesIO()
+    image.save(out, format="WEBP", **options)
+    return out.getvalue()
+
+
+def _validate_image(image: Image.Image) -> None:
+    if not 0 < image.width * image.height <= _MAX_IMAGE_PIXELS:
+        raise ValueError("Image exceeds archive pixel limit")
+
+
+def _image_to_webp(data: bytes, quality: int = 80) -> tuple[bytes, int, int]:
+    """代理和归档共用 Pillow 编码器；已编码的 WebP 直接复用。"""
+    with Image.open(BytesIO(data)) as image:
+        _validate_image(image)
+        image.load()
+        if image.format == "WEBP":
+            return data, image.width, image.height
+        encoded = _encode_webp(image, quality)
+    with Image.open(BytesIO(encoded)) as result:
+        return encoded, result.width, result.height
+
+
+def _thumbnail(image: Image.Image) -> bytes:
+    image = ImageOps.exif_transpose(image)
+    image.thumbnail((300, 300), Image.Resampling.LANCZOS)
+    out = BytesIO()
+    image.save(out, format="WEBP", quality=70, method=4)
+    return out.getvalue()
+
+
+def _thumbnail_from_bytes(data: bytes) -> bytes | None:
+    with Image.open(BytesIO(data)) as image:
+        _validate_image(image)
+        return _thumbnail(image) if max(image.size) > 300 else None
+
+
+async def _store_thumbnail(storage: LocalStorageBackend, namespace: str, data: bytes) -> dict[str, Any]:
+    digest = hashlib.sha256(data).hexdigest()
+    key = _content_addressed_key(namespace, digest, "webp")
+    if not await storage.exists(key=key):
+        await storage.put_bytes(key=key, data=data, content_type="image/webp")
+    with Image.open(BytesIO(data)) as image:
+        width, height = image.size
+    return {"thumb_key": key, "thumb_url": storage.get_url(key=key),
+            "thumb_sha256": digest, "thumb_size": len(data),
+            "thumb_width": width, "thumb_height": height}
+
+
+def _prepare_image(data: bytes, quality: int) -> tuple[bytes, bytes | None, dict[str, Any]]:
+    with Image.open(BytesIO(data)) as image:
+        _validate_image(image)
+        image.load()
+        original_format = image.format
+        encoded = data if original_format == "WEBP" else _encode_webp(image, quality)
+        # 只保存一个主文件。转换没有节省空间时使用已验证的源图。
+        source_extensions = {"JPEG": "jpg", "PNG": "png", "GIF": "gif", "WEBP": "webp", "AVIF": "avif"}
+        use_source = original_format in source_extensions and len(data) <= len(encoded)
+        main = data if use_source else encoded
+        mime = Image.MIME[original_format] if use_source else "image/webp"
+        ext = source_extensions[original_format] if use_source else "webp"
+    with Image.open(BytesIO(main)) as result:
+        result.load()
+        metadata = {"width": result.width, "height": result.height,
+                    "content_type": mime, "extension": ext,
+                    "dominant_color": dominant_color(result)}
+        thumb = _thumbnail(result) if max(result.size) > 300 else None
+    return main, thumb, metadata
+
+
+async def _download(client: httpx.AsyncClient, url: str, *, kind: str, max_bytes: int):
+    request_url = _build_request_url(url)
+    for attempt in range(3):
         try:
-            # quality 映射：80 → crf 40（数值越低质量越好，范围0-63）
-            crf = max(0, min(63, int(80 - quality / 100 * 30)))
-            
-            result = subprocess.run(
-                [
-                    "ffmpeg",
-                    "-i", tmp_in_path,
-                    "-c:v", "libwebp",
-                    "-quality", str(100),  # 编码质量 0-100
-                    "-crf", str(crf),      # 恒定质量模式
-                    "-loop", "0",          # 无限循环
-                    "-y",                  # 覆盖输出文件
-                    tmp_out_path
-                ],
-                capture_output=True,
-                timeout=120,
-                check=False
+            response = await safe_client_get(
+                client, request_url, headers=_request_headers_for_url(url),
+                max_bytes=max_bytes, allowed_content_type_prefixes=(f"{kind}/",),
             )
-            
-            if result.returncode != 0:
-                logger.warning(f"ffmpeg 转码失败: {result.stderr.decode()}")
-                return None
-            
-            with open(tmp_out_path, "rb") as f:
-                webp_data = f.read()
-            
-            # 获取尺寸
-            from PIL import Image
-            with Image.open(BytesIO(webp_data)) as img:
-                width, height = img.size
-            
-            return webp_data, width, height
-        finally:
-            os.unlink(tmp_in_path)
-            os.unlink(tmp_out_path)
-    
-    except (FileNotFoundError, subprocess.TimeoutExpired, Exception) as e:
-        logger.debug(f"ffmpeg 不可用或转码失败: {e}")
-        return None
-
-
-def _image_to_webp(data: bytes, quality: int = 80) -> tuple[bytes, Optional[int], Optional[int]]:
-    """将图片转换为WebP格式，保留动画帧
-    
-    优先使用 ffmpeg（动画快 10+ 倍），降级到 Pillow
-    """
-    try:
-        from PIL import Image  # type: ignore
-    except Exception as e:  # pragma: no cover
-        raise RuntimeError("WebP转码需要安装 Pillow") from e
-
-    from io import BytesIO
-
-    # 先尝试 ffmpeg（只对动画有效）
-    with Image.open(BytesIO(data)) as im:
-        is_animated = hasattr(im, 'n_frames') and im.n_frames > 1
-    
-    if is_animated:
-        ffmpeg_result = _image_to_webp_ffmpeg(data, quality=quality)
-        if ffmpeg_result:
-            return ffmpeg_result[0], ffmpeg_result[1], ffmpeg_result[2]
-        # ffmpeg 不可用，降级到 Pillow
-        logger.info("ffmpeg 不可用，使用 Pillow 转码（速度较慢）")
-    
-    # Pillow 转码（用于单帧或 ffmpeg 不可用）
-    with Image.open(BytesIO(data)) as im:
-        width, height = im.size
-        
-        # 检查是否是动画图像（多帧）
-        is_animated = hasattr(im, 'n_frames') and im.n_frames > 1
-        
-        if is_animated:
-            # 提取所有帧和持续时间
-            frames = []
-            durations = []
-            
-            for frame_idx in range(im.n_frames):
-                im.seek(frame_idx)
-                
-                # 转换颜色模式
-                frame = im.convert("RGBA") if im.mode in ("P", "LA") else im.convert("RGB")
-                frames.append(frame)
-                
-                # 获取帧延迟（毫秒）
-                duration = im.info.get('duration', 100)
-                durations.append(duration)
-            
-            # 保存为动态 WebP
-            out = BytesIO()
-            frames[0].save(
-                out,
-                format="WEBP",
-                quality=int(quality),
-                method=6,
-                save_all=True,
-                append_images=frames[1:],
-                duration=durations,
-                loop=0  # 无限循环
-            )
-            return out.getvalue(), int(width) if width else None, int(height) if height else None
-        else:
-            # 单帧图像，正常转换
-            if im.mode in ("P", "LA"):
-                im = im.convert("RGBA")
-            elif im.mode not in ("RGB", "RGBA"):
-                im = im.convert("RGB")
-
-            out = BytesIO()
-            im.save(out, format="WEBP", quality=int(quality), method=6)
-            return out.getvalue(), int(width) if width else None, int(height) if height else None
-
-
-def _create_thumbnail_webp(data: bytes, size: tuple[int, int] = (300, 300), quality: int = 70) -> bytes:
-    """创建缩略图"""
-    try:
-        from PIL import Image
-    except Exception as e:
-        raise RuntimeError("缩略图生成需要安装 Pillow") from e
-
-    from io import BytesIO
-    with Image.open(BytesIO(data)) as im:
-        # 保持比例缩放
-        im.thumbnail(size, Image.Resampling.LANCZOS)
-        out = BytesIO()
-        im.save(out, format="WEBP", quality=quality)
-        return out.getvalue()
-
-
-def _get_dominant_color(data: bytes) -> Optional[str]:
-    """获取图片的色彩主色调 (Hex 格式)"""
-    try:
-        from PIL import Image
-    except ImportError:
-        return None
-
-    from io import BytesIO
-    try:
-        with Image.open(BytesIO(data)) as im:
-            # 缩放到极小尺寸以快速获取主色
-            im = im.convert("RGB")
-            im.thumbnail((50, 50))
-            
-            # 使用简单的中位切分或缩放平均值
-            # 这里采用缩放至 1x1 的平均值方法，简单且高效
-            avg_color = im.resize((1, 1), Image.Resampling.LANCZOS).getpixel((0, 0))
-            return '#{:02x}{:02x}{:02x}'.format(avg_color[0], avg_color[1], avg_color[2])
-    except Exception as e:
-        logger.warning(f"提取图片颜色失败: {e}")
-        return None
-
-
-async def extract_cover_color(url: str, timeout_seconds: float = 10.0) -> Optional[str]:
-    """从 URL 提取封面主色调（无需启用完整的归档处理）"""
-    if not url:
-        return None
-    
-    proxy = await ConfigService().get_http_proxy()
-    
-    headers = _request_headers_for_url(url)
-    try:
-        async with httpx.AsyncClient(proxy=proxy, timeout=timeout_seconds, follow_redirects=True) as client:
-            resp = await safe_client_get(
-                client,
-                url,
-                headers=headers,
-                max_bytes=_MAX_ARCHIVE_IMAGE_BYTES,
-                allowed_content_type_prefixes=("image/",),
-            )
-            if resp.status_code >= 400:
-                raise httpx.HTTPStatusError(
-                    f"Unexpected status code: {resp.status_code}",
-                    request=httpx.Request("GET", resp.url),
-                    response=httpx.Response(resp.status_code),
+            if response.status_code >= 400:
+                error = httpx.HTTPStatusError(
+                    f"Media upstream status {response.status_code}",
+                    request=httpx.Request("GET", request_url),
+                    response=httpx.Response(response.status_code),
                 )
-            return _get_dominant_color(resp.content)
-    except Exception as e:
-        logger.warning(f"Failed to extract color from {url}: {e}")
-        return None
+                if response.status_code != 429 and response.status_code < 500:
+                    raise error
+                if attempt == 2:
+                    raise error
+            else:
+                if not response.content:
+                    raise ValueError("Empty media response")
+                return response
+        except httpx.TransportError:
+            if attempt == 2:
+                raise
+        await asyncio.sleep(0.8 * (attempt + 1))
+    raise AssertionError("unreachable")
 
 
-async def store_archive_images_as_webp(
-    *,
-    archive: dict[str, Any],
-    storage: LocalStorageBackend,
-    namespace: str,
-    quality: int = 80,
-    timeout_seconds: float = 30.0,
-    max_images: Optional[int] = None,
+async def _save_thumbnail(
+    result: dict[str, Any], thumbnail: bytes | None,
+    storage: LocalStorageBackend, namespace: str,
+) -> None:
+    """缩略图失败不撤销已经成功保存的主文件。"""
+    try:
+        if thumbnail:
+            result.update(await _store_thumbnail(storage, namespace, thumbnail))
+        else:
+            result.update(thumb_key=result["stored_key"], thumb_url=result.get("stored_url"))
+    except OSError as error:
+        logger.warning("Thumbnail storage failed: {}", type(error).__name__)
+
+
+async def _restore_thumbnail(
+    result: dict[str, Any], storage: LocalStorageBackend, namespace: str,
+) -> None:
+    key = result.get("thumb_key")
+    if key and await storage.exists(key=key):
+        return
+    for name in list(result):
+        if name.startswith("thumb_"):
+            result.pop(name)
+    try:
+        data = await storage.get_bytes(result["stored_key"])
+        thumbnail = await asyncio.to_thread(_thumbnail_from_bytes, data)
+        await _save_thumbnail(result, thumbnail, storage, namespace)
+    except (OSError, ValueError) as error:
+        logger.warning("Thumbnail repair failed: {}", type(error).__name__)
+
+
+async def _store_download(
+    response: SafeFetchResult, *, kind: str, quality: int,
+    storage: LocalStorageBackend, namespace: str,
+) -> tuple[dict[str, Any], str | None]:
+    """将一次下载转换为已落盘的结果，不修改归档和正文。"""
+    color = None
+    if kind == "image":
+        data, thumbnail, info = await asyncio.to_thread(_prepare_image, response.content, quality)
+        extension = info.pop("extension")
+        color = info.pop("dominant_color")
+    else:
+        data = response.content
+        mime = response.headers.get("content-type", "video/mp4").split(";")[0].strip()
+        extension = {"video/mp4": "mp4", "video/webm": "webm", "video/ogg": "ogg",
+                     "video/quicktime": "mov", "video/x-matroska": "mkv"}.get(mime, "mp4")
+        info = {"content_type": mime}
+    digest = hashlib.sha256(data).hexdigest()
+    key = _content_addressed_key(namespace, digest, extension)
+    if not await storage.exists(key=key):
+        await storage.put_bytes(key=key, data=data, content_type=info["content_type"])
+    result = {f"stored_{name}": value for name, value in info.items()}
+    result.update(stored_key=key, stored_url=storage.get_url(key=key),
+                  stored_sha256=digest, stored_size=len(data))
+    if kind == "image":
+        await _save_thumbnail(result, thumbnail, storage, namespace)
+    return result, color
+
+
+async def _store_archive_media(
+    *, archive: dict[str, Any], storage: LocalStorageBackend, namespace: str,
+    kind: str, quality: int, timeout_seconds: float, limit: int | None, max_bytes: int,
 ) -> dict[str, Any]:
-    """下载并存储存档中的图片为WebP格式，更新存档引用。
+    from app.media.references import rewrite_media_urls
 
-    期望存档结构类似于 bilibili_opus 存档：
-    - archive['images'] 是包含至少 {'url': 'https://...'} 的字典列表
-
-    更新内容：
-    - 添加 archive['stored_images'] 列表，包含存储的引用
-    - 对于 archive['images'] 中的每个条目，添加可选的 'stored_key'/'stored_url'/'stored_sha256'
-    - 如果存储后端提供 URL，替换 archive['markdown'] 中的图片链接
-
-    Returns:
-        更新后的存档字典（同一对象被修改）。
-    """
-
-    images = archive.get("images")
-    if not isinstance(images, list) or not images:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for item in archive.get(f"{kind}s") or []:
+        if isinstance(item, dict) and isinstance(item.get("url"), str) and item["url"].strip():
+            groups.setdefault(item["url"].strip(), []).append(item)
+    if not groups:
         return archive
 
-    stored_images: list[dict[str, Any]] = []
-    url_to_stored_url: dict[str, str] = {}
-
-    count = 0
-    
-    # 配置代理（如 Twitter 图片需要代理）
+    rewrites: dict[str, str] = {}
+    attempts = 0
     proxy = await ConfigService().get_http_proxy()
-    
-    async with httpx.AsyncClient(proxy=proxy, timeout=timeout_seconds, follow_redirects=True) as client:
-        for img in images:
-            if max_images is not None and count >= max_images:
-                break
-            if not isinstance(img, dict):
-                continue
-            orig_url = img.get("url")
-            if not isinstance(orig_url, str) or not orig_url.strip():
-                continue
-            orig_url = orig_url.strip()
-            
-            request_url = _build_request_url(orig_url)
-
-            # 已处理条目：无需重复下载，但要参与 URL 映射重写（修复历史正文中的远程链接）
-            existing_stored_key = img.get("stored_key")
-            if isinstance(existing_stored_key, str) and existing_stored_key:
-                local_stored_url = f"local://{existing_stored_key}"
-                url_to_stored_url[orig_url] = local_stored_url
-
-                # 尽量补齐 stored_images，便于后续任务统一读取。
-                stored_item = {
-                    "orig_url": orig_url,
-                    "key": existing_stored_key,
-                    "url": img.get("stored_url"),
-                    "sha256": img.get("stored_sha256"),
-                    "size": img.get("stored_size"),
-                    "width": img.get("stored_width"),
-                    "height": img.get("stored_height"),
-                    "content_type": img.get("stored_content_type") or "image/webp",
-                }
-                for k, v in img.items():
-                    if k not in stored_item and not k.startswith("stored_"):
-                        stored_item[k] = v
-                stored_images.append(stored_item)
-                continue
-
-            webp_bytes = None
-            width = None
-            height = None
-            key = None
-            sha256_hex = None
-
-            # Best-effort retries for transient failures (network hiccups, CDN throttling).
-            for attempt in range(3):
-                try:
-                    resp = await safe_client_get(
-                        client,
-                        request_url,
-                        headers=_request_headers_for_url(orig_url),
-                        max_bytes=_MAX_ARCHIVE_IMAGE_BYTES,
-                        allowed_content_type_prefixes=("image/",),
+    async with httpx.AsyncClient(proxy=proxy, timeout=timeout_seconds) as client:
+        for url, items in groups.items():
+            result, color = {}, None
+            try:
+                # 同一来源的任一条目有可用主文件即可复用，不受条目顺序影响。
+                for item in items:
+                    if item.get("stored_key") and await storage.exists(key=item["stored_key"]):
+                        result = {name: value for name, value in item.items()
+                                  if name.startswith(("stored_", "thumb_"))}
+                        break
+                if result:
+                    if kind == "image":
+                        await _restore_thumbnail(result, storage, namespace)
+                elif limit is None or attempts < limit:
+                    attempts += 1
+                    response = await _download(client, url, kind=kind, max_bytes=max_bytes)
+                    result, color = await _store_download(
+                        response, kind=kind, quality=quality, storage=storage, namespace=namespace,
                     )
-                    if resp.status_code >= 400:
-                        raise httpx.HTTPStatusError(
-                            f"Unexpected status code: {resp.status_code}",
-                            request=httpx.Request("GET", request_url),
-                            response=httpx.Response(resp.status_code),
-                        )
-                    src_bytes = resp.content
-                    webp_bytes, width, height = _image_to_webp(src_bytes, quality=quality)
-                    sha256_hex = _sha256_bytes(webp_bytes)
-                    key = _content_addressed_key(namespace, sha256_hex, "webp")
-                    await storage.put_bytes(key=key, data=webp_bytes, content_type="image/webp")
-                    
-                    # 同时生成并存储缩略图 (M3: 可视化列表加速)
-                    try:
-                        thumb_bytes = _create_thumbnail_webp(webp_bytes)
-                        # thumb key 命名规范: hash.thumb.webp
-                        thumb_key = key.replace(".webp", ".thumb.webp")
-                        await storage.put_bytes(key=thumb_key, data=thumb_bytes, content_type="image/webp")
-                        img["thumb_key"] = thumb_key
-                        img["thumb_url"] = storage.get_url(key=thumb_key)
-                    except Exception as thumb_err:
-                        logger.warning(f"生成缩略图失败: {thumb_err}")
-                    
-                    # M5: 提取主图颜色
-                    if count == 0:
-                        try:
-                            archive["dominant_color"] = _get_dominant_color(webp_bytes or src_bytes)
-                        except Exception as color_err:
-                            logger.warning(f"提取主色调失败: {color_err}")
-                        
-                    break
-                except UnsafeUrlError as e:
-                    logger.warning(
-                        "Process image rejected: {} ({})",
-                        orig_url,
-                        f"{type(e).__name__}: {e}",
-                    )
-                    break
-                except Exception as e:
-                    is_last = attempt >= 2
-                    if is_last:
-                        logger.warning(
-                            "Process image failed: {} (attempt={}/3, {})",
-                            orig_url,
-                            attempt + 1,
-                            f"{type(e).__name__}: {e}",
-                        )
-                    else:
-                        await asyncio.sleep(0.8 * (attempt + 1))
-                        continue
+            except Exception as error:
+                logger.warning("Archive {} failed ({}): {}", kind, type(error).__name__, str(error))
 
-            if not (webp_bytes and key and sha256_hex):
-                continue
-
-            stored_url = storage.get_url(key=key)
-            info = StoredImageInfo(
-                orig_url=orig_url,
-                key=key,
-                url=stored_url,
-                sha256=sha256_hex,
-                size=len(webp_bytes),
-                width=width,
-                height=height,
-            )
-
-            img["stored_key"] = info.key
-            img["stored_url"] = info.url
-            img["stored_sha256"] = info.sha256
-            img["stored_size"] = info.size
-            img["stored_width"] = info.width
-            img["stored_height"] = info.height
-            img["stored_content_type"] = info.content_type
-
-            # 构建存储条目，透传原始字典中的元数据 (如 type: "avatar")
-            stored_item = {
-                "orig_url": info.orig_url,
-                "key": info.key,
-                "url": info.url,
-                "sha256": info.sha256,
-                "size": info.size,
-                "width": info.width,
-                "height": info.height,
-                "content_type": info.content_type,
-            }
-            # 将原始字典中除 url 以外的所有自定义键值对也存入 stored_images
-            for k, v in img.items():
-                if k not in stored_item and not k.startswith("stored_"):
-                    stored_item[k] = v
-
-            stored_images.append(stored_item)
-
-            if info.url:
-                url_to_stored_url[orig_url] = info.url
-            if info.key:
-                 # 优先使用 local:// 协议，以便后端 API 统一替换为代理 URL
-                 url_to_stored_url[orig_url] = f"local://{info.key}"
-
-            count += 1
-
-    if stored_images:
-        archive["stored_images"] = stored_images
-
-    # 同步重写 markdown 中的图片 URL 为本地 local:// 地址，
-    # 避免详情页再次回落到 /proxy/image 冷缓存链路。
-    markdown = archive.get("markdown")
-    if isinstance(markdown, str) and markdown and url_to_stored_url:
-        rewritten = markdown
-        for orig_url, stored_url in url_to_stored_url.items():
-            if not orig_url or not stored_url:
-                continue
-            candidates = [orig_url]
-            decoded = unquote(orig_url)
-            if decoded and decoded not in candidates:
-                candidates.append(decoded)
-            unescaped = html.unescape(orig_url)
-            if unescaped and unescaped not in candidates:
-                candidates.append(unescaped)
-
-            for candidate in candidates:
-                if not candidate:
-                    continue
-                rewritten = rewritten.replace(f"({candidate})", f"({stored_url})")
-                rewritten = rewritten.replace(candidate, stored_url)
-
-        archive["markdown"] = rewritten
-
-    logger.info(
-        "Archive images processed: total_images={}, stored_images={}",
-        len(images),
-        len(stored_images),
-    )
-
+            local_url = f"local://{result['stored_key']}" if result else url
+            if result:
+                rewrites[url] = local_url
+            for item in items:
+                item["url"] = url
+                previous_key = item.get("stored_key")
+                if previous_key:
+                    rewrites[f"local://{previous_key}"] = local_url
+                for name in list(item):
+                    if name.startswith(("stored_", "thumb_")):
+                        item.pop(name)
+                item.update(result)
+            if color and not archive.get("dominant_color") and any(
+                not item.get("is_avatar") and item.get("type") != "avatar" for item in items
+            ):
+                archive["dominant_color"] = color
+    if isinstance(archive.get("markdown"), str):
+        archive["markdown"] = rewrite_media_urls(archive["markdown"], rewrites)
     return archive
+
+
+async def store_archive_images(
+    *, archive: dict[str, Any], storage: LocalStorageBackend, namespace: str,
+    quality: int = 80, timeout_seconds: float = 30.0, max_images: int | None = None,
+) -> dict[str, Any]:
+    return await _store_archive_media(
+        archive=archive, storage=storage, namespace=namespace, kind="image", quality=quality,
+        timeout_seconds=timeout_seconds, limit=max_images, max_bytes=_MAX_ARCHIVE_IMAGE_BYTES,
+    )
 
 
 async def store_archive_videos(
-    *,
-    archive: dict[str, Any],
-    storage: LocalStorageBackend,
-    namespace: str,
-    timeout_seconds: float = 120.0,
-    max_videos: Optional[int] = None,
-    max_bytes: Optional[int] = None,
+    *, archive: dict[str, Any], storage: LocalStorageBackend, namespace: str,
+    timeout_seconds: float = 120.0, max_videos: int | None = None, max_bytes: int | None = None,
 ) -> dict[str, Any]:
-    """下载并存储存档中的视频，更新存档引用。
-
-    期望存档结构（与图片类似）：
-    - archive['videos'] 是包含至少 {'url': 'https://...'} 的字典列表
-
-    更新内容：
-    - 添加 archive['stored_videos'] 列表，包含存储的引用
-    - 对于 archive['videos'] 中的每个条目，添加可选的 'stored_key'/'stored_url'/'stored_sha256'
-
-    Args:
-        archive: 存档字典
-        storage: 存储后端
-        namespace: 存储命名空间
-        timeout_seconds: 下载超时时间
-        max_videos: 最大处理视频数量
-
-    Returns:
-        更新后的存档字典（同一对象被修改）。
-    """
-
-    videos = archive.get("videos")
-    if not isinstance(videos, list) or not videos:
-        return archive
-
-    stored_videos: list[dict[str, Any]] = []
-
-    count = 0
-    
-    # 配置代理（如 Twitter 视频需要代理）
-    proxy = await ConfigService().get_http_proxy()
-    
-    async with httpx.AsyncClient(proxy=proxy, timeout=timeout_seconds, follow_redirects=True) as client:
-        for vid in videos:
-            if max_videos is not None and count >= max_videos:
-                break
-            if not isinstance(vid, dict):
-                continue
-            orig_url = vid.get("url")
-            if not isinstance(orig_url, str) or not orig_url.strip():
-                continue
-            orig_url = orig_url.strip()
-
-            # Skip if already processed
-            if isinstance(vid.get("stored_key"), str) and vid.get("stored_key"):
-                continue
-
-            video_bytes = None
-            key = None
-            sha256_hex = None
-
-            # Best-effort retries for transient failures
-            for attempt in range(3):
-                try:
-                    resp = await safe_client_get(
-                        client,
-                        orig_url,
-                        headers=_request_headers_for_url(orig_url),
-                        max_bytes=max_bytes or _MAX_ARCHIVE_VIDEO_BYTES,
-                        allowed_content_type_prefixes=("video/",),
-                    )
-                    if resp.status_code >= 400:
-                        raise httpx.HTTPStatusError(
-                            f"Unexpected status code: {resp.status_code}",
-                            request=httpx.Request("GET", orig_url),
-                            response=httpx.Response(resp.status_code),
-                        )
-                    video_bytes = resp.content
-                    sha256_hex = _sha256_bytes(video_bytes)
-                    
-                    # 检测视频格式（从URL或内容类型）
-                    content_type = resp.headers.get("content-type", "video/mp4")
-                    if "video" not in content_type:
-                        content_type = "video/mp4"  # 默认为 mp4
-                    
-                    # 从 content-type 提取扩展名
-                    ext = "mp4"  # 默认
-                    if "/" in content_type:
-                        mime_subtype = content_type.split("/")[1].split(";")[0].strip()
-                        if mime_subtype in ["mp4", "webm", "ogg", "mov", "avi", "mkv"]:
-                            ext = mime_subtype
-                    
-                    key = _content_addressed_key(namespace, sha256_hex, ext)
-                    await storage.put_bytes(key=key, data=video_bytes, content_type=content_type)
-                    break
-                except Exception as e:
-                    is_last = attempt >= 2
-                    if is_last:
-                        logger.warning(
-                            "Process video failed: {} (attempt={}/3, {})",
-                            orig_url,
-                            attempt + 1,
-                            f"{type(e).__name__}: {e}",
-                        )
-                    else:
-                        await asyncio.sleep(1.5 * (attempt + 1))
-                        continue
-
-            if not (video_bytes and key and sha256_hex):
-                continue
-
-            stored_url = storage.get_url(key=key)
-            
-            vid["stored_key"] = key
-            vid["stored_url"] = stored_url
-            vid["stored_sha256"] = sha256_hex
-            vid["stored_size"] = len(video_bytes)
-
-            stored_videos.append({
-                "orig_url": orig_url,
-                "key": key,
-                "url": stored_url,
-                "sha256": sha256_hex,
-                "size": len(video_bytes),
-            })
-
-            count += 1
-
-    if stored_videos:
-        archive["stored_videos"] = stored_videos
-
-    logger.info(
-        "Archive videos processed: total_videos={}, stored_videos={}",
-        len(videos),
-        len(stored_videos),
+    return await _store_archive_media(
+        archive=archive, storage=storage, namespace=namespace, kind="video", quality=80,
+        timeout_seconds=timeout_seconds, limit=max_videos,
+        max_bytes=max_bytes if max_bytes is not None else _MAX_ARCHIVE_VIDEO_BYTES,
     )
-
-    return archive

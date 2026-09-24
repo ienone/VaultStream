@@ -179,7 +179,6 @@ def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
             "markdown": full_description,
             "images": archive_images,
             "links": [],
-            "stored_images": [],
         }
 
     return ParsedContent(

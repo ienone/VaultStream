@@ -204,12 +204,8 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
             archive = {}
     archive_images = archive.get("images") if isinstance(archive.get("images"), list) else []
     archive_videos = archive.get("videos") if isinstance(archive.get("videos"), list) else []
-    stored_images = (
-        archive.get("stored_images") if isinstance(archive.get("stored_images"), list) else []
-    )
-    stored_videos = (
-        archive.get("stored_videos") if isinstance(archive.get("stored_videos"), list) else []
-    )
+    stored_images = [item for item in archive_images if isinstance(item, dict) and item.get("stored_key")]
+    stored_videos = [item for item in archive_videos if isinstance(item, dict) and item.get("stored_key")]
     image_work_enabled = archive_config.enabled and archive_config.images_enabled
     video_work_enabled = archive_config.enabled and archive_config.videos_enabled
     image_pending = image_work_enabled and len(stored_images) < len(archive_images)

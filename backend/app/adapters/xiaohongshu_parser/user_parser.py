@@ -214,7 +214,6 @@ async def parse_user(
         "plain_text": desc,
         "images": [],
         "links": [],
-        "stored_images": [],
         # CLI有提取的额外字段
         "red_id": red_id,
         "ip_location": ip_location,

@@ -6,7 +6,7 @@ import ipaddress
 import mimetypes
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 from urllib.parse import urlparse
 
 from sqlalchemy import delete, select
@@ -140,8 +140,6 @@ def _role_from_item(
     item_type = str(item.get("type") or "").lower()
     if item_type == "avatar" or item.get("is_avatar") is True:
         return MediaRole.AVATAR
-    if item_type == "cover":
-        return MediaRole.COVER
     if original_url and original_url == _remote_url(avatar_url):
         return MediaRole.AVATAR
     if storage_key and storage_key == _local_key(avatar_url):
@@ -163,61 +161,29 @@ def _variant_from_item(
     key = next((_text(item.get(name)) for name in key_names if _text(item.get(name))), None)
     if not key:
         return None
+    if kind == MediaVariantKind.THUMBNAIL:
+        return MediaVariantCandidate(
+            kind=kind, storage_key=key, mime_type="image/webp",
+            width=item.get("thumb_width"), height=item.get("thumb_height"),
+            size_bytes=item.get("thumb_size"), checksum=_text(item.get("thumb_sha256")),
+        )
     return MediaVariantCandidate(
         kind=kind,
         storage_key=key,
-        mime_type=_text(item.get("content_type"))
-        or _text(item.get("stored_content_type"))
+        mime_type=_text(item.get("stored_content_type"))
+        or _text(item.get("content_type"))
         or default_mime,
-        width=item.get("width") or item.get("stored_width"),
-        height=item.get("height") or item.get("stored_height"),
-        size_bytes=item.get("size") or item.get("stored_size"),
-        checksum=_text(item.get("sha256")) or _text(item.get("stored_sha256")),
+        width=item.get("stored_width") or item.get("width"),
+        height=item.get("stored_height") or item.get("height"),
+        size_bytes=item.get("stored_size") or item.get("size"),
+        checksum=_text(item.get("stored_sha256")) or _text(item.get("sha256")),
     )
-
-
-def _merge_stored_items(
-    source_items: Iterable[Any],
-    stored_items: Iterable[Any],
-) -> list[dict[str, Any]]:
-    merged = [dict(item) for item in source_items if isinstance(item, dict)]
-    by_original = {
-        _text(item.get("url")): item for item in merged if _text(item.get("url"))
-    }
-    by_key = {
-        _text(item.get("stored_key")): item
-        for item in merged
-        if _text(item.get("stored_key"))
-    }
-    for stored in stored_items:
-        if not isinstance(stored, dict):
-            continue
-        original = _text(stored.get("orig_url"))
-        key = _text(stored.get("key")) or _text(stored.get("stored_key"))
-        target = by_original.get(original) or by_key.get(key)
-        if target is None:
-            target = {}
-            merged.append(target)
-        if original and not _text(target.get("url")):
-            target["url"] = original
-        if key and not _text(target.get("stored_key")):
-            target["stored_key"] = key
-        for name in ("type", "is_avatar", "sha256", "size", "width", "height", "content_type"):
-            if stored.get(name) is not None and target.get(name) is None:
-                target[name] = stored[name]
-    return merged
 
 
 def build_media_candidates(content: Content) -> list[MediaAssetCandidate]:
     archive = _archive_blob(content.archive_metadata)
-    image_items = _merge_stored_items(
-        archive.get("images") or [],
-        archive.get("stored_images") or [],
-    )
-    video_items = _merge_stored_items(
-        archive.get("videos") or [],
-        archive.get("stored_videos") or [],
-    )
+    image_items = [item for item in archive.get("images") or [] if isinstance(item, dict)]
+    video_items = [item for item in archive.get("videos") or [] if isinstance(item, dict)]
     is_gallery = getattr(content.layout_type, "value", content.layout_type) == "gallery"
     image_default_role = MediaRole.GALLERY if is_gallery else MediaRole.BODY
 
@@ -279,8 +245,8 @@ def build_media_candidates(content: Content) -> list[MediaAssetCandidate]:
                 role=role,
                 position=0,
                 original_url=original,
-                width=item.get("width") or item.get("stored_width"),
-                height=item.get("height") or item.get("stored_height"),
+                width=item.get("stored_width") or item.get("width"),
+                height=item.get("stored_height") or item.get("height"),
                 alt_text=_text(item.get("alt")) or _text(item.get("alt_text")),
                 caption=_text(item.get("caption")),
                 variants=variants,
@@ -393,6 +359,52 @@ def _variant_path(storage: LocalStorageBackend, key: str) -> Path:
     return Path(storage._full_path(key)).resolve()
 
 
+async def set_content_cover(session: AsyncSession, content: Content, url: str | None) -> None:
+    """Content.cover_url is the selected cover; update its asset in the same transaction."""
+    assets = list((await session.scalars(
+        select(MediaAsset).where(MediaAsset.content_id == content.id)
+        .options(selectinload(MediaAsset.variants))
+    )).all())
+    key = _local_key(url)
+    original = _remote_url(url)
+    selected = next((asset for asset in assets if asset.media_type == MediaType.IMAGE and asset.role != MediaRole.AVATAR and (
+        (original and asset.original_url == original)
+        or (key and any(variant.storage_key == key for variant in asset.variants))
+    )), None)
+    # Vacate the unique cover position before promoting an existing body image.
+    position = max((asset.position for asset in assets if asset.role == MediaRole.BODY), default=-1) + 1
+    for asset in assets:
+        if asset.role == MediaRole.COVER:
+            asset.role = MediaRole.BODY
+            asset.position = position
+            position += 1
+    await session.flush()
+    if not url:
+        content.cover_url = url
+        return
+    if selected is None:
+        selected = MediaAsset(content_id=content.id, media_type=MediaType.IMAGE,
+                              original_url=original, variants=[])
+        if key:
+            from app.adapters.storage import get_storage_backend
+            exists = _variant_path(get_storage_backend(), key).is_file()
+            selected.variants.append(MediaVariant(
+                variant_kind=MediaVariantKind.OPTIMIZED, storage_key=key,
+                mime_type=mimetypes.guess_type(key)[0],
+                status=MediaVariantStatus.READY if exists else MediaVariantStatus.MISSING,
+            ))
+        selected.client_fetch_allowed = is_client_direct_allowed(original)
+        selected.repairable = bool(original)
+        selected.archive_status = (MediaArchiveStatus.READY if any(
+            variant.status == MediaVariantStatus.READY for variant in selected.variants
+        ) else MediaArchiveStatus.PENDING)
+    selected.role = MediaRole.COVER
+    selected.position = 0
+    session.add(selected)
+    content.cover_url = url
+    await session.flush()
+
+
 async def replace_content_media_assets(
     session: AsyncSession,
     content: Content,
@@ -405,6 +417,10 @@ async def replace_content_media_assets(
         select(MediaAsset).where(MediaAsset.content_id == content.id)
         .options(selectinload(MediaAsset.variants))
     )).all())
+    # Vacate positions before a cover change or reorder reuses existing IDs.
+    for asset in existing:
+        asset.position = -asset.id
+    await session.flush()
     retained_ids: set[int] = set()
     assets: list[MediaAsset] = []
     for candidate in candidates:
@@ -474,6 +490,9 @@ async def replace_content_media_assets(
             for chunk in payload["chunks"]
         ]
         content.rich_payload = payload
+    if isinstance(content.archive_metadata, dict):
+        from app.adapters.utils.archive_builder import compact_archive_text
+        content.archive_metadata = compact_archive_text(content.archive_metadata, content.body)
     return assets
 
 

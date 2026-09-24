@@ -123,7 +123,6 @@ async def parse_article(
             "markdown": markdown_content,
             "images": [{"url": u} for u in image_urls],
             "links": [],
-            "stored_images": []
         }
         
         # 添加头像（标记为type:avatar，避免被添加到media_urls）

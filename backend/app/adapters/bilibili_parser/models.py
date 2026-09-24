@@ -25,8 +25,6 @@ class BilibiliArchive:
     links: List[Dict[str, Any]] = field(default_factory=list)  # 链接列表
     mentions: List[Dict[str, Any]] = field(default_factory=list)  # @提及列表
     topics: List[str] = field(default_factory=list)  # 话题列表
-    stored_images: List[Dict[str, Any]] = field(default_factory=list)  # 已存储的图片
-    stored_videos: List[Dict[str, Any]] = field(default_factory=list)  # 已存储的视频
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式"""
@@ -42,8 +40,6 @@ class BilibiliArchive:
             "links": self.links,
             "mentions": self.mentions,
             "topics": self.topics,
-            "stored_images": self.stored_images,
-            "stored_videos": self.stored_videos,
         }
 
 
