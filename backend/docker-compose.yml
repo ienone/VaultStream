@@ -1,10 +1,15 @@
-version: '3.8'
+x-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   web:
     image: ghcr.io/ienone/vaultstream-web:latest
     container_name: vaultstream-web
     restart: unless-stopped
+    logging: *bounded-logging
     ports:
       - "18282:80"
     depends_on:
@@ -14,6 +19,7 @@ services:
     image: ghcr.io/ienone/vaultstream-api:latest
     container_name: vaultstream-api
     restart: unless-stopped
+    logging: *bounded-logging
     volumes:
       - ./data:/app/data  # SQLite 数据库和关联的 Media
       - ./logs:/app/logs

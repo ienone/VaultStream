@@ -10,6 +10,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.exc import StaleDataError
 
+from app.core.time_utils import utcnow
 from app.core.llm_factory import LLMFactory
 from app.core.logging import logger
 from app.models.content import Content
@@ -116,7 +117,8 @@ class PatrolService:
             if parsed is None:
                 raise ValueError("模型未调用巡逻评分结构化输出工具")
         except Exception as e:
-            logger.error(f"巡逻评分 LLM 调用失败: {e}")
+            logger.error("巡逻评分 LLM 调用失败: type={} status={}",
+                         type(e).__name__, getattr(e, "status_code", None))
             return False
 
         threshold = await self._get_score_threshold()
@@ -153,9 +155,11 @@ class PatrolService:
                 try:
                     ok = await self.score_item(item, interest_profile=interest_profile, db=db)
                 except StaleDataError:
-                    ok = False
-                if ok:
-                    scored += 1
+                    continue
+                if not ok:
+                    # Provider/configuration failure must not repeat for every pending item.
+                    return scored
+                scored += 1
         return scored
 
     async def score_pending(self, db: AsyncSession) -> int:
@@ -163,7 +167,11 @@ class PatrolService:
         Query all contents with discovery_state=INGESTED, load settings, and score them.
         This is the entry point called by background tasks.
         """
-        stmt = select(Content).where(Content.discovery_state == DiscoveryState.INGESTED)
+        stmt = select(Content).where(
+            Content.discovery_state == DiscoveryState.INGESTED,
+            Content.deleted_at.is_(None),
+            (Content.expire_at.is_(None) | (Content.expire_at >= utcnow())),
+        ).order_by(Content.id).limit(100)
         result = await db.execute(stmt)
         items = list(result.scalars().all())
 

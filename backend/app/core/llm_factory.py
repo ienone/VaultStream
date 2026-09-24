@@ -22,7 +22,7 @@ class LLMFactory:
             logger.warning("LLMFactory: VISION_LLM_API_KEY not found. Vision features will be disabled.")
             return None
 
-        logger.info(f"LLMFactory: Loading Vision Model ({config.model}) from {config.base_url}")
+        logger.debug(f"LLMFactory: Loading Vision Model ({config.model}) from {config.base_url}")
         
         try:
             return ChatOpenAI(
@@ -49,7 +49,7 @@ class LLMFactory:
             logger.debug("LLMFactory: TEXT_LLM_API_KEY not found, trying fallback to VISION_LLM.")
             return await LLMFactory.get_vision_llm()
 
-        logger.info(f"LLMFactory: Loading Text Model ({config.model}) from {config.base_url}")
+        logger.debug(f"LLMFactory: Loading Text Model ({config.model}) from {config.base_url}")
 
         try:
             return ChatOpenAI(
@@ -77,7 +77,7 @@ class LLMFactory:
             logger.debug("LLMFactory: AGENT_CHAT_API_KEY not found, trying text LLM fallback.")
             return await LLMFactory.get_text_llm()
 
-        logger.info(f"LLMFactory: Loading Agent Chat Model ({config.model}) from {config.base_url}")
+        logger.debug(f"LLMFactory: Loading Agent Chat Model ({config.model}) from {config.base_url}")
 
         try:
             return ChatOpenAI(

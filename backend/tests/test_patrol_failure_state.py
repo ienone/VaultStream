@@ -84,3 +84,30 @@ async def test_successful_patrol_preserves_summary_and_index(db_session, monkeyp
     assert content.summary==summary and content.body=='Original source'
     assert content.rich_payload['chunks'][0]['content']=='Original chunk'
     assert await db_session.scalar(select(ContentEmbedding.source_text).where(ContentEmbedding.content_id==content.id))=='Current evidence'
+
+
+async def test_provider_failure_stops_batch_and_expired_items_are_not_scored(db_session, monkeypatch):
+    from datetime import timedelta
+    from app.core.time_utils import utcnow
+    calls = []
+    expired = Content(url='capture://expired-patrol', platform=Platform.UNIVERSAL,
+                      discovery_state=DiscoveryState.INGESTED, expire_at=utcnow()-timedelta(days=1))
+    items = [Content(url=f'capture://pending-patrol-{i}', platform=Platform.UNIVERSAL,
+                     discovery_state=DiscoveryState.INGESTED) for i in range(3)]
+    db_session.add_all([expired, *items])
+    await db_session.commit()
+    async def fail(item, **kwargs):
+        calls.append(item.id)
+        return False
+    service = PatrolService()
+    selected = []
+    score_batch = service.score_batch
+    async def batch(candidates, **kwargs):
+        selected.extend(item.id for item in candidates)
+        return await score_batch(candidates, **kwargs)
+    monkeypatch.setattr(service, 'score_item', fail)
+    monkeypatch.setattr(service, 'score_batch', batch)
+    assert await service.score_pending(db_session) == 0
+    assert len(calls) == 1
+    assert expired.id not in selected
+    assert {item.id for item in items}.issubset(selected)

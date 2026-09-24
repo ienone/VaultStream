@@ -250,7 +250,12 @@ async def request_id_middleware(request: Request, call_next):
             raise
         finally:
             elapsed_ms = (perf_counter() - start) * 1000
-            logger.info(
+            status = getattr(response, "status_code", 500)
+            log = logger.warning if status >= 400 else (
+                logger.debug if request.method == "GET" or request.url.path == "/api/v1/bot/heartbeat"
+                else logger.info
+            )
+            log(
                 "request_complete path={} method={} status={} elapsed_ms={:.2f}",
                 request.url.path,
                 request.method,
@@ -319,5 +324,6 @@ if __name__ == "__main__":
         "app.main:app",
         host=settings.api_host,
         port=settings.api_port,
-        reload=settings.debug
+        reload=settings.debug,
+        access_log=False,
     )
