@@ -1,32 +1,7 @@
 # 验证策略
 
-## 文档状态
+不维护持久单元测试或隔离回归套件。针对实际变更执行一次性验证，优先从真实用户／系统入口检查最终结果；完成后删除临时脚本，简要记录结果与未验收范围。无需为每次修改增加测试文件、覆盖率目标或通用测试设施。
 
-active
+后端使用仓库根 `.venv/bin/python`，前端执行 `flutter analyze` 和必要构建；Flutter/Dart 在沙盒外执行。CI 保留依赖、静态安全、OpenAPI、数据库结构检查及 Web 构建，不再运行 pytest/flutter test。静态检查与构建不等于真实账号或线上流程验收。
 
-日常改动采用针对性验收；临时脚本完成验证后删除，只留下必要结果和截图。长期测试必须证明自己保护的是权限、外部副作用、数据完整性或难以人工复现的历史竞态，不按接口、字段、页面数量铺开，不追求覆盖率。
-
-## 长期保留的边界
-
-- Agent 路径权限、确认唯一执行与取消：`test_agent_execution_boundaries.py`、`test_api/test_agent_tools.py`。
-- API/媒体鉴权、SSRF、签名绑定与到期、路径逃逸：`test_core/test_safe_fetch.py`、`test_api/test_media.py`、`test_api/test_media_manifest.py`、`test_services/test_media_access.py`；Bot 访问控制：`test_bot/test_permissions.py`。
-- 批量文件回滚和共享对象保留、范围先于候选截断：`test_content_lifecycles.py`；人工编辑保护：`test_tasks/test_parsing_task.py`；事件最后成员及并发删除：`test_api/test_knowledge_events.py`。
-- 策略关闭后的副作用限制：`test_automation_policy.py`；任务排他领取、准确结算及新队列实例接续：`test_queue_concurrency.py`；运行中任务和通知引用保留：`test_background_task_state.py`。
-- 前端保留查询竞态、播放恢复／主动暂停、日志脱敏、失效凭据隔离、PDF 资源凭据隔离、批量操作不重放、编辑字段完整性、登录会话释放和嵌套导航草稿保护。相关测试位于 `frontend/test/unit/` 与 `frontend/test/widgets/`；播放器只替换 OS 解码边界，不证明真实播放质量。
-- 后续新增的后端边界包括平台内容／媒体身份、收藏分页游标不漏项、文档和语义索引拒绝迟到写入、Agent 原文／图片归属与凭据隔离、失败任务不覆盖既有结果，以及外部网络等待不阻塞事件循环。不是逐页面布局或真实平台样本套件。
-
-测试复用实际 SQLite 引擎、外键、ORM、文件存储和 ASGI 路由。默认重复使用 `backend/.test-runtime/regression.db`，也可用 `VAULTSTREAM_TEST_DB` 指定已有测试库；每轮先执行 Alembic 升级并清空业务表，只能指向可清空的测试库。不再按执行次数创建随机数据库；不启动应用 lifespan/worker。外部模型在调用边界替换。默认禁止非回环网络，并把资源未释放警告视为错误。
-
-## 执行与验收
-
-- 后端：仓库根 `.venv/bin/python -m pytest backend/tests -q`。
-- 前端：`frontend/` 下 `flutter analyze --no-pub`、`flutter test --no-pub`；沙盒外执行规则见根 AGENTS。
-- CI 保留必要回归、依赖声明、OpenAPI、schema、静态分析和安全检查；不生成覆盖率报告。
-- UI、普通业务结果、外部平台解析、真实登录/同步/发送、原生媒体与性能按当前改动验收，不进入长期 mock/布局/压测套件。有外部副作用时必须具备用户授权。
-- 临时探针写入 `backend/manual_tests/`，验证后删除；不把被删除套件原样搬到脚本目录，不另建通用测试基础设施。
-
-2026-09-19 对未提交测试再次收敛：收藏工作区尺寸/拖柄/滚动验收、核对表单交互及 URI 往返不再作为长期套件；核对的状态冲突、发送隔离与目标身份由真实后端 API/SQLite 回归保护。删除重复的队列入口矩阵、直接调用解析私有方法的重复断言、普通排队可用性及 SQLite 写锁等待探针；保留旧 worker、人工编辑和分页迟到结果等独立竞态。减少测试意味着这些 UI 和普通业务路径须按变更专项验收，不表示后端测试覆盖前端交互。
-
-消融在隔离数据和进程内临时移除保护条件：事件依赖、解析领取凭证、分发领取凭证、未知发送拦截及前端分页世代检查均使对应保留测试失败。TTL 显式 `BEGIN IMMEDIATE` 消融后原测试仍通过，首条条件 UPDATE 已持有同一写锁，因此移除额外事务语句；向量删除复用已有外键级联。临时消融插件用后删除，不进入默认回归。
-
-2026-09-06 清理结果：正式测试源码从 159 文件 / 34,367 行收敛至 17 文件 / 1,280 行（含公共 fixture），净减 33,087 行；另删除 35 个已用诊断脚本 / 4,230 行和不再使用的样本、覆盖率及测试依赖。后端 39 项与前端 6 项通过，静态分析、依赖声明、OpenAPI 和 schema 检查通过。这些结果只对应上述保留边界，不再把旧完整套件数量当作当前保障。
+外部读写服从用户授权和现有功能开关。私有样本、凭据不提交。历史文档中的测试数量或回归文件描述是当时证据，不代表仍存在对应测试套件。

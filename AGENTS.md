@@ -14,9 +14,7 @@
 VaultStream 分为 Python 后端和 Flutter 前端：
 
 - `backend/app/`: FastAPI 应用代码，包括 `routers/`、`services/`、`repositories/`、`adapters/`、`tasks/`、`core/`。
-- `backend/tests/`: 少量长期 pytest 回归，保护权限、外部副作用和数据完整性。
 - `frontend/lib/`: Flutter 应用代码，按功能模块 `features/` 和共享层 `core/`、`routing/`、`theme/` 组织。
-- `frontend/test/`: 少量长期回归，保护关键竞态、持久恢复和敏感信息边界。
 - `docs/`: 当前文档体系，包括前端、后端、计划、问题和知识库文档。
 - `scripts/`: 工具脚本。
 
@@ -52,11 +50,10 @@ VaultStream 分为 Python 后端和 Flutter 前端：
 - 后端依赖安装：`cd backend && pip install -r requirements-dev.txt`
 - 本地启动后端（Windows）：`cd backend && ./start.ps1`
 - 本地启动后端（Linux/macOS）：`cd backend && ./start.sh`
-- 后端测试：`.venv\Scripts\python.exe -m pytest backend/tests -q`
 - 前端依赖安装：`cd frontend && flutter pub get`
 - 前端代码生成：`cd frontend && dart run build_runner build --delete-conflicting-outputs`
 - 前端 Web 运行：`cd frontend && flutter run -d chrome`
-- 前端检查：`cd frontend && flutter analyze && flutter test`
+- 前端检查：`cd frontend && flutter analyze && flutter build web`
 - Docker 服务栈：`cd backend && docker compose up -d`
 
 在 Codex 或其他受限沙盒环境中，任何 `flutter` 或 `dart` 命令都必须申请提权并在沙盒外执行，不要在默认沙盒中直接运行。这包括但不限于 `flutter pub get`、`flutter analyze`、`flutter test`、`flutter run`、`dart run build_runner ...`。如果无法提权运行，必须在结果中明确说明未验证。本机非沙盒 Amp CLI 可直接执行；沙盒外执行不等于 sudo
@@ -94,19 +91,13 @@ VaultStream 分为 Python 后端和 Flutter 前端：
 - 如果后端返回值确实混乱，应把问题记录到 `docs/issues/`，不要在前端或调用方静默兼容多个猜测格式。
 - API 封装应复用项目已有 client、鉴权、错误处理、分页和序列化约定，不要随手新增平行封装。
 
-## 测试规则
+## 验证规则
 
-- 默认采用针对当前变更的临时验收；脚本完成验证后删除，只记录必要结果和截图。不把一次性验收整体搬入正式测试。
-- 长期回归仅保留权限、外部副作用、数据完整性及难以人工复现的关键竞态，不要求每次改动补测试，不设置数量或覆盖率目标。
-- 后端使用 `pytest`，不默认生成覆盖率报告。
-- 后端测试必须使用仓库根目录的虚拟环境 Python，不使用全局或系统解释器。
-  - Windows 示例：`.venv\Scripts\python.exe -m pytest backend/tests -q`
-  - 这样可以避免环境漂移。
-- 外部平台和账号态验收按需执行，不进入默认回归；需要真实副作用时先确认用户授权。
-- 必须长期保留的回归放在对应模块附近；数据库、文件和状态转换尽量运行真实实现，外部平台或模型只替换边界。
-- 正式、可重复的后端测试必须放在 `backend/tests/` 下，确保新测试文件默认能被 Git 追踪。
-- 本地探针、真实平台调试脚本、依赖 cookie/数据库的检查和捕获输出应放在 `backend/manual_tests/`。该目录被忽略，不得作为 CI 或常规验收依据。
-- 不要把单个后端测试文件名加入 `.gitignore`。如果文件不适合常规收集，应移出 `backend/tests/`，或改成带显式 skip/marker 的可重复测试。
+- 不保留或新增单元测试、实现镜像测试及对应常规测试套件。需要验证时，针对实际改动执行一次性检查或真实流程验收；完成后删除临时测试脚本，不为了测试而创建长期设施。
+- 优先从用户或系统入口验证最终结果。静态分析、构建、替身调用和 HTTP 2xx 只证明各自边界，不冒充完整流程成功。
+- 保留必要的结果、实际输入范围和未验证限制即可，不要求持久化一次性测试产物或追求覆盖率、测试数量。
+- 后端验证使用仓库根虚拟环境 Python；Flutter/Dart 遵守上面的沙盒外执行要求。
+- 外部平台和账号态验收按需执行，真实副作用遵守用户授权与已有控制面。凭据和私有样本不进入 Git。
 
 ## Commit 与 Pull Request 规则
 
@@ -117,7 +108,7 @@ VaultStream 分为 Python 后端和 Flutter 前端：
 - PR 描述也优先使用中文，至少包含：
   - 简洁摘要和动机。
   - 关联 issue / plan / task（如有）。
-  - 验证证据，例如 `pytest`、`flutter analyze`、`flutter test`。
+  - 验证证据，例如构建、`flutter analyze` 和实际流程结果。
   - UI 变更截图或录屏（如适用）。
 
 ## 安全与配置

@@ -2,7 +2,7 @@
 #
 # This file pins the complete runtime and development dependency closure used by
 # requirements.txt and requirements-dev.txt. Update it deliberately together
-# with a clean Python 3.13 install, pip check, the non-integration test suite,
+# with a clean Python 3.13 install, pip check, targeted acceptance,
 # and the security/document/schema gates.
 aiosqlite==0.22.1
 alembic==1.19.1
@@ -83,9 +83,6 @@ pyee==13.0.1
 Pygments==2.21.0
 pyparsing==3.3.2
 pypdf==6.18.0
-pytest==9.1.1
-pytest-asyncio==1.4.0
-pytest-socket==0.8.1
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.3
 python-multipart==0.0.32

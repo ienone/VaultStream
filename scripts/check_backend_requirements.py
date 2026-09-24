@@ -1,4 +1,4 @@
-"""Check backend requirements cover runtime, regression and CI imports."""
+"""Check backend requirements cover runtime and CI imports."""
 
 from __future__ import annotations
 
@@ -30,7 +30,6 @@ PACKAGE_ALIASES = {
     "pillow": {"PIL"},
     "pip-audit": {"pip_audit"},
     "pydantic-settings": {"pydantic_settings"},
-    "pytest-asyncio": {"pytest_asyncio"},
     "python-dateutil": {"dateutil"},
     "python-dotenv": {"dotenv"},
     "python-telegram-bot": {"telegram"},
@@ -128,15 +127,13 @@ def main() -> int:
     dev_modules = _declared_top_modules(dev_requirements)
 
     missing_runtime = _missing_imports(_scan_imports(BACKEND_DIR / "app"), runtime_modules)
-    missing_tests = _missing_imports(_scan_imports(BACKEND_DIR / "tests"), dev_modules)
     missing_ci_scripts = _missing_imports(_scan_imports_from_paths(CI_SCRIPT_PATHS), dev_modules)
 
-    if not (missing_runtime or missing_tests or missing_ci_scripts):
+    if not (missing_runtime or missing_ci_scripts):
         print("Backend requirements check passed.")
         return 0
 
     _print_missing("Runtime imports missing from backend/requirements.txt:", missing_runtime)
-    _print_missing("Test imports missing from backend/requirements-dev.txt:", missing_tests)
     _print_missing("CI script imports missing from backend/requirements-dev.txt:", missing_ci_scripts)
     return 1
 

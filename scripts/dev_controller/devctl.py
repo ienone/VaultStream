@@ -104,15 +104,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         task = subparsers.add_parser(command)
         task.add_argument("--no-wait", action="store_true")
         task.add_argument("--timeout", type=float, default=600)
-    test = subparsers.add_parser("test")
-    test.add_argument("target", nargs="?")
-    test.add_argument(
-        "--reporter",
-        choices=("compact", "expanded", "json"),
-        default="compact",
-    )
-    test.add_argument("--no-wait", action="store_true")
-    test.add_argument("--timeout", type=float, default=600)
     return parser.parse_args(argv)
 
 
@@ -136,10 +127,6 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         payload: dict[str, Any] = {"task": args.command}
-        if args.command == "test":
-            if args.target is not None:
-                payload["target"] = args.target
-            payload["reporter"] = args.reporter
         record = client.request("POST", "/tasks", payload)
         if args.no_wait:
             _print_json(record)

@@ -70,9 +70,6 @@ dependencies:
   audio_session: ^0.2.4
 
 dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  video_player_platform_interface: ^6.6.0
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

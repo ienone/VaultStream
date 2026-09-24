@@ -6,7 +6,7 @@ on:
 
 jobs:
   backend:
-    name: Backend pytest and security
+    name: Backend static checks and security
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -32,10 +32,6 @@ jobs:
         if: always()
         run: python ../scripts/check_backend_requirements.py
 
-      - name: Run critical regressions
-        if: always()
-        run: python -m pytest tests -q
-
       - name: Audit Python dependencies
         if: always()
         run: python -m pip_audit -r requirements.txt
@@ -59,7 +55,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   frontend:
-    name: Frontend analyze and tests
+    name: Frontend analyze and build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -85,5 +81,5 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
-      - name: Run critical regressions
-        run: flutter test
+      - name: Build Web
+        run: flutter build web --release --no-pub

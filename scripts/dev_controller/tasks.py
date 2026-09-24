@@ -11,11 +11,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .security import redact_text, resolve_test_target
+from .security import redact_text
 
 
 MAX_CAPTURE_CHARS = 200_000
-ALLOWED_REPORTERS = {"compact", "expanded", "json"}
 
 
 class TaskValidationError(ValueError):
@@ -54,29 +53,7 @@ def build_task_command(
             )
         return fixed_commands[task_name].copy()
 
-    if task_name != "test":
-        raise TaskValidationError(f"不支持的任务: {task_name}")
-
-    unexpected = set(payload) - {"task", "target", "reporter"}
-    if unexpected:
-        raise TaskValidationError(
-            f"test 不接受参数: {', '.join(sorted(unexpected))}"
-        )
-
-    command = ["flutter", "test"]
-    target = payload.get("target")
-    if target is not None:
-        try:
-            resolved = resolve_test_target(frontend_dir, target)
-        except ValueError as exc:
-            raise TaskValidationError(str(exc)) from exc
-        command.append(str(resolved))
-
-    reporter = payload.get("reporter", "compact")
-    if reporter not in ALLOWED_REPORTERS:
-        raise TaskValidationError("reporter 只允许 compact、expanded 或 json")
-    command.extend(["--reporter", reporter])
-    return command
+    raise TaskValidationError(f"不支持的任务: {task_name}")
 
 
 @dataclass

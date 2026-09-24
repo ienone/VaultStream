@@ -44,13 +44,10 @@
 .\scripts\devctl.ps1 generate
 .\scripts\devctl.ps1 analyze
 .\scripts\devctl.ps1 format-check
-.\scripts\devctl.ps1 test
-.\scripts\devctl.ps1 test test/widget/collection_page_test.dart
 ```
 
 `reload` 发送 Flutter 热重载，`restart` 发送热重启。控制器不会在热重载失败时偷偷执行热重启。
 
-`test` 的目标路径必须真实存在于 `frontend/test/` 且以 `_test.dart` 结尾。`reporter` 只允许 `compact`、`expanded` 和 `json`。其他工具任务使用固定参数数组并以 `shell=False` 启动。
 
 ## 状态和结果
 
