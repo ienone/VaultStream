@@ -130,3 +130,39 @@ async def test_cleanup_modes_share_dependency_retention_rule(db_session, monkeyp
             Content.id.in_([visible.id, ignored.id, *protected_ids])
         ).values(expire_at=None))
         await cleanup_db.commit()
+
+
+async def test_expired_unscored_candidate_is_cleaned(db_session, monkeypatch):
+    now = utcnow()
+    item = _candidate(now, state=DiscoveryState.INGESTED)
+    db_session.add(item)
+    await db_session.commit()
+    identity = item.id
+    monkeypatch.setattr('app.tasks.discovery_cleanup.get_setting_value',
+                        lambda *_: asyncio.sleep(0, result='hard_delete'))
+    assert await DiscoveryCleanupTask()._cleanup_expired() == 1
+    async with AsyncSessionLocal() as check:
+        assert await check.get(Content, identity) is None
+
+
+async def test_media_cleanup_preserves_shared_references_and_fresh_downloads(db_session, tmp_path, monkeypatch):
+    import os
+    import time
+    from app.core.config import settings
+    from app.services.media_cleanup import cleanup_unreferenced_media
+    monkeypatch.setattr(settings, 'storage_local_root', str(tmp_path))
+    keys = [f'vaultstream/blobs/sha256/{x*2}/{x*2}/{x*64}.webp' for x in 'abc']
+    for key in keys:
+        path = tmp_path / key
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b'image')
+        os.utime(path, (time.time()-172800, time.time()-172800))
+    os.utime(tmp_path / keys[2], None)
+    item = _candidate(utcnow(), expire_offset=100)
+    item.archive_metadata = {'archive': {'images': [{'stored_key': keys[0]}]}}
+    db_session.add(item)
+    await db_session.commit()
+    assert await cleanup_unreferenced_media(db_session) == (1, 5)
+    assert (tmp_path / keys[0]).exists()
+    assert not (tmp_path / keys[1]).exists()
+    assert (tmp_path / keys[2]).exists()

@@ -13,6 +13,7 @@ from app.core.db_adapter import AsyncSessionLocal
 from app.core.time_utils import utcnow
 from app.core.config import settings
 from app.services.settings_service import get_setting_value
+from app.services.media_cleanup import cleanup_unreferenced_media
 from app.services.background_task_state import (
     record_task_run_error,
     record_task_run_success,
@@ -66,7 +67,14 @@ class DiscoveryCleanupTask:
         while True:
             try:
                 deleted = await self._cleanup_expired()
-                await record_task_run_success("discovery_cleanup", deleted_count=deleted)
+                async with AsyncSessionLocal() as db:
+                    await db.execute(update(Content).where(Content.id == -1).values(id=-1))
+                    files, size = await cleanup_unreferenced_media(db)
+                    await db.commit()
+                if files:
+                    logger.info("Discovery media cleanup: removed={} bytes={}", files, size)
+                await record_task_run_success("discovery_cleanup", deleted_count=deleted,
+                                              removed_media_files=files, freed_media_bytes=size)
             except Exception as e:
                 logger.error(f"Discovery cleanup error: {e}")
                 await record_task_run_error("discovery_cleanup", None, e)
@@ -89,7 +97,7 @@ class DiscoveryCleanupTask:
             # dependencies and holds it through archive/delete and commit.
             await db.execute(
                 update(Content)
-                .where(Content.discovery_state == DiscoveryState.VISIBLE)
+                .where(Content.discovery_state.in_([DiscoveryState.VISIBLE, DiscoveryState.INGESTED]))
                 .where(Content.expire_at != None)  # noqa: E711
                 .where(Content.expire_at < now)
                 .where(retained_dependency)
