@@ -206,6 +206,8 @@ class TelegramAccountSync:
                     setattr(content, key, value)
             content.parse_candidate = {"created_at": utcnow().isoformat(), "fields": conflicts} if conflicts else None
             content.published_at = normalize_datetime_for_db(post.messages[0].date)
+            quote = (post.reply or {}).get("quote_text")
+            content.rich_payload = {"quoted_content": {"text": quote}} if quote else None
             content.context_data = {"telegram": {"account_id": account_id,
                 "peer_id": address.peer_id, "message_ids": [m.id for m in post.messages],
                 "source_chain": chain, "reply": post.reply}}

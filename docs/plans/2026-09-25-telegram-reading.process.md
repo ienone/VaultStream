@@ -78,3 +78,11 @@ Flutter 已增加 Telegram 账号入口、频道／收藏独立开关及手动�
 原生发现源“测试来源”已改走账号只读抽样，最多 20 条消息，复用原响应；检查账号归属，与登录／同步互斥，不修改游标或内容。一次性真实协议类型替身检查抽样上限、私有频道地址、断开连接和账号不符拒绝通过；不是账号实测。
 
 原生预览修复也已部署：后端 `vaultstream-api:22e3bb7`，前端保持 `vaultstream-web:120e5da5`。重启后 health/status 200，缺凭据登录仍 409。
+
+## 收尾核对
+
+确认 Git 中无 backend/tests、frontend/test 或其他持久单元测试目录，常规 CI 无 pytest/flutter test 入口；代码内未发现“待溯源”、溯源失败占位或启用请求 ID 展示的调用。任务结果仍保留有用途的失败信息。
+
+参考 transitions-dev 的 modal 规则，登录复用已有 AdaptiveFormDialog／PredictiveBackDialog 和共享动效参数，不增加独立二维码动画；现有返回预览尊重 disableAnimations。一次性 Flutter 渲染检查通过 390×844、844×390、1200×800 三个断点，密码遮蔽、提交成功退出及取消回调均通过。脚本已删除；使用本地 HTTP 替身，不是账号登录证明。
+
+Telegram 原生 quote_text 已映射到现有 quoted_content 展示区，与用户评论分开，缺少引用不产生区块。一次性真实 SQLite＋协议类型检查引用保存和编辑后移除通过。
