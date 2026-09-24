@@ -1,3 +1,4 @@
+import 'telegram_login_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -62,6 +63,14 @@ class _TelegramAccountPageState extends ConsumerState<TelegramAccountPage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _login() async {
+    await showDialog<bool>(
+      context: context,
+      builder: (_) => TelegramLoginDialog(client: ref.read(apiClientProvider)),
+    );
+    if (mounted) ref.invalidate(telegramAccountProvider);
   }
 
   Future<void> _sync() async {
@@ -134,6 +143,16 @@ class _TelegramAccountPageState extends ConsumerState<TelegramAccountPage> {
                       : (value) => _update(account, saved: value),
                 ),
                 const SizedBox(height: 24),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _busy || account.running || !account.configured
+                        ? null
+                        : _login,
+                    icon: const Icon(Icons.login_rounded),
+                    label: const Text('连接账号'),
+                  ),
+                ),
                 if (!account.configured || !account.sessionPresent)
                   const Padding(
                     padding: EdgeInsets.only(bottom: 16),
