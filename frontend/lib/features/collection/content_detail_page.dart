@@ -336,7 +336,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         final body =
             widget.onClose == null &&
                 metrics.supportsSupportingPane &&
-                detail.hasExternalOriginal
+                (detail.hasExternalOriginal || detail.platform == 'telegram')
             ? templateContext.usesImmersiveMediaLayout
                   ? _buildImmersiveMediaPane(templateContext)
                   : _buildTwoPane(templateContext)
@@ -383,7 +383,10 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           ),
         if (detail != null && detail.hasExternalOriginal)
           TextButton.icon(
-            onPressed: () => SafeUrlLauncher.openExternal(context, detail.url),
+            onPressed: () => SafeUrlLauncher.openExternal(
+              context,
+              detail.externalOriginalUrl!,
+            ),
             icon: const Icon(Icons.open_in_new_rounded, size: 18),
             label: const Text('原文'),
           ),
@@ -1053,7 +1056,7 @@ class _Header extends StatelessWidget {
           runSpacing: AppSpacing.xxs,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            if (detail.hasExternalOriginal)
+            if (detail.hasExternalOriginal || detail.platform == 'telegram')
               PlatformBadge(platform: detail.platform),
             _ContentKindBadge(label: _contentKindLabel(detail)),
           ],

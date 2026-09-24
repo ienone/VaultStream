@@ -124,10 +124,17 @@ abstract class ContentDetail with _$ContentDetail {
   factory ContentDetail.fromJson(Map<String, dynamic> json) =>
       _$ContentDetailFromJson(json);
 
-  bool get hasExternalOriginal {
-    final uri = Uri.tryParse(url.trim());
-    return uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
+  String? get externalOriginalUrl {
+    final original = (cleanUrl ?? url).trim();
+    final uri = Uri.tryParse(original);
+    return uri != null &&
+            uri.host.isNotEmpty &&
+            (uri.scheme == 'http' || uri.scheme == 'https')
+        ? original
+        : null;
   }
+
+  bool get hasExternalOriginal => externalOriginalUrl != null;
 }
 
 @freezed

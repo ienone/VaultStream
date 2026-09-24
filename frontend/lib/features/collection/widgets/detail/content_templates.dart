@@ -1274,8 +1274,10 @@ class _VideoBody extends StatelessWidget {
             message: '没有归档视频文件',
             action: ctx.detail.hasExternalOriginal
                 ? FilledButton.tonalIcon(
-                    onPressed: () =>
-                        SafeUrlLauncher.openExternal(context, ctx.detail.url),
+                    onPressed: () => SafeUrlLauncher.openExternal(
+                      context,
+                      ctx.detail.externalOriginalUrl!,
+                    ),
                     icon: const Icon(Icons.open_in_new_rounded, size: 18),
                     label: const Text('到来源观看'),
                   )
@@ -1324,8 +1326,10 @@ class _AudioBody extends StatelessWidget {
             message: '没有归档音频文件',
             action: ctx.detail.hasExternalOriginal
                 ? FilledButton.tonalIcon(
-                    onPressed: () =>
-                        SafeUrlLauncher.openExternal(context, ctx.detail.url),
+                    onPressed: () => SafeUrlLauncher.openExternal(
+                      context,
+                      ctx.detail.externalOriginalUrl!,
+                    ),
                     icon: const Icon(Icons.open_in_new_rounded, size: 18),
                     label: const Text('到来源收听'),
                   )
@@ -1459,8 +1463,10 @@ class _BookmarkBody extends ConsumerWidget {
                 spacing: AppSpacing.xs,
                 children: [
                   FilledButton.tonalIcon(
-                    onPressed: () =>
-                        SafeUrlLauncher.openExternal(context, detail.url),
+                    onPressed: () => SafeUrlLauncher.openExternal(
+                      context,
+                      detail.externalOriginalUrl ?? detail.url,
+                    ),
                     icon: const Icon(Icons.open_in_new_rounded, size: 18),
                     label: const Text('打开链接'),
                   ),

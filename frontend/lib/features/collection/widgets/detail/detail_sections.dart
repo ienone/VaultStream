@@ -56,7 +56,8 @@ class ContentSourceLine extends StatelessWidget {
       runSpacing: AppSpacing.xxs,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        if (showPlatform && detail.hasExternalOriginal)
+        if (showPlatform &&
+            (detail.hasExternalOriginal || detail.platform == 'telegram'))
           PlatformBadge(platform: detail.platform),
         if (avatarUrl != null && avatarUrl.isNotEmpty)
           SizedBox.square(
@@ -83,7 +84,10 @@ class ContentSourceLine extends StatelessWidget {
         ),
         if (!compact && showOriginalAction && detail.hasExternalOriginal)
           TextButton.icon(
-            onPressed: () => SafeUrlLauncher.openExternal(context, detail.url),
+            onPressed: () => SafeUrlLauncher.openExternal(
+              context,
+              detail.externalOriginalUrl!,
+            ),
             icon: const Icon(Icons.open_in_new_rounded, size: 16),
             label: const Text('原文'),
             style: TextButton.styleFrom(
