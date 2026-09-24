@@ -204,15 +204,24 @@ async def _store_download(
     response: SafeFetchResult, *, kind: str, quality: int,
     storage: LocalStorageBackend, namespace: str,
 ) -> tuple[dict[str, Any], str | None]:
-    """将一次下载转换为已落盘的结果，不修改归档和正文。"""
+    return await store_media_bytes(
+        response.content, content_type=response.headers.get("content-type", "video/mp4"),
+        kind=kind, quality=quality, storage=storage, namespace=namespace,
+    )
+
+
+async def store_media_bytes(
+    data: bytes, *, content_type: str, kind: str, quality: int,
+    storage: LocalStorageBackend, namespace: str,
+) -> tuple[dict[str, Any], str | None]:
+    """HTTP 和原生平台下载共用同一转码、缩略图和内容寻址存储。"""
     color = None
     if kind == "image":
-        data, thumbnail, info = await asyncio.to_thread(_prepare_image, response.content, quality)
+        data, thumbnail, info = await asyncio.to_thread(_prepare_image, data, quality)
         extension = info.pop("extension")
         color = info.pop("dominant_color")
     else:
-        data = response.content
-        mime = response.headers.get("content-type", "video/mp4").split(";")[0].strip()
+        mime = content_type.split(";")[0].strip()
         extension = {"video/mp4": "mp4", "video/webm": "webm", "video/ogg": "ogg",
                      "video/quicktime": "mov", "video/x-matroska": "mkv"}.get(mime, "mp4")
         info = {"content_type": mime}

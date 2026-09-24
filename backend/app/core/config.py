@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     # 队列配置（仅支持 SQLite 任务表）
     queue_type: Literal["sqlite"] = "sqlite"
 
+    # Telegram user account (separate from Bot credentials)
+    telegram_api_id: int = 0
+    telegram_api_hash: SecretStr = SecretStr("")
+    telegram_session_path: str = "./data/telegram-user.session"
+
     # Bot 权限控制
     telegram_admin_ids: str = ""  # 管理员用户ID列表，逗号分隔，如 "123456,789012"
     telegram_whitelist_ids: str = ""  # 白名单用户ID列表，逗号分隔。为空则默认拒绝普通用户

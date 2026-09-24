@@ -84,3 +84,10 @@ active
 收藏单项/批量重试条目支持可选 collection_id、collection_title，调用方从失败项原样传回；重试复用正常同步的来源身份。已存在且处理完成的单项重试返回既有 content_id 与新的 run_id，不重复创建来源。
 
 Bot 心跳请求必须携带 `bot_config_id`，后端核验配置平台、启用状态和 Telegram Bot 身份。`/bot/status` 与 `/bot/runtime` 仅展示当前主配置的心跳；更换 token 会撤销旧运行状态。发现来源筛选使用全部来源关联，响应不再返回单个 `discovery_source_id`。
+
+## Telegram 用户账号同步
+
+- GET `/api/v1/telegram-account/status` → TelegramAccountStatus：configured、session_present、running、channels_enabled、saved_enabled；session_present 仅指本地会话文件存在。
+- PUT `/api/v1/telegram-account/options`，请求／响应 TelegramSyncOptions：channels_enabled、saved_enabled 两个必填布尔值。
+- POST `/api/v1/telegram-account/sync` → 202 TelegramSyncAccepted（run_id）。关闭、未配置或已有同步时为 409；非 leader 进程为 503。
+- 三个接口均沿用 API Token 鉴权。任务记录名 telegram_account_sync，结果含 channels、created、updated、saved 数量。

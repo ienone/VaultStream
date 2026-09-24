@@ -139,6 +139,8 @@ async def lifespan(app: FastAPI):
     discovery_cleanup_task = DiscoveryCleanupTask()
     favorites_sync_task = FavoritesSyncTask()
     notification_digest_task = NotificationDigestTask()
+    from app.tasks.telegram_account_sync import TelegramAccountSyncTask
+    telegram_account_sync_task = TelegramAccountSyncTask()
 
     # 周期任务单实例机制：只有 leader 进程启动后台循环
     from app.services.background_task_leader import background_task_leader
@@ -151,6 +153,7 @@ async def lifespan(app: FastAPI):
         discovery_cleanup_task.start()
         logger.info("发现流同步和清理任务已启动")
 
+        telegram_account_sync_task.start()
         favorites_sync_task.start()
         logger.info("收藏同步任务已启动")
 
@@ -162,6 +165,7 @@ async def lifespan(app: FastAPI):
     # 将 task 实例挂载到 app.state，供路由层访问
     app.state.discovery_sync_task = discovery_sync_task
     app.state.favorites_sync_task = favorites_sync_task
+    app.state.telegram_account_sync_task = telegram_account_sync_task
     app.state.notification_digest_task = notification_digest_task
     app.state.periodic_tasks_started = periodic_tasks_started
     
@@ -175,6 +179,7 @@ async def lifespan(app: FastAPI):
         await discovery_sync_task.stop()
         await discovery_cleanup_task.stop()
         logger.info("发现流同步和清理任务已停止")
+        await telegram_account_sync_task.stop()
         await favorites_sync_task.stop()
         logger.info("收藏同步任务已停止")
 
@@ -295,6 +300,9 @@ app.include_router(search.router, prefix="/api/v1", tags=["search"])
 app.include_router(agent.router, prefix="/api/v1", tags=["agent"])
 app.include_router(actions.router, prefix="/api/v1", tags=["actions"])
 app.include_router(notifications.router, prefix="/api/v1", tags=["notifications"])
+
+from app.routers import telegram_account
+app.include_router(telegram_account.router, prefix="/api/v1", tags=["telegram-account"])
 
 
 @app.get("/api")

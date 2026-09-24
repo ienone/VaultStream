@@ -674,6 +674,15 @@ async def trigger_sync(
             ),
         )
 
+    if (source.config or {}).get("transport") == "mtproto":
+        if not request.app.state.periodic_tasks_started:
+            raise HTTPException(503, "当前进程不承担账号同步")
+        try:
+            run_id = await request.app.state.telegram_account_sync_task.trigger(source_id=source_id)
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from error
+        return {"status": "accepted", "source_id": source_id, "run_id": run_id}
+
     sync_task = getattr(request.app.state, "discovery_sync_task", None)
     if sync_task is None:
         raise HTTPException(

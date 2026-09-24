@@ -86,3 +86,9 @@ Bot 配置 CRUD、保存后的 Telegram 进程同步、手动启停以及 Napcat
 ## 尚未实现 / 计划扩展
 
 独立 `/accounts` 已提供登录/重新登录、有效性检测、清除本地登录、二维码会话取消和 Bilibili 手动凭据入口；`/accounts/:platform` 依据 `platform-health` contract 展示单账号能力状态、问题、最近同步和稳定修复步骤。桌面工具栏与移动全局工具组都有显式入口，设置不再展示平台账号对象。后端没有声明平台细粒度 OAuth scope，前端不对此作推断；真实平台人工验收仍未完成。
+
+## Telegram 用户账号
+
+原生 MTProto 用户同步与 Telegram Bot 独立。应用凭据使用 TELEGRAM_API_ID／TELEGRAM_API_HASH，已授权会话由 TELEGRAM_SESSION_PATH 指定；后台不会自动请求验证码或创建登录。状态接口只报告配置、会话文件存在和任务运行状态，文件存在不表示认证已通过。
+
+`GET /api/v1/telegram-account/status`、`PUT /api/v1/telegram-account/options`（channels_enabled、saved_enabled）与 `POST /api/v1/telegram-account/sync` 均需要 API Token。同步受理返回 202 和 run_id；未配置、关闭或正在同步返回 409。只有周期任务 leader 使用账号会话。当前尚待 Flutter 控制面及显式登录接入。

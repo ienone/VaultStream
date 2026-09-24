@@ -95,7 +95,8 @@ class DiscoverySyncTask:
                 DiscoverySource.kind.in_(SUPPORTED_DISCOVERY_SOURCE_KIND_VALUES),
             )
             result = await db.execute(stmt)
-            sources = result.scalars().all()
+            sources = [source for source in result.scalars().all()
+                       if (source.config or {}).get("transport") != "mtproto"]
 
             now = utcnow()
             for source in sources:
@@ -444,6 +445,8 @@ class DiscoverySyncTask:
 
     def _get_scraper(self, source: DiscoverySource) -> BaseDiscoveryScraper | None:
         """Factory: return the correct scraper for the source kind"""
+        if (source.config or {}).get("transport") == "mtproto":
+            return None
         if source.kind == DiscoverySourceKind.RSS:
             return RSSDiscoveryScraper(source.config or {})
         elif source.kind == DiscoverySourceKind.TELEGRAM_CHANNEL:
