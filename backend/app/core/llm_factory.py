@@ -58,6 +58,7 @@ class LLMFactory:
                 base_url=config.base_url,
                 use_responses_api=False,
                 temperature=0.3, # 文本生成稍微增加一点创造性
+                extra_body=await ConfigService().get_value("text_llm_extra_body", None),
             )
         except Exception as e:
             logger.error(f"LLMFactory: Failed to initialize Text LLM - {e}")

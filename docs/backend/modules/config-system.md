@@ -30,6 +30,8 @@ active
 
 系统配置来自环境变量和持久化 setting。`ConfigService` 提供类型转换和业务配置读取。AI capability、模型连通性、模型发现和平台解析由 `AIDiagnosticsService` 聚合；平台认证与后台任务诊断分别由专用 service 承担，system router 只负责 contract、依赖注入和 HTTP 错误映射。
 
+文本模型可通过 `text_llm_extra_body`（JSON 对象）传入供应商请求参数。DeepSeek Flash 的巡逻评分使用 `{"thinking":{"type":"disabled"}}`：其默认思考模式不支持评分需要的强制工具选择。切换供应商时同步调整或清空该设置。
+
 布尔开关统一通过 `coerce_bool` 读取，识别布尔值、数字和 `true/false`、`1/0`、`yes/no`、`on/off` 字符串；空值或未知值采用调用方默认值。诊断与自动化策略不再维护各自的转换规则。AI 能力的各状态共用响应组装，保留状态、原因、修复动作和实际连通性结果。
 
 ## 测试
