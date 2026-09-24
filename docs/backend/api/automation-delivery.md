@@ -93,3 +93,11 @@ Bot 心跳请求必须携带 `bot_config_id`，后端核验配置平台、启用
 - 三个接口均沿用 API Token 鉴权。任务记录名 telegram_account_sync，结果含 channels、created、updated、saved 数量。
 
 Telegram options 写入同样要求 leader（否则 503）；关闭任一同步项时，响应前等待运行中批次取消，避免旧配置继续执行。
+
+### Telegram 显式登录
+
+- POST `/api/v1/telegram-account/login` → 202 TelegramLoginStatus，缺应用凭据或同步／登录占用时 409。
+- GET `/api/v1/telegram-account/login/{login_id}` → TelegramLoginStatus，不存在或已被新登录替换时 404。
+- POST `/api/v1/telegram-account/login/{login_id}/password` 接受 `{password: string}` → TelegramLoginStatus；当前不需要密码时 409。
+- DELETE `/api/v1/telegram-account/login/{login_id}` → TelegramLoginStatus，等待连接退出；不会登出已完成的授权会话。
+- TelegramLoginStatus：login_id、state（waiting/qr/password_required/authorized/expired/failed/cancelled）、qrcode_b64、expires_at、message。只有 qr 状态提供二维码，终态清空二维码。所有请求要求 API Token 和当前 leader；其他进程 503。登录最长五分钟，二维码自身到期后不自动重发。

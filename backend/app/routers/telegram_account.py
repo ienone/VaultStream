@@ -1,7 +1,9 @@
 """Telegram user-account controls; distinct from Bot configuration."""
 from pathlib import Path
+from datetime import datetime
+from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, SecretStr, Field
 
 from app.core.config import settings
 from app.core.dependencies import require_api_token
@@ -54,3 +56,58 @@ async def sync(request: Request):
     except ValueError as error:
         raise HTTPException(409, str(error)) from error
     return TelegramSyncAccepted(run_id=run_id)
+
+
+class TelegramLoginStatus(BaseModel):
+    login_id: str
+    state: Literal["waiting", "qr", "password_required", "authorized", "expired", "failed", "cancelled"]
+    qrcode_b64: str | None = None
+    expires_at: datetime | None = None
+    message: str | None = None
+
+
+class TelegramLoginPassword(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    password: SecretStr = Field(min_length=1, max_length=1024)
+
+
+def login_worker(request: Request):
+    if not request.app.state.periodic_tasks_started:
+        raise HTTPException(503, "当前进程不承担账号登录")
+    return worker(request)
+
+
+@router.post("/login", response_model=TelegramLoginStatus, status_code=202)
+async def start_login(request: Request):
+    try:
+        return await login_worker(request).start_login()
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+
+
+@router.get("/login/{login_id}", response_model=TelegramLoginStatus)
+async def login_status(login_id: str, request: Request):
+    try:
+        return login_worker(request).login.get(login_id)
+    except KeyError as error:
+        raise HTTPException(404, "登录已结束，请重新发起") from error
+
+
+@router.post("/login/{login_id}/password", response_model=TelegramLoginStatus)
+async def login_password(login_id: str, body: TelegramLoginPassword, request: Request):
+    try:
+        return login_worker(request).login.password(login_id, body.password.get_secret_value())
+    except KeyError as error:
+        raise HTTPException(404, "登录已结束，请重新发起") from error
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+
+
+@router.delete("/login/{login_id}", response_model=TelegramLoginStatus)
+async def cancel_login(login_id: str, request: Request):
+    task = login_worker(request)
+    try:
+        await task.login.cancel(login_id)
+        return task.login.get(login_id)
+    except KeyError as error:
+        raise HTTPException(404, "登录已结束，请重新发起") from error

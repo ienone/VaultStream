@@ -157,6 +157,9 @@ active
 | `POST` | `/api/v1/targets/batch-update` |
 | `POST` | `/api/v1/targets/send-test` |
 | `POST` | `/api/v1/targets/test` |
+| `POST` | `/api/v1/telegram-account/login` |
+| `DELETE, GET` | `/api/v1/telegram-account/login/{login_id}` |
+| `POST` | `/api/v1/telegram-account/login/{login_id}/password` |
 | `PUT` | `/api/v1/telegram-account/options` |
 | `GET` | `/api/v1/telegram-account/status` |
 | `POST` | `/api/v1/telegram-account/sync` |
