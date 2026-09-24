@@ -52,8 +52,7 @@ class MediaSourceSession {
 
   bool currentSignatureExpired([DateTime? now]) {
     final source = current;
-    return source?.sourceKind == MediaSourceKind.localSigned &&
-        source!.isExpiredAt(now ?? DateTime.now().toUtc());
+    return source?.isExpiredAt(now ?? DateTime.now().toUtc()) ?? false;
   }
 
   bool moveNext() {
@@ -126,7 +125,7 @@ MediaFailureKind classifyMediaFailure(
   DateTime? now,
 }) {
   final status = mediaHttpStatus(error);
-  if (source.sourceKind == MediaSourceKind.localSigned &&
+  if (source.expiresAt != null &&
       (status == 410 || source.isExpiredAt(now ?? DateTime.now().toUtc()))) {
     return MediaFailureKind.signatureExpired;
   }

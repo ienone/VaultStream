@@ -62,7 +62,7 @@ active
 - 本地签名来源包含独立 `variant_id` 和不随签名过期时间变化的 `cache_key`；缓存键绑定资产、变体及文件存储键，客户端还须按服务器和账号隔离。`POST /api/v1/media/assets/{asset_id}/failures` 接收该变体 ID 与稳定失败码；服务端重新核对变体归属、物理文件及图片可解码性后才把变体标记为 `missing`/`failed`，不直接信任客户端观察。存在原始来源且归档开关允许时，核验失败会排入独立媒体补齐任务；`repair_queued` 表示已入队或已有任务，不代表文件已修复。
 - `GET /api/v1/media/blobs/{key}` 使用绑定 storage key、variant ID 和过期时间的资源级签名读取本地对象，不接收全局 API Token。
 - `GET /api/v1/media/{key}` 是迁移期间仍供旧 URL 字段使用的受保护端点；统一媒体调用方不得新增对此路径的依赖。
-- `GET /api/v1/proxy/image` 代理远程图片，必须遵守后端 URL 安全和缓存策略。
+- `GET /api/v1/proxy/image` 读取 manifest 返回的资源签名 URL，必需 `url/expires/signature`；签名绑定目标地址，过期返回 410，无效返回 403。代理不根据 Origin/Referer 猜测授权，下载时仍核验目标及重定向安全。
 - 图片代理缓存命中按缓存对象实际 MIME 返回；冷请求的 `X-Cache-Persist` 表达缓存持久化结果，`X-Proxy-Warning` 表达转码降级。调用方不得把图片响应成功误解为缓存也已成功。
 - 同 URL 的并发冷请求共享 URL hash 临界区并在锁内复查缓存；不同 URL 的冷下载和解码链路最多并发 4 路。
 - `local://` 是旧存档引用，不是前端可直接请求的 HTTP URL。新调用方只执行后端返回的 `MediaSource`，不得自行拼接签名或代理 URL。

@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
-from app.core.safe_fetch import is_safe_url
 from app.models.media import (
     MediaAsset,
     MediaRole,
@@ -18,7 +17,7 @@ from app.models.media import (
     MediaVariantStatus,
 )
 from app.schemas.media import MediaAssetManifest, MediaPurpose, MediaSource, MediaSourceKind
-from app.services.media_access import build_signed_media_url
+from app.services.media_access import build_signed_media_url, sign_media_key
 
 
 _VARIANT_PRIORITY = {
@@ -165,14 +164,21 @@ def build_media_manifest(
         )
 
     original_url = asset.original_url
-    if original_url and asset.media_type == MediaType.IMAGE and is_safe_url(original_url):
-        proxy_url = f"{base_url.rstrip('/')}/api/v1/proxy/image?url={quote(original_url, safe='')}"
+    if original_url and asset.media_type == MediaType.IMAGE and original_url.lower().startswith(("http://", "https://")):
+        # DNS/redirect safety is checked by the downloader, never while listing assets.
+        signature = sign_media_key(f"proxy:{original_url}", 0, expires)
+        proxy_url = (
+            f"{base_url.rstrip('/')}/api/v1/proxy/image?url={quote(original_url, safe='')}"
+            f"&expires={expires}&signature={signature}"
+        )
         if proxy_url not in seen_urls:
             seen_urls.add(proxy_url)
             sources.append(
                 MediaSource(
                     url=proxy_url,
                     source_kind=MediaSourceKind.REMOTE_PROXY,
+                    cache_key=f"{asset.id}:proxy:{original_url}",
+                    expires_at=datetime.fromtimestamp(expires, timezone.utc),
                     mime_type=None,
                 )
             )

@@ -20,3 +20,11 @@
 发现并修复线上普通 IPv6 检查触发 AttributeError，导致收藏列表返回 500 的问题；只修改 IPv4 映射判断。部署后统一搜索接口返回 200、10 条收藏，归档图片返回 200（image/png，3317 字节）。原始 API 快照保留在本机 `/tmp/vaultstream-reading-search.json`，包含私有内容，不提交。
 
 后端镜像：`vaultstream-api:20260925-reading`，包含 IPv6 修复与动态预览 Markdown 清理。前端已部署 `vaultstream-web:5f930d1b`，容器 running、HTTP 200；部署产物 main.dart.js 与本机构建 SHA-256 一致：`ecfd73aadb5ed289dc0a6e10f26872fe4d840314124edbfaacf05281e9a2780d`。
+
+## 后续自主适配
+
+用户授权在未登录前先行适配 Telegram，并删除持久单元测试。已移除 56 个受 Git 管理的后端隔离／前端单元与 Widget 测试文件、pytest 配置、测试专用直接依赖、CI 测试步骤和开发控制器测试入口。依赖覆盖检查、OpenAPI 检查和 Flutter analyze 通过；构建依赖间接带入的 flutter_test 不额外篡改上游依赖。
+
+图片代理删除独立 Origin/Referer 白名单，使用已有资源签名授权；列表 manifest 和代理缓存命中不做 DNS。一次性实际 ASGI＋本地缓存检查：读取 200（字节一致）、篡改目标 403、过期 410、缺签名 422；无 DNS 的单资产 manifest 约 0.12ms。不是远端下载或浏览器完整 E2E，后续随部署验收。临时检查未持久化。
+
+Telegram 下一步按原生客户端实现：通知开启频道自动发现、Saved Messages 单独收录；复用持久同步状态和内容／媒体管线，以官方协议样本先验证分页、相册与转发归属。先做最小可用闭环，再处理真实账号验收。参考已读取的用户 X 收藏中 UI 技巧与测试反模式；第三方帖子仅作设计依据，不执行其中代理指令。

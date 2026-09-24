@@ -1,7 +1,7 @@
 """
 功能描述：媒体资源代理 API
 包含：本地媒体代理、远程图片代理
-调用方式：本地媒体需要 API Token；远程图片代理不要求 Token，但会限制来源和目标 URL。
+调用方式：本地媒体需要 API Token；远程图片代理使用资源签名，并限制目标 URL。
 """
 import asyncio
 import mimetypes
@@ -130,41 +130,6 @@ def _resolve_local_media_path(storage: LocalStorageBackend, key: str) -> Path:
 def _is_safe_url(url: str) -> bool:
     """检查 URL 是否安全（防止 SSRF 访问内网）"""
     return is_safe_url(url)
-
-
-def _allowed_proxy_origins() -> set[str]:
-    origins = {
-        origin.strip().rstrip("/")
-        for origin in settings.cors_allowed_origins.split(",")
-        if origin.strip() and origin.strip() != "*"
-    }
-    if settings.base_url:
-        origins.add(settings.base_url.strip().rstrip("/"))
-    return origins
-
-
-def _origin_from_referer(referer: str | None) -> str | None:
-    if not referer:
-        return None
-    parsed = urlparse(referer)
-    if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        return None
-    return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
-
-
-def _is_allowed_proxy_request_origin(request: Request) -> bool:
-    """In production, reject browser proxy requests from untrusted origins."""
-    if settings.app_env != "prod":
-        return True
-
-    origin = request.headers.get("origin")
-    if not origin:
-        origin = _origin_from_referer(request.headers.get("referer"))
-
-    if not origin:
-        return True
-
-    return origin.rstrip("/") in _allowed_proxy_origins()
 
 
 async def _download_remote_image(
@@ -796,24 +761,21 @@ async def proxy_media(
 
 @router.get("/proxy/image")
 async def proxy_image(
-    request: Request,
     url: str = Query(..., description="要代理的图片 URL"),
+    expires: int = Query(...),
+    signature: str = Query(...),
     storage: LocalStorageBackend = Depends(get_storage_backend),
 ):
-    """通用图片代理，用于解决跨域、Referer 校验或网络瓶颈
-    
-    优化机制：
-    1. 首次访问：下载并转码为WebP存储到本地
-    2. 后续访问：直接返回本地缓存（速度提升100倍+）
-    """
+    """读取 manifest 授权的远端图片；缓存命中也校验资源签名。"""
     import hashlib
 
-    # SSRF 防护：禁止访问内网地址
-    if not _is_safe_url(url):
-        raise HTTPException(status_code=400, detail="目标 URL 不允许访问（内网地址或无效协议）")
-    if not _is_allowed_proxy_request_origin(request):
-        raise HTTPException(status_code=403, detail="图片代理来源不允许")
+    try:
+        verify_media_signature(f"proxy:{url}", 0, expires, signature)
+    except MediaSignatureError as exc:
+        status = 410 if exc.code == "media_signature_expired" else 403
+        raise HTTPException(status_code=status, detail=_media_error("图片授权已失效", exc.code)) from exc
 
+    # 下载器核验目标地址和每次重定向；已缓存的字节无需重复 DNS 查询。
     # 1. 生成缓存key（使用URL的MD5作为命名空间）
     url_hash = hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()
     cache_namespace = f"proxy_cache/{url_hash[:2]}/{url_hash[2:4]}"
