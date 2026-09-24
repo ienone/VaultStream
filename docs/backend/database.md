@@ -39,7 +39,9 @@ active
 
 `init_db()` 对空库使用 SQLAlchemy `Base.metadata.create_all()` 创建当前 ORM 结构，补充 FTS/SSE 后执行 Alembic `stamp head`；已有 Alembic 库只执行 `upgrade head`。不保存重复的全量结构快照。`20260920_media_archive_items` 合并重复媒体索引；`20260920_single_facts` 收敛来源、Agent、队列、Bot、索引和同步结果的重复事实，保留关联 ID 并恢复 SQLite FTS 触发器。迁移连接在事务前关闭外键动作以避免 batch 重建级联删除，提交前执行外键完整性检查；常规连接仍开启外键。
 
-当前历史数据库均为测试数据，不支持旧 `schema_metadata` 库的自动接管或历史数据转换。旧测试库须清空重建；应用不会自动清库，也不会对已有业务表执行 `create_all()` 或 `stamp head` 冒充升级。
+应用不自动接管未纳入 Alembic 的历史库，也不会自动清库或对已有业务表执行 `stamp head` 冒充升级。服务器仍有实际业务数据，不能将历史库一律视为测试库。
+
+针对已检查的早期部署结构，使用 `scripts/import_legacy_database.py --source 旧库路径 --target 新库路径` 显式导入独立新库，原库保持不变。脚本保留内容、配置和关联 ID，合并旧来源及媒体索引，并检查外键、完整性和全文索引。未知表或字段、非空的旧运行态／队列／目标表，以及旧自动审批条件会拒绝导入，须先明确转换规则。它不支持任意历史版本或 `schema_metadata` 库。部署切换前停止旧实例写入，以最终快照导入；媒体文件需另行保留并执行媒体资产回填。
 
 新库由应用启动的 `init_db()` 初始化，也可运行 `scripts/check_database_schema.py --db 路径`。以下 Alembic 命令用于已初始化的库；在仓库根目录使用根虚拟环境，`SQLITE_DB_PATH` 选择目标库：
 
