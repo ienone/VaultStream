@@ -1,5 +1,5 @@
 """
-全局 WebKit 浏览器单例管理器（特设独立异步循环）
+共享浏览器管理器（独立异步循环，WebKit 常驻、Chromium 按需启动）
 
 解决 Windows FastAPI 并发缺陷的终极方案：
   - Windows Uvicorn 默认在主线程使用 SelectorEventLoop，导致 async_playwright 闪退。
@@ -34,6 +34,8 @@ class PlaywrightBrowserManager:
 
         self._playwright = None
         self._browser: Optional[Browser] = None
+        self._chromium_browser: Optional[Browser] = None
+        self._chromium_lock: Optional[asyncio.Lock] = None
 
         self._started = False
         self._initializing = False  # 防止并发重入导致递归
@@ -129,10 +131,17 @@ class PlaywrightBrowserManager:
         self._pw_thread = None
         self._playwright = None
         self._browser = None
+        self._chromium_browser = None
+        self._chromium_lock = None
         self._loop_ready.clear()
         logger.info("PlaywrightBrowserManager: 浏览器与后台循环已关闭")
 
     async def _close_browser(self):
+        if self._chromium_browser:
+            try:
+                await self._chromium_browser.close()
+            except Exception:
+                pass
         if self._browser:
             try:
                 await self._browser.close()
@@ -167,6 +176,20 @@ class PlaywrightBrowserManager:
         if not self._started or not self._browser:
             raise RuntimeError("浏览器尚未就绪")
         return self._browser
+
+    async def get_chromium_browser(self) -> Browser:
+        """Lazy public-page browser; call only inside submit_coro's loop."""
+        if not self._started or not self._playwright:
+            raise RuntimeError("浏览器尚未就绪")
+        if self._chromium_lock is None:
+            self._chromium_lock = asyncio.Lock()
+        async with self._chromium_lock:
+            if not self._chromium_browser or not self._chromium_browser.is_connected():
+                self._chromium_browser = await self._playwright.chromium.launch(
+                    headless=True,
+                    args=["--disable-blink-features=AutomationControlled"],
+                )
+            return self._chromium_browser
 
     # 公开配置
     @property

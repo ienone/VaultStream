@@ -3,16 +3,17 @@
 
 负责解析小红书用户主页
 """
-from datetime import datetime
 from typing import Dict, Any, Optional
-from app.core.logging import logger
 from app.adapters.base import ParsedContent, LAYOUT_GALLERY
 from app.adapters.errors import (
     AuthRequiredAdapterError,
     NonRetryableAdapterError,
     RetryableAdapterError,
 )
+import httpx
+from urllib.parse import quote
 from .base import clean_text
+from .ssr import extract_initial_state, navigation_headers
 
 
 def safe_url(url: Any) -> Optional[str]:
@@ -68,36 +69,28 @@ def parse_count(count: Any) -> int:
         return 0
 
 
-async def parse_user(
-    user_id: str,
-    url: str,
-    xhs_client,
-    cookies: Dict[str, str],
-    headers: Dict[str, str],
-    xsec_token: Optional[str] = None,
-    session=None,
-) -> ParsedContent:
-    """
-    解析小红书用户主页
-    
-    Args:
-        user_id: 用户ID
-        url: 用户主页URL
-        xhs_client: Xhshow客户端用于签名
-        cookies: Cookie字典
-        headers: 请求头
-        xsec_token: 安全token（可选）
-        
-    Returns:
-        ParsedContent: 解析后的标准化内容
-        
-    Raises:
-        AuthRequiredAdapterError: 需要登录
-        NonRetryableAdapterError: 用户不存在
-        RetryableAdapterError: 网络错误或API错误
-    """
-    logger.info(f"解析小红书用户: user_id={user_id}")
-    
+def extract_ssr_user(html: str, user_id: str) -> dict:
+    state = extract_initial_state(html).get("user")
+    if not isinstance(state, dict) or not isinstance(state.get("userPageData"), dict):
+        raise NonRetryableAdapterError("小红书页面未提供目标用户资料")
+    user = state["userPageData"]
+    result = user.get("result")
+    basic_info = user.get("basicInfo")
+    if (not isinstance(result, dict) or not isinstance(basic_info, dict)
+            or state.get("userFetchingStatus") != "resolved"
+            or result.get("success") is not True or result.get("code") != 0
+            or not basic_info.get("nickname")):
+        raise NonRetryableAdapterError("小红书页面未提供目标用户资料")
+    queries = state.get("noteQueries")
+    if (not isinstance(queries, list) or not queries
+            or any(not isinstance(query, dict) or query.get("userId") != user_id
+                   for query in queries)):
+        raise NonRetryableAdapterError("小红书 SSR 主页身份不匹配")
+    return user
+
+
+async def fetch_user_via_api(user_id, xhs_client, cookies, headers, xsec_token=None, session=None):
+    """Saved-account access remains separate from anonymous public SSR."""
     # 准备API请求
     API_USER_INFO = "/api/sns/web/v1/user/otherinfo"
     API_BASE = "https://edith.xiaohongshu.com"
@@ -121,7 +114,6 @@ async def parse_user(
     request_headers = {**headers, **sign_headers}
     api_url = f"{API_BASE}{API_USER_INFO}"
     
-    import httpx
     async with httpx.AsyncClient(timeout=15.0) as client:
         try:
             response = await client.get(
@@ -154,7 +146,37 @@ async def parse_user(
         except httpx.RequestError as e:
             raise RetryableAdapterError(f"小红书请求失败: {e}")
     
-    # API返回camelCase，需要兼容两种格式
+    return user
+
+
+async def parse_user(
+    user_id: str,
+    url: str,
+    xhs_client,
+    cookies: Dict[str, str],
+    headers: Dict[str, str],
+    xsec_token: Optional[str] = None,
+    session=None,
+) -> ParsedContent:
+    """Public profiles expose their structured data in SSR, without a login."""
+    if cookies:
+        user = await fetch_user_via_api(user_id, xhs_client, cookies, headers, xsec_token, session)
+    else:
+        request_url = f"https://www.xiaohongshu.com/user/profile/{user_id}"
+        if xsec_token:
+            request_url += f"?xsec_token={quote(xsec_token, safe='')}"
+        try:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+                response = await client.get(request_url, headers=navigation_headers(headers))
+            if response.status_code in (404, 410) or '/404' in str(response.url):
+                raise NonRetryableAdapterError("小红书用户主页不可访问")
+            if response.status_code != 200:
+                raise RetryableAdapterError(f"小红书主页请求失败: HTTP {response.status_code}")
+            user = extract_ssr_user(response.text, user_id)
+        except httpx.RequestError as error:
+            raise RetryableAdapterError(f"小红书主页请求失败: {error}") from error
+
+    # Account API and SSR normalize into the existing profile contract.
     basic_info = user.get("basicInfo") or user.get("basic_info") or {}
     nickname = clean_text(basic_info.get("nickname"))
     desc = clean_text(basic_info.get("desc"))
@@ -215,6 +237,7 @@ async def parse_user(
         body=desc,
         author_name=nickname,
         author_id=user_id,
+        author_url=url,
         author_avatar_url=avatar,
         cover_url=avatar,
         media_urls=[avatar] if avatar else [],

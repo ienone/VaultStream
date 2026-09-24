@@ -17,13 +17,16 @@ from app.adapters.zhihu_parser import (
 )
 from app.adapters.zhihu_parser.base import preprocess_zhihu_html, extract_images
 from app.adapters.zhihu_parser.models import ZhihuAuthor
+from app.adapters.zhihu_parser.public_reader import parse_public_reader
+from app.adapters.zhihu_parser.browser_reader import read_public_page
 from app.adapters.utils.cookie_utils import normalize_cookie_header_value
 from app.core.config import settings
+from app.core.safe_fetch import safe_client_get
 from app.services.config_service import ConfigService
 
 
 class ZhihuAdapter(PlatformAdapter):
-    """知乎平台适配器 - API优先策略，失败时回退HTML解析"""
+    """知乎适配器：回答/文章支持匿名阅读页，账号 API 补充完整元数据。"""
     
     _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
     _CHROME = "145"
@@ -70,7 +73,7 @@ class ZhihuAdapter(PlatformAdapter):
 
     # API Include 参数配置 (参考 fxzhihu 项目优化)
     API_INCLUDE_PARAMS = {
-        # Answer: 公开可用，包含完整统计信息
+        # Answer: 元数据丰富，但匿名请求可能要求登录
         "answer": "content,excerpt,voteup_count,comment_count,created_time,updated_time,thanks_count,relationship.is_author,is_thanked,voting",
         
         # Article: 风控严格，通常需要 Cookie
@@ -290,7 +293,7 @@ class ZhihuAdapter(PlatformAdapter):
                 if response.status_code == 404:
                     return {"_error": "not_found"}
                 if response.status_code in (401, 403):
-                    risk_code, risk_message = self._extract_zhihu_error(response)
+                    risk_code, _ = self._extract_zhihu_error(response)
                     logger.bind(
                         event="zhihu_risk_blocked",
                         stage="api",
@@ -299,14 +302,17 @@ class ZhihuAdapter(PlatformAdapter):
                         status_code=response.status_code,
                         zhihu_error_code=risk_code,
                     ).warning(
-                        "Zhihu API blocked: type={} id={} status={} code={} msg={}",
+                        "Zhihu API blocked: type={} id={} status={} code={}",
                         content_type,
                         content_id,
                         response.status_code,
                         risk_code,
-                        (risk_message or response.text[:160]),
                     )
-                    return {"_error": "auth_required", "_status": response.status_code}
+                    return {
+                        "_error": "auth_required" if response.status_code == 401 or risk_code == 40353 else "verification_required",
+                        "_status": response.status_code,
+                        "_code": risk_code,
+                    }
                 if response.status_code != 200:
                     logger.bind(
                         event="zhihu_api_failed",
@@ -355,14 +361,12 @@ class ZhihuAdapter(PlatformAdapter):
 
     async def _parse_answer_via_api(self, answer_id: str, url: str) -> Optional[ParsedContent]:
         """通过API解析回答"""
-        # 优先尝试使用Cookie获取完整内容（知乎对无Cookie请求返回截断的content）
-        data = await self._api_request("answer", answer_id, use_cookies=True)
-        
-        # 如果Cookie请求失败，回退到无Cookie请求（可能内容不完整）
-        if not data or "_error" in data:
-            data = await self._api_request("answer", answer_id, use_cookies=False)
+        data = await self._api_request("answer", answer_id, use_cookies=bool(self.cookies))
         
         if not data or "_error" in data:
+            return None
+
+        if str(data.get("id")) != answer_id or not data.get("content"):
             return None
 
         await self._enrich_answer_question_stats(data)
@@ -404,6 +408,9 @@ class ZhihuAdapter(PlatformAdapter):
         data = await self._api_request("article", article_id, use_cookies=True)
         
         if not data or "_error" in data:
+            return None
+
+        if str(data.get("id")) != article_id or not data.get("content"):
             return None
         
         return self._build_article_from_api(data, url)
@@ -511,7 +518,7 @@ class ZhihuAdapter(PlatformAdapter):
             title=f"回答：{question_title}" if question_title else f"知乎回答 {answer_id}",
             body=markdown_content,
             author_name=author.name,
-            author_id=author.url_token or str(author.id),
+            author_id=author.url_token or (str(author.id) if author.id is not None else None),
             author_avatar_url=author.avatar_url,
             author_url=f"https://www.zhihu.com/people/{author.url_token}" if author.url_token else None,
             cover_url=data.get('thumbnail') or (media_urls[0] if media_urls else None),
@@ -573,7 +580,7 @@ class ZhihuAdapter(PlatformAdapter):
             title=title,
             body=markdown_content,
             author_name=author.name,
-            author_id=author.url_token or str(author.id),
+            author_id=author.url_token or (str(author.id) if author.id is not None else None),
             author_avatar_url=author.avatar_url,
             author_url=f"https://www.zhihu.com/people/{author.url_token}" if author.url_token else None,
             cover_url=cover_url,
@@ -693,7 +700,7 @@ class ZhihuAdapter(PlatformAdapter):
             author_url=f"https://www.zhihu.com/people/{url_token}" if url_token else None,
             cover_url=avatar_url,
             media_urls=[avatar_url] if avatar_url else [],
-            published_at=datetime.now(),
+            published_at=None,
             stats=stats,
             archive_metadata={"raw_api_response": data}
         )
@@ -804,6 +811,24 @@ class ZhihuAdapter(PlatformAdapter):
 
     # ==================== 主解析方法 ====================
 
+    async def _parse_public_reader(self, url: str, content_type: str, content_id: str) -> Optional[ParsedContent]:
+        reader_type = {"answer": "ans", "article": "art"}[content_type]
+        reader_url = f"https://www.zhihu.com/tardis/zm/{reader_type}/{content_id}"
+        proxy = await self._get_proxy_url()
+        try:
+            async with httpx.AsyncClient(timeout=15.0, proxy=proxy) as client:
+                response = await safe_client_get(
+                    client, reader_url,
+                    headers={"User-Agent": self._UA, "Accept": "text/html,application/xhtml+xml"},
+                    max_bytes=5 * 1024 * 1024,
+                    allowed_content_type_prefixes=("text/html",),
+                )
+            if response.status_code != 200 or response.url != reader_url:
+                return None
+            return parse_public_reader(response.text, url, content_type, content_id)
+        except (httpx.RequestError, httpx.HTTPStatusError):
+            return None
+
     async def parse(self, url: str) -> ParsedContent:
         content_type = await self.detect_content_type(url)
         if not content_type:
@@ -811,16 +836,27 @@ class ZhihuAdapter(PlatformAdapter):
 
         clean_url = await self.clean_url(url)
         content_id = self._extract_id_from_url(url, content_type)
+
+        # Public reader succeeds without login or browser startup. With a saved
+        # account, retain the richer API metadata; a stale account cannot block
+        # the independent anonymous reader.
+        public_reader_type = content_type in {"answer", "article"} and content_id
+        if public_reader_type and not self.cookies:
+            result = await self._parse_public_reader(clean_url, content_type, content_id)
+            if result:
+                self._log_parse_success(channel="public_reader", parsed=result)
+                return result
         
-        # 解析策略：API优先
-        # Answer/User/Column/Collection: 公开API，优先使用
+        # 其余类型及已保存账号优先尝试现有 API。
         # Article: 带cookie时API可用，先试API再回退HTML
         # Question: 带cookie时API成功率较高，先试API再回退HTML
         # Pin: 仅支持HTML
         
         api_preferred_types = {"answer", "user_profile", "column", "collection", "article", "question"}
         
-        if content_id and content_type in api_preferred_types:
+        browser_types = {"article", "question", "user_profile"}
+        if (content_id and content_type in api_preferred_types
+                and (self.cookies or content_type not in browser_types)):
             api_parsers = {
                 "answer": self._parse_answer_via_api,
                 "user_profile": self._parse_user_via_api,
@@ -840,6 +876,17 @@ class ZhihuAdapter(PlatformAdapter):
         elif content_type == "pin":
             logger.info(f"Pin 类型仅支持HTML解析: {content_id}")
         
+        if public_reader_type and self.cookies:
+            result = await self._parse_public_reader(clean_url, content_type, content_id)
+            if result:
+                self._log_parse_success(channel="public_reader", parsed=result)
+                return result
+
+        if content_id and content_type in browser_types:
+            result = await read_public_page(content_type, content_id, await self._get_proxy_url())
+            self._log_parse_success(channel="public_browser", parsed=result)
+            return result
+
         # HTML解析回退
         html_result = await self._parse_via_html(url, clean_url, content_type)
         self._log_parse_success(channel="html", parsed=html_result)
@@ -865,49 +912,21 @@ class ZhihuAdapter(PlatformAdapter):
             proxy=proxy_url
         ) as client:
             try:
-                logger.info(f"[zhihu debug] cookies count={len(self.cookies)}, keys={list(self.cookies.keys())[:5]}")
                 response = await client.get(clean_url)
-                logger.info(f"[zhihu debug] status={response.status_code}, url={response.url}, resp_head={response.text[:300]}")
                 if response.status_code == 404:
-                    raise NonRetryableAdapterError(f"内容不存在: {url}")
+                    raise NonRetryableAdapterError("知乎内容不存在")
                 if response.status_code in (401, 403):
-                    risk_code, risk_message = self._extract_zhihu_error(response)
-                    logger.bind(
-                        event="zhihu_risk_blocked",
-                        stage="html",
-                        content_type=content_type,
-                        status_code=response.status_code,
-                        zhihu_error_code=risk_code,
-                        target_url=clean_url,
-                    ).warning(
-                        "Zhihu HTML blocked: status={} code={} msg={}",
-                        response.status_code,
-                        risk_code,
-                        (risk_message or response.text[:180]),
+                    risk_code, _ = self._extract_zhihu_error(response)
+                    details = {"status": response.status_code, "platform_code": risk_code}
+                    if response.status_code == 401 or risk_code == 40353:
+                        raise AuthRequiredAdapterError("知乎当前入口要求登录", details=details)
+                    raise NonRetryableAdapterError(
+                        "知乎拒绝当前请求或要求安全验证",
+                        details={**details, "reason": "verification_required"},
                     )
-                    err_msg = "触发知乎安全验证" if "安全验证" in response.text else "访问知乎需要登录或权限不足"
-                    
-                    if getattr(self, "_refresh_zse_called", False):
-                        raise AuthRequiredAdapterError(f"{err_msg} (已尝试更新指纹)")
-                    
-                    logger.warning(f"[Zhihu] 碰到 403/401 拦截 ({err_msg})，尝试启动服务端自动更新指纹...")
-                    try:
-                        from app.services.browser_auth_service import browser_auth_service
-                        success = await browser_auth_service.refresh_zhihu_zse_cookie(clean_url)
-                        if success:
-                            self._refresh_zse_called = True
-                            raise RetryableAdapterError(f"{err_msg}，后台已成功提取新指纹，准备重试当前页面")
-                        else:
-                            logger.warning("[Zhihu] 自动更新指纹失败，可能登录状态已过期")
-                    except Exception as e:
-                        if isinstance(e, RetryableAdapterError):
-                            raise
-                        logger.error(f"[Zhihu] 调用指纹更新器异常: {e}")
-                    
-                    raise AuthRequiredAdapterError(err_msg)
                 if response.status_code != 200:
                     raise RetryableAdapterError(f"知乎请求失败: {response.status_code}")
-                
+
                 html = response.text
                 
                 html_parsers = {
@@ -925,9 +944,7 @@ class ZhihuAdapter(PlatformAdapter):
                 parsed_content = parser(html, clean_url)
 
                 if not parsed_content:
-                    if "登录" in html or "验证" in html:
-                        raise AuthRequiredAdapterError("可能需要更新 Cookie")
-                    raise NonRetryableAdapterError(f"解析失败，未找到数据: {url}")
+                    raise NonRetryableAdapterError("知乎页面未返回目标内容数据")
                 
                 return parsed_content
 

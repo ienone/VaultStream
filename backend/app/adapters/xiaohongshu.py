@@ -36,7 +36,7 @@ class XiaohongshuAdapter(PlatformAdapter):
     使用xhshow库进行API签名，支持图文和视频笔记解析
     
     依赖:
-    - settings.xiaohongshu_cookie: 必须配置有效的Cookie才能获取数据
+    - 签名 API 使用 Cookie；带 xsec_token 的公开笔记也可独立读取网页 SSR
     """
     
     USER_AGENT = DEFAULT_XHS_USER_AGENT
@@ -204,15 +204,10 @@ class XiaohongshuAdapter(PlatformAdapter):
             clean_url = await self.clean_url(url)
             
             return await parse_user(
-                user_id,
-                clean_url,
-                self.xhs_client,
-                self.cookies,
-                self.headers,
-                xsec_token,
-                session=self._session,
+                user_id, clean_url, self.xhs_client, self.cookies, self.headers,
+                xsec_token, session=self._session,
             )
-            
+
         else:
             raise NonRetryableAdapterError(f"不支持的小红书链接类型: {url}")
 

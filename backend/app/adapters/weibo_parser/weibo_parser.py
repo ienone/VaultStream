@@ -74,13 +74,18 @@ def _parse_weibo_sync(
         if data.get("isLongText"):
             try:
                 long_text_url = f"https://weibo.com/ajax/statuses/longtext?id={bid}"
-                lt_resp = requests.get(long_text_url, headers=headers, cookies=cookies, timeout=10)
-                if lt_resp.status_code == 200:
-                    lt_data = lt_resp.json()
-                    if lt_data.get("data", {}).get("longTextContent"):
-                        data["text"] = lt_data["data"]["longTextContent"]
-            except Exception as e:
-                logger.warning(f"获取长文本失败 {bid}: {e}")
+                lt_resp = requests.get(
+                    long_text_url, headers=headers, cookies=cookies,
+                    proxies=proxies, timeout=10,
+                )
+                lt_resp.raise_for_status()
+                lt_data = lt_resp.json()
+                long_text = lt_data.get("data", {}).get("longTextContent")
+                if not isinstance(long_text, str) or not long_text.strip():
+                    raise RetryableAdapterError("微博长文未返回完整正文，未保存截断内容")
+                data["text"] = long_text
+            except (requests.RequestException, ValueError, TypeError, AttributeError):
+                raise RetryableAdapterError("微博长文读取失败，未保存截断内容") from None
 
         # 构建标准化存档
         archive = build_weibo_archive(data)

@@ -84,7 +84,7 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
     # The frontend now handles question title and layout separately
     full_description = markdown_content
 
-    created = answer_data.get('created_time') or answer_data.get('created')
+    created = answer_data.get('createdTime') or answer_data.get('created_time') or answer_data.get('created')
     updated = answer_data.get('updated_time') or answer_data.get('updatedTime')
     published_at = datetime.fromtimestamp(created) if created else None
     updated_at = datetime.fromtimestamp(updated) if updated else None

@@ -1,8 +1,8 @@
-# 通用适配器 (Universal Adapter) - Agentic V3 (Tiered Fetch + 2-Layer Agent)
+# 通用适配器 (Universal Adapter)
 
 # 架构升级：
-# 1. 获取层 (Tiered Fetcher): Cloudflare MD -> Direct HTTP -> Crawl4AI 降级策略
-# 2. 解析层 (Content Agent): Layer 1 (结构扫描) -> Layer 2 (元数据提取/清洗)
+# 1. 获取层：一次 HTTP 内容协商，必要时使用共享 WebKit 渲染
+# 2. 解析层：明确的正文结构直接提取，其余页面交由内容 Agent
 # 3. 编排层 (Orchestrator): 统一协调获取与解析流程
 
 import sys
@@ -63,8 +63,6 @@ class UniversalAdapter(PlatformAdapter):
 
     async def parse(self, url: str) -> ParsedContent:
         self.llm_config = await ConfigService().get_text_llm_config()
-        if not self.llm_config.api_key:
-            raise ValueError("通用解析未配置文本模型 API Key")
         if sys.platform == 'win32':
             return await self._parse_in_thread(url)
         else:
@@ -82,14 +80,14 @@ class UniversalAdapter(PlatformAdapter):
             )
 
     async def _do_parse(self, url: str) -> ParsedContent:
-        """核心解析流程 - Agentic V3"""
+        """获取、提取正文并映射到统一存档。"""
         logger.info(f"UniversalAdapter: 开始解析 {url}")
 
-        # 1. 分层获取 (Cloudflare MD -> 直接 HTTP -> Crawl4AI)
+        # 1. 分层获取
         fetch_result = await tiered_fetch(url, cookies=self.cookies, verbose=True)
 
-        # 2. 内容 Agent 处理 (结构扫描 -> 元数据提取 -> 清洗)
-        process_result = await process_content(url, fetch_result, self.llm_config, verbose=True)
+        # 2. 使用最终页面 URL 解析正文中的相对链接。
+        process_result = await process_content(fetch_result.url, fetch_result, self.llm_config, verbose=True)
 
         # 3. 将结果映射到 ParsedContent
         

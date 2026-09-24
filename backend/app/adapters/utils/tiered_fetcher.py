@@ -1,9 +1,8 @@
 """
-三级降级获取模块 (Tiered Content Fetcher)
+分层内容获取模块 (Tiered Content Fetcher)
 
-Tier 1: Cloudflare Markdown — Accept: text/markdown (最轻量)
-Tier 2: httpx 直接 HTTP GET (中等, 适用服务端渲染页面)
-Tier 3: crawl4ai 无头浏览器 (最重, 适用 JS 渲染页面)
+HTTP：一次内容协商请求，接受 Markdown 或 HTML，不重复请求同一页面。
+浏览器：共享 Playwright/WebKit (适用 JS 渲染页面)
 
 每一级尝试后判断内容质量, 不达标则降级到下一级。
 """
@@ -18,6 +17,7 @@ from loguru import logger
 import httpx
 from bs4 import BeautifulSoup
 
+from app.adapters.errors import NonRetryableAdapterError, RetryableAdapterError
 from app.core.crawler_config import get_delay_for_url_sync
 from app.core.safe_fetch import is_safe_url, safe_client_get
 
@@ -35,9 +35,9 @@ class FetchResult:
     url: str
     content: str  # markdown 或 html
     content_type: str  # "markdown" | "html"
-    source: str  # "cloudflare_md" | "direct_http" | "crawl4ai"
+    source: str  # "cloudflare_md" | "direct_http" | "browser"
     status_code: int = 200
-    html: str = ""  # 原始 HTML (Tier 2/3 保留, 供定标使用)
+    html: str = ""  # 原始 HTML，供正文定位使用
     token_estimate: Optional[int] = None  # Cloudflare x-markdown-tokens
     meta: dict = field(default_factory=dict)  # 附加元信息
 
@@ -54,12 +54,26 @@ def _has_sufficient_content(html: str, min_text_length: int = 500) -> bool:
     """
     soup = BeautifulSoup(html, "html.parser")
 
+    title = soup.title.get_text(" ", strip=True).lower() if soup.title else ""
+    challenge_title = title in {
+        "just a moment", "just a moment...", "verify you are human",
+        "attention required! | cloudflare", "sina visitor system", "安全验证", "访问验证",
+    }
+    login_title = re.match(r"^(?:sign in|log in|登录)(?:\s*[-—|]|$)", title)
+    if challenge_title or login_title or soup.select_one('#challenge-form, #captcha, meta#zh-zse-ck'):
+        return False
+
     # 移除 script/style/noscript
     for tag in soup.find_all(["script", "style", "noscript"]):
         tag.decompose()
 
     text = soup.get_text(separator=" ", strip=True)
     text_len = len(text)
+
+    # A short article can be complete; navigation text cannot establish that.
+    bodies = soup.select('[itemprop~="articleBody"]') or soup.select('article')
+    if len(bodies) == 1 and len(bodies[0].get_text(strip=True)) >= 120:
+        return True
 
     if text_len < min_text_length:
         return False
@@ -94,104 +108,49 @@ def _is_valid_markdown(text: str, min_length: int = 200) -> bool:
 
 
 # ============================================================
-# Tier 1: Cloudflare Markdown
+# HTTP 内容协商
 # ============================================================
 
-async def _try_cloudflare_markdown(url: str, timeout: float = 10.0) -> Optional[FetchResult]:
-    """
-    尝试通过 Accept: text/markdown 获取 Cloudflare 转换的 Markdown。
-
-    成功条件: 响应 Content-Type 包含 text/markdown, 且内容有效。
-    """
+async def _try_http(url: str, cookies: Optional[dict] = None, timeout: float = 15.0) -> Optional[FetchResult]:
+    """Negotiate Markdown and reuse an HTML response from the same GET."""
     headers = {
-        "Accept": "text/markdown, text/html",
-        "User-Agent": "Mozilla/5.0 (compatible; VaultStream/1.0; +https://github.com/ienone/vaultstream)",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+        "Accept": "text/markdown, text/html;q=0.9,application/xhtml+xml;q=0.8",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
     }
-
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await safe_client_get(
-                client,
-                url,
-                headers=headers,
-                max_bytes=_MAX_FETCH_TEXT_BYTES,
-                allowed_content_type_prefixes=_TEXT_CONTENT_TYPES,
-            )
-            content_type = resp.headers.get("content-type", "")
-
-            if "text/markdown" in content_type:
-                text = resp.text
-                if _is_valid_markdown(text):
-                    token_est = resp.headers.get("x-markdown-tokens")
-                    return FetchResult(
-                        url=url,
-                        content=text,
-                        content_type="markdown",
-                        source="cloudflare_md",
-                        status_code=resp.status_code,
-                        token_estimate=int(token_est) if token_est else None,
-                    )
-    except Exception:
-        pass
-
-    return None
-
-
-# ============================================================
-# Tier 2: 直接 HTTP GET
-# ============================================================
-
-async def _try_direct_http(url: str, cookies: Optional[dict] = None, timeout: float = 15.0) -> Optional[FetchResult]:
-    """
-    尝试直接 HTTP GET 获取页面 HTML。
-
-    成功条件: 拿到 HTML 且通过内容质量检测 (非 JS 空壳)。
-    """
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
-    }
-
     try:
         async with httpx.AsyncClient(timeout=timeout, cookies=cookies) as client:
             resp = await safe_client_get(
-                client,
-                url,
-                headers=headers,
-                cookies=cookies,
+                client, url, headers=headers, cookies=cookies,
                 max_bytes=_MAX_FETCH_TEXT_BYTES,
                 allowed_content_type_prefixes=_TEXT_CONTENT_TYPES,
             )
-            if resp.status_code != 200:
-                return None
-
-            html = resp.text
-            if not html or len(html) < 500:
-                return None
-
-            if _has_sufficient_content(html):
-                return FetchResult(
-                    url=url,
-                    content=html,
-                    content_type="html",
-                    source="direct_http",
-                    status_code=resp.status_code,
-                    html=html,
-                )
-    except Exception:
-        pass
-
+        if resp.status_code in (404, 410):
+            raise NonRetryableAdapterError(f"页面不存在或已删除（HTTP {resp.status_code}）")
+        if resp.status_code == 429:
+            raise RetryableAdapterError("网站限制请求频率，请稍后重试")
+        if resp.status_code != 200:
+            return None
+        content_type = resp.headers.get("content-type", "").lower()
+        if "text/markdown" in content_type and _is_valid_markdown(resp.text):
+            token_est = resp.headers.get("x-markdown-tokens", "")
+            return FetchResult(
+                url=resp.url, content=resp.text, content_type="markdown",
+                source="cloudflare_md", token_estimate=int(token_est) if token_est.isdigit() else None,
+            )
+        if "html" in content_type and _has_sufficient_content(resp.text):
+            return FetchResult(
+                url=resp.url, content=resp.text, html=resp.text,
+                content_type="html", source="direct_http",
+            )
+    except httpx.RequestError:
+        return None
     return None
 
 
-# ============================================================
-# Tier 3: crawl4ai 无头浏览器
-# ============================================================
-
-async def _try_crawl4ai(url: str, cookies: Optional[dict] = None) -> Optional[FetchResult]:
+async def _try_browser(url: str, cookies: Optional[dict] = None) -> Optional[FetchResult]:
     """
-    使用共享 WebKit 浏览器实例抓取页面（Tier 3 最重量级）。
+    使用共享 WebKit 浏览器实例抓取页面。
 
     将爬取任务打包为协程，通过 browser_manager.submit_coro() 在专门的
     后台 Playwright 事件循环中安全执行并获取结果。
@@ -208,7 +167,7 @@ async def _try_crawl4ai(url: str, cookies: Optional[dict] = None) -> Optional[Fe
         for k, v in cookies.items():
             pw_cookies.append({"name": k, "value": v, "domain": domain, "path": "/"})
 
-    async def _fetch_coro() -> Optional[str]:
+    async def _fetch_coro() -> Optional[tuple[str, str]]:
         if not is_safe_url(url):
             return None
 
@@ -229,7 +188,9 @@ async def _try_crawl4ai(url: str, cookies: Optional[dict] = None) -> Optional[Fe
 
             await context.route("**/*", _route_guard)
             page = await context.new_page()
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            response = await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            if response is None or response.status != 200:
+                return None
 
             # 额外等待以确保 JS 渲染完成
             if delay > 0:
@@ -238,23 +199,24 @@ async def _try_crawl4ai(url: str, cookies: Optional[dict] = None) -> Optional[Fe
                 await asyncio.sleep(1.5)
 
             html = await page.content()
-            return html if html and len(html) >= 500 else None
+            return (page.url, html) if html and _has_sufficient_content(html) else None
         finally:
             await context.close()
 
     try:
-        html = await browser_manager.submit_coro(_fetch_coro())
-        if not html:
+        result = await browser_manager.submit_coro(_fetch_coro())
+        if result is None:
             return None
+        final_url, html = result
         return FetchResult(
-            url=url,
+            url=final_url,
             content=html,
             content_type="html",
-            source="crawl4ai",  # 保持 source 标签兼容
+            source="browser",
             html=html,
         )
     except Exception as e:
-        logger.warning(f"Tier 3 (shared browser) failed for {url}: {e}")
+        logger.warning(f"Shared browser fetch failed for {url}: {e}")
         return None
 
 
@@ -265,56 +227,14 @@ async def _try_crawl4ai(url: str, cookies: Optional[dict] = None) -> Optional[Fe
 async def tiered_fetch(
     url: str,
     cookies: Optional[dict] = None,
-    skip_tiers: list[str] | None = None,
     verbose: bool = True,
 ) -> FetchResult:
-    """
-    三级降级获取: Cloudflare MD → Direct HTTP → crawl4ai。
-
-    Args:
-        url: 目标 URL
-        cookies: 可选的 Cookie 字典
-        skip_tiers: 要跳过的层级 (如 ["cloudflare_md", "direct_http"])
-        verbose: 是否打印过程日志 (现在使用 logger)
-
-    Returns:
-        FetchResult 或在全部失败时抛出异常
-    """
-    skip = set(skip_tiers or [])
-
-    # Tier 1: Cloudflare Markdown
-    if "cloudflare_md" not in skip:
-        if verbose:
-            logger.debug(f"Tier 1: Trying Cloudflare Markdown for {url}...")
-        result = await _try_cloudflare_markdown(url)
-        if result:
-            if verbose:
-                token_info = f", ~{result.token_estimate} tokens" if result.token_estimate else ""
-                logger.info(f"Tier 1 Success! Fetched Markdown directly ({len(result.content)} chars{token_info})")
-            return result
-        if verbose:
-            logger.debug(f"Tier 1 Missed (Site may not support Markdown for Agents)")
-
-    # Tier 2: Direct HTTP
-    if "direct_http" not in skip:
-        if verbose:
-            logger.debug(f"Tier 2: Trying Direct HTTP GET for {url}...")
-        result = await _try_direct_http(url, cookies=cookies)
-        if result:
-            if verbose:
-                logger.info(f"Tier 2 Success! Fetched HTML directly ({len(result.content):,} chars)")
-            return result
-        if verbose:
-            logger.debug(f"Tier 2 Missed (Insufficient content, likely JS rendered)")
-
-    # Tier 3: crawl4ai
-    if "crawl4ai" not in skip:
-        if verbose:
-            logger.debug(f"Tier 3: Launching crawl4ai headless browser for {url}...")
-        result = await _try_crawl4ai(url, cookies=cookies)
-        if result:
-            if verbose:
-                logger.info(f"Tier 3 Success! Browser rendered HTML ({len(result.content):,} chars)")
-            return result
-
-    raise RuntimeError(f"All fetch methods failed for: {url}")
+    """One negotiated HTTP request, then browser rendering for unreadable HTML."""
+    result = await _try_http(url, cookies=cookies)
+    if result is None:
+        result = await _try_browser(url, cookies=cookies)
+    if result is None:
+        raise NonRetryableAdapterError("网页未返回可读取正文，可能需要登录或访问验证")
+    if verbose:
+        logger.info("Fetched content: source={} chars={}", result.source, len(result.content))
+    return result

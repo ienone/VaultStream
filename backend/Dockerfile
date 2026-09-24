@@ -31,7 +31,7 @@ COPY requirements.txt constraints.txt ./
 # 安装 Python 依赖 + Playwright WebKit
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt \
-    && playwright install --with-deps webkit
+    && playwright install --with-deps webkit chromium
 
 # 复制项目代码
 COPY app /app/app

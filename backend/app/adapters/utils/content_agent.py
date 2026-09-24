@@ -5,7 +5,8 @@ Pipeline:
   URL → tiered_fetch → raw content
     [Markdown path] — content already in Markdown
       → layer1_scan → layer2_extract → apply → result   (2 LLM)
-    [HTML path] — content is HTML
+    [Explicit article HTML] → semantic body + metadata → result (0 LLM)
+    [Other HTML] — content is HTML
       → tool_analyze_dom → (auto_selector | llm_target) → tool_convert_html
       → layer1_scan → layer2_extract → apply → result   (2-3 LLM)
 """
@@ -795,6 +796,75 @@ def _apply_results(
 # Orchestrator
 # ============================================================
 
+def _extract_semantic_content(url: str, fetch_result) -> ProcessResult | None:
+    """Use explicit article boundaries and metadata without rewriting the text."""
+    if fetch_result.content_type != "html":
+        return None
+    soup = BeautifulSoup(fetch_result.html or fetch_result.content, "html.parser")
+    telegraph = urlsplit(url).hostname == "telegra.ph"
+    selector = "article.tl_article_content" if telegraph else '[itemprop~="articleBody"]'
+    bodies = soup.select(selector)
+    if len(bodies) != 1:
+        return None
+    body = bodies[0]
+    if body.find(["iframe", "video", "audio"]):
+        return None
+    scope = body.find_parent(attrs={"itemscope": True})
+    if not telegraph:
+        article_types = {"Article", "NewsArticle", "BlogPosting", "TechArticle"}
+        if not scope or not any(
+            item.rsplit("/", 1)[-1] in article_types
+            for item in str(scope.get("itemtype", "")).split()
+        ):
+            return None
+        free = scope.select_one('[itemprop="isAccessibleForFree"]')
+        if free and str(free.get("content", free.get_text())).lower() == "false":
+            return None
+
+    def meta(name: str) -> str | None:
+        tag = soup.find("meta", attrs={"property": name}) or soup.find("meta", attrs={"name": name})
+        return tag.get("content") if tag else None
+
+    title_node = soup.select_one(".tl_article_header h1") if telegraph else scope.select_one('[itemprop="headline"]')
+    title = title_node.get_text(strip=True) if title_node else meta("og:title")
+    if not title:
+        return None
+    fields = {"title": title}
+    if telegraph:
+        author = soup.select_one('.tl_article_header [rel="author"]')
+        date = soup.select_one('.tl_article_header time[datetime]')
+        # Telegraph duplicates the heading/byline inside the editor body.
+        first = body.find(recursive=False)
+        if first and first.name == "h1" and first.get_text(strip=True) == title:
+            first.decompose()
+            first = body.find(recursive=False)
+            if first and first.name == "address":
+                first.decompose()
+    else:
+        author = scope.select_one('[itemprop="author"] [itemprop="name"]') or scope.select_one('[itemprop="author"]')
+        date = scope.select_one('[itemprop="datePublished"]')
+    author_name = author.get("content") or author.get_text(strip=True) if author else meta("author")
+    if author_name:
+        fields["author_name"] = author_name
+    published = (date.get("datetime") or date.get("content")) if date else meta("article:published_time")
+    if published:
+        fields["published_at"] = published
+    cover = meta("og:image")
+    if cover:
+        fields["cover_url"] = urljoin(url, cover)
+    for tag in body.find_all(["script", "style", "nav", "aside", "form"]):
+        tag.decompose()
+    markdown = tool_convert_html(str(body), url, selector, verbose=False)
+    if not markdown.strip():
+        return None
+    return ProcessResult(
+        cleaned_markdown=markdown, original_markdown=markdown,
+        common_fields=fields, extension_fields={},
+        ops_log=[{"op": "extract_semantic_article", "selector": selector}],
+        fetch_source=fetch_result.source, selector=selector, cover_url=fields.get("cover_url", ""),
+    )
+
+
 async def process_content(
     url: str,
     fetch_result,
@@ -805,8 +875,14 @@ async def process_content(
     Full pipeline orchestrator.
 
     Markdown path: layer1 → layer2 (2 LLM calls)
-    HTML path: (auto|llm) targeting → convert → layer1 → layer2 (2-3 LLM calls)
+    Explicit article HTML: direct body and metadata extraction (0 LLM calls)
+    Other HTML: (auto|llm) targeting → convert → layer1 → layer2 (2-3 LLM calls)
     """
+    deterministic = _extract_semantic_content(url, fetch_result)
+    if deterministic is not None:
+        return deterministic
+    if not llm_config or not llm_config.api_key:
+        raise ValueError("此网页需要模型辅助解析，请配置文本模型 API Key")
     llm_calls = 0
     selector = ""
     cover_url = ""

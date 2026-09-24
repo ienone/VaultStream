@@ -4,8 +4,6 @@
 负责解析小红书笔记内容（图文/视频）
 包含API和SSR两种获取方式
 """
-import re
-import json
 import httpx
 from datetime import datetime
 from typing import Dict, Any, List, Optional
@@ -18,6 +16,7 @@ from app.adapters.errors import (
 )
 from app.adapters.utils import ensure_title
 from .base import clean_text, extract_source_tags, strip_tags_from_text
+from .ssr import extract_initial_state, navigation_headers
 
 
 async def parse_note(
@@ -33,7 +32,7 @@ async def parse_note(
     """
     解析小红书笔记
     
-    优先使用API方式，失败时回退到SSR解析
+    无账号且带访问 token 时直接读取 SSR；有账号时优先 API。
     
     Args:
         note_id: 笔记ID
@@ -154,14 +153,19 @@ async def fetch_note(
     session=None,
 ) -> Dict[str, Any]:
     """
-    获取笔记详情，优先使用API，失败时回退到SSR解析
+    获取笔记详情；匿名分享链接读取 SSR，账号路径优先 API。
     """
+    # A shared public link can be read without an account. Do not let the
+    # signed API's missing-cookie check prevent the independent SSR request.
+    if not cookies and xsec_token:
+        return await fetch_note_via_ssr(note_id, {}, headers, xsec_token, xsec_source)
+
     # 先尝试API方式
     try:
         result = await fetch_note_via_api(note_id, xhs_client, cookies, headers, xsec_token, xsec_source, session=session)
         logger.info(f"小红书笔记获取成功 [方式=API]: note_id={note_id}")
         return result
-    except (NonRetryableAdapterError, RetryableAdapterError) as e:
+    except (AuthRequiredAdapterError, NonRetryableAdapterError, RetryableAdapterError) as e:
         if not xsec_token:
             raise
         logger.warning(f"API获取失败，回退到SSR解析: {e}")
@@ -240,7 +244,13 @@ async def fetch_note_via_api(
                 else:
                     raise NonRetryableAdapterError(f"找不到笔记: {note_id}，缺少xsec_token")
             
-            return items[0].get('note_card', items[0])
+            for item in items:
+                if not isinstance(item, dict) or str(item.get('id')) != note_id:
+                    continue
+                note = item.get('note_card')
+                if isinstance(note, dict) and str(note.get('note_id', note_id)) == note_id:
+                    return note
+            raise NonRetryableAdapterError("小红书 API 未返回目标笔记")
             
         except httpx.RequestError as e:
             raise RetryableAdapterError(f"小红书请求失败: {e}")
@@ -253,21 +263,18 @@ async def fetch_note_via_ssr(
     xsec_token: Optional[str] = None,
     xsec_source: str = "pc_feed"
 ) -> Dict[str, Any]:
-    """通过网页SSR数据获取笔记详情（备选方案）"""
+    """通过正常网页导航请求读取 SSR；仅 User-Agent/Accept 会收到空壳。"""
     # 构建带token的URL
     url = f"https://www.xiaohongshu.com/explore/{note_id}"
     if xsec_token:
         from urllib.parse import quote
-        url += f"?xsec_token={quote(xsec_token, safe='')}&xsec_source={xsec_source}"
+        url += f"?xsec_token={quote(xsec_token, safe='')}&xsec_source={quote(xsec_source, safe='')}"
     
     async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
         try:
             response = await client.get(
                 url,
-                headers={
-                    'User-Agent': headers.get('User-Agent'),
-                    'Accept': 'text/html,application/xhtml+xml,application/xml',
-                },
+                headers=navigation_headers(headers),
                 cookies=cookies
             )
             
@@ -278,47 +285,24 @@ async def fetch_note_via_ssr(
             
             # 检查是否被重定向
             if 'captcha' in str(response.url) or '/404' in str(response.url):
-                raise NonRetryableAdapterError(f"访问被拦截: {response.url}")
+                raise NonRetryableAdapterError("小红书分享链接不可访问，请检查链接是否仍有效")
             
-            # 提取__INITIAL_STATE__
-            match = re.search(r'window\.__INITIAL_STATE__\s*=\s*({.*?})\s*</script>', html, re.DOTALL)
-            if not match:
-                raise NonRetryableAdapterError("无法从页面提取数据")
-            
-            raw = match.group(1)
-            raw = re.sub(r':\s*undefined', ':""', raw)
-            raw = re.sub(r',\s*undefined', ',""', raw)
-            
-            try:
-                data = json.loads(raw)
-            except json.JSONDecodeError as e:
-                raise NonRetryableAdapterError(f"SSR数据解析失败: {e}")
-            
-            # 提取笔记数据
-            note_detail = data.get('note', {}).get('noteDetailMap', {})
-            if not note_detail:
-                note_detail = data.get('noteDetail', {}).get('data', {})
-            
-            if not note_detail:
-                raise NonRetryableAdapterError("SSR数据中找不到笔记")
-            
-            # 获取目标笔记
-            note_data = note_detail.get(note_id)
-            if not note_data:
-                first_key = next(iter(note_detail.keys()), None)
-                if first_key:
-                    note_data = note_detail[first_key]
-            
-            if not note_data:
-                raise NonRetryableAdapterError(f"SSR数据中找不到笔记: {note_id}")
-            
-            note = note_data.get('note', note_data)
-            
-            # 转换为与API兼容的格式
-            return normalize_ssr_note(note)
+            return extract_ssr_note(html, note_id)
             
         except httpx.RequestError as e:
             raise RetryableAdapterError(f"SSR请求失败: {e}")
+
+
+def extract_ssr_note(html: str, note_id: str) -> Dict[str, Any]:
+    """Read only the requested note; recommendations are never a substitute."""
+    data = extract_initial_state(html)
+    try:
+        note = data['note']['noteDetailMap'][note_id]['note']
+    except (TypeError, KeyError):
+        raise NonRetryableAdapterError("小红书 SSR 未返回目标笔记数据") from None
+    if not isinstance(note, dict) or note.get('noteId') != note_id:
+        raise NonRetryableAdapterError("小红书 SSR 笔记身份不匹配")
+    return normalize_ssr_note(note)
 
 
 def normalize_ssr_note(note: Dict[str, Any]) -> Dict[str, Any]:
@@ -334,6 +318,29 @@ def normalize_ssr_note(note: Dict[str, Any]) -> Dict[str, Any]:
         normalized['interact_info'] = note['interactInfo']
     if 'tagList' in note and 'tag_list' not in note:
         normalized['tag_list'] = note['tagList']
+
+    user = dict(note.get('user') or {})
+    for source, target in [('userId', 'user_id'), ('xsecToken', 'xsec_token')]:
+        if source in user:
+            user[target] = user.pop(source)
+    normalized['user'] = user
+
+    # SSR uses camelCase inside video streams as well as at the note root.
+    # Normalize at this boundary so the archive builder consumes one contract.
+    if note.get('video'):
+        video = dict(note['video'])
+        media = dict(video.get('media') or {})
+        streams = dict(media.get('stream') or {})
+        h264 = []
+        for entry in streams.get('h264') or []:
+            stream = dict(entry)
+            if 'masterUrl' in stream:
+                stream['master_url'] = stream.pop('masterUrl')
+            h264.append(stream)
+        streams['h264'] = h264
+        media['stream'] = streams
+        video['media'] = media
+        normalized['video'] = video
     
     # 处理图片列表格式差异
     image_list = normalized.get('image_list') or normalized.get('imageList') or []
@@ -444,10 +451,10 @@ def build_note_archive(note: Dict[str, Any]) -> Dict[str, Any]:
         if video_url:
             vid_data = {
                 "url": video_url,
-                "width": video_info.get("width"),
-                "height": video_info.get("height"),
-                "duration": video_info.get("duration"),
-                "cover": safe_url(video_info.get("first_frame")),
+                "width": s.get("width") or video_info.get("width"),
+                "height": s.get("height") or video_info.get("height"),
+                "duration": s["duration"] / 1000 if isinstance(s.get("duration"), (int, float)) else video_info.get("duration"),
+                "cover": safe_url(video_info.get("first_frame")) or (images[0]["url"] if images else None),
             }
             videos.append(vid_data)
             blocks.append({"type": "video", **vid_data})

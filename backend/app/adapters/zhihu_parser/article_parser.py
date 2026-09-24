@@ -12,18 +12,16 @@ def parse_article(html_content: str, url: str) -> Optional[ParsedContent]:
         return None
 
     # Article ID is typically at the end of the URL
-    article_id = url.split('/')[-1]
+    article_id = url.split('?', 1)[0].rstrip('/').split('/')[-1]
     
     # Locate article in entities
     entities = data.get('initialState', {}).get('entities', {})
     article_data = entities.get('articles', {}).get(article_id)
     
-    if not article_data:
-        # Fallback: try to find any article if ID mismatch (unlikely but possible with redirects)
-        if entities.get('articles'):
-            article_data = list(entities['articles'].values())[0]
-        else:
-            return None
+    if not article_data or str(article_data.get('id')) != article_id:
+        return None
+    if not article_data.get('content'):
+        return None
 
     # Author
     author_data = article_data.get('author', {})

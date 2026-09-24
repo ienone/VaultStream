@@ -2,7 +2,6 @@ from typing import Optional, Dict, Any
 from .models import ZhihuAuthor
 from .base import extract_initial_data
 from app.adapters.base import ParsedContent, LAYOUT_GALLERY
-from datetime import datetime
 
 def parse_people(html_content: str, url: str) -> Optional[ParsedContent]:
     data = extract_initial_data(html_content)
@@ -10,15 +9,12 @@ def parse_people(html_content: str, url: str) -> Optional[ParsedContent]:
         return None
 
     # URL: https://www.zhihu.com/people/{url_token}
-    url_token = url.split('/')[-1]
+    url_token = url.split('?', 1)[0].rstrip('/').split('/')[-1]
     
     entities = data.get('initialState', {}).get('entities', {})
     users = entities.get('users', {})
     
     user_data = users.get(url_token)
-    if not user_data:
-        pass
-
     if not user_data:
         # Basic implementation: try to find one that matches urlToken in values
         for u in users.values():
@@ -26,7 +22,7 @@ def parse_people(html_content: str, url: str) -> Optional[ParsedContent]:
                 user_data = u
                 break
     
-    if not user_data:
+    if not user_data or user_data.get('urlToken') != url_token:
         return None
 
     name = user_data.get('name', 'Unknown')
@@ -84,7 +80,7 @@ def parse_people(html_content: str, url: str) -> Optional[ParsedContent]:
         author_url=f"https://www.zhihu.com/people/{url_token}" if url_token else None,
         cover_url=avatar_url,
         media_urls=[avatar_url] if avatar_url else [],
-        published_at=datetime.now(), # User profile doesn't have a specific pub date
+        published_at=None,  # A profile has no publication date.
         archive_metadata={
             "raw_api_response": user_data,
             "archive": archive

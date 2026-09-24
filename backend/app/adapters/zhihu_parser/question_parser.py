@@ -11,21 +11,11 @@ def parse_question(html_content: str, url: str) -> Optional[ParsedContent]:
     if not data:
         return None
 
-    question_id = url.split('/')[-1]
+    question_id = url.split('?', 1)[0].rstrip('/').split('/')[-1]
     entities = data.get('initialState', {}).get('entities', {})
     question_data = entities.get('questions', {}).get(question_id)
 
-    if not question_data:
-         # Fallback search
-        if entities.get('questions'):
-            # Try to match based on keys that look like IDs
-            # But safer to just fail or pick first? Let's pick first if specific ID not found
-            # but usually ID extraction from URL is reliable.
-            # Handle cases where URL has query params
-            question_id = question_id.split('?')[0]
-            question_data = entities.get('questions', {}).get(question_id)
-    
-    if not question_data:
+    if not question_data or str(question_data.get('id')) != question_id:
         return None
 
     # Author (Question asker)
