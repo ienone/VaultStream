@@ -16,6 +16,7 @@ from app.models.system import (
     Task,
 )
 from app.models.search import ContentEmbedding
+from app.models.telegram import TelegramMessage
 from app.models.media import (
     MediaArchiveStatus,
     MediaAsset,
@@ -51,7 +52,7 @@ __all__ = [
     "BotChatType", "BotConfigPlatform", "BotConfig", "BotChat", "BotRuntime",
     "Task", "SystemSetting", "BackgroundTaskRun", "NotificationMessage", "PushedRecord",
     "QueueItemStatus", "ContentQueueItem",
-    "ContentEmbedding",
+    "ContentEmbedding", "TelegramMessage",
     "MediaArchiveStatus", "MediaAsset", "MediaBookmark", "MediaRole", "MediaType",
     "MediaVariant", "MediaVariantKind", "MediaVariantStatus",
     "AgentSession", "AgentMessage", "AgentRun", "AgentToolCall",

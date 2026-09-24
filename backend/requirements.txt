@@ -23,8 +23,10 @@ chardet>=5.2,<6
 # Xiaohongshu signing helper
 xhshow
 
-# Telegram Bot
+# Telegram Bot and user-account MTProto
 python-telegram-bot
+telethon
+python-socks[asyncio]
 
 # Utility libraries
 loguru
