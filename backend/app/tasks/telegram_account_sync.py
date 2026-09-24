@@ -38,6 +38,16 @@ class TelegramAccountSyncTask:
             "saved_enabled": coerce_bool(await self.config.get_value_fresh("enable_telegram_saved_sync", False)),
         }
 
+    async def configure(self, *, channels_enabled, saved_enabled):
+        async with self._start_lock:
+            previous = await self.options()
+            await self.config.set_value("enable_telegram_channel_sync", channels_enabled, category="telegram")
+            await self.config.set_value("enable_telegram_saved_sync", saved_enabled, category="telegram")
+            disabling = (previous["channels_enabled"] and not channels_enabled) or (previous["saved_enabled"] and not saved_enabled)
+            if disabling and self.running:
+                self._running.cancel()
+                await asyncio.gather(self._running, return_exceptions=True)
+
     async def trigger(self, *, scheduled=False, source_id=None):
         async with self._start_lock:
             return await self._trigger(scheduled=scheduled, source_id=source_id)

@@ -91,3 +91,5 @@ Bot 心跳请求必须携带 `bot_config_id`，后端核验配置平台、启用
 - PUT `/api/v1/telegram-account/options`，请求／响应 TelegramSyncOptions：channels_enabled、saved_enabled 两个必填布尔值。
 - POST `/api/v1/telegram-account/sync` → 202 TelegramSyncAccepted（run_id）。关闭、未配置或已有同步时为 409；非 leader 进程为 503。
 - 三个接口均沿用 API Token 鉴权。任务记录名 telegram_account_sync，结果含 channels、created、updated、saved 数量。
+
+Telegram options 写入同样要求 leader（否则 503）；关闭任一同步项时，响应前等待运行中批次取消，避免旧配置继续执行。

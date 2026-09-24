@@ -91,4 +91,4 @@ Bot 配置 CRUD、保存后的 Telegram 进程同步、手动启停以及 Napcat
 
 原生 MTProto 用户同步与 Telegram Bot 独立。应用凭据使用 TELEGRAM_API_ID／TELEGRAM_API_HASH，已授权会话由 TELEGRAM_SESSION_PATH 指定；后台不会自动请求验证码或创建登录。状态接口只报告配置、会话文件存在和任务运行状态，文件存在不表示认证已通过。
 
-`GET /api/v1/telegram-account/status`、`PUT /api/v1/telegram-account/options`（channels_enabled、saved_enabled）与 `POST /api/v1/telegram-account/sync` 均需要 API Token。同步受理返回 202 和 run_id；未配置、关闭或正在同步返回 409。只有周期任务 leader 使用账号会话。当前尚待 Flutter 控制面及显式登录接入。
+`GET /api/v1/telegram-account/status`、`PUT /api/v1/telegram-account/options`（channels_enabled、saved_enabled）与 `POST /api/v1/telegram-account/sync` 均需要 API Token。同步受理返回 202 和 run_id；未配置、关闭或正在同步返回 409。只有周期任务 leader 使用账号会话。Flutter 控制面已接入两项开关及手动同步，显式登录仍待接入。关闭任一同步项会取消并等待当前批次退出；开关修改与手动启动使用同一锁，只有 leader 处理这两种操作。

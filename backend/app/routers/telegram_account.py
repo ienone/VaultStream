@@ -39,9 +39,9 @@ async def status(request: Request):
 
 @router.put("/options", response_model=TelegramSyncOptions)
 async def configure(options: TelegramSyncOptions, request: Request):
-    task = worker(request)
-    await task.config.set_value("enable_telegram_channel_sync", options.channels_enabled, category="telegram")
-    await task.config.set_value("enable_telegram_saved_sync", options.saved_enabled, category="telegram")
+    if not request.app.state.periodic_tasks_started:
+        raise HTTPException(503, "当前进程不承担账号同步")
+    await worker(request).configure(**options.model_dump())
     return options
 
 
