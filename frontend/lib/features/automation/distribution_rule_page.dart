@@ -1,3 +1,4 @@
+import 'package:frontend/core/network/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -150,7 +151,11 @@ class DistributionRulePage extends ConsumerWidget {
       }
     } catch (error) {
       if (context.mounted) {
-        Toast.show(context, '创建失败: $error', isError: true);
+        Toast.show(
+          context,
+          formatApiErrorMessage(error, fallbackMessage: '创建失败'),
+          isError: true,
+        );
       }
     }
   }
@@ -235,7 +240,11 @@ class DistributionRulePage extends ConsumerWidget {
       }
     } catch (error) {
       if (context.mounted) {
-        Toast.show(context, '更新失败: $error', isError: true);
+        Toast.show(
+          context,
+          formatApiErrorMessage(error, fallbackMessage: '更新失败'),
+          isError: true,
+        );
       }
     }
   }
@@ -313,7 +322,10 @@ class _RuleLoadError extends StatelessWidget {
               color: Theme.of(context).colorScheme.error,
             ),
             const SizedBox(height: 16),
-            Text('无法加载分发规则：$error', textAlign: TextAlign.center),
+            Text(
+              formatApiErrorMessage(error, fallbackMessage: '无法加载分发规则'),
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 16),
             FilledButton.tonalIcon(
               onPressed: onRetry,

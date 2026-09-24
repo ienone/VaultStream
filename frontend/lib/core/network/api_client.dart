@@ -34,18 +34,15 @@ ApiErrorInfo parseApiErrorInfo(
 
     if (data is Map) {
       code = data['error_code']?.toString();
-      message = data['error_message']?.toString() ?? data['detail']?.toString();
+      final detail = data['error_message'] ?? data['detail'];
+      if (detail is String) message = detail;
       hint = data['error_hint']?.toString();
       requestId = data['request_id']?.toString();
-    } else if (data is String && data.trim().isNotEmpty) {
-      message = data.trim();
     }
 
     requestId ??= response?.headers.value('x-request-id');
     final resolvedMessage = (message == null || message.trim().isEmpty)
-        ? response?.statusCode == null
-              ? fallbackMessage
-              : '$fallbackMessage（HTTP ${response!.statusCode}）'
+        ? fallbackMessage
         : message.trim();
     return ApiErrorInfo(
       message: resolvedMessage,
@@ -61,7 +58,7 @@ ApiErrorInfo parseApiErrorInfo(
 String formatApiErrorMessage(
   Object error, {
   String fallbackMessage = '请求失败，请稍后重试',
-  bool includeRequestId = true,
+  bool includeRequestId = false,
 }) {
   final info = parseApiErrorInfo(error, fallbackMessage: fallbackMessage);
   final parts = <String>[];

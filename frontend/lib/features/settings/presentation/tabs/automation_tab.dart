@@ -124,7 +124,8 @@ class AutomationTab extends ConsumerWidget {
         );
       },
       loading: () => const LoadingGroup(),
-      error: (error, _) => Text('自动化策略加载失败: $error'),
+      error: (error, _) =>
+          Text(formatApiErrorMessage(error, fallbackMessage: '自动化策略加载失败')),
     );
   }
 

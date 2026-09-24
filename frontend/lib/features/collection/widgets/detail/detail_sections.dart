@@ -148,13 +148,7 @@ class ContentTitleBlock extends StatelessWidget {
     final title = (titleOverride ?? detail.title ?? '').trim();
 
     if (title.isEmpty || title == '-') {
-      return Text(
-        '无标题',
-        style: (style ?? theme.textTheme.headlineSmall)?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-          fontStyle: FontStyle.italic,
-        ),
-      );
+      return const SizedBox.shrink();
     }
 
     return Text(
@@ -169,8 +163,7 @@ class ContentTitleBlock extends StatelessWidget {
 
 /// 解析状态横幅。
 ///
-/// 只在解析失败或仍在进行时出现。失败时展示后端记录的错误类型与
-/// 失败次数，而不是笼统的"加载失败"。
+/// 只呈现处理状态与重试操作；技术错误留在运行详情。
 class ParseStatusBanner extends StatelessWidget {
   const ParseStatusBanner({super.key, required this.detail, this.onReParse});
 
@@ -188,11 +181,7 @@ class ParseStatusBanner extends StatelessWidget {
         background: scheme.errorContainer,
         foreground: scheme.onErrorContainer,
         title: '解析失败',
-        message: [
-          if ((detail.lastErrorType ?? '').isNotEmpty) detail.lastErrorType!,
-          if ((detail.lastError ?? '').isNotEmpty) detail.lastError!,
-          if (detail.failureCount > 0) '已失败 ${detail.failureCount} 次',
-        ].join(' · '),
+        message: '',
         action: onReParse == null
             ? null
             : TextButton(onPressed: onReParse, child: const Text('重新解析')),

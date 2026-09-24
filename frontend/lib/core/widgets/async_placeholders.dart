@@ -30,7 +30,7 @@ class LoadingPlaceholder extends StatelessWidget {
 /// 如需全屏错误或带重试按钮的复杂错误页，请在具体页面自行实现。
 ///
 /// ```dart
-/// ErrorCard(message: '加载队列失败: $e')
+/// ErrorCard(message: '无法加载队列，请重试')
 /// ```
 class ErrorCard extends StatelessWidget {
   final String message;

@@ -248,41 +248,19 @@ class RichContent extends StatelessWidget {
     );
     if (candidates.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Semantics(
-          label: alt?.trim().isNotEmpty == true ? alt!.trim() : '媒体资产不可用',
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerLow,
-              borderRadius: AppShape.paneBorder,
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          children: [
+            Icon(
+              Icons.hide_image_outlined,
+              size: 20,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.hide_image_outlined,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '图片尚未归档',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                if (alt != null && alt.trim().isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    alt.trim(),
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.labelMedium,
-                  ),
-                ],
-              ],
-            ),
-          ),
+            if (alt?.trim().isNotEmpty == true) ...[
+              const SizedBox(width: 8),
+              Expanded(child: Text(alt!.trim())),
+            ],
+          ],
         ),
       );
     }

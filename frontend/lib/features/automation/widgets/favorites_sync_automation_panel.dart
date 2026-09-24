@@ -80,7 +80,7 @@ class _FavoritesSyncAutomationPanelState
                 color: Theme.of(context).colorScheme.error,
               ),
               const SizedBox(height: 12),
-              Text('收藏同步状态加载失败: $error'),
+              Text(formatApiErrorMessage(error, fallbackMessage: '收藏同步状态加载失败')),
               const SizedBox(height: 16),
               OutlinedButton.icon(
                 onPressed: () => ref.invalidate(favoritesSyncStatusProvider),

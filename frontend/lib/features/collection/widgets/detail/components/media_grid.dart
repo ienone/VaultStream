@@ -11,7 +11,7 @@ import 'media_gallery_item.dart';
 /// 通用媒体网格组件
 ///
 /// 用于 GalleryLayout 的图片/视频展示，支持自适应布局：
-/// - 竖屏：单图大图、双图对半、三图以上九宫格
+/// - 竖屏：连续完整图片
 /// - 横屏：单图大图，底部横向滚动预览
 ///
 /// 符合 Material 3 Expressive Design 规范
@@ -233,26 +233,17 @@ class MediaGrid extends StatelessWidget {
     }
   }
 
-  /// 竖屏布局：单图/双图/九宫格自适应
+  /// 文章附图按顺序完整展示，不裁成方格。
   Widget _buildPortraitLayout(BuildContext context) {
-    if (images.length == 1) {
-      // 单图：大图展示
-      return _buildSingleImage(context, images[0], 0);
-    }
-
-    if (images.length == 2) {
-      // 双图：对半布局
-      return Row(
-        children: [
-          Expanded(child: _buildGridImage(context, images[0], 0)),
-          const SizedBox(width: 4),
-          Expanded(child: _buildGridImage(context, images[1], 1)),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var index = 0; index < images.length; index++) ...[
+          if (index > 0) const SizedBox(height: AppSpacing.md),
+          _buildSingleImage(context, images[index], index),
         ],
-      );
-    }
-
-    // 三图以上：九宫格
-    return _buildNineGrid(context);
+      ],
+    );
   }
 
   /// 单图大图展示
@@ -273,103 +264,11 @@ class MediaGrid extends StatelessWidget {
                   mediaAsset: mediaAssetsByImage[imageUrl],
                   purpose: MediaPurpose.detail,
                   fallbackUrls: fallbackUrlsByImage[imageUrl] ?? const [],
-                  fit: BoxFit.cover,
+                  fit: BoxFit.contain,
                   width: double.infinity,
                 ),
         ),
       ),
-    );
-  }
-
-  /// 网格图片（用于双图和九宫格）
-  Widget _buildGridImage(BuildContext context, String imageUrl, int index) {
-    return MediaImageButton(
-      borderRadius: AppShape.cardMediaBorder,
-      label: isVideo(images[index])
-          ? '查看第 ${index + 1} 个视频，共 ${images.length} 项媒体'
-          : '查看第 ${index + 1} 张图片，共 ${images.length} 张',
-      onPressed: onImageTap == null ? null : () => onImageTap!(index),
-      child: AspectRatio(
-        aspectRatio: 1,
-        child: ClipRRect(
-          borderRadius: AppShape.cardMediaBorder,
-          child: Hero(
-            tag: _getHeroTag(index),
-            child: isVideo(imageUrl)
-                ? _buildVideoThumbnail(context, imageUrl)
-                : NetworkThumbnail(
-                    imageUrl: imageUrl,
-                    mediaAsset: mediaAssetsByImage[imageUrl],
-                    purpose: MediaPurpose.detail,
-                    fallbackUrls: fallbackUrlsByImage[imageUrl] ?? const [],
-                    fit: BoxFit.cover,
-                  ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 九宫格布局
-  Widget _buildNineGrid(BuildContext context) {
-    final displayCount = images.length > 9 ? 9 : images.length;
-    final hasMore = images.length > 9;
-
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 4,
-        mainAxisSpacing: 4,
-      ),
-      itemCount: displayCount,
-      itemBuilder: (context, index) {
-        final isLast = index == displayCount - 1 && hasMore;
-
-        return MediaImageButton(
-          borderRadius: AppShape.cardMediaBorder,
-          label: isVideo(images[index])
-              ? '查看第 ${index + 1} 个视频，共 ${images.length} 项媒体'
-              : '查看第 ${index + 1} 张图片，共 ${images.length} 张',
-          onPressed: onImageTap == null ? null : () => onImageTap!(index),
-          child: ClipRRect(
-            borderRadius: AppShape.cardMediaBorder,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Hero(
-                  tag: _getHeroTag(index),
-                  child: isVideo(images[index])
-                      ? _buildVideoThumbnail(context, images[index])
-                      : NetworkThumbnail(
-                          imageUrl: images[index],
-                          mediaAsset: mediaAssetsByImage[images[index]],
-                          purpose: MediaPurpose.detail,
-                          fallbackUrls:
-                              fallbackUrlsByImage[images[index]] ?? const [],
-                          fit: BoxFit.cover,
-                        ),
-                ),
-                if (isLast)
-                  Container(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.inverseSurface.withValues(alpha: 0.76),
-                    child: Center(
-                      child: Text(
-                        '+${images.length - 9}',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Theme.of(context).colorScheme.onInverseSurface,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 

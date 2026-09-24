@@ -1,3 +1,4 @@
+import 'package:frontend/core/network/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -111,23 +112,21 @@ class _PushTabState extends ConsumerState<PushTab> {
         category: 'bot',
       );
       if (mounted) {
-        final runId = saveResult.followUpRunId;
-        final runSuffix = runId == null || runId.isEmpty
-            ? ''
-            : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
         if (saveResult.followUpFailed) {
-          showToast(context, '机器人配置已保存；运行时同步失败$runSuffix，请查看任务详情。');
+          showToast(context, '配置已保存，但机器人同步失败，请查看任务详情。');
         } else if (saveResult.followUpStatus == 'accepted') {
-          showToast(context, '机器人配置已保存；群组同步已提交$runSuffix。');
+          showToast(context, '配置已保存，正在同步群组。');
         } else if (saveResult.followUpRunId != null) {
-          showToast(context, '机器人配置已保存；运行时同步已完成$runSuffix。');
+          showToast(context, '机器人配置已保存并应用。');
           await _pollBotStatus();
         } else {
           showToast(context, '机器人配置已保存。');
         }
       }
     } catch (e) {
-      if (mounted) showToast(context, '保存失败: $e');
+      if (mounted) {
+        showToast(context, formatApiErrorMessage(e, fallbackMessage: '保存失败'));
+      }
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -158,7 +157,7 @@ class _PushTabState extends ConsumerState<PushTab> {
       }
     } catch (e) {
       if (showMessage && mounted) {
-        showToast(context, '刷新失败: $e');
+        showToast(context, formatApiErrorMessage(e, fallbackMessage: '刷新失败'));
       }
     }
   }
@@ -194,7 +193,10 @@ class _PushTabState extends ConsumerState<PushTab> {
       }
     } catch (e) {
       if (mounted) {
-        showToast(context, '$actionLabel失败: $e');
+        showToast(
+          context,
+          formatApiErrorMessage(e, fallbackMessage: '$actionLabel失败'),
+        );
       }
     } finally {
       if (mounted) {
@@ -231,7 +233,7 @@ class _PushTabState extends ConsumerState<PushTab> {
       }
     } catch (e) {
       if (mounted) {
-        showToast(context, '同步失败: $e');
+        showToast(context, formatApiErrorMessage(e, fallbackMessage: '同步失败'));
       }
     } finally {
       if (mounted) {
@@ -254,7 +256,10 @@ class _PushTabState extends ConsumerState<PushTab> {
             }
           } catch (e) {
             if (mounted) {
-              showToast(context, '添加失败: $e');
+              showToast(
+                context,
+                formatApiErrorMessage(e, fallbackMessage: '添加失败'),
+              );
             }
             rethrow;
           }
@@ -269,7 +274,12 @@ class _PushTabState extends ConsumerState<PushTab> {
           .read(systemSettingsProvider.notifier)
           .updateSetting(key, value, category: 'notifications');
     } catch (error) {
-      if (mounted) showToast(context, '摘要设置保存失败: $error');
+      if (mounted) {
+        showToast(
+          context,
+          formatApiErrorMessage(error, fallbackMessage: '摘要设置保存失败'),
+        );
+      }
     }
   }
 
@@ -289,7 +299,12 @@ class _PushTabState extends ConsumerState<PushTab> {
             : '本周期没有新的动态或事件变化',
       );
     } catch (error) {
-      if (mounted) showToast(context, '摘要生成失败: $error');
+      if (mounted) {
+        showToast(
+          context,
+          formatApiErrorMessage(error, fallbackMessage: '摘要生成失败'),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isGeneratingDigest = false);
     }

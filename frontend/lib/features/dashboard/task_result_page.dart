@@ -64,7 +64,10 @@ class _TaskLoadError extends StatelessWidget {
               color: Theme.of(context).colorScheme.error,
             ),
             const SizedBox(height: AppSpacing.sm),
-            Text('任务结果加载失败: $error', textAlign: TextAlign.center),
+            Text(
+              formatApiErrorMessage(error, fallbackMessage: '任务结果加载失败'),
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: AppSpacing.sm),
             FilledButton.icon(
               onPressed: onRetry,

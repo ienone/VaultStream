@@ -1,3 +1,4 @@
+import 'package:frontend/core/network/api_client.dart';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -258,7 +259,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
       });
 
       if (mounted) {
-        Toast.show(context, '排序失败: $e');
+        Toast.show(context, formatApiErrorMessage(e, fallbackMessage: '排序失败'));
       }
     }
   }
@@ -437,7 +438,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
       }
     } catch (e) {
       if (mounted) {
-        Toast.show(context, '操作失败: $e');
+        Toast.show(context, formatApiErrorMessage(e, fallbackMessage: '操作失败'));
       }
     }
   }
@@ -484,7 +485,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
       }
     } catch (e) {
       if (mounted) {
-        Toast.show(context, '操作失败: $e');
+        Toast.show(context, formatApiErrorMessage(e, fallbackMessage: '操作失败'));
       }
     }
   }
@@ -504,7 +505,12 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
             : result.displayReason ?? '尚未发送，请查看队列状态',
       );
     } catch (error) {
-      if (mounted) Toast.show(context, '发送未确认，请刷新队列核对：$error');
+      if (mounted) {
+        Toast.show(
+          context,
+          formatApiErrorMessage(error, fallbackMessage: '发送未确认，请刷新队列核对'),
+        );
+      }
     }
   }
 
@@ -515,7 +521,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
           .updateSchedule(item.id, newTime);
     } catch (e) {
       if (mounted) {
-        Toast.show(context, '更新失败: $e');
+        Toast.show(context, formatApiErrorMessage(e, fallbackMessage: '更新失败'));
       }
     }
   }
@@ -545,7 +551,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
         _localItems.add(item);
       });
       if (mounted) {
-        Toast.show(context, '操作失败: $e');
+        Toast.show(context, formatApiErrorMessage(e, fallbackMessage: '操作失败'));
       }
     }
   }

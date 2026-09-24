@@ -689,7 +689,7 @@ class _DocumentBody extends StatelessWidget {
           SelectionArea(child: _BodyText(ctx: ctx)),
           const SizedBox(height: AppSpacing.lg),
         ],
-        const DetailSectionHeader(title: '原始文件'),
+        const DetailSectionHeader(title: '文件'),
         if (attachments.isEmpty)
           const ContentEmptyState(
             icon: Icons.file_present_outlined,
@@ -1048,17 +1048,7 @@ class _ImageNoteBody extends StatelessWidget {
               children: [
                 Expanded(flex: 6, child: _PagedMediaViewer(ctx: ctx)),
                 const SizedBox(width: AppSpacing.xl),
-                Expanded(
-                  flex: 4,
-                  child: Container(
-                    padding: const EdgeInsets.all(AppSpacing.lg),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerLow,
-                      borderRadius: AppShape.paneBorder,
-                    ),
-                    child: _BodyText(ctx: ctx, emptyMessage: '这条笔记没有文字说明'),
-                  ),
-                ),
+                Expanded(flex: 4, child: _BodyText(ctx: ctx)),
               ],
             );
           }
@@ -1100,39 +1090,21 @@ class _ShortPostBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final quoted = ctx.detail.richPayload?['quoted_content'];
-    final scheme = Theme.of(context).colorScheme;
-
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760),
-        child: DecoratedBox(
-          key: const ValueKey('short-post-compact-body'),
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainerLow,
-            borderRadius: AppShape.paneBorder,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (ctx.detail.hasBody ||
-                    (quoted == null && ctx.images.isEmpty))
-                  _BodyText(ctx: ctx, emptyMessage: '没有归档的帖子内容'),
-                if (quoted != null) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  _QuotedContent(raw: quoted),
-                ],
-                if (ctx.images.isNotEmpty) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  _MediaBlock(ctx: ctx),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
+    return Column(
+      key: const ValueKey('short-post-compact-body'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (ctx.images.isNotEmpty) ...[
+          _PagedMediaViewer(ctx: ctx),
+          const SizedBox(height: AppSpacing.lg),
+        ],
+        if (ctx.detail.hasBody || (quoted == null && ctx.images.isEmpty))
+          _BodyText(ctx: ctx, emptyMessage: '没有帖子内容'),
+        if (quoted != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          _QuotedContent(raw: quoted),
+        ],
+      ],
     );
   }
 }
@@ -1148,6 +1120,9 @@ class _QuotedContent extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final quote = _quoteData(raw);
+    if (quote.author.isEmpty && quote.body.isEmpty && quote.url.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
     return Container(
       width: double.infinity,
@@ -1256,7 +1231,6 @@ class _GalleryBody extends StatelessWidget {
           _MediaBlock(ctx: ctx, emptyMessage: '这个图集没有可显示的图片'),
         if (ctx.detail.hasBody) ...[
           const SizedBox(height: AppSpacing.lg),
-          const DetailSectionHeader(title: '说明'),
           _BodyText(ctx: ctx),
         ],
       ],
@@ -1438,8 +1412,7 @@ class _ProfileBody extends StatelessWidget {
         ],
         if (ctx.images.isNotEmpty) ...[
           if (ctx.detail.hasBody) const SizedBox(height: AppSpacing.lg),
-          const DetailSectionHeader(title: '主页媒体'),
-          _MediaBlock(ctx: ctx),
+          _PagedMediaViewer(ctx: ctx),
         ],
       ],
     );

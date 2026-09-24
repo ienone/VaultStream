@@ -1,3 +1,4 @@
+import 'package:frontend/core/network/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -160,7 +161,11 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
       });
       settings_ui.showToast(context, '已发现 ${models.length} 个可用模型');
     } catch (e) {
-      if (mounted) setState(() => _error = '模型探测失败：$e');
+      if (mounted) {
+        setState(
+          () => _error = formatApiErrorMessage(e, fallbackMessage: '模型探测失败'),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -241,7 +246,11 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
       ref.read(systemStatusProvider.notifier).refresh();
       ref.invalidate(botChatsProvider);
     } catch (e) {
-      if (mounted) setState(() => _error = '保存失败：$e');
+      if (mounted) {
+        setState(
+          () => _error = formatApiErrorMessage(e, fallbackMessage: '保存失败'),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

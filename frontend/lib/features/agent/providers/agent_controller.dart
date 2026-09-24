@@ -527,11 +527,7 @@ class AgentController extends Notifier<AgentViewState> {
       'agent_execution_failed' => 'Agent 执行失败。请改成更具体的单步指令后重试。',
       _ => formatApiErrorMessage(error, fallbackMessage: 'Agent 请求失败，请稍后重试'),
     };
-    if (info.requestId == null || info.requestId!.isEmpty) return message;
-    final shortId = info.requestId!.length > 8
-        ? info.requestId!.substring(0, 8)
-        : info.requestId!;
-    return '$message | RID:$shortId';
+    return message;
   }
 
   String _formatRequestError(Object error) {

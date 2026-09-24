@@ -738,6 +738,7 @@ class _SourceLine extends StatelessWidget {
         color: theme.colorScheme.onSurfaceVariant,
       ),
     );
+    if (sourceText.isEmpty) return timeLabel;
     return LayoutBuilder(
       builder: (context, constraints) {
         final textScale = MediaQuery.textScalerOf(context).scale(12) / 12;
@@ -921,8 +922,8 @@ String _sourceKindLabel(String? kind) => switch (kind) {
   'rss' => 'RSS',
   'telegram_channel' => 'Telegram',
   'favorites_sync' => '收藏同步',
-  null || '' => '已授权来源',
-  _ => kind,
+  null || '' => '',
+  _ => '',
 };
 
 IconData _sourceIcon(DiscoveryItem item) {

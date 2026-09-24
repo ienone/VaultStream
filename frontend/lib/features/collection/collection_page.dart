@@ -288,7 +288,6 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
                         child: ContentEmptyState(
                           icon: Icons.cloud_off_rounded,
                           message: '无法加载收藏库',
-                          hint: error.toString(),
                           action: FilledButton.tonal(
                             onPressed: () => ref.invalidate(collectionProvider),
                             child: const Text('重试'),

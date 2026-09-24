@@ -73,7 +73,7 @@ class _InteractiveLoginDialogState
       if (!mounted) return;
       setState(() {
         _status = 'failed';
-        _message = '初始化失败: $e';
+        _message = formatApiErrorMessage(e, fallbackMessage: '初始化失败');
       });
     }
   }

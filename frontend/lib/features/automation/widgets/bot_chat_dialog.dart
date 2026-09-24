@@ -1,3 +1,4 @@
+import 'package:frontend/core/network/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -255,7 +256,11 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
       Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
-      Toast.show(context, '保存群组配置失败: $e', isError: true);
+      Toast.show(
+        context,
+        formatApiErrorMessage(e, fallbackMessage: '保存群组配置失败'),
+        isError: true,
+      );
     }
   }
 
