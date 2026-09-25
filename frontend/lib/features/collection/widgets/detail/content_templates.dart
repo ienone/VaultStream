@@ -1429,55 +1429,52 @@ class _BookmarkBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final detail = ctx.detail;
+    final originalUrl = detail.externalOriginalUrl;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(AppSpacing.md),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerLow,
-            borderRadius: AppShape.paneBorder,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '链接',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+        if (originalUrl != null)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLow,
+              borderRadius: AppShape.paneBorder,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '链接',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
-              ),
-              const SizedBox(height: AppSpacing.xxs),
-              SelectableText(
-                detail.cleanUrl ?? detail.url,
-                style: theme.textTheme.bodyMedium,
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Wrap(
-                spacing: AppSpacing.xs,
-                children: [
-                  FilledButton.tonalIcon(
-                    onPressed: () => SafeUrlLauncher.openExternal(
-                      context,
-                      detail.externalOriginalUrl ?? detail.url,
+                const SizedBox(height: AppSpacing.xxs),
+                SelectableText(originalUrl, style: theme.textTheme.bodyMedium),
+                const SizedBox(height: AppSpacing.sm),
+                Wrap(
+                  spacing: AppSpacing.xs,
+                  children: [
+                    FilledButton.tonalIcon(
+                      onPressed: () =>
+                          SafeUrlLauncher.openExternal(context, originalUrl),
+                      icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                      label: const Text('打开链接'),
                     ),
-                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                    label: const Text('打开链接'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: ctx.onReParse,
-                    icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
-                    label: const Text('尝试解析正文'),
-                  ),
-                ],
-              ),
-            ],
+                    OutlinedButton.icon(
+                      onPressed: ctx.onReParse,
+                      icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+                      label: const Text('尝试解析正文'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
         if (detail.hasBody) ...[
-          const SizedBox(height: AppSpacing.lg),
+          if (originalUrl != null) const SizedBox(height: AppSpacing.lg),
           const DetailSectionHeader(title: '保存时的记录'),
           _BodyText(ctx: ctx),
         ],
