@@ -2,14 +2,16 @@
 import asyncio
 import json
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.adapters import AdapterFactory
 from app.core.database import AsyncSessionLocal
 from app.core.logging import logger
-from app.models import BotChat, Content, ContentSource, ContentStatus
+from app.models import BotChat, Content, ContentSource, ContentStatus, MediaAsset
 from app.push.napcat import NapcatPushService
 from app.services.config_service import ConfigService
 from app.services.content_service import ContentService
 from app.services.qq_policy import QQRateLimited
+from app.tasks.distributor import ContentDistributor
 from app.utils.url_utils import extract_urls_from_text
 
 
@@ -101,14 +103,16 @@ async def reply_when_parsed(ids, target):
         for content_id in ids:
             for _ in range(30):
                 async with AsyncSessionLocal() as db:
-                    content = await db.get(Content, content_id)
+                    content = await db.scalar(select(Content).where(Content.id == content_id).options(
+                        selectinload(Content.media_assets).selectinload(MediaAsset.variants)))
                     if not content or content.deleted_at:
                         break
                     if content.status == ContentStatus.PARSE_SUCCESS:
                         if not content.is_nsfw:
+                            payload = await ContentDistributor()._build_content_payload(
+                                content, None, media_assets=content.media_assets, target_platform='qq')
                             await db.commit()
-                            await api.push({'title': content.title or '链接', 'url': content.url,
-                                            'summary': content.summary or '', 'platform': content.platform.value}, target)
+                            await api.push(payload, target)
                         break
                     if content.status == ContentStatus.PARSE_FAILED:
                         await db.commit()

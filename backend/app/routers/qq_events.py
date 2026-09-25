@@ -12,10 +12,10 @@ router = APIRouter()
 
 
 class QQEventResponse(BaseModel):
-    pass
+    reply: str | None = None
 
 
-@router.post('/bot/qq/{config_id}/events', response_model=QQEventResponse)
+@router.post('/bot/qq/{config_id}/events', response_model=QQEventResponse, response_model_exclude_none=True)
 async def receive_event(config_id: int, request: Request, background: BackgroundTasks):
     body = await request.body()
     async with AsyncSessionLocal() as db:
@@ -28,4 +28,4 @@ async def receive_event(config_id: int, request: Request, background: Background
     event = json.loads(body)
     ids, target = await accept_message(config_id, event)
     background.add_task(reply_when_parsed, ids, target)
-    return QQEventResponse()
+    return QQEventResponse(reply="已收录。" if ids and target and target.startswith("private:") else None)
