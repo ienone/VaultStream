@@ -7,6 +7,7 @@ from pathlib import Path
 
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
+from PIL import UnidentifiedImageError
 
 from app.adapters.telegram_account import TelegramAccountReader, assemble_posts
 from telethon import types, errors
@@ -310,13 +311,19 @@ class TelegramAccountSync:
             async with self.storage.stage_stream(chunks=chunks(), content_type=mime, max_bytes=max_bytes) as (stored, temp):
                 if kind == "image":
                     data = await asyncio.to_thread(Path(temp).read_bytes)
-                    info, _ = await store_media_bytes(data, content_type=mime, kind="image", quality=config.image_webp_quality, storage=self.storage, namespace="vaultstream")
+                    try:
+                        info, _ = await store_media_bytes(data, content_type=mime, kind="image", quality=config.image_webp_quality, storage=self.storage, namespace="vaultstream")
+                    except UnidentifiedImageError:
+                        asset.archive_status = MediaArchiveStatus.FAILED
+                        asset.last_error = "Telegram 图片无法解码"
+                        continue
                     key, mime, size = info["stored_key"], info["stored_content_type"], info["stored_size"]
                 else:
                     await self.storage.publish_staged(stored, temp)
                     info = {}
                     key, size = stored.key, stored.size
             asset.archive_status = MediaArchiveStatus.READY
+            asset.last_error = None
             variants = [MediaVariant(variant_kind=MediaVariantKind.OPTIMIZED if kind == "image" else MediaVariantKind.ORIGINAL_ARCHIVE,
                 storage_key=key, mime_type=mime, size_bytes=size,
                 checksum=info.get("stored_sha256") or stored.sha256,
