@@ -18,6 +18,8 @@ _PLATFORM_MEDIA_TYPES = {
     "telegram": {
         MediaType.IMAGE: "photo",
         MediaType.VIDEO: "video",
+        MediaType.AUDIO: "audio",
+        MediaType.DOCUMENT: "document",
     },
     "qq": {
         MediaType.IMAGE: "photo",
@@ -36,6 +38,7 @@ _ROLE_PRIORITY = {
 }
 
 _VARIANT_PRIORITY = {
+    MediaType.DOCUMENT: {MediaVariantKind.ORIGINAL_ARCHIVE: 0},
     MediaType.IMAGE: {
         MediaVariantKind.OPTIMIZED: 0,
         MediaVariantKind.ORIGINAL_ARCHIVE: 1,

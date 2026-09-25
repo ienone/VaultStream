@@ -5,6 +5,9 @@
 """
 import html
 import re
+from bs4 import BeautifulSoup
+from markdown_it import MarkdownIt
+from urllib.parse import urlsplit
 from datetime import datetime
 from typing import Dict, Any, Optional
 
@@ -23,36 +26,33 @@ def format_number(num) -> str:
 
 
 def strip_markdown(text: str) -> str:
-    """Remove common Markdown formatting for plain-text platforms (e.g. QQ).
-
-    Handles: headings, bold/italic, images, links, inline code,
-    block quotes, horizontal rules, and stray markup characters.
-    """
+    """Readable outbound text; attachments travel through media_items, never URIs."""
     if not text:
         return text
-    # Images: ![alt](url) → alt, or remove entirely if alt is empty
-    text = re.sub(r'!\[([^\]]*)\]\([^)]+\)', r'\1', text)
-    # Links: [text](url) → text
-    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
-    # Headings: ### heading → heading
-    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
-    # Bold/italic: **text** or __text__ → text
-    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-    text = re.sub(r'__(.+?)__', r'\1', text)
-    # Italic: *text* or _text_ → text (careful not to match underscores in words)
-    text = re.sub(r'(?<!\w)\*(.+?)\*(?!\w)', r'\1', text)
-    text = re.sub(r'(?<!\w)_(.+?)_(?!\w)', r'\1', text)
-    # Strikethrough: ~~text~~ → text
-    text = re.sub(r'~~(.+?)~~', r'\1', text)
-    # Inline code: `code` → code
-    text = re.sub(r'`([^`]+)`', r'\1', text)
-    # Block quotes: > text → text
-    text = re.sub(r'^>\s?', '', text, flags=re.MULTILINE)
-    # Horizontal rules: --- or *** or ___ → (remove)
-    text = re.sub(r'^[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)
-    # Clean up multiple blank lines
-    text = re.sub(r'\n{3,}', '\n\n', text)
-    return text.strip()
+    soup = BeautifulSoup(MarkdownIt().render(text), "html.parser")
+    for node in soup.find_all(["img", "script", "style"]):
+        node.decompose()
+    for node in soup.find_all("a"):
+        if urlsplit(node.get("href", "")).scheme in {"local", "file", "vaultstream"}:
+            node.decompose()
+    for node in soup.find_all("br"):
+        node.replace_with("\n")
+    for node in soup.find_all(["p", "div", "li", "blockquote", "pre", "h1", "h2", "h3", "h4", "h5", "h6"]):
+        node.append("\n")
+    value = soup.get_text()
+    value = re.sub(r"(?:local|file|vaultstream)://[^\s<>]+", "", value)
+    return re.sub(r"\n{3,}", "\n\n", value).strip()
+
+
+def _outbound_content(content: dict) -> dict:
+    content = dict(content)
+    for field in ("title", "body", "summary"):
+        if content.get(field):
+            content[field] = strip_markdown(str(content[field]))
+    for field in ("url", "canonical_url", "clean_url"):
+        if urlsplit(str(content.get(field) or "")).scheme not in {"http", "https"}:
+            content[field] = ""
+    return content
 
 
 _DEFAULT_RENDER_CONFIG = {
@@ -111,6 +111,7 @@ def format_content_with_render_config(
         rich_text: 是否使用富文本（Telegram HTML）
         platform: 目标平台名称
     """
+    content_dict = _outbound_content(content_dict)
     config = {**_DEFAULT_RENDER_CONFIG, **_normalize_render_config(render_config)}
 
     def escape(value: str) -> str:
@@ -184,6 +185,7 @@ def format_content_for_tg(content_dict: dict) -> str:
     Returns:
         格式化后的Telegram消息文本（支持HTML格式）
     """
+    content_dict = _outbound_content(content_dict)
     platform = content_dict.get('platform')
     if platform == 'bilibili':
         return _format_bilibili_message(content_dict)
@@ -264,12 +266,13 @@ def _format_twitter_message(content: dict) -> str:
         lines.append(f"\n{clean_desc}")
     
     # 链接
-    lines.append(f"\n链接：{url}")
+    if url:
+        lines.append(f"\n链接：{html.escape(url)}")
     
     # 标签
     if content.get('tags'):
         tags_str = " ".join([f"#{tag}" for tag in content['tags']])
-        lines.append(f"\n{tags_str}")
+        lines.append(f"\n{html.escape(tags_str)}")
     
     return "\n".join(lines)
 
@@ -338,7 +341,8 @@ def _format_bilibili_message(content: dict) -> str:
         f"日期：{pub_at}" if pub_at else "",
     ]
     lines.extend(stats_lines)
-    lines.append(f"\n链接：{url}")
+    if url:
+        lines.append(f"\n链接：{html.escape(url)}")
     
     # 移除空行
     lines = [line for line in lines if line]
@@ -351,7 +355,7 @@ def _format_bilibili_message(content: dict) -> str:
         
     if content.get('tags'):
         tags_str = " ".join([f"#{tag}" for tag in content['tags']])
-        lines.append(f"\n{tags_str}")
+        lines.append(f"\n{html.escape(tags_str)}")
         
     return "\n".join(lines)
 
@@ -392,7 +396,8 @@ def _format_default_message(content: dict) -> str:
         
     if content.get('tags'):
         tags_str = " ".join([f"#{tag}" for tag in content['tags']])
-        text_parts.append(f"\n{tags_str}")
+        text_parts.append(f"\n{html.escape(tags_str)}")
         
-    text_parts.append(f"\n链接：{url}")
+    if url:
+        text_parts.append(f"\n链接：{html.escape(url)}")
     return "\n".join(text_parts)

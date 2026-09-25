@@ -9,6 +9,8 @@ OneBot 11 消息段格式参考: https://docs.ncatbot.xyz/guide/message_segment/
 """
 from __future__ import annotations
 
+from pathlib import Path
+from urllib.parse import urlsplit
 from typing import Dict, Any, List, Optional
 
 import httpx
@@ -16,7 +18,7 @@ import httpx
 from app.core.logging import logger
 from app.adapters.storage import get_storage_backend
 from app.services.bot_config_runtime import get_primary_qq_runtime_from_db
-from app.utils.text_formatters import format_content_with_render_config, strip_markdown
+from app.utils.text_formatters import format_content_with_render_config
 from .base import BasePushService
 
 MAX_FORWARD_NODES = 99
@@ -29,18 +31,15 @@ def _resolve_media_url(media_item: Dict[str, Any]) -> Optional[str]:
     1. Local file path via stored_key (file:// URI for NapCat on same host)
     2. stored_url / url from the item
     """
-    backend = get_storage_backend()
-
     if media_item.get("stored_key"):
-        local_path = backend.get_local_path(key=media_item["stored_key"])
-        if local_path:
-            return f"file:///{local_path.replace(chr(92), '/')}"
-
-    public_url = backend.get_url(key=media_item["stored_key"]) if media_item.get("stored_key") else None
-    if public_url:
-        return public_url
-
-    return media_item.get("url")
+        local_path = get_storage_backend().get_local_path(key=media_item["stored_key"])
+        if not local_path or not Path(local_path).is_file():
+            raise FileNotFoundError("Media asset file is missing")
+        return Path(local_path).resolve().as_uri()
+    url = media_item.get("url")
+    if not url or urlsplit(url).scheme not in {"http", "https"}:
+        raise ValueError("Media asset has no upload source")
+    return url
 
 
 def _build_text_segment(text: str) -> Dict[str, Any]:
@@ -122,11 +121,7 @@ class NapcatPushService(BasePushService):
             rich_text=False,
             platform=content.get("platform") or "",
         )
-        text = strip_markdown(text)
-        if not text:
-            text = "(no content)"
-
-        segments: List[Dict[str, Any]] = [_build_text_segment(text)]
+        segments: List[Dict[str, Any]] = [_build_text_segment(text)] if text else []
 
         media_items = self._extract_media(content)
         for item in media_items:

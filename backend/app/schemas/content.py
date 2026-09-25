@@ -431,6 +431,7 @@ class ContentPushPayload(BaseModel):
     summary: Optional[str] = None
     author_name: Optional[str] = None
     cover_url: Optional[str] = None
+    clean_url: Optional[str] = None
     url: Optional[str] = None
     render_config: Optional[Dict[str, Any]] = None
     context_data: Optional[Dict[str, Any]] = None

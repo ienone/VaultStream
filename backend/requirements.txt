@@ -41,6 +41,7 @@ qrcode[pil]
 # Content parsing and Markdown conversion
 pypdf
 markdownify
+markdown-it-py
 beautifulsoup4
 bbcode
 # Pin a safe XML parser version explicitly for the parsing stack.

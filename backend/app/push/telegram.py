@@ -3,12 +3,17 @@ Telegram推送服务实现
 
 提供完整的Telegram消息推送功能,包括文本、图片、视频等
 """
-import httpx
+import html
+from io import BytesIO
+from pathlib import Path
+from urllib.parse import urlsplit
+from bs4 import BeautifulSoup
+from PIL import Image, ImageOps
 import os
 from typing import Dict, Any, List, Tuple, Optional
 from contextlib import ExitStack
 
-from telegram import Bot, InputMediaPhoto, InputMediaVideo
+from telegram import Bot, InputMediaPhoto, InputMediaVideo, InputMediaAudio, InputMediaDocument
 from telegram.request import HTTPXRequest
 from telegram.error import TelegramError
 
@@ -37,7 +42,6 @@ class TelegramPushService(BasePushService):
     def __init__(self):
         """初始化Telegram推送服务"""
         self._bot: Optional[Bot] = None
-        self._http_client: Optional[httpx.AsyncClient] = None
     
     async def _get_bot(self) -> Bot:
         """
@@ -55,7 +59,6 @@ class TelegramPushService(BasePushService):
             if proxy:
                 os.environ['HTTP_PROXY'] = proxy
                 os.environ['HTTPS_PROXY'] = proxy
-                logger.debug(f"已设置代理环境变量: {proxy}")
             
             request = HTTPXRequest(
                 connect_timeout=10.0,
@@ -68,17 +71,6 @@ class TelegramPushService(BasePushService):
                 request=request
             )
         return self._bot
-    
-    async def _get_http_client(self) -> httpx.AsyncClient:
-        """
-        获取或创建 HTTP 客户端
-        
-        Returns:
-            httpx异步客户端
-        """
-        if self._http_client is None or self._http_client.is_closed:
-            self._http_client = httpx.AsyncClient(timeout=30.0)
-        return self._http_client
     
     @staticmethod
     def _get_media_mode(render_config: Dict[str, Any]) -> str:
@@ -128,179 +120,104 @@ class TelegramPushService(BasePushService):
             photos = [m for m in media_items if m["type"] == "photo"]
             media_items = photos[:1] if photos else media_items[:1]
 
-        # 根据是否有媒体调整文本长度
-        if media_items and len(text) > MAX_CAPTION_LENGTH:
-            text = text[:MAX_CAPTION_LENGTH - 3] + "..."
-        elif not media_items and len(text) > MAX_MESSAGE_LENGTH:
-            text = text[:MAX_MESSAGE_LENGTH - 3] + "..."
-        
         return text, media_items
-    
-    async def _send_media_group(
-        self,
-        bot: Bot,
-        chat_id: str,
-        text: str,
-        media_items: List[Dict],
-        reply_markup=None
-    ):
-        """
-        发送媒体组（多张图片或视频）
-        
-        Args:
-            bot: Telegram Bot实例
-            chat_id: 目标聊天ID
-            text: 附带文本
-            media_items: 媒体项列表
-            reply_markup: 可选的按钮键盘
-            
-        Returns:
-            第一条消息对象，失败返回None
-        """
-        backend = get_storage_backend()
-        
+
+    @staticmethod
+    def _prepare_media(item, stack):
+        kind = item["type"]
+        if item.get("stored_key"):
+            path = get_storage_backend().get_local_path(key=item["stored_key"])
+            if not path:
+                raise ValueError("Media storage has no local upload path")
+            media = stack.enter_context(open(path, "rb"))
+            if kind == "photo":
+                with Image.open(path) as image:
+                    if getattr(image, "is_animated", False):
+                        # Keep animation intact; the stored master is not rewritten.
+                        kind = "document"
+                    else:
+                        image = ImageOps.exif_transpose(image).convert("RGB")
+                        width, height = image.size
+                        if max(width, height) > 20 * min(width, height):
+                            kind = "document"
+                        else:
+                            image.thumbnail((4096, 4096))
+                            upload = stack.enter_context(BytesIO())
+                            upload.name = "image.jpg"
+                            image.save(upload, "JPEG", quality=90)
+                            upload.seek(0)
+                            media = upload
+            if kind == "audio" and Path(path).suffix.lower() not in {".mp3", ".m4a"}:
+                kind = "document"
+            if kind == "video" and Path(path).suffix.lower() != ".mp4":
+                kind = "document"
+        else:
+            media = item.get("url")
+            if not media or urlsplit(media).scheme not in {"https", "http"}:
+                raise ValueError("Media asset has no upload source")
+        return kind, media
+
+    async def _send_payload(self, bot, chat_id, text, items, reply_markup):
+        # Resolve all local files before making any externally visible sends.
         with ExitStack() as stack:
-            media_group = []
-            resolved_items = []
-            for item in media_items[:MAX_MEDIA_GROUP_SIZE]:
-                media = item.get('url')
-                # 尝试使用本地文件
-                if item.get('stored_key'):
-                     local_path = backend.get_local_path(key=item['stored_key'])
-                     if local_path:
-                         try:
-                             media = stack.enter_context(open(local_path, 'rb'))
-                             logger.debug(f"使用本地媒体文件: {local_path}")
-                         except Exception as e:
-                             logger.warning(f"无法打开本地文件 {local_path}: {e}")
-
-                if media is None:
-                    continue
-                idx = len(media_group)
-                if item['type'] == 'photo':
-                    if idx == 0:
-                        media_group.append(InputMediaPhoto(media=media, caption=text, parse_mode='HTML'))
-                    else:
-                        media_group.append(InputMediaPhoto(media=media))
-                elif item['type'] == 'video':
-                    if idx == 0:
-                        media_group.append(InputMediaVideo(media=media, caption=text, parse_mode='HTML'))
-                    else:
-                        media_group.append(InputMediaVideo(media=media))
-                else:
-                    continue
-                resolved_items.append(item)
-
-            if not media_group:
-                return await bot.send_message(
-                    chat_id=chat_id,
-                    text=text,
-                    parse_mode='HTML',
-                    disable_web_page_preview=False,
-                    reply_markup=reply_markup,
-                )
-            if len(media_group) == 1:
-                return await self._send_single_media(
-                    bot,
-                    chat_id,
-                    resolved_items[0],
-                    text,
-                    reply_markup,
-                )
-            
-            # A transport error may occur after Telegram accepted the album.
-            # Do not send a second representation without a verified outcome.
-            messages = await bot.send_media_group(
-                chat_id=chat_id,
-                media=media_group,
-                read_timeout=120,
-                write_timeout=120,
-            )
-            if messages:
-                if reply_markup:
-                    await bot.send_message(
-                        chat_id=chat_id,
-                        text="管理操作:",
-                        reply_to_message_id=messages[0].message_id,
-                        reply_markup=reply_markup,
+            media = [self._prepare_media(item, stack) for item in items]
+            limit = MAX_CAPTION_LENGTH if media else MAX_MESSAGE_LENGTH
+            plain = BeautifulSoup(text, "html.parser").get_text()
+            caption = text
+            first = None
+            if len(plain.encode("utf-16-le")) // 2 > limit:
+                # Long text goes into complete messages, without slicing HTML tags.
+                caption = ""
+                chunks, current, size = [], [], 0
+                for char in plain:
+                    units = len(char.encode("utf-16-le")) // 2
+                    if size + units > MAX_MESSAGE_LENGTH:
+                        chunks.append("".join(current))
+                        current, size = [], 0
+                    current.append(char)
+                    size += units
+                if current:
+                    chunks.append("".join(current))
+                for chunk in chunks:
+                    message = await bot.send_message(
+                        chat_id=chat_id, text=html.escape(chunk), parse_mode="HTML",
+                        disable_web_page_preview=bool(media), reply_markup=reply_markup if first is None else None,
                     )
-                return messages[0]
-            return None
-    
-    async def _send_single_media(
-        self,
-        bot: Bot,
-        chat_id: str,
-        media_item: Dict,
-        caption: str,
-        reply_markup=None
-    ):
-        """
-        发送单个媒体（图片或视频）
-        
-        Args:
-            bot: Telegram Bot实例
-            chat_id: 目标聊天ID
-            media_item: 媒体项字典
-            caption: 附带文本
-            reply_markup: 可选的按钮键盘
-            
-        Returns:
-            消息对象，失败返回None
-        """
-        backend = get_storage_backend()
-        media = media_item.get('url')
-        file_handle = None
-        
-        # 尝试使用本地文件
-        if media_item.get('stored_key'):
-             local_path = backend.get_local_path(key=media_item['stored_key'])
-             if local_path:
-                 try:
-                     file_handle = open(local_path, 'rb')
-                     media = file_handle
-                     logger.debug(f"使用本地媒体文件: {local_path}")
-                 except Exception as e:
-                     logger.warning(f"无法打开本地文件 {local_path}: {e}")
+                    first = first or message
+            if not media:
+                if first:
+                    return first
+                return await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML", reply_markup=reply_markup)
+            constructors = {"photo": InputMediaPhoto, "video": InputMediaVideo,
+                            "audio": InputMediaAudio, "document": InputMediaDocument}
+            offset = 0
+            while offset < len(media):
+                kind = media[offset][0]
+                family = {"photo", "video"} if kind in {"photo", "video"} else {kind}
+                batch = []
+                while offset < len(media) and len(batch) < MAX_MEDIA_GROUP_SIZE and media[offset][0] in family:
+                    batch.append(media[offset])
+                    offset += 1
+                if len(batch) == 1:
+                    kind, source = batch[0]
+                    message = await getattr(bot, f"send_{kind}")(
+                        chat_id=chat_id, **{kind: source}, caption=caption or None,
+                        parse_mode="HTML", read_timeout=120, write_timeout=120,
+                        reply_markup=reply_markup if first is None else None,
+                    )
+                else:
+                    album = [constructors[k](media=source, caption=caption if i == 0 else None,
+                                             parse_mode="HTML") for i, (k, source) in enumerate(batch)]
+                    messages = await bot.send_media_group(chat_id=chat_id, media=album,
+                                                         read_timeout=120, write_timeout=120)
+                    message = messages[0]
+                    if first is None and reply_markup:
+                        await bot.send_message(chat_id=chat_id, text="操作", reply_to_message_id=message.message_id,
+                                               reply_markup=reply_markup)
+                first = first or message
+                caption = ""
+            return first
 
-        if media is None:
-            logger.warning(
-                "媒体资产没有可读取的本地变体或远端来源: asset_id=%s",
-                media_item.get("asset_id"),
-            )
-            return await bot.send_message(
-                chat_id=chat_id,
-                text=caption,
-                parse_mode='HTML',
-                disable_web_page_preview=False,
-                reply_markup=reply_markup,
-            )
-
-        try:
-            if media_item['type'] == 'photo':
-                return await bot.send_photo(
-                    chat_id=chat_id,
-                    photo=media,
-                    caption=caption,
-                    parse_mode='HTML',
-                    read_timeout=60,
-                    write_timeout=60,
-                    reply_markup=reply_markup
-                )
-            elif media_item['type'] == 'video':
-                return await bot.send_video(
-                    chat_id=chat_id,
-                    video=media,
-                    caption=caption,
-                    parse_mode='HTML',
-                    read_timeout=120,
-                    write_timeout=120,
-                    reply_markup=reply_markup
-                )
-        finally:
-            if file_handle:
-                file_handle.close()
-    
     async def push(
         self, 
         content: Dict[str, Any], 
@@ -323,31 +240,10 @@ class TelegramPushService(BasePushService):
             bot = await self._get_bot()
             text, media_items = self._build_payload(content)
             
-            message = None
-            
-            # 根据媒体数量选择发送方式
-            logger.info(
-                f"准备发送至 Telegram: target={normalized_target_id}, "
-                f"raw_target={target_id}, media_count={len(media_items)}, text_len={len(text)}"
+            message = await self._send_payload(
+                bot, normalized_target_id, text, media_items, reply_markup
             )
-            if len(media_items) > 1:
-                message = await self._send_media_group(
-                    bot, normalized_target_id, text, media_items, reply_markup
-                )
-            elif len(media_items) == 1:
-                message = await self._send_single_media(
-                    bot, normalized_target_id, media_items[0], text, reply_markup
-                )
-            else:
-                # 纯文本消息
-                message = await bot.send_message(
-                    chat_id=normalized_target_id,
-                    text=text,
-                    parse_mode='HTML',
-                    disable_web_page_preview=False,
-                    reply_markup=reply_markup
-                )
-            
+
             if message:
                 message_id = str(message.message_id)
                 logger.info(
@@ -374,6 +270,5 @@ class TelegramPushService(BasePushService):
             return None
     
     async def close(self):
-        """关闭服务连接"""
-        if self._http_client and not self._http_client.is_closed:
-            await self._http_client.aclose()
+        if self._bot:
+            await self._bot.shutdown()
