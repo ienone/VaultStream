@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import timedelta
+from datetime import timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy import select, func
@@ -82,7 +82,10 @@ class TelegramAccountSync:
             if source is not None and (state is None or not state.enabled):
                 return {"created": 0, "updated": 0, "saved": 0}
             value = state.value if source is None and state else state.last_cursor if state else None
-        posts, cursor = await self.reader.read_page(peer_id, after=int(value) if value is not None else (0 if source is None else None))
+        since = (source.created_at.replace(tzinfo=timezone.utc) - timedelta(days=1)
+                 if source is not None and value is None else None)
+        posts, cursor = await self.reader.read_page(peer_id,
+            after=int(value) if value is not None else (0 if source is None else None), since=since)
         review_key = f"telegram_review_cursor_{account_id}_{peer_id}"
         review_posts, review_cursor = await self._review_posts(account_id, peer_id, review_key)
         fresh_ids = {message.id for post in posts for message in post.messages}
@@ -285,6 +288,13 @@ class TelegramAccountSync:
             if complete:
                 continue
             async def chunks():
+                if kind == "image":
+                    # download_media selects a real photo size and decodes inline
+                    # cached thumbnails; iter_download treats those as remote files.
+                    data = await self.client.download_media(message, bytes)
+                    if data:
+                        yield data
+                    return
                 offset = 0
                 try:
                     async for chunk in self.client.iter_download(message.media):
