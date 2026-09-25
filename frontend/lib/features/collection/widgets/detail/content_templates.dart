@@ -944,15 +944,6 @@ class _PagedMediaViewerState extends State<_PagedMediaViewer> {
                         );
                       },
                     ),
-                    Positioned(
-                      bottom: AppSpacing.sm,
-                      right: AppSpacing.sm,
-                      child: FilledButton.tonalIcon(
-                        onPressed: _openFullScreen,
-                        icon: const Icon(Icons.fullscreen_rounded),
-                        label: const Text('查看大图'),
-                      ),
-                    ),
                     if (ctx.images.length > 1)
                       Positioned(
                         top: AppSpacing.sm,

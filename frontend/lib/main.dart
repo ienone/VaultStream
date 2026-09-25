@@ -103,8 +103,10 @@ void main() async {
         return;
       }
       final router = container.read(goRouterProvider);
-      if (router.routeInformationProvider.value.uri.path != '/player') {
-        router.push('/player');
+      final request = container.read(globalPlaybackProvider).request!;
+      final location = '/collection/${request.contentId}';
+      if (router.routeInformationProvider.value.uri.path != location) {
+        router.push(location);
       }
     });
   }

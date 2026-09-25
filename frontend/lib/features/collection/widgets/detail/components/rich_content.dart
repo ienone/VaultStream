@@ -55,8 +55,11 @@ class RichContent extends StatelessWidget {
           child: MarkdownBody(
             data: markdown,
             selectable: true,
-            // 小红书正文是保留原始段落的纯文本，单换行不是排版软换行。
-            softLineBreak: detail.platform == 'xiaohongshu',
+            // 社交消息的单换行属于原始排版。
+            softLineBreak: const [
+              'xiaohongshu',
+              'telegram',
+            ].contains(detail.platform),
             onTapLink: (text, href, title) async {
               await SafeUrlLauncher.openExternal(context, href);
             },

@@ -1131,9 +1131,14 @@ class GlobalMiniPlayer extends ConsumerWidget {
       child: SafeArea(
         top: false,
         child: Semantics(
-          hint: '展开当前播放',
+          hint: '打开内容详情',
           child: InkWell(
-            onTap: () => context.push('/player'),
+            onTap: () {
+              final location = '/collection/${request.contentId}';
+              if (GoRouterState.of(context).uri.path != location) {
+                context.push(location);
+              }
+            },
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: compact ? 56 : 72),
               child: Row(

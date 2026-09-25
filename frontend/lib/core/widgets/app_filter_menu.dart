@@ -27,6 +27,10 @@ class AppFilterMenu extends StatelessWidget {
         child: PopupMenuButton<String>(
           useRootNavigator: true,
           clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+          ),
+          menuPadding: EdgeInsets.zero,
           initialValue: value,
           tooltip: '',
           onOpened: onOpened,
