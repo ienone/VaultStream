@@ -110,24 +110,30 @@ class TelegramAccountReader:
             })
         return channels
 
-    async def read_page(self, peer, *, after: int | None, limit: int = 100) -> tuple[list[TelegramPost], int | None]:
+    async def read_page(self, peer, *, after: int | None, limit: int = 100,
+                        since: datetime | None = None) -> tuple[list[TelegramPost], int | None]:
         """Read a bounded page, extending its last album before returning a cursor.
 
-        Initial reads take recent history; subsequent reads go oldest-first so
-        a busy channel cannot skip the middle of its backlog.
+        A dated initial read and subsequent pages go oldest-first so busy
+        channels cannot skip the middle of their backlog.
         """
         if not 1 <= limit <= 500:
             raise ValueError("Telegram page size must be between 1 and 500")
         messages = []
         boundary_group = None
         high_water = after
-        async for message in self.client.iter_messages(peer, min_id=after or 0, reverse=after is not None):
+        async for message in self.client.iter_messages(peer, min_id=after or 0,
+                offset_date=since if after is None else None,
+                reverse=after is not None or since is not None):
             if len(messages) >= limit:
                 if not boundary_group or message.grouped_id != boundary_group:
                     break
             messages.append(message)
             boundary_group = message.grouped_id
             high_water = max(high_water or 0, message.id)
+        if not messages and after is None and since is not None:
+            latest = await self.client.get_messages(peer, limit=1)
+            high_water = latest[0].id if latest else 0
         return assemble_posts(messages), high_water
 
     async def source_chain(self, message: types.Message, *, max_hops: int = 16) -> list[dict]:

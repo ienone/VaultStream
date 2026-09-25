@@ -71,6 +71,10 @@
 
 ## 原生读取层
 
+用户指定频道首次只补接入前 24 小时的动态，随后按消息游标增量同步；首次窗口以来源创建时间固定，按时间正序每批 100 条，避免高频频道截断中间消息。窗口内无消息时记录频道最新消息编号，不在下一轮回退到全历史。Saved Messages 独立从最早收藏开始逐批补齐。
+
+真实接入发现部分图片只有内嵌缓存尺寸；直接 iter_download 会错误地发起远端文件请求，返回 FileReferenceExpiredError，刷新引用也无效。图片使用 Telethon download_media 选择有效尺寸并解码内嵌图片，再进入统一 WebP 存储；其他媒体继续流式下载，遇到真正过期的引用时从原消息刷新并续传。
+
 `adapters/telegram_account.py` 使用 Telethon 1.45：频道枚举读取全局 Broadcasts 默认及会话 mute_until；分页初次取近期、后续从游标向新消息读取，页末相册继续读完。正文经 Telegram 实体转为 Markdown；指纹排除计数和临时文件引用；可定位转发沿上游读取，缺少来源时不产生用户诊断标签。
 
 `telegram_messages` 按账号、带类型的会话 ID 和消息 ID 记录出现位置。它不代替 ContentSource，不让普通频道同步永久保护候选。Saved Messages 后续入库才建立永久收藏来源。
