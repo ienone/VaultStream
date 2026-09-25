@@ -129,6 +129,11 @@ class PostIngestService:
 
     async def auto_approve_and_enqueue(self, session: AsyncSession, content: Content) -> None:
         try:
+            from app.services.distribution_topics import tag_distribution_topics
+            await tag_distribution_topics(session, content)
+        except Exception:
+            logger.exception("分发主题分类失败: content_id={}", content.id)
+        try:
             from app.services.distribution import DistributionService
 
             await DistributionService(session).auto_approve_if_eligible(content)

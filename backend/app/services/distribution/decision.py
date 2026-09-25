@@ -37,7 +37,7 @@ def check_match_conditions(content: Content, conditions: Dict[str, Any]) -> Dist
             reason=f"平台不匹配: 需要 {platform}, 实际 {content.platform.value}",
         )
 
-    content_tags = normalize_tags(content.tags or [], lower=True)
+    content_tags = normalize_tags([*(content.tags or []), *(content.ai_tags or [])], lower=True)
 
     exclude_tags = normalize_tags(conditions.get("tags_exclude", []), lower=True)
     if exclude_tags:
