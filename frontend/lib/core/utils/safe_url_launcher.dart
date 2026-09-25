@@ -25,7 +25,7 @@ class SafeUrlLauncher {
       );
       if (!launched) {
         if (!context.mounted) return;
-        Toast.show(context, '打开链接失败，可能设备未安装该应用', isError: true);
+        Toast.show(context, '打开链接失败', isError: true);
       }
     } catch (_) {
       if (!context.mounted) return;

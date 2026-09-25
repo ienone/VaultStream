@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../theme/design_tokens.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -139,6 +140,7 @@ class _DocumentReaderState extends ConsumerState<DocumentReader> {
               ),
               if (items.length > 1)
                 DropdownButton<int>(
+                  borderRadius: AppShape.cardBorder,
                   value: document.assetId,
                   isExpanded: true,
                   items: items
@@ -179,7 +181,8 @@ class _DocumentReaderState extends ConsumerState<DocumentReader> {
                         _select(document.assetId, number),
                   ),
                 ),
-              if (!_showOriginal) Text(_statusLabel(document)),
+              if (!_showOriginal && document.status != 'ready')
+                Text(_statusLabel(document)),
               if (invalidTarget) ...[
                 const SizedBox(height: 12),
                 const Text('引用的文件或页码已不存在，请重新选择。'),
@@ -197,6 +200,7 @@ class _DocumentReaderState extends ConsumerState<DocumentReader> {
                     ),
                     Expanded(
                       child: DropdownButton<int>(
+                        borderRadius: AppShape.cardBorder,
                         isExpanded: true,
                         value: page?.number,
                         hint: const Text('选择页码'),
@@ -229,7 +233,7 @@ class _DocumentReaderState extends ConsumerState<DocumentReader> {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     child: page.text.trim().isEmpty
-                        ? const Text('本页没有可提取的原生文本，可能是扫描页或空白页；请查看原文件。')
+                        ? const Text('本页没有文本，可切换到原页查看。')
                         : SelectableText(
                             page.text,
                             style: Theme.of(
@@ -246,17 +250,15 @@ class _DocumentReaderState extends ConsumerState<DocumentReader> {
   }
 
   String _statusLabel(DocumentText document) => switch (document.status) {
-    'ready' => '已提取 ${document.pageCount} 页原生文本。阅读顺序以原文件为准。',
-    'partial' =>
-      '${document.pageCount} 页中有 ${document.textPageCount} 页包含原生文本，其余页面尚未识别。',
-    'no_text' => '未找到原生文本，尚未执行扫描识别。',
-    'pending' => '尚无正文提取结果。新上传的 PDF 会自动提取，可刷新查看。',
+    'partial' => '${document.textPageCount} / ${document.pageCount} 页有文本',
+    'no_text' => '没有可读取的文本，可切换到原页查看。',
+    'pending' => '正文尚未提取',
     'encrypted' => '文件已加密，无法读取正文。请上传解密后的 PDF。',
     'invalid_pdf' => '文件损坏或不是有效 PDF，原文件仍保留。',
     'limit_exceeded' => '文件超过提取上限（64 MiB、500 页或 200 万字），原文件仍可打开。',
     'timeout' => '提取超过 60 秒，已停止。可查看原文件或重试。',
     'missing' => '归档原文件不可读取。',
-    'source_changed' => '原文件校验发生变化，请检查后重新提取。',
+    'source_changed' => '原文件已变化，请重新提取。',
     _ => '正文提取失败，可重试或查看原文件。',
   };
 }

@@ -1135,7 +1135,11 @@ class GlobalMiniPlayer extends ConsumerWidget {
           child: InkWell(
             onTap: () {
               final location = '/collection/${request.contentId}';
-              if (GoRouterState.of(context).uri.path != location) {
+              final current = GoRouterState.of(context).uri;
+              final inCollection =
+                  current.path == '/collection' &&
+                  current.queryParameters['item'] == '${request.contentId}';
+              if (current.path != location && !inCollection) {
                 context.push(location);
               }
             },

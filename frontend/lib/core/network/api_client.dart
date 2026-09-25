@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-import '../config/env_config.dart';
 import '../providers/local_settings_provider.dart';
 
 part 'api_client.g.dart';
@@ -61,12 +60,20 @@ String formatApiErrorMessage(
   bool includeRequestId = false,
 }) {
   final info = parseApiErrorInfo(error, fallbackMessage: fallbackMessage);
-  final parts = <String>[];
-  if (info.hint != null && info.hint!.trim().isNotEmpty) {
-    parts.add(info.hint!.trim());
-  } else {
-    parts.add(info.message);
-  }
+  // Only translate documented application codes; exception prose is diagnostic.
+  final message = switch (info.code) {
+    'invalid_api_token' => '访问密钥无效，请重新连接',
+    'parse_queue_unavailable' => '内容已保存，暂时无法开始解析',
+    'capture_file_too_large' => '文件超过上传大小限制',
+    'capture_file_empty' => '不能上传空文件',
+    'capture_too_many_files' => '上传文件数量超过限制',
+    'media_bookmark_exists' => '这个时间点已有书签',
+    'discovery_source_disabled' => '请先启用这个订阅源',
+    'favorites_platform_disabled' => '请先启用该平台的收藏同步',
+    'source_kind_not_supported' || 'unsupported_platform' => '暂不支持这个来源',
+    _ => fallbackMessage,
+  };
+  final parts = <String>[message];
 
   if (includeRequestId &&
       info.requestId != null &&
@@ -76,35 +83,6 @@ String formatApiErrorMessage(
     parts.add('RID:$shortId');
   }
   return parts.join(' | ');
-}
-
-final _sensitiveHeaderPattern = RegExp(
-  r'^(\s*)(authorization|x-api-token|cookie|set-cookie)(\s*:\s*).*$',
-  caseSensitive: false,
-);
-
-final _sensitiveValuePattern = RegExp(
-  r'\b(api[_-]?token|apitoken|authorization|cookie|bot[_-]?token)(\s*[:=]\s*)([^,\s}\]]+)',
-  caseSensitive: false,
-);
-
-String redactDebugLogLine(String line) {
-  var redacted = line.replaceFirstMapped(
-    _sensitiveHeaderPattern,
-    (match) => '${match.group(1)}${match.group(2)}${match.group(3)}<redacted>',
-  );
-  redacted = redacted.replaceAllMapped(
-    _sensitiveValuePattern,
-    (match) => '${match.group(1)}${match.group(2)}<redacted>',
-  );
-  return redacted;
-}
-
-void redactedDebugPrint(Object object) {
-  for (final line in object.toString().split('\n')) {
-    // ignore: avoid_print
-    print(redactDebugLogLine(line));
-  }
 }
 
 @riverpod
@@ -133,27 +111,10 @@ Dio apiClient(Ref ref) {
             ref.read(localSettingsProvider).apiToken == settings.apiToken) {
           await ref.read(localSettingsProvider.notifier).clearAuth();
         }
-        if (EnvConfig.debugLog) {
-          // ignore: avoid_print
-          print(
-            'API error: code=${info.code} message=${info.message} rid=${info.requestId}',
-          );
-        }
         return handler.next(e);
       },
     ),
   );
-
-  if (EnvConfig.debugLog) {
-    dio.interceptors.add(
-      LogInterceptor(
-        responseBody: false,
-        requestHeader: true,
-        requestBody: false,
-        logPrint: redactedDebugPrint,
-      ),
-    );
-  }
 
   return dio;
 }

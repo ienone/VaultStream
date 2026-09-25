@@ -350,6 +350,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
           )
         else
           DropdownButtonFormField<String>(
+            borderRadius: AppShape.cardBorder,
             initialValue: models.contains(model.text) ? model.text : null,
             decoration: const InputDecoration(
               labelText: '模型',

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../providers/local_settings_provider.dart';
@@ -111,7 +110,6 @@ class SseService extends _$SseService {
     ref.listen(localSettingsProvider, (previous, next) {
       if (previous?.apiToken != next.apiToken ||
           previous?.baseUrl != next.baseUrl) {
-        debugPrint('[SSE] 配置变化，重置重连计数并重新连接');
         _reconnectAttempts = 0;
         _connect();
       }
@@ -195,7 +193,6 @@ class SseService extends _$SseService {
 
       if (_disposed || !identical(_httpClient, client)) return;
       if (response.statusCode != 200) {
-        debugPrint('[SSE] 连接失败，HTTP ${response.statusCode}');
         _handleError(isServerError: response.statusCode >= 500);
         return;
       }
@@ -270,17 +267,14 @@ class SseService extends _$SseService {
 
       // 流正常结束（后端主动关闭）
       if (!_disposed && identical(_httpClient, client)) {
-        debugPrint('[SSE] 流正常结束，将按关闭策略重连');
         _handleClose();
       }
-    } on http.ClientException catch (e) {
+    } on http.ClientException catch (_) {
       if (!_disposed && identical(_httpClient, client)) {
-        debugPrint('[SSE] ClientException: $e');
         _handleError();
       }
-    } catch (e) {
+    } catch (_) {
       if (!_disposed && identical(_httpClient, client)) {
-        debugPrint('[SSE] 连接异常: $e');
         _handleError();
       }
     }
@@ -307,8 +301,8 @@ class SseService extends _$SseService {
       if (decoded is Map<String, dynamic>) {
         _eventBus.addEvent(SseEvent(type: eventType, data: decoded));
       }
-    } catch (e) {
-      debugPrint('[SSE] JSON 解析失败 ($eventType): $e');
+    } on FormatException {
+      _eventBus.updateState(SseConnectionState.error);
     }
   }
 
@@ -332,7 +326,6 @@ class SseService extends _$SseService {
     );
     final delay = Duration(milliseconds: ms);
 
-    debugPrint('[SSE] 将在 ${delay.inSeconds}s 后重连（第 $_reconnectAttempts 次）');
     _scheduleReconnect(delay: delay, countAsError: true);
   }
 
@@ -350,7 +343,6 @@ class SseService extends _$SseService {
     _idleTimer?.cancel();
     _idleTimer = Timer(_SseConfig.idleTimeout, () {
       if (!_disposed) {
-        debugPrint('[SSE] Idle 超时，主动重连');
         _handleClose();
       }
     });

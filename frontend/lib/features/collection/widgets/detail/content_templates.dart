@@ -1,5 +1,7 @@
 import '../../../../core/widgets/media_image_button.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import '../../../../core/widgets/markdown_reading.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/layout/responsive_layout.dart';
@@ -694,7 +696,6 @@ class _DocumentBody extends StatelessWidget {
           const ContentEmptyState(
             icon: Icons.file_present_outlined,
             message: '没有可打开的归档文件',
-            hint: '文件可能仍在处理，或归档未成功。',
           )
         else
           ...attachments.map(
@@ -1153,9 +1154,13 @@ class _QuotedContent extends StatelessWidget {
           ],
           if (quote.body.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.xs),
-            SelectableText(
-              quote.body,
-              style: theme.textTheme.bodyMedium?.copyWith(height: 1.55),
+            MarkdownBody(
+              data: quote.body,
+              selectable: true,
+              softLineBreak: true,
+              styleSheet: readingMarkdownStyle(context),
+              onTapLink: (_, href, _) =>
+                  SafeUrlLauncher.openExternal(context, href),
             ),
           ],
           if (quote.url.isNotEmpty) ...[

@@ -43,9 +43,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                     .read(pictureInPictureProvider.notifier)
                     .enter();
                 if (!entered && context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('当前无法进入画中画，请检查系统画中画权限')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('无法进入画中画')));
                 }
               },
             ),

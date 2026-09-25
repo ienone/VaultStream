@@ -191,7 +191,7 @@ class AppTheme {
         style: MenuStyle(
           shape: WidgetStateProperty.all(
             RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppRadius.xl),
+              borderRadius: BorderRadius.circular(AppRadius.md),
             ),
           ),
           elevation: WidgetStateProperty.all(8),
@@ -206,7 +206,7 @@ class AppTheme {
       ),
       popupMenuTheme: PopupMenuThemeData(
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.xl),
+          borderRadius: BorderRadius.circular(AppRadius.md),
         ),
         elevation: 8,
         surfaceTintColor: scheme.surfaceTint,
@@ -219,7 +219,7 @@ class AppTheme {
         menuStyle: MenuStyle(
           shape: WidgetStateProperty.all(
             RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppRadius.xl),
+              borderRadius: BorderRadius.circular(AppRadius.md),
             ),
           ),
           elevation: WidgetStateProperty.all(8),

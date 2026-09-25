@@ -394,6 +394,7 @@ class _PushTabState extends ConsumerState<PushTab> {
                 title: const Text('凭证与权限'),
                 children: [
                   DropdownButtonFormField<String>(
+                    borderRadius: AppShape.cardBorder,
                     initialValue: _botPlatform,
                     decoration: const InputDecoration(labelText: '推送平台'),
                     items: const [

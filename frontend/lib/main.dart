@@ -105,7 +105,11 @@ void main() async {
       final router = container.read(goRouterProvider);
       final request = container.read(globalPlaybackProvider).request!;
       final location = '/collection/${request.contentId}';
-      if (router.routeInformationProvider.value.uri.path != location) {
+      final current = router.routeInformationProvider.value.uri;
+      final inCollection =
+          current.path == '/collection' &&
+          current.queryParameters['item'] == '${request.contentId}';
+      if (current.path != location && !inCollection) {
         router.push(location);
       }
     });

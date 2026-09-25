@@ -509,26 +509,23 @@ class AgentController extends Notifier<AgentViewState> {
     return timeline;
   }
 
-  String _formatEventError(Map<String, dynamic> event) {
-    final message = event['message']?.toString() ?? 'Agent 执行失败';
-    final fix = event['suggested_fix']?.toString();
-    return fix == null || fix.isEmpty ? message : '$message\n$fix';
-  }
+  String _formatEventError(Map<String, dynamic> event) =>
+      _agentErrorLabel(event['error_code']?.toString()) ?? 'Agent 执行失败，请重试';
 
-  String _formatAgentErrorMessage(DioException error) {
-    final info = parseApiErrorInfo(error, fallbackMessage: 'Agent 请求失败，请稍后重试');
-    final message = switch (info.code) {
-      'agent_model_unavailable' => '模型配置不可用。请检查文本模型配置后重试。',
-      'agent_invalid_message' => '没有识别到可执行指令。请补充目标或关键词。',
-      'agent_tool_not_found' => '当前工具不可用。请刷新工具列表后重试。',
-      'agent_tool_invalid_args' => '参数不完整或格式不正确。请补充目标、关键词或群组信息。',
-      'agent_confirmation_not_found' => '确认请求已失效。请重新发起操作。',
-      'agent_tool_execution_failed' => '工具执行失败。请检查相关配置或稍后重试。',
-      'agent_execution_failed' => 'Agent 执行失败。请改成更具体的单步指令后重试。',
-      _ => formatApiErrorMessage(error, fallbackMessage: 'Agent 请求失败，请稍后重试'),
-    };
-    return message;
-  }
+  String? _agentErrorLabel(String? code) => switch (code) {
+    'agent_model_unavailable' => '模型配置不可用，请检查文本模型配置',
+    'agent_invalid_message' => '请输入消息',
+    'agent_tool_not_found' => '当前工具不可用',
+    'agent_tool_invalid_args' => '工具参数不完整或格式不正确',
+    'agent_confirmation_not_found' => '确认请求已失效，请重新发起操作',
+    'agent_tool_execution_failed' => '工具执行失败，请重试',
+    'agent_execution_failed' => 'Agent 执行失败，请重试',
+    _ => null,
+  };
+
+  String _formatAgentErrorMessage(DioException error) =>
+      _agentErrorLabel(parseApiErrorInfo(error).code) ??
+      formatApiErrorMessage(error, fallbackMessage: 'Agent 请求失败，请重试');
 
   String _formatRequestError(Object error) {
     if (error is DioException) return _formatAgentErrorMessage(error);
