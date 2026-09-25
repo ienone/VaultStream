@@ -147,6 +147,10 @@ async def lifespan(app: FastAPI):
     from app.services.background_task_leader import background_task_leader
     periodic_tasks_started = background_task_leader.try_acquire()
     if periodic_tasks_started:
+        from app.core.database import AsyncSessionLocal
+        from app.services.bot_config_service import get_bot_runtime_service
+        async with AsyncSessionLocal() as db:
+            await get_bot_runtime_service().sync_process(db, reason="application_start")
         maintenance_worker.start()
         logger.info("Cookie 保活任务队列已启动")
 
@@ -177,6 +181,7 @@ async def lifespan(app: FastAPI):
 
     # 停止周期任务（仅在本进程持有 leader 时执行）
     if app.state.periodic_tasks_started:
+        await get_bot_runtime_service().stop(reason="application_shutdown")
         await discovery_sync_task.stop()
         await discovery_cleanup_task.stop()
         logger.info("发现流同步和清理任务已停止")
@@ -337,4 +342,3 @@ if __name__ == "__main__":
         reload=settings.debug,
         access_log=False,
     )
-
