@@ -20,6 +20,7 @@ from app.adapters.storage import get_storage_backend
 from app.core.config import settings
 from app.media.processor import store_archive_images, store_archive_videos
 from app.media.references import apply_archive_media
+from app.services.media_backfill import replace_content_media_assets
 from app.models import (
     Content,
     ContentDiscoveryLink,
@@ -282,6 +283,7 @@ class DiscoverySyncTask:
                             distribution=False,
                         )
 
+                    await replace_content_media_assets(db, existing_content, get_storage_backend(), source="discovery")
                     continue
 
                 retention_days_raw = await get_setting_value("discovery_retention_days", 7)
@@ -322,6 +324,7 @@ class DiscoverySyncTask:
                     discovery_source_id=source.id,
                     url=item.url,
                 ))
+                await replace_content_media_assets(db, content, get_storage_backend(), source="discovery")
                 new_content_ids.append(content.id)
                 queue_post_ingest_work(
                     content.id,
@@ -433,6 +436,7 @@ class DiscoverySyncTask:
                 metadata["archive"] = archive
                 content.archive_metadata = metadata
                 apply_archive_media(content, archive)
+                await replace_content_media_assets(db, content, storage, source="discovery_archive")
                 flag_modified(content, "media_urls")
                 if content.rich_payload:
                     flag_modified(content, "rich_payload")

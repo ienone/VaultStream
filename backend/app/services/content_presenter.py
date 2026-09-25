@@ -4,6 +4,8 @@
 原则：ORM 模型只负责数据存储映射，展示/计算逻辑由本模块提供。
 """
 import re
+from urllib.parse import urlsplit, urlunsplit, parse_qs, unquote
+from app.media.references import rewrite_media_urls
 from typing import Optional, Dict, Any
 from app.models import LayoutType, Platform
 from app.media.extractor import sanitize_media_urls
@@ -101,3 +103,38 @@ def transform_content_detail(content, base_url: str):
         content.title = content.title.replace('\ufffd', '')
 
     return content
+
+
+def bind_detail_media_sources(detail):
+    """Use the manifest's exact URLs throughout this response, never in storage."""
+    mapping = {}
+    for asset in detail.media_assets:
+        if not asset.sources:
+            continue
+        preferred = asset.sources[0].url
+        for source in asset.sources:
+            parsed = urlsplit(source.url)
+            if source.source_kind == "local_signed":
+                unsigned = urlunsplit(parsed._replace(path=parsed.path.replace("/api/v1/media/blobs/", "/api/v1/media/", 1), query="", fragment=""))
+                mapping[unsigned] = preferred
+                key = unquote(parsed.path.split("/api/v1/media/blobs/", 1)[1])
+                mapping[f"local://{key}"] = preferred
+            elif source.source_kind == "remote_proxy":
+                original = parse_qs(parsed.query).get("url", [])
+                if original:
+                    mapping[original[0]] = preferred
+            elif source.source_kind == "remote_direct":
+                mapping[source.url] = preferred
+
+    def bind(value):
+        if isinstance(value, str):
+            return rewrite_media_urls(value, mapping)
+        if isinstance(value, list):
+            return [bind(item) for item in value]
+        if isinstance(value, dict):
+            return {key: bind(item) for key, item in value.items()}
+        return value
+
+    for field in ("body", "cover_url", "author_avatar_url", "media_urls", "rich_payload", "context_data"):
+        setattr(detail, field, bind(getattr(detail, field)))
+    return detail

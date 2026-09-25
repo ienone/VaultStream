@@ -62,7 +62,7 @@ from app.services.distribution.delivery_state import DELIVERY_UNKNOWN
 from app.repositories.content_repository import ContentRepository
 from app.services.content_presenter import (
     compute_effective_layout_type, compute_display_title, compute_author_avatar_url,
-    transform_media_url, transform_content_detail,
+    transform_media_url, transform_content_detail, bind_detail_media_sources,
 )
 from app.services.background_task_state import (
     record_task_run_error,
@@ -999,6 +999,7 @@ async def get_content_detail(
         base_url=base_url,
     )
     detail.media_assets = manifests.get(content.id, [])
+    bind_detail_media_sources(detail)
     detail.media_segments = build_media_segment_items(
         content_id=content.id,
         rich_payload=content.rich_payload,
@@ -1093,6 +1094,7 @@ async def update_content(
         base_url=base_url,
     )
     detail.media_assets = manifests.get(content.id, [])
+    bind_detail_media_sources(detail)
     detail.media_segments = build_media_segment_items(
         content_id=content.id,
         rich_payload=content.rich_payload,
@@ -1135,6 +1137,7 @@ async def resolve_content_parse_candidate(
         base_url=base_url,
     )
     detail.media_assets = manifests.get(content.id, [])
+    bind_detail_media_sources(detail)
     detail.media_segments = build_media_segment_items(
         content_id=content.id,
         rich_payload=content.rich_payload,
