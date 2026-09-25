@@ -256,17 +256,6 @@ def build_opus_archive(item: Dict[str, Any], author_avatar_url: Optional[str] = 
     if author_avatar_url:
         archive["images"].append({"url": author_avatar_url, "type": "avatar"})
 
-    # 日志：用于确认存档内容是否构建成功（避免打印全文）
-    logger.debug(
-        "Opus archive built: title_len={}, text_len={}, blocks={}, images={}, links={}, mentions={}, topics={}",
-        len(str(archive.get("title") or "")),
-        len(str(archive.get("plain_text") or "")),
-        len(archive.get("blocks") or []),
-        len(archive.get("images") or []),
-        len(archive.get("links") or []),
-        len(archive.get("mentions") or []),
-        len(archive.get("topics") or []),
-    )
 
     return archive
 
@@ -377,12 +366,6 @@ async def parse_dynamic(
         # 构建存档数据（完整图文），放进archive_metadata里，传入头像URL
         try:
             archive = build_opus_archive(item, author_avatar_url=author_face)
-            logger.info(
-                "Opus archive ready: dynamic_id={}, text_len={}, images={}",
-                dynamic_id,
-                len(str(archive.get("plain_text") or "")),
-                len(archive.get("images") or []),
-            )
         except Exception as e:
             logger.warning(f"构建Opus存档失败: {e}")
             archive = {"version": 2, "type": "bilibili_opus", "error": str(e)}
@@ -394,9 +377,6 @@ async def parse_dynamic(
         major = module_dynamic.get('major', {})
         opus = major.get('opus', {})
         
-        # 调试日志：记录 major 类型和 keys，辅助判断内容类型
-        major_type = major.get('type')
-        logger.debug(f"Dynamic major info: type={major_type}, keys={list(major.keys())}")
 
         # 标题回退机制：优先使用原生标题，否则从正文生成
         raw_title = opus.get('title') or module_title.get('text') or item.get('basic', {}).get('title')
@@ -436,12 +416,6 @@ async def parse_dynamic(
         archive_metadata.setdefault("archive", {})
         archive_metadata["archive"] = archive
 
-        logger.info(
-            "Dynamic parsed with archive attached: dynamic_id={}, has_archive={}, archive_keys={}",
-            dynamic_id,
-            bool(archive_metadata.get("archive")),
-            list((archive_metadata.get("archive") or {}).keys()),
-        )
 
         module_content = modules_map.get('module_content', {})
         module_top = modules_map.get('module_top', {})
@@ -475,7 +449,6 @@ async def parse_dynamic(
             has_title = bool(raw_title)
             layout = LAYOUT_ARTICLE if (has_title and has_long_content) else LAYOUT_GALLERY
         
-        logger.info(f"Dynamic layout detection: id={dynamic_id}, embedded_img={has_embedded_images}, top_pics={top_pics_count}, layout={layout}")
         
         # 构建ParsedContent
         return ParsedContent(

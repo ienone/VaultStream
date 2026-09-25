@@ -151,11 +151,9 @@ class TwitterAdapter(PlatformAdapter):
                 # A failed authenticated read must not silently use an
                 # anonymous third-party copy of a private tweet.
                 raise NonRetryableAdapterError(error.message) from None
-        logger.info(f"解析 Twitter 推文: @{username}/status/{tweet_id}")
         
         # 构建 FxTwitter API URL
         api_url = f"{self.FXTWITTER_API}/{username}/status/{tweet_id}"
-        logger.debug(f"FxTwitter API URL: {api_url}")
         
         try:
             # 创建 HTTP 客户端（使用代理如果配置了）

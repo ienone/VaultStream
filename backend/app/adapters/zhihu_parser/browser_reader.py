@@ -75,6 +75,6 @@ async def read_public_page(content_type: str, content_id: str, proxy: str | None
     try:
         return await browser_manager.submit_coro(read())
     except BrowserTimeout as error:
-        raise RetryableAdapterError("知乎页面未在限定时间内提供目标数据，可能受访问验证限制") from error
+        raise RetryableAdapterError("知乎页面读取超时") from error
     except BrowserError as error:
-        raise RetryableAdapterError("知乎 Chromium 页面读取失败，请检查浏览器安装与网络") from error
+        raise RetryableAdapterError("知乎页面读取失败") from error

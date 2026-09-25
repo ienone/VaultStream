@@ -9,7 +9,7 @@ from app.services.config_service import ConfigService
 def _error(code, message):
     from app.adapters.favorites.errors import FavoritesFetchError
     return FavoritesFetchError(code=code, message=message,
-        hint="请在 X 网页确认登录或访问验证，再更新 VaultStream 登录", auth_required=code == "auth_required",
+        hint="请重新连接 X 账号" if code == "auth_required" else "", auth_required=code == "auth_required",
         retryable=code not in ("auth_required", "verification_required"))
 
 
@@ -61,7 +61,7 @@ async def read_x_page(cookies, *, cursor=None, tweet_id=None):
                     raise _error("parse_failed", "X 网页书签请求结构已变化") from None
                 if "/i/flow/login" in page.url:
                     raise _error("auth_required", "X 网页要求重新登录") from None
-                raise _error("verification_required", "X 未提供书签响应，请在网页检查登录或访问验证") from None
+                raise _error("upstream_error", "X 页面响应超时") from None
             if response.status in (401,):
                 raise _error("auth_required", "X 登录已失效")
             if response.status in (403, 429):
@@ -79,7 +79,7 @@ async def read_x_page(cookies, *, cursor=None, tweet_id=None):
     try:
         return await browser_manager.submit_coro(read())
     except BrowserError:
-        raise _error("browser_unavailable", "X 书签浏览器读取失败，请检查浏览器运行环境和网络") from None
+        raise _error("browser_unavailable", "X 页面读取失败") from None
 
 
 def timeline_instructions(payload, operation):

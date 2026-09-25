@@ -77,7 +77,6 @@ class RssAdapter(PlatformAdapter):
         if limit <= 0:
             return []
 
-        logger.info(f"RssAdapter: Fetching {feed_url}")
         try:
             response = await self.client.get(feed_url)
             response.raise_for_status()

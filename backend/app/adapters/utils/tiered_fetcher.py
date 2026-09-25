@@ -227,14 +227,11 @@ async def _try_browser(url: str, cookies: Optional[dict] = None) -> Optional[Fet
 async def tiered_fetch(
     url: str,
     cookies: Optional[dict] = None,
-    verbose: bool = True,
 ) -> FetchResult:
     """One negotiated HTTP request, then browser rendering for unreadable HTML."""
     result = await _try_http(url, cookies=cookies)
     if result is None:
         result = await _try_browser(url, cookies=cookies)
     if result is None:
-        raise NonRetryableAdapterError("网页未返回可读取正文，可能需要登录或访问验证")
-    if verbose:
-        logger.info("Fetched content: source={} chars={}", result.source, len(result.content))
+        raise NonRetryableAdapterError("网页未返回可读取正文")
     return result

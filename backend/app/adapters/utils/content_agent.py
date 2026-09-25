@@ -217,11 +217,6 @@ def tool_analyze_dom(html: str, url: str, verbose: bool = True) -> dict:
     if cover_url and not cover_url.startswith("http"):
         cover_url = urljoin(url, cover_url)
 
-    if verbose:
-        if auto_selector:
-            logger.debug("auto selector: {}", auto_selector)
-        else:
-            logger.debug("no known selector matched, fallback to LLM targeting")
 
     return {
         "og_metadata": og,
@@ -458,11 +453,7 @@ async def llm_target_selector(
         image_summary=dom_info["image_summary"],
     )
 
-    if verbose:
-        logger.debug("LLM targeting ({})", llm.model_name)
     result = await _structured_call(llm, TargetSelection, prompt)
-    if verbose:
-        logger.info("selector: {}", result.content_selector)
     return result
 
 
@@ -547,8 +538,6 @@ async def layer1_scan(
     total = len(lines)
     preview = _build_scan_preview(lines)
 
-    if verbose:
-        logger.debug("Layer 1: structural scan ({} lines, {})", total, llm.model_name)
 
     messages = [
         {"role": "system", "content": _LAYER1_SYSTEM},
@@ -558,9 +547,6 @@ async def layer1_scan(
     result = await _structured_call(llm, StructuralScan, messages, timeout=30)
     if result.body_end_line > total or any(block.end_line > total for block in result.metadata_blocks):
         raise ValueError("结构扫描返回了超出输入范围的行号")
-    if verbose:
-        logger.info("body range: L{}-L{} ({} lines)", result.body_start_line,
-                    result.body_end_line, result.body_end_line - result.body_start_line + 1)
     return result
 
 
@@ -705,11 +691,6 @@ async def layer2_extract(
     else:
         body_preview = _build_body_preview(lines, body_start, body_end)
 
-    if verbose:
-        logger.debug(
-            f"Layer 2: extract+clean "
-            f"({body_line_count} 行正文, {len(blocks)} 个元数据块, {llm.model_name})..."
-        )
 
     messages = [
         {"role": "system", "content": _LAYER2_SYSTEM},
@@ -727,10 +708,6 @@ async def layer2_extract(
     affected_lines = [fix.line for fix in result.heading_fixes] + result.lines_to_remove
     if any(line < body_start or line > body_end for line in affected_lines):
         raise ValueError("内容清理返回了正文范围之外的行号")
-    if verbose:
-        logger.info("extracted: {} common, {} ext, {} tags",
-                    len(result.common_fields.model_dump(exclude_none=True)),
-                    len(result.extension_fields.model_dump(exclude_none=True)), len(result.tags))
     return result
 
 
@@ -891,8 +868,6 @@ async def process_content(
 
     if fetch_result.content_type == "markdown":
         # ═══ Markdown Path: skip DOM analysis + conversion ═══
-        if verbose:
-            logger.debug("markdown path (skip DOM analysis)")
         markdown = _cleanup_markdown(fetch_result.content)
         selector = "(markdown path — no selector)"
 
@@ -901,8 +876,6 @@ async def process_content(
         html = fetch_result.html or fetch_result.content
 
         # Tool: DOM analysis
-        if verbose:
-            logger.debug("tool: DOM analysis")
         dom_info = tool_analyze_dom(html, url, verbose)
         cover_url = dom_info.get("cover_url", "")
 
@@ -917,8 +890,6 @@ async def process_content(
             llm_calls += 1
 
         # Tool: HTML → Markdown
-        if verbose:
-            logger.debug("tool: HTML->Markdown (selector: {})", selector)
         markdown = tool_convert_html(html, url, selector, verbose)
 
     # ═══ Layer 1: Structural Scan ═══

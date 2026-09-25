@@ -12,7 +12,6 @@ import re
 import concurrent.futures
 from typing import Optional, Dict, Any, List
 from urllib.parse import urljoin
-from loguru import logger
 
 from app.adapters.base import PlatformAdapter, ParsedContent, LAYOUT_ARTICLE, LAYOUT_VIDEO, LAYOUT_GALLERY, LAYOUT_AUDIO
 from app.services.config_service import ConfigService, LLMConfig
@@ -81,10 +80,9 @@ class UniversalAdapter(PlatformAdapter):
 
     async def _do_parse(self, url: str) -> ParsedContent:
         """获取、提取正文并映射到统一存档。"""
-        logger.info(f"UniversalAdapter: 开始解析 {url}")
 
         # 1. 分层获取
-        fetch_result = await tiered_fetch(url, cookies=self.cookies, verbose=True)
+        fetch_result = await tiered_fetch(url, cookies=self.cookies)
 
         # 2. 使用最终页面 URL 解析正文中的相对链接。
         process_result = await process_content(fetch_result.url, fetch_result, self.llm_config, verbose=True)

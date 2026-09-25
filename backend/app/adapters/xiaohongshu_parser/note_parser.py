@@ -46,7 +46,6 @@ async def parse_note(
     Returns:
         ParsedContent: 解析后的标准化内容
     """
-    logger.info(f"解析小红book笔记: note_id={note_id}, xsec_source={xsec_source}")
     
     # 获取笔记数据
     note = await fetch_note(note_id, xhs_client, cookies, headers, xsec_token, xsec_source, session=session)
@@ -163,7 +162,6 @@ async def fetch_note(
     # 先尝试API方式
     try:
         result = await fetch_note_via_api(note_id, xhs_client, cookies, headers, xsec_token, xsec_source, session=session)
-        logger.info(f"小红书笔记获取成功 [方式=API]: note_id={note_id}")
         return result
     except (AuthRequiredAdapterError, NonRetryableAdapterError, RetryableAdapterError) as e:
         if not xsec_token:
@@ -172,7 +170,6 @@ async def fetch_note(
     
     # 回退到SSR方式
     result = await fetch_note_via_ssr(note_id, cookies, headers, xsec_token, xsec_source)
-    logger.info(f"小红书笔记获取成功 [方式=SSR]: note_id={note_id}")
     return result
 
 

@@ -137,49 +137,8 @@ class ZhihuAdapter(PlatformAdapter):
             pass
         return code, message
 
-    @staticmethod
-    def _preview_text(text: Optional[str], limit: int = 80) -> str:
-        if not text:
-            return ""
-        normalized = re.sub(r"\s+", " ", text).strip()
-        if len(normalized) <= limit:
-            return normalized
-        return normalized[:limit] + "..."
 
-    @staticmethod
-    def _stats_preview(stats: Optional[Dict[str, Any]]) -> str:
-        if not stats:
-            return "-"
-        preferred = [
-            "like",
-            "reply",
-            "favorite",
-            "view",
-            "follower_count",
-            "answer_count",
-            "item_count",
-        ]
-        parts = []
-        for key in preferred:
-            if key in stats:
-                parts.append(f"{key}={stats.get(key)}")
-        if not parts:
-            for key, value in list(stats.items())[:4]:
-                parts.append(f"{key}={value}")
-        return ", ".join(parts[:4]) if parts else "-"
 
-    def _log_parse_success(self, *, channel: str, parsed: ParsedContent) -> None:
-        logger.info(
-            "[zhihu parsed] channel={} type={} id={} author={} media_count={} title_preview={} body_preview={} stats={}",
-            channel,
-            parsed.content_type,
-            parsed.content_id,
-            parsed.author_name or "-",
-            len(parsed.media_urls or []),
-            self._preview_text(parsed.title, 60) or "-",
-            self._preview_text(parsed.body, 120) or "-",
-            self._stats_preview(parsed.stats),
-        )
 
     async def detect_content_type(self, url: str) -> Optional[str]:
         if "zhuanlan.zhihu.com/p/" in url:
@@ -842,7 +801,6 @@ class ZhihuAdapter(PlatformAdapter):
         if public_reader_type and not self.cookies:
             result = await self._parse_public_reader(clean_url, content_type, content_id)
             if result:
-                self._log_parse_success(channel="public_reader", parsed=result)
                 return result
         
         # 其余类型及已保存账号优先尝试现有 API。
@@ -864,30 +822,21 @@ class ZhihuAdapter(PlatformAdapter):
                 "question": self._parse_question_via_api,
             }
             
-            logger.info(f"尝试通过API解析 {content_type}: {content_id}")
             result = await api_parsers[content_type](content_id, url)
             if result:
-                logger.info(f"API解析成功: {content_type}/{content_id}")
-                self._log_parse_success(channel="api", parsed=result)
                 return result
-            logger.info(f"API解析失败，回退到HTML解析: {content_type}/{content_id}")
-        elif content_type == "pin":
-            logger.info(f"Pin 类型仅支持HTML解析: {content_id}")
         
         if public_reader_type and self.cookies:
             result = await self._parse_public_reader(clean_url, content_type, content_id)
             if result:
-                self._log_parse_success(channel="public_reader", parsed=result)
                 return result
 
         if content_id and content_type in browser_types:
             result = await read_public_page(content_type, content_id, await self._get_proxy_url())
-            self._log_parse_success(channel="public_browser", parsed=result)
             return result
 
         # HTML解析回退
         html_result = await self._parse_via_html(url, clean_url, content_type)
-        self._log_parse_success(channel="html", parsed=html_result)
         return html_result
 
     async def _parse_via_html(self, url: str, clean_url: str, content_type: str) -> ParsedContent:
