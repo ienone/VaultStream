@@ -316,7 +316,7 @@ class VaultStreamBot:
         
         # 注册群组消息监控处理器（被动监听 URL）
         application.add_handler(MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
+            (filters.TEXT | filters.ATTACHMENT) & ~filters.COMMAND,
             handle_text_message,
         ))
         

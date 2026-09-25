@@ -609,6 +609,15 @@ async def handle_natural_capture_message(
         str(getattr(message, "text", None) or "")
     )
     if not matched:
+        text = str(message.text or message.caption or "")
+        if extract_urls_from_text(text) or message.forward_origin or _capture_attachment(message):
+            original_args = context.args
+            context.args = []
+            try:
+                await save_command(update, context)
+            finally:
+                context.args = original_args
+            return True
         return False
     if not payload and getattr(message, "reply_to_message", None) is None:
         await message.reply_text(

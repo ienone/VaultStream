@@ -38,6 +38,7 @@ from app.routers import (
     agent,
     bot_config,
     bot_management,
+    qq_events,
     browser_auth,
     contents,
     discovery,
@@ -291,6 +292,7 @@ app.include_router(distribution.router, prefix="/api/v1", tags=["distribution"])
 app.include_router(system.router, prefix="/api/v1", tags=["system"])
 app.include_router(media.router, prefix="/api/v1", tags=["media"])
 app.include_router(bot_management.router, prefix="/api/v1", tags=["bot"])
+app.include_router(qq_events.router, prefix="/api/v1", tags=["bot"])
 app.include_router(bot_config.router, prefix="/api/v1", tags=["bot-config"])
 app.include_router(events.router, prefix="/api/v1", tags=["events"])
 app.include_router(knowledge_events.router, prefix="/api/v1", tags=["knowledge-events"])
@@ -335,3 +337,4 @@ if __name__ == "__main__":
         reload=settings.debug,
         access_log=False,
     )
+

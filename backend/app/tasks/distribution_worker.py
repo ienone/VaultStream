@@ -28,6 +28,7 @@ from app.models import (
     ReviewStatus,
 )
 from app.push.factory import get_push_service
+from app.services.qq_policy import QQRateLimited
 from app.services.background_task_state import (
     record_task_run_error,
     record_task_run_started,
@@ -669,6 +670,16 @@ class DistributionQueueWorker:
             message_id = await asyncio.wait_for(
                 push_service.push(content_dict, actual_target_id), timeout=remaining,
             )
+        except QQRateLimited as exc:
+            if await self._transition(
+                session, item, status=QueueItemStatus.SCHEDULED,
+                scheduled_at=datetime.utcfromtimestamp(exc.retry_at),
+                last_error=str(exc), last_error_type="target_rate_limited",
+                locked_at=None, locked_by=None,
+                attempt_count=max(0, item.attempt_count - 1),
+            ):
+                await session.commit()
+            return
         except asyncio.CancelledError:
             await self._mark_unknown(session, item)
             raise

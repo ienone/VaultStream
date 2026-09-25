@@ -79,6 +79,9 @@ class NapcatPushService(BasePushService):
 
     async def _post(self, endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         client = await self._get_client()
+        if endpoint in {"/send_group_msg", "/send_group_forward_msg"}:
+            from app.services.qq_policy import reserve_group_send
+            await reserve_group_send(str(payload["group_id"]))
         response = await client.post(endpoint, json=payload)
         response.raise_for_status()
         data = response.json()
