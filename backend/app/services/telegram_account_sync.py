@@ -17,7 +17,7 @@ from app.core.db_adapter import AsyncSessionLocal
 from app.core.time_utils import utcnow
 from app.models import (Content, ContentSource, ContentDiscoveryLink, ContentStatus,
                         DiscoverySource, DiscoverySourceKind, DiscoveryState, LayoutType,
-                        Platform, SystemSetting, TelegramMessage)
+                        Platform, SystemSetting, TelegramMessage, BotChat, DistributionTarget)
 from app.models.media import (MediaAsset, MediaType, MediaRole, MediaArchiveStatus,
                               MediaVariant, MediaVariantKind, MediaVariantStatus)
 from app.services.config_service import ConfigService
@@ -41,7 +41,15 @@ class TelegramAccountSync:
         account_id = me.id
         counts = {"channels": 0, "created": 0, "updated": 0, "saved": 0}
         if channels:
+            async with self.sessions() as db:
+                output_chats = set((await db.scalars(
+                    select(BotChat.chat_id).join(DistributionTarget,
+                        DistributionTarget.bot_chat_id == BotChat.id).where(
+                            BotChat.chat_type.in_(["channel", "group", "supergroup"])),
+                )).all())
             for channel in await self.reader.subscribed_channels():
+                if str(channel["peer_id"]) in output_chats:
+                    continue
                 source = await self._channel_source(account_id, channel)
                 if source_id is not None and source.id != source_id:
                     continue
