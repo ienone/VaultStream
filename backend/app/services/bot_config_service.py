@@ -400,36 +400,9 @@ class BotChatSyncService:
                 details.append(
                     {"chat_id": group_id, "title": group_name, "status": "ok"}
                 )
-                await event_bus.publish(
-                    "bot_sync_progress",
-                    {
-                        "bot_config_id": cfg.id,
-                        "chat_id": group_id,
-                        "title": group_name,
-                        "status": "ok",
-                        "updated": updated,
-                        "created": created,
-                        "failed": failed,
-                        "total": len(groups),
-                        "timestamp": utcnow().isoformat(),
-                    },
-                )
             except Exception as exc:
                 failed += 1
                 details.append({"status": "failed", "error": str(exc)})
-                await event_bus.publish(
-                    "bot_sync_progress",
-                    {
-                        "bot_config_id": cfg.id,
-                        "status": "failed",
-                        "error": str(exc),
-                        "updated": updated,
-                        "created": created,
-                        "failed": failed,
-                        "total": len(groups),
-                        "timestamp": utcnow().isoformat(),
-                    },
-                )
 
         await db.commit()
         await event_bus.publish(
