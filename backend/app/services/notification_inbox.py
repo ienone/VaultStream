@@ -295,6 +295,7 @@ def build_task_run_notification(run: dict[str, Any]) -> dict[str, Any] | None:
     label = presentation["title"]
     body = presentation["summary"][:1000]
     if is_error:
+        body = None
         dedupe_key = _task_error_dedupe_key(task, metadata)
         title = f"{label}失败"
         severity = "attention"
@@ -519,7 +520,9 @@ def serialize_notification(
         "category": row.category,
         "severity": row.severity,
         "title": row.title,
-        "body": row.body,
+        "body": (None if row.source_type == "background_task_run"
+                 and isinstance(row.payload, dict)
+                 and row.payload.get("status") in TASK_ERROR_STATUSES else row.body),
         "route": row.route,
         "source_type": row.source_type,
         "source_id": row.source_id,

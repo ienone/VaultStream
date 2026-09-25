@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from telethon import TelegramClient, errors, functions, types, utils
 from telethon.extensions import html
-from markdownify import markdownify
+from app.adapters.telegram_text import telegram_html_to_markdown
 
 
 @dataclass(frozen=True)
@@ -72,7 +72,7 @@ def assemble_posts(messages: list[types.Message]) -> list[TelegramPost]:
         groups.setdefault(key, []).append(message)
     posts = []
     for members in groups.values():
-        texts = [markdownify(html.unparse(m.message or "", m.entities or []), heading_style="ATX").strip() for m in members if m.message]
+        texts = [telegram_html_to_markdown(html.unparse(m.message or "", m.entities or [])) for m in members if m.message]
         payload = [_message_payload(m) for m in members]
         fingerprint = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
         reply = members[0].reply_to

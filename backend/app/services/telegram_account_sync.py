@@ -192,6 +192,10 @@ class TelegramAccountSync:
                 source_type="telegram_channel" if source else "telegram_saved")
             db.add(content)
             action = "created"
+        # Refresh presentation during the existing review pass, without re-archiving
+        # media or re-running distribution when Telegram itself has not changed.
+        if not action and "body" not in (content.manual_edit_fields or []):
+            content.body = post.body or None
         if action:
             content.resolved_url = None
             author = source.name if source else None

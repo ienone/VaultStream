@@ -172,13 +172,8 @@ class TelegramAdapter(PlatformAdapter):
                 pass
 
         # 4. 正文与媒体
-        content_copy = BeautifulSoup(str(text_elem) if text_elem else '', 'html.parser')
-        for a in content_copy.find_all('a'):
-            a.replace_with(f"[{a.get_text()}]({a.get('href', '')})")
-        for b in content_copy.find_all(['b', 'strong']):
-            b.replace_with(f"**{b.get_text()}**")
-        
-        main_body = content_copy.get_text(separator="\n").strip()
+        from app.adapters.telegram_text import telegram_html_to_markdown
+        main_body = telegram_html_to_markdown(str(text_elem) if text_elem else '')
         title = main_body.split('\n')[0][:50] + "..." if main_body else "无正文内容"
         
         media_urls = []
