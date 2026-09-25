@@ -9,7 +9,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from app.adapters.telegram_account import TelegramAccountReader, assemble_posts
-from telethon import types
+from telethon import types, errors
 from app.adapters.storage import get_storage_backend
 from app.core.config import settings
 from app.core.db_adapter import AsyncSessionLocal
@@ -285,8 +285,18 @@ class TelegramAccountSync:
             if complete:
                 continue
             async def chunks():
-                async for chunk in self.client.iter_download(message.media):
-                    yield chunk
+                offset = 0
+                try:
+                    async for chunk in self.client.iter_download(message.media):
+                        offset += len(chunk)
+                        yield chunk
+                except (errors.FileReferenceExpiredError, errors.FilerefUpgradeNeededError):
+                    refreshed = await self.client.get_messages(post.address.peer_id, ids=message.id)
+                    refreshed_media = (refreshed.photo or refreshed.document) if refreshed else None
+                    if refreshed_media is None or refreshed_media.id != media.id:
+                        raise
+                    async for chunk in self.client.iter_download(refreshed.media, offset=offset):
+                        yield chunk
             async with self.storage.stage_stream(chunks=chunks(), content_type=mime, max_bytes=max_bytes) as (stored, temp):
                 if kind == "image":
                     data = await asyncio.to_thread(Path(temp).read_bytes)
