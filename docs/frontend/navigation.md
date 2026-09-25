@@ -40,7 +40,7 @@ Root Shell 主导航分支：
 - `/tasks/:runId`: 后台任务结果。
 - `/agent`: Agent 工作台，由侧栏或同源导航抽屉进入。
 - `/search`: 全局搜索，由侧栏、抽屉或收藏库的跨类型入口进入；`q`、`kind`、`content_scope`、`mode`、`page/size/top_k`、重复的 `platform/status/tag`、`author` 和 `date_from/date_to` 共同保持可刷新查询状态。收藏列表与全局搜索共用请求类型和筛选表单，跳转保留完整条件，标签中的逗号不作为分隔符。
-- `/player`: 展开当前应用级音视频播放会话、时间点书签和待播队列，并为视频切换仅听声音；由 Root Shell mini player 或 Android 媒体通知进入，没有会话时显示明确空状态；通知点击在已处于播放页时不重复压栈。
+- `/player`: 独立播放设置页，保留时间点书签、待播队列和仅听声音设置。底部播放条与 Android 媒体通知点击均进入当前内容详情；已在该详情时不重复压栈。
 - `/notifications`: 消息盒子，由全局工具组进入；深链接和返回保持真实来源。
 - `/events/:id`: 跨模板事件详情，由内容详情中的所属事件或加入事件结果进入。
 
