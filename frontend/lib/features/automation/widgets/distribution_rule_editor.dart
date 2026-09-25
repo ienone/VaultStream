@@ -645,21 +645,11 @@ class DistributionRuleEditorState extends State<DistributionRuleEditor> {
     );
   }
 
-  Widget _buildRenderConfigSection() => ExpansionTile(
-    title: const Text('消息样式'),
-    subtitle: Text(
-      _renderConfig.isEmpty ? '使用默认样式' : '已自定义',
-      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-      ),
-    ),
-    expansionAnimationStyle: _expansionStyle,
-    shape: const Border(),
-    collapsedShape: const Border(),
-    tilePadding: EdgeInsets.zero,
-    childrenPadding: const EdgeInsets.only(top: 16, bottom: 16),
-    maintainState: true,
+  Widget _buildRenderConfigSection() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
     children: [
+      Text('推送格式', style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: 8),
       RenderConfigEditor(
         config: _renderConfig,
         onChanged: (cfg) => setState(() => _renderConfig = cfg),

@@ -1,5 +1,4 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'render_config.dart';
 
 part 'distribution_target.freezed.dart';
 part 'distribution_target.g.dart';
@@ -29,8 +28,6 @@ abstract class DistributionTarget with _$DistributionTarget {
     @JsonKey(name: 'merge_forward') @Default(false) bool mergeForward,
     @JsonKey(name: 'use_author_name') @Default(true) bool useAuthorName,
     String? summary,
-    @JsonKey(name: 'render_config_override')
-    RenderConfig? renderConfigOverride,
     @JsonKey(name: 'bot_chat') DistributionTargetBotChat? botChat,
     @JsonKey(name: 'created_at') required DateTime createdAt,
     @JsonKey(name: 'updated_at') required DateTime updatedAt,
@@ -48,8 +45,6 @@ abstract class DistributionTargetCreate with _$DistributionTargetCreate {
     @JsonKey(name: 'merge_forward') @Default(false) bool mergeForward,
     @JsonKey(name: 'use_author_name') @Default(true) bool useAuthorName,
     String? summary,
-    @JsonKey(name: 'render_config_override')
-    RenderConfig? renderConfigOverride,
   }) = _DistributionTargetCreate;
 
   factory DistributionTargetCreate.fromJson(Map<String, dynamic> json) =>
@@ -63,8 +58,6 @@ abstract class DistributionTargetUpdate with _$DistributionTargetUpdate {
     @JsonKey(name: 'merge_forward') bool? mergeForward,
     @JsonKey(name: 'use_author_name') bool? useAuthorName,
     String? summary,
-    @JsonKey(name: 'render_config_override')
-    RenderConfig? renderConfigOverride,
   }) = _DistributionTargetUpdate;
 
   factory DistributionTargetUpdate.fromJson(Map<String, dynamic> json) =>
