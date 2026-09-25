@@ -2,6 +2,7 @@
 内容与来源相关模型定义
 """
 from datetime import datetime
+from urllib.parse import urlsplit
 from enum import Enum
 from typing import Optional, Any
 from sqlalchemy import String, Text, JSON, Integer, Float, DateTime, Boolean, ForeignKey, Index, UniqueConstraint
@@ -140,9 +141,12 @@ class Content(Base):
     )
 
     @property
-    def clean_url(self) -> str:
-        """Public link: resolved destination when distinct from the ingestion identity."""
-        return self.resolved_url or self.canonical_url or self.url
+    def clean_url(self) -> Optional[str]:
+        """External original link; ingestion identities are not reader-facing URLs."""
+        for value in (self.resolved_url, self.canonical_url, self.url):
+            if value and urlsplit(value).scheme in {"http", "https"} and urlsplit(value).hostname:
+                return value
+        return None
 
 
 class ContentSource(Base):

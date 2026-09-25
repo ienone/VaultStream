@@ -87,35 +87,38 @@ async def get_media_asset(session: AsyncSession, asset_id: int) -> MediaAsset | 
     return result.scalar_one_or_none()
 
 
-async def build_content_media_manifests(
-    session: AsyncSession,
-    content_ids: list[int],
-    *,
-    purpose: MediaPurpose,
-    base_url: str,
-) -> dict[int, list[MediaAssetManifest]]:
-    """批量生成内容媒体，避免列表接口逐条查询。"""
+async def load_content_media_assets(
+    session: AsyncSession, content_ids: list[int], *, purpose: MediaPurpose,
+) -> dict[int, list[MediaAsset]]:
     if not content_ids:
         return {}
     result = await session.execute(
         select(MediaAsset)
         .where(MediaAsset.content_id.in_(content_ids))
         .options(selectinload(MediaAsset.variants))
-        .order_by(MediaAsset.content_id, MediaAsset.position, MediaAsset.id)
     )
-    assets_by_content: dict[int, list[MediaAsset]] = {
-        content_id: [] for content_id in content_ids
-    }
+    grouped = {content_id: [] for content_id in content_ids}
     for asset in result.scalars().unique():
-        assets_by_content.setdefault(asset.content_id, []).append(asset)
-    grouped: dict[int, list[MediaAssetManifest]] = {}
-    for content_id, assets in assets_by_content.items():
+        grouped[asset.content_id].append(asset)
+    for assets in grouped.values():
         assets.sort(key=lambda asset: _content_asset_priority(asset, purpose))
-        grouped[content_id] = [
-            build_media_manifest(asset, purpose=purpose, base_url=base_url)
-            for asset in assets
-        ]
     return grouped
+
+
+async def build_content_media_manifests(
+    session: AsyncSession, content_ids: list[int], *, purpose: MediaPurpose, base_url: str,
+) -> dict[int, list[MediaAssetManifest]]:
+    assets = await load_content_media_assets(session, content_ids, purpose=purpose)
+    return {
+        content_id: [build_media_manifest(asset, purpose=purpose, base_url=base_url) for asset in items]
+        for content_id, items in assets.items()
+    }
+
+
+def media_preview_url(assets: list[MediaAssetManifest], *, avatar: bool = False) -> str | None:
+    return next((asset.sources[0].url for asset in assets
+                 if asset.media_type == MediaType.IMAGE and asset.sources
+                 and (asset.role == MediaRole.AVATAR) == avatar), None)
 
 
 def build_media_manifest(

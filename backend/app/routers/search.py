@@ -25,9 +25,9 @@ from app.schemas import (
 )
 from app.services.embedding_service import EmbeddingService
 from app.services.search_service import UnifiedSearchService
-from app.services.content_presenter import compute_effective_layout_type, transform_media_url
+from app.services.content_presenter import compute_effective_layout_type
 from app.schemas.media import MediaPurpose
-from app.services.media_manifest import build_content_media_manifests, resolve_media_base_url
+from app.services.media_manifest import build_content_media_manifests, resolve_media_base_url, media_preview_url
 from app.services.background_task_state import (
     record_task_run_error,
     record_task_run_started,
@@ -38,7 +38,7 @@ from app.utils.datetime_utils import normalize_datetime_for_db
 router = APIRouter()
 
 
-def _serialize_content_hit(hit, media_assets, base_url) -> UnifiedSearchContentItem:
+def _serialize_content_hit(hit, media_assets) -> UnifiedSearchContentItem:
     return UnifiedSearchContentItem(
         content_id=hit.content.id,
         score=float(hit.score),
@@ -55,8 +55,8 @@ def _serialize_content_hit(hit, media_assets, base_url) -> UnifiedSearchContentI
         title=hit.content.title,
         summary=hit.content.summary,
         author_name=hit.content.author_name,
-        author_avatar_url=transform_media_url(hit.content.author_avatar_url, base_url),
-        cover_url=transform_media_url(hit.content.cover_url, base_url),
+        author_avatar_url=media_preview_url(media_assets, avatar=True),
+        cover_url=media_preview_url(media_assets),
         cover_color=hit.content.cover_color,
         media_assets=media_assets,
         is_nsfw=hit.content.is_nsfw,
@@ -148,7 +148,7 @@ async def unified_search(
         mode=mode, page=page, size=size,
         content_total=results.content_total,
         content_has_more=results.content_has_more,
-        contents=[_serialize_content_hit(hit, manifests.get(hit.content.id, []), base_url) for hit in results.contents],
+        contents=[_serialize_content_hit(hit, manifests.get(hit.content.id, [])) for hit in results.contents],
         document_pages=results.document_pages,
         events=events,
         people=[

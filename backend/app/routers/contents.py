@@ -61,8 +61,7 @@ from app.services.content_service import (
 from app.services.distribution.delivery_state import DELIVERY_UNKNOWN
 from app.repositories.content_repository import ContentRepository
 from app.services.content_presenter import (
-    compute_effective_layout_type, compute_display_title, compute_author_avatar_url,
-    transform_media_url, transform_content_detail, bind_detail_media_sources,
+    compute_effective_layout_type, compute_display_title, build_content_detail,
 )
 from app.services.background_task_state import (
     record_task_run_error,
@@ -77,7 +76,7 @@ from app.services.media_manifest import (
     build_content_media_manifests,
     resolve_media_base_url,
 )
-from app.services.media_segments import build_media_segment_items
+from app.services.media_manifest import media_preview_url
 from app.schemas.document import DocumentTextResponse, DocumentExtractionAcceptedResponse
 from app.services.document_text import (
     document_assets, original_pdf, build_document_text_items, schedule_document_extraction,
@@ -991,21 +990,7 @@ async def get_content_detail(
         await db.refresh(content)
         
     base_url = resolve_media_base_url(str(request.base_url))
-    detail = transform_content_detail(ContentDetail.model_validate(content), base_url)
-    manifests = await build_content_media_manifests(
-        db,
-        [content.id],
-        purpose=MediaPurpose.DETAIL,
-        base_url=base_url,
-    )
-    detail.media_assets = manifests.get(content.id, [])
-    bind_detail_media_sources(detail)
-    detail.media_segments = build_media_segment_items(
-        content_id=content.id,
-        rich_payload=content.rich_payload,
-        assets=detail.media_assets,
-    )
-    return detail
+    return await build_content_detail(db, content, base_url)
 
 
 @router.get("/contents/{content_id}/document-text", response_model=DocumentTextResponse)
@@ -1086,21 +1071,7 @@ async def update_content(
         raise HTTPException(status_code=404, detail=str(e))
 
     base_url = resolve_media_base_url(str(raw_request.base_url))
-    detail = transform_content_detail(ContentDetail.model_validate(content), base_url)
-    manifests = await build_content_media_manifests(
-        db,
-        [content.id],
-        purpose=MediaPurpose.DETAIL,
-        base_url=base_url,
-    )
-    detail.media_assets = manifests.get(content.id, [])
-    bind_detail_media_sources(detail)
-    detail.media_segments = build_media_segment_items(
-        content_id=content.id,
-        rich_payload=content.rich_payload,
-        assets=detail.media_assets,
-    )
-    return detail
+    return await build_content_detail(db, content, base_url)
 
 
 @router.post(
@@ -1129,21 +1100,7 @@ async def resolve_content_parse_candidate(
         raise HTTPException(status_code=status_code, detail=detail)
 
     base_url = resolve_media_base_url(str(raw_request.base_url))
-    detail = transform_content_detail(ContentDetail.model_validate(content), base_url)
-    manifests = await build_content_media_manifests(
-        db,
-        [content.id],
-        purpose=MediaPurpose.DETAIL,
-        base_url=base_url,
-    )
-    detail.media_assets = manifests.get(content.id, [])
-    bind_detail_media_sources(detail)
-    detail.media_segments = build_media_segment_items(
-        content_id=content.id,
-        rich_payload=content.rich_payload,
-        assets=detail.media_assets,
-    )
-    return detail
+    return await build_content_detail(db, content, base_url)
 
 @router.delete("/contents/{content_id}", response_model=ContentDeleteResponse)
 async def delete_content(
@@ -1458,10 +1415,7 @@ async def list_share_cards(
     )
     items = []
     for c in contents:
-        cover_url = transform_media_url(c.cover_url, base_url)
-        thumbnail_url = None
-        if cover_url and "/api/v1/media/" in cover_url:
-            thumbnail_url = f"{cover_url}?size=thumb"
+        cover_url = media_preview_url(manifests.get(c.id, []))
         
         items.append({
             "id": c.id,
@@ -1474,9 +1428,9 @@ async def list_share_cards(
             "title": ensure_title(c.title, None),
             "author_name": c.author_name,
             "author_id": c.author_id,
-            "author_avatar_url": transform_media_url(compute_author_avatar_url(c), base_url),
+            "author_avatar_url": media_preview_url(manifests.get(c.id, []), avatar=True),
             "cover_url": cover_url,
-            "thumbnail_url": thumbnail_url,
+            "thumbnail_url": cover_url,
             "media_assets": manifests.get(c.id, []),
             "cover_color": c.cover_color,
             "tags": c.tags or [],
@@ -1518,10 +1472,7 @@ async def get_share_card(
         purpose=MediaPurpose.CARD,
         base_url=base_url,
     )
-    cover_url = transform_media_url(c.cover_url, base_url)
-    thumbnail_url = None
-    if cover_url and "/api/v1/media/" in cover_url:
-        thumbnail_url = f"{cover_url}?size=thumb"
+    cover_url = media_preview_url(manifests.get(c.id, []))
 
     return {
         "id": c.id,
@@ -1534,9 +1485,9 @@ async def get_share_card(
         "title": compute_display_title(c),
         "author_name": c.author_name,
         "author_id": c.author_id,
-        "author_avatar_url": transform_media_url(compute_author_avatar_url(c), base_url),
+        "author_avatar_url": media_preview_url(manifests.get(c.id, []), avatar=True),
         "cover_url": cover_url,
-        "thumbnail_url": thumbnail_url,
+        "thumbnail_url": cover_url,
         "media_assets": manifests.get(c.id, []),
         "cover_color": c.cover_color,
         "tags": c.tags or [],
