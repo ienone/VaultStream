@@ -9,6 +9,11 @@ from pydantic import BaseModel, Field, field_validator, ConfigDict
 from app.schemas.base import UtcDatetime, OptionalUtcDatetime
 
 
+class RenderConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    format: Literal["summary", "full", "text"] = "summary"
+
+
 class DistributionTargetCreate(BaseModel):
     bot_chat_id: int
     enabled: bool = True
@@ -17,7 +22,6 @@ class DistributionTargetCreate(BaseModel):
     merge_forward: bool = False
     use_author_name: bool = True
     summary: Optional[str] = None
-    render_config_override: Optional[Dict[str, Any]] = None
 
     @field_validator("backfill_recent_days")
     @classmethod
@@ -53,7 +57,6 @@ class DistributionTargetUpdate(BaseModel):
     merge_forward: Optional[bool] = None
     use_author_name: Optional[bool] = None
     summary: Optional[str] = None
-    render_config_override: Optional[Dict[str, Any]] = None
 
 
 class DistributionTargetResponse(BaseModel):
@@ -66,7 +69,6 @@ class DistributionTargetResponse(BaseModel):
     merge_forward: bool
     use_author_name: bool
     summary: Optional[str]
-    render_config_override: Optional[Dict[str, Any]]
     created_at: UtcDatetime
     updated_at: UtcDatetime
     
@@ -86,7 +88,7 @@ class DistributionRuleCreate(BaseModel):
     rate_limit: Optional[int] = None
     time_window: Optional[int] = None
     template_id: Optional[str] = None
-    render_config: Optional[Dict[str, Any]] = None
+    render_config: Optional[RenderConfig] = None
 
 
 class DistributionRuleUpdate(BaseModel):
@@ -100,7 +102,7 @@ class DistributionRuleUpdate(BaseModel):
     rate_limit: Optional[int] = None
     time_window: Optional[int] = None
     template_id: Optional[str] = None
-    render_config: Optional[Dict[str, Any]] = None
+    render_config: Optional[RenderConfig] = None
 
 
 class DistributionRuleResponse(BaseModel):
@@ -115,7 +117,7 @@ class DistributionRuleResponse(BaseModel):
     rate_limit: Optional[int]
     time_window: Optional[int]
     template_id: Optional[str]
-    render_config: Optional[Dict[str, Any]]
+    render_config: Optional[RenderConfig]
     created_at: UtcDatetime
     updated_at: UtcDatetime
     
@@ -179,7 +181,6 @@ class BatchTargetUpdateRequest(BaseModel):
     target_id: str
     enabled: Optional[bool] = None
     merge_forward: Optional[bool] = None
-    render_config: Optional[Dict[str, Any]] = None
     
 
     model_config = ConfigDict(from_attributes=True)
@@ -196,7 +197,6 @@ class TargetUsageInfo(BaseModel):
     merge_forward: bool = False
     use_author_name: bool = True
     summary: Optional[str] = None
-    render_config: Optional[Dict[str, Any]] = None
     total_pushed: int = 0
     last_pushed_at: OptionalUtcDatetime = None
 
@@ -212,19 +212,6 @@ class BatchTargetUpdateResponse(BaseModel):
     updated_count: int
     updated_rules: List[int]
     message: str
-
-
-class RenderConfig(BaseModel):
-    """渲染配置结构（可嵌套或扁平使用）"""
-    show_platform_id: bool = True
-    show_title: bool = True
-    show_tags: bool = False
-    author_mode: str = Field(default="full", description="Author display mode: none/name/full")
-    content_mode: str = Field(default="summary", description="Content mode: hidden/summary/full")
-    media_mode: str = Field(default="auto", description="Media mode: none/auto/all")
-    link_mode: str = Field(default="clean", description="Link mode: none/clean/original")
-    header_text: str = Field(default="", description="Header text with variable support")
-    footer_text: str = Field(default="", description="Footer text with variable support")
 
 
 class RenderConfigPreset(BaseModel):

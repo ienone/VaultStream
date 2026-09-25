@@ -53,20 +53,12 @@ def _build_target_send_test_content(platform: str, target_id: str) -> Dict[str, 
             "这是一条由健康矩阵触发的测试消息，用于验证推送目标能否接收真实消息。"
         ),
         "body": f"测试时间：{now_text}\n平台：{platform}\n目标：{target_id}",
-        "url": "https://vaultstream.local/diagnostics/target-send-test",
-        "clean_url": "https://vaultstream.local/diagnostics/target-send-test",
+        "url": "",
+        "clean_url": "",
         "tags": ["diagnostic"],
         "media_items": [],
         "archive_metadata": {},
-        "render_config": {
-            "media_mode": "none",
-            "link_mode": "none",
-            "show_platform_id": False,
-            "show_title": True,
-            "author_mode": "none",
-            "content_mode": "summary",
-            "show_tags": False,
-        },
+        "render_config": {"format": "text"},
     }
 
 
@@ -366,7 +358,6 @@ async def list_all_targets(
                 "merge_forward": dt.merge_forward,
                 "use_author_name": dt.use_author_name,
                 "summary": dt.summary,
-                "render_config": dt.render_config_override,
                 "total_pushed": 0,                "last_pushed_at": None,
             }
         
@@ -721,8 +712,6 @@ async def batch_update_targets(
             update_values["enabled"] = request.enabled
         if request.merge_forward is not None:
             update_values["merge_forward"] = request.merge_forward
-        if request.render_config is not None:
-            update_values["render_config"] = request.render_config
             
         if update_values:
             await db.execute(stmt.values(**update_values))

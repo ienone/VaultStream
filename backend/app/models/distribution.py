@@ -60,7 +60,6 @@ class DistributionTarget(Base):
     use_author_name: Mapped[bool] = mapped_column(Boolean, default=True)
     summary: Mapped[Optional[str]] = mapped_column(String(200), default=None)
     
-    render_config_override: Mapped[Optional[Any]] = mapped_column(JSON, default=None)
     
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

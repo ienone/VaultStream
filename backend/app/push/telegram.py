@@ -21,7 +21,7 @@ from app.core.logging import logger
 from app.adapters.storage import get_storage_backend
 from app.services.bot_config_runtime import get_primary_telegram_token_from_db
 from app.services.config_service import ConfigService
-from app.utils.text_formatters import format_content_for_tg, format_content_with_render_config
+from app.utils.text_formatters import format_push_text, select_push_media
 from .base import BasePushService
 
 
@@ -73,13 +73,6 @@ class TelegramPushService(BasePushService):
         return self._bot
     
     @staticmethod
-    def _get_media_mode(render_config: Dict[str, Any]) -> str:
-        if not render_config:
-            return "auto"
-        structure = render_config.get("structure", render_config)
-        return structure.get("media_mode", "auto")
-
-    @staticmethod
     def _normalize_target_id(target_id: str) -> str:
         target = str(target_id or "").strip()
         if not target:
@@ -100,27 +93,7 @@ class TelegramPushService(BasePushService):
         Returns:
             Tuple[str, List[Dict]]: (格式化后的文本, 媒体项列表)
         """
-        render_config = content.get('render_config') or {}
-        if render_config:
-            text = format_content_with_render_config(
-                content,
-                render_config,
-                rich_text=True,
-                platform=content.get('platform') or "",
-            )
-        else:
-            text = format_content_for_tg(content)
-        
-        media_items = list(content.get('media_items') or [])
-
-        media_mode = self._get_media_mode(render_config)
-        if media_mode == "none":
-            media_items = []
-        elif media_mode == "cover" and media_items:
-            photos = [m for m in media_items if m["type"] == "photo"]
-            media_items = photos[:1] if photos else media_items[:1]
-
-        return text, media_items
+        return format_push_text(content, rich_text=True), select_push_media(content)
 
     @staticmethod
     def _prepare_media(item, stack):
@@ -162,7 +135,10 @@ class TelegramPushService(BasePushService):
         with ExitStack() as stack:
             media = [self._prepare_media(item, stack) for item in items]
             limit = MAX_CAPTION_LENGTH if media else MAX_MESSAGE_LENGTH
-            plain = BeautifulSoup(text, "html.parser").get_text()
+            document = BeautifulSoup(text, "html.parser")
+            for link in document.find_all("a", href=True):
+                link.replace_with(link["href"])
+            plain = document.get_text()
             caption = text
             first = None
             if len(plain.encode("utf-16-le")) // 2 > limit:
@@ -172,8 +148,15 @@ class TelegramPushService(BasePushService):
                 for char in plain:
                     units = len(char.encode("utf-16-le")) // 2
                     if size + units > MAX_MESSAGE_LENGTH:
-                        chunks.append("".join(current))
-                        current, size = [], 0
+                        value = "".join(current)
+                        boundary = value.rfind("\n")
+                        if boundary > len(value) // 2:
+                            chunks.append(value[:boundary].rstrip())
+                            current = list(value[boundary + 1:])
+                            size = len("".join(current).encode("utf-16-le")) // 2
+                        else:
+                            chunks.append(value)
+                            current, size = [], 0
                     current.append(char)
                     size += units
                 if current:
@@ -181,13 +164,13 @@ class TelegramPushService(BasePushService):
                 for chunk in chunks:
                     message = await bot.send_message(
                         chat_id=chat_id, text=html.escape(chunk), parse_mode="HTML",
-                        disable_web_page_preview=bool(media), reply_markup=reply_markup if first is None else None,
+                        disable_web_page_preview=True, reply_markup=reply_markup if first is None else None,
                     )
                     first = first or message
             if not media:
                 if first:
                     return first
-                return await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML", reply_markup=reply_markup)
+                return await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML", disable_web_page_preview=True, reply_markup=reply_markup)
             constructors = {"photo": InputMediaPhoto, "video": InputMediaVideo,
                             "audio": InputMediaAudio, "document": InputMediaDocument}
             offset = 0

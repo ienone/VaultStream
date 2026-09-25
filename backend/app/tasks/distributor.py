@@ -138,7 +138,6 @@ class ContentDistributor:
         self,
         content: Content,
         rule: DistributionRule | None,
-        target_render_config: dict | None = None,
         *,
         media_assets: Iterable[MediaAsset] = (),
         target_platform: str,
@@ -150,12 +149,8 @@ class ContentDistributor:
         if content.platform:
             payload["platform"] = content.platform.value
 
-        # render_config 合并逻辑：rule 级 → target 级覆盖
         if rule and rule.render_config:
             payload["render_config"] = rule.render_config
-        if target_render_config:
-            base = payload.get("render_config") or {}
-            payload["render_config"] = {**base, **target_render_config}
 
         payload["media_items"] = build_push_media_items(
             media_assets,

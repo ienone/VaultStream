@@ -23,72 +23,8 @@ SUPPORTED_PLATFORMS = [Platform.TELEGRAM.value, Platform.QQ.value]
 
 # 渲染配置预设（原始数据，以避免与 schemas 产生循环导入）
 DEFAULT_RENDER_CONFIG_PRESETS = [
-    {
-        "id": "minimal",
-        "name": "极简",
-        "description": "仅显示标题与链接，适合精简推送",
-        "is_builtin": True,
-        "config": {
-            "show_platform_id": False,
-            "show_title": True,
-            "show_tags": False,
-            "author_mode": "none",
-            "content_mode": "hidden",
-            "media_mode": "none",
-            "link_mode": "clean",
-            "header_text": "",
-            "footer_text": ""
-        }
-    },
-    {
-        "id": "standard",
-        "name": "标准",
-        "description": "平衡展示摘要与媒体，适合日常使用",
-        "is_builtin": True,
-        "config": {
-            "show_platform_id": True,
-            "show_title": True,
-            "show_tags": False,
-            "author_mode": "name",
-            "content_mode": "summary",
-            "media_mode": "auto",
-            "link_mode": "clean",
-            "header_text": "",
-            "footer_text": ""
-        }
-    },
-    {
-        "id": "detailed",
-        "name": "详细",
-        "description": "完整展示字段与媒体，信息最丰富",
-        "is_builtin": True,
-        "config": {
-            "show_platform_id": True,
-            "show_title": True,
-            "show_tags": True,
-            "author_mode": "full",
-            "content_mode": "full",
-            "media_mode": "all",
-            "link_mode": "original",
-            "header_text": "日期 {{date}}",
-            "footer_text": ""
-        }
-    },
-    {
-        "id": "media_only",
-        "name": "媒体优先",
-        "description": "以媒体为主，文本最少",
-        "is_builtin": True,
-        "config": {
-            "show_platform_id": False,
-            "show_title": True,
-            "show_tags": False,
-            "author_mode": "none",
-            "content_mode": "hidden",
-            "media_mode": "all",
-            "link_mode": "none",
-            "header_text": "",
-            "footer_text": ""
-        }
-    },
+    {"id": "summary", "name": "图文摘要", "description": "短正文或摘要，配一张代表图", "is_default": True,
+     "config": {"format": "summary"}},
+    {"id": "full", "name": "完整内容", "description": "全文与全部媒体", "config": {"format": "full"}},
+    {"id": "text", "name": "仅文字", "description": "全文与原文链接，不发送媒体", "config": {"format": "text"}},
 ]

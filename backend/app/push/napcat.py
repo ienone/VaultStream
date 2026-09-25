@@ -18,7 +18,7 @@ import httpx
 from app.core.logging import logger
 from app.adapters.storage import get_storage_backend
 from app.services.bot_config_runtime import get_primary_qq_runtime_from_db
-from app.utils.text_formatters import format_content_with_render_config
+from app.utils.text_formatters import format_push_text, select_push_media
 from .base import BasePushService
 
 MAX_FORWARD_NODES = 99
@@ -88,42 +88,16 @@ class NapcatPushService(BasePushService):
             raise RuntimeError(f"Napcat API error: {data}")
         return data
 
-    def _get_media_mode(self, content: Dict[str, Any]) -> str:
-        render_config = content.get("render_config") or {}
-        if isinstance(render_config, dict):
-            structure = render_config.get("structure", render_config)
-            return structure.get("media_mode", "auto")
-        return "auto"
-
-    def _extract_media(self, content: Dict[str, Any]) -> List[Dict[str, Any]]:
-        media_mode = self._get_media_mode(content)
-        if media_mode == "none":
-            return []
-
-        media_items = list(content.get("media_items") or [])
-
-        if media_mode == "cover" and media_items:
-            photos = [m for m in media_items if m["type"] == "photo"]
-            return photos[:1] if photos else media_items[:1]
-
-        return media_items
-
     def _build_message_segments(self, content: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Build OneBot 11 message segments including text and media.
 
         Produces a mixed-content message array:
         [text, image, image, ..., video, ...]
         """
-        render_config = content.get("render_config") or {}
-        text = format_content_with_render_config(
-            content,
-            render_config,
-            rich_text=False,
-            platform=content.get("platform") or "",
-        )
+        text = format_push_text(content, rich_text=False)
         segments: List[Dict[str, Any]] = [_build_text_segment(text)] if text else []
 
-        media_items = self._extract_media(content)
+        media_items = select_push_media(content)
         for item in media_items:
             url = _resolve_media_url(item)
             if not url:
