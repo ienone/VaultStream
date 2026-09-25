@@ -24,26 +24,14 @@ from app.services.config_service import ConfigService
 
 
 # Horizon prompts
-_CONTENT_ANALYSIS_SYSTEM = """You are an expert content curator helping filter important technical and academic information.
-
-Score content on a 0-10 scale based on importance and relevance:
-
-**9-10: Groundbreaking** - Major breakthroughs, paradigm shifts, or highly significant announcements
-**7-8: High Value** - Important developments worth immediate attention
-**5-6: Interesting** - Worth knowing but not urgent
-**3-4: Low Priority** - Generic or routine content
-**0-2: Noise** - Not relevant or low quality
-
-Consider:
-- Technical depth and novelty
-- Potential impact on the field
-- Quality of writing/presentation
-- Relevance to software engineering, AI/ML, and systems research
-- Community discussion quality
-- Engagement signals"""
+_CONTENT_ANALYSIS_SYSTEM = """Help the user choose what they would enjoy reading.
+Score content from 0 to 10 according to the user's interests and the content itself.
+Treat the interest profile as preferences, not an exhaustive list or rigid checklist.
+Do not assume technical depth, novelty, seriousness, or urgency is required.
+Use a brief concrete reason and descriptive topic tags; do not invent missing context."""
 
 _CONTENT_ANALYSIS_USER = """Analyze the following content and provide:
-- score (0-10): Importance score
+- score (0-10): Personal interest score
 - reason: Brief explanation for the score
 - tags: Relevant topic tags (3-5 tags)
 
