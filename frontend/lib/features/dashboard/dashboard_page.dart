@@ -242,14 +242,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
         leading: buildRootPageLeading(context),
         toolbarHeight: metrics.heightClass.isCompact ? 48 : null,
         title: const Text('动态'),
-        actions: [
-          IconButton(
-            tooltip: '刷新动态',
-            onPressed: !_showEventUpdates && feed.isLoading ? null : _refresh,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-          const RootPageActions(),
-        ],
+        actions: [const RootPageActions()],
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,

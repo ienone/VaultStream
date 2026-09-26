@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../providers/local_settings_provider.dart';
@@ -111,14 +112,18 @@ class SseService extends _$SseService {
       if (previous?.apiToken != next.apiToken ||
           previous?.baseUrl != next.baseUrl) {
         _reconnectAttempts = 0;
+        _lastEventId = null;
         _connect();
       }
     });
 
+    _disposed = false;
+    final lifecycle = AppLifecycleListener(onResume: reconnect);
     _connect();
 
     ref.onDispose(() {
       _disposed = true;
+      lifecycle.dispose();
       _cleanup();
     });
 
@@ -182,6 +187,7 @@ class SseService extends _$SseService {
     _httpClient = client;
     final abort = Completer<void>();
     _abortRequest = abort;
+    _resetIdleTimer();
 
     try {
       final request = http.AbortableRequest(
@@ -292,6 +298,7 @@ class SseService extends _$SseService {
     if (eventType == _SseConfig.eventConnected) {
       _reconnectAttempts = 0;
       _eventBus.updateState(SseConnectionState.connected);
+      _eventBus.addEvent(SseEvent(type: eventType, data: const {}));
       return;
     }
 
@@ -348,6 +355,30 @@ class SseService extends _$SseService {
     });
   }
 }
+
+/// Events signal a fact reread; reconnect also reconciles missed changes.
+/// Coalesce bursts without delaying refresh indefinitely during busy tasks.
+void refreshOnEvents(Ref ref, bool Function(SseEvent) matches) {
+  ref.watch(sseServiceProvider.notifier);
+  Timer? pending;
+  final subscription = SseEventBus().eventStream.listen((event) {
+    if (event.type != 'connected' && !matches(event)) return;
+    pending ??= Timer(const Duration(milliseconds: 250), () {
+      pending = null;
+      if (ref.mounted) ref.invalidateSelf();
+    });
+  });
+  ref.onDispose(() {
+    pending?.cancel();
+    subscription.cancel();
+  });
+}
+
+bool affectsContent(SseEvent event, int id) => switch (event.type) {
+  'content_updated' || 'content_deleted' => event.data['id'] == id,
+  'background_task_updated' => event.data['content_id'] == id,
+  _ => false,
+};
 
 // ─── 便捷 Provider ────────────────────────────────────────────────────────────
 

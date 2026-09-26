@@ -1,6 +1,3 @@
-import 'dart:async';
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
@@ -19,24 +16,7 @@ final notificationInboxProvider =
       ref,
       query,
     ) async {
-      ref.watch(sseServiceProvider.notifier);
-      Timer? refreshTimer;
-      final subscription = SseEventBus().eventStream.listen((event) {
-        if (event.type != 'notification_updated') return;
-        refreshTimer?.cancel();
-        refreshTimer = Timer(
-          const Duration(milliseconds: 250),
-          ref.invalidateSelf,
-        );
-      });
-      final webRefreshTimer = kIsWeb
-          ? Timer(const Duration(seconds: 10), ref.invalidateSelf)
-          : null;
-      ref.onDispose(() {
-        refreshTimer?.cancel();
-        webRefreshTimer?.cancel();
-        subscription.cancel();
-      });
+      refreshOnEvents(ref, (event) => event.type == 'notification_updated');
 
       final dio = ref.watch(apiClientProvider);
       final response = await dio.get(

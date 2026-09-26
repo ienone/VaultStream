@@ -93,3 +93,5 @@ Agent API 只提供受控编排能力，不代表 Agent 可以绕过收藏、同
 - 后端设置 `qq_bot_agent`：`enabled`（布尔）、`admin_qq`（QQ 号码字符串数组）、`persona`（可选人设）。其他入口配置字段与群聊白名单仍由各自服务解释。
 
 `/ai/capabilities` 使用 `text_llm` 表示通用模型，文字和图像共用配置，不再返回独立 `vision_llm` 能力；连通性和模型发现不再接受 `vision_llm` 目标。
+
+`background_task_updated` 在开始和终态持久化后发送，payload 为 `task`、`status`、`run_id`，以及该任务关联内容时的 `content_id`。客户端按 run ID 更新任务页、按 content ID 更新内容及处理阶段。`connected` 表示订阅已连接，客户端应重读当前页面事实，以补偿离线或事件保留窗口之外的变化；不把事件载荷直接覆盖成完整内容。

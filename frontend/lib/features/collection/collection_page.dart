@@ -375,11 +375,6 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
             ),
       actions: [
         IconButton(
-          tooltip: '刷新',
-          icon: const Icon(Icons.refresh_rounded),
-          onPressed: _refresh,
-        ),
-        IconButton(
           tooltip: '筛选',
           isSelected: filter.hasActiveFilters,
           icon: const Icon(Icons.tune_rounded),

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import logger, log_context
 from app.core.database import AsyncSessionLocal
 from app.core.time_utils import utcnow
+from app.core.events import event_bus
 from app.models import Content, ContentStatus, Platform, Task, TaskStatus
 from app.adapters import close_adapter
 from app.adapters.errors import AdapterError, RetryableAdapterError
@@ -171,6 +172,9 @@ class ContentParser:
 
             content.status = ContentStatus.PROCESSING
             await session.commit()
+            await event_bus.publish("content_updated", {
+                "id": content.id, "status": ContentStatus.PROCESSING.value,
+            })
 
             adapter = None
             try:
@@ -337,6 +341,14 @@ class ContentParser:
             title=content.title,
         )
 
+        # Parsed facts are committed: readers need not wait for summary/index work.
+        await event_bus.publish("content_updated", {
+            "id": content.id,
+            "title": content.title,
+            "status": content.status.value,
+            "platform": content.platform.value if content.platform else None,
+            "cover_url": content.cover_url,
+        })
         await PostIngestService().run_for_content(
             session,
             content,
@@ -347,15 +359,8 @@ class ContentParser:
             distribution=False,
         )
         await self._check_auto_approval(session, content)
-
-        # 广播更新事件
-        from app.core.events import event_bus
         await event_bus.publish("content_updated", {
-            "id": content.id,
-            "title": content.title,
-            "status": content.status.value,
-            "platform": content.platform.value if content.platform else None,
-            "cover_url": content.cover_url
+            "id": content.id, "status": content.status.value,
         })
         return execution_result
 

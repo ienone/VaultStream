@@ -383,11 +383,6 @@ class _SyncCommandBar extends ConsumerWidget {
           icon: const Icon(Icons.manage_search_rounded),
           label: const Text('预览同步'),
         ),
-        OutlinedButton.icon(
-          onPressed: () => ref.invalidate(favoritesSyncStatusProvider),
-          icon: const Icon(Icons.refresh_rounded),
-          label: const Text('刷新状态'),
-        ),
       ],
     );
   }

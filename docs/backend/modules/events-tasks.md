@@ -89,3 +89,11 @@ Bot 进程控制和 chat 同步已经离开 API router 并进入可注入 servic
 任务与通知统一使用 `task_run_presentation` 的标题、结果摘要和终态集合。任务结果先显示摘要和有意义的指标；全零同步指标不重复成四个格子，run ID、触发来源与错误码放在诊断区。
 
 `BackgroundTaskRun` 负责一次执行的持久状态、关联和结果。`background_task_state:*` 只保留真实常驻 worker 的运行健康快照，不能当作某次执行结果；逐内容 embedding 没有独立 worker，已移除其重复投影写入，只保留对应 `content_embedding` 运行记录。
+
+## 实时界面更新
+
+任务首次落盘及终态提交后发布 `background_task_updated`，携带 `task/status/run_id`；任务 metadata 有 `content_id` 时一并提供。事件只提示重读持久事实，重复结算不重复广播。解析进入 processing、解析正文提交时分别发布 `content_updated`，正文显示不等待摘要与索引结束。
+
+前端在连接确认和 App 回到前台重连后补读可见资源；切换服务器或账号清除旧事件游标。收藏、正文、处理阶段、任务结果、消息盒子和收藏同步状态订阅各自事件，短时间事件合并读取，收藏保留已加载页数。移除 Web 专属的固定频率任务/消息轮询。
+
+每一层反向代理都必须关闭 SSE 缓冲。容器 Nginx 对 `/api/v1/events` 关闭缓冲，并向外层保留 `X-Accel-Buffering: no`。生产外层 Nginx 的 `/api/v1/events/` 同样设置 `proxy_http_version 1.1`、`proxy_set_header Connection '';`、`proxy_buffering off`、`proxy_cache off`、`proxy_read_timeout 86400s`，目标沿用现有 Web 容器。核验必须经过用户实际访问的域名，API 直连成功不能证明整条代理链及时送达。

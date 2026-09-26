@@ -66,7 +66,8 @@ class ContentQueue extends _$ContentQueue {
 
   void _handleSseEvent(SseEvent event) {
     // 使用常量匹配事件类型
-    if (event.type == _QueueConfig.eventContentPushed ||
+    if (event.type == 'connected' ||
+        event.type == _QueueConfig.eventContentPushed ||
         event.type == _QueueConfig.eventQueueUpdated) {
       // 防抖刷新：避免短时间内多次事件触发多次请求
       _debounceTimer?.cancel();
