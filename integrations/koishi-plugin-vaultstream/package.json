@@ -1,0 +1,33 @@
+{
+  "name": "koishi-plugin-vaultstream",
+  "version": "0.1.0",
+  "description": "VaultStream 收藏检索、原文阅读与明确链接收录",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": ["lib", "README.md", "LICENSE"],
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs --dts --out-dir lib --clean",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "koishi": "^4.18.11",
+    "koishi-plugin-chatluna": ">=1.4.0 <1.5.0"
+  },
+  "dependencies": {
+    "@langchain/core": "^0.3.80",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "koishi": "4.18.11",
+    "koishi-plugin-chatluna": "1.4.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3"
+  },
+  "koishi": {
+    "description": { "zh": "在管理员 QQ 私聊中查询、阅读及明确保存 VaultStream 收藏。" },
+    "service": { "required": ["chatluna"] }
+  }
+}
