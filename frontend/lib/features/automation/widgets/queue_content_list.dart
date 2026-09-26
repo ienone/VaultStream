@@ -134,8 +134,6 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(message, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            TextButton(onPressed: widget.onRefresh, child: const Text('刷新')),
           ],
         ),
       ),

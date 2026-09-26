@@ -55,11 +55,6 @@ class _NotificationCenterPageState
                 : () => _run(() => markAllNotificationsRead(ref)),
             icon: const Icon(Icons.done_all_rounded),
           ),
-          IconButton(
-            tooltip: '刷新',
-            onPressed: () => ref.invalidate(notificationInboxProvider(_query)),
-            icon: const Icon(Icons.refresh_rounded),
-          ),
         ],
       ),
       body: SafeArea(

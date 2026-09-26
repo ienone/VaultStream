@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,7 +6,6 @@ import '../../core/widgets/predictive_back_dialog.dart';
 import '../../core/layout/responsive_layout.dart';
 import '../../core/media/media_asset.dart';
 import '../../core/network/api_client.dart';
-import '../../core/network/sse_service.dart';
 import '../../core/utils/safe_url_launcher.dart';
 import '../../core/utils/toast.dart';
 import '../../core/widgets/platform_badge.dart';
@@ -71,14 +68,12 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   final Map<String, GlobalKey> _headerKeys = {};
   String? _activeHeader;
   int _selectedImageIndex = 0;
-  StreamSubscription<SseEvent>? _sseSub;
   DateTime _lastScrollCheck = DateTime.now();
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
-    _bindRealtimeEvents();
   }
 
   @override
@@ -91,18 +86,6 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     if (mounted && index != _selectedImageIndex) {
       setState(() => _selectedImageIndex = index);
     }
-  }
-
-  void _bindRealtimeEvents() {
-    ref.read(sseServiceProvider.notifier);
-    _sseSub?.cancel();
-    _sseSub = SseEventBus().eventStream.listen((event) {
-      if (!mounted) return;
-      if (event.type != 'content_updated') return;
-      if (event.data['id'] != widget.contentId) return;
-      // 只刷新受影响的对象，不触发整页重新入场。
-      ref.invalidate(contentDetailProvider(widget.contentId));
-    });
   }
 
   void _onScroll() {
@@ -135,7 +118,6 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
   @override
   void dispose() {
-    _sseSub?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();

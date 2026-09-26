@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/sse_service.dart';
 
 class FavoritesCapability {
   const FavoritesCapability({
@@ -264,7 +265,13 @@ int _asInt(Object? value) {
 final favoritesSyncStatusProvider = FutureProvider<FavoritesSyncStatus>((
   ref,
 ) async {
-  final dio = ref.read(apiClientProvider);
+  refreshOnEvents(
+    ref,
+    (event) =>
+        event.type == 'background_task_updated' &&
+        event.data['task'] == 'favorites_sync',
+  );
+  final dio = ref.watch(apiClientProvider);
   final response = await dio.get('/favorites-sync/status');
   final data = response.data as Map<String, dynamic>;
   return FavoritesSyncStatus.fromJson(data);

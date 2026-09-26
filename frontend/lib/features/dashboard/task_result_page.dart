@@ -21,17 +21,7 @@ class TaskResultPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final runAsync = ref.watch(backgroundTaskRunProvider(runId));
     return Scaffold(
-      appBar: AppBar(
-        leading: const AppBackButton(),
-        title: const Text('任务结果'),
-        actions: [
-          IconButton(
-            tooltip: '刷新',
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: () => ref.invalidate(backgroundTaskRunProvider(runId)),
-          ),
-        ],
-      ),
+      appBar: AppBar(leading: const AppBackButton(), title: const Text('任务结果')),
       body: runAsync.when(
         data: (run) => _TaskResultBody(run: run),
         loading: () => const Center(child: CircularProgressIndicator()),

@@ -328,6 +328,7 @@ class ContentActions extends _$ContentActions {
           .read(apiClientProvider)
           .post('/contents/$contentId/re-parse');
       _invalidateDetail(contentId);
+      ref.invalidate(collectionProvider);
       return ContentActionResult.success(
         '已触发重新解析',
         runId: _requiredRunIdOf(response.data),
