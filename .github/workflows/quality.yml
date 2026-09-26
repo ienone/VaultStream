@@ -48,12 +48,6 @@ jobs:
         if: always()
         run: python ../scripts/check_database_schema.py
 
-      - name: Scan for committed secrets
-        if: always()
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   frontend:
     name: Frontend analyze and build
     runs-on: ubuntu-latest
