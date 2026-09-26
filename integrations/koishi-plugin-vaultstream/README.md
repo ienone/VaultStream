@@ -1,39 +1,47 @@
 # koishi-plugin-vaultstream
 
-ChatLuna 的独立 VaultStream 业务插件。ChatLuna 负责对话；本插件仅调用现有 `/search/unified`、`/contents/{id}`、`/shares`，不调用 `/agent/run`，不维护另一份内容库、索引或推送队列。
+QQ 是 VaultStream Agent 的消息入口。管理员私聊由同一个后端 Agent 保存会话、理解请求、调用工具；Character 保留群聊人设，并可读取本群刚解析的公开材料。插件不维护另一套收藏、解析器或 Agent 工具执行逻辑。
 
-需要 Node.js 20+、Koishi 4.18.11+、ChatLuna 1.4.x。注册方式及当前会话传递依据 [ChatLuna 官方工具文档](https://chatluna.chat/development/connect-to-core-services/model-tool.html)，并核对正式 npm 1.4.0 发布包。
-
-## 安装与配置
+需要 Node.js 20+、Koishi 4.18.11+、ChatLuna 1.4.x。
 
 ```sh
 npm install --package-lock=false
+npm run typecheck
 npm run build
 ```
 
-源码仓库不提交安装目录、构建产物、打包文件或本插件的 `package-lock.json`。
+安装目录、构建产物、打包文件和 package-lock.json 不进入 Git。
 
-在 Koishi 项目安装此本地包并启用 `vaultstream`。配置：
+## 配置
 
-- `apiBaseUrl`：正式 API 地址，含 `/api/v1`，例如 `https://vaultstream.example/api/v1`。
-- `apiToken`：后端全局 API Token，配置项使用 secret，不能写入仓库。
-- `adminQQ`：明确授权的 QQ 号字符串数组。默认 `[]`，任何人均不能访问。
-- `botConfigId`：VaultStream 中对应 QQ Bot 的配置 ID。
+- `apiBaseUrl`：VaultStream 地址，包含 `/api/v1`。
+- `apiToken`：只保存在服务端的 API Token。
+- `botConfigId`：对应的 QQ Bot 配置 ID。
+- `adminQQ`：可进入私聊 Agent 的 QQ 号数组，默认不开放。
+- `groupIds`：自动专用解析的群号数组，默认不开放。
 
-仅接受 OneBot 平台、真实管理员 QQ 号、私聊三项同时成立的会话。群聊和其他平台一律不能读取或保存。每次工具执行从 Runnable 的 `configurable.session` 重新验权，不复用创建工具时的会话。
+后端 `qq_bot_agent` 同时设置 `enabled`、`admin_qq`、`group_ids` 和可选 `persona`，插件白名单不能绕过后端权限。私聊仅接受 OneBot、真实管理员账号及直接私聊；临时群私聊不进入私人 Agent。配置凭据不要写入 Git。
 
-## 使用
+## 私聊
 
-- `vaultstream.search 关键词`：每页 5 条；`-p 2` 读取第二页。仅关键词检索，不调用 embedding。
-- `vaultstream.read 123`：读取最多 6000 字符原文；按返回的 `-o` 偏移继续。
-- `vaultstream.save https://example.com/article`：保存当前消息中的单个链接，明确返回内容 ID。
+直接说“把下面第二个链接存起来”“保存引用的这段文字”“查一下之前收藏的音乐文章”。插件按真实 QQ 消息保留文本、链接出现顺序、引用、转发和可下载附件，Agent 从材料引用中选择保存目标。普通聊天不自动保存；没有指令的独立分享按入口策略自动收藏，带问题、否定或选择指令时优先执行该指令。
 
-ChatLuna Agent 模式可使用 `vaultstream_search`、`vaultstream_read`。`vaultstream_save` 不接受 URL 参数，仅当**当前原始消息**完整为 `保存 URL` 或 `收藏 URL` 时执行；普通对话、历史链接和模型改写的链接不能触发保存。确定性保存命令不依赖模型。禁止在模型命令执行插件中绕过这些入口。
+原来在 ChatLuna 中独立注册的搜索、阅读、固定句式保存工具已移除。相应工作由 VaultStream Agent 的正式工具完成。除了已授权的消息材料收藏，其他写入和外发继续通过后端确认；唯一待确认项可直接回复“确认”或“取消”，多项待确认需进入对应 VaultStream 会话选择。
 
-保存带固定 `source=qq_bot` 及真实 Bot、用户、私聊、消息上下文。`503 parse_queue_unavailable` 表达“已保存，解析待处理”；网络结果未知不自动重试。同一进程内最近 200 条保存消息复用同一结果。重启后不保证消息幂等：后端 URL 去重只复用内容，重复提交仍可能增加来源记录。
+后端按 Bot、管理员、消息 ID 记录确定性运行，重复上报不重放写操作。保存和解析分开显示。插件在 `data/vaultstream/receipts-<botConfigId>.json` 保存不含正文的待完成回执，恢复后查询原运行，不重新保存。发送结果未知不自动重发。后台解析队列不可用会明确显示已收藏、解析待处理。
 
-启用插件收录的私聊，应关闭 VaultStream 同一会话原来的自动监控收录，避免一条消息被两个入口处理。订阅和内容推送继续使用 VaultStream 原队列。
+QQ 文件取址遵循 [NapCat 文件接口](https://napneko.github.io/develop/file)。当前支持 QQ 提供 HTTP(S) 下载地址的图片、音视频和文件；普通私聊文件可通过 `get_private_file_url` 取址。只有本地路径而无直链的附件会明确报告无法下载。后端按官方 QQ CDN、地址及大小检查原件，复用既有文件捕获，不宣称已完成 OCR 或语音转写。
 
-## 验证边界
+## 群聊
 
-`npm run typecheck` 与 `npm run build` 验证类型和构建。真实 QQ 触发、模型选择工具以及保存后的解析/分发，需要在明确授权账号下单独验收；本包不携带长期测试套件。
+自动将消息中的链接交给后端 `/bot/qq/{config_id}/preview`。后端只使用实际支持的专用解析器，排除 B 站、普通网页和未知短链；不读取私人收藏，也不写入收藏库。支持范围见 [群聊解析契约](../../docs/knowledges/adapters/QQ_GROUP_PREVIEW.md)。
+
+每项以正文和最多一张图片组成一条消息，发送前占用原 QQ 群共享限频额度。重复消息不重复解析或发送；发送状态不确定时不重发。没有命中专用解析的消息继续交给普通群聊。
+
+`vaultstream_group_context` 仅向允许群聊开放，返回本群最近半小时最多八次公开解析的临时材料，便于“小i，你怎么看刚才那篇”这类追问。它无法搜索或读取私人收藏。工具按 [ChatLuna 工具接口](https://chatluna.chat/development/connect-to-core-services/model-tool.html) 注册，每次执行重新校验当前会话。
+
+## 切换与验证
+
+启用此入口后，关闭对应管理员私聊及群聊原 NapCat HTTP `BotChat.is_monitoring`，保留订阅发送能力，避免两个入口重复捕获。群解析完成不触发收藏后的自动分发。
+
+类型检查和构建只证明插件边界；后端离线流程、真实模型调用、实际 QQ 收发应分别报告。当前实现不承诺网络发送 exactly-once；不携带长期测试套件。
