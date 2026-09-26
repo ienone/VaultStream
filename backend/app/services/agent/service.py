@@ -751,6 +751,8 @@ class AgentService:
         # run's AsyncSession and must finish their database work sequentially.
         tool_lock = asyncio.Lock()
         for spec in self.registry.list_specs():
+            if qq_context is not None and qq_context.allowed_tools is not None and spec.name not in qq_context.allowed_tools:
+                continue
             async def _call(_spec_name: str = spec.name, **kwargs: Any) -> Dict[str, Any]:
                 async with tool_lock:
                     spec_inner = self.registry.get(_spec_name)
@@ -835,6 +837,7 @@ class AgentService:
             confirmed=confirmed,
             qq_sources=qq_context.qq_sources if qq_context else None,
             qq_origin=qq_context.qq_origin if qq_context else None,
+            allowed_tools=qq_context.allowed_tools if qq_context else None,
         )
         try:
             result = await self.registry.invoke(tool_name, args or {}, context)

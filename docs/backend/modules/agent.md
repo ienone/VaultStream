@@ -104,11 +104,11 @@ read_content 的 segments 每项返回经过归属/时长校验的 media_asset_i
 
 ## QQ 私聊入口（2026-09-26）
 
-Koishi 管理员私聊通过 `/bot/qq/{config_id}/agent` 调用同一个 `AgentService`；会话按 `qq-{config_id}-{user_id}` 绑定；网页删除后创建新代次会话而不恢复旧历史，人设由 `qq_bot_agent.persona` 追加，不另建聊天 Agent。后端同时校验 API token、启用中的 QQ Bot 配置、`qq_bot_agent.enabled` 与 `admin_qq` 白名单。群消息不能作为该入口的请求字段提交。
+Koishi 管理员私聊通过 `/bot/qq/{config_id}/agent` 调用同一个 `AgentService`；会话按 `qq-{config_id}-{user_id}` 绑定；网页删除后创建新代次会话而不恢复旧历史，人设由 `qq_bot_agent.persona` 追加，不另建聊天 Agent。后端同时校验 API token、启用中的 QQ Bot 配置、`qq_bot_agent.enabled` 与 `admin_qq` 白名单。群消息使用独立 `/group-capture` 入口与群隔离会话，只开放 capture_content，并返回不含私人正文的回执。
 
 入口保存原消息 ID、文字、有序链接（包括重复位置）、引用和转发、附件来源；模型只看到材料引用及文件名，附件下载签名不进入模型上下文。最近十条用户消息的材料可继续被指代；目标不明确时需澄清。`capture_content` 的 `source_ref` 与可选 `text_selection` 只在服务器建立的 QQ 上下文中解析，文字选区必须是原文连续子串，QQ 不能借模型生成的 URL 或文字保存。收藏记录的 `ContentSource` 保留 `qq_bot`、来源消息、run 和材料引用。
 
-管理员明确要求的保存、无其他指令的独立链接/转发/附件分享，通过入口策略授权收藏，不再次弹确认；普通聊天和明确排除的材料不自动保存，是否保存及指代范围由同一个 Agent 根据输入理解。其余写操作仍创建正式 confirmation。独立回复“确认/同意/执行吧/取消/拒绝”等且当前只有一项待办时，由后端直接调用 confirmation decision，不让模型选择确认 ID；引用消息尚未绑定确认回执时只展示待办，不执行。
+仅管理员当前明确要求的保存可以调用收藏工具，不再次弹确认；独立链接、转发、附件及普通聊天均不自动保存。全局 chat_capture_enabled 在 ContentService 的链接、文字、文件写入前检查；同时核验管理员并用已配置模型识别外层保存意图，否定、引用指令或无法判断时不写入。转存材料及指代范围仍由同一个 Agent 理解。其余写操作仍创建正式 confirmation。独立回复“确认/同意/执行吧/取消/拒绝”等且当前只有一项待办时，由后端直接调用 confirmation decision，不让模型选择确认 ID；引用消息尚未绑定确认回执时只展示待办，不执行。
 
 同一 Bot/管理员/QQ 消息 ID 对应唯一 run，平台重报复用回执，不重复模型与写操作。回执从工具账本及 `ContentSource.run_id` 恢复，涵盖内容已提交但工具结果尚未提交的中断。运行中断不自动重放。链接保存复用原解析队列，最多等待三十秒以支持本轮继续读取；GET 回执读取最新解析状态。附件仅从 QQ CDN 下载，禁止重定向和内网地址，单件最多 32 MiB 且不超过系统上传限额，复用文件捕获和本地存储，不承诺 OCR/转写。
 

@@ -49,6 +49,7 @@ active
 | `POST` | `/api/v1/bot/qq/{config_id}/agent/confirmations/{confirmation_id}` |
 | `GET` | `/api/v1/bot/qq/{config_id}/agent/runs/{run_id}` |
 | `POST` | `/api/v1/bot/qq/{config_id}/events` |
+| `POST` | `/api/v1/bot/qq/{config_id}/group-capture` |
 | `POST` | `/api/v1/bot/qq/{config_id}/preview` |
 | `GET` | `/api/v1/bot/runtime` |
 | `GET` | `/api/v1/bot/status` |

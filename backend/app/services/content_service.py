@@ -36,6 +36,7 @@ from app.core.queue import task_queue
 from app.core.logging import logger
 from app.core.events import event_bus
 from app.services.post_ingest import PostIngestService
+from app.services.chat_capture_policy import authorize_chat_capture
 from app.services.notification_inbox import (
     safely_record_bot_capture_notification,
     safely_resolve_bot_capture_notification,
@@ -110,6 +111,7 @@ class ContentService:
         layout_type_override: str = None
     ) -> Content:
         """核心分享创建业务逻辑"""
+        client_context = await authorize_chat_capture(source_name, client_context)
         normalized_tags = normalize_tags(tags, tags_text)
         raw_url = (url or "").strip()
         extracted_input = extract_primary_url_candidate(raw_url)
@@ -261,6 +263,7 @@ class ContentService:
         layout_type_override: str = None,
     ) -> Content:
         """保存原始文本，并从已完成解析的状态进入统一后处理。"""
+        client_context = await authorize_chat_capture(source_name, client_context)
         body = (text or "").strip()
         if not body:
             raise ValueError("Text content cannot be empty")
@@ -381,6 +384,7 @@ class ContentService:
         max_bytes: int,
     ) -> Content:
         """把一次分享中的一个或多个原文件保存为同一个内容对象。"""
+        client_context = await authorize_chat_capture(source_name, client_context)
         if not files:
             raise ValueError("At least one file is required")
 

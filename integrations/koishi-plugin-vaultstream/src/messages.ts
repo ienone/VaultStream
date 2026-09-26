@@ -56,7 +56,9 @@ export async function readMessage(session: Session, includeAttachments = true): 
         let url = String(data.url ?? data.src ?? '')
         if (!/^https?:\/\//i.test(url)) {
           if (type === 'file' && data.file_id) {
-            const file = await internal._get('get_private_file_url', { file_id: String(data.file_id) })
+            const file = session.guildId
+              ? await internal._get('get_group_file_url', { group_id: session.guildId, file_id: String(data.file_id) })
+              : await internal._get('get_private_file_url', { file_id: String(data.file_id) })
             url = String(file.url ?? '')
           } else if (['image', 'img'].includes(type) && data.file) {
             const file = await internal.getImage(String(data.file))

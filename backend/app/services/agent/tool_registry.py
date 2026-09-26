@@ -18,6 +18,7 @@ class AgentToolContext:
     # Set only by the authenticated QQ entry point, never accepted by AgentRunRequest.
     qq_sources: dict[str, dict[str, Any]] | None = None
     qq_origin: dict[str, Any] | None = None
+    allowed_tools: frozenset[str] | None = None
 
 
 AgentToolHandler = Callable[[Dict[str, Any], AgentToolContext], Awaitable[Dict[str, Any]]]
@@ -155,6 +156,8 @@ class AgentToolRegistry:
             ) from exc
 
     async def invoke(self, name: str, args: Dict[str, Any], context: AgentToolContext) -> Dict[str, Any]:
+        if context.allowed_tools is not None and name not in context.allowed_tools:
+            raise AgentToolError(error_code="agent_tool_forbidden", message="当前聊天入口不允许此操作。")
         spec = self.get(name)
         args = self.validate_args(name, args)
 

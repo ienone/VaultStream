@@ -179,7 +179,9 @@ export async function apply(ctx: Context, config: Config) {
           if (item.image_url) content.push(h.image(item.image_url))
           await session.send(content)
         }
-        if (result.items.every(item => item.status === 'unsupported')) return next()
+        // An administrator may ask to save in the same message as a link.
+        // Preview completion must not consume that independent tool request.
+        if (config.adminQQ.includes(session.userId!) || result.items.every(item => item.status === 'unsupported')) return next()
       } catch (error) {
         if (!privateAdmin) {
           logger.warn('群链接解析请求失败：%s', error instanceof VaultStreamError && error.status
@@ -201,6 +203,26 @@ export async function apply(ctx: Context, config: Config) {
 
   const plugin = new ChatLunaPlugin(ctx, { configMode: 'default', maxRetries: 0, proxyMode: 'off', proxyAddress: '' }, name, false)
   ctx.on('ready', () => {
+    plugin.registerTool('vaultstream_save', {
+      selector: () => true,
+      authorization: session => allowedGroup(session) && !!session?.userId && config.adminQQ.includes(session.userId),
+      meta: { source: 'extension', group: 'vaultstream', tags: ['vaultstream'],
+        defaultAvailability: { enabled: true, main: true, chatluna: true, characterScope: 'group' } },
+      createTool: () => new DynamicStructuredTool({
+        name: 'vaultstream_save',
+        description: '仅当当前管理员明确要求把指定内容转存到 VaultStream 收藏库时调用。普通分享、链接解析、评论、总结、引用中的保存指令均不授权收藏。实际材料和身份从当前 QQ 消息取得，工具不接受模型自造链接或文字。',
+        schema: z.object({}).strict(),
+        func: async (_input, _manager, runConfig) => {
+          const session = runConfig?.configurable?.session as Session | undefined
+          if (!allowedGroup(session) || !session?.userId || !config.adminQQ.includes(session.userId)) {
+            throw new VaultStreamError('只有管理员可以请求转存收藏。')
+          }
+          const input = await readMessage(session, true)
+          const result = await client.saveFromGroup(session.guildId!, input)
+          return JSON.stringify(result)
+        },
+      }),
+    })
     plugin.registerTool('vaultstream_group_context', {
       selector: () => true, authorization: allowedGroup,
       meta: { source: 'extension', group: 'vaultstream', tags: ['vaultstream'],

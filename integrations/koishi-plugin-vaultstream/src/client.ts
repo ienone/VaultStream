@@ -29,6 +29,10 @@ const previewResult = z.object({
     send_allowed: z.boolean(),
   })),
 })
+const groupCaptureResult = z.object({
+  run_id: z.string(), status: z.string(), message: z.string(),
+  saved_content_ids: z.array(z.number().int()), duplicate: z.boolean(),
+})
 export type AgentResult = z.infer<typeof agentResult>
 export type PreviewItem = z.infer<typeof previewResult>['items'][number]
 export class VaultStreamError extends Error {
@@ -65,6 +69,9 @@ export class VaultStreamClient {
     return `qqrun_${digest}`
   }
   agent(input: AgentInput) { return this.request('/agent', agentResult, input) }
+  saveFromGroup(groupId: string, input: AgentInput) {
+    return this.request('/group-capture', groupCaptureResult, { ...input, group_id: groupId })
+  }
   receipt(runId: string, userId: string) {
     return this.request(`/agent/runs/${encodeURIComponent(runId)}?user_id=${encodeURIComponent(userId)}`, agentResult)
   }

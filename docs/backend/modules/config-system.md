@@ -78,3 +78,5 @@ active
 System router 的跨域副作用、后台诊断账本和 AI capability 聚合均已下沉。dashboard、tags 与 settings 继续作为 system/config 自身的短查询 contract；除非出现新的 owner、策略或测试收益，不再仅为缩短文件拆分同一 URL router。
 
 通用模型沿用 `text_llm_*` 设置键，文字处理和 Agent `read_image` 共用同一配置，默认模型为 `deepseek-flash`。设置、初始向导、能力诊断和模型工厂均移除独立视觉模型配置及回退路径；历史视觉密钥继续遮蔽显示，但不参与调用。图片读取要求所配置模型支持图像输入，普通文本连通性测试不代表图像能力验收。
+
+全局 chat_capture_enabled 为布尔值，默认 true，设置页面显示“允许机器人转存收藏”。它只允许管理员明确请求的转存，不启用自动收藏；关闭后 QQ 与 Telegram 的链接、文字和附件写入均被 ContentService 拒绝，公开链接预览不受影响。

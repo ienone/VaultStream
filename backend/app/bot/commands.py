@@ -199,6 +199,8 @@ def _capture_context(update: Update, source_message) -> dict:
     chat = update.effective_chat
     payload = {
         "channel": "telegram_bot",
+        "user_id": str(update.effective_user.id),
+        "request_text": str(update.message.text or update.message.caption or ""),
         "chat_id": str(chat.id) if chat is not None else None,
         "message_id": getattr(source_message, "message_id", None),
         "replied_message": source_message is not update.message,
@@ -390,7 +392,7 @@ def _capture_error_message(response) -> str:
 
 async def save_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """明确保存命令；回复转发消息时保留最小来源上下文。"""
-    if not await _check_perm(update, context):
+    if not await _check_perm(update, context, require_admin=True):
         return
 
     message = update.message
@@ -609,15 +611,6 @@ async def handle_natural_capture_message(
         str(getattr(message, "text", None) or "")
     )
     if not matched:
-        text = str(message.text or message.caption or "")
-        if extract_urls_from_text(text) or message.forward_origin or _capture_attachment(message):
-            original_args = context.args
-            context.args = []
-            try:
-                await save_command(update, context)
-            finally:
-                context.args = original_args
-            return True
         return False
     if not payload and getattr(message, "reply_to_message", None) is None:
         await message.reply_text(

@@ -101,3 +101,9 @@ Telegram options 写入同样要求 leader（否则 503）；关闭任一同步�
 - POST `/api/v1/telegram-account/login/{login_id}/password` 接受 `{password: string}` → TelegramLoginStatus；当前不需要密码时 409。
 - DELETE `/api/v1/telegram-account/login/{login_id}` → TelegramLoginStatus，等待连接退出；不会登出已完成的授权会话。
 - TelegramLoginStatus：login_id、state（waiting/qr/password_required/authorized/expired/failed/cancelled）、qrcode_b64、expires_at、message。只有 qr 状态提供二维码，终态清空二维码。所有请求要求 API Token 和当前 leader；其他进程 503。登录最长五分钟，二维码自身到期后不自动重发。
+
+### 聊天转存策略
+
+PUT `/settings/chat_capture_enabled` 只接受 boolean value（其他类型 422），沿用 SystemSettingResponse。开启只允许管理员明确保存，关闭禁止 Bot 转存；普通群聊、私聊分享均不自动收藏。链接、文字和文件捕获统一在写入前核验策略和来源身份。Telegram 请求的 client_context 包含当前外层 user_id、request_text；QQ 身份与外层请求由认证入口建立，转发、引用仅作材料。持久来源记录只保留实际保存指令 save_instruction，不复制完整外层消息。
+
+POST `/bot/qq/{config_id}/group-capture` 使用 QQGroupCaptureRequest（QQ 原消息材料及 group_id）和 QQGroupCaptureResponse；先验证管理员、群白名单与启用状态，群 Agent 只开放 capture_content，响应不包含私人收藏正文。旧签名 HTTP events 端点仅确认收到，不再自动保存。
