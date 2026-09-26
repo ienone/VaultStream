@@ -258,6 +258,10 @@ class AgentService:
         message: str,
         session_id: str | None = None,
         event_sink: AgentEventSink | None = None,
+        run_id: str | None = None,
+        user_payload: dict[str, Any] | None = None,
+        qq_context: AgentToolContext | None = None,
+        additional_prompt: str = "",
     ) -> AgentRunResult:
         user_message = message.strip()
         if not user_message:
@@ -271,7 +275,7 @@ class AgentService:
         session = await self.ensure_session(session_id, title=self._derive_title(user_message))
         now = utcnow()
         run = AgentRun(
-            id=_new_id("run"),
+            id=run_id or _new_id("run"),
             session_id=session.id,
             status="running",
             created_at=now,
@@ -284,7 +288,7 @@ class AgentService:
                 run_id=run.id,
                 role="user",
                 content=user_message,
-                payload={},
+                payload=user_payload or {},
                 created_at=now,
             )
         )
@@ -307,11 +311,11 @@ class AgentService:
                     suggested_fix="Configure agent_chat_api_key/model/base_url or text_llm_api_key/model/base_url.",
                 )
 
-            tools = self._build_langchain_tools(session=session, run=run, emit_event=emit_event)
+            tools = self._build_langchain_tools(session=session, run=run, emit_event=emit_event, qq_context=qq_context)
             graph = create_react_agent(
                 _model_with_step_limit(llm, tools),
                 tools,
-                prompt=self._system_prompt(),
+                prompt=self._system_prompt() + additional_prompt,
                 version="v2",
             )
             messages = await self._build_context_messages(session.id, run.id, emit_event)
@@ -715,6 +719,7 @@ class AgentService:
         session: AgentSession,
         run: AgentRun,
         emit_event: AgentEventSink,
+        qq_context: AgentToolContext | None = None,
     ) -> list[StructuredTool]:
         tools: list[StructuredTool] = []
         # LangGraph may dispatch several tools at once, but they share this
@@ -740,7 +745,11 @@ class AgentService:
                             "permission_level": spec_inner.permission_level.value,
                         }
                     )
-                    if spec_inner.requires_confirmation:
+                    grounded_capture = (
+                        qq_context is not None
+                        and spec_inner.name == "capture_content"
+                    )
+                    if spec_inner.requires_confirmation and not grounded_capture:
                         call.status = "confirmation_required"
                         confirmation = await self._create_confirmation(
                             run=run,
@@ -760,6 +769,7 @@ class AgentService:
                         session=session,
                         call=call,
                         emit_event=emit_event,
+                        qq_context=qq_context,
                     )
 
             tools.append(
@@ -786,6 +796,7 @@ class AgentService:
         call: AgentToolCall,
         emit_event: AgentEventSink,
         confirmed: bool = False,
+        qq_context: AgentToolContext | None = None,
     ) -> Dict[str, Any]:
         # Publish the running ledger before a potentially remote read. Keeping
         # its flushed INSERT open would block unrelated SQLite writers.
@@ -797,6 +808,8 @@ class AgentService:
             run_id=run.id,
             session_id=session.id,
             confirmed=confirmed,
+            qq_sources=qq_context.qq_sources if qq_context else None,
+            qq_origin=qq_context.qq_origin if qq_context else None,
         )
         try:
             result = await self.registry.invoke(tool_name, args or {}, context)
@@ -919,11 +932,12 @@ class AgentService:
             await self.db.execute(
                 select(AgentMessage)
                 .where(AgentMessage.session_id == session_id)
-                .order_by(AgentMessage.id.asc())
+                .order_by(AgentMessage.id.desc())
                 .limit(80)
             )
         ).scalars().all()
 
+        rows = list(reversed(rows))
         budget = await self._context_budget()
         token_estimate = self._estimate_tokens(m.rendered_content for m in rows)
         messages = rows

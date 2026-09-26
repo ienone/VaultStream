@@ -41,7 +41,7 @@ class TwitterAdapter(PlatformAdapter):
     # FxTwitter API 端点
     FXTWITTER_API = "https://api.fxtwitter.com"
     
-    def __init__(self, **kwargs):
+    def __init__(self, *, public_only: bool = False, **kwargs):
         """
         初始化 Twitter 适配器
         
@@ -49,7 +49,7 @@ class TwitterAdapter(PlatformAdapter):
             **kwargs: 工厂统一参数；登录态在每次解析时从 ConfigService 读取
         """
         # 避免长期实例持有退出或重新登录前的凭据快照
-        pass
+        self.public_only = public_only
     
     async def can_handle(self, url: str) -> bool:
         """检查是否可以处理该 URL"""
@@ -135,7 +135,7 @@ class TwitterAdapter(PlatformAdapter):
         
         username, tweet_id = tweet_info
         config = ConfigService()
-        cookie_text = await config.get_platform_cookie_string("twitter", fresh=True)
+        cookie_text = None if self.public_only else await config.get_platform_cookie_string("twitter", fresh=True)
         if cookie_text:
             from app.adapters.twitter_web import read_x_page, parse_web_tweet
             from app.adapters.favorites.errors import FavoritesFetchError

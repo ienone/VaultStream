@@ -81,11 +81,25 @@ class LLMFactory:
         logger.debug(f"LLMFactory: Loading Agent Chat Model ({config.model}) from {config.base_url}")
 
         try:
+            service = ConfigService()
+            extra_body = await service.get_value("agent_chat_extra_body", None)
+            # Inherit provider parameters only when Agent uses the entire text
+            # model configuration. An independently configured provider owns its
+            # own parameters, even when one of its fields happens to match.
+            dedicated = any([
+                await service.get_value("agent_chat_api_key"),
+                await service.get_value("agent_chat_base_url"),
+                await service.get_value("agent_chat_model"),
+            ])
+            if extra_body is None and not dedicated:
+                extra_body = await service.get_value("text_llm_extra_body", None)
             return ChatOpenAI(
                 model=config.model,
                 api_key=config.api_key,
                 base_url=config.base_url,
+                use_responses_api=False,
                 temperature=0.2,
+                extra_body=extra_body,
             )
         except Exception as e:
             logger.error(f"LLMFactory: Failed to initialize Agent Chat LLM - {e}")
