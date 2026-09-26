@@ -7,9 +7,11 @@ ChatLuna 的独立 VaultStream 业务插件。ChatLuna 负责对话；本插件�
 ## 安装与配置
 
 ```sh
-npm install
+npm install --package-lock=false
 npm run build
 ```
+
+源码仓库不提交安装目录、构建产物、打包文件或本插件的 `package-lock.json`。
 
 在 Koishi 项目安装此本地包并启用 `vaultstream`。配置：
 
