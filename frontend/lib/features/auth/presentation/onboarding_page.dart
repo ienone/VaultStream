@@ -31,19 +31,17 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
   final _textFeatureKey = GlobalKey();
   final _summaryFeatureKey = GlobalKey();
   final _embeddingFeatureKey = GlobalKey();
-  final _visionFeatureKey = GlobalKey();
   final _telegramKey = GlobalKey();
   final _qqKey = GlobalKey();
   final _accountsKey = GlobalKey();
   bool _enableTextLlm = false;
   bool _enableAutoSummary = false;
   bool _enableEmbedding = false;
-  bool _enableVisionLlm = false;
   final _llmBaseUrlController = TextEditingController(
     text: 'https://api.deepseek.com',
   );
   final _llmKeyController = TextEditingController();
-  final _llmModelController = TextEditingController(text: 'deepseek-chat');
+  final _llmModelController = TextEditingController(text: 'deepseek-flash');
   final _summaryKeyController = TextEditingController();
   final _summaryModelController = TextEditingController(
     text: 'gemini-2.5-flash',
@@ -53,11 +51,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
     text: 'gemini-embedding-2',
   );
   final _embeddingDimController = TextEditingController(text: '1536');
-  final _visionBaseUrlController = TextEditingController();
-  final _visionKeyController = TextEditingController();
-  final _visionModelController = TextEditingController(text: 'qwen-vl-max');
   List<String> _textModels = const [];
-  List<String> _visionModels = const [];
 
   bool _enableTelegramBot = false;
   bool _enableQqBot = false;
@@ -101,9 +95,6 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
       _embeddingKeyController,
       _embeddingModelController,
       _embeddingDimController,
-      _visionBaseUrlController,
-      _visionKeyController,
-      _visionModelController,
       _tgTokenController,
       _tgAdminIdController,
       _qqUrlController,
@@ -123,16 +114,9 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
       ref.read(systemSettingsProvider.notifier).updateSetting(key, value);
 
   Future<void> _saveProvider(String target) async {
-    final isText = target == 'text_llm';
-    final base = isText
-        ? _llmBaseUrlController.text.trim()
-        : _visionBaseUrlController.text.trim();
-    final key = isText
-        ? _llmKeyController.text.trim()
-        : _visionKeyController.text.trim();
-    final model = isText
-        ? _llmModelController.text.trim()
-        : _visionModelController.text.trim();
+    final base = _llmBaseUrlController.text.trim();
+    final key = _llmKeyController.text.trim();
+    final model = _llmModelController.text.trim();
     if (base.isEmpty || key.isEmpty) {
       throw StateError('请先填写 API Base URL 和 API Key');
     }
@@ -153,11 +137,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
           .discover(target);
       if (!mounted) return;
       setState(() {
-        if (target == 'text_llm') {
-          _textModels = models;
-        } else {
-          _visionModels = models;
-        }
+        _textModels = models;
       });
       settings_ui.showToast(context, '已发现 ${models.length} 个可用模型');
     } catch (e) {
@@ -195,15 +175,6 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
       });
       return;
     }
-    if (_enableVisionLlm &&
-        (_visionKeyController.text.trim().isEmpty ||
-            _visionBaseUrlController.text.trim().isEmpty)) {
-      setState(() {
-        _stepController.index = 0;
-        _error = '请填写图像理解的 API 地址和密钥';
-      });
-      return;
-    }
     if (_enableTelegramBot && _tgTokenController.text.trim().isEmpty) {
       setState(() {
         _stepController.index = _botStep;
@@ -237,7 +208,6 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
           await _put('embedding_output_dimensionality', dimension);
         }
       }
-      if (_enableVisionLlm) await _saveProvider('vision_llm');
       if (_enableTelegramBot || _enableQqBot) await _saveBots();
       await _saveAccounts();
       await _put('onboarding_completed', 'true');
@@ -414,7 +384,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
     final cards = [
       OnboardingFeatureCard(
         key: _textFeatureKey,
-        title: '内容理解',
+        title: '内容理解（文字与图像）',
         icon: Icons.text_snippet_outlined,
         value: _enableTextLlm,
         onChanged: (value) => setState(() => _enableTextLlm = value),
@@ -504,25 +474,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
           ],
         ),
       ),
-      OnboardingFeatureCard(
-        key: _visionFeatureKey,
-        title: '图像理解',
-        icon: Icons.image_search_outlined,
-        value: _enableVisionLlm,
-        onChanged: (value) => setState(() => _enableVisionLlm = value),
-        configuration: _providerFields(
-          target: 'vision_llm',
-          base: _visionBaseUrlController,
-          key: _visionKeyController,
-          model: _visionModelController,
-          models: _visionModels,
-        ),
-      ),
     ];
-    return _responsiveCardWrap(
-      children: [cards[0], cards[3], cards[1], cards[2]],
-      maxColumns: 1,
-    );
+    return _responsiveCardWrap(children: cards, maxColumns: 1);
   }
 
   Widget _botConfigCard({required bool telegram}) {
@@ -727,7 +680,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
     final cards = <Widget>[
       if (_enableTextLlm)
         _reviewItem(
-          title: '内容理解',
+          title: '内容理解（文字与图像）',
           subtitle: _llmModelController.text.trim(),
           icon: Icons.text_snippet_outlined,
           onTap: () => _jumpToConfiguration(0, _textFeatureKey),
@@ -745,13 +698,6 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
           subtitle: _embeddingModelController.text.trim(),
           icon: Icons.manage_search_outlined,
           onTap: () => _jumpToConfiguration(0, _embeddingFeatureKey),
-        ),
-      if (_enableVisionLlm)
-        _reviewItem(
-          title: '图像理解',
-          subtitle: _visionModelController.text.trim(),
-          icon: Icons.image_search_outlined,
-          onTap: () => _jumpToConfiguration(0, _visionFeatureKey),
         ),
       if (_enableTelegramBot)
         _reviewItem(

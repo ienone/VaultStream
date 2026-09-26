@@ -168,7 +168,6 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
     summary_key_ready = bool(ai_config.summary.api_key)
     embedding_key_ready = bool(ai_config.embedding.api_key)
     text_llm_ready = bool(ai_config.text_llm.api_key)
-    vision_llm_ready = bool(ai_config.vision_llm.api_key)
     has_summary = bool((content.summary or "").strip())
     has_chunks = bool(
         isinstance(content.rich_payload, dict)
@@ -394,7 +393,7 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
         distribution_message = "暂未匹配分发规则"
 
     discovery_state = content.discovery_state.value if content.discovery_state else None
-    patrol_llm_ready = text_llm_ready or vision_llm_ready
+    patrol_llm_ready = text_llm_ready
     if content.ai_score is not None:
         patrol_status = "success"
         patrol_state = ProcessingStageState.SUCCESS
@@ -472,7 +471,7 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
     patrol_actions: list[ProcessingStageAction] = []
     if patrol_status == "unavailable":
         patrol_issues.append("未配置可用于巡逻评分的 LLM 密钥")
-        patrol_hints.append("配置 text_llm_api_key 或 vision_llm_api_key")
+        patrol_hints.append("配置通用模型密钥")
     elif patrol_status in {"pending", "not_scored"}:
         patrol_actions.append(
             ProcessingStageAction(
@@ -602,7 +601,6 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
                 "ai_tags": content.ai_tags or [],
                 "discovery_state": discovery_state,
                 "text_llm_configured": text_llm_ready,
-                "vision_llm_configured": vision_llm_ready,
             },
         ),
         ProcessingStage(

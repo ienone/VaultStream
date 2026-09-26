@@ -288,11 +288,6 @@ class SystemDiagnosticsService:
                 "model": ai_config.text_llm.model,
                 "base_url": ai_config.text_llm.base_url,
             },
-            "vision_llm": {
-                "configured": bool(ai_config.vision_llm.api_key),
-                "model": ai_config.vision_llm.model,
-                "base_url": ai_config.vision_llm.base_url,
-            },
             "bots": {"enabled_configs": int(enabled_bot_count)},
         }
 

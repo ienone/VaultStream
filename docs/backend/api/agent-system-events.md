@@ -91,3 +91,5 @@ Agent API 只提供受控编排能力，不代表 Agent 可以绕过收藏、同
 - `POST /api/v1/bot/qq/{config_id}/agent/confirmations/{confirmation_id}`：请求 `user_id`、`approved`，校验会话归属后调用既有正式确认执行器。
 - 三个入口均返回 `QQAgentResponse`：`session_id`、`run_id`、`status`、`message`、`confirmation_required`、`confirmation`、`captures`、`duplicate`。`captures` 包含本次已保存的内容 ID、类型、当前解析状态、标题、作者、摘要、最多 1500 字符正文节选、原文 URL、站内 route 与可空 `collection_url`（从合法公开 `base_url` 构造）。未解析不伪造结构化正文，保存与解析状态分开表达。
 - 后端设置 `qq_bot_agent`：`enabled`（布尔）、`admin_qq`（QQ 号码字符串数组）、`persona`（可选人设）。其他入口配置字段与群聊白名单仍由各自服务解释。
+
+`/ai/capabilities` 使用 `text_llm` 表示通用模型，文字和图像共用配置，不再返回独立 `vision_llm` 能力；连通性和模型发现不再接受 `vision_llm` 目标。

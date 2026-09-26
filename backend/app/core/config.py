@@ -85,15 +85,10 @@ class Settings(BaseSettings):
     # Public FxTwitter parsing is anonymous; private bookmarks use web login.
     twitter_cookie: Optional[SecretStr] = None
 
-    # LLM 配置 (Text)
+    # 通用模型配置（文字与图像）
     text_llm_api_key: Optional[SecretStr] = None
     text_llm_base_url: Optional[str] = None
-    text_llm_model: str = "deepseek-chat"
-
-    # LLM 配置 (Vision)
-    vision_llm_api_key: Optional[SecretStr] = None
-    vision_llm_base_url: Optional[str] = None
-    vision_llm_model: str = "qwen-vl-max"
+    text_llm_model: str = "deepseek-flash"
 
     # Gemini Embedding 配置
     embedding_api_key: Optional[SecretStr] = None
