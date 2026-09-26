@@ -44,6 +44,18 @@ class QQAgentRequest(QQMessageMaterial):
         return self
 
 
+class QQGroupCaptureRequest(QQAgentRequest):
+    group_id: str = Field(pattern=r"^[0-9]{1,20}$")
+
+
+class QQGroupCaptureResponse(BaseModel):
+    run_id: str
+    status: str
+    message: str
+    saved_content_ids: list[int] = Field(default_factory=list)
+    duplicate: bool = False
+
+
 class QQAgentDecisionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     user_id: str = Field(pattern=r"^[0-9]{5,20}$")

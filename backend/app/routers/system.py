@@ -364,6 +364,8 @@ async def update_setting(
     _: None = Depends(require_api_token),
 ):
     """创建或更新设置"""
+    if key == "chat_capture_enabled" and type(update.value) is not bool:
+        raise HTTPException(status_code=422, detail="chat_capture_enabled must be a boolean")
     from app.services.settings_service import set_setting_value
     setting = await set_setting_value(key, update.value, category, update.description)
     return _serialize_setting_for_response(setting)

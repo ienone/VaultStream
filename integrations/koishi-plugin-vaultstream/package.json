@@ -1,6 +1,6 @@
 {
   "name": "koishi-plugin-vaultstream",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "VaultStream Agent QQ 私聊入口与群聊专用链接解析",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",

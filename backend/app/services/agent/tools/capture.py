@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.adapters.storage import get_storage_backend
 from app.core.config import settings
 
-from app.models import AgentToolCall, Content, LayoutType
+from app.models import AgentMessage, AgentToolCall, Content, LayoutType
 from app.services.agent.content_evidence import PARSE_ERROR_SCHEMA, content_parse_error
 from app.services.agent.tool_registry import AgentToolContext, AgentToolError, AgentToolRegistry
 from app.services.content_service import ContentService, ParseQueueUnavailableError
@@ -91,7 +91,7 @@ async def _capture_content_tool(
     if context.qq_sources is not None:
         return await _capture_qq_source(args, context)
     if args.get("source_ref"):
-        raise AgentToolError(error_code="qq_capture_origin_required", message="材料引用仅在已授权 QQ 私聊入口可用。")
+        raise AgentToolError(error_code="qq_capture_origin_required", message="材料引用仅在已授权 QQ 入口可用。")
     session_id = str(context.session_id or "").strip()
     source_name = "telegram_bot" if session_id.startswith("tg-") else "agent"
     client_context = {
@@ -100,6 +100,12 @@ async def _capture_content_tool(
         "session_id": session_id or None,
         "run_id": context.run_id,
     }
+    if source_name == "telegram_bot":
+        request = await context.db.scalar(select(AgentMessage).where(
+            AgentMessage.run_id == context.run_id, AgentMessage.role == "user",
+        ).order_by(AgentMessage.id.desc()).limit(1))
+        client_context.update(user_id=session_id.removeprefix("tg-"),
+                              request_text=request.content if request else "")
     service = ContentService(context.db)
     url = str(args.get("url") or "").strip()
     text = str(args.get("text") or "").strip()
@@ -189,6 +195,10 @@ async def _capture_qq_source(args: Dict[str, Any], context: AgentToolContext) ->
                 break
             await context.db.commit()
             await asyncio.sleep(2)
+    if (context.qq_origin or {}).get("group_id"):
+        return {"saved": True, "content_id": content_id, "capture_kind": kind,
+                "status": "parse_queue_unavailable" if queue_error else content.status.value,
+                "route": f"/collection/{content_id}"}
     return {"saved": True, "content_id": content_id, "capture_kind": kind,
             "status": "parse_queue_unavailable" if queue_error else content.status.value,
             "parse_error": None if queue_error else content_parse_error(content),
