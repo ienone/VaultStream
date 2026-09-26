@@ -1,8 +1,8 @@
 # QQ Bot 收发
 
-NapCat HTTP 客户端上报到 `/api/v1/bot/qq/{config_id}/events`，token 与对应 BotConfig 的 `napcat_access_token` 一致。接收端验证原始 body 的 HMAC-SHA1（`x-signature`），忽略自身消息及非消息事件。只处理 enabled 且 is_monitoring 的 BotChat；群 chat_id 使用数字，私聊使用 `private:QQ号`。
+NapCat HTTP 客户端上报到 `/api/v1/bot/qq/{config_id}/events`，token 与对应 BotConfig 的 `napcat_access_token` 一致。接收端验证原始 body 的 HMAC-SHA1（`x-signature`），忽略自身消息、非消息事件和所有群消息。旧收录仅处理 enabled 且 is_monitoring 的私聊 BotChat，chat_id 使用 `private:QQ号`；群聊即使遗留监控开关也不能从 HTTP 入口入库。
 
-文字链接、JSON 分享卡片中的跳转链接、合并转发与引用中的文字链接复用 ContentService 和解析队列。私聊无链接文字保存到收藏库；纯图片、视频等 QQ 附件尚未接入捕获。群内解析完成后复用分发器回复图文和媒体，私聊先确认收录，结果使用配置的全量规则推送。链接重复使用既有内容，同消息重报通过 ContentSource 上下文判断。
+旧私聊收录中的文字链接、JSON 分享卡片跳转链接、合并转发与引用文字链接复用 ContentService 和解析队列。该旧入口会保存无链接文字，不处理纯附件，因此管理员私聊应关闭旧监控并使用下述 Agent 入口。链接重复使用既有内容，同消息重报通过 ContentSource 上下文判断。原群聊“先入库、等待解析后回群”的处理已移除，群聊只使用 Koishi 公开预览。
 
 `qq_chat_policies` 系统设置按 QQ 会话数字 ID 保存 `excluded_parse_platforms` 和 `max_messages_per_hour`。排除平台在解析入队前判断，Bilibili 包括 b23.tv。小时限频在 NapCat 发群消息前执行，自动推送、解析回复和测试消息共享额度；数据库原子保留发送次数，重启不清空，失败发送也占用本次额度。私聊不受群限频影响。
 

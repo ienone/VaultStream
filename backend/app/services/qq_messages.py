@@ -1,17 +1,12 @@
-"""接收已开启监控的 QQ 会话，复用内容入库与解析队列。"""
-import asyncio
+"""旧 HTTP 收录入口仅处理私聊；群链接统一由 Koishi 公开预览。"""
 import json
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from app.adapters import AdapterFactory
 from app.core.database import AsyncSessionLocal
-from app.core.logging import logger
-from app.models import BotChat, Content, ContentSource, ContentStatus, MediaAsset
+from app.models import BotChat, ContentSource
 from app.push.napcat import NapcatPushService
 from app.services.config_service import ConfigService
 from app.services.content_service import ContentService
-from app.services.qq_policy import QQRateLimited
-from app.tasks.distributor import ContentDistributor
 from app.utils.url_utils import extract_urls_from_text
 
 
@@ -51,11 +46,13 @@ async def message_text(segments, api, depth=0):
 
 
 async def accept_message(config_id, event):
-    if event.get('post_type') != 'message' or str(event.get('user_id')) == str(event.get('self_id')):
+    # Group messages must never enter the collection, even if an old
+    # BotChat.is_monitoring flag is still enabled. Koishi owns group previews.
+    if (event.get('post_type') != 'message' or event.get('message_type') != 'private'
+            or str(event.get('user_id')) == str(event.get('self_id'))):
         return [], None
-    private = event.get('message_type') == 'private'
-    raw_id = str(event.get('user_id') if private else event.get('group_id'))
-    target = f'private:{raw_id}' if private else raw_id
+    raw_id = str(event.get('user_id'))
+    target = f'private:{raw_id}'
     async with AsyncSessionLocal() as db:
         chat = await db.scalar(select(BotChat).where(
             BotChat.bot_config_id == config_id, BotChat.chat_id == target,
@@ -88,41 +85,7 @@ async def accept_message(config_id, event):
                 continue
             content = await service.create_share(url, source_name='qq_bot', client_context=context)
             ids.append(content.id)
-        if private and not urls and text.strip():
+        if not urls and text.strip():
             content = await service.create_text_capture(text=text, source_name='qq_bot', client_context=context)
             ids.append(content.id)
     return ids, target
-
-
-async def reply_when_parsed(ids, target):
-    if not ids or not target or target.startswith('private:'):
-        # 私聊的结果由该会话的全量推送规则发送，避免重复。
-        return
-    api = NapcatPushService()
-    try:
-        for content_id in ids:
-            for _ in range(30):
-                async with AsyncSessionLocal() as db:
-                    content = await db.scalar(select(Content).where(Content.id == content_id).options(
-                        selectinload(Content.media_assets).selectinload(MediaAsset.variants)))
-                    if not content or content.deleted_at:
-                        break
-                    if content.status == ContentStatus.PARSE_SUCCESS:
-                        if not content.is_nsfw:
-                            payload = await ContentDistributor()._build_content_payload(
-                                content, None, media_assets=content.media_assets, target_platform='qq')
-                            await db.commit()
-                            await api.push(payload, target)
-                        break
-                    if content.status == ContentStatus.PARSE_FAILED:
-                        await db.commit()
-                        await api.push({'title': '链接解析失败', 'url': content.url}, target)
-                        break
-                await asyncio.sleep(2)
-    except QQRateLimited:
-        logger.info('QQ 解析回复已达到会话限频')
-    except Exception:
-        logger.exception('QQ 解析回复失败')
-    finally:
-        if api._client:
-            await api._client.aclose()

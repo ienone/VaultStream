@@ -10,7 +10,7 @@ Koishi 调用 `POST /api/v1/bot/qq/{config_id}/preview`，使用现有 API Token
 
 只有 `send_allowed=true` 的项可回群。Koishi 应将 `text` 和可选的 `image_url` 组成一条消息，不为每个媒体单独发消息。服务端已通过 `qq_policy.reserve_group_send` 为每项占用一次额度，与自动推送共用小时限频；发送失败也消耗额度。`reserve_send=false` 用于只读验收，不领取消息、不预留额度，所有项的 `send_allowed` 均为 false。
 
-消息通过 SystemSetting 中按 Bot/群隔离的运行记录去重，每群最多保留 500 个、24 小时内的消息 ID 指纹，不保留 URL 或正文。先领取后解析，重复返回 `duplicate=true, items=[]`。服务中断或发送结果未知时不自动重发；这只保证重报抑制，不表示 QQ 已送达。上线时关闭对应群旧 HTTP 收录监控，避免两条入口同时处理。
+消息通过 SystemSetting 中按 Bot/群隔离的运行记录去重，每群最多保留 500 个、24 小时内的消息 ID 指纹，不保留 URL 或正文。先领取后解析，重复返回 `duplicate=true, items=[]`。服务中断或发送结果未知时不自动重发；这只保证重报抑制，不表示 QQ 已送达。群号必须同时加入 Koishi `groupIds` 与后端 `qq_bot_agent.group_ids`。旧 HTTP 入口无条件忽略群消息，不再依赖逐群关闭监控开关来保证不入库；部署时仍清理旧开关，避免配置误导。
 
 ## 专用解析范围
 
@@ -22,7 +22,7 @@ Koishi 调用 `POST /api/v1/bot/qq/{config_id}/preview`，使用现有 API Token
 - 知乎：回答、文章、问题、想法、用户、专栏和收藏夹。
 - Telegram：公开频道中的单条消息；私有 `/c/`、邀请和频道首页不处理。
 
-Bilibili（含 b23）无条件排除，其余排除项仍读取 `qq_chat_policies.excluded_parse_platforms`。不调用 universal，也不探测任意短链。RSS/Atom feed 不当作文章预览：现有 RSS parse 取的是源的最新条目，不一定是用户分享的目标。
+Bilibili（含 b23）无条件排除，其余排除项仍读取 `qq_chat_policies.excluded_parse_platforms`。不调用 universal，也不探测任意短链。抖音（包括 v.douyin.com 短链）没有专用解析器，直接跳过。RSS/Atom feed 不当作文章预览：现有 RSS parse 取的是源的最新条目，不一定是用户分享的目标。
 
 微博、X、小红书和知乎适配器使用 `public_only=true`：不读取数据库或环境变量中的个人 Cookie，不把管理员可见但群成员不可公开读取的内容带入群。匿名访问被平台拒绝时返回 failed，不借用账号补读。专用解析器存在仅表示有解析实现，不保证平台匿名访问永远可用。
 
