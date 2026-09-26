@@ -12,7 +12,6 @@ from app.core.config import settings
 from app.models import AgentToolCall, Content, LayoutType
 from app.services.agent.tool_registry import AgentToolContext, AgentToolError, AgentToolRegistry
 from app.services.content_service import ContentService, ParseQueueUnavailableError
-from app.services.qq_agent_materials import fetch_attachment, resolve_capture_source
 
 
 class CaptureContentArgs(BaseModel):
@@ -139,6 +138,8 @@ async def _capture_content_tool(
 
 
 async def _capture_qq_source(args: Dict[str, Any], context: AgentToolContext) -> Dict[str, Any]:
+    from app.services.qq_agent_materials import fetch_attachment, resolve_capture_source
+
     source = resolve_capture_source(args, context.qq_sources or {})
     # A model may repeat the same call after reading a result. Reuse its persisted
     # successful receipt; a duplicate HTTP delivery reuses the entire run instead.

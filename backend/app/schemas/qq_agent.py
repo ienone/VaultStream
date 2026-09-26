@@ -58,6 +58,7 @@ class QQCaptureReceipt(BaseModel):
     body: str | None = None
     url: str | None = None
     route: str
+    collection_url: str | None = None
 
 
 class QQAgentResponse(BaseModel):

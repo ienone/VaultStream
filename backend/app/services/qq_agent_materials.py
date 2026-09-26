@@ -2,9 +2,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import re
 from urllib.parse import urlsplit
 
 import httpx
+from sqlalchemy import select
+
+from app.models import AgentToolCall, ContentSource
 
 from app.core.config import settings
 from app.core.safe_fetch import create_safe_async_transport, safe_client_get
@@ -85,3 +90,32 @@ async def fetch_attachment(source: dict) -> CaptureFileInput:
 
     return CaptureFileInput(chunks=chunks(), filename=source["filename"],
                             mime_type=source.get("mime_type") or response.headers.get("content-type"))
+
+
+# Validate a claimed result, never infer whether the user's input requests a save.
+_CAPTURE_COMPLETION = re.compile(r"^\s*(?:已(?:经)?(?:帮你)?(?:保存|收藏|收录)|(?:保存|收藏|收录)(?:成功|完成|好了))")
+_COLLECTION_ROUTE = re.compile(r"/collection/[0-9]+")
+
+
+async def unverified_completion(db, run_id: str, message: str) -> str | None:
+    saved = (await db.execute(select(ContentSource.content_id).where(
+        ContentSource.source == "qq_bot",
+        ContentSource.client_context["run_id"].as_string() == run_id,
+    ))).scalars().all()
+    results = (await db.execute(select(AgentToolCall.result).where(
+        AgentToolCall.run_id == run_id, AgentToolCall.status == "completed",
+    ))).scalars().all()
+    # Only a direct affirmative opening with no execution evidence. Negated
+    # outcomes, quoted source text and a fresh read of historical captures must
+    # remain valid answers; this is not a classifier for the user's intent.
+    if _CAPTURE_COMPLETION.search(message) and not saved and not results:
+        return "本轮没有收藏或读取结果，但回答直接声称已保存；需真实保存或核实历史事实。"
+    claimed_routes = set(_COLLECTION_ROUTE.findall(message))
+    if not claimed_routes:
+        return None
+    observed_routes = {f"/collection/{content_id}" for content_id in saved}
+    for result in results:
+        observed_routes.update(_COLLECTION_ROUTE.findall(json.dumps(result, ensure_ascii=False)))
+    if claimed_routes - observed_routes:
+        return "回答引用了本轮工具结果中不存在的收藏链接，不能猜测或递增收藏 ID。"
+    return None

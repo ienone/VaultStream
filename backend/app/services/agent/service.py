@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, Iterable, Optional
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from langchain_core.runnables import RunnableLambda
 from langgraph.prebuilt import create_react_agent
@@ -324,10 +324,35 @@ class AgentService:
                 config={"recursion_limit": 8, "configurable": {"thread_id": session.id}},
             )
             output_messages = result.get("messages") or []
-            final_message = ""
+            final_message = _message_text(output_messages[-1]).strip() if output_messages else ""
+            if qq_context is not None:
+                from app.services.qq_agent_materials import unverified_completion
+
+                issue = await unverified_completion(self.db, run.id, final_message)
+                if issue and run.status not in {"waiting_confirmation", "stopped"}:
+                    # One bounded correction inside this same Agent run. A model
+                    # answer cannot stand in for a committed capture or read.
+                    correction = SystemMessage(content=(
+                        "执行账本校验未通过：" + issue + "\n"
+                        "重新核对最新用户消息和它的材料引用。若用户要求保存，必须现在真实调用 "
+                        "capture_content，选择该消息/引用的 source_ref；不能复用上一轮完成文案或猜内容 ID。"
+                        "若在回答历史收藏，先调用读取/检索工具核实，并描述历史事实，避免声称本轮新保存。"
+                        "普通聊天不需保存。不要向用户叙述本校验或内部纠错，只在工具实际完成后回答。"
+                    ))
+                    result = await graph.ainvoke(
+                        {"messages": [*output_messages, correction]},
+                        config={"recursion_limit": 8, "configurable": {"thread_id": session.id}},
+                    )
+                    output_messages = result.get("messages") or []
+                    final_message = _message_text(output_messages[-1]).strip() if output_messages else ""
+                    issue = await unverified_completion(self.db, run.id, final_message)
+                    if issue:
+                        raise AgentToolError(
+                            error_code="qq_agent_completion_unverified",
+                            message="这次操作尚未得到实际执行结果，不能确认已完成；已保存的条目以下方回执为准。",
+                            retryable=False,
+                        )
             usage = self._collect_usage(output_messages)
-            if output_messages:
-                final_message = _message_text(output_messages[-1]).strip()
             if not final_message and run.status == "waiting_confirmation":
                 final_message = "需要确认后才能继续执行该操作。"
 
@@ -982,6 +1007,17 @@ class AgentService:
                 result.append(HumanMessage(content=row.content))
             elif row.role == "assistant":
                 result.append(AIMessage(content=row.content))
+            elif row.role == "tool" and row.tool_call is not None:
+                # Only assistant prose was previously restored. That concealed
+                # the execution evidence and encouraged copying past receipts.
+                # Restore a valid call/result pair even at a pagination boundary.
+                call = row.tool_call
+                result.append(AIMessage(content="", tool_calls=[{
+                    "id": call.id, "name": call.tool_name, "args": call.args or {},
+                }]))
+                result.append(ToolMessage(
+                    content=row.rendered_content, tool_call_id=call.id, name=call.tool_name,
+                ))
         return result
 
     async def _fail_run(self, run: AgentRun, error: AgentToolError) -> None:
