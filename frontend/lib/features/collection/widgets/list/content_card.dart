@@ -45,43 +45,47 @@ class _ContentCardState extends State<ContentCard> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
+    final selected = widget.isSelectionMode
+        ? widget.isSelected
+        : widget.isActive;
     return Semantics(
-      selected: widget.isSelectionMode ? widget.isSelected : widget.isActive,
-      child: Container(
-        foregroundDecoration: BoxDecoration(
-          color: widget.isActive ? scheme.primary.withValues(alpha: .06) : null,
-          borderRadius: AppShape.cardBorder,
-          border: widget.isActive
-              ? Border.all(color: scheme.primary, width: 2)
-              : null,
-        ),
-        child: MouseRegion(
-          onEnter: (_) => setState(() => _isHovered = true),
-          onExit: (_) => setState(() => _isHovered = false),
-          child: GestureDetector(
-            onLongPress: widget.onLongPress,
-            child: Stack(
-              children: [
-                Padding(
-                  padding: EdgeInsets.only(
-                    right: widget.isSelectionMode ? 40 : 0,
-                  ),
-                  child: CollectionCardPreview(
-                    content: widget.content,
-                    onTap: widget.onTap == null ? null : _handleTap,
-                    isHovered: _isHovered,
-                    isList: widget.isList,
-                  ),
+      selected: selected,
+      checked: widget.isSelectionMode ? widget.isSelected : null,
+      child: ClipRRect(
+        borderRadius: AppShape.cardBorder,
+        child: Stack(
+          children: [
+            Container(
+              foregroundDecoration: BoxDecoration(
+                color: selected ? scheme.primary.withValues(alpha: .08) : null,
+                borderRadius: AppShape.cardBorder,
+                border: selected
+                    ? Border.all(color: scheme.primary, width: 2)
+                    : null,
+              ),
+              child: Padding(
+                padding: EdgeInsets.only(
+                  right: widget.isSelectionMode ? 48 : 0,
                 ),
-                if (widget.isSelectionMode)
-                  Positioned(
-                    top: AppSpacing.xs,
-                    right: AppSpacing.xs,
+                child: CollectionCardPreview(
+                  content: widget.content,
+                  isHovered: _isHovered,
+                  isList: widget.isList,
+                ),
+              ),
+            ),
+            if (widget.isSelectionMode)
+              Positioned(
+                top: AppSpacing.xs,
+                right: AppSpacing.xs,
+                child: SizedBox.square(
+                  dimension: 40,
+                  child: Center(
                     child: Container(
                       decoration: BoxDecoration(
                         color: widget.isSelected
                             ? scheme.primary
-                            : scheme.surface.withValues(alpha: 0.85),
+                            : scheme.surface,
                         shape: BoxShape.circle,
                         border: Border.all(color: scheme.primary, width: 2),
                       ),
@@ -91,9 +95,21 @@ class _ContentCardState extends State<ContentCard> {
                           : const SizedBox(width: 16, height: 16),
                     ),
                   ),
-              ],
+                ),
+              ),
+            // Paint ink above the preview, including opaque covers and badges.
+            Positioned.fill(
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  borderRadius: AppShape.cardBorder,
+                  onTap: widget.onTap == null ? null : _handleTap,
+                  onLongPress: widget.onLongPress,
+                  onHover: (hovered) => setState(() => _isHovered = hovered),
+                ),
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
