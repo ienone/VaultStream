@@ -11,6 +11,7 @@ const capture = z.object({
   summary: z.string().nullable().optional(), body: z.string().nullable().optional(),
   url: z.string().nullable().optional(), route: z.string(),
   collection_url: z.string().nullable().optional(),
+  parse_error: z.object({ message: z.string().nullable(), type: z.string().nullable(), at: z.string().nullable() }).nullable().optional(),
 })
 const agentResult = z.object({
   session_id: z.string(), run_id: z.string(), status: z.string(), message: z.string(),

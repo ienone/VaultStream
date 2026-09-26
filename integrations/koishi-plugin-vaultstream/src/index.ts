@@ -41,6 +41,7 @@ export function renderResult(result: AgentResult, completion = false): string {
     const label = c.body && c.body.length <= 500 ? '' : c.summary ? '摘要：' : '正文节选：'
     pieces.push([
       `${state} #${c.content_id}${c.title ? ` · ${c.title}` : ''}`,
+      c.status === 'parse_failed' && c.parse_error?.message ? `解析错误：${c.parse_error.message}` : '',
       c.author, body ? label + body.slice(0, 600) + (body.length > 600 ? '…' : '') : '',
       c.url && /^https?:\/\//i.test(c.url) ? c.url : '',
       c.collection_url && /^https?:\/\//i.test(c.collection_url) ? `收藏：${c.collection_url}` : '',

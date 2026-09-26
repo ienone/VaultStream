@@ -6,6 +6,16 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.base import OptionalUtcDatetime
+
+
+class ContentParseError(BaseModel):
+    """Actual persisted parse error; never a downstream configuration diagnosis."""
+
+    message: str | None = Field(default=None, max_length=2000)
+    type: str | None = Field(default=None, max_length=200)
+    at: OptionalUtcDatetime = None
+
 
 class AgentToolInfo(BaseModel):
     name: str

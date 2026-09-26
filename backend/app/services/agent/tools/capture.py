@@ -10,6 +10,7 @@ from app.adapters.storage import get_storage_backend
 from app.core.config import settings
 
 from app.models import AgentToolCall, Content, LayoutType
+from app.services.agent.content_evidence import PARSE_ERROR_SCHEMA, content_parse_error
 from app.services.agent.tool_registry import AgentToolContext, AgentToolError, AgentToolRegistry
 from app.services.content_service import ContentService, ParseQueueUnavailableError
 
@@ -74,6 +75,7 @@ def register_capture_tool(registry: AgentToolRegistry) -> None:
                 "capture_kind": {"type": "string"},
                 "status": {"type": "string"},
                 "route": {"type": "string"},
+                "parse_error": PARSE_ERROR_SCHEMA,
             },
         },
         permission_level="write",
@@ -110,6 +112,7 @@ async def _capture_content_tool(
         "layout_type_override": args.get("layout_type_override"),
     }
 
+    content = None
     try:
         if url:
             capture_kind = "link"
@@ -133,6 +136,7 @@ async def _capture_content_tool(
         "content_id": content_id,
         "capture_kind": capture_kind,
         "status": status,
+        "parse_error": content_parse_error(content) if content is not None and status == "parse_failed" else None,
         "route": f"/collection/{content_id}",
     }
 
@@ -187,6 +191,7 @@ async def _capture_qq_source(args: Dict[str, Any], context: AgentToolContext) ->
             await asyncio.sleep(2)
     return {"saved": True, "content_id": content_id, "capture_kind": kind,
             "status": "parse_queue_unavailable" if queue_error else content.status.value,
+            "parse_error": None if queue_error else content_parse_error(content),
             "title": content.title, "author": content.author_name,
             "body": (content.body or "")[:4000], "summary": content.summary,
             "url": content.clean_url, "route": f"/collection/{content_id}"}

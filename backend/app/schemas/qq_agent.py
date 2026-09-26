@@ -5,6 +5,8 @@ import json
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from urllib.parse import urlsplit
 
+from app.schemas.agent import ContentParseError
+
 
 class QQAttachment(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -59,6 +61,7 @@ class QQCaptureReceipt(BaseModel):
     url: str | None = None
     route: str
     collection_url: str | None = None
+    parse_error: ContentParseError | None = None
 
 
 class QQAgentResponse(BaseModel):
