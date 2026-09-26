@@ -396,12 +396,22 @@ Web 入口会自动加载 `web/accessibility/slider_label_association.js`，补�
 ### Android APK
 
 ```bash
-# 生成 release APK
-flutter build apk --release
+# 按 CPU 架构生成 release APK
+flutter build apk --release --split-per-abi
 
 # 或生成 AAB (Google Play)
 flutter build appbundle --release
 ```
+
+GitHub Actions 的 `Multi-Platform Build` 同时构建 Android、Web 和 Linux。Android 默认提供三个独立制品：
+
+- `vaultstream-android-arm64-v8a`：64 位 ARM 手机使用。
+- `vaultstream-android-armeabi-v7a`：32 位 ARM 设备使用。
+- `vaultstream-android-x86_64`：x86_64 设备或模拟器使用。
+
+需要 Debug 包时，在手动触发工作流时勾选 `build_debug`。日常安装选择对应架构的 Release 包即可。
+
+工作流复用 Flutter SDK/Pub 缓存；Gradle 官方 Action 管理依赖及任务输出缓存。多平台构建还缓存生成的 Dart 文件和 build_runner 状态，缓存键包含 SDK 版本、依赖、源码和生成配置，每次仍执行生成命令校验。首次运行需要建立缓存，不代表后续命中耗时。
 
 ### iOS 应用
 
