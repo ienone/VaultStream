@@ -179,6 +179,10 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
         summary_status = "success"
         summary_state = ProcessingStageState.SUCCESS
         summary_message = "摘要已生成"
+    elif not summary_enabled:
+        summary_status = "disabled"
+        summary_state = ProcessingStageState.DISABLED
+        summary_message = "自动摘要已关闭"
     elif content.status != ContentStatus.PARSE_SUCCESS:
         summary_status = "waiting_parse"
         summary_state = ProcessingStageState.BLOCKED
@@ -187,10 +191,6 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
         summary_status = "unavailable"
         summary_state = ProcessingStageState.BLOCKED
         summary_message = "摘要模型密钥未配置"
-    elif not summary_enabled:
-        summary_status = "disabled"
-        summary_state = ProcessingStageState.DISABLED
-        summary_message = "自动摘要已关闭，仍可手动生成"
     else:
         summary_status = "pending"
         summary_state = ProcessingStageState.PENDING
@@ -422,11 +422,10 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
     summary_issues: list[str] = []
     summary_hints: list[str] = []
     summary_actions: list[ProcessingStageAction] = []
-    if not summary_key_ready:
-        if not has_summary:
-            summary_issues.append("summary_api_key 未配置")
+    if summary_status == "unavailable":
+        summary_issues.append("summary_api_key 未配置")
         summary_hints.append("在设置中配置摘要模型密钥")
-    else:
+    elif summary_key_ready:
         if not summary_enabled:
             summary_hints.append("自动摘要已关闭，可在设置中开启")
         if content.status == ContentStatus.PARSE_SUCCESS:

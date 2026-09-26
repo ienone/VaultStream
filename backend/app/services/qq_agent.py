@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.core.time_utils import utcnow
 from app.models import AgentConfirmation, AgentMessage, AgentRun, AgentSession, AgentToolCall, BotConfig, BotConfigPlatform, Content, ContentSource
 from app.schemas.qq_agent import QQAgentRequest, QQAgentResponse, QQCaptureReceipt
+from app.services.agent.content_evidence import content_parse_error
 from app.services.agent.service import AgentService
 from app.services.agent.tool_registry import AgentToolContext, AgentToolError
 from app.services.qq_agent_materials import model_materials, request_sources
@@ -232,7 +233,8 @@ class QQAgentService:
                 status = "parse_queue_unavailable"
             captures.append(QQCaptureReceipt(content_id=content_id,
                 capture_kind=source.client_context["capture_kind"],
-                status=status, title=content.title, author=content.author_name,
+                status=status, parse_error=content_parse_error(content),
+                title=content.title, author=content.author_name,
                 summary=content.summary, body=(content.body or "")[:1500] or None,
                 url=content.clean_url, route=f"/collection/{content_id}",
                 collection_url=f"{public_base}/collection/{content_id}" if public_base else None))
