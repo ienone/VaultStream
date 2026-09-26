@@ -106,14 +106,12 @@ class CollectionCardPreview extends StatelessWidget {
   const CollectionCardPreview({
     super.key,
     required this.content,
-    this.onTap,
     this.isHovered = false,
     this.isTinyCardOverride,
     this.isList = false,
   });
 
   final ShareCard content;
-  final VoidCallback? onTap;
   final bool isHovered;
   final bool isList;
 
@@ -151,7 +149,7 @@ class CollectionCardPreview extends StatelessWidget {
             isTinyCardOverride ??
             (constraints.hasBoundedWidth && constraints.maxWidth < 200);
 
-        final surface = ContentSharedTransition(
+        return ContentSharedTransition(
           contentId: content.id,
           immersiveMedia: content.usesImmersiveMediaTransition,
           child: _CardSurface(
@@ -166,15 +164,6 @@ class CollectionCardPreview extends StatelessWidget {
             isList: isList,
             isHovered: isHovered,
           ),
-        );
-
-        if (onTap == null) return surface;
-
-        return Material(
-          color: Colors.transparent,
-          borderRadius: AppShape.cardBorder,
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(onTap: onTap, child: surface),
         );
       },
     );

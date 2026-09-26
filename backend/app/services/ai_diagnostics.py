@@ -58,17 +58,15 @@ def _capability_item(
 
 
 async def _run_ai_connectivity_target(target: str) -> dict[str, Any]:
-    if target in {"agent_chat", "text_llm", "vision_llm"}:
+    if target in {"agent_chat", "text_llm"}:
         from langchain_core.messages import HumanMessage
 
         from app.core.llm_factory import LLMFactory
 
         if target == "agent_chat":
             llm = await LLMFactory.get_agent_chat_llm()
-        elif target == "text_llm":
-            llm = await LLMFactory.get_text_llm()
         else:
-            llm = await LLMFactory.get_vision_llm()
+            llm = await LLMFactory.get_text_llm()
         if llm is None:
             raise RuntimeError(
                 f"{target} is not configured or model initialization failed"
@@ -126,14 +124,10 @@ async def _run_ai_connectivity_target(target: str) -> dict[str, Any]:
 
 
 async def _discover_openai_compatible_models(target: str) -> list[str]:
-    if target not in {"text_llm", "vision_llm"}:
-        raise ValueError("target must be text_llm or vision_llm")
+    if target != "text_llm":
+        raise ValueError("target must be text_llm")
     config_service = ConfigService()
-    config = (
-        await config_service.get_text_llm_config()
-        if target == "text_llm"
-        else await config_service.get_vision_llm_config()
-    )
+    config = await config_service.get_text_llm_config()
     if not config.api_key or not config.base_url:
         raise ValueError(f"{target} requires an API Base URL and API Key")
     base_url = config.base_url.rstrip("/")
@@ -233,7 +227,6 @@ class AIDiagnosticsService:
     ) -> list[dict[str, Any]]:
         """Build user-facing AI availability from settings and persisted state."""
         text_ready = await _llm_key_configured("text_llm")
-        vision_ready = await _llm_key_configured("vision_llm")
         summary_key_ready = _is_configured_value(
             await get_setting_value("summary_api_key")
         )
@@ -266,7 +259,7 @@ class AIDiagnosticsService:
         agent_chat_direct = _is_configured_value(
             await get_setting_value("agent_chat_api_key")
         )
-        agent_chat_target_ready = agent_chat_ready or text_ready or vision_ready
+        agent_chat_target_ready = agent_chat_ready or text_ready
         semantic_status = await EmbeddingService().get_index_status(session=db)
         indexed_total = int(semantic_status.get("indexed_total") or 0)
         connectivity = await self.latest_connectivity_by_target()
@@ -275,32 +268,16 @@ class AIDiagnosticsService:
         capabilities.append(
             _capability_item(
                 "text_llm",
-                "文本模型",
+                "通用模型",
                 "available" if text_ready else "unavailable",
-                "文本 LLM 可用于内容理解、摘要辅助与发现评分。"
+                "文字和图片共用此模型配置；图片读取需模型支持图像输入。"
                 if text_ready
-                else "未配置文本 LLM 密钥。",
+                else "未配置通用模型密钥。",
                 issues=[] if text_ready else ["text_llm_api_key 未配置"],
                 actions=[] if text_ready else ["配置 text_llm_api_key"],
                 details={
                     "configured": text_ready,
                     "connectivity": connectivity.get("text_llm"),
-                },
-            )
-        )
-        capabilities.append(
-            _capability_item(
-                "vision_llm",
-                "视觉模型",
-                "available" if vision_ready else "unavailable",
-                "视觉 LLM 可用于图片理解和多模态内容增强。"
-                if vision_ready
-                else "未配置视觉 LLM 密钥。",
-                issues=[] if vision_ready else ["vision_llm_api_key 未配置"],
-                actions=[] if vision_ready else ["配置 vision_llm_api_key"],
-                details={
-                    "configured": vision_ready,
-                    "connectivity": connectivity.get("vision_llm"),
                 },
             )
         )
@@ -312,14 +289,14 @@ class AIDiagnosticsService:
             patrol_status = "partial"
             patrol_summary = "发现巡逻开启，但 AI 评分写入已关闭。"
             patrol_issues = ["enable_ai_scoring 已关闭"]
-        elif text_ready or vision_ready:
+        elif text_ready:
             patrol_status = "available"
             patrol_summary = "发现巡逻可写入分数、理由、标签、摘要与可见性。"
             patrol_issues = []
         else:
             patrol_status = "unavailable"
-            patrol_summary = "发现巡逻开启，但缺少可用于评分的文本或视觉 LLM。"
-            patrol_issues = ["text_llm_api_key 与 vision_llm_api_key 均未配置"]
+            patrol_summary = "发现巡逻开启，但缺少可用于评分的通用模型。"
+            patrol_issues = ["通用模型密钥未配置"]
         capabilities.append(
             _capability_item(
                 "discovery_patrol",
@@ -336,26 +313,17 @@ class AIDiagnosticsService:
                     "enabled": discovery_patrol_enabled,
                     "ai_scoring_enabled": ai_scoring_enabled,
                     "text_llm": text_ready,
-                    "vision_llm": vision_ready,
                 },
             )
         )
 
-        if text_ready and vision_ready:
-            understanding_status = "available"
-            understanding_summary = "文本与视觉模型均已配置，可用于解析增强和复杂内容理解。"
-            understanding_issues = []
-            understanding_actions = []
-        elif text_ready or vision_ready:
-            understanding_status = "partial"
-            understanding_summary = "已有部分模型配置，部分解析增强能力可用。"
-            understanding_issues = ["视觉模型未配置" if text_ready else "文本模型未配置"]
-            understanding_actions = ["补齐文本与视觉模型密钥"]
-        else:
-            understanding_status = "unavailable"
-            understanding_summary = "未配置文本或视觉模型，AI 内容理解能力不可用。"
-            understanding_issues = ["text_llm_api_key 与 vision_llm_api_key 均未配置"]
-            understanding_actions = ["配置文本或视觉 LLM 密钥"]
+        understanding_status = "available" if text_ready else "unavailable"
+        understanding_summary = (
+            "已配置通用模型，图片读取使用同一配置。"
+            if text_ready else "未配置通用模型。"
+        )
+        understanding_issues = [] if text_ready else ["通用模型密钥未配置"]
+        understanding_actions = [] if text_ready else ["配置通用模型密钥"]
         capabilities.append(
             _capability_item(
                 "content_understanding",
@@ -366,11 +334,7 @@ class AIDiagnosticsService:
                 actions=understanding_actions,
                 details={
                     "text_llm": text_ready,
-                    "vision_llm": vision_ready,
-                    "connectivity": (
-                        (connectivity.get("text_llm") if text_ready else None)
-                        or (connectivity.get("vision_llm") if vision_ready else None)
-                    ),
+                    "connectivity": connectivity.get("text_llm"),
                 },
             )
         )
@@ -437,14 +401,13 @@ class AIDiagnosticsService:
                     "agent",
                     "Agent",
                     "available",
-                    "Agent 可使用已配置的 Agent chat 模型；未单独配置时会回退到文本模型，再保留视觉模型 fallback。",
+                    "Agent 使用其对话模型；未单独配置时使用通用模型。",
                     details={
                         "agent_chat": agent_chat_target_ready,
                         "agent_chat_direct": agent_chat_direct,
                         "model": agent_config.model,
                         "base_url": agent_config.base_url,
                         "text_llm": text_ready,
-                        "vision_llm": vision_ready,
                         "connectivity": connectivity.get("agent_chat"),
                     },
                 )
@@ -455,14 +418,13 @@ class AIDiagnosticsService:
                     "agent",
                     "Agent",
                     "unavailable",
-                    "Agent 需要至少一个可用的 Agent chat、文本或视觉 LLM。",
+                    "Agent 需要至少一个可用的 Agent chat、通用模型。",
                     issues=["未配置可供 Agent 使用的 LLM 密钥"],
                     actions=["配置 agent_chat_api_key 或 text_llm_api_key"],
                     details={
                         "agent_chat": False,
                         "agent_chat_direct": False,
                         "text_llm": False,
-                        "vision_llm": False,
                         "connectivity": None,
                     },
                 )
@@ -499,19 +461,17 @@ class AIDiagnosticsService:
             "semantic": "semantic_search",
             "summary": "summary_generation",
             "text": "text_llm",
-            "vision": "vision_llm",
             "agent": "agent_chat",
         }
         normalized = aliases.get(normalized, normalized)
         if normalized not in {
             "agent_chat",
             "text_llm",
-            "vision_llm",
             "summary_generation",
             "semantic_search",
         }:
             raise ValueError(
-                "target must be agent_chat, text_llm, vision_llm, "
+                "target must be agent_chat, text_llm, "
                 "summary_generation or semantic_search"
             )
         return normalized

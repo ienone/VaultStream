@@ -12,6 +12,7 @@ class AccountCenterPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final health = ref.watch(platformHealthProvider);
     return Scaffold(
       appBar: AppBar(
         leading: const AppBackButton(),
@@ -19,8 +20,15 @@ class AccountCenterPage extends ConsumerWidget {
         actions: [
           IconButton(
             tooltip: '刷新账号状态',
-            onPressed: () => ref.invalidate(platformHealthProvider),
-            icon: const Icon(Icons.refresh_rounded),
+            onPressed: health.isLoading
+                ? null
+                : () => ref.invalidate(platformHealthProvider),
+            icon: health.isLoading
+                ? const SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
           ),
         ],
       ),

@@ -462,14 +462,9 @@ class AutomationTab extends ConsumerWidget {
           data: (settings) => Column(
             children: [
               ExpandableSettingTile(
-                title: '文本模型',
-                subtitle: _getLlmSubtitle(settings, 'text'),
-                expandedContent: _buildLlmConfigEditor(context, ref, 'text'),
-              ),
-              ExpandableSettingTile(
-                title: '视觉模型',
-                subtitle: _getLlmSubtitle(settings, 'vision'),
-                expandedContent: _buildLlmConfigEditor(context, ref, 'vision'),
+                title: '通用模型（文字与图像）',
+                subtitle: _getLlmSubtitle(settings),
+                expandedContent: _buildLlmConfigEditor(context, ref),
               ),
               ExpandableSettingTile(
                 title: '向量模型',
@@ -616,11 +611,8 @@ class AutomationTab extends ConsumerWidget {
     switch (key) {
       case 'text_llm':
         return 'text_llm';
-      case 'vision_llm':
-        return 'vision_llm';
       case 'content_understanding':
         if (details['text_llm'] == true) return 'text_llm';
-        if (details['vision_llm'] == true) return 'vision_llm';
         return null;
       case 'summary_generation':
         return 'summary_generation';
@@ -748,8 +740,8 @@ class AutomationTab extends ConsumerWidget {
 
   bool _isEnvConfigured(String value) => value.startsWith('***');
 
-  String _getLlmSubtitle(List<SystemSetting> settings, String type) {
-    final prefix = type == 'text' ? 'text_llm' : 'vision_llm';
+  String _getLlmSubtitle(List<SystemSetting> settings) {
+    const prefix = 'text_llm';
     final model =
         settings
                 .firstWhere(
@@ -831,16 +823,11 @@ class AutomationTab extends ConsumerWidget {
     return '$modelLabel • $dimension 维 • $keyLabel';
   }
 
-  Widget _buildLlmConfigEditor(
-    BuildContext context,
-    WidgetRef ref,
-    String type,
-  ) {
-    // type: 'text' or 'vision'
+  Widget _buildLlmConfigEditor(BuildContext context, WidgetRef ref) {
     final settingsAsync = ref.watch(systemSettingsProvider);
     return settingsAsync.when(
       data: (settings) {
-        final prefix = type == 'text' ? 'text_llm' : 'vision_llm';
+        const prefix = 'text_llm';
         final baseUrl =
             settings
                     .firstWhere(
@@ -902,8 +889,8 @@ class AutomationTab extends ConsumerWidget {
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerRight,
-                  child: FilledButton.tonal(
-                    onPressed: () async {
+                  child: _ModelSaveButton(
+                    onSave: () async {
                       final notifier = ref.read(
                         systemSettingsProvider.notifier,
                       );
@@ -925,9 +912,8 @@ class AutomationTab extends ConsumerWidget {
                         modelController.text,
                         category: 'llm',
                       );
-                      if (context.mounted) showToast(context, 'LLM 配置已保存');
+                      if (context.mounted) showToast(context, '通用模型配置已保存');
                     },
-                    child: const Text('保存配置'),
                   ),
                 ),
               ],
@@ -1007,8 +993,8 @@ class AutomationTab extends ConsumerWidget {
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerRight,
-                  child: FilledButton.tonal(
-                    onPressed: () async {
+                  child: _ModelSaveButton(
+                    onSave: () async {
                       final notifier = ref.read(
                         systemSettingsProvider.notifier,
                       );
@@ -1035,7 +1021,6 @@ class AutomationTab extends ConsumerWidget {
                       );
                       if (context.mounted) showToast(context, '摘要模型配置已保存');
                     },
-                    child: const Text('保存配置'),
                   ),
                 ),
               ],
@@ -1114,8 +1099,8 @@ class AutomationTab extends ConsumerWidget {
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerRight,
-                  child: FilledButton.tonal(
-                    onPressed: () async {
+                  child: _ModelSaveButton(
+                    onSave: () async {
                       final notifier = ref.read(
                         systemSettingsProvider.notifier,
                       );
@@ -1144,7 +1129,6 @@ class AutomationTab extends ConsumerWidget {
                         showToast(context, 'Embedding 配置已保存');
                       }
                     },
-                    child: const Text('保存配置'),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -1598,3 +1582,44 @@ class _SettingsField extends StatelessWidget {
 
 String _sourceIntervalLabel(int minutes) =>
     minutes % 60 == 0 ? '${minutes ~/ 60} 小时' : '$minutes 分钟';
+
+class _ModelSaveButton extends StatefulWidget {
+  const _ModelSaveButton({required this.onSave});
+
+  final Future<void> Function() onSave;
+
+  @override
+  State<_ModelSaveButton> createState() => _ModelSaveButtonState();
+}
+
+class _ModelSaveButtonState extends State<_ModelSaveButton> {
+  bool _saving = false;
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await widget.onSave();
+    } catch (error) {
+      if (mounted) {
+        showToast(
+          context,
+          formatApiErrorMessage(error, fallbackMessage: '配置保存失败，请重试'),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => FilledButton.tonalIcon(
+    onPressed: _saving ? null : _save,
+    icon: _saving
+        ? const SizedBox.square(
+            dimension: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+        : const Icon(Icons.save_outlined),
+    label: Text(_saving ? '保存中…' : '保存配置'),
+  );
+}
