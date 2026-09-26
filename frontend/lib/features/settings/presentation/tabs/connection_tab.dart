@@ -199,12 +199,16 @@ class ConnectionTab extends ConsumerWidget {
           ),
         );
       },
-      loading: () => const LoadingGroup(),
+      loading: () => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 32),
+        child: Center(child: CircularProgressIndicator()),
+      ),
       error: (error, _) => SettingGroup(
         children: [
           SettingTile(
             title: '平台健康状态',
             subtitle: '加载失败，点击重试',
+            onTap: () => ref.invalidate(platformHealthProvider),
             icon: Icons.error_outline_rounded,
             iconColor: Theme.of(context).colorScheme.error,
             trailing: IconButton(
