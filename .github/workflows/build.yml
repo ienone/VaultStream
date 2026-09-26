@@ -90,30 +90,31 @@ jobs:
 
       - name: Upload Debug APK
         if: inputs.build_debug
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: vaultstream-android-debug
           path: frontend/build/app/outputs/flutter-apk/app-debug.apk
+          archive: false
+          if-no-files-found: error
 
       - name: Upload ARM64 Release APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: vaultstream-android-arm64-v8a
           path: frontend/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          archive: false
           if-no-files-found: error
 
       - name: Upload ARM32 Release APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: vaultstream-android-armeabi-v7a
           path: frontend/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+          archive: false
           if-no-files-found: error
 
       - name: Upload x86_64 Release APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: vaultstream-android-x86_64
           path: frontend/build/app/outputs/flutter-apk/app-x86_64-release.apk
+          archive: false
           if-no-files-found: error
 
   # Web Build
