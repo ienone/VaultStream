@@ -1,3 +1,4 @@
+import '../../../../../core/widgets/media_image_hero.dart';
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:file_selector/file_selector.dart';
@@ -283,7 +284,8 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
   }
 
   Widget _buildGallery(BuildContext context) {
-    final opacity = (1 - (_dragOffset.abs() / 300)).clamp(0.0, 1.0);
+    final progress = ModalRoute.of(context)!.animation!;
+    final dragOpacity = (1 - (_dragOffset.abs() / 300)).clamp(0.0, 1.0);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -294,11 +296,24 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
             child: GestureDetector(
               excludeFromSemantics: true,
               onTap: () => Navigator.pop(context),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                child: Container(
-                  color: Colors.black.withValues(alpha: opacity),
-                ),
+              child: AnimatedBuilder(
+                animation: progress,
+                builder: (context, _) {
+                  final amount =
+                      Curves.easeOutCubic.transform(progress.value) *
+                      dragOpacity;
+                  return BackdropFilter(
+                    filter: ImageFilter.blur(
+                      sigmaX: 16 * amount,
+                      sigmaY: 16 * amount,
+                    ),
+                    child: ColoredBox(
+                      color: Theme.of(
+                        this.context,
+                      ).colorScheme.surface.withValues(alpha: 0.2 * amount),
+                    ),
+                  );
+                },
               ),
             ),
           ),
@@ -360,10 +375,10 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
                       panEnabled: true,
                       scaleEnabled: true,
                       child: Center(
-                        child: Hero(
-                          tag: _getHeroTag(index),
-                          child: _RotatingGalleryImage(
-                            quarterTurns: _rotationTurns[index] ?? 0,
+                        child: _RotatingGalleryImage(
+                          quarterTurns: _rotationTurns[index] ?? 0,
+                          child: MediaImageHero(
+                            tag: _getHeroTag(index),
                             child: NetworkThumbnail(
                               imageUrl: widget.images[index],
                               mediaAsset: widget
@@ -395,54 +410,57 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
               minimum: const EdgeInsets.all(AppSpacing.sm),
               child: Align(
                 alignment: Alignment.topCenter,
-                child: MediaOverlaySurface(
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.xxs),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          tooltip: '关闭图集',
-                          onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close_rounded),
-                        ),
-                        Flexible(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: AppSpacing.xs,
-                            ),
-                            child: Text(
-                              '${_currentIndex + 1} / ${widget.images.length}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.labelLarge
-                                  ?.copyWith(color: Colors.white),
+                child: FadeTransition(
+                  opacity: progress,
+                  child: MediaOverlaySurface(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpacing.xxs),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: '关闭图集',
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                          Flexible(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.xs,
+                              ),
+                              child: Text(
+                                '${_currentIndex + 1} / ${widget.images.length}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.labelLarge
+                                    ?.copyWith(color: Colors.white),
+                              ),
                             ),
                           ),
-                        ),
-                        IconButton(
-                          tooltip: _isZoomed ? '还原图片' : '放大图片',
-                          icon: Icon(
-                            _isZoomed
-                                ? Icons.zoom_out_rounded
-                                : Icons.zoom_in_rounded,
+                          IconButton(
+                            tooltip: _isZoomed ? '还原图片' : '放大图片',
+                            icon: Icon(
+                              _isZoomed
+                                  ? Icons.zoom_out_rounded
+                                  : Icons.zoom_in_rounded,
+                            ),
+                            onPressed: _zoomFromToolbar,
                           ),
-                          onPressed: _zoomFromToolbar,
-                        ),
-                        IconButton(
-                          tooltip: '旋转图片',
-                          icon: const Icon(Icons.rotate_right_rounded),
-                          onPressed: () => setState(() {
-                            _rotationTurns[_currentIndex] =
-                                (_rotationTurns[_currentIndex] ?? 0) + 1;
-                          }),
-                        ),
-                        IconButton(
-                          tooltip: _saving ? '正在保存' : '保存图片',
-                          icon: const Icon(Icons.download_rounded),
-                          onPressed: _saving ? null : _saveCurrentImage,
-                        ),
-                      ],
+                          IconButton(
+                            tooltip: '旋转图片',
+                            icon: const Icon(Icons.rotate_right_rounded),
+                            onPressed: () => setState(() {
+                              _rotationTurns[_currentIndex] =
+                                  (_rotationTurns[_currentIndex] ?? 0) + 1;
+                            }),
+                          ),
+                          IconButton(
+                            tooltip: _saving ? '正在保存' : '保存图片',
+                            icon: const Icon(Icons.download_rounded),
+                            onPressed: _saving ? null : _saveCurrentImage,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -459,19 +477,24 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
 
   Widget _pageButton(BuildContext context, {required bool previous}) =>
       Positioned.fill(
-        child: SafeArea(
-          minimum: const EdgeInsets.all(AppSpacing.md),
-          child: Align(
-            alignment: previous ? Alignment.centerLeft : Alignment.centerRight,
-            child: MediaOverlaySurface(
-              child: IconButton(
-                tooltip: previous ? '上一张' : '下一张',
-                icon: Icon(
-                  previous
-                      ? Icons.chevron_left_rounded
-                      : Icons.chevron_right_rounded,
+        child: FadeTransition(
+          opacity: ModalRoute.of(context)!.animation!,
+          child: SafeArea(
+            minimum: const EdgeInsets.all(AppSpacing.md),
+            child: Align(
+              alignment: previous
+                  ? Alignment.centerLeft
+                  : Alignment.centerRight,
+              child: MediaOverlaySurface(
+                child: IconButton(
+                  tooltip: previous ? '上一张' : '下一张',
+                  icon: Icon(
+                    previous
+                        ? Icons.chevron_left_rounded
+                        : Icons.chevron_right_rounded,
+                  ),
+                  onPressed: () => _changePage(previous ? -1 : 1),
                 ),
-                onPressed: () => _changePage(previous ? -1 : 1),
               ),
             ),
           ),
@@ -520,7 +543,7 @@ class _RotatingGalleryImage extends StatelessWidget {
               maxWidth: canvasWidth,
               minHeight: canvasHeight,
               maxHeight: canvasHeight,
-              child: child,
+              child: Center(child: child),
             ),
           ),
         );
