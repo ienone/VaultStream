@@ -36,6 +36,7 @@ from app.services.background_task_state import (
 )
 from app.services.automation_policy import AutomationPolicyService
 from app.services.distribution.decision import should_distribute, DECISION_WILL_PUSH
+from app.services.distribution.receipt_policy import EXPLICIT_PUSH, has_qq_agent_receipt
 from app.services.distribution.delivery_state import (
     DELIVERY_PREPARING, DELIVERY_SENDING, DELIVERY_UNKNOWN, LOCK_TIMEOUT,
     UNKNOWN_MESSAGE, delivery_is_resolved, owns_delivery,
@@ -658,6 +659,11 @@ class DistributionQueueWorker:
                 reason, code = policy.reason, policy.code
         if reason:
             await self._defer(session, item, reason, code)
+            return
+
+        if (not manual and item.approved_by != EXPLICIT_PUSH
+                and await has_qq_agent_receipt(session, content.id, bot_chat, actual_target_id)):
+            await self._defer(session, item, "此 QQ 私聊由 Agent 返回收藏回执", "qq_agent_receipt", terminal=True)
             return
 
         # Persist the send boundary before IO. Neither a lost response nor a

@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-vaultstream",
-  "version": "0.1.0",
-  "description": "VaultStream 收藏检索、原文阅读与明确链接收录",
+  "version": "0.2.0",
+  "description": "VaultStream Agent QQ 私聊入口与群聊专用链接解析",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "files": ["lib", "README.md", "LICENSE"],
@@ -27,7 +27,7 @@
     "typescript": "^5.9.3"
   },
   "koishi": {
-    "description": { "zh": "在管理员 QQ 私聊中查询、阅读及明确保存 VaultStream 收藏。" },
+    "description": { "zh": "管理员私聊接入 VaultStream Agent，群聊使用公开专用解析能力。" },
     "service": { "required": ["chatluna"] }
   }
 }

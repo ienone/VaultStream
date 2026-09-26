@@ -15,6 +15,7 @@ from app.services.agent.tool_registry import (
 from app.services.automation_policy import AutomationPolicyService
 from app.services.distribution import DistributionService
 from app.services.distribution.delivery_state import delivery_is_resolved
+from app.services.distribution.receipt_policy import EXPLICIT_PUSH
 
 
 class PushBatchArgs(BaseModel):
@@ -78,6 +79,8 @@ async def _push_batch_tool(args: Dict[str, Any], context: AgentToolContext) -> D
             enqueued_total += await distribution_service.enqueue_content(
                 content_id,
                 force=False,
+                manual=True,
+                bot_chat_id=bot_chat_id,
             )
 
     stmt = select(ContentQueueItem).where(ContentQueueItem.content_id.in_(content_ids))
@@ -102,6 +105,7 @@ async def _push_batch_tool(args: Dict[str, Any], context: AgentToolContext) -> D
             continue
 
         values = dict(status=QueueItemStatus.SCHEDULED, scheduled_at=now,
+                      approved_by=EXPLICIT_PUSH,
                       next_attempt_at=None, last_error=None, last_error_type=None,
                       last_error_at=None, locked_at=None, locked_by=None)
         if include_success:

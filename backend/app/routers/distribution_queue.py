@@ -33,6 +33,7 @@ from app.schemas.queue import QueueDeliveryReconcileRequest
 from app.services.distribution.delivery_state import (
     delivery_is_resolved, reconcile_delivery,
 )
+from app.services.distribution.receipt_policy import EXPLICIT_PUSH
 from app.services.background_task_state import (
     record_task_run_error,
     record_task_run_started,
@@ -457,6 +458,7 @@ async def enqueue_content_endpoint(
     enqueued_count = await DistributionService(db).enqueue_content(
         content_id,
         force=request.force,
+        manual=True,
     )
     logger.info(f"手动入队: content_id={content_id}, enqueued={enqueued_count}")
     await event_bus.publish("queue_updated", {
@@ -491,6 +493,7 @@ async def retry_queue_item(
     await _lock_queue_item_for_edit(db, item)
 
     item.status = QueueItemStatus.SCHEDULED
+    item.approved_by = EXPLICIT_PUSH
     item.locked_at = None
     item.locked_by = None
     item.next_attempt_at = None
@@ -597,6 +600,7 @@ async def set_queue_item_status(
     if target_status == "will_push":
         if item.status != QueueItemStatus.SUCCESS:
             item.status = QueueItemStatus.SCHEDULED
+            item.approved_by = EXPLICIT_PUSH
             item.scheduled_at = now
             item.locked_at = None
             item.locked_by = None
@@ -660,6 +664,7 @@ async def schedule_queue_item(
 
     await _lock_queue_item_for_edit(db, item)
     item.status = QueueItemStatus.SCHEDULED
+    item.approved_by = EXPLICIT_PUSH
     item.scheduled_at = scheduled_at
     item.next_attempt_at = None
     item.locked_at = None
@@ -737,6 +742,7 @@ async def batch_retry_queue_items(
     for item in items:
         await _lock_queue_item_for_edit(db, item)
         item.status = QueueItemStatus.SCHEDULED
+        item.approved_by = EXPLICIT_PUSH
         item.locked_at = None
         item.locked_by = None
         item.next_attempt_at = None
@@ -791,6 +797,7 @@ async def batch_push_now_queue_items(
         if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
             await _lock_queue_item_for_edit(db, item)
             item.status = QueueItemStatus.SCHEDULED
+            item.approved_by = EXPLICIT_PUSH
             item.scheduled_at = now
             item.next_attempt_at = None
             item.last_error = None
@@ -856,6 +863,7 @@ async def batch_schedule_queue_items(
         if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
             await _lock_queue_item_for_edit(db, item)
             item.status = QueueItemStatus.SCHEDULED
+            item.approved_by = EXPLICIT_PUSH
             item.scheduled_at = start_time + timedelta(seconds=interval_seconds * idx)
             item.next_attempt_at = None
             item.last_error = None
@@ -896,6 +904,7 @@ async def set_content_queue_status(
 
             await _lock_queue_item_for_edit(db, item)
             item.status = QueueItemStatus.SCHEDULED
+            item.approved_by = EXPLICIT_PUSH
             item.scheduled_at = now
             item.next_attempt_at = None
             item.last_error = None
@@ -963,6 +972,7 @@ async def repush_now_content_queue(
             continue
         await _lock_queue_item_for_edit(db, item)
         item.status = QueueItemStatus.SCHEDULED
+        item.approved_by = EXPLICIT_PUSH
         item.scheduled_at = now
         item.next_attempt_at = None
         item.locked_at = None
@@ -1026,6 +1036,7 @@ async def batch_repush_now_content_queue(
     for item in items:
         await _lock_queue_item_for_edit(db, item)
         item.status = QueueItemStatus.SCHEDULED
+        item.approved_by = EXPLICIT_PUSH
         item.scheduled_at = now
         item.next_attempt_at = None
         item.locked_at = None
@@ -1129,6 +1140,7 @@ async def push_now_content_queue(
         if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
             await _lock_queue_item_for_edit(db, item)
             item.status = QueueItemStatus.SCHEDULED
+            item.approved_by = EXPLICIT_PUSH
             item.scheduled_at = now
             item.next_attempt_at = None
             item.last_error = None
@@ -1184,6 +1196,7 @@ async def schedule_content_queue(
         if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
             await _lock_queue_item_for_edit(db, item)
             item.status = QueueItemStatus.SCHEDULED
+            item.approved_by = EXPLICIT_PUSH
             item.scheduled_at = scheduled_at
             item.next_attempt_at = None
             item.last_error = None
@@ -1234,6 +1247,7 @@ async def batch_push_now_content_queue(
         if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
             await _lock_queue_item_for_edit(db, item)
             item.status = QueueItemStatus.SCHEDULED
+            item.approved_by = EXPLICIT_PUSH
             item.scheduled_at = now
             item.next_attempt_at = None
             item.last_error = None
@@ -1298,6 +1312,7 @@ async def batch_reschedule_content_queue(
             if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
                 await _lock_queue_item_for_edit(db, item)
                 item.status = QueueItemStatus.SCHEDULED
+                item.approved_by = EXPLICIT_PUSH
                 item.scheduled_at = scheduled
                 item.next_attempt_at = None
                 item.last_error = None

@@ -23,6 +23,7 @@ from app.models import (
 from app.repositories import ContentRepository, DistributionRepository
 from app.services.automation_policy import AutomationPolicyService
 from app.services.distribution.delivery_state import delivery_is_resolved
+from app.services.distribution.receipt_policy import EXPLICIT_PUSH, has_qq_agent_receipt
 from app.services.distribution.decision import (
     DECISION_FILTERED,
     check_match_conditions,
@@ -139,7 +140,10 @@ class DistributionService:
             except Exception as e:
                 logger.warning("Failed to enqueue after refresh auto-approve: {}", e)
 
-    async def enqueue_content(self, content_id: int, *, force: bool = False) -> int:
+    async def enqueue_content(
+        self, content_id: int, *, force: bool = False, manual: bool = False,
+        bot_chat_id: int | None = None,
+    ) -> int:
         """Create or update distribution queue items for content."""
         policy = await AutomationPolicyService().distribution_enqueue(force=force)
         if not policy.allowed:
@@ -222,6 +226,8 @@ class DistributionService:
                 continue
 
             for target, bot_chat in pairs:
+                if bot_chat_id is not None and bot_chat.id != bot_chat_id:
+                    continue
                 if (
                     target.backfill_watermark is not None
                     and content.created_at is not None
@@ -246,11 +252,16 @@ class DistributionService:
                     continue
 
                 target_id = decision.target_id or bot_chat.chat_id
+                if not manual and await has_qq_agent_receipt(self.db, content_id, bot_chat, target_id):
+                    continue
 
                 key = (rule.id, bot_chat.id)
                 existing = existing_items.get(key)
 
                 if existing:
+                    if manual and existing.status == QueueItemStatus.SCHEDULED and existing.approved_by != EXPLICIT_PUSH:
+                        existing.approved_by = EXPLICIT_PUSH
+                        count += 1
                     if existing.status == QueueItemStatus.SUCCESS and not force:
                         logger.debug(
                             f"Queue item already succeeded: content_id={content_id}, "
@@ -267,6 +278,7 @@ class DistributionService:
                             status=QueueItemStatus.SCHEDULED, attempt_count=0,
                             last_error=None, last_error_type=None, last_error_at=None,
                             next_attempt_at=None, target_id=target_id,
+                            approved_by=EXPLICIT_PUSH if manual else existing.approved_by,
                             scheduled_at=utcnow(), updated_at=utcnow(),
                         ).execution_options(synchronize_session=False))
                         if reset.rowcount != 1:
@@ -290,6 +302,7 @@ class DistributionService:
                     status=QueueItemStatus.SCHEDULED,
                     priority=rule.priority + content.queue_priority,
                     scheduled_at=utcnow(),
+                    approved_by=EXPLICIT_PUSH if manual else None,
                 )
                 self.db.add(item)
                 count += 1

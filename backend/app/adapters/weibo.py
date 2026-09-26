@@ -54,14 +54,15 @@ class WeiboAdapter(PlatformAdapter):
             end = start
         return str(int("".join(reversed(groups))))
 
-    def __init__(self, cookies: Optional[Dict[str, str]] = None):
+    def __init__(self, cookies: Optional[Dict[str, str]] = None, *, public_only: bool = False):
         """
         初始化微博适配器
         
         Args:
             cookies: 微博cookies（可选，来自数据库注入）
         """
-        self.cookies = cookies or {}
+        self.public_only = public_only
+        self.cookies = {} if public_only else (cookies or {})
 
     async def detect_content_type(self, url: str) -> Optional[str]:
         """
@@ -179,7 +180,7 @@ class WeiboAdapter(PlatformAdapter):
         cookie_str = None
         if self.cookies:
             cookie_str = "; ".join(f"{k}={v}" for k, v in self.cookies.items())
-        elif settings.weibo_cookie:
+        elif not self.public_only and settings.weibo_cookie:
             cookie_str = settings.weibo_cookie.get_secret_value().strip()
 
         if cookie_str:

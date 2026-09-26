@@ -52,7 +52,7 @@ class XiaohongshuAdapter(PlatformAdapter):
         ],
     }
     
-    def __init__(self, cookie: Optional[str] = None, cookies: Optional[Dict[str, str]] = None):
+    def __init__(self, cookie: Optional[str] = None, cookies: Optional[Dict[str, str]] = None, *, public_only: bool = False):
         """
         初始化
         
@@ -64,7 +64,8 @@ class XiaohongshuAdapter(PlatformAdapter):
         if cookies and not cookie:
             cookie = "; ".join([f"{k}={v}" for k, v in cookies.items()])
         
-        self.cookie_str = cookie or (
+        self.public_only = public_only
+        self.cookie_str = None if public_only else cookie or (
             settings.xiaohongshu_cookie.get_secret_value() 
             if settings.xiaohongshu_cookie else None
         )
@@ -154,6 +155,8 @@ class XiaohongshuAdapter(PlatformAdapter):
                 return url
     
     async def _refresh_cookie_from_settings(self) -> None:
+        if self.public_only:
+            return
         latest = await ConfigService().get_platform_cookie_string(
             "xiaohongshu",
             fresh=True,

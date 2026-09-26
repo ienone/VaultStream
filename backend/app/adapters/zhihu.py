@@ -105,14 +105,14 @@ class ZhihuAdapter(PlatformAdapter):
         "collection": "https://api.zhihu.com/collections/{id}",
     }
 
-    def __init__(self, cookies: Optional[Dict[str, str]] = None, raw_cookie_str: Optional[str] = None):
+    def __init__(self, cookies: Optional[Dict[str, str]] = None, raw_cookie_str: Optional[str] = None, *, public_only: bool = False):
         # 保留 DB 中的原始 Cookie 串（含可能影响风控的边界字符），
         # 在请求头直传时优先使用；同时保留 dict 形式用于需要按键读取的逻辑。
-        self.raw_cookie_str: Optional[str] = raw_cookie_str
-        if not self.raw_cookie_str and settings.zhihu_cookie:
+        self.raw_cookie_str: Optional[str] = None if public_only else raw_cookie_str
+        if not public_only and not self.raw_cookie_str and settings.zhihu_cookie:
             self.raw_cookie_str = settings.zhihu_cookie.get_secret_value()
 
-        self.cookies = cookies or {}
+        self.cookies = {} if public_only else (cookies or {})
         if not self.cookies and self.raw_cookie_str:
             self.cookies = self.parse_cookie_str(self.raw_cookie_str)
 

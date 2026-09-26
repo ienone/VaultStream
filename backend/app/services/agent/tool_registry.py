@@ -15,6 +15,9 @@ class AgentToolContext:
     run_id: str | None = None
     session_id: str | None = None
     confirmed: bool = False
+    # Set only by the authenticated QQ entry point, never accepted by AgentRunRequest.
+    qq_sources: dict[str, dict[str, Any]] | None = None
+    qq_origin: dict[str, Any] | None = None
 
 
 AgentToolHandler = Callable[[Dict[str, Any], AgentToolContext], Awaitable[Dict[str, Any]]]

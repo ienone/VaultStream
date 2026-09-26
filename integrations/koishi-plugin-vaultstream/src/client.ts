@@ -1,44 +1,42 @@
 import { z } from 'zod'
+import { createHash } from 'node:crypto'
 
-const searchResponse = z.object({
-  content_total: z.number().int(),
-  content_has_more: z.boolean(),
-  contents: z.array(z.object({
-    content_id: z.number().int(),
-    title: z.string().nullable(),
-    url: z.string(),
-    source_text: z.string().nullable(),
-    match_source: z.string(),
+export interface Attachment { url: string; filename: string; mime_type?: string }
+export interface Material { message_id: string; text: string; links: string[]; attachments: Attachment[] }
+export interface AgentInput extends Material { user_id: string; quote?: Material; forwarded?: Material[] }
+
+const capture = z.object({
+  content_id: z.number().int(), capture_kind: z.string(), status: z.string(),
+  title: z.string().nullable().optional(), author: z.string().nullable().optional(),
+  summary: z.string().nullable().optional(), body: z.string().nullable().optional(),
+  url: z.string().nullable().optional(), route: z.string(),
+  collection_url: z.string().nullable().optional(),
+})
+const agentResult = z.object({
+  session_id: z.string(), run_id: z.string(), status: z.string(), message: z.string(),
+  confirmation_required: z.boolean(), confirmation: z.record(z.unknown()).nullable(),
+  captures: z.array(capture), duplicate: z.boolean(),
+})
+const previewResult = z.object({
+  duplicate: z.boolean(),
+  items: z.array(z.object({
+    url: z.string(), status: z.enum(['parsed', 'unsupported', 'failed']),
+    platform: z.string().nullable().optional(), title: z.string().nullable().optional(),
+    body: z.string().nullable().optional(), author: z.string().nullable().optional(),
+    media_urls: z.array(z.string()), image_url: z.string().nullable(),
+    text: z.string().nullable().optional(), reason: z.string().nullable().optional(),
+    send_allowed: z.boolean(),
   })),
 })
-const contentResponse = z.object({
-  id: z.number().int(),
-  title: z.string().nullable(),
-  body: z.string().nullable(),
-  url: z.string(),
-})
-const shareResponse = z.object({
-  id: z.number().int(),
-  platform: z.string(),
-  url: z.string(),
-  status: z.string(),
-  created_at: z.string(),
-})
-
-export class VaultStreamError extends Error {}
-
-export interface CaptureContext {
-  bot_config_id: number
-  bot_id: string
-  chat_id: string
-  user_id: string
-  message_id: string
+export type AgentResult = z.infer<typeof agentResult>
+export type PreviewItem = z.infer<typeof previewResult>['items'][number]
+export class VaultStreamError extends Error {
+  constructor(message: string, readonly status?: number) { super(message) }
 }
 
 export class VaultStreamClient {
   private readonly baseUrl: string
-
-  constructor(baseUrl: string, private readonly token: string) {
+  constructor(baseUrl: string, private readonly token: string, private readonly botConfigId: number) {
     const url = new URL(baseUrl)
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
       throw new VaultStreamError('VaultStream API 地址无效。')
@@ -46,71 +44,30 @@ export class VaultStreamClient {
     this.baseUrl = url.href.replace(/\/$/, '')
     if (!token.trim()) throw new VaultStreamError('请配置 VaultStream API Token。')
   }
-
-  private async request(path: string, body?: unknown): Promise<{ status: number; data: unknown }> {
+  private async request<T>(path: string, schema: z.ZodType<T>, body?: unknown): Promise<T> {
     let response: Response
     try {
-      response = await fetch(`${this.baseUrl}${path}`, {
+      response = await fetch(`${this.baseUrl}/bot/qq/${this.botConfigId}${path}`, {
         method: body === undefined ? 'GET' : 'POST',
         headers: { 'X-API-Token': this.token, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
         body: body === undefined ? undefined : JSON.stringify(body),
-        redirect: 'error',
-        signal: AbortSignal.timeout(15_000),
+        redirect: 'error', signal: AbortSignal.timeout(300_000),
       })
-    } catch {
-      throw new VaultStreamError(body === undefined
-        ? 'VaultStream 暂时无法访问。'
-        : '未收到保存结果，请先检查收藏库，避免重复提交。')
-    }
-    let data: unknown
-    try { data = await response.json() } catch {
-      throw new VaultStreamError('VaultStream 返回了无法读取的结果。')
-    }
-    return { status: response.status, data }
-  }
-
-  private parse<T>(response: { status: number; data: unknown }, schema: z.ZodType<T>): T {
-    if (response.status !== 200) {
-      if (response.status === 404) throw new VaultStreamError('收藏内容不存在。')
-      if (response.status === 401 || response.status === 403) throw new VaultStreamError('VaultStream 拒绝了访问。')
-      throw new VaultStreamError(`VaultStream 请求失败（HTTP ${response.status}）。`)
-    }
-    const result = schema.safeParse(response.data)
+    } catch { throw new VaultStreamError('暂未收到 VaultStream 的处理结果；私聊任务会继续查询回执，请勿重复保存。') }
+    if (!response.ok) throw new VaultStreamError(`VaultStream 请求失败（HTTP ${response.status}）。`, response.status)
+    const result = schema.safeParse(await response.json())
     if (!result.success) throw new VaultStreamError('VaultStream 返回格式与接口契约不一致。')
     return result.data
   }
-
-  async search(query: string, page = 1) {
-    const params = new URLSearchParams({ q: query, kind: 'contents', content_scope: 'library', mode: 'keyword', page: String(page), size: '5', top_k: '5' })
-    const data = this.parse(await this.request(`/search/unified?${params}`), searchResponse)
-    return {
-      total: data.content_total,
-      next_page: data.content_has_more ? page + 1 : null,
-      items: data.contents.map(item => ({
-        content_id: item.content_id, title: item.title, url: item.url,
-        excerpt: item.source_text?.slice(0, 600) ?? '', match_source: item.match_source,
-      })),
-    }
+  runId(input: Pick<AgentInput, 'user_id' | 'message_id'>): string {
+    const digest = createHash('sha256').update(`${this.botConfigId}:${input.user_id}:${input.message_id}`).digest('hex').slice(0, 40)
+    return `qqrun_${digest}`
   }
-
-  async read(contentId: number, offset = 0) {
-    const data = this.parse(await this.request(`/contents/${contentId}`), contentResponse)
-    const body = data.body ?? ''
-    return {
-      content_id: data.id, title: data.title, url: data.url,
-      body: body.slice(offset, offset + 6000),
-      next_offset: body.length > offset + 6000 ? offset + 6000 : null,
-    }
+  agent(input: AgentInput) { return this.request('/agent', agentResult, input) }
+  receipt(runId: string, userId: string) {
+    return this.request(`/agent/runs/${encodeURIComponent(runId)}?user_id=${encodeURIComponent(userId)}`, agentResult)
   }
-
-  async save(url: string, context: CaptureContext) {
-    const response = await this.request('/shares', { url, source: 'qq_bot', client_context: context })
-    // /shares commits Content and ContentSource before queuing the parse task.
-    if (response.status === 503) {
-      const pending = z.object({ error_code: z.literal('parse_queue_unavailable'), content_id: z.number().int().positive() }).safeParse(response.data)
-      if (pending.success) return { content_id: pending.data.content_id, saved: true, parsing_pending: true }
-    }
-    const data = this.parse(response, shareResponse)
-    return { content_id: data.id, saved: true, parsing_pending: false, status: data.status }
+  preview(groupId: string, userId: string, messageId: string, urls: string[]) {
+    return this.request('/preview', previewResult, { group_id: groupId, user_id: userId, message_id: messageId, urls, reserve_send: true })
   }
 }
