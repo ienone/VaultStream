@@ -100,4 +100,4 @@ Bot 生命周期控制和 chat 同步已经离开 API router 并进入可注入 
 
 ## Telegram 运行者
 
-Telegram Application 随 FastAPI lifespan 异步启停，仅周期任务 leader 可控制；部署使用单 API worker，解析/分发并发仍由应用内 worker 配置控制。Bot 内部 API 使用同进程 ASGI transport，管理状态直接读取 Application/Updater，不再使用子进程、PID 文件、自报心跳或独立 systemd 服务。QQ 的外部心跳不变。Bot 启动失败关闭已创建资源，启停和配置重载继续写运行记录。迁移部署前应停止旧独立 Telegram 进程，避免两个消费者轮询同一 Bot；本次未操作生产进程。
+Telegram Application 随 FastAPI lifespan 异步启停，仅周期任务 leader 可控制；部署使用单 API worker，解析/分发并发仍由应用内 worker 配置控制。Bot 内部 API 使用同进程 ASGI transport，管理状态直接读取 Application/Updater，不再使用子进程、PID 文件、自报心跳或独立 systemd 服务。QQ 的外部心跳不变。Bot 启动失败关闭已创建资源，启停和配置重载继续写运行记录。迁移部署前应停止旧独立 Telegram 进程，避免两个消费者轮询同一 Bot。

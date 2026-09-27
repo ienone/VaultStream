@@ -1,6 +1,6 @@
 # 精简与重构实施记录
 
-基线：`01e3e223`。分支：`repository-consolidation`。本地实现与验收完成；线上部署未执行。
+基线：`01e3e223`。分支：`repository-consolidation`。本地实现与验收完成；后续已于 2026-09-27 将 cfbbba78 部署到生产，见下方部署记录。
 
 ## 完成范围
 
@@ -32,3 +32,11 @@
 只读检查发现服务器同时存在容器和宿主机 API；独立 vaultstream-bot.service inactive，未发现 app.bot.main 进程。本次未停止、重启或部署生产服务。
 
 Telegram 新运行方式要求单 API worker；迁移时先确认实际服务入口并停止旧独立 Telegram 进程，再切换版本，避免相同 Bot 的重复轮询。事件 outbox、leader、run ledger、SQLite/Alembic 和业务 API 均保留。
+
+## 后续生产部署（2026-09-27）
+
+用户授权后，API 与 Web 已切换到 `cfbbba78`。生产入口继续使用原有 Docker Compose，单 API worker、调试重载关闭。旧宿主机开发服务 `vaultstream-api.service` 已停止并禁用，原文件和旧库保留。数据库、配置及旧镜像保留供回滚。
+
+正式域名健康、鉴权、收藏读取和 SSE 连接通过；Telegram 真实账号成功启动监听，QQ 状态为在线。上线前后 66 条正式收藏逐 ID 核对完整；启动清理的 38 条记录都是已过期且没有收藏/分发依赖的 RSS 发现候选。Web 主文件哈希与部署产物一致。未发送测试消息或宣称聊天端到端验收。
+
+Android、Linux、Web 构建均成功。追加核对发现手动构建未使用仓库已有正式签名：相邻两次 ARM64 APK 的 Android Debug 证书不同，不能直接覆盖安装。手动流程已改为复用 Release 的四个签名 Secret，缺失时失败，不再发布临时调试签名的 Release APK；既有调试签名安装不能据此宣称无缝迁移。
