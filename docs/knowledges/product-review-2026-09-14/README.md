@@ -128,7 +128,7 @@
 | [WeiboSession](../../../backend/app/adapters/weibo_session.py#L29-L85)、[X transport](../../../backend/app/adapters/twitter_web.py#L16-L80)、[Cookie 更新](../../../backend/app/services/config_service.py#L215-L228) | Adapter/transport 直接取配置，部分会话自己持久化；配置层又调用 Adapter 解析 Cookie。将持久化/CAS 放账号边界，协议与会话快照注入平台实现；不是抹平每个平台的协议差异 |
 | [X 健康检查](../../../backend/app/services/browser_auth_service.py#L105-L118) | 调用收藏 Fetcher 私有 `_read_page`，登录状态与书签实现相互依赖。抽成共享平台能力探测，保留“真正读到受保护资源”的语义，不改成网页 200 判断 |
 | [distribution/scheduler](../../../backend/app/services/distribution/scheduler.py#L11-L47) | 是有调用者的入队/独立 session 包装，不是废弃第二调度器；耐久交接时替换 background wrapper，不机械整删 |
-| [ContentDistributor](../../../backend/app/tasks/distributor.py#L131-L162)、[worker 调用](../../../backend/app/tasks/distribution_worker.py#L588-L595) | 当前主要提供 payload/media rendering，命名与归属过时但逻辑仍有效；迁入渲染模块的公开接口 |
+| [公开媒体渲染接口](../../../backend/app/push/media.py)、[worker 调用](../../../backend/app/tasks/distribution_worker.py) | 已迁入 push/media.py，worker 直接调用 build_content_payload |
 | [分发规则 service](../../../backend/app/services/distribution_rule_service.py)、[DistributionService](../../../backend/app/services/distribution/service.py)、[decision](../../../backend/app/services/distribution/decision.py) | CRUD、匹配、入队/策略各有不同消费者，不把同领域多个 service 一律判重复 |
 | [Agent push](../../../backend/app/services/agent/tools/push.py#L49-L91)、[rules](../../../backend/app/services/agent/tools/rules.py#L77-L80)、[api_bridge](../../../backend/app/services/agent/tools/api_bridge.py#L186-L228) | 前两者复用业务服务；bridge 有白名单并重入正式 ASGI，不是复制全部业务。只收窄有真实重复的写入口，保留有用读取与策略边界 |
 

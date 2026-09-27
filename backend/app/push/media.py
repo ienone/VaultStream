@@ -131,30 +131,26 @@ def build_push_media_items(
     return media_items
 
 
-class ContentDistributor:
-    """内容分发器。"""
+def build_content_payload(
+    content: Content,
+    rule: DistributionRule | None,
+    *,
+    media_assets: Iterable[MediaAsset] = (),
+    target_platform: str,
+) -> dict:
+    # 通过 Pydantic schema 自动映射 ORM 字段
+    payload = ContentPushPayload.model_validate(content).model_dump()
 
-    async def _build_content_payload(
-        self,
-        content: Content,
-        rule: DistributionRule | None,
-        *,
-        media_assets: Iterable[MediaAsset] = (),
-        target_platform: str,
-    ) -> dict:
-        # 通过 Pydantic schema 自动映射 ORM 字段
-        payload = ContentPushPayload.model_validate(content).model_dump()
+    # platform 需要转为字符串值（ORM 存储的是 enum）
+    if content.platform:
+        payload["platform"] = content.platform.value
 
-        # platform 需要转为字符串值（ORM 存储的是 enum）
-        if content.platform:
-            payload["platform"] = content.platform.value
+    if rule and rule.render_config:
+        payload["render_config"] = rule.render_config
 
-        if rule and rule.render_config:
-            payload["render_config"] = rule.render_config
+    payload["media_items"] = build_push_media_items(
+        media_assets,
+        target_platform=target_platform,
+    )
 
-        payload["media_items"] = build_push_media_items(
-            media_assets,
-            target_platform=target_platform,
-        )
-
-        return payload
+    return payload

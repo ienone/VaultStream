@@ -42,7 +42,7 @@ from app.services.distribution.delivery_state import (
     UNKNOWN_MESSAGE, delivery_is_resolved, owns_delivery,
     record_delivery_unknown, recover_expired_deliveries,
 )
-from app.tasks.distributor import ContentDistributor
+from app.push.media import build_content_payload
 from app.core.events import event_bus
 
 # ── 常量 ──────────────────────────────────────────────
@@ -125,7 +125,6 @@ class DistributionQueueWorker:
         self.worker_count = worker_count
         self.running = False
         self._tasks: list[asyncio.Task] = []
-        self._distributor = ContentDistributor()
 
     def start(self):
         """启动所有 worker"""
@@ -615,7 +614,7 @@ class DistributionQueueWorker:
 
         # 5. 构建推送 payload
         try:
-            content_dict = await self._distributor._build_content_payload(
+            content_dict = build_content_payload(
                 content, rule, media_assets=content.media_assets,
                 target_platform=item.target_platform,
             )
