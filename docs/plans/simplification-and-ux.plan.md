@@ -81,7 +81,7 @@ Goal：在保留现有捕获、解析、收藏、搜索、审批和分发能力�
 
 问题：Task 领取后丢行身份，按 content_id 批量完成；finally 把解析失败结算成功；队列和 retry_parse 各自重试；入队失败返回 False 被忽略。
 
-涉及：backend/app/core/queue_adapter.py、tasks/parsing.py、tasks/runner.py、services/content_service.py、routers/contents.py、Task/Content 模型、对应 schema 与前端解析 API 调用；先读 contents、events-tasks 模块与 API/数据库文档。
+涉及：backend/app/core/queue.py、tasks/parsing.py、tasks/runner.py、services/content_service.py、routers/contents.py、Task/Content 模型、对应 schema 与前端解析 API 调用；先读 contents、events-tasks 模块与 API/数据库文档。
 
 推荐方案已经选定：保留 SQLite + SQLAlchemy，不引入队列框架、不迁移存量 Task。利用已有 Task 主键作为领取/结算身份，保留日志 task_id 与 content_id 各自作用；内部领取结果必须明确表达数据库身份，不能与外部 payload 同名字段混用或从 content_id 猜回。完成和失败只更新该行的允许前置状态；运行中存在性查询要支持多个匹配，不能异常后当不存在。
 

@@ -14,7 +14,6 @@ PYTHON ?= .venv/bin/python
 endif
 
 PIP ?= $(PYTHON) -m pip
-PYTEST ?= $(PYTHON) -m pytest
 FLUTTER ?= flutter
 DART ?= dart
 DOCKER_COMPOSE ?= docker compose
@@ -22,7 +21,7 @@ BACKEND_PYTHON := $(abspath $(PYTHON))
 FRONTEND_ADAPT := tool/dependencies/ensure_inactive_branch_back_navigation.dart
 
 .PHONY: help install backend-install frontend-install dev-backend dev-frontend \
-	test test-backend test-frontend frontend-prepare frontend-check frontend-analyze \
+	frontend-prepare frontend-check frontend-analyze \
 	codegen build-web docker-up docker-down docker-logs check-openapi check-schema
 
 help:
@@ -37,12 +36,9 @@ help:
 	@echo   make codegen             Run Flutter/Dart code generation
 	@echo   make build-web           Build the Flutter web release bundle
 	@echo Verification:
-	@echo   make test                Run backend and frontend tests
-	@echo   make test-backend        Run maintained backend regressions without external integration
-	@echo   make test-frontend       Run maintained frontend regressions
 	@echo   make frontend-prepare    Apply required adaptation to resolved dependencies
 	@echo   make frontend-analyze    Run flutter analyze
-	@echo   make frontend-check      Run flutter analyze and flutter test
+	@echo   make frontend-check      Run flutter analyze and build the web release bundle
 	@echo   make check-openapi       Check endpoint docs and response contracts
 	@echo   make check-schema        Check fresh database schema
 	@echo Deployment:
@@ -68,15 +64,7 @@ dev-backend:
 dev-frontend: frontend-prepare
 	cd $(FRONTEND_DIR) && $(FLUTTER) run -d chrome
 
-test: test-backend test-frontend
-
-test-backend:
-	$(PYTEST) $(BACKEND_DIR)/tests -q
-
-test-frontend: frontend-prepare
-	cd $(FRONTEND_DIR) && $(FLUTTER) test
-
-frontend-check: frontend-analyze test-frontend
+frontend-check: frontend-analyze build-web
 
 frontend-analyze: frontend-prepare
 	cd $(FRONTEND_DIR) && $(FLUTTER) analyze

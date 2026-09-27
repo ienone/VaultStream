@@ -24,7 +24,7 @@ from app.media.processor import store_archive_images, store_archive_videos
 from app.media.color import extract_cover_color
 from app.media.references import apply_archive_media
 from app.core.queue import task_queue
-from app.core.queue_adapter import TaskQueue
+from app.core.queue import TaskQueue
 from app.utils.datetime_utils import normalize_datetime_for_db
 from app.utils.url_utils import normalize_share_url_input
 from app.services.post_ingest import PostIngestService
