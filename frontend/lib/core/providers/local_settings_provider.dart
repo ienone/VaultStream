@@ -108,7 +108,6 @@ class LocalSettings extends _$LocalSettings {
       return {
         'success': true,
         'auth_ok': authOk,
-        'needs_setup': initData['needs_setup'] ?? false,
         'version': initData['version'],
       };
     } on DioException catch (e) {
