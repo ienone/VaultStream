@@ -1,0 +1,8 @@
+**
+!Dockerfile
+!nginx.conf
+!build/
+!build/web/
+!build/web/**
+build/web/**/*.symbols
+build/web/.last_build_id

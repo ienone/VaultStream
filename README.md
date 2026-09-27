@@ -46,6 +46,8 @@ Flutter + FastAPI + SQLite；当前模块和职责以文档索引与代码为准
 
 `make frontend-install` 在解析依赖后应用必需的路由适配；前端启动、分析、测试和 Web 构建入口也会检查该适配。`make test` 运行少量长期回归，不包含外部平台集成验收；`make check-openapi` 和 `make check-schema` 分别验证 API 文档及新建数据库结构。
 
+Docker 构建上下文只包含 Dockerfile 声明的运行文件，后端保留数据库迁移、WebKit、Chromium 和 ffmpeg。发布流程对后端镜像只构建一次，扫描通过后推送同一镜像；Android 分架构 APK 和 Web 发布继续等待该检查通过。
+
 ### 前端
 
 - 每个 [Release](https://github.com/ienone/VaultStream/releases) 提供安卓端apk
