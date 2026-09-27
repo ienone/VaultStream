@@ -35,6 +35,10 @@ class SemanticSearchHit:
     source_text: Optional[str] = None
 
 
+class EmbeddingIndexError(RuntimeError):
+    """Failed chunks were persisted and can be retried."""
+
+
 class EmbeddingService:
     """
     语义索引与混合检索服务。支持 AI 智能切片与多模态嵌入。
@@ -45,6 +49,7 @@ class EmbeddingService:
     _SUPPORTED_MODEL = "gemini-embedding-2"
     _DEFAULT_OUTPUT_DIMENSIONALITY = 1536
     _SIGNATURE_VERSION = "vaultstream_rag_v1"
+    _REQUEST_BATCH_SIZE = 16
     _REMOTE_CONCURRENCY = 2
     _EMBED_CACHE: dict[str, list[float]] = {}
     _REMOTE_SEMAPHORE = asyncio.Semaphore(_REMOTE_CONCURRENCY)
@@ -230,11 +235,12 @@ class EmbeddingService:
         signature = await self._get_document_embedding_signature()
         estimated_calls = 0
         for content in contents:
-            estimated_calls += await self._estimate_missing_embedding_calls(
+            stale_units = await self._count_stale_embedding_units(
                 session=session,
                 content=content,
                 model_signature=signature,
             )
+            estimated_calls += (stale_units + self._REQUEST_BATCH_SIZE - 1) // self._REQUEST_BATCH_SIZE
         return [c.id for c in contents], estimated_calls
 
     async def _reindex_scope_impl(
@@ -258,11 +264,15 @@ class EmbeddingService:
         failed = 0
         batch_size = max(1, min(batch_size, 32))
         for idx, cid in enumerate(content_ids, start=1):
-            ok = await self._index_content_impl(cid, session, own_session=False)
+            try:
+                ok = await self._index_content_impl(cid, session, own_session=False)
+            except EmbeddingIndexError:
+                ok = False
             indexed += int(ok)
             failed += int(not ok)
+            # Release the SQLite writer before the next provider request.
+            await session.commit()
             if idx % batch_size == 0:
-                await session.commit()
                 await asyncio.sleep(max(0.0, delay_seconds))
         if own_session:
             await session.commit()
@@ -277,7 +287,7 @@ class EmbeddingService:
             "failed": failed,
         }
 
-    async def _estimate_missing_embedding_calls(
+    async def _count_stale_embedding_units(
         self,
         *,
         session: AsyncSession,
@@ -430,10 +440,10 @@ class EmbeddingService:
         text_part, media_refs, title = unit
         source_updated_at = content.updated_at
         with session.no_autoflush:
-            exists = await self._upsert_embedding(
-                session, content.id, embedding.chunk_index, title, text_part, media_refs,
+            failed_units = await self._upsert_embeddings(
+                session, content.id, [(embedding.chunk_index, text_part, media_refs, title)],
             )
-            if not exists or not await self._lock_current_source(session, content.id, source_updated_at):
+            if failed_units is None or not await self._lock_current_source(session, content.id, source_updated_at):
                 if own_session:
                     await session.rollback()
                 raise StaleDataError("原文已变化，请刷新后重新索引")
@@ -480,13 +490,11 @@ class EmbeddingService:
             # still await remote models: SQLite would hold its sole writer
             # lock throughout those network calls. Persist the set together.
             with session.no_autoflush:
-                for chunk_index, text_part, media_refs, title in units:
-                    if not await self._upsert_embedding(
-                        session, content_id, chunk_index, title, text_part, media_refs
-                    ):
-                        if own_session:
-                            await session.rollback()
-                        return False
+                failed_units = await self._upsert_embeddings(session, content_id, units)
+                if failed_units is None:
+                    if own_session:
+                        await session.rollback()
+                    return False
 
                 # Acquire the write transaction only after remote work, and
                 # only if the source revision used above is still current.
@@ -523,6 +531,8 @@ class EmbeddingService:
                 )
                 return False
             raise
+        if failed_units:
+            raise EmbeddingIndexError(f"{failed_units} 个语义分块索引失败，可重试失败分块")
         return True
 
     async def _lock_current_source(self, session: AsyncSession, content_id: int, revision: datetime | None) -> bool:
@@ -580,89 +590,56 @@ class EmbeddingService:
                 units.append((idx, text_part, [str(ref) for ref in media_refs], title))
         return units
 
-    async def _upsert_embedding(
-        self, 
-        session: AsyncSession, 
-        content_id: int, 
-        chunk_index: int, 
-        chunk_title: str,
-        text_val: str,
-        media_refs: list[str]
-    ) -> bool:
-        """执行单个切片的向量化与入库"""
-        text_hash = self._hash_text(text_val + "".join(media_refs))
-        model_signature = await self._get_document_embedding_signature()
-        model = await self._get_embedding_model()
-        
-        existing = (
-            await session.execute(
-                select(ContentEmbedding).where(
-                    ContentEmbedding.content_id == content_id,
-                    ContentEmbedding.chunk_index == chunk_index
-                )
-            )
-        ).scalar_one_or_none()
-
-        existing_signature = existing.embedding_model_signature or existing.embedding_model if existing else None
-        if (
-            existing
-            and existing.text_hash == text_hash
-            and existing_signature == model_signature
-            and existing.index_status == "indexed"
-        ):
-            return True
-
+    async def _upsert_embeddings(self, session: AsyncSession, content_id: int, units: list) -> int | None:
+        """Batch only stale units; keep source identity and each failure persisted."""
+        config = await self._get_embedding_config()
+        model = self._normalize_embedding_model(config.model)
+        dimension = self._normalize_embedding_output_dimensionality(config.output_dimensionality)
+        signature = f"{model}|dim={dimension}|prefix={self._SIGNATURE_VERSION}|role=document"
+        existing = {row.chunk_index: row for row in (await session.scalars(
+            select(ContentEmbedding).where(ContentEmbedding.content_id == content_id)
+        )).all()}
+        pending, texts, unchanged = [], [], []
+        for index, text, refs, title in units:
+            fingerprint = self._hash_text(text + "".join(refs))
+            row = existing.get(index)
+            if row and row.text_hash == fingerprint and row.embedding_model_signature == signature and row.index_status == "indexed":
+                unchanged.append((row, title))
+                continue
+            pending.append((index, text, title, fingerprint, row))
+            media_note = "\n媒体引用: " + " ".join(refs[:10]) if refs else ""
+            texts.append(self._prefix_document(text + media_note))
         try:
-            vector = await self._embed_document_text(text_val, media_refs)
-            index_status = "indexed"
-            failure_reason = None
+            results = await self._embed_texts(texts, config)
         except Exception as exc:
-            vector = []
-            index_status = "failed"
-            failure_reason = str(exc)[:1000]
-            logger.bind(
-                component="embedding",
-                content_id=content_id,
-                chunk_index=chunk_index,
-                model_signature=model_signature,
-            ).warning(f"Embedding indexing failed: {exc}")
-
-        content_exists = (
-            await session.execute(
-                select(Content.id).where(Content.id == content_id)
-            )
-        ).scalar_one_or_none()
-        if content_exists is None:
-            logger.bind(component="embedding", content_id=content_id).info(
-                "Content was deleted before semantic index persistence"
-            )
-            return False
-
-        record = existing or ContentEmbedding(content_id=content_id, chunk_index=chunk_index)
-        record.text_hash = text_hash
-        record.source_text = text_val[:4000]
-        record.chunk_title = chunk_title
-        record.embedding_model = model
-        record.embedding_model_signature = model_signature
-        record.embedding = vector
-        record.index_status = index_status
-        record.failure_reason = failure_reason
-        record.last_attempted_at = datetime.utcnow()
-        if index_status == "indexed":
-            record.last_indexed_at = datetime.utcnow()
-        else:
-            record.retry_count = int(record.retry_count or 0) + 1
-        if existing is None:
-            session.add(record)
-        return True
-
-    async def _embed_document_text(self, text_val: str, media_refs: list[str]) -> list[float]:
-        """Generate a document embedding using the project text-prefix convention."""
-        media_note = ""
-        if media_refs:
-            media_note = "\n媒体引用: " + " ".join(media_refs[:10])
-        return await self._embed_text(self._prefix_document(text_val + media_note))
-
+            results = [exc] * len(texts)
+        if await session.scalar(select(Content.id).where(Content.id == content_id)) is None:
+            return None
+        for row, title in unchanged:
+            row.chunk_title = title
+        failures = 0
+        for (index, text, title, fingerprint, row), result in zip(pending, results, strict=True):
+            record = row or ContentEmbedding(content_id=content_id, chunk_index=index)
+            record.text_hash = fingerprint
+            record.source_text = text[:4000]
+            record.chunk_title = title
+            record.embedding_model = model
+            record.embedding_model_signature = signature
+            record.last_attempted_at = datetime.utcnow()
+            if isinstance(result, Exception):
+                record.embedding = []
+                record.index_status = "failed"
+                record.failure_reason = str(result)[:1000]
+                record.retry_count = int(record.retry_count or 0) + 1
+                failures += 1
+            else:
+                record.embedding = result
+                record.index_status = "indexed"
+                record.failure_reason = None
+                record.last_indexed_at = record.last_attempted_at
+            if row is None:
+                session.add(record)
+        return failures
 
     async def _search_impl(
         self,
@@ -874,7 +851,7 @@ class EmbeddingService:
             return False
         if not await self._validated_embedding_units(content, session):
             return False
-        missing = await self._estimate_missing_embedding_calls(
+        missing = await self._count_stale_embedding_units(
             session=session,
             content=content,
             model_signature=await self._get_document_embedding_signature(),
@@ -913,54 +890,56 @@ class EmbeddingService:
         return hashlib.sha256(text_value.encode("utf-8")).hexdigest()
 
     async def _embed_text(self, text_value: str) -> list[float]:
-        text_value = text_value.strip()
-        if not text_value:
-            raise RuntimeError("embedding text is empty")
+        results = await self._embed_texts([text_value], await self._get_embedding_config())
+        if isinstance(results[0], Exception):
+            raise results[0]
+        return results[0]
 
-        config = await self._get_embedding_config()
-        model = self._normalize_embedding_model(config.model)
-        api_key = config.api_key
-        output_dimensionality = self._normalize_embedding_output_dimensionality(
-            config.output_dimensionality
-        )
-        if not api_key:
+    async def _embed_texts(self, texts: list[str], config: EmbeddingAIConfig) -> list[list[float] | Exception]:
+        if not texts:
+            return []
+        if not config.api_key:
             raise RuntimeError("embedding_api_key is required")
+        if any(not text.strip() for text in texts):
+            raise RuntimeError("embedding text is empty")
+        from google import genai
+        from google.genai import types
 
-        cache_key = self._hash_text(f"{model}|dim={output_dimensionality}|{text_value}")
-        cached = self._EMBED_CACHE.get(cache_key)
-        if cached is not None:
-            return list(cached)
-
-        try:
-            from google import genai
-            from google.genai import types
-
-            # google-genai 的 embed 接口是同步调用，放到线程池里避免阻塞事件循环。
-            def _call_gemini():
-                client = genai.Client(api_key=api_key)
-                return client.models.embed_content(
-                    model=model,
-                    contents=text_value,
-                    config=types.EmbedContentConfig(
-                        output_dimensionality=output_dimensionality,
-                    ),
-                )
-
-            async with self._REMOTE_SEMAPHORE:
-                response = await asyncio.to_thread(_call_gemini)
-            vector = response.embeddings[0].values if response.embeddings else None
-
-            if not vector:
-                raise RuntimeError("Gemini returned an empty embedding")
-            normalized = self._normalize_vector([float(v) for v in vector])
-            self._EMBED_CACHE[cache_key] = list(normalized)
-            return normalized
-        except Exception as e:
-            logger.bind(
-                component="embedding",
-                model=model,
-            ).warning(f"Embedding remote call failed: {e}")
-            raise
+        model = self._normalize_embedding_model(config.model)
+        dimension = self._normalize_embedding_output_dimensionality(config.output_dimensionality)
+        keys = [self._hash_text(f"{model}|dim={dimension}|{text.strip()}") for text in texts]
+        missing = {key: text.strip() for key, text in zip(keys, texts) if key not in self._EMBED_CACHE}
+        values: dict[str, list[float] | Exception] = {}
+        if missing:
+            # One client per operation, shared by all batches and always closed.
+            async with genai.Client(api_key=config.api_key).aio as client:
+                pending = list(missing.items())
+                for start in range(0, len(pending), self._REQUEST_BATCH_SIZE):
+                    batch = pending[start:start + self._REQUEST_BATCH_SIZE]
+                    try:
+                        async with self._REMOTE_SEMAPHORE:
+                            response = await client.models.embed_content(
+                                model=model,
+                                # Separate Content objects prevent Embedding 2 from
+                                # aggregating multiple source texts into one vector.
+                                contents=[types.Content(parts=[types.Part.from_text(text=text)]) for _, text in batch],
+                                config=types.EmbedContentConfig(output_dimensionality=dimension),
+                            )
+                        embeddings = response.embeddings or []
+                        if len(embeddings) != len(batch):
+                            raise RuntimeError("Gemini 返回的向量数量与输入不一致")
+                        for (key, _), embedding in zip(batch, embeddings, strict=True):
+                            vector = embedding.values or []
+                            if len(vector) != dimension or not all(math.isfinite(v) for v in vector) or not any(vector):
+                                values[key] = RuntimeError("Gemini 返回了无效向量")
+                            else:
+                                normalized = self._normalize_vector(vector)
+                                self._EMBED_CACHE[key] = normalized
+                                values[key] = normalized
+                    except Exception as exc:
+                        for key, _ in batch:
+                            values[key] = exc
+        return [list(self._EMBED_CACHE[key]) if key in self._EMBED_CACHE else values[key] for key in keys]
 
     async def _get_embedding_config(self) -> EmbeddingAIConfig:
         return await ConfigService().get_embedding_ai_config()
