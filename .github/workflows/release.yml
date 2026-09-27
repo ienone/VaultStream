@@ -66,37 +66,12 @@ jobs:
           fi
           grep -R -- "--dart-define=DEBUG_LOG=false" .github/workflows/release.yml
 
-      - name: Build backend image for scan
-        run: docker build -t vaultstream-api:scan ./backend
-
-      - name: Scan backend image
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: vaultstream-api:scan
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-          ignore-unfixed: true
-
-      - name: Generate backend image SBOM
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: vaultstream-api:scan
-          format: cyclonedx
-          output: vaultstream-api.sbom.cdx.json
-          exit-code: "0"
-
-      - name: Upload backend image SBOM
-        uses: actions/upload-artifact@v4
-        with:
-          name: vaultstream-api-sbom
-          path: vaultstream-api.sbom.cdx.json
-
   # ────────────────────────────────────────────
   # 1. Android APK
   # ────────────────────────────────────────────
   apk:
     name: Build APK
-    needs: quality-gates
+    needs: [quality-gates, docker-backend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -144,7 +119,7 @@ jobs:
           files: frontend/build/app/outputs/flutter-apk/app-*-release.apk
 
   docker-backend:
-    name: Build & Push Backend Image
+    name: Build, Scan & Push Backend Image
     needs: quality-gates
     runs-on: ubuntu-latest
     permissions:
@@ -173,20 +148,52 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
 
-      - name: Build and push Backend image
+      - name: Build Backend image once
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           file: ./backend/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          load: true
+          tags: |
+            vaultstream-api:scan
+            ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=vaultstream-api
           cache-to: type=gha,mode=max,scope=vaultstream-api
 
+      - name: Scan backend image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: vaultstream-api:scan
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Generate backend image SBOM
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: vaultstream-api:scan
+          format: cyclonedx
+          output: vaultstream-api.sbom.cdx.json
+          exit-code: "0"
+
+      - name: Upload backend image SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: vaultstream-api-sbom
+          path: vaultstream-api.sbom.cdx.json
+
+      - name: Push scanned Backend image
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          while IFS= read -r tag; do
+            docker push "$tag"
+          done <<< "$IMAGE_TAGS"
+
   docker-frontend:
     name: Build & Push Frontend Image
-    needs: quality-gates
+    needs: [quality-gates, docker-backend]
     runs-on: ubuntu-latest
     permissions:
       contents: read

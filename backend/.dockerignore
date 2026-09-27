@@ -1,0 +1,14 @@
+**
+!Dockerfile
+!requirements.txt
+!constraints.txt
+!app/
+!app/**
+!systemd/
+!systemd/**
+!alembic.ini
+!migrations/
+!migrations/**
+**/__pycache__/
+**/*.pyc
+**/*.pyo

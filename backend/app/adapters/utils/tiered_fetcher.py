@@ -18,7 +18,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from app.adapters.errors import NonRetryableAdapterError, RetryableAdapterError
-from app.core.crawler_config import get_delay_for_url_sync
+from app.core.crawler_config import get_delay_for_url
 from app.core.safe_fetch import is_safe_url, safe_client_get
 
 _MAX_FETCH_TEXT_BYTES = 5 * 1024 * 1024
@@ -157,7 +157,7 @@ async def _try_browser(url: str, cookies: Optional[dict] = None) -> Optional[Fet
     """
     from app.adapters.browser import browser_manager
 
-    delay = get_delay_for_url_sync(url)
+    delay = get_delay_for_url(url)
 
     # 将 dict 格式 Cookie 转为 Playwright 格式
     pw_cookies = []
