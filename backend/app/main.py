@@ -148,6 +148,8 @@ async def lifespan(app: FastAPI):
     # 周期任务单实例机制：只有 leader 进程启动后台循环
     from app.services.background_task_leader import background_task_leader
     periodic_tasks_started = background_task_leader.try_acquire()
+    from app.services.telegram_bot_service import telegram_bot_runtime
+    telegram_bot_runtime.bind(app, owner=periodic_tasks_started)
     if periodic_tasks_started:
         from app.core.database import AsyncSessionLocal
         from app.services.bot_config_service import get_bot_runtime_service

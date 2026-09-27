@@ -36,8 +36,8 @@ active
 - 多级抓取，尽量先使用低成本路径；已知验证页不作为正文。
 - Telegraph 的 `article.tl_article_content`，以及 Article/NewsArticle/BlogPosting/TechArticle 中单一 `itemprop=articleBody`，可直接转换并读取明确元数据，零模型调用。存在音视频/iframe 或明确付费标识时继续原处理流程，不声称简单抽取覆盖复杂页面。
 - 重定向后按最终 URL 解析相对链接。
-- 使用 LangChain function calling 和本地 Pydantic contract 完成选择器、结构扫描与字段抽取；缺失工具调用、字段类型错误或越界行号直接失败，不使用正则 JSON 提取或静默回退。
-- 内容处理过程复用同一个 `ChatOpenAI`，OpenAI 兼容端点使用 chat completions，并保留完整模型名。
+- 使用 LangChain function calling 和本地 Pydantic contract 完成可选选择器定位，以及一次完成正文边界、字段和清理项的提取；缺失工具调用、字段类型错误或越界行号直接失败，不使用正则 JSON 提取或静默回退。
+- 内容处理过程复用同一个 `ChatOpenAI`，OpenAI 兼容端点使用 chat completions，并保留完整模型名及配置的 extra_body。
 - 输出统一 `ParsedContent`，供内容服务入库。
 
 ## 与代码的关系
@@ -56,8 +56,8 @@ active
 - 通用解析质量依赖抓取结果；非确定性路径还依赖 LLM 输出。
 - 2026-09-19 Telegraph 真实样本已完成适配器解析，正文 1978 字符，标题/作者齐全，模型调用为 0；schema.org 路径仅完成离线合同验收。
 - JS 重渲染、登录墙、反爬和动态内容可能导致抓取失败。
-- 真实 LLM 集成测试必须标记为 integration，不应进入默认测试集合。
+- 提取调用读取完整编号正文，不通过截掉中段降低输入；长页可能增加单次输入量，调用次数减少不等于总 token 必然下降。
 
 ## 使用方式
 
-这是知识库文档，不是待办清单。若要调整 tiered fetch、content agent 或通用解析策略，先创建 plan，并同步更新 adapter 测试。
+这是知识库文档，不是待办清单。若要调整 tiered fetch、content agent 或通用解析策略，同步模块文档并执行一次性入口验收。

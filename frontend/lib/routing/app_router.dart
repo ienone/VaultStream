@@ -2,9 +2,9 @@ import 'dart:async';
 import 'navigation_scope.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:flutter/foundation.dart';
 
 import '../features/collection/collection_page.dart';
 import '../features/collection/content_detail_page.dart';
@@ -29,10 +29,8 @@ import '../features/player/global_playback_controller.dart';
 import '../features/player/global_player_widgets.dart';
 import '../features/player/playback_route_observer.dart';
 import '../features/auth/presentation/connect_page.dart';
-import '../features/auth/presentation/onboarding_page.dart';
 import '../layout/app_shell.dart';
 import '../core/providers/local_settings_provider.dart';
-import '../core/providers/system_status_provider.dart';
 
 part 'app_router.g.dart';
 
@@ -47,16 +45,13 @@ GoRouter goRouter(Ref ref) {
 
   final listenable = ValueNotifier<int>(0);
 
-  // 当配置或系统状态发生改变时，通知路由重新验证
+  // 当连接配置发生改变时，通知路由重新验证
   ref.listen(localSettingsProvider, (previous, next) {
     if (previous?.apiToken.isNotEmpty == true &&
         next.apiToken.isEmpty &&
         ref.exists(globalPlaybackProvider)) {
       unawaited(ref.read(globalPlaybackProvider.notifier).close());
     }
-    listenable.value++;
-  });
-  ref.listen(systemStatusProvider, (previous, next) {
     listenable.value++;
   });
 
@@ -96,10 +91,8 @@ GoRouter goRouter(Ref ref) {
     refreshListenable: listenable,
     redirect: (context, state) {
       final settings = ref.read(localSettingsProvider);
-      final systemStatus = ref.read(systemStatusProvider);
 
       final isConnecting = state.matchedLocation == '/connect';
-      final isOnboarding = state.matchedLocation == '/onboarding';
 
       final hasConfig =
           settings.baseUrl.isNotEmpty && settings.apiToken.isNotEmpty;
@@ -109,25 +102,7 @@ GoRouter goRouter(Ref ref) {
         return null;
       }
 
-      // 如果已连接，检查是否需要引导
-      return systemStatus.when(
-        data: (status) {
-          if (status.needsSetup) {
-            if (!isOnboarding) return '/onboarding';
-            return null;
-          } else {
-            if (isConnecting) return '/home';
-
-            // Release mode behavior: block onboarding if already setup
-            // Debug mode behavior: allow jumping to onboarding for testing
-            if (isOnboarding && !kDebugMode) return '/home';
-
-            return null;
-          }
-        },
-        loading: () => null,
-        error: (_, _) => null,
-      );
+      return isConnecting ? '/home' : null;
     },
     routes: [
       GoRoute(path: '/player', builder: (context, state) => const PlayerPage()),
@@ -148,7 +123,7 @@ GoRouter goRouter(Ref ref) {
       ShellRoute(
         builder: (context, state, child) {
           final location = state.uri.path;
-          if (location == '/connect' || location == '/onboarding') {
+          if (location == '/connect') {
             return AppNavigationScope(child: child);
           }
           final appShellOwnsMiniPlayer =
@@ -167,10 +142,6 @@ GoRouter goRouter(Ref ref) {
           GoRoute(
             path: '/connect',
             builder: (context, state) => const ConnectPage(),
-          ),
-          GoRoute(
-            path: '/onboarding',
-            builder: (context, state) => const OnboardingPage(),
           ),
           GoRoute(
             path: '/settings',

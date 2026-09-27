@@ -98,7 +98,7 @@ Agent：会话/工具注册/确认 → domain tools 或 ASGI API bridge → 上�
 
 ### VS-A01：收敛解析执行与任务结算，保留 SQLite
 
-证据：`backend/app/core/queue_adapter.py::dequeue` 使用 Task.id CAS 领取，返回时丢掉行身份，只给 payload；`mark_complete`（126）和 `push_dead_letter`（148）按 content_id 更新所有 RUNNING 行。隔离数据库为同一 content 建两个任务、都领取后调用一次完成，**两行均 COMPLETED**。`is_processing` 对多个结果调用 scalar_one_or_none，异常被转为 False，可能进一步放行重复处理（静态证据）。
+证据：`backend/app/core/queue.py::dequeue` 使用 Task.id CAS 领取，返回时丢掉行身份，只给 payload；`mark_complete`（126）和 `push_dead_letter`（148）按 content_id 更新所有 RUNNING 行。隔离数据库为同一 content 建两个任务、都领取后调用一次完成，**两行均 COMPLETED**。`is_processing` 对多个结果调用 scalar_one_or_none，异常被转为 False，可能进一步放行重复处理（静态证据）。
 
 `tasks/parsing.py::process_parse_task` 的 finally（157）无条件完成。注入重试耗尽异常后，实际处理器写出 **Content=PARSE_FAILED、Task=COMPLETED**：`_handle_parse_error` 按原始 attempt 判断，而内层已经消耗重试。该实验只替换外部解析执行为确定异常，数据库、队列与终态路径真实执行；没有借外部平台故障猜测。
 

@@ -81,6 +81,7 @@ class LLMConfig:
     api_key: str | None
     model: str
     base_url: str | None
+    extra_body: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -374,6 +375,7 @@ class ConfigService:
             api_key=key_text,
             model=str(model or settings.text_llm_model),
             base_url=str(base_url) if base_url else None,
+            extra_body=await self.get_value("text_llm_extra_body", None),
         )
 
     async def get_ai_config(self) -> AIConfig:

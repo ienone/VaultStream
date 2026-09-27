@@ -34,6 +34,7 @@ from app.schemas import (
 )
 from app.schemas.common import QueueStats, DistributionStatusStats
 from app.services.bot_config_runtime import get_primary_bot_config
+from app.services.telegram_bot_service import telegram_bot_runtime
 from app.services.background_task_state import (
     record_task_run_error,
     record_task_run_started,
@@ -460,6 +461,8 @@ async def get_bot_runtime(
 ):
     """获取 Bot 运行时状态"""
     config = await get_primary_bot_config(db, platform, enabled_only=True)
+    if platform == BotConfigPlatform.TELEGRAM:
+        return telegram_bot_runtime.snapshot(config.id if config else None)
     result = await db.execute(
         select(BotRuntime).where(BotRuntime.bot_config_id == (config.id if config else None))
     )
@@ -516,12 +519,6 @@ async def get_bot_status(
     """获取 Bot 运行状态"""
     primary_tg_cfg = await get_primary_bot_config(db, BotConfigPlatform.TELEGRAM, enabled_only=False)
 
-    # 获取运行时状态
-    runtime_result = await db.execute(
-        select(BotRuntime).where(BotRuntime.bot_config_id == (primary_tg_cfg.id if primary_tg_cfg else None))
-    )
-    runtime = runtime_result.scalar_one_or_none()
-    
     # 统计主 Telegram 配置下关联且启用的群组数
     chat_count = 0
     if primary_tg_cfg and primary_tg_cfg.enabled:
@@ -542,32 +539,12 @@ async def get_bot_status(
     )
     today_pushed = result.scalar() or 0
     
-    # 判断是否在线
-    is_running = False
-    uptime_seconds = None
-    bot_username = primary_tg_cfg.bot_username if primary_tg_cfg else None
-    bot_id = None
-    now = utcnow()
-    has_enabled_primary_tg = bool(primary_tg_cfg and primary_tg_cfg.enabled and (primary_tg_cfg.bot_token or '').strip())
-    if primary_tg_cfg and primary_tg_cfg.bot_id:
-        try:
-            bot_id = int(primary_tg_cfg.bot_id)
-        except (TypeError, ValueError):
-            bot_id = None
-    
-    if runtime and has_enabled_primary_tg:
-        bot_username = runtime.bot_username
-        if runtime.bot_id:
-            try:
-                bot_id = int(runtime.bot_id)
-            except (TypeError, ValueError):
-                bot_id = None
-        if runtime.last_heartbeat_at:
-            time_since_heartbeat = (now - runtime.last_heartbeat_at).total_seconds()
-            is_running = time_since_heartbeat < 120
-        if runtime.started_at and is_running:
-            uptime_seconds = int((now - runtime.started_at).total_seconds())
-    
+    runtime = telegram_bot_runtime.snapshot(primary_tg_cfg.id if primary_tg_cfg and primary_tg_cfg.enabled else None)
+    is_running, uptime_seconds = runtime.is_running, runtime.uptime_seconds
+    bot_username = runtime.bot_username or (primary_tg_cfg.bot_username if primary_tg_cfg else None)
+    raw_bot_id = runtime.bot_id or (primary_tg_cfg.bot_id if primary_tg_cfg else None)
+    bot_id = int(raw_bot_id) if raw_bot_id and str(raw_bot_id).isdigit() else None
+
     # Napcat 连接检查
     napcat_status = None
     qq_cfg = await get_primary_bot_config(db, BotConfigPlatform.QQ, enabled_only=True)

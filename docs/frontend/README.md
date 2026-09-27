@@ -10,7 +10,7 @@ active
 
 ## 页面索引
 
-- `pages/initial-setup.md`：首次服务器连接、可选配置与初始化向导。
+- `pages/initial-setup.md`：首次服务器连接与可选配置入口。
 
 - `pages/dashboard.md`：近期发现候选、收录操作和进行中事件变化。
 - `pages/collection.md`：收藏内容浏览、搜索、筛选和批量维护。

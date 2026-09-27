@@ -16,7 +16,6 @@ from app.adapters.base import LAYOUT_ARTICLE, ParsedContent, PlatformAdapter
 from app.models.base import Platform
 from app.utils.datetime_utils import normalize_datetime_for_db
 from app.utils.bbcode_utils import convert_bbcode_to_html
-from app.core.logging import logger
 
 
 class RssAdapter(PlatformAdapter):
@@ -63,53 +62,44 @@ class RssAdapter(PlatformAdapter):
         """
         entries = await self.parse_channel(url, limit=1)
         if not entries:
-            raise ValueError(f"RSS/Atom 源没有可解析条目: {url}")
+            raise ValueError("RSS/Atom 源没有可解析条目")
         return entries[0]
 
     def map_stats_to_content(self, content: Any, parsed: ParsedContent) -> None:
         self.map_common_stats(content, parsed.stats)
 
-    async def parse_channel(self, url: str, limit: int = 20) -> list[ParsedContent]:
-        """规范化解析 RSS/Atom 频道。"""
+    async def parse_channel(self, url: str, limit: int | None = 20) -> list[ParsedContent]:
+        """Shared RSS/Atom parsing; failures never advance discovery cursors."""
         feed_url = (url or "").strip()
         if not feed_url:
+            raise ValueError("RSS 来源缺少订阅地址")
+        if limit is not None and limit <= 0:
             return []
-        if limit <= 0:
-            return []
-
         try:
             response = await self.client.get(feed_url)
             response.raise_for_status()
-        except Exception as e:
-            logger.warning(f"RssAdapter: 请求失败 {feed_url}: {e}")
-            return []
+        except httpx.HTTPStatusError as exc:
+            raise RuntimeError(f"RSS 抓取失败（HTTP {exc.response.status_code}）") from None
+        except httpx.RequestError:
+            raise RuntimeError("RSS 来源连接失败，请检查网络或订阅地址") from None
 
         feed = feedparser.parse(response.content)
+        if not feed.version or (feed.bozo and not feed.entries):
+            raise ValueError("RSS 内容解析失败，请检查订阅格式")
         raw_entries = self._extract_raw_entries(response.content)
         raw_lookup = self._build_raw_entry_lookup(raw_entries)
-        if feed.bozo and not feed.entries:
-            logger.warning(f"RssAdapter: feed 格式异常且无可用条目 {feed_url}: {feed.bozo_exception}")
-
         feed_title = str(feed.feed.get("title") or "RSS Source")
         feed_link = self._normalize_candidate_url(feed.feed.get("link"), feed_url) or feed_url
-
         results: list[ParsedContent] = []
         for entry_index, entry in enumerate(feed.entries[:limit]):
             try:
                 raw_entry = self._match_raw_entry(entry, raw_entries, raw_lookup, entry_index)
-                parsed = self._parse_entry(
-                    entry=entry,
-                    feed_url=feed_url,
-                    feed_title=feed_title,
-                    feed_link=feed_link,
-                    raw_entry=raw_entry,
-                )
-                if parsed:
-                    results.append(parsed)
-            except Exception as e:
-                logger.warning(f"RssAdapter: 解析 RSS 单条目失败: {e}")
-                continue
-
+                results.append(self._parse_entry(
+                    entry=entry, feed_url=feed_url, feed_title=feed_title,
+                    feed_link=feed_link, raw_entry=raw_entry,
+                ))
+            except (ValueError, TypeError, KeyError, AttributeError):
+                raise ValueError(f"RSS 第 {entry_index + 1} 项解析失败；未推进游标") from None
         return results
 
     def _parse_entry(

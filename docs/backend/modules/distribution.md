@@ -31,7 +31,7 @@ active
 
 内容入库或规则刷新后，`DistributionService` 根据条件匹配规则，生成 `content_queue_items`。`enqueue_content_background` 只负责创建/关闭独立 session 和记录后台异常；旧空 `DistributionEngine` 别名与测试透传函数已删除。worker 消费队列并调用 push service，将结果记录到 pushed records。
 
-队列列表和单项响应批量/按项附带卡片用途的统一 `media_assets`，签名 URL 使用当前请求 origin。前端队列预览不再自行猜测或改写封面 URL。worker 推送前会连同变体一次性加载媒体资产；`ContentDistributor` 按 Telegram/QQ 能力选择本地可上传变体，并只把后端明确允许直连的远端原址作为兜底。Telegram 与 NapCat push service 只消费该 `media_items`，不再读取旧 archive metadata 或 `cover_url`；QQ 音频映射为 OneBot record 段。
+队列列表和单项响应批量/按项附带卡片用途的统一 `media_assets`，签名 URL 使用当前请求 origin。前端队列预览不再自行猜测或改写封面 URL。worker 推送前会连同变体一次性加载媒体资产；`push.media.build_content_payload` 按 Telegram/QQ 能力选择本地可上传变体，并只把后端明确允许直连的远端原址作为兜底。Telegram 与 NapCat push service 只消费该 `media_items`，不再读取旧 archive metadata 或 `cover_url`；QQ 音频映射为 OneBot record 段。
 
 分发队列的 enqueue、cancel、batch retry、push/schedule/reorder/status/repush，以及规则删除与人工扫描动作已从匿名响应收敛为命名 response model，并纳入 OpenAPI schema gate。数量字段表达当前请求已完成的数据库状态变更；`run_id` 仅在确实创建后台运行时出现。规则目标删除保持 `204 No Content`，同样由门禁固定。
 
@@ -98,3 +98,5 @@ QQ Agent 收藏会由插件向原管理员私聊返回回执。自动入队和�
 推送配置只接受 `{"format":"summary"}`、`{"format":"full"}` 或 `{"format":"text"}`。旧规则通过 `20260926_push_formats` 一次性迁移，不再在运行时解释旧字段或叠加目标级样式。图文摘要优先使用 500 字符内正文，较长时选已有摘要，否则截断；完整内容取正文并保留全部媒体；仅文字不附媒体。标题、正文、作者与原文按段落排列，不再输出字段标签、互动统计和头尾模板。QQ 合并转发只有底层实现，尚未接入自动队列。
 
 发现同步在入库及归档后同步维护媒体资产。推送正文先解析 Markdown、移除图片节点和内部存储引用，再生成平台文本；图片通过资产上传，不把路径作为正文发送。Telegram 超过 10 项按顺序分批，长正文分为完整文本消息；本地文件缺失不会静默改发文字。静态图片仅在上传时临时编码 JPEG，归档 WebP 不增加永久副本；动画图片及非播放器支持格式使用文件发送。QQ 使用同一正文清理和资产契约，上传前确认本地文件存在。
+
+单项、批量和按内容进行排期、重试、过滤共用 `queue_operations` 的状态转换及领取冲突检查。重新排期统一清除旧失败信息与锁，保留尝试次数和已知回执；显式重推才清除回执及对应去重记录。数据库提交、事件和运行记录仍在原请求边界完成。
