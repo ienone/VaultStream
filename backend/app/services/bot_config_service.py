@@ -6,9 +6,7 @@ from typing import Any, Callable
 import httpx
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.concurrency import run_in_threadpool
 
-from app.core.config import settings
 from app.core.db_adapter import AsyncSessionLocal
 from app.core.events import event_bus
 from app.core.logging import logger
@@ -29,12 +27,7 @@ from app.services.background_task_state import (
     record_task_run_success,
 )
 from app.services.bot_config_runtime import get_primary_bot_config
-from app.services.settings_service import get_setting_value
-from app.services.telegram_bot_service import (
-    restart_telegram_bot,
-    start_telegram_bot,
-    stop_telegram_bot,
-)
+from app.services.telegram_bot_service import telegram_bot_runtime
 from app.services.telegram_sync import refresh_telegram_chats
 from app.utils.sensitive_display import mask_token_partial
 
@@ -48,7 +41,7 @@ class BotConfigValidationError(ValueError):
 
 
 class TelegramBotRuntimeService:
-    """Own Telegram process-control side effects outside the API router."""
+    """Own Telegram lifecycle side effects outside the API router."""
 
     @staticmethod
     def _trigger_for_reason(reason: str) -> str:
@@ -57,21 +50,6 @@ class TelegramBotRuntimeService:
             if reason.startswith("api_manual_")
             else "config_change"
         )
-
-    @staticmethod
-    def _runtime_error(result: dict[str, Any]) -> str | None:
-        if str(result.get("status") or "").lower() == "error":
-            return str(result.get("error") or "Bot runtime action failed")
-        for stage in ("stopped", "started"):
-            nested = result.get(stage)
-            if not isinstance(nested, dict):
-                continue
-            if str(nested.get("status") or "").lower() == "error":
-                return str(
-                    nested.get("error")
-                    or f"Bot runtime {stage} stage failed"
-                )
-        return None
 
     async def _execute(
         self,
@@ -103,28 +81,11 @@ class TelegramBotRuntimeService:
                 "run_id": run["run_id"],
             }
 
-        runtime_result = dict(result)
-        runtime_error = self._runtime_error(runtime_result)
-        if runtime_error:
-            runtime_result["status"] = "error"
-            runtime_result["error"] = runtime_error
-            await record_task_run_error(
-                "bot_runtime_control",
-                run["run_id"],
-                runtime_error,
-                action=action,
-                reason=reason,
-                runtime=runtime_result,
-            )
-        else:
-            await record_task_run_success(
-                "bot_runtime_control",
-                run["run_id"],
-                action=action,
-                reason=reason,
-                runtime=runtime_result,
-            )
-        return {**runtime_result, "run_id": run["run_id"]}
+        await record_task_run_success(
+            "bot_runtime_control", run["run_id"],
+            action=action, reason=reason, runtime=result,
+        )
+        return {**result, "run_id": run["run_id"]}
 
     async def sync_process(self, db: AsyncSession, *, reason: str) -> dict[str, Any]:
         async def operation() -> dict[str, Any]:
@@ -134,18 +95,8 @@ class TelegramBotRuntimeService:
                 enabled_only=True,
             )
             if cfg and cfg.bot_token and cfg.bot_token.strip():
-                api_token = await get_setting_value("api_token")
-                if not api_token and settings.api_token:
-                    api_token = settings.api_token.get_secret_value()
-                return await run_in_threadpool(
-                    restart_telegram_bot,
-                    reason=reason,
-                    api_token=str(api_token or ""),
-                )
-            return await run_in_threadpool(
-                stop_telegram_bot,
-                reason=f"{reason}:no_enabled_telegram",
-            )
+                return await telegram_bot_runtime.start(reason=reason, restart=True)
+            return await telegram_bot_runtime.stop(reason=f"{reason}:no_enabled_telegram")
 
         return await self._execute(
             action="sync",
@@ -155,7 +106,7 @@ class TelegramBotRuntimeService:
 
     async def start(self, *, reason: str) -> dict[str, Any]:
         async def operation() -> dict[str, Any]:
-            return await run_in_threadpool(start_telegram_bot, reason=reason)
+            return await telegram_bot_runtime.start(reason=reason)
 
         return await self._execute(
             action="start",
@@ -165,7 +116,7 @@ class TelegramBotRuntimeService:
 
     async def stop(self, *, reason: str) -> dict[str, Any]:
         async def operation() -> dict[str, Any]:
-            return await run_in_threadpool(stop_telegram_bot, reason=reason)
+            return await telegram_bot_runtime.stop(reason=reason)
 
         return await self._execute(
             action="stop",

@@ -12,7 +12,7 @@ active
 - Run ledger: `backend/app/models/system.py::BackgroundTaskRun`
 - Migrations: `backend/migrations/versions/`
 - Tasks: `backend/app/tasks/*`
-- Queue adapter: `backend/app/core/queue_adapter.py`
+- Queue adapter: `backend/app/core/queue.py`
 
 ## 功能
 
@@ -39,7 +39,7 @@ active
 
 读取 run 时，后端按真实 task type 生成只读 `presentation` 投影，不把展示字段重复写入账本。投影稳定包含业务标题、摘要、可识别错误码、实体链接、安全导航动作和结果 section；原始 `metadata/result` 继续保留为诊断事实。收藏同步、内容处理、语义索引、发现、分发、平台/AI 连通性与 Bot 群组同步已有专用映射，未知任务只给通用标题和状态，不猜测业务动作。后台失败详情、run 查询、provider 状态和 Prometheus 文本由 `SystemDiagnosticsService` 统一构造，system router 不再直接聚合任务账本。
 
-Bot 进程控制和 chat 同步已经离开 API router 并进入可注入 service。配置保存触发的进程同步、手动 start/stop/restart、手动 chat sync 与 QQ 自动同步均写入统一 run 账本；`bot_sync_progress` / `bot_sync_completed` 事件仍只用于即时提示，持久 run 才是任务结果事实源。手动成功与所有失败继续复用统一消息盒子投影。
+Bot 生命周期控制和 chat 同步已经离开 API router 并进入可注入 service。配置保存触发的生命周期同步、手动 start/stop/restart、手动 chat sync 与 QQ 自动同步均写入统一 run 账本；`bot_sync_progress` / `bot_sync_completed` 事件仍只用于即时提示，持久 run 才是任务结果事实源。手动成功与所有失败继续复用统一消息盒子投影。
 
 解析队列每行只执行一次：PENDING → RUNNING → COMPLETED/FAILED，不再使用租约重领、世代或重复执行预算。30 分钟是执行超时；轮询发现超时 RUNNING 时结算失败，不重新抓取。写入结果仍要求该任务行处于 RUNNING，避免已结束任务的迟到结果提交。解析事实与 Task 完成同事务写入。
 
@@ -97,3 +97,7 @@ Bot 进程控制和 chat 同步已经离开 API router 并进入可注入 servic
 前端在连接确认和 App 回到前台重连后补读可见资源；切换服务器或账号清除旧事件游标。收藏、正文、处理阶段、任务结果、消息盒子和收藏同步状态订阅各自事件，短时间事件合并读取，收藏保留已加载页数。移除 Web 专属的固定频率任务/消息轮询。
 
 每一层反向代理都必须关闭 SSE 缓冲。容器 Nginx 对 `/api/v1/events` 关闭缓冲，并向外层保留 `X-Accel-Buffering: no`。生产外层 Nginx 的 `/api/v1/events/` 同样设置 `proxy_http_version 1.1`、`proxy_set_header Connection '';`、`proxy_buffering off`、`proxy_cache off`、`proxy_read_timeout 86400s`，目标沿用现有 Web 容器。核验必须经过用户实际访问的域名，API 直连成功不能证明整条代理链及时送达。
+
+## Telegram 运行者
+
+Telegram Application 随 FastAPI lifespan 异步启停，仅周期任务 leader 可控制；部署使用单 API worker，解析/分发并发仍由应用内 worker 配置控制。Bot 内部 API 使用同进程 ASGI transport，管理状态直接读取 Application/Updater，不再使用子进程、PID 文件、自报心跳或独立 systemd 服务。QQ 的外部心跳不变。Bot 启动失败关闭已创建资源，启停和配置重载继续写运行记录。迁移部署前应停止旧独立 Telegram 进程，避免两个消费者轮询同一 Bot；本次未操作生产进程。

@@ -3,9 +3,8 @@ Bot 主程序模块
 
 负责 Bot 应用的初始化、配置和启动
 """
-import asyncio
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update as sql_update
 from telegram import BotCommand, Update, ChatMemberUpdated
 from telegram.ext import (
     Application,
@@ -18,7 +17,7 @@ from telegram.ext import (
 from app.core.logging import logger
 from app.core.config import settings
 from app.core.db_adapter import AsyncSessionLocal
-from app.models import BotChat
+from app.models import BotChat, BotConfig
 from app.services.bot_config_runtime import get_primary_telegram_runtime
 
 from .permissions import PermissionManager
@@ -44,7 +43,8 @@ async def handle_text_message(update: Update, context) -> None:
 class VaultStreamBot:
     """VaultStream Telegram Bot"""
     
-    def __init__(self):
+    def __init__(self, api_app):
+        self.api_app = api_app
         self.api_base = f"http://localhost:{settings.api_port}/api/v1"
         self.target_platform = "TG_PRIMARY_BOT"
         self.api_token = settings.api_token.get_secret_value() if settings.api_token else ""
@@ -61,6 +61,7 @@ class VaultStreamBot:
 
     async def _load_runtime_config(self) -> bool:
         from app.services.settings_service import get_setting_value
+        self.api_token = str(await get_setting_value("api_token", self.api_token) or "")
         admin_ids = await get_setting_value("telegram_admin_ids", settings.telegram_admin_ids)
         whitelist_ids = await get_setting_value("telegram_whitelist_ids", settings.telegram_whitelist_ids)
         blacklist_ids = await get_setting_value("telegram_blacklist_ids", settings.telegram_blacklist_ids)
@@ -102,34 +103,6 @@ class VaultStreamBot:
         if self.api_token:
             headers["X-API-Token"] = self.api_token
         return headers
-
-    async def _send_heartbeat(self, context) -> None:
-        """发送心跳到后端 API"""
-        try:
-            bot_info = await context.bot.get_me()
-            client: httpx.AsyncClient = context.bot_data.get("http_client")
-            if not client:
-                return
-            
-            payload = {
-                "bot_config_id": self.bot_config_id,
-                "platform": "telegram",
-                "bot_id": str(bot_info.id),
-                "bot_username": bot_info.username,
-                "bot_first_name": bot_info.first_name,
-                "version": BOT_VERSION,
-            }
-            
-            response = await client.post(
-                f"{self.api_base}/bot/heartbeat",
-                json=payload,
-                headers=self._get_headers(),
-                timeout=10.0,
-            )
-            if response.status_code != 200:
-                logger.warning(f"心跳上报失败: {response.status_code}")
-        except Exception as e:
-            logger.warning(f"心跳上报异常: {e}")
 
     async def _upsert_chat(self, client: httpx.AsyncClient, chat, bot) -> None:
         """上报群组/频道信息到后端"""
@@ -189,11 +162,20 @@ class VaultStreamBot:
             application.bot_data["api_token"] = self.api_token
             
             # 创建并注入 http_client
-            client = httpx.AsyncClient(timeout=30.0)
+            client = httpx.AsyncClient(transport=httpx.ASGITransport(app=self.api_app), timeout=30.0)
             application.bot_data["http_client"] = client
             
             logger.info("正在验证 Telegram Bot 连接...")
             bot_info = await application.bot.get_me()
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(sql_update(BotConfig).where(
+                    BotConfig.id == self.bot_config_id,
+                    BotConfig.bot_token == self.bot_token,
+                    BotConfig.enabled.is_(True),
+                ).values(bot_id=str(bot_info.id), bot_username=bot_info.username))
+                if result.rowcount != 1:
+                    raise RuntimeError("Telegram 配置已改变，请重新启动")
+                await db.commit()
             logger.info(f"Bot 连接成功: @{bot_info.username} (ID: {bot_info.id})")
             
             # 设置命令菜单
@@ -234,27 +216,6 @@ class VaultStreamBot:
                         except Exception as e:
                             logger.warning(f"启动同步 chat 失败 chat_id={chat_id}: {e}")
                 
-            # 验证后端API连接
-            try:
-                response = await client.get(f"{self.api_base}/health", timeout=5.0)
-                if response.status_code == 200:
-                    logger.info("后端API连接成功")
-                else:
-                    logger.warning(f"后端API响应异常: {response.status_code}")
-            except Exception as e:
-                logger.error(f"无法连接到后端API: {e}")
-            
-            # 发送初始心跳
-            await self._send_heartbeat(application)
-            
-            # 设置定时心跳任务（每 30 秒）
-            application.job_queue.run_repeating(
-                self._send_heartbeat,
-                interval=30,
-                first=30,
-                name="heartbeat",
-            )
-                
             logger.info("Bot 已就绪，开始监听消息...")
             
         except Exception as e:
@@ -269,10 +230,10 @@ class VaultStreamBot:
             await client.aclose()
         logger.info("资源清理完成")
 
-    def run(self):
-        """运行Bot"""
-        if not asyncio.run(self._load_runtime_config()):
-            return
+    async def create_application(self) -> Application:
+        """Build the sole in-process application from persisted configuration."""
+        if not await self._load_runtime_config():
+            raise RuntimeError("未找到启用的 Telegram Bot 配置")
         
         logger.info("正在启动 Telegram Bot...")
         
@@ -326,16 +287,7 @@ class VaultStreamBot:
             ChatMemberHandler.MY_CHAT_MEMBER
         ))
         
-        try:
-            application.run_polling(
-                allowed_updates=Update.ALL_TYPES,
-                drop_pending_updates=True,
-                close_loop=False
-            )
-        except KeyboardInterrupt:
-            logger.info("Bot 已停止")
-        except Exception as e:
-            logger.exception(f"Bot 运行出错: {e}")
+        return application
 
 
 async def _handle_my_chat_member(update: Update, context) -> None:
@@ -362,8 +314,3 @@ async def _handle_my_chat_member(update: Update, context) -> None:
     # Bot 被踢出或离开
     elif new_status in ['left', 'kicked']:
         logger.info(f"Bot 已离开群组: {chat.title or chat.id}")
-
-
-if __name__ == "__main__":
-    bot = VaultStreamBot()
-    bot.run()
