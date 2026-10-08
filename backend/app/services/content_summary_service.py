@@ -5,12 +5,11 @@ from typing import Optional, List
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
-from sqlalchemy import delete, update
+from sqlalchemy import update
 from sqlalchemy.orm.exc import StaleDataError
 
 from app.core.logging import logger
 from app.models import Content
-from app.models.search import ContentEmbedding
 from app.services.config_service import ConfigService
 
 
@@ -18,7 +17,6 @@ class SemanticChunk(BaseModel):
     """语义切片模型"""
     title: str = Field(..., description="该片段的小标题或核心论点")
     content: str = Field(..., description="片段的正文内容（纯文本）")
-    importance: float = Field(default=1.0, description="片段的重要性评分 0.0-1.0")
     media_refs: List[str] = Field(default_factory=list, description="该片段关联的图片或媒体 URL (local:// 协议)")
 
 
@@ -188,9 +186,10 @@ async def generate_summary_for_content(
         flag_modified(content, "rich_payload")
         flag_modified(content, "tags")
 
-        # Chunk positions and the global summary have changed. Retire old
-        # vectors atomically so search cannot cite the previous interpretation.
-        await session.execute(delete(ContentEmbedding).where(ContentEmbedding.content_id == content_id))
+        # Replace changed interpretations atomically, while keeping vectors for
+        # unchanged source text and positions, with their original model identity.
+        from app.services.embedding_service import EmbeddingService
+        await EmbeddingService().invalidate_changed_units(content, session)
         
         await session.commit()
         logger.info(f"AI 深度理解完成: content_id={content_id}, 生成切片数={len(content.rich_payload['chunks'])}")

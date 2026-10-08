@@ -15,13 +15,13 @@ _TASK_TITLES = {
     "content_reparse": "重新解析内容",
     "content_summary": "生成内容摘要",
     "content_aggregation": "多来源自动聚合",
-    "content_embedding": "内容语义索引",
+    "content_embedding": "建立搜索索引",
     "document_extract": "提取 PDF 正文",
-    "semantic_reindex": "重建语义索引",
+    "semantic_reindex": "重建搜索索引",
     "discovery_sync": "发现源同步",
     "discovery_source_test": "发现源测试",
     "discovery_patrol": "动态候选评分",
-    "distribution_push": "内容分发",
+    "distribution_push": "发送内容",
     "distribution_schedule": "调整分发队列",
     "distribution_worker_poll": "分发队列处理",
     "distribution_target_test": "分发目标连接测试",
@@ -42,7 +42,7 @@ def build_task_run_presentation(run: Mapping[str, Any]) -> dict[str, Any]:
     title = _TASK_TITLES.get(task, _humanize_task(task))
     kind = _task_kind(task)
 
-    sections = _sections_for_task(task, metadata, result)
+    sections = _sections_for_task(task, metadata, result) if result else []
     links = _entity_links(task, metadata, result)
     actions = _allowed_actions(task, status, metadata, result, links)
     error_code = _first_text(
@@ -80,7 +80,7 @@ def _summary_for_task(
     if status == "running":
         return f"{title}正在运行。"
     if status in TASK_ERROR_STATUSES:
-        return f"{title}未完成：{error}" if error else f"{title}未完成。"
+        return _failure_summary(error)
 
     if task == "telegram_account_sync":
         return (f"已检查 {_int(result.get('channels'))} 个频道，"
@@ -155,6 +155,21 @@ def _summary_for_task(
     return f"{title}已完成。" if status in TASK_SUCCESS_STATUSES else f"{title}状态：{status}。"
 
 
+def _failure_summary(error: str | None) -> str:
+    if not error:
+        return "任务未完成。"
+    if "database is locked" in error:
+        return "数据库写入失败：数据库被占用。"
+    if "正文范围之外的行号" in error:
+        return "正文提取失败：清理结果包含无效行号。"
+    if "FloodWaitError" in error:
+        return "Telegram 限制了请求频率，同步未完成。"
+    # SQL and structured-output dumps belong in diagnostics, not the result.
+    if "[SQL:" in error or "validation error" in error or "Traceback" in error:
+        return "任务未完成，错误记录见诊断详情。"
+    return error.splitlines()[0][:240]
+
+
 def _sections_for_task(
     task: str,
     metadata: Mapping[str, Any],
@@ -187,27 +202,13 @@ def _sections_for_task(
             _item("含原生文本", result.get("text_page_count")),
         ])]
 
-    if task in {"content_parse", "content_reparse", "content_summary", "content_embedding"}:
-        items = [_item("内容 ID", _first_value(result.get("content_id"), metadata.get("content_id")))]
-        if task == "content_parse":
-            items.extend(
-                [
-                    _item("解析状态", result.get("status") or ("已跳过" if result.get("skipped") else None)),
-                    _item("尝试次数", result.get("attempt") or metadata.get("attempt")),
-                    _item("原因", result.get("reason")),
-                ]
-            )
-        elif task == "content_summary":
-            items.extend(
-                [
-                    _item("摘要", "已生成" if result.get("summary_present") else "未生成"),
-                    _item("内容分块", result.get("chunk_count")),
-                    _item("标签", result.get("tag_count")),
-                ]
-            )
-        elif task == "content_embedding":
-            items.append(_item("语义索引", "已写入" if result.get("indexed") else "未写入"))
-        return [_section("内容处理结果", items)]
+    if task in {"content_parse", "content_reparse", "content_embedding"}:
+        return []
+    if task == "content_summary":
+        return [_section("摘要", [
+            _item("内容分块", result.get("chunk_count")),
+            _item("标签", result.get("tag_count")),
+        ])]
 
     if task == "semantic_reindex":
         return [
@@ -367,15 +368,10 @@ def _allowed_actions(
         actions.append({"id": "open_accounts", "label": "查看账号", "href": "/accounts/telegram", "emphasis": "primary"})
     if task == "favorites_sync":
         actions.append({"id": "open_sync", "label": "查看收藏同步", "href": "/automation/sync", "emphasis": "primary" if not actions else "secondary"})
-        if status in TASK_ERROR_STATUSES:
-            actions.append({"id": "open_accounts", "label": "检查账号", "href": "/accounts", "emphasis": "secondary"})
     elif task.startswith("distribution_"):
         actions.append({"id": "open_distribution", "label": "查看分发", "href": "/automation/distribution", "emphasis": "primary" if not actions else "secondary"})
     elif task.startswith("discovery_"):
         actions.append({"id": "open_feed", "label": "查看动态", "href": "/home", "emphasis": "primary" if not actions else "secondary"})
-        actions.append({"id": "open_processing", "label": "查看自动化", "href": "/automation/processing", "emphasis": "secondary"})
-    elif task in {"content_parse", "content_reparse", "content_summary", "content_aggregation", "content_embedding", "semantic_reindex"}:
-        actions.append({"id": "open_processing", "label": "查看处理状态", "href": "/automation/processing", "emphasis": "secondary"})
     elif task == "ai_connectivity_test":
         actions.append({"id": "open_ai_settings", "label": "查看 AI 设置", "href": "/settings?tab=automation", "emphasis": "primary"})
     elif task in {

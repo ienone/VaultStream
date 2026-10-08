@@ -343,10 +343,8 @@ class ContentParser:
             source="parse",
             summary=True,
             embedding=True,
-            patrol=False,
-            distribution=False,
+            distribution=True,
         )
-        await self._check_auto_approval(session, content)
 
         # 广播更新事件
         from app.core.events import event_bus
@@ -435,10 +433,6 @@ class ContentParser:
         if isinstance(error, RetryableAdapterError):
             return "adapter_error"
         return "failed"
-
-    async def _check_auto_approval(self, session, content):
-        """M4: 解析完成后尝试自动审批"""
-        await PostIngestService().auto_approve_and_enqueue(session, content)
 
     _MAX_ARCHIVE_METADATA_BYTES = 512 * 1024  # 512KB
 
@@ -543,9 +537,5 @@ class ContentParser:
         force: bool = False,
     ) -> bool:
         """用户主动重新解析一次，不循环重复相同方案。"""
-        try:
-            result = await self.execute_parse(content_id, force=force)
-            return result.found
-        except Exception as error:
-            logger.warning(f"重试解析失败: {content_id}, err: {error}")
-            return False
+        result = await self.execute_parse(content_id, force=force)
+        return result.found

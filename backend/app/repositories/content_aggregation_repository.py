@@ -24,6 +24,7 @@ class AggregationInput:
     body: str
     canonical_url: str
     is_nsfw: bool
+    body_fingerprint: str
 
 
 @dataclass(frozen=True)
@@ -52,7 +53,8 @@ class ContentAggregationRepository:
     @staticmethod
     def _input(row):
         return AggregationInput(id=row.id, updated_at=row.updated_at, title=row.title or "",
-            body=row.body[:6000], canonical_url=row.canonical_url or "", is_nsfw=row.is_nsfw)
+            body=row.body[:6000], canonical_url=row.canonical_url or "", is_nsfw=row.is_nsfw,
+            body_fingerprint=hashlib.sha256(row.body.encode()).hexdigest())
 
     async def select_inputs(self, since: datetime, after_id: int, *, limit: int = 20) -> list[AggregationInput]:
         rows = (await self.db.execute(select(Content).where(*self._eligible(),
@@ -97,7 +99,7 @@ class ContentAggregationRepository:
             candidates[event.id] = AggregationEvent(event.id, event.title, event.updated_at, source_ids)
         return candidates
 
-    async def save_batch(self, inputs: list[AggregationInput], output: AggregationOutput, *, run_id: str, progress: AggregationInput, events: dict[int, AggregationEvent]) -> tuple[list[int], list[int]]:
+    async def save_batch(self, inputs: list[AggregationInput], output: AggregationOutput, *, run_id: str, progress: AggregationInput, events: dict[int, AggregationEvent], judgment: dict | None = None) -> tuple[list[int], list[int]]:
         # SQLite obtains the write reservation before checking all versions.
         # A concurrent edit/delete cannot slip between validation and commit.
         for source in inputs:
@@ -107,6 +109,14 @@ class ContentAggregationRepository:
             ).values(updated_at=Content.updated_at).execution_options(synchronize_session=False))
             if result.rowcount != 1:
                 raise ValueError("聚合期间来源已变化，未保存生成结果")
+
+        for event in events.values():
+            result = await self.db.execute(update(KnowledgeEvent).where(
+                KnowledgeEvent.id == event.id, KnowledgeEvent.updated_at == event.updated_at,
+                KnowledgeEvent.status == KnowledgeEventStatus.ACTIVE,
+            ).values(updated_at=KnowledgeEvent.updated_at).execution_options(synchronize_session=False))
+            if result.rowcount != 1:
+                raise ValueError("聚合期间事件已变化，未保存判断结果")
 
         by_id = {source.id: source for source in inputs}
         content_ids, event_ids = [], []
@@ -174,7 +184,10 @@ class ContentAggregationRepository:
             content_ids.append(content.id)
             event_ids.append(event.id)
         last = progress
-        await SystemRepository(self.db).upsert_setting("content_aggregation_cursor", {
+        cursor = {
             "updated_at": last.updated_at.isoformat(), "id": last.id,
-        }, category="automation")
+        }
+        if judgment is not None:
+            cursor["last_judgment"] = judgment
+        await SystemRepository(self.db).upsert_setting("content_aggregation_cursor", cursor, category="automation")
         return content_ids, event_ids

@@ -156,6 +156,12 @@ async def health_check(
         },
     }
 
+@router.get("/auth/check", status_code=204, response_class=Response)
+async def check_auth(_: None = Depends(require_api_token)):
+    """验证访问密钥，不执行数据库统计或文件扫描。"""
+    return Response(status_code=204)
+
+
 @router.get("/init-status")
 async def get_init_status(
     db: AsyncSession = Depends(get_db)

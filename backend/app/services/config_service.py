@@ -70,24 +70,18 @@ class EmbeddingAIConfig:
 
 
 @dataclass(frozen=True)
-class AgentChatConfig:
-    api_key: str | None
-    model: str
-    base_url: str | None
-
-
-@dataclass(frozen=True)
 class LLMConfig:
     api_key: str | None
     model: str
     base_url: str | None
+    extra_body: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
 class AIConfig:
     summary: SummaryAIConfig
     embedding: EmbeddingAIConfig
-    agent_chat: AgentChatConfig
+    agent_chat: LLMConfig
     text_llm: LLMConfig
     vision_llm: LLMConfig
 
@@ -327,17 +321,19 @@ class ConfigService:
             ),
         )
 
-    async def get_agent_chat_config(self) -> AgentChatConfig:
+    async def get_agent_chat_config(self) -> LLMConfig:
         from app.core.config import settings
 
         api_key = await self.get_value("agent_chat_api_key")
         key_text = extract_secret_value(api_key)
+        inherits_text_provider = key_text is None
         if key_text is None:
             key_text = extract_secret_value(await self.get_value("text_llm_api_key"))
         if key_text is None:
             key_text = extract_secret_value(settings.text_llm_api_key)
 
         base_url = await self.get_value("agent_chat_base_url")
+        inherits_text_provider = inherits_text_provider and not base_url
         if not base_url:
             base_url = await self.get_value("text_llm_base_url")
         if not base_url:
@@ -346,13 +342,18 @@ class ConfigService:
             base_url = settings.text_llm_base_url
 
         model = await self.get_value("agent_chat_model")
+        inherits_text_provider = inherits_text_provider and not model
         if not model:
             model = await self.get_value("text_llm_model", settings.text_llm_model)
 
-        return AgentChatConfig(
+        return LLMConfig(
             api_key=key_text,
             model=str(model or settings.text_llm_model),
             base_url=str(base_url) if base_url else None,
+            extra_body=(
+                await self.get_value("text_llm_extra_body", None)
+                if inherits_text_provider else None
+            ),
         )
 
     async def get_text_llm_config(self) -> LLMConfig:
@@ -375,6 +376,7 @@ class ConfigService:
             api_key=key_text,
             model=str(model or settings.text_llm_model),
             base_url=str(base_url) if base_url else None,
+            extra_body=await self.get_value("text_llm_extra_body", None),
         )
 
     async def get_vision_llm_config(self) -> LLMConfig:

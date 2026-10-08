@@ -58,7 +58,7 @@ class LLMFactory:
                 base_url=config.base_url,
                 use_responses_api=False,
                 temperature=0.3, # 文本生成稍微增加一点创造性
-                extra_body=await ConfigService().get_value("text_llm_extra_body", None),
+                extra_body=config.extra_body,
             )
         except Exception as e:
             logger.error(f"LLMFactory: Failed to initialize Text LLM - {e}")
@@ -69,14 +69,14 @@ class LLMFactory:
         """
         获取 Agent 对话模型。
 
-        优先使用 agent_chat_* 动态配置；未配置时兼容回退到 text_llm_*，
-        再由 get_text_llm() 保留旧的 vision fallback。
+        配置服务已完成 agent_chat_* 到 text_llm_* 的字段继承；
+        两者都无凭据时使用视觉模型配置。
         """
         config = await ConfigService().get_agent_chat_config()
 
         if not config.api_key:
-            logger.debug("LLMFactory: AGENT_CHAT_API_KEY not found, trying text LLM fallback.")
-            return await LLMFactory.get_text_llm()
+            logger.debug("LLMFactory: Agent/text API key not found, trying vision LLM fallback.")
+            return await LLMFactory.get_vision_llm()
 
         logger.debug(f"LLMFactory: Loading Agent Chat Model ({config.model}) from {config.base_url}")
 
@@ -86,6 +86,7 @@ class LLMFactory:
                 api_key=config.api_key,
                 base_url=config.base_url,
                 temperature=0.2,
+                extra_body=config.extra_body,
             )
         except Exception as e:
             logger.error(f"LLMFactory: Failed to initialize Agent Chat LLM - {e}")

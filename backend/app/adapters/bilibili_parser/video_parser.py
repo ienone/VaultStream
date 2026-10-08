@@ -26,7 +26,8 @@ API_VIDEO_INFO = "https://api.bilibili.com/x/web-interface/view"
 async def parse_video(
     url: str,
     headers: Dict[str, str],
-    cookies: Dict[str, str]
+    cookies: Dict[str, str],
+    *, include_media: bool = True,
 ) -> ParsedContent:
     """
     解析B站视频
@@ -113,8 +114,9 @@ async def parse_video(
             author_avatar_url=author_avatar_url
         )
         
-        video, rich_payload = await read_video_media(client, item, url)
-        archive_metadata['archive']['videos'] = [video]
+        video, rich_payload = await read_video_media(client, item, url, include_media=include_media)
+        if include_media:
+            archive_metadata['archive']['videos'] = [video]
         stats['duration_seconds'] = video['duration_ms'] / 1000
         title = item.get('title')
         if rich_payload['video_page_count'] > 1:

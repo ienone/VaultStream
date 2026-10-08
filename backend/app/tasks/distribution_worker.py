@@ -23,6 +23,7 @@ from app.models import (
     DistributionRule,
     DistributionTarget,
     BotChat,
+    BotConfig,
     MediaAsset,
     PushedRecord,
     ReviewStatus,
@@ -39,7 +40,7 @@ from app.services.distribution.decision import should_distribute, DECISION_WILL_
 from app.services.distribution.delivery_state import (
     DELIVERY_PREPARING, DELIVERY_SENDING, DELIVERY_UNKNOWN, LOCK_TIMEOUT,
     UNKNOWN_MESSAGE, delivery_is_resolved, owns_delivery,
-    record_delivery_unknown, recover_expired_deliveries,
+    recover_expired_deliveries,
 )
 from app.tasks.distributor import ContentDistributor
 from app.core.events import event_bus
@@ -55,31 +56,15 @@ async def compute_auto_scheduled_at(
     rule: DistributionRule,
     bot_chat_id: int,
     target_id: str,
+    now: datetime | None = None,
 ):
     """根据规则限流配置计算自动排期时间（消费侧）。"""
-    now = utcnow()
+    now = now or utcnow()
 
     if not rule.rate_limit or not rule.time_window or rule.rate_limit <= 0 or rule.time_window <= 0:
         return now
 
     min_interval_seconds = max(1, int(rule.time_window) // int(rule.rate_limit))
-
-    latest_queue_result = await session.execute(
-        select(func.max(ContentQueueItem.scheduled_at)).where(
-            and_(
-                ContentQueueItem.rule_id == rule.id,
-                ContentQueueItem.bot_chat_id == bot_chat_id,
-                ContentQueueItem.status.in_(
-                    [
-                        QueueItemStatus.SCHEDULED,
-                        QueueItemStatus.PROCESSING,
-                        QueueItemStatus.FAILED,
-                    ]
-                ),
-            )
-        )
-    )
-    latest_queue_time = latest_queue_result.scalar_one_or_none()
 
     latest_pushed_result = await session.execute(
         select(func.max(PushedRecord.pushed_at)).where(
@@ -92,7 +77,7 @@ async def compute_auto_scheduled_at(
     latest_pushed_time = latest_pushed_result.scalar_one_or_none()
 
     scheduled_at = now
-    anchor = latest_queue_time or latest_pushed_time
+    anchor = latest_pushed_time
     if anchor and anchor + timedelta(seconds=min_interval_seconds) > scheduled_at:
         scheduled_at = anchor + timedelta(seconds=min_interval_seconds)
 
@@ -217,7 +202,6 @@ class DistributionQueueWorker:
         async with AsyncSessionLocal() as recovery_session:
             if await recover_expired_deliveries(recovery_session):
                 await event_bus.publish("queue_updated", {"action": "delivery_recovered"})
-                await event_bus.publish("notification_updated", {"source_type": "distribution_delivery"})
         policy = await AutomationPolicyService().distribution_worker_poll()
         if not policy.allowed:
             logger.bind(worker=worker_name, policy=policy.as_dict()).info(
@@ -323,8 +307,11 @@ class DistributionQueueWorker:
             DistributionRule.enabled.is_(True),
         ).exists()
 
+        eligible_target = or_(enabled_rule_target, and_(
+            ContentQueueItem.rule_id.is_(None), ContentQueueItem.approved_by == "manual",
+        ))
         base_conditions = [
-            enabled_rule_target,
+            eligible_target,
             delivery_is_resolved(),
             self._no_delivery_in_flight(ContentQueueItem),
             # Explicit rescheduling grants another attempt without resetting
@@ -392,7 +379,7 @@ class DistributionQueueWorker:
         if not items:
             return []
 
-        rule_ids = sorted({item.rule_id for item in items})
+        rule_ids = sorted({item.rule_id for item in items if item.rule_id is not None})
         rules_result = await session.execute(
             select(DistributionRule).where(DistributionRule.id.in_(rule_ids))
         )
@@ -414,6 +401,7 @@ class DistributionQueueWorker:
                     rule=rule,
                     bot_chat_id=item.bot_chat_id,
                     target_id=item.target_id,
+                    now=now,
                 )
                 if next_allowed > now:
                     result = await session.execute(update(ContentQueueItem).where(
@@ -477,7 +465,7 @@ class DistributionQueueWorker:
                 )
 
             claim_result = await session.execute(claim_stmt.where(
-                enabled_rule_target,
+                eligible_target,
                 self._no_delivery_in_flight(item), delivery_is_resolved(),
                 or_(ContentQueueItem.status == QueueItemStatus.SCHEDULED,
                     ContentQueueItem.attempt_count < ContentQueueItem.max_attempts),
@@ -549,10 +537,8 @@ class DistributionQueueWorker:
             last_error_at=utcnow(), next_attempt_at=None, locked_at=None, locked_by=None,
         ):
             return
-        await record_delivery_unknown(session, item)
         await session.commit()
         await event_bus.publish("queue_updated", {"action": DELIVERY_UNKNOWN, "queue_item_id": item.id})
-        await event_bus.publish("notification_updated", {"source_type": "distribution_delivery"})
 
     async def _process_item(
         self,
@@ -587,11 +573,14 @@ class DistributionQueueWorker:
             await self._defer(session, item, "Target disabled or inaccessible", "target_unavailable")
             return
 
+        explicit = item.rule_id is None and item.approved_by == "manual"
+        approved = item.approved_by == "manual"
+        # Explicit approval is limited to this delivery, not all matching rules.
         # 2. 资格检查
-        if not content or content.deleted_at is not None or content.review_status not in (
+        if not content or content.deleted_at is not None or (not approved and content.review_status not in (
             ReviewStatus.APPROVED,
             ReviewStatus.AUTO_APPROVED,
-        ) or content.status != ContentStatus.PARSE_SUCCESS:
+        )) or content.status != ContentStatus.PARSE_SUCCESS:
             await self._defer(session, item, "Content not eligible", "content_not_eligible", terminal=True)
             return
 
@@ -635,14 +624,19 @@ class DistributionQueueWorker:
             DistributionTarget.rule_id == item.rule_id,
             DistributionTarget.bot_chat_id == item.bot_chat_id,
         ))).scalar_one_or_none()
+        active_config = await session.scalar(select(BotConfig.id).where(
+            BotConfig.id == bot_chat.bot_config_id, BotConfig.enabled.is_(True), BotConfig.is_primary.is_(True),
+        ))
         reason, code = None, None
-        if not rule or not rule.enabled or not target_enabled or not bot_chat.enabled or not bot_chat.is_accessible:
+        if not active_config or not bot_chat.enabled or not bot_chat.is_accessible or not bot_chat.is_push_target:
+            reason, code = "Target disabled or inaccessible", "target_unavailable"
+        elif not explicit and (not rule or not rule.enabled or not target_enabled):
             reason, code = "Rule or target disabled", "rule_or_target_disabled"
-        elif content.deleted_at is not None or content.status != ContentStatus.PARSE_SUCCESS or content.review_status not in (ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED):
+        elif content.deleted_at is not None or content.status != ContentStatus.PARSE_SUCCESS or (not approved and content.review_status not in (ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED)):
             reason, code = "Content no longer eligible", "content_not_eligible"
-        else:
-            decision = should_distribute(content=content, rule=rule, bot_chat=bot_chat)
-            if rule.approval_required and content.review_status == ReviewStatus.AUTO_APPROVED:
+        elif not explicit:
+            decision = should_distribute(content=content, rule=rule, bot_chat=bot_chat, require_approval=not approved)
+            if rule.approval_required and not approved and content.review_status != ReviewStatus.APPROVED:
                 reason, code = "Manual approval now required", "approval_required"
             elif decision.bucket != DECISION_WILL_PUSH:
                 reason, code = decision.reason, decision.reason_code
@@ -657,7 +651,7 @@ class DistributionQueueWorker:
             if not policy.allowed:
                 reason, code = policy.reason, policy.code
         if reason:
-            await self._defer(session, item, reason, code)
+            await self._defer(session, item, reason, code, terminal=code not in {"distribution_paused", "target_unavailable"})
             return
 
         # Persist the send boundary before IO. Neither a lost response nor a

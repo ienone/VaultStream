@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.models import Content
 from app.services.automation_policy import AutomationPolicyService
+from app.services.config_service import coerce_bool
 from app.services import settings_service
 
 
@@ -22,37 +23,38 @@ class PostIngestService:
         source: str,
         summary: bool = True,
         embedding: bool = True,
-        patrol: bool = False,
         distribution: bool = True,
     ) -> None:
+        content_id = content.id
         if summary:
             await self.generate_summary(session, content)
-        if embedding:
-            self.schedule_embedding_index(content.id, source=source)
-        if patrol:
-            await self.score_discovery(session)
-        if distribution:
-            await self.auto_approve_and_enqueue(session, content)
-        logger.bind(component="post_ingest", source=source, content_id=content.id).info(
-            "Post-ingest hooks completed"
-        )
+        try:
+            if distribution:
+                await self.auto_approve_and_enqueue(session, content)
+        finally:
+            if embedding:
+                # Index after these writes, including when an independent hook fails.
+                self.schedule_embedding_index(content_id, source=source)
 
     async def generate_summary(self, session: AsyncSession, content: Content) -> None:
-        enable_auto_summary = await settings_service.get_setting_value(
-            "enable_auto_summary",
-            settings.enable_auto_summary,
+        enable_auto_summary = coerce_bool(
+            await settings_service.get_setting_value(
+                "enable_auto_summary", settings.enable_auto_summary,
+            ),
+            default=settings.enable_auto_summary,
         )
         if not enable_auto_summary:
-            logger.debug("未开启自动摘要生成, 跳过: content_id={}", content.id)
             return
 
         try:
             from app.services.content_summary_service import generate_summary_for_content
 
             await generate_summary_for_content(session, content.id)
-            logger.info("摘要处理完成: content_id={}, auto_ai={}", content.id, enable_auto_summary)
         except Exception as e:
             logger.warning("摘要生成/处理失败: {}", e)
+            # Summary failures roll back the session and expire this instance.
+            # Reload before later hooks read its fields or classify the content.
+            await session.refresh(content)
 
     def schedule_embedding_index(
         self,
@@ -61,66 +63,24 @@ class PostIngestService:
         source: str = "post_ingest",
     ) -> asyncio.Task[None]:
         async def _run():
-            run_id: str | None = None
+            from app.services.embedding_service import EmbeddingService, EmbeddingIndexError
             try:
                 decision = await AutomationPolicyService().automatic_semantic_indexing()
-                if not decision.allowed:
-                    logger.bind(
-                        component="embedding",
-                        content_id=content_id,
-                        policy=decision.as_dict(),
-                    ).info("Automatic semantic indexing skipped by automation policy")
-                    return
-
-                from app.services.embedding_service import EmbeddingService
-                from app.services.background_task_state import (
-                    record_task_run_started,
-                    record_task_run_success,
-                )
-
-                run = await record_task_run_started(
-                    "content_embedding",
-                    content_id=content_id,
-                    source=source,
-                    trigger="auto",
-                )
-                run_id = run["run_id"]
-                indexed = await EmbeddingService().index_content(content_id)
-                await record_task_run_success(
-                    "content_embedding",
-                    run_id,
-                    content_id=content_id,
-                    source=source,
-                    indexed=bool(indexed),
-                    trigger="auto",
-                )
-            except Exception as e:
-                from app.services.background_task_state import (
-                    record_task_run_error,
-                )
-
+                if decision.allowed:
+                    await EmbeddingService().index_content(content_id)
+            except EmbeddingIndexError:
+                # Each failed unit already has a persisted failure_reason.
+                pass
+            except Exception as error:
                 logger.bind(component="embedding", content_id=content_id).warning(
-                    "语义索引失败(已忽略): {}",
-                    e,
+                    "搜索索引失败: {}", error,
                 )
-                if run_id:
-                    await record_task_run_error(
-                        "content_embedding",
-                        run_id,
-                        e,
-                        content_id=content_id,
-                        source=source,
-                        trigger="auto",
-                    )
 
         return asyncio.create_task(_run())
 
     async def score_discovery(self, session: AsyncSession) -> None:
         decision = await AutomationPolicyService().discovery_scoring()
         if not decision.allowed:
-            logger.bind(component="post_ingest", policy=decision.as_dict()).info(
-                "Discovery scoring skipped by automation policy"
-            )
             return
 
         from app.services.patrol_service import PatrolService

@@ -426,6 +426,7 @@ class ContentPushPayload(BaseModel):
     """推送 payload — 供 push service 消费的内容数据。"""
     id: int
     platform: str
+    content_type: Optional[str] = None
     title: Optional[str] = None
     body: Optional[str] = None
     summary: Optional[str] = None

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import (
     BotConfig,
     Content,
+    ContentStatus,
     ContentQueueItem,
     DiscoverySource,
     QueueItemStatus,
@@ -149,25 +150,33 @@ class SystemDiagnosticsService:
         ]
         recent_task_runs = await get_recent_task_runs_all(limit=limit)
 
+        latest_failed_ids = (
+            select(func.max(Task.id))
+            .where(Task.status == TaskStatus.FAILED)
+            .group_by(Task.payload["content_id"].as_integer())
+        )
         failed_tasks_rows = (
             await db.execute(
-                select(Task)
-                .where(Task.status == TaskStatus.FAILED)
+                select(Task, Content.title)
+                .join(Content, Content.id == Task.payload["content_id"].as_integer())
+                .where(Content.status == ContentStatus.PARSE_FAILED)
+                .where(Task.id.in_(latest_failed_ids))
                 .order_by(
                     Task.completed_at.desc().nullslast(),
                     Task.created_at.desc(),
                 )
                 .limit(limit)
             )
-        ).scalars().all()
+        ).all()
         failed_parse_tasks = []
-        for task in failed_tasks_rows:
+        for task, title in failed_tasks_rows:
             payload = task.payload if isinstance(task.payload, dict) else {}
             content_id_raw = payload.get("content_id")
             failed_parse_tasks.append(
                 {
                     "id": task.id,
                     "task_type": task.task_type,
+                    "title": title,
                     "content_id": (
                         int(content_id_raw)
                         if content_id_raw is not None

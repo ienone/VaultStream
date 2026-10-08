@@ -1,7 +1,7 @@
 """
 Distribution business entrypoint.
 
-This service owns rule matching, auto-approval, rule refresh, and queue
+This service owns rule matching, auto-approval, and queue
 enqueue decisions.
 """
 from sqlalchemy import and_, select, update
@@ -55,7 +55,10 @@ class DistributionService:
 
         if not (await AutomationPolicyService().aggregation_delivery(content)).allowed:
             return False
-        if content.review_status != ReviewStatus.PENDING or content.deleted_at is not None:
+        if content.deleted_at is not None or content.review_status == ReviewStatus.REJECTED:
+            return False
+        if content.review_status != ReviewStatus.PENDING:
+            await self.enqueue_content(content.id)
             return False
 
         result = await self.db.execute(
@@ -86,58 +89,8 @@ class DistributionService:
 
                 return True
 
+        await self.enqueue_content(content.id)
         return False
-
-    async def refresh_queue_by_rules(self) -> None:
-        """Refresh auto-approval status after rule changes."""
-        policy = await AutomationPolicyService().distribution_enqueue(force=False)
-        allow_auto_approval = policy.allowed
-        contents = await self.content_repo.list_parsed_contents()
-        enabled_rules = await self.dist_repo.list_rules(enabled=True)
-
-        changes = 0
-        auto_approved_ids: list[int] = []
-
-        def matches_any_auto_approve_rule(content: Content) -> bool:
-            for rule in enabled_rules:
-                if rule.approval_required:
-                    continue
-                if self._check_match(content, rule):
-                    return True
-            return False
-
-        for content in contents:
-            if content.review_status == ReviewStatus.AUTO_APPROVED:
-                still_valid = matches_any_auto_approve_rule(content)
-                if not still_valid:
-                    content.review_status = ReviewStatus.PENDING
-                    content.review_note = "Rule update requires manual review"
-                    changes += 1
-
-            elif (allow_auto_approval and content.review_status == ReviewStatus.PENDING
-                  and (await AutomationPolicyService().aggregation_delivery(content)).allowed):
-                if matches_any_auto_approve_rule(content):
-                    content.review_status = ReviewStatus.AUTO_APPROVED
-                    content.reviewed_at = utcnow()
-                    content.review_note = "Rule update auto-approved"
-                    changes += 1
-                    auto_approved_ids.append(int(content.id))
-
-        if changes > 0:
-            await self.db.commit()
-            logger.info("Rules updated: %s content status changes", changes)
-
-        if not allow_auto_approval:
-            logger.bind(
-                component="distribution",
-                policy=policy.as_dict(),
-            ).info("Rule refresh auto-approval skipped by automation policy")
-
-        for content_id in auto_approved_ids:
-            try:
-                await self.enqueue_content(content_id)
-            except Exception as e:
-                logger.warning("Failed to enqueue after refresh auto-approve: {}", e)
 
     async def enqueue_content(self, content_id: int, *, force: bool = False) -> int:
         """Create or update distribution queue items for content."""
@@ -167,10 +120,7 @@ class DistributionService:
             )
             return 0
 
-        if content.review_status not in (
-            ReviewStatus.APPROVED,
-            ReviewStatus.AUTO_APPROVED,
-        ):
+        if content.review_status == ReviewStatus.REJECTED:
             logger.info(
                 f"Content not eligible (review): content_id={content_id}, "
                 f"review_status={content.review_status}"
@@ -229,12 +179,6 @@ class DistributionService:
                 ):
                     continue
 
-                if (
-                    rule.approval_required
-                    and content.review_status == ReviewStatus.AUTO_APPROVED
-                ):
-                    continue
-
                 decision = should_distribute(
                     content=content,
                     rule=rule,
@@ -281,13 +225,18 @@ class DistributionService:
 
                     continue
 
+                needs_approval = (rule.approval_required and content.review_status != ReviewStatus.APPROVED)
+                if content.review_status == ReviewStatus.PENDING and not needs_approval:
+                    continue
                 item = ContentQueueItem(
                     content_id=content_id,
                     rule_id=rule.id,
                     bot_chat_id=bot_chat.id,
                     target_platform=bot_chat.platform_type,
                     target_id=target_id,
-                    status=QueueItemStatus.SCHEDULED,
+                    status=QueueItemStatus.FAILED if needs_approval else QueueItemStatus.SCHEDULED,
+                    last_error_type="approval_required" if needs_approval else None,
+                    last_error="等待确认发送" if needs_approval else None,
                     priority=rule.priority + content.queue_priority,
                     scheduled_at=utcnow(),
                 )

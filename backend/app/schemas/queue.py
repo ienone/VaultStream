@@ -19,7 +19,7 @@ class ContentQueueItemResponse(BaseModel):
     author_name: Optional[str] = None
     media_assets: List[MediaAssetManifest] = Field(default_factory=list)
 
-    rule_id: int
+    rule_id: Optional[int]
     bot_chat_id: int
     source_platform: Optional[str] = None
     target_platform: str
@@ -74,14 +74,6 @@ class QueueItemRetryRequest(BaseModel):
     """单个项重试请求"""
     reset_attempts: bool = False
 
-
-class QueueDeliveryReconcileRequest(BaseModel):
-    """A human observation, not permission to perform another external send."""
-    outcome: Literal["delivered", "not_sent"]
-    observed_error_at: UtcDatetime
-    message_id: Optional[str] = Field(default=None, min_length=1, max_length=200)
-
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
 class QueueStatsResponse(BaseModel):
@@ -139,3 +131,14 @@ class QueueRepushResponse(BaseModel):
 
 # 为了向后兼容路由中的名称
 QueueListResponse = ContentQueueItemListResponse
+
+
+class ManualPushRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    content_ids: List[int] = Field(min_length=1, max_length=50)
+    bot_chat_ids: List[int] = Field(min_length=1, max_length=10)
+
+
+class ManualPushResponse(BaseModel):
+    item_ids: List[int]
+    already_sent: int

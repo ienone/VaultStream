@@ -72,7 +72,6 @@ class TargetSelection(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
     content_selector: str = Field(min_length=1)
     cover_image_url: str | None = None
-    reasoning: str | None = None
 
 
 class MetadataBlock(BaseModel):
@@ -146,7 +145,6 @@ class ContentExtraction(BaseModel):
     tags: list[str]
     heading_fixes: list[HeadingFix]
     lines_to_remove: list[int]
-    summary: str
 
 
 def _content_llm(config: LLMConfig) -> ChatOpenAI:
@@ -156,6 +154,7 @@ def _content_llm(config: LLMConfig) -> ChatOpenAI:
         base_url=config.base_url,
         temperature=0,
         use_responses_api=False,
+        extra_body=config.extra_body,
     )
 
 
@@ -172,7 +171,7 @@ async def _structured_call(llm: ChatOpenAI, schema: type[BaseModel], messages, *
 # Tool: DOM Analysis (rule-based, no LLM)
 # ============================================================
 
-def tool_analyze_dom(html: str, url: str, verbose: bool = True) -> dict:
+def tool_analyze_dom(html: str, url: str) -> dict:
     """
     Rule-based DOM analysis.
     Returns OG metadata, auto-detected CSS selector, DOM/image summaries (for LLM fallback).
@@ -444,7 +443,7 @@ Return the result through the supplied structured-output tool."""
 
 
 async def llm_target_selector(
-    url: str, dom_info: dict, llm: ChatOpenAI, verbose: bool = True
+    url: str, dom_info: dict, llm: ChatOpenAI
 ) -> TargetSelection:
     """Lightweight LLM call for CSS selector. Only used when auto-detect fails."""
     prompt = _TARGETING_PROMPT.format(
@@ -528,7 +527,7 @@ def _build_scan_preview(lines: list[str], window: int = 40) -> str:
 
 
 async def layer1_scan(
-    markdown: str, llm: ChatOpenAI, verbose: bool = True
+    markdown: str, llm: ChatOpenAI
 ) -> StructuralScan:
     """
     Layer 1: Structural boundary detection.
@@ -663,7 +662,6 @@ async def layer2_extract(
     lines: list[str],
     scan_result: StructuralScan,
     llm: ChatOpenAI,
-    verbose: bool = True,
     dom_info: dict = None,
 ) -> ContentExtraction:
     """
@@ -706,8 +704,10 @@ async def layer2_extract(
 
     result = await _structured_call(llm, ContentExtraction, messages)
     affected_lines = [fix.line for fix in result.heading_fixes] + result.lines_to_remove
-    if any(line < body_start or line > body_end for line in affected_lines):
-        raise ValueError("内容清理返回了正文范围之外的行号")
+    if any(line < 1 or line > len(lines) for line in affected_lines):
+        raise ValueError("内容清理返回了输入范围之外的行号")
+    result.lines_to_remove = [line for line in result.lines_to_remove if body_start <= line <= body_end]
+    result.heading_fixes = [fix for fix in result.heading_fixes if body_start <= fix.line <= body_end]
     return result
 
 
@@ -876,7 +876,7 @@ async def process_content(
         html = fetch_result.html or fetch_result.content
 
         # Tool: DOM analysis
-        dom_info = tool_analyze_dom(html, url, verbose)
+        dom_info = tool_analyze_dom(html, url)
         cover_url = dom_info.get("cover_url", "")
 
         # Selector: auto or LLM fallback
@@ -884,7 +884,7 @@ async def process_content(
         if auto_sel:
             selector = auto_sel
         else:
-            targeting = await llm_target_selector(url, dom_info, llm, verbose)
+            targeting = await llm_target_selector(url, dom_info, llm)
             selector = targeting.content_selector
             cover_url = cover_url or targeting.cover_image_url or ""
             llm_calls += 1
@@ -893,12 +893,12 @@ async def process_content(
         markdown = tool_convert_html(html, url, selector, verbose)
 
     # ═══ Layer 1: Structural Scan ═══
-    scan_result = await layer1_scan(markdown, llm, verbose)
+    scan_result = await layer1_scan(markdown, llm)
     llm_calls += 1
 
     # ═══ Layer 2: Extract + Clean ═══
     lines = markdown.split("\n")
-    extraction = await layer2_extract(lines, scan_result, llm, verbose, dom_info=dom_info)
+    extraction = await layer2_extract(lines, scan_result, llm, dom_info=dom_info)
     common_fields = extraction.common_fields.model_dump(exclude_none=True)
     extension_fields = extraction.extension_fields.model_dump(exclude_none=True)
     tags = extraction.tags

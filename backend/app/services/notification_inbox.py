@@ -3,14 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.core.db_adapter import AsyncSessionLocal
 from app.core.events import event_bus
 from app.core.logging import logger
 from app.core.time_utils import utcnow
-from app.models import NotificationMessage
+from app.models import BackgroundTaskRun, Content, NotificationMessage
 from app.services.config_service import ConfigService
 from app.services.task_run_presentation import build_task_run_presentation, TASK_ERROR_STATUSES, TASK_SUCCESS_STATUSES
 
@@ -28,6 +28,11 @@ _ACCOUNT_LABELS = {
 
 async def record_task_run_notification(run: dict[str, Any]) -> dict[str, Any] | None:
     """Create an inbox receipt for terminal failures and user-triggered successes."""
+    if str(run.get("status")) in TASK_SUCCESS_STATUSES:
+        await _resolve_notification(
+            _task_error_dedupe_key(str(run.get("task")), _task_metadata(run)),
+            status="resolved",
+        )
     notification = build_task_run_notification(run)
     if notification is None:
         return None
@@ -284,6 +289,8 @@ def build_task_run_notification(run: dict[str, Any]) -> dict[str, Any] | None:
     status = str(run.get("status") or "").lower()
     trigger = str(run.get("trigger") or "").lower()
     is_error = status in TASK_ERROR_STATUSES
+    if str(run.get("task")) in {"content_embedding", "distribution_worker_poll"} and trigger not in _MANUAL_TRIGGERS:
+        return None
     if not is_error and not (status in TASK_SUCCESS_STATUSES and trigger in _MANUAL_TRIGGERS):
         return None
 
@@ -295,7 +302,6 @@ def build_task_run_notification(run: dict[str, Any]) -> dict[str, Any] | None:
     label = presentation["title"]
     body = presentation["summary"][:1000]
     if is_error:
-        body = None
         dedupe_key = _task_error_dedupe_key(task, metadata)
         title = f"{label}失败"
         severity = "attention"
@@ -321,6 +327,7 @@ def build_task_run_notification(run: dict[str, Any]) -> dict[str, Any] | None:
             "status": status,
             "metadata": metadata,
             "result": result,
+            "error": run.get("error"),
         },
         "occurred_at": _parse_datetime(run.get("finished_at")) or utcnow(),
         "expires_at": expires_at,
@@ -378,9 +385,11 @@ async def record_notification(
             "payload": payload or {},
             "occurrence_count": NotificationMessage.occurrence_count + 1,
             "last_occurred_at": occurred,
-            "read_at": None,
+            "read_at": (case((NotificationMessage.payload["status"].as_string() == "resolved", None),
+                             else_=NotificationMessage.read_at) if source_type == "background_task_run" else None),
             "expires_at": expires_at,
-            "dismissed_at": None,
+            "dismissed_at": (case((NotificationMessage.payload["status"].as_string() == "resolved", None),
+                                  else_=NotificationMessage.dismissed_at) if source_type == "background_task_run" else None),
             "updated_at": now,
         },
     )
@@ -399,6 +408,19 @@ async def record_notification(
     return serialized
 
 
+def _notification_query():
+    return select(NotificationMessage, BackgroundTaskRun, Content.title).outerjoin(
+        BackgroundTaskRun, (NotificationMessage.source_type == "background_task_run")
+        & (BackgroundTaskRun.run_id == NotificationMessage.source_id),
+    ).outerjoin(
+        Content,
+        Content.id == func.coalesce(
+            BackgroundTaskRun.result["content_id"].as_integer(),
+            BackgroundTaskRun.run_metadata["content_id"].as_integer(),
+        ),
+    )
+
+
 async def list_notifications(
     *,
     category: str | None = None,
@@ -413,7 +435,7 @@ async def list_notifications(
     conditions.extend(_state_conditions(state, now))
 
     async with AsyncSessionLocal() as db:
-        query = select(NotificationMessage)
+        query = _notification_query()
         count_query = select(func.count(NotificationMessage.id))
         if conditions:
             query = query.where(*conditions)
@@ -424,7 +446,7 @@ async def list_notifications(
                 .offset(offset)
                 .limit(limit)
             )
-        ).scalars().all()
+        ).all()
         total = int((await db.execute(count_query)).scalar() or 0)
         unread_count = int(
             (
@@ -437,7 +459,10 @@ async def list_notifications(
             or 0
         )
     return {
-        "items": [serialize_notification(row, now=now) for row in rows],
+        "items": [
+            serialize_notification(row, now=now, task_run=run, content_title=content_title)
+            for row, run, content_title in rows
+        ],
         "total": total,
         "unread_count": unread_count,
     }
@@ -483,10 +508,15 @@ async def apply_notification_action(
             )
         if not result.rowcount:
             return None
-        row = await db.get(NotificationMessage, notification_id)
-    if row is None:
+        joined = (await db.execute(
+            _notification_query().where(NotificationMessage.id == notification_id)
+        )).one_or_none()
+    if joined is None:
         return None
-    serialized = serialize_notification(row, now=now)
+    row, run, content_title = joined
+    serialized = serialize_notification(
+        row, now=now, task_run=run, content_title=content_title,
+    )
     await _publish_notification_update(_notification_event_payload(serialized))
     return serialized
 
@@ -510,19 +540,37 @@ def serialize_notification(
     row: NotificationMessage,
     *,
     now: datetime | None = None,
+    task_run: BackgroundTaskRun | None = None,
+    content_title: str | None = None,
 ) -> dict[str, Any]:
     reference = now or utcnow()
     is_snoozed = row.snoozed_until is not None and row.snoozed_until > reference
     is_expired = row.expires_at is not None and row.expires_at <= reference
+    body = None if row.category == "task" and row.severity == "attention" else row.body
+    title = row.title
+    if task_run is not None:
+        presentation = build_task_run_presentation({
+            "task": task_run.task, "status": task_run.status,
+            "metadata": task_run.run_metadata, "result": task_run.result,
+            "error": task_run.error,
+        })
+        failed = task_run.status in TASK_ERROR_STATUSES
+        title = presentation["title"]
+        if failed:
+            title += "失败"
+        elif task_run.status in TASK_SUCCESS_STATUSES:
+            title += "已完成"
+        subject = (content_title or "").strip()
+        body = (subject or None) if failed else " · ".join(
+            part for part in (subject, presentation["summary"]) if part
+        )
     return {
         "id": row.id,
         "dedupe_key": row.dedupe_key,
         "category": row.category,
         "severity": row.severity,
-        "title": row.title,
-        "body": (None if row.source_type == "background_task_run"
-                 and isinstance(row.payload, dict)
-                 and row.payload.get("status") in TASK_ERROR_STATUSES else row.body),
+        "title": title,
+        "body": body,
         "route": row.route,
         "source_type": row.source_type,
         "source_id": row.source_id,

@@ -40,11 +40,17 @@ from app.services.settings_service import get_setting_value
 _REGISTRY: AgentToolRegistry | None = None
 
 
-def _model_with_step_limit(llm, tools):
-    """Detect exhausted tool budgets before LangGraph replaces the model output."""
+def _model_with_step_limit(llm, tools, *, run: AgentRun):
+    """Stop at durable confirmations and detect exhausted tool budgets."""
+    bound_model = llm.bind_tools(tools)
+
     def select_model(state, runtime):
         async def invoke(messages, config):
-            response = await llm.bind_tools(tools).ainvoke(messages, config=config)
+            # The confirmation is already durable. The next step waits for the
+            # user, so another model request cannot advance this run.
+            if run.status == "waiting_confirmation":
+                return AIMessage(content="需要确认后才能继续执行该操作。")
+            response = await bound_model.ainvoke(messages, config=config)
             if state.get("remaining_steps", 2) < 2 and getattr(response, "tool_calls", None):
                 raise AgentToolError(
                     error_code="agent_step_limit_reached",
@@ -309,7 +315,7 @@ class AgentService:
 
             tools = self._build_langchain_tools(session=session, run=run, emit_event=emit_event)
             graph = create_react_agent(
-                _model_with_step_limit(llm, tools),
+                _model_with_step_limit(llm, tools, run=run),
                 tools,
                 prompt=self._system_prompt(),
                 version="v2",
@@ -768,8 +774,7 @@ class AgentService:
                     name=spec.name,
                     description=(
                         f"{spec.description}\n"
-                        f"permission_level={spec.permission_level.value}. "
-                        "If the result contains confirmation_required=true, stop and ask the user to approve or reject."
+                        f"permission_level={spec.permission_level.value}."
                     ),
                     args_schema=spec.args_model,
                 )
@@ -912,21 +917,21 @@ class AgentService:
         run_id: str,
         emit_event: AgentEventSink,
     ) -> list[BaseMessage]:
-        if isinstance(emit_event, list):
-            emit_event = _event_collector(emit_event)
-
         rows = (
             await self.db.execute(
                 select(AgentMessage)
                 .where(AgentMessage.session_id == session_id)
-                .order_by(AgentMessage.id.asc())
+                .order_by(AgentMessage.id.desc())
                 .limit(80)
             )
         ).scalars().all()
+        rows = list(reversed(rows))
 
         budget = await self._context_budget()
-        token_estimate = self._estimate_tokens(m.rendered_content for m in rows)
-        messages = rows
+        # Persisted tool rows are audit records, not replayed model messages.
+        # They must not consume the dialogue budget or its retained-message slots.
+        messages = [row for row in rows if row.role in {"user", "assistant"}]
+        token_estimate = self._estimate_tokens(m.content for m in messages)
         latest_summary = (
             await self.db.execute(
                 select(AgentContextSummary)
@@ -936,9 +941,9 @@ class AgentService:
             )
         ).scalar_one_or_none()
 
-        if token_estimate > budget and len(rows) > 10:
-            keep = rows[-8:]
-            covered = rows[:-8]
+        if token_estimate > budget and len(messages) > 10:
+            keep = messages[-8:]
+            covered = [row for row in rows if row.id < keep[0].id]
             summary_text = self._compress_messages(covered)
             summary = AgentContextSummary(
                 session_id=session_id,
@@ -1146,10 +1151,6 @@ class AgentService:
         return f"工具 {tool_name} 将执行会改变系统或外部状态的操作，参数: {preview}"
 
     def _system_prompt(self) -> str:
-        tool_lines = [
-            f"- {tool.name}: {tool.description} (permission={tool.permission_level.value})"
-            for tool in self.registry.list_specs()
-        ]
         return (
             "你是 VaultStream 的内容库与分发 Agent。必须通过工具读取或修改系统状态，"
             "不要编造内容库事实。\n"
@@ -1175,9 +1176,7 @@ class AgentService:
             "区分作者实测、个人观点与转述，不把未明确身份的转述升级为官方承诺。"
             "写操作、外部同步、批量推送、创建规则、标签修改和事件组织都必须尊重工具返回的确认要求。"
             "工具报错会包含 error_code、message、retryable、details、suggested_fix；"
-            "如果 retryable=true，可以修正参数后最多再试一次。\n"
-            "可用工具:\n"
-            + "\n".join(tool_lines)
+            "如果 retryable=true，可以修正参数后最多再试一次。"
         )
 
     def _derive_title(self, message: str) -> str:
@@ -1201,15 +1200,8 @@ class AgentService:
         totals: dict[str, int] = {}
         for message in messages:
             usage = getattr(message, "usage_metadata", None)
-            if not isinstance(usage, dict):
-                usage = (getattr(message, "response_metadata", None) or {}).get("token_usage")
             if isinstance(usage, dict):
                 for key, value in usage.items():
                     if isinstance(value, int):
                         totals[key] = totals.get(key, 0) + value
         return totals
-
-
-async def run_agent_message(message: str, context: AgentToolContext) -> AgentRunResult:
-    service = AgentService(context.db, app=context.app)
-    return await service.run_message(message=message, session_id=context.session_id)

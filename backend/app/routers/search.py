@@ -213,8 +213,15 @@ async def _run_reindex_job(
                 delay_seconds=0.2,
                 session=session,
             )
-            await record_task_run_success("semantic_reindex", run_id, **result)
+            await session.commit()
+            if result["failed"]:
+                await record_task_run_error(
+                    "semantic_reindex", run_id, "部分内容的语义索引未完成，请查看失败分块后重试", **result,
+                )
+            else:
+                await record_task_run_success("semantic_reindex", run_id, **result)
         except Exception as exc:
+            await session.rollback()
             await record_task_run_error(
                 "semantic_reindex",
                 run_id,

@@ -1,3 +1,4 @@
+from app.utils.content_title import derive_title
 import re
 import hashlib
 from typing import Optional, List, Dict, Any
@@ -174,7 +175,7 @@ class TelegramAdapter(PlatformAdapter):
         # 4. 正文与媒体
         from app.adapters.telegram_text import telegram_html_to_markdown
         main_body = telegram_html_to_markdown(str(text_elem) if text_elem else '')
-        title = main_body.split('\n')[0][:50] + "..." if main_body else "无正文内容"
+        title = derive_title(main_body)
         
         media_urls = []
         for photo_elem in msg.select('.tgme_widget_message_photo_wrap'):

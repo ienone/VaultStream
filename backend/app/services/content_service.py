@@ -1,3 +1,4 @@
+from app.utils.content_title import derive_title
 from contextlib import AsyncExitStack
 import mimetypes
 import re
@@ -241,7 +242,6 @@ class ContentService:
                 source=source_name or "share",
                 summary=True,
                 embedding=True,
-                patrol=False,
                 distribution=True,
             )
 
@@ -267,11 +267,7 @@ class ContentService:
 
         normalized_title = (title or "").strip()
         if not normalized_title:
-            first_line = next(
-                (line.strip() for line in body.splitlines() if line.strip()),
-                "文本摘录",
-            )
-            normalized_title = first_line[:200]
+            normalized_title = derive_title(body) or '文本摘录'
 
         internal_url = f"vaultstream://text/{uuid4().hex}"
         normalized_tags = normalize_tags(tags, tags_text)
@@ -315,7 +311,6 @@ class ContentService:
             source=source_name or "manual_text",
             summary=True,
             embedding=True,
-            patrol=False,
             distribution=True,
         )
         await event_bus.publish(
@@ -569,7 +564,6 @@ class ContentService:
             source=normalized_source,
             summary=bool(normalized_note) and not has_pdf,
             embedding=not has_pdf,
-            patrol=False,
             distribution=True,
         )
         if has_pdf:

@@ -29,9 +29,9 @@ from app.schemas import (
     QueueStatsResponse,
 )
 from app.schemas.media import MediaAssetManifest, MediaPurpose
-from app.schemas.queue import QueueDeliveryReconcileRequest
+from app.schemas.queue import ManualPushRequest, ManualPushResponse
 from app.services.distribution.delivery_state import (
-    delivery_is_resolved, reconcile_delivery,
+    delivery_is_resolved,
 )
 from app.services.background_task_state import (
     record_task_run_error,
@@ -65,7 +65,7 @@ async def _lock_queue_item_for_edit(db: AsyncSession, item: ContentQueueItem) ->
     if result.rowcount != 1:
         raise HTTPException(status_code=409, detail={
             "code": "queue_item_requires_review",
-            "message": "队列项正在发送、结果待核对或状态已变化，请刷新后逐条处理。",
+            "message": "队列项正在发送、未收到发送回执或状态已变化，请刷新后逐条处理。",
         })
 
 
@@ -186,6 +186,33 @@ def _build_status_conditions(status: Optional[str]):
         raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
 
 
+def _visible_queue_condition():
+    # Another rule/manual entry may already have delivered this destination.
+    # Keep active and uncertain attempts visible until explicitly resolved.
+    delivered = select(PushedRecord.id).where(
+        PushedRecord.content_id == ContentQueueItem.content_id,
+        PushedRecord.target_platform == ContentQueueItem.target_platform,
+        PushedRecord.target_id == ContentQueueItem.target_id,
+        PushedRecord.push_status == "success",
+    ).exists()
+    return or_(
+        ContentQueueItem.status.in_([QueueItemStatus.SUCCESS, QueueItemStatus.PROCESSING]),
+        ContentQueueItem.last_error_type == "delivery_unknown",
+        ~delivered,
+    )
+
+
+@router.post("/manual", response_model=ManualPushResponse)
+async def prepare_manual_delivery(
+    payload: ManualPushRequest,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """Prepare explicit target deliveries; push-now executes each returned item."""
+    from app.services.distribution.manual import prepare_manual_push
+    return await prepare_manual_push(db, payload)
+
+
 @router.get("/stats", response_model=QueueStatsResponse)
 async def get_queue_stats(
     rule_id: Optional[int] = Query(None, description="按规则ID过滤"),
@@ -193,7 +220,7 @@ async def get_queue_stats(
     _: None = Depends(require_api_token),
 ):
     """获取队列统计信息。"""
-    conditions = []
+    conditions = [_visible_queue_condition()]
     if rule_id is not None:
         conditions.append(ContentQueueItem.rule_id == rule_id)
 
@@ -207,44 +234,19 @@ async def get_queue_stats(
         ).where(where_clause)
     )
 
-    grouped: dict[int, dict[str, bool]] = {}
-    for content_id, status, next_attempt_at in rows_result.all():
-        flags = grouped.setdefault(
-            int(content_id),
-            {
-                "will_push": False,
-                "pushed": False,
-                "filtered": False,
-            },
-        )
-
-        if status in (QueueItemStatus.SCHEDULED, QueueItemStatus.PROCESSING):
-            flags["will_push"] = True
-        elif status == QueueItemStatus.FAILED and next_attempt_at is not None:
-            flags["will_push"] = True
-        elif status == QueueItemStatus.SUCCESS:
-            flags["pushed"] = True
-        elif status == QueueItemStatus.FAILED:
-            flags["filtered"] = True
-
-    stats = {
-        "will_push": 0,
-        "filtered": 0,
-        "pushed": 0,
-        "total": len(grouped),
-    }
-
-    for flags in grouped.values():
-        if flags["will_push"]:
+    stats = {"will_push": 0, "filtered": 0, "pushed": 0, "total": 0}
+    for _, status, next_attempt_at in rows_result.all():
+        stats["total"] += 1
+        if status in (QueueItemStatus.SCHEDULED, QueueItemStatus.PROCESSING) or (status == QueueItemStatus.FAILED and next_attempt_at is not None):
             stats["will_push"] += 1
-        elif flags["pushed"]:
+        elif status == QueueItemStatus.SUCCESS:
             stats["pushed"] += 1
-        elif flags["filtered"]:
+        else:
             stats["filtered"] += 1
 
     now = utcnow()
     due_result = await db.execute(
-        select(func.count(func.distinct(ContentQueueItem.content_id))).where(
+        select(func.count(ContentQueueItem.id)).where(
             and_(
                 where_clause,
                 ContentQueueItem.status == QueueItemStatus.SCHEDULED,
@@ -276,7 +278,7 @@ async def list_queue_items(
     _: None = Depends(require_api_token),
 ):
     """获取队列项列表（分页）。"""
-    conditions = []
+    conditions = [_visible_queue_condition()]
 
     conditions.extend(_build_status_conditions(status))
 
@@ -295,11 +297,16 @@ async def list_queue_items(
     total = int(count_result.scalar() or 0)
 
     offset = (page - 1) * size
+    ordering = (
+        (ContentQueueItem.completed_at.desc(), ContentQueueItem.id.desc())
+        if status in {"pushed", QueueItemStatus.SUCCESS.value}
+        else (ContentQueueItem.scheduled_at.asc(), ContentQueueItem.id.asc())
+    )
     result = await db.execute(
         select(ContentQueueItem, Content)
         .join(Content, Content.id == ContentQueueItem.content_id, isouter=True)
         .where(where_clause)
-        .order_by(ContentQueueItem.created_at.desc())
+        .order_by(*ordering)
         .offset(offset)
         .limit(size)
     )
@@ -371,6 +378,10 @@ async def push_queue_item_now(
         trigger="manual",
     )
 
+    if item.last_error_type == "approval_required":
+        await _lock_queue_item_for_edit(db, item)
+        item.approved_by = "manual"
+        await db.commit()
     worker = get_queue_worker()
     try:
         await worker.process_item_now(item_id, worker_name="api-manual")
@@ -513,31 +524,6 @@ async def retry_queue_item(
     return await _queue_item_response_with_media(db, item, content, http_request)
 
 
-@router.post("/items/{item_id}/reconcile", response_model=ContentQueueItemResponse)
-async def reconcile_queue_delivery(
-    item_id: int,
-    http_request: Request,
-    request: QueueDeliveryReconcileRequest,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """Record one verified delivery outcome without contacting an external platform."""
-    if (request.outcome == "delivered") != bool(request.message_id):
-        raise HTTPException(status_code=400, detail="确认已送达必须填写消息 ID；确认未发送不能填写消息 ID。")
-    try:
-        item = await reconcile_delivery(
-            db, item_id, outcome=request.outcome,
-            observed_error_at=request.observed_error_at, message_id=request.message_id,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=409, detail=str(error)) from error
-    await db.commit()
-    await event_bus.publish("queue_updated", {"action": "delivery_reconciled", "queue_item_id": item.id})
-    await event_bus.publish("notification_updated", {"source_type": "distribution_delivery"})
-    content = await db.get(Content, item.content_id)
-    return await _queue_item_response_with_media(db, item, content, http_request)
-
-
 @router.post("/items/{item_id}/cancel", response_model=QueueCancelResponse)
 async def cancel_queue_item(
     item_id: int,
@@ -596,6 +582,7 @@ async def set_queue_item_status(
 
     if target_status == "will_push":
         if item.status != QueueItemStatus.SUCCESS:
+            item.approved_by = "manual"
             item.status = QueueItemStatus.SCHEDULED
             item.scheduled_at = now
             item.locked_at = None
@@ -660,6 +647,7 @@ async def schedule_queue_item(
 
     await _lock_queue_item_for_edit(db, item)
     item.status = QueueItemStatus.SCHEDULED
+    item.approved_by = "manual"
     item.scheduled_at = scheduled_at
     item.next_attempt_at = None
     item.locked_at = None

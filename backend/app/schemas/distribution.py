@@ -78,7 +78,8 @@ class DistributionTargetResponse(BaseModel):
 
 
 class DistributionRuleCreate(BaseModel):
-    name: str
+    bot_chat_ids: Optional[List[int]] = Field(default=None, min_length=1, max_length=50)
+    name: str = Field(min_length=1, max_length=200)
     description: Optional[str] = None
     match_conditions: Dict[str, Any]
     enabled: bool = True
@@ -92,6 +93,7 @@ class DistributionRuleCreate(BaseModel):
 
 
 class DistributionRuleUpdate(BaseModel):
+    bot_chat_ids: Optional[List[int]] = Field(default=None, min_length=1, max_length=50)
     name: Optional[str] = None
     description: Optional[str] = None
     match_conditions: Optional[Dict[str, Any]] = None

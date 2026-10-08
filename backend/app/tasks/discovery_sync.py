@@ -39,7 +39,7 @@ from app.services.background_task_state import (
     record_task_run_success,
 )
 from app.services.automation_policy import AutomationPolicyService
-from app.services.config_service import ConfigService
+from app.services.config_service import ConfigService, coerce_bool
 from app.services.settings_service import get_setting_value
 from app.utils.url_utils import normalize_url_for_dedup
 from app.utils.datetime_utils import normalize_datetime_for_db
@@ -193,7 +193,6 @@ class DiscoverySyncTask:
         try:
             items, new_cursor = await scraper.fetch(last_cursor=source.last_cursor)
 
-            ingested_count = 0
             new_content_ids = []
             post_ingest_work: dict[int, dict[str, bool]] = {}
 
@@ -278,7 +277,7 @@ class DiscoverySyncTask:
                         )
                         queue_post_ingest_work(
                             existing_content.id,
-                            summary=bool(enable_auto_summary) and not has_summary_chunks,
+                            summary=coerce_bool(enable_auto_summary, settings.enable_auto_summary) and not has_summary_chunks,
                             embedding=not has_current_index,
                             distribution=False,
                         )
@@ -332,7 +331,6 @@ class DiscoverySyncTask:
                     embedding=True,
                     distribution=True,
                 )
-                ingested_count += 1
 
             source.last_sync_at = utcnow()
             if new_cursor:
@@ -341,9 +339,9 @@ class DiscoverySyncTask:
 
             await db.commit()
 
-            if ingested_count > 0:
+            if new_content_ids:
                 logger.info(
-                    f"Discovery sync [{source.name}]: ingested {ingested_count} items"
+                    f"Discovery sync [{source.name}]: ingested {len(new_content_ids)} items"
                 )
 
                 try:
@@ -353,6 +351,16 @@ class DiscoverySyncTask:
 
             if post_ingest_work:
                 pipeline = PostIngestService()
+                patrol_error: Exception | None = None
+                if new_content_ids:
+                    try:
+                        # Reuse patrol tags for distribution classification. Scoring
+                        # later would replace the rule tags just added below.
+                        await pipeline.score_discovery(db)
+                    except Exception as error:
+                        # Other post-ingest work also ran before patrol failures
+                        # previously; retain that behavior and report the failure.
+                        patrol_error = error
                 for content_id in sorted(post_ingest_work):
                     result = await db.execute(select(Content).where(Content.id == content_id))
                     content = result.scalar_one_or_none()
@@ -364,11 +372,10 @@ class DiscoverySyncTask:
                             source="discovery",
                             summary=work["summary"],
                             embedding=work["embedding"],
-                            patrol=False,
                             distribution=work["distribution"],
                         )
-                if ingested_count > 0:
-                    await pipeline.score_discovery(db)
+                if patrol_error is not None:
+                    raise patrol_error
             if run_id:
                 await record_task_run_success(
                     "discovery_sync",
@@ -377,7 +384,7 @@ class DiscoverySyncTask:
                     source_name=source.name,
                     source_kind=_source_kind_value(source),
                     trigger=trigger,
-                    ingested_count=ingested_count,
+                    ingested_count=len(new_content_ids),
                     new_content_ids=new_content_ids,
                 )
 

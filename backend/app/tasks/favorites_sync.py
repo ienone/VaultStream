@@ -128,7 +128,6 @@ class FavoritesSyncTask:
                 await self.sync_all_platforms_once()
             except Exception as e:
                 logger.exception("Favorites sync loop failed: {}", e)
-                await record_task_run_error("favorites_sync", None, e)
             await asyncio.sleep(interval * 60)
 
     async def sync_all_platforms_once(

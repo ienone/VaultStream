@@ -4,7 +4,7 @@
 from datetime import datetime
 from enum import Enum
 from typing import Optional, Any
-from sqlalchemy import String, Text, JSON, Integer, DateTime, Boolean, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import text, String, Text, JSON, Integer, DateTime, Boolean, ForeignKey, Index, UniqueConstraint
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 
@@ -133,6 +133,7 @@ class ContentQueueItem(Base):
     
     __table_args__ = (
         UniqueConstraint("content_id", "rule_id", "bot_chat_id", name="uq_queue_content_rule_chat"),
+        Index("uq_queue_manual_content_chat", "content_id", "bot_chat_id", unique=True, sqlite_where=text("rule_id IS NULL AND (last_error_type IS NULL OR last_error_type != 'delivery_unknown')")),
         Index("ix_queue_status_scheduled", "status", "scheduled_at"),
         Index("ix_queue_content_status", "content_id", "status"),
         Index("ix_queue_rule_status", "rule_id", "status"),
@@ -144,7 +145,7 @@ class ContentQueueItem(Base):
     
     # 三元组关联
     content_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id", ondelete="CASCADE"), index=True)
-    rule_id: Mapped[int] = mapped_column(Integer, ForeignKey("distribution_rules.id", ondelete="CASCADE"), index=True)
+    rule_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("distribution_rules.id", ondelete="CASCADE"), index=True, default=None)
     bot_chat_id: Mapped[int] = mapped_column(Integer, ForeignKey("bot_chats.id", ondelete="CASCADE"), index=True)
     
     # 缓存的目标信息

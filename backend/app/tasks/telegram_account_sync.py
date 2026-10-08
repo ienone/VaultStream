@@ -1,5 +1,7 @@
 """Single-leader Telegram account synchronization; login is always explicit."""
 import asyncio
+import time
+from telethon.errors import FloodWaitError
 from pathlib import Path
 from app.services.telegram_account_client import create_account_client
 from app.services.telegram_account_login import TelegramAccountLogin
@@ -15,6 +17,7 @@ class TelegramAccountSyncTask:
     def __init__(self):
         self._scheduler = None
         self._running = None
+        self._retry_after = 0.0
         self.config = ConfigService()
         self._start_lock = asyncio.Lock()
         self.login = TelegramAccountLogin()
@@ -85,6 +88,9 @@ class TelegramAccountSyncTask:
             return await self._trigger(scheduled=scheduled, source_id=source_id)
 
     async def _trigger(self, *, scheduled, source_id):
+        remaining = int(self._retry_after - time.monotonic())
+        if remaining > 0:
+            raise ValueError(f"Telegram 限流，请在 {remaining} 秒后同步")
         if self.running or self.login.active:
             raise ValueError("Telegram 同步或登录正在进行")
         options = await self.options()
@@ -114,6 +120,11 @@ class TelegramAccountSyncTask:
         except asyncio.CancelledError:
             await record_task_run_error("telegram_account_sync", run_id, "同步已中止")
             raise
+        except FloodWaitError as error:
+            self._retry_after = time.monotonic() + error.seconds
+            await record_task_run_error("telegram_account_sync", run_id,
+                f"Telegram 限制了请求频率，{error.seconds} 秒后恢复同步",
+                retry_after_seconds=error.seconds)
         except Exception as error:
             await record_task_run_error("telegram_account_sync", run_id, f"Telegram 同步失败：{type(error).__name__}")
         finally:

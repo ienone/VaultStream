@@ -57,9 +57,9 @@ class BackgroundTaskStateResponse(BaseModel):
 
     task: str
     status: str
-    last_started_at: Optional[str] = None
-    last_success_at: Optional[str] = None
-    last_error_at: Optional[str] = None
+    last_started_at: OptionalUtcDatetime = None
+    last_success_at: OptionalUtcDatetime = None
+    last_error_at: OptionalUtcDatetime = None
     last_error: Optional[str] = None
     run_count: int = 0
     error_count: int = 0
@@ -72,6 +72,7 @@ class FailedParseTaskResponse(BaseModel):
     id: int
     task_type: str
     content_id: Optional[int] = None
+    title: Optional[str] = None
     last_error: Optional[str] = None
     created_at: OptionalUtcDatetime
     started_at: OptionalUtcDatetime

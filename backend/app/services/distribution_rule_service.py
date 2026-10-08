@@ -51,10 +51,13 @@ class DistributionRuleService:
         if rule_exists:
             raise HTTPException(status_code=400, detail="Rule name already exists")
         
-        db_rule = await self.repo.create_rule(**rule_in.model_dump())
+        chats = await self._validate_chats(rule_in.bot_chat_ids)
+        db_rule = await self.repo.create_rule(**rule_in.model_dump(exclude={"bot_chat_ids"}))
+        if chats is not None:
+            for chat in chats:
+                await self.repo.create_target(rule_id=db_rule.id, bot_chat_id=chat.id, backfill_watermark=utcnow())
         await self.db.commit()
-        await self.db.refresh(db_rule)
-        return db_rule
+        return await self.repo.get_rule_by_id(db_rule.id)
 
     async def list_rules(self, enabled: Optional[bool] = None) -> List[DistributionRule]:
         return await self.repo.list_rules(enabled=enabled)
@@ -68,7 +71,24 @@ class DistributionRuleService:
     async def update_rule(self, rule_id: int, rule_update: DistributionRuleUpdate) -> DistributionRule:
         db_rule = await self.get_rule(rule_id)
         
-        update_data = rule_update.model_dump(exclude_unset=True)
+        chats = await self._validate_chats(rule_update.bot_chat_ids)
+        if chats is not None:
+            selected = {chat.id for chat in chats}
+            existing = {target.bot_chat_id: target for target in db_rule.distribution_targets}
+            removed = set(existing) - selected
+            if removed:
+                await self._guard_deliveries(rule_id, removed)
+                for chat_id in removed:
+                    await self.repo.delete_target(existing[chat_id])
+                await self.db.execute(update(ContentQueueItem).where(
+                    ContentQueueItem.rule_id == rule_id, ContentQueueItem.bot_chat_id.in_(removed),
+                    ContentQueueItem.status != QueueItemStatus.SUCCESS,
+                ).values(status=QueueItemStatus.FAILED, next_attempt_at=None,
+                         last_error_type="manual_canceled", last_error="已移除推送目标"))
+            for chat in chats:
+                if chat.id not in existing:
+                    await self.repo.create_target(rule_id=rule_id, bot_chat_id=chat.id, backfill_watermark=utcnow())
+        update_data = rule_update.model_dump(exclude_unset=True, exclude={"bot_chat_ids"})
         for key, value in update_data.items():
             setattr(db_rule, key, value)
         
@@ -78,8 +98,37 @@ class DistributionRuleService:
 
     async def delete_rule(self, rule_id: int) -> None:
         db_rule = await self.get_rule(rule_id)
+        await self._guard_deliveries(rule_id)
         await self.repo.delete_rule(db_rule)
         await self.db.commit()
+
+    async def _validate_chats(self, chat_ids):
+        if chat_ids is None:
+            return None
+        chats = []
+        for chat_id in set(chat_ids):
+            chat = await self.bot_repo.get_chat_by_id(chat_id)
+            if not chat or not chat.enabled or not chat.is_accessible or not chat.is_push_target:
+                raise HTTPException(409, "所选推送目标不可用，请刷新后重试")
+            chats.append(chat)
+        return chats
+
+    async def _guard_deliveries(self, rule_id, chat_ids=None):
+        conditions = [ContentQueueItem.rule_id == rule_id]
+        if chat_ids is not None:
+            conditions.append(ContentQueueItem.bot_chat_id.in_(chat_ids))
+        # Lock editable rows before checking active sends, serializing with worker claims.
+        await self.db.execute(update(ContentQueueItem).where(*conditions).values(
+            updated_at=ContentQueueItem.updated_at))
+        active = await self.db.scalar(select(ContentQueueItem.id).where(
+            *conditions, ContentQueueItem.status == QueueItemStatus.PROCESSING,
+        ).limit(1))
+        if active:
+            raise HTTPException(409, "规则仍有正在发送的内容，请稍后再试")
+        # Keep the delivery fact after removing its rule or target association.
+        await self.db.execute(update(ContentQueueItem).where(
+            *conditions, ContentQueueItem.last_error_type == "delivery_unknown",
+        ).values(rule_id=None))
 
     # -------------------------
     # Target Management for Rule
@@ -314,6 +363,7 @@ class DistributionRuleService:
         if not db_target:
             raise HTTPException(status_code=404, detail="Target not found")
 
+        await self._guard_deliveries(rule_id, {db_target.bot_chat_id})
         await self.repo.delete_target(db_target)
         await self.db.commit()
 

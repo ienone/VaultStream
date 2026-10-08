@@ -98,11 +98,7 @@ async def create_distribution_rule(
     
     db_rule = await service.create_rule(rule)
     
-    # 规则变动后，自动刷新队列状态和排期
-    from app.services.distribution import DistributionService
-    await DistributionService(db).refresh_queue_by_rules()
-    
-    logger.info(f"分发规则已创建并刷新队列: {db_rule.name} (ID: {db_rule.id})")
+    logger.info(f"分发规则已创建: {db_rule.name} (ID: {db_rule.id})")
     return db_rule
 
 @router.get("/distribution-rules", response_model=List[DistributionRuleResponse])
@@ -137,11 +133,7 @@ async def update_distribution_rule(
     service = DistributionRuleService(db)
     db_rule = await service.update_rule(rule_id, rule_update)
     
-    # 规则变动后，自动刷新队列状态和排期
-    from app.services.distribution import DistributionService
-    await DistributionService(db).refresh_queue_by_rules()
-    
-    logger.info(f"分发规则已更新并刷新队列: {db_rule.name} (ID: {db_rule.id})")
+    logger.info(f"分发规则已更新: {db_rule.name} (ID: {db_rule.id})")
     return db_rule
 
 @router.delete(
@@ -157,11 +149,7 @@ async def delete_distribution_rule(
     from app.services.distribution_rule_service import DistributionRuleService
     await DistributionRuleService(db).delete_rule(rule_id)
     
-    # 规则变动后，自动刷新队列状态和排期
-    from app.services.distribution import DistributionService
-    await DistributionService(db).refresh_queue_by_rules()
-    
-    logger.info(f"分发规则已删除并刷新队列: ID={rule_id}")
+    logger.info(f"分发规则已删除: ID={rule_id}")
     return {"status": "deleted", "id": rule_id}
 
 

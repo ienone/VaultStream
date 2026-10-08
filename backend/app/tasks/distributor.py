@@ -149,6 +149,15 @@ class ContentDistributor:
         if content.platform:
             payload["platform"] = content.platform.value
 
+        payload["stats"] = {
+            **(content.extra_stats or {}),
+            "view": content.view_count,
+            "like": content.like_count,
+            "favorite": content.collect_count,
+            "reply": content.comment_count,
+            "share": content.share_count,
+        }
+
         if rule and rule.render_config:
             payload["render_config"] = rule.render_config
 

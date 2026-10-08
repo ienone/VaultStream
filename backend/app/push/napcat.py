@@ -9,6 +9,7 @@ OneBot 11 消息段格式参考: https://docs.ncatbot.xyz/guide/message_segment/
 """
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 from urllib.parse import urlsplit
 from typing import Dict, Any, List, Optional
@@ -31,6 +32,8 @@ def _resolve_media_url(media_item: Dict[str, Any]) -> Optional[str]:
     1. Local file path via stored_key (file:// URI for NapCat on same host)
     2. stored_url / url from the item
     """
+    if media_item.get("upload_bytes"):
+        return "base64://" + base64.b64encode(media_item["upload_bytes"]).decode("ascii")
     if media_item.get("stored_key"):
         local_path = get_storage_backend().get_local_path(key=media_item["stored_key"])
         if not local_path or not Path(local_path).is_file():
@@ -95,7 +98,7 @@ class NapcatPushService(BasePushService):
         [text, image, image, ..., video, ...]
         """
         text = format_push_text(content, rich_text=False)
-        segments: List[Dict[str, Any]] = [_build_text_segment(text)] if text else []
+        segments: List[Dict[str, Any]] = []
 
         media_items = select_push_media(content)
         for item in media_items:
@@ -108,6 +111,9 @@ class NapcatPushService(BasePushService):
                 segments.append(_build_video_segment(url))
             elif item["type"] == "audio":
                 segments.append(_build_record_segment(url))
+
+        if text:
+            segments.append(_build_text_segment(text))
 
         return segments
 
@@ -160,6 +166,8 @@ class NapcatPushService(BasePushService):
         Each content item becomes a forward node with text + media segments.
         """
         target_id, is_private = self._parse_target(target_id)
+
+        await self._get_client()
 
         nodes: List[Dict[str, Any]] = []
         for content in contents[:MAX_FORWARD_NODES]:

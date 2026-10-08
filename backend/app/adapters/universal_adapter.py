@@ -10,10 +10,9 @@ import asyncio
 import hashlib
 import re
 import concurrent.futures
-from typing import Optional, Dict, Any, List
-from urllib.parse import urljoin
+from typing import Optional
 
-from app.adapters.base import PlatformAdapter, ParsedContent, LAYOUT_ARTICLE, LAYOUT_VIDEO, LAYOUT_GALLERY, LAYOUT_AUDIO
+from app.adapters.base import PlatformAdapter, ParsedContent, LAYOUT_ARTICLE, LAYOUT_GALLERY
 from app.services.config_service import ConfigService, LLMConfig
 from app.adapters.utils.tiered_fetcher import tiered_fetch
 from app.adapters.utils.content_agent import process_content
@@ -34,18 +33,10 @@ def _run_crawl_in_process(url: str, cookies: dict, llm_config: LLMConfig) -> Par
         loop.close()
 
 
-def infer_layout_type(metadata: dict, content: str, media_urls: list) -> str:
+def infer_layout_type(content: str, media_urls: list) -> str:
     """推断布局类型"""
-    # 规则优先
-    if metadata.get("video_url"): return LAYOUT_VIDEO
-    if metadata.get("audio_url"): return LAYOUT_AUDIO
-    
-    content_len = len(content or "")
-    num_images = len(media_urls)
-    
-    if num_images >= 2 and content_len < 800:
+    if len(media_urls) >= 2 and len(content or "") < 800:
         return LAYOUT_GALLERY
-    
     return LAYOUT_ARTICLE
 
 
@@ -93,12 +84,10 @@ class UniversalAdapter(PlatformAdapter):
         common = process_result.common_fields
         extension = process_result.extension_fields
         
-        # 确定布局
-        video_url = extension.get("video_url") # 如果 Agent 提取到了
         # 从 markdown 中提取图片用于布局推断
         images = re.findall(r'!\[[^\]]*\]\(([^)\s]+)\)', process_result.cleaned_markdown)
         
-        layout_type = infer_layout_type({"video_url": video_url}, process_result.cleaned_markdown, images)
+        layout_type = infer_layout_type(process_result.cleaned_markdown, images)
         
         # 构建存档负载
         all_images = []

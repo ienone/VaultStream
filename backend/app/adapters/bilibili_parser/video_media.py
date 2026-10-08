@@ -41,7 +41,7 @@ def transcript_chunks(cues: list, *, identity: str, language: str, duration: flo
     return chunks
 
 
-async def read_video_media(client: httpx.AsyncClient, item: dict, url: str) -> tuple[dict, dict]:
+async def read_video_media(client: httpx.AsyncClient, item: dict, url: str, *, include_media: bool = True) -> tuple[dict, dict]:
     try:
         page_number = int(parse_qs(urlparse(url).query).get('p', ['1'])[0])
     except ValueError as exc:
@@ -54,6 +54,9 @@ async def read_video_media(client: httpx.AsyncClient, item: dict, url: str) -> t
     video = {'source_identity': identity, 'duration_ms': page['duration'] * 1000}
     payload = {'chunks': [], 'media_status': {}, 'video_page': page_number,
                'video_page_title': page.get('part'), 'video_page_count': len(item.get('pages', []))}
+
+    if not include_media:
+        return video, payload
 
     async def read_api(path: str, extra: dict) -> dict | None:
         try:

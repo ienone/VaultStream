@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta
+import hashlib
 import json
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -29,6 +30,23 @@ _PROMPT = """你负责将已保存的来源整理为有证据的事件综合。�
 解释来源分歧，不把观点或生成内容说成已核实事实。所有分组来源必须被引用，同一来源不能分到多个组。
 最多10组，每组最多10条结论。通过所提供的结构化输出工具返回结果。
 正文仅提供每条前6000字符，不得声称阅读了完整来源。"""
+
+
+def _judgment_fingerprint(inputs, events, llm) -> str:
+    """Identify the last evaluated material and contract, independently of scan order."""
+    material = {
+        "sources": [(source.id, source.title, source.body, source.body_fingerprint,
+                     source.canonical_url, source.is_nsfw)
+                    for source in sorted(inputs, key=lambda source: source.id)],
+        "events": [(event.id, event.title, event.updated_at.isoformat(), sorted(event.source_ids))
+                   for event in sorted(events.values(), key=lambda event: event.id)],
+        "model": {"name": llm.model_name, "base_url": llm.openai_api_base,
+                  "temperature": llm.temperature, "extra_body": llm.extra_body,
+                  "model_kwargs": llm.model_kwargs},
+        "prompt": _PROMPT, "schema": AggregationOutput.model_json_schema(),
+        "method": "function_calling", "max_tokens": 4000,
+    }
+    return hashlib.sha256(json.dumps(material, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
 class ContentAggregationService:
@@ -77,19 +95,31 @@ class ContentAggregationService:
             llm = await LLMFactory.get_text_llm()
             if llm is None:
                 raise ValueError("未配置文本模型")
-            prompt = json.dumps({
-                "new_source_ids": [source.id for source in new_inputs],
-                "events": [{"event_id": event.id, "title": event.title,
-                    "source_ids": sorted(event.source_ids & {source.id for source in inputs})} for event in events.values()],
-                "sources": [{"id": source.id, "title": source.title, "body": source.body} for source in inputs],
-            }, ensure_ascii=False)
-            output = await asyncio.wait_for(llm.with_structured_output(
-                AggregationOutput, method="function_calling"
-            ).ainvoke([
-                SystemMessage(content=_PROMPT), HumanMessage(content=prompt),
-            ], max_tokens=4000), timeout=90)
-            if output is None:
-                raise ValueError("模型未调用内容聚合结构化输出工具")
+            judgment = {"fingerprint": _judgment_fingerprint(inputs, events, llm),
+                        "new_source_ids": sorted(source.id for source in new_inputs)}
+            previous_judgment = cursor.get("last_judgment") if cursor else None
+            reused_judgment = bool(previous_judgment
+                and previous_judgment["fingerprint"] == judgment["fingerprint"]
+                and set(judgment["new_source_ids"]).issubset(previous_judgment["new_source_ids"]))
+            if reused_judgment:
+                # The previous successful decision already covered this smaller
+                # set of eligible new sources. Preserve its full coverage.
+                judgment = previous_judgment
+                output = AggregationOutput(groups=[])
+            else:
+                prompt = json.dumps({
+                    "new_source_ids": [source.id for source in new_inputs],
+                    "events": [{"event_id": event.id, "title": event.title,
+                        "source_ids": sorted(event.source_ids & {source.id for source in inputs})} for event in events.values()],
+                    "sources": [{"id": source.id, "title": source.title, "body": source.body} for source in inputs],
+                }, ensure_ascii=False)
+                output = await asyncio.wait_for(llm.with_structured_output(
+                    AggregationOutput, method="function_calling"
+                ).ainvoke([
+                    SystemMessage(content=_PROMPT), HumanMessage(content=prompt),
+                ], max_tokens=4000), timeout=90)
+                if output is None:
+                    raise ValueError("模型未调用内容聚合结构化输出工具")
             by_id = {source.id: source for source in inputs}
             for group in output.groups:
                 if not set(group.source_ids) & {source.id for source in new_inputs}:
@@ -107,13 +137,17 @@ class ContentAggregationService:
             if not (await self.policy.content_aggregation()).allowed:
                 raise ValueError("自动聚合已关闭，丢弃迟到输出")
             async with self.session_factory() as db:
-                content_ids, event_ids = await ContentAggregationRepository(db).save_batch(inputs, output, run_id=run_id, progress=new_inputs[-1], events=events)
+                content_ids, event_ids = await ContentAggregationRepository(db).save_batch(
+                    inputs, output, run_id=run_id, progress=new_inputs[-1], events=events,
+                    judgment=judgment,
+                )
                 await db.commit()
                 committed = True
             self.config.invalidate("content_aggregation_cursor")
             result = {"run_id": run_id, "input_count": len(inputs), "new_input_count": len(new_inputs),
                       "content_ids": content_ids, "event_ids": event_ids,
-                      "generated": True, "evidence_verified": False}
+                      "generated": not reused_judgment, "reused_judgment": reused_judgment,
+                      "evidence_verified": False}
             # Persist generation success before optional downstream work. A
             # delivery failure must not re-run a paid model or duplicate events.
             await record_task_run_success("content_aggregation", run_id, **{k: v for k, v in result.items() if k != "run_id"})

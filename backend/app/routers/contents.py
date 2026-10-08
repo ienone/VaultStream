@@ -367,7 +367,7 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
     if unknown_deliveries:
         distribution_status = DELIVERY_UNKNOWN
         distribution_state = ProcessingStageState.BLOCKED
-        distribution_message = f"{unknown_deliveries} 条发送结果待核对，不会自动重发"
+        distribution_message = f"{unknown_deliveries} 条未收到发送回执，不会自动重发"
     elif distribution_failed > 0 and (distribution_success > 0 or pushed_records > 0):
         distribution_status = "partial"
         distribution_state = ProcessingStageState.PARTIAL
@@ -497,7 +497,7 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
     distribution_actions: list[ProcessingStageAction] = []
     if distribution_status == DELIVERY_UNKNOWN:
         distribution_issues.append("平台可能已收到消息，不能按普通失败重试")
-        distribution_hints.append("进入分发队列的“不推送”，逐条核对发送结果；消息盒子也可直接打开对应记录")
+        distribution_hints.append("未收到发送回执的记录已停止自动重试")
     elif distribution_status in {"failed", "partial"}:
         distribution_issues.append("存在失败或被过滤的分发队列项")
         if retryable_queue_items:
@@ -661,7 +661,7 @@ async def _run_reparse_job(content_id: int, run_id: str, *, force: bool) -> None
         await record_task_run_error(
             "content_reparse",
             run_id,
-            "Re-parse failed",
+            "内容不存在或已删除",
             content_id=content_id,
             force=force,
         )

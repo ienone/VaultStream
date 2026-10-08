@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+from app.utils.content_title import derive_title, needs_title
+
 from datetime import timedelta, timezone
 from pathlib import Path
 
@@ -134,14 +136,20 @@ class TelegramAccountSync:
                     state.last_error = None
             await db.commit()
         pipeline = PostIngestService()
+        patrol_error: Exception | None = None
+        if source is not None and changed:
+            try:
+                async with self.sessions() as db:
+                    await pipeline.score_discovery(db)
+            except Exception as error:
+                patrol_error = error
         for content_id, payload_changed in changed:
             async with self.sessions() as db:
                 content = await db.get(Content, content_id)
                 if content and not content.deleted_at:
                     await pipeline.run_for_content(db, content, source="telegram_account", summary=payload_changed, embedding=payload_changed, distribution=source is None)
-        if source is not None and changed:
-            async with self.sessions() as db:
-                await pipeline.score_discovery(db)
+        if patrol_error is not None:
+            raise patrol_error
         return counts
 
     async def _review_posts(self, account_id, peer_id, cursor_key):
@@ -204,6 +212,8 @@ class TelegramAccountSync:
         # media or re-running distribution when Telegram itself has not changed.
         if not action and "body" not in (content.manual_edit_fields or []):
             content.body = post.body or None
+        if needs_title(content.title) and "title" not in (content.manual_edit_fields or []):
+            content.title = derive_title(content.body)
         if action:
             content.resolved_url = None
             author = source.name if source else None
@@ -212,7 +222,7 @@ class TelegramAccountSync:
                 content.resolved_url = chain[-1]["url"]
             elif source and source.config.get("username"):
                 content.resolved_url = f"https://t.me/{source.config['username']}/{address.message_id}"
-            values = {"title": None, "body": post.body or None, "author_name": author}
+            values = {"title": derive_title(post.body), "body": post.body or None, "author_name": author}
             conflicts = {}
             for key, value in values.items():
                 if key in (content.manual_edit_fields or []):

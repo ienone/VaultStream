@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List, Literal
 from dataclasses import dataclass, field
 from datetime import datetime
+from app.utils.content_title import derive_title, needs_title
 
 # 布局类型常量
 LAYOUT_ARTICLE = "article"
@@ -45,6 +46,8 @@ class ParsedContent:
     archive_metadata: Optional[Dict[str, Any]] = None  # [Archive Blob] 原始元数据
     
     def __post_init__(self):
+        if needs_title(self.title):
+            self.title = derive_title(self.body)
         # 强约束：必需的标识符必须存在
         if not isinstance(self.platform, str) or not self.platform.strip():
             raise ValueError("ParsedContent.platform 不能为空")
