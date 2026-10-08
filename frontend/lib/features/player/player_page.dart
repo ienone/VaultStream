@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/layout/responsive_layout.dart';
 import '../../theme/design_tokens.dart';
+import '../../routing/app_navigation.dart';
 import 'global_playback_controller.dart';
 import 'android_picture_in_picture.dart';
 import 'global_player_widgets.dart';
@@ -26,6 +27,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     return Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
+        leading: const AppBackButton(fallback: '/collection'),
         toolbarHeight: WindowMetrics.of(context).heightClass.isCompact
             ? 48
             : null,
@@ -54,7 +56,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
               tooltip: '关闭播放器',
               onPressed: () async {
                 await ref.read(globalPlaybackProvider.notifier).close();
-                if (context.mounted && context.canPop()) context.pop();
+                if (!context.mounted) return;
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.go('/collection');
+                }
               },
               icon: const Icon(Icons.close_rounded),
             ),

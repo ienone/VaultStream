@@ -44,9 +44,20 @@ class ConnectionTab extends ConsumerWidget {
             ),
             leading: const Icon(Icons.telegram_rounded),
             title: const Text('Telegram'),
-            subtitle: const Text('频道动态与收藏夹'),
+            subtitle: const Text('个人账号、同步、机器人与群组'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => context.push('/accounts/telegram'),
+          ),
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 4,
+              vertical: 12,
+            ),
+            leading: const Icon(Icons.chat_bubble_outline_rounded),
+            title: const Text('QQ'),
+            subtitle: const Text('机器人与群组'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => context.push('/accounts/qq'),
           ),
           _buildPlatformHealthSection(context, ref, platformHealthAsync),
           ref
@@ -74,11 +85,6 @@ class ConnectionTab extends ConsumerWidget {
                 loading: () => const LinearProgressIndicator(),
                 error: (_, _) => const Text('登录检查策略暂时无法读取'),
               ),
-          const SizedBox(height: 24),
-          ExpandableSettingTile(
-            title: 'Bilibili 手动凭据',
-            expandedContent: _buildBiliAdvancedEditor(context, ref),
-          ),
           const SizedBox(height: 40),
         ],
       );
@@ -157,16 +163,7 @@ class ConnectionTab extends ConsumerWidget {
     return healthAsync.when(
       data: (health) {
         if (health.platforms.isEmpty) {
-          return const SettingGroup(
-            children: [
-              SettingTile(
-                title: '暂无平台账号',
-                subtitle: '服务器未返回可连接的平台，请稍后刷新或检查后端配置。',
-                icon: Icons.account_circle_outlined,
-                showArrow: false,
-              ),
-            ],
-          );
+          return const SizedBox.shrink();
         }
         return Padding(
           padding: const EdgeInsets.only(bottom: 24),
@@ -358,12 +355,14 @@ class ConnectionTab extends ConsumerWidget {
           },
         );
       },
-      loading: () => const SizedBox.shrink(),
-      error: (_, _) => const SizedBox.shrink(),
+      loading: () => const LoadingGroup(),
+      error: (_, _) => SettingLoadFailure(
+        onRetry: () => ref.invalidate(systemSettingsProvider),
+      ),
     );
   }
 
-  Widget _buildBiliAdvancedEditor(BuildContext context, WidgetRef ref) {
+  Widget buildBiliAdvancedEditor(BuildContext context, WidgetRef ref) {
     final settingsAsync = ref.watch(systemSettingsProvider);
     return settingsAsync.when(
       data: (settings) {
@@ -448,7 +447,7 @@ class ConnectionTab extends ConsumerWidget {
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerRight,
-                  child: FilledButton.tonal(
+                  child: SettingSaveButton(
                     onPressed: () async {
                       final notifier = ref.read(
                         systemSettingsProvider.notifier,
@@ -478,8 +477,10 @@ class ConnectionTab extends ConsumerWidget {
           },
         );
       },
-      loading: () => const SizedBox.shrink(),
-      error: (_, _) => const SizedBox.shrink(),
+      loading: () => const LoadingGroup(),
+      error: (_, _) => SettingLoadFailure(
+        onRetry: () => ref.invalidate(systemSettingsProvider),
+      ),
     );
   }
 

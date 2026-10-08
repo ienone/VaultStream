@@ -33,9 +33,35 @@ class RootPageActions extends StatelessWidget {
   const RootPageActions({super.key});
 
   @override
-  Widget build(BuildContext context) => IconButton(
+  Widget build(BuildContext context) => PageAddButton(
     tooltip: '保存内容',
     onPressed: () => AddContentDialog.showAndNotify(context),
-    icon: const Icon(Icons.add_rounded),
+  );
+}
+
+class PageAddButton extends StatelessWidget {
+  const PageAddButton({
+    super.key,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 8),
+    child: IconButton.filledTonal(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+        foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
+        minimumSize: const Size(44, 44),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      icon: const Icon(Icons.add_rounded),
+    ),
   );
 }

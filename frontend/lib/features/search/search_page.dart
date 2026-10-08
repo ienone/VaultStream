@@ -114,21 +114,28 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     final request = _request.query.isEmpty && _request.kind != 'contents'
         ? null
         : _request;
+    final filterSummary = [
+      ..._request.platforms.map((p) => searchPlatformLabels[p] ?? p),
+      ..._request.statuses.map((s) => '状态：${searchStatusLabels[s] ?? s}'),
+      ..._request.tags.map((tag) => '#$tag'),
+      if (_request.author != null) '作者：${_request.author}',
+      if (_request.dateFrom != null)
+        '从 ${_request.dateFrom!.toLocal().toString().split(' ').first}',
+      if (_request.dateTo != null)
+        '至 ${_request.dateTo!.toLocal().toString().split(' ').first}',
+    ].join(' · ');
     return Scaffold(
       appBar: AppBar(
         leading: const AppBackButton(),
         title: const Text('搜索'),
         actions: [
-          if (_request.kind != 'events')
-            IconButton(
-              tooltip: '搜索筛选',
-              onPressed: _openFilters,
-              icon: const Icon(Icons.tune_rounded),
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: _controller,
+            builder: (context, value, _) => IconButton(
+              tooltip: '询问 Agent',
+              onPressed: value.text.trim().isEmpty ? null : _openAgent,
+              icon: const Icon(Icons.auto_awesome_outlined),
             ),
-          IconButton(
-            tooltip: '询问 Agent',
-            onPressed: _controller.text.trim().isEmpty ? null : _openAgent,
-            icon: const Icon(Icons.auto_awesome_outlined),
           ),
         ],
       ),
@@ -155,29 +162,39 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            SearchBar(
-                              controller: _controller,
-                              focusNode: _queryFocus,
-                              hintText: '搜索内容与知识事件',
-                              leading: const Icon(Icons.search_rounded),
-                              trailing: [
-                                if (_controller.text.isNotEmpty)
+                            ValueListenableBuilder<TextEditingValue>(
+                              valueListenable: _controller,
+                              builder: (context, value, _) => SearchBar(
+                                controller: _controller,
+                                focusNode: _queryFocus,
+                                hintText: '搜索内容与知识事件',
+                                leading: const Icon(Icons.search_rounded),
+                                trailing: [
+                                  if (_request.kind != 'events')
+                                    IconButton(
+                                      tooltip: '搜索筛选',
+                                      onPressed: _openFilters,
+                                      icon: const Icon(Icons.tune_rounded),
+                                    ),
+                                  if (value.text.isNotEmpty)
+                                    IconButton(
+                                      tooltip: '清除搜索',
+                                      onPressed: () {
+                                        _controller.clear();
+                                        _search();
+                                      },
+                                      icon: const Icon(Icons.close_rounded),
+                                    ),
                                   IconButton(
-                                    tooltip: '清除搜索',
-                                    onPressed: () {
-                                      _controller.clear();
-                                      _search();
-                                    },
-                                    icon: const Icon(Icons.close_rounded),
+                                    tooltip: '搜索',
+                                    onPressed: _search,
+                                    icon: const Icon(
+                                      Icons.arrow_forward_rounded,
+                                    ),
                                   ),
-                                IconButton(
-                                  tooltip: '搜索',
-                                  onPressed: _search,
-                                  icon: const Icon(Icons.arrow_forward_rounded),
-                                ),
-                              ],
-                              onSubmitted: (_) => _search(),
-                              onChanged: (_) => setState(() {}),
+                                ],
+                                onSubmitted: (_) => _search(),
+                              ),
                             ),
                             const SizedBox(height: AppSpacing.md),
                             LayoutBuilder(
@@ -186,10 +203,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                                     168 *
                                     MediaQuery.textScalerOf(context).scale(14) /
                                     14;
-                                final width = preferredWidth.clamp(
-                                  0.0,
-                                  constraints.maxWidth,
-                                );
+                                final width =
+                                    constraints.maxWidth <
+                                        preferredWidth * 2 + AppSpacing.sm
+                                    ? constraints.maxWidth
+                                    : (constraints.maxWidth - AppSpacing.sm) /
+                                          2;
                                 return AnimatedSize(
                                   duration:
                                       MediaQuery.disableAnimationsOf(context)
@@ -236,50 +255,18 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                                               onSelected: _setContentScope,
                                             ),
                                           ),
-                                        if (_request.kind != 'events')
-                                          SizedBox(
-                                            width: width,
-                                            child: AppFilterMenu(
-                                              label: '搜索方式',
-                                              value: _request.mode,
-                                              options: const {
-                                                'keyword': '关键词',
-                                                'semantic': '语义',
-                                              },
-                                              onOpened: _queryFocus.unfocus,
-                                              onSelected: (mode) {
-                                                _request = _request.copyWith(
-                                                  mode: mode,
-                                                );
-                                                _search();
-                                              },
-                                            ),
-                                          ),
                                       ],
                                     ),
                                   ),
                                 );
                               },
                             ),
-                            if (_request.kind != 'events')
+                            if (_request.kind != 'events' &&
+                                filterSummary.isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(top: 8),
                                 child: Text(
-                                  [
-                                    ..._request.platforms.map(
-                                      (p) => searchPlatformLabels[p] ?? p,
-                                    ),
-                                    ..._request.statuses.map(
-                                      (s) => '状态：${searchStatusLabels[s] ?? s}',
-                                    ),
-                                    ..._request.tags.map((tag) => '#$tag'),
-                                    if (_request.author != null)
-                                      '作者：${_request.author}',
-                                    if (_request.dateFrom != null)
-                                      '从 ${_request.dateFrom!.toLocal().toString().split(' ').first}',
-                                    if (_request.dateTo != null)
-                                      '至 ${_request.dateTo!.toLocal().toString().split(' ').first}',
-                                  ].join(' · '),
+                                  filterSummary,
                                   style: Theme.of(context).textTheme.bodySmall,
                                 ),
                               ),

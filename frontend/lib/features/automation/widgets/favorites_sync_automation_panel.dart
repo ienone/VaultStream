@@ -408,15 +408,20 @@ class _PlatformStatusGrid extends StatelessWidget {
       children: [
         for (final entry in platforms.indexed) ...[
           if (entry.$1 > 0) const Divider(height: 32),
-          _PlatformStatusCard(status: entry.$2),
+          ListTile(
+            title: Text(_platformLabel(entry.$2.platform)),
+            subtitle: Text(_platformStateLabel(entry.$2)),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => context.push('/accounts/${entry.$2.platform}'),
+          ),
         ],
       ],
     );
   }
 }
 
-class _PlatformStatusCard extends ConsumerWidget {
-  const _PlatformStatusCard({required this.status});
+class AccountFavoritesSyncControls extends ConsumerWidget {
+  const AccountFavoritesSyncControls({super.key, required this.status});
 
   final FavoritesPlatformStatus status;
 
@@ -434,10 +439,7 @@ class _PlatformStatusCard extends ConsumerWidget {
           shape: const RoundedRectangleBorder(
             borderRadius: AppShape.cardMediaBorder,
           ),
-          title: Text(
-            _platformLabel(status.platform),
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          title: Text('同步收藏', style: Theme.of(context).textTheme.titleMedium),
           value: status.enabled,
           onChanged: settings.hasValue && status.capabilities.supported
               ? (value) => _updateFavoritesSyncSetting(
@@ -474,12 +476,8 @@ class _PlatformStatusCard extends ConsumerWidget {
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             if (status.capabilities.supported &&
-                (!status.authenticated || !status.available))
-              FilledButton.tonal(
-                onPressed: () => context.push('/accounts/${status.platform}'),
-                child: const Text('连接 / 检查账号'),
-              )
-            else if (status.capabilities.supported) ...[
+                status.authenticated &&
+                status.available) ...[
               OutlinedButton(
                 onPressed: () =>
                     _showPreview(context, ref, platform: status.platform),

@@ -69,7 +69,6 @@ class PayloadBlockRenderer extends StatelessWidget {
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
         borderRadius: AppShape.cardMediaBorder,
-        border: Border(left: BorderSide(color: colorScheme.primary, width: 4)),
       ),
       child: Material(
         color: Colors.transparent,
@@ -158,12 +157,7 @@ class PayloadBlockRenderer extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: AppShape.cardBorder,
-        side: BorderSide(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-        ),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
       child: InkWell(
         onTap: url != null
             ? () async {
@@ -198,25 +192,11 @@ class PayloadBlockRenderer extends StatelessWidget {
                             height: 24,
                             errorIcon: Icons.person_outline_rounded,
                           ),
-                        )
-                      else
-                        CircleAvatar(
-                          radius: 12,
-                          backgroundColor: colorScheme.primaryContainer,
-                          child: Text(
-                            (authorName?.isNotEmpty == true ? authorName! : '?')
-                                .substring(0, 1)
-                                .toUpperCase(),
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: colorScheme.primary,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
                         ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          authorName ?? '匿名用户',
+                          authorName ?? '',
                           style: theme.textTheme.labelMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: colorScheme.onSurface,

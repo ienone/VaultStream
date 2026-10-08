@@ -24,9 +24,15 @@ class DistributionRules extends _$DistributionRules {
         .toList();
   }
 
-  Future<DistributionRule> createRule(DistributionRuleCreate rule) async {
+  Future<DistributionRule> createRule(
+    DistributionRuleCreate rule, {
+    List<int>? chatIds,
+  }) async {
     final dio = ref.watch(apiClientProvider);
-    final response = await dio.post('/distribution-rules', data: rule.toJson());
+    final response = await dio.post(
+      '/distribution-rules',
+      data: {...rule.toJson(), if (chatIds != null) 'bot_chat_ids': chatIds},
+    );
     final newRule = DistributionRule.fromJson(response.data);
     // A deep-linked editor may be the only consumer of this write method.
     // If the list provider was released while saving, its next read is fresh.
@@ -36,26 +42,30 @@ class DistributionRules extends _$DistributionRules {
 
   Future<DistributionRule> updateRule(
     int id,
-    DistributionRuleUpdate update,
-  ) async {
+    DistributionRuleUpdate update, {
+    List<int>? chatIds,
+  }) async {
     final dio = ref.watch(apiClientProvider);
     final response = await dio.patch(
       '/distribution-rules/$id',
-      data: update.toJson(),
+      data: {...update.toJson(), if (chatIds != null) 'bot_chat_ids': chatIds},
     );
     final updatedRule = DistributionRule.fromJson(response.data);
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
     return updatedRule;
   }
 
   Future<void> toggleEnabled(int id, bool enabled) async {
-    await updateRule(id, DistributionRuleUpdate(enabled: enabled));
+    await ref
+        .read(apiClientProvider)
+        .patch('/distribution-rules/$id', data: {'enabled': enabled});
+    if (ref.mounted) ref.invalidateSelf();
   }
 
   Future<void> deleteRule(int id) async {
     final dio = ref.watch(apiClientProvider);
     await dio.delete('/distribution-rules/$id');
-    ref.invalidateSelf();
+    if (ref.mounted) ref.invalidateSelf();
   }
 }
 

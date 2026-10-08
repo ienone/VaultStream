@@ -36,7 +36,8 @@ bool handleAppNavigationNotification(
 /// Open a product link without pushing a second instance of the stateful shell.
 void openAppLocation(BuildContext context, String location) {
   final path = Uri.parse(location).path;
-  if (path == '/home' ||
+  if (path == '/notifications' ||
+      path == '/home' ||
       path == '/collection' ||
       path == '/automation' ||
       path.startsWith('/automation/')) {

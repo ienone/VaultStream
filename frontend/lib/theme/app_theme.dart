@@ -255,12 +255,24 @@ class AppTheme {
       // ignore: deprecated_member_use
       progressIndicatorTheme: const ProgressIndicatorThemeData(year2023: false),
 
+      listTileTheme: ListTileThemeData(
+        selectedTileColor: scheme.secondaryContainer,
+        selectedColor: scheme.onSecondaryContainer,
+        shape: const RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
+      ),
+      expansionTileTheme: const ExpansionTileThemeData(
+        shape: RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
+        collapsedShape: RoundedRectangleBorder(
+          borderRadius: AppShape.cardBorder,
+        ),
+      ),
       // Expressive Segmented Button
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: SegmentedButton.styleFrom(
           visualDensity: VisualDensity.comfortable,
-          selectedBackgroundColor: scheme.primary,
-          selectedForegroundColor: scheme.onPrimary,
+          selectedBackgroundColor: scheme.secondaryContainer,
+          selectedForegroundColor: scheme.onSecondaryContainer,
+          side: BorderSide.none,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.md),
           ),

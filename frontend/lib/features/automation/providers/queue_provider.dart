@@ -21,6 +21,11 @@ class QueueFilter extends _$QueueFilter {
   @override
   QueueFilterState build() => const QueueFilterState();
 
+  void setFilter({int? ruleId, required QueueStatus status}) {
+    if (state.ruleId == ruleId && state.status == status) return;
+    state = QueueFilterState(ruleId: ruleId, status: status);
+  }
+
   void setRuleId(int? ruleId) {
     state = QueueFilterState(ruleId: ruleId, status: state.status);
   }
@@ -82,12 +87,14 @@ class ContentQueue extends _$ContentQueue {
   Future<QueueListResponse> _fetchQueue({
     int? ruleId,
     QueueStatus? status,
+    int page = 1,
   }) async {
     final dio = ref.read(apiClientProvider);
     final response = await dio.get(
       '/distribution-queue/items',
       queryParameters: {
         'rule_id': ?ruleId,
+        'page': page,
         if (status case final status?) 'status': status.value,
       },
     );
@@ -111,107 +118,47 @@ class ContentQueue extends _$ContentQueue {
     ref.invalidate(queueStatsProvider(filter.ruleId));
   }
 
-  Future<void> reorderToIndex(int itemId, int index) async {
-    final dio = ref.read(apiClientProvider);
-    await dio.post(
-      '/distribution-queue/items/$itemId/reorder',
-      data: {'index': index},
+  Future<void> loadMore() async {
+    final current = state.value;
+    if (current == null || !current.hasMore) return;
+    final filter = ref.read(queueFilterProvider);
+    final next = await _fetchQueue(
+      ruleId: filter.ruleId,
+      status: filter.status,
+      page: current.page + 1,
     );
-    // 不立即刷新，等待SSE事件或延迟软刷新
+    if (!ref.mounted || !identical(filter, ref.read(queueFilterProvider))) {
+      return;
+    }
+    final items = {
+      for (final item in current.items) item.id: item,
+      for (final item in next.items) item.id: item,
+    };
+    state = AsyncData(next.copyWith(items: items.values.toList()));
   }
 
   Future<void> softRefresh() async {
-    // 后台更新数据，仅当数据实际变化时才更新
     final filter = ref.read(queueFilterProvider);
+    final pages = state.value?.page ?? 1;
     try {
-      final newData = await _fetchQueue(
-        ruleId: filter.ruleId,
-        status: filter.status,
-      );
-
-      // 仅当数据实际变化时才更新
-      final currentState = state;
-      if (currentState is AsyncData) {
-        final oldItems = currentState.value?.items;
-        if (oldItems != null) {
-          final newItems = newData.items;
-
-          // 比较 ID 列表、顺序和总数
-          final needsUpdate = _shouldUpdate(oldItems, newItems, newData);
-
-          if (needsUpdate) {
-            state = AsyncValue.data(newData);
-          }
-        } else {
-          state = AsyncValue.data(newData);
-        }
-      } else {
-        state = AsyncValue.data(newData);
+      final items = <QueueItem>[];
+      QueueListResponse? latest;
+      for (var page = 1; page <= pages; page++) {
+        latest = await _fetchQueue(
+          ruleId: filter.ruleId,
+          status: filter.status,
+          page: page,
+        );
+        items.addAll(latest.items);
+        if (!latest.hasMore) break;
       }
+      if (!ref.mounted || !identical(filter, ref.read(queueFilterProvider))) {
+        return;
+      }
+      state = AsyncData(latest!.copyWith(items: items));
     } catch (_) {
-      // 软刷新失败不影响现有数据
+      // Keep the readable list until the next event or explicit refresh.
     }
-  }
-
-  bool _shouldUpdate(
-    List<QueueItem> oldItems,
-    List<QueueItem> newItems,
-    QueueListResponse newData,
-  ) {
-    // 检查是否需要更新
-    if (oldItems.length != newItems.length) return true;
-
-    // 检查 ID 顺序
-    for (int i = 0; i < oldItems.length; i++) {
-      if (oldItems[i].id != newItems[i].id) return true;
-      // 检查计划时间是否变化
-      if (oldItems[i].scheduledTime != newItems[i].scheduledTime) return true;
-      // 检查状态与错误信息是否变化
-      if (oldItems[i].status != newItems[i].status) return true;
-      if (oldItems[i].reason != newItems[i].reason) return true;
-      if (oldItems[i].reasonCode != newItems[i].reasonCode) return true;
-      if (oldItems[i].lastErrorAt != newItems[i].lastErrorAt) return true;
-      if (oldItems[i].priority != newItems[i].priority) return true;
-    }
-
-    return false;
-  }
-
-  Future<String?> batchPushNow(List<int> itemIds) async {
-    final dio = ref.read(apiClientProvider);
-    final response = await dio.post(
-      '/distribution-queue/items/batch-push-now',
-      data: {'item_ids': itemIds},
-    );
-    _safeInvalidate();
-    // 刷新统计
-    final filter = ref.read(queueFilterProvider);
-    ref.invalidate(queueStatsProvider(filter.ruleId));
-    final data = response.data;
-    if (data is Map && data['run_id'] != null) {
-      return data['run_id'].toString();
-    }
-    return null;
-  }
-
-  Future<void> batchReschedule(
-    List<int> itemIds,
-    DateTime startTime, {
-    int interval = 300,
-  }) async {
-    final dio = ref.read(apiClientProvider);
-    await dio.post(
-      '/distribution-queue/items/batch-schedule',
-      data: {
-        'item_ids': itemIds,
-        'start_time': startTime.toUtc().toIso8601String(),
-        'interval_seconds': interval,
-      },
-    );
-    _safeInvalidate();
-    // 刷新统计
-    final filter = ref.read(queueFilterProvider);
-    ref.invalidate(queueStatsProvider(filter.ruleId));
   }
 
   Future<QueueItem> loadItem(int itemId) async {
@@ -219,33 +166,6 @@ class ContentQueue extends _$ContentQueue {
         .read(apiClientProvider)
         .get('/distribution-queue/items/$itemId');
     return QueueItem.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<QueueItem> reconcileDelivery(
-    QueueItem item, {
-    required bool delivered,
-    String? messageId,
-  }) async {
-    if (!item.needsDeliveryReview || item.lastErrorAt == null) {
-      throw StateError('待核对记录不完整，请刷新后重试');
-    }
-    final response = await ref
-        .read(apiClientProvider)
-        .post(
-          '/distribution-queue/items/${item.id}/reconcile',
-          data: {
-            'outcome': delivered ? 'delivered' : 'not_sent',
-            'observed_error_at': item.lastErrorAt!.toUtc().toIso8601String(),
-            if (delivered) 'message_id': messageId,
-          },
-        );
-    final result = QueueItem.fromJson(response.data as Map<String, dynamic>);
-    if (ref.mounted) {
-      final filter = ref.read(queueFilterProvider);
-      ref.invalidate(queueStatsProvider(filter.ruleId));
-      ref.invalidateSelf();
-    }
-    return result;
   }
 
   Future<QueueItem> pushNow(int itemId) async {
@@ -268,22 +188,8 @@ class ContentQueue extends _$ContentQueue {
     _safeInvalidate();
   }
 
-  Future<void> approveItem(int itemId) async {
-    await moveToStatus(itemId, QueueStatus.willPush);
-  }
-
-  Future<void> rejectItem(int itemId, {String? reason}) async {
-    await moveToStatus(itemId, QueueStatus.filtered, reason: reason);
-  }
-
-  Future<void> restoreToPending(int itemId) async {
-    await moveToStatus(itemId, QueueStatus.willPush);
-  }
-
   void _safeInvalidate() {
-    try {
-      ref.invalidateSelf();
-    } catch (_) {}
+    if (ref.mounted) ref.invalidateSelf();
   }
 
   void refresh() {

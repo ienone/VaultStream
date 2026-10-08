@@ -15,7 +15,9 @@ import '../../../../theme/design_tokens.dart';
 import '../../../../core/widgets/app_filter_menu.dart';
 
 class PushTab extends ConsumerStatefulWidget {
-  const PushTab({super.key, this.targetsOnly = false});
+  const PushTab({super.key, this.targetsOnly = false, this.platform});
+
+  final String? platform;
 
   final bool targetsOnly;
 
@@ -38,6 +40,12 @@ class _PushTabState extends ConsumerState<PushTab> {
   final _blackCtrl = TextEditingController();
 
   bool _initialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _botPlatform = widget.platform ?? 'telegram';
+  }
 
   @override
   void dispose() {
@@ -216,7 +224,7 @@ class _PushTabState extends ConsumerState<PushTab> {
     try {
       final result = await ref
           .read(botConfigActionsProvider)
-          .syncConfiguredChats();
+          .syncConfiguredChats(platform: widget.platform);
       if (!result.configured) {
         if (mounted) {
           showToast(context, '请先配置并启用至少一个 Bot');
@@ -317,7 +325,13 @@ class _PushTabState extends ConsumerState<PushTab> {
     settingsAsync.whenData(_initFromSettings);
 
     final content = ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      shrinkWrap: widget.platform != null,
+      physics: widget.platform != null
+          ? const NeverScrollableScrollPhysics()
+          : null,
+      padding: widget.platform != null
+          ? EdgeInsets.zero
+          : const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       children: widget.targetsOnly
           ? [
               Padding(
@@ -349,123 +363,156 @@ class _PushTabState extends ConsumerState<PushTab> {
               _buildGroupManagement(context, ref),
             ]
           : [
-              const SectionHeader(title: '应用内摘要'),
-              settingsAsync.when(
-                data: (settings) => _buildDigestSettings(settings),
-                loading: () => const LinearProgressIndicator(),
-                error: (_, _) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('摘要设置加载失败'),
-                  trailing: TextButton(
-                    onPressed: () => ref.invalidate(systemSettingsProvider),
-                    child: const Text('重试'),
+              if (widget.platform == null) ...[
+                const SectionHeader(title: '应用内摘要'),
+                settingsAsync.when(
+                  data: (settings) => _buildDigestSettings(settings),
+                  loading: () => const LinearProgressIndicator(),
+                  error: (_, _) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('摘要设置加载失败'),
+                    trailing: TextButton(
+                      onPressed: () => ref.invalidate(systemSettingsProvider),
+                      child: const Text('重试'),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 28),
-              SectionHeader(
-                title: '机器人服务',
-                action: IconButton(
-                  tooltip: '刷新机器人状态',
-                  onPressed: _isControllingTelegram ? null : _refreshBotStatus,
-                  icon: const Icon(Icons.refresh_rounded),
+                const SizedBox(height: 28),
+                ListTile(
+                  title: const Text('Telegram 账号与机器人'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push('/accounts/telegram'),
                 ),
-              ),
-              statusAsync.when(
-                data: _buildBotStatus,
-                loading: () => const LinearProgressIndicator(),
-                error: (_, _) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('机器人状态读取失败'),
-                  trailing: TextButton(
-                    onPressed: _refreshBotStatus,
-                    child: const Text('重试'),
-                  ),
+                ListTile(
+                  title: const Text('QQ 机器人'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push('/accounts/qq'),
                 ),
-              ),
-              const SizedBox(height: 24),
-              ExpansionTile(
-                maintainState: true,
-                initiallyExpanded: _pushConfigExpanded,
-                onExpansionChanged: (expanded) =>
-                    setState(() => _pushConfigExpanded = expanded),
-                tilePadding: EdgeInsets.zero,
-                childrenPadding: const EdgeInsets.only(bottom: 16),
-                title: const Text('凭证与权限'),
-                children: [
-                  DropdownButtonFormField<String>(
-                    borderRadius: AppShape.cardBorder,
-                    initialValue: _botPlatform,
-                    decoration: const InputDecoration(labelText: '推送平台'),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'telegram',
-                        child: Text('Telegram'),
-                      ),
-                      DropdownMenuItem(value: 'qq', child: Text('QQ (Napcat)')),
-                    ],
-                    onChanged: _isSaving
+              ] else ...[
+                SectionHeader(
+                  title: '机器人服务',
+                  action: IconButton(
+                    tooltip: '刷新机器人状态',
+                    onPressed: _isControllingTelegram
                         ? null
-                        : (value) {
-                            if (value == null) return;
-                            setState(() => _botPlatform = value);
-                            _reloadPermissionFields();
-                          },
+                        : _refreshBotStatus,
+                    icon: const Icon(Icons.refresh_rounded),
                   ),
-                  const SizedBox(height: 20),
-                  if (_botPlatform == 'telegram')
-                    TextField(
-                      controller: _tgTokenController,
-                      obscureText: true,
-                      enableSuggestions: false,
-                      autocorrect: false,
-                      decoration: const InputDecoration(labelText: 'Bot Token'),
-                    )
-                  else
-                    TextField(
-                      controller: _qqUrlController,
-                      decoration: const InputDecoration(
-                        labelText: 'Napcat HTTP API 地址',
+                ),
+                statusAsync.when(
+                  data: _buildBotStatus,
+                  loading: () => const LinearProgressIndicator(),
+                  error: (_, _) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('机器人状态读取失败'),
+                    trailing: TextButton(
+                      onPressed: _refreshBotStatus,
+                      child: const Text('重试'),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                ExpansionTile(
+                  maintainState: true,
+                  initiallyExpanded: _pushConfigExpanded,
+                  onExpansionChanged: (expanded) =>
+                      setState(() => _pushConfigExpanded = expanded),
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: const EdgeInsets.only(bottom: 16),
+                  title: const Text('凭证与权限'),
+                  children: [
+                    if (widget.platform == null)
+                      DropdownButtonFormField<String>(
+                        borderRadius: AppShape.cardBorder,
+                        initialValue: _botPlatform,
+                        decoration: const InputDecoration(labelText: '推送平台'),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'telegram',
+                            child: Text('Telegram'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'qq',
+                            child: Text('QQ (Napcat)'),
+                          ),
+                        ],
+                        onChanged: _isSaving
+                            ? null
+                            : (value) {
+                                if (value == null) return;
+                                setState(() => _botPlatform = value);
+                                _reloadPermissionFields();
+                              },
+                      ),
+                    const SizedBox(height: 20),
+                    if (_botPlatform == 'telegram')
+                      TextField(
+                        controller: _tgTokenController,
+                        obscureText: true,
+                        enableSuggestions: false,
+                        autocorrect: false,
+                        decoration: const InputDecoration(
+                          labelText: 'Bot Token',
+                        ),
+                      )
+                    else
+                      TextField(
+                        controller: _qqUrlController,
+                        decoration: const InputDecoration(
+                          labelText: 'Napcat HTTP API 地址',
+                        ),
+                      ),
+                    const SizedBox(height: 20),
+                    _buildPermissionField(
+                      controller: _adminsCtrl,
+                      label: '超级管理员 ID',
+                      hint: '多个 ID 用逗号分隔',
+                    ),
+                    const SizedBox(height: 20),
+                    _buildPermissionField(
+                      controller: _whiteCtrl,
+                      label: '白名单 ID',
+                      hint: '多个 ID 用逗号分隔',
+                    ),
+                    const SizedBox(height: 20),
+                    _buildPermissionField(
+                      controller: _blackCtrl,
+                      label: '黑名单 ID',
+                      hint: '多个 ID 用逗号分隔',
+                    ),
+                    const SizedBox(height: 24),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton(
+                        onPressed: _isSaving ? null : _saveConfig,
+                        child: Text(_isSaving ? '保存中…' : '保存配置'),
                       ),
                     ),
-                  const SizedBox(height: 20),
-                  _buildPermissionField(
-                    controller: _adminsCtrl,
-                    label: '超级管理员 ID',
-                    hint: '多个 ID 用逗号分隔',
-                  ),
-                  const SizedBox(height: 20),
-                  _buildPermissionField(
-                    controller: _whiteCtrl,
-                    label: '白名单 ID',
-                    hint: '多个 ID 用逗号分隔',
-                  ),
-                  const SizedBox(height: 20),
-                  _buildPermissionField(
-                    controller: _blackCtrl,
-                    label: '黑名单 ID',
-                    hint: '多个 ID 用逗号分隔',
-                  ),
-                  const SizedBox(height: 24),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: FilledButton(
-                      onPressed: _isSaving ? null : _saveConfig,
-                      child: Text(_isSaving ? '保存中…' : '保存配置'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 32),
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                shape: const RoundedRectangleBorder(
-                  borderRadius: AppShape.cardMediaBorder,
+                  ],
                 ),
-                onTap: () => context.push('/settings?tab=targets'),
-                title: const Text('管理推送目标'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-              ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '群组与频道',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: '同步群组与频道',
+                      onPressed: _isSyncingChats ? null : _syncConfiguredChats,
+                      icon: const Icon(Icons.sync_rounded),
+                    ),
+                    IconButton(
+                      tooltip: '添加目标',
+                      onPressed: _showAddChatDialog,
+                      icon: const Icon(Icons.add_rounded),
+                    ),
+                  ],
+                ),
+                _buildGroupManagement(context, ref),
+              ],
               const SizedBox(height: 40),
             ],
     );
@@ -574,7 +621,14 @@ class _PushTabState extends ConsumerState<PushTab> {
     final colorScheme = theme.colorScheme;
 
     return chatsAsync.when(
-      data: (chats) {
+      data: (allChats) {
+        final chats = allChats
+            .where(
+              (chat) =>
+                  widget.platform == null ||
+                  (widget.platform == 'qq' ? chat.isQQ : chat.isTelegram),
+            )
+            .toList();
         if (chats.isEmpty) {
           return const Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
@@ -686,46 +740,50 @@ class _PushTabState extends ConsumerState<PushTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            status.isRunning ? 'Telegram 运行中' : 'Telegram 未运行',
-            style: Theme.of(context).textTheme.bodyLarge,
-          ),
-          if (status.isRunning && username != null) ...[
+          if (widget.platform != 'qq')
+            Text(
+              status.isRunning ? 'Telegram 运行中' : 'Telegram 未运行',
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+          if (widget.platform != 'qq' &&
+              status.isRunning &&
+              username != null) ...[
             const SizedBox(height: 4),
             Text('@$username', style: Theme.of(context).textTheme.bodyMedium),
           ],
-          if (status.isNapcatEnabled) ...[
+          if (widget.platform == 'qq') ...[
             const SizedBox(height: 12),
-            Text(status.isNapcatOnline ? 'QQ 已连接' : 'QQ 未连接，请检查 Napcat 配置'),
+            Text(status.isNapcatOnline ? 'QQ 已连接' : 'QQ 未连接'),
           ],
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              TextButton(
-                onPressed: _isControllingTelegram
-                    ? null
-                    : () => _controlTelegramService(
-                        status.isRunning ? 'stop' : 'start',
-                      ),
-                child: Text(
-                  _isControllingTelegram
-                      ? '处理中…'
-                      : status.isRunning
-                      ? '停止 Telegram'
-                      : '启动 Telegram',
-                ),
-              ),
-              if (status.isRunning)
+          if (widget.platform != 'qq')
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
                 TextButton(
                   onPressed: _isControllingTelegram
                       ? null
-                      : () => _controlTelegramService('restart'),
-                  child: const Text('重启 Telegram'),
+                      : () => _controlTelegramService(
+                          status.isRunning ? 'stop' : 'start',
+                        ),
+                  child: Text(
+                    _isControllingTelegram
+                        ? '处理中…'
+                        : status.isRunning
+                        ? '停止 Telegram'
+                        : '启动 Telegram',
+                  ),
                 ),
-            ],
-          ),
+                if (status.isRunning)
+                  TextButton(
+                    onPressed: _isControllingTelegram
+                        ? null
+                        : () => _controlTelegramService('restart'),
+                    child: const Text('重启 Telegram'),
+                  ),
+              ],
+            ),
         ],
       ),
     );

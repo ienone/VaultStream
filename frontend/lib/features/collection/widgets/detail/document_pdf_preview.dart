@@ -221,6 +221,10 @@ class _DocumentPdfPageState extends State<DocumentPdfPage> {
   @override
   Widget build(BuildContext context) => InteractiveViewer(
     transformationController: _transform,
+    // Wheel scrolling belongs to the surrounding reading page. Pinch scaling
+    // still uses gesture scale values, independently of this wheel factor.
+    scaleFactor: double.infinity,
+    panEnabled: _renderScale > 1,
     maxScale: 5,
     onInteractionEnd: (_) {
       final scale = _transform.value.getMaxScaleOnAxis();

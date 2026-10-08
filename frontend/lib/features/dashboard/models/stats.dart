@@ -331,6 +331,7 @@ class FailedParseTask {
     required this.id,
     required this.taskType,
     this.contentId,
+    this.title,
     this.lastError,
   });
 
@@ -339,6 +340,7 @@ class FailedParseTask {
       id: (json['id'] as num?)?.toInt() ?? 0,
       taskType: json['task_type']?.toString() ?? '',
       contentId: (json['content_id'] as num?)?.toInt(),
+      title: json['title'] as String?,
       lastError: json['last_error']?.toString(),
     );
   }
@@ -346,6 +348,7 @@ class FailedParseTask {
   final int id;
   final String taskType;
   final int? contentId;
+  final String? title;
   final String? lastError;
 }
 

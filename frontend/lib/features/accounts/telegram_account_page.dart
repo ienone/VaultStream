@@ -1,3 +1,4 @@
+import '../settings/presentation/tabs/push_tab.dart';
 import 'telegram_login_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -124,7 +125,63 @@ class _TelegramAccountPageState extends ConsumerState<TelegramAccountPage> {
             data: (account) => ListView(
               padding: const EdgeInsets.all(24),
               children: [
-                SwitchListTile.adaptive(
+                Text('个人账号', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 12),
+                Text(
+                  !account.configured
+                      ? '尚未配置 Telegram 应用凭据'
+                      : account.sessionPresent
+                      ? '已保存登录会话'
+                      : '尚未连接',
+                ),
+                const SizedBox(height: 12),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final buttons = [
+                      OutlinedButton.icon(
+                        onPressed:
+                            _busy || account.running || !account.configured
+                            ? null
+                            : _login,
+                        icon: const Icon(Icons.login_rounded),
+                        label: Text(account.sessionPresent ? '重新连接' : '连接账号'),
+                      ),
+                      FilledButton.icon(
+                        onPressed:
+                            _busy ||
+                                account.running ||
+                                !account.configured ||
+                                !account.sessionPresent ||
+                                !(account.channelsEnabled ||
+                                    account.savedEnabled)
+                            ? null
+                            : _sync,
+                        icon: const Icon(Icons.sync_rounded),
+                        label: Text(account.running ? '正在同步' : '立即同步'),
+                      ),
+                    ];
+                    if (constraints.maxWidth <
+                        320 * MediaQuery.textScalerOf(context).scale(1)) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          buttons[0],
+                          const SizedBox(height: 8),
+                          buttons[1],
+                        ],
+                      );
+                    }
+                    return Row(
+                      children: [
+                        Expanded(child: buttons[0]),
+                        const SizedBox(width: 12),
+                        Expanded(child: buttons[1]),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('频道动态'),
                   subtitle: const Text('同步已加入且开启通知的频道'),
@@ -133,7 +190,7 @@ class _TelegramAccountPageState extends ConsumerState<TelegramAccountPage> {
                       ? null
                       : (value) => _update(account, channels: value),
                 ),
-                SwitchListTile.adaptive(
+                SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('收藏夹'),
                   subtitle: const Text('将 Saved Messages 保存到收藏库'),
@@ -142,37 +199,8 @@ class _TelegramAccountPageState extends ConsumerState<TelegramAccountPage> {
                       ? null
                       : (value) => _update(account, saved: value),
                 ),
-                const SizedBox(height: 24),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: _busy || account.running || !account.configured
-                        ? null
-                        : _login,
-                    icon: const Icon(Icons.login_rounded),
-                    label: const Text('连接账号'),
-                  ),
-                ),
-                if (!account.configured || !account.sessionPresent)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 16),
-                    child: Text('连接 Telegram 账号后即可同步。'),
-                  ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: FilledButton.icon(
-                    onPressed:
-                        _busy ||
-                            account.running ||
-                            !account.configured ||
-                            !account.sessionPresent ||
-                            !(account.channelsEnabled || account.savedEnabled)
-                        ? null
-                        : _sync,
-                    icon: const Icon(Icons.sync_rounded),
-                    label: Text(account.running ? '正在同步' : '立即同步'),
-                  ),
-                ),
+                const SizedBox(height: 28),
+                const PushTab(platform: 'telegram'),
               ],
             ),
           ),

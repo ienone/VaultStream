@@ -19,7 +19,6 @@ class TaskResultPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final runAsync = ref.watch(backgroundTaskRunProvider(runId));
     return Scaffold(
       appBar: AppBar(
         leading: const AppBackButton(),
@@ -32,16 +31,26 @@ class TaskResultPage extends ConsumerWidget {
           ),
         ],
       ),
-      body: runAsync.when(
+      body: TaskResultPane(runId: runId),
+    );
+  }
+}
+
+class TaskResultPane extends ConsumerWidget {
+  const TaskResultPane({super.key, required this.runId});
+  final String runId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => ref
+      .watch(backgroundTaskRunProvider(runId))
+      .when(
         data: (run) => _TaskResultBody(run: run),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => _TaskLoadError(
           error: error,
           onRetry: () => ref.invalidate(backgroundTaskRunProvider(runId)),
         ),
-      ),
-    );
-  }
+      );
 }
 
 class _TaskLoadError extends StatelessWidget {
@@ -88,14 +97,11 @@ class _TaskResultBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasContext =
-        run.startedAt != null ||
-        run.finishedAt != null ||
-        run.presentation.entityLinks.any(
-          (link) => !run.presentation.allowedActions.any(
-            (action) => action.href == link.href,
-          ),
-        );
+    final hasContext = run.presentation.entityLinks.any(
+      (link) => !run.presentation.allowedActions.any(
+        (action) => action.href == link.href,
+      ),
+    );
     return SafeArea(
       top: false,
       child: SingleChildScrollView(
@@ -110,14 +116,15 @@ class _TaskResultBody extends StatelessWidget {
               children: [
                 _TaskSummary(run: run),
                 if (run.presentation.resultSections.isNotEmpty) ...[
-                  const Divider(height: 48),
+                  const SizedBox(height: 24),
                   _BusinessResult(run: run),
                 ],
                 if (hasContext) ...[
-                  const Divider(height: 48),
+                  const SizedBox(height: 24),
                   _RunContext(run: run),
                 ],
-                if (run.metadata.isNotEmpty ||
+                if (run.error?.isNotEmpty == true ||
+                    run.metadata.isNotEmpty ||
                     (run.result?.isNotEmpty ?? false) ||
                     run.presentation.errorCode != null) ...[
                   const SizedBox(height: 24),
@@ -188,8 +195,20 @@ class _TaskSummary extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: AppSpacing.sm),
+        if (run.startedAt != null)
+          Text(
+            [
+              _formatTime(run.startedAt!),
+              if (run.finishedAt != null)
+                _formatDuration(run.finishedAt!.difference(run.startedAt!)),
+            ].join(' · '),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.onSurfaceVariant,
+            ),
+          ),
         const SizedBox(height: AppSpacing.md),
-        Text(presentation.summary, style: theme.textTheme.bodyLarge),
+        SelectableText(presentation.summary, style: theme.textTheme.bodyLarge),
         if (presentation.allowedActions.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.lg),
           Wrap(
@@ -267,7 +286,7 @@ class _FavoritesFailureSection extends ConsumerWidget {
           overflowSpacing: AppSpacing.xs,
           children: [
             Text(
-              '失败项与处理',
+              '未同步的内容',
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -549,12 +568,6 @@ class _RunContext extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final facts = <(String, String)>[
-      if (run.startedAt != null) ('开始时间', _formatTime(run.startedAt!)),
-      if (run.finishedAt != null) ('结束时间', _formatTime(run.finishedAt!)),
-      if (run.startedAt != null && run.finishedAt != null)
-        ('耗时', _formatDuration(run.finishedAt!.difference(run.startedAt!))),
-    ];
     final actionTargets = run.presentation.allowedActions
         .map((a) => a.href)
         .toSet();
@@ -564,37 +577,7 @@ class _RunContext extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (facts.isNotEmpty) ...[
-          Semantics(
-            header: true,
-            child: Text('运行信息', style: theme.textTheme.titleMedium),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final minWidth =
-                  220 * MediaQuery.textScalerOf(context).scale(14) / 14;
-              final columns = ((constraints.maxWidth + 16) / (minWidth + 16))
-                  .floor()
-                  .clamp(1, 3);
-              final width =
-                  (constraints.maxWidth - 16 * (columns - 1)) / columns;
-              return Wrap(
-                spacing: 16,
-                runSpacing: 12,
-                children: [
-                  for (final fact in facts)
-                    SizedBox(
-                      width: width,
-                      child: _DetailLine(label: fact.$1, value: fact.$2),
-                    ),
-                ],
-              );
-            },
-          ),
-        ],
         if (links.isNotEmpty) ...[
-          if (facts.isNotEmpty) const SizedBox(height: AppSpacing.lg),
           Semantics(
             header: true,
             child: Text('关联对象', style: theme.textTheme.titleMedium),
@@ -640,8 +623,7 @@ class _TechnicalDetails extends StatelessWidget {
         expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
         shape: const Border(),
         collapsedShape: const Border(),
-        title: const Text('技术详情'),
-        subtitle: const Text('原始输入与运行结果'),
+        title: const Text('诊断详情'),
         childrenPadding: const EdgeInsets.fromLTRB(
           AppSpacing.md,
           0,
@@ -649,6 +631,10 @@ class _TechnicalDetails extends StatelessWidget {
           AppSpacing.md,
         ),
         children: [
+          if (run.error?.isNotEmpty == true)
+            _DetailLine(label: '错误', value: run.error!),
+          if (run.finishedAt != null)
+            _DetailLine(label: '结束时间', value: _formatTime(run.finishedAt!)),
           if (run.presentation.errorCode case final code?) Text('错误代码：$code'),
           _DetailLine(label: 'Run ID', value: run.runId),
           _DetailLine(label: '任务类型', value: run.task),
@@ -946,7 +932,7 @@ String _statusLabel(String status) {
   return switch (status) {
     'success' || 'ok' => '已完成',
     'running' => '运行中',
-    'error' || 'failed' => '需要处理',
+    'error' || 'failed' => '失败',
     _ => status,
   };
 }

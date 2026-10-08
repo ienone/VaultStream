@@ -1,19 +1,16 @@
-import 'package:frontend/core/network/api_client.dart';
-import 'dart:ui';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../../../theme/design_tokens.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/utils/toast.dart';
 import '../../../core/widgets/network_thumbnail.dart';
-import '../../../core/widgets/platform_badge.dart';
 import '../../../core/media/media_asset.dart';
-import '../../../theme/design_tokens.dart';
 import '../models/queue_item.dart';
 import '../providers/queue_provider.dart';
-import 'delivery_review_dialog.dart';
-import 'schedule_time_picker.dart';
+import '../providers/bot_chats_provider.dart';
 
 class QueueContentList extends ConsumerStatefulWidget {
   const QueueContentList({
@@ -22,982 +19,390 @@ class QueueContentList extends ConsumerStatefulWidget {
     required this.currentStatus,
     required this.onRefresh,
     this.header = const [],
+    this.onLoadMore,
+    this.animateEntries = false,
   });
-
+  final bool animateEntries;
   final List<QueueItem> items;
   final QueueStatus currentStatus;
   final VoidCallback onRefresh;
   final List<Widget> header;
-
+  final Future<void> Function()? onLoadMore;
   @override
   ConsumerState<QueueContentList> createState() => _QueueContentListState();
 }
 
 class _QueueContentListState extends ConsumerState<QueueContentList> {
-  final _scrollController = ScrollController();
-  List<QueueItem> _localItems = [];
-  final Set<int> _selectedIds = {};
-  bool _isSelectionMode = false;
-  bool _isReordering = false; // 拖动中标记，防止外部数据覆盖
-  bool _hasAnimatedOnce = false; // 入场动画只播放一次
-
+  final _scroll = ScrollController();
+  final _selected = <int>{};
+  bool _selectionMode = false;
+  bool _busy = false;
+  bool _loadingMore = false;
   @override
   void dispose() {
-    _scrollController.dispose();
+    _scroll.dispose();
     super.dispose();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _localItems = List.from(widget.items);
   }
 
   @override
   void didUpdateWidget(QueueContentList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 如果正在拖动，跳过外部更新以避免闪烁
-    if (_isReordering) return;
-
-    if (!listEquals(oldWidget.items, widget.items)) {
-      // 智能合并：仅当列表ID集合变化时才完全替换
-      final oldIds = _localItems.map((e) => e.id).toSet();
-      final newIds = widget.items.map((e) => e.id).toSet();
-
-      if (oldIds.difference(newIds).isNotEmpty ||
-          newIds.difference(oldIds).isNotEmpty) {
-        // 条目增删时完全替换
-        setState(() {
-          _localItems = List.from(widget.items);
-        });
-      } else {
-        // 仅顺序字段变化时，更新字段但保持本地顺序
-        final newItemMap = {for (var i in widget.items) i.id: i};
-        setState(() {
-          _localItems = _localItems.map((item) {
-            return newItemMap[item.id] ?? item;
-          }).toList();
-        });
-      }
-
-      final currentIds = _localItems
-          .where((item) => !item.isProcessing && !item.needsDeliveryReview)
-          .map((e) => e.id)
-          .toSet();
-      _selectedIds.retainAll(currentIds);
-      if (_selectedIds.isEmpty) _isSelectionMode = false;
+    if (oldWidget.currentStatus != widget.currentStatus) {
+      _selected.clear();
+      _selectionMode = false;
     }
+    _selected.retainAll(widget.items.where(_editable).map((item) => item.id));
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        CustomScrollView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            for (final section in widget.header)
-              SliverToBoxAdapter(child: section),
-            if (_localItems.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: _buildEmptyState(),
-              )
-            else
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  16,
-                  16,
-                  _isSelectionMode ? 120 : 24,
-                ),
-                sliver: _buildMainList(),
-              ),
-          ],
-        ),
-        if (_isSelectionMode) _buildBatchActionBar(),
-      ],
-    );
-  }
+  bool _editable(QueueItem item) =>
+      !item.isProcessing &&
+      !item.deliveryUnconfirmed &&
+      item.status != 'success';
 
-  Widget _buildEmptyState() {
-    final message = switch (widget.currentStatus) {
-      QueueStatus.willPush => '暂无待推送内容',
-      QueueStatus.filtered => '暂无不推送内容',
-      QueueStatus.pushed => '暂无已推送内容',
-    };
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(message, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            TextButton(onPressed: widget.onRefresh, child: const Text('刷新')),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMainList() {
-    if (widget.currentStatus != QueueStatus.willPush) return _buildNormalList();
-    return SliverReorderableList(
-      itemCount: _localItems.length,
-      onReorderItem: _onReorderItem,
-      proxyDecorator: (child, index, animation) {
-        return AnimatedBuilder(
-          animation: animation,
-          builder: (context, _) {
-            final animValue = AppMotion.emphasizedCurve.transform(
-              animation.value,
-            );
-            final elevation = lerpDouble(0, 12, animValue)!;
-            return Material(
-              elevation: elevation,
-              shape: const RoundedRectangleBorder(
-                borderRadius: AppShape.sheetBorder,
-              ),
-              color: Colors.transparent,
-              shadowColor: Colors.black.withValues(alpha: 0.2),
-              child: Transform.scale(
-                scale: lerpDouble(1, 1.05, animValue)!,
-                child: child,
-              ),
-            );
-          },
-        );
-      },
-      itemBuilder: (context, index) {
-        final item = _localItems[index];
-        final shouldAnimate = !_hasAnimatedOnce;
-        if (index == _localItems.length - 1 && !_hasAnimatedOnce) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _hasAnimatedOnce = true;
-          });
-        }
-        return _QueueItemCard(
-          key: ValueKey(item.id),
-          item: item,
-          index: index,
-          currentStatus: widget.currentStatus,
-          isSelected: _selectedIds.contains(item.id),
-          isSelectionMode: _isSelectionMode,
-          animateEntry: shouldAnimate,
-          onToggleSelect: item.isProcessing
-              ? null
-              : () => _toggleSelect(item.id),
-          onLongPress: item.isProcessing
-              ? null
-              : () => _startSelection(item.id),
-          onMoveToFiltered: () => _moveItem(item, QueueStatus.filtered),
-          onUpdateSchedule: (newTime) => _updateSchedule(item, newTime),
-          onPushNow: () => _pushNow(item),
-        );
-      },
-    );
-  }
-
-  Widget _buildNormalList() {
-    return SliverList.separated(
-      itemCount: _localItems.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        final item = _localItems[index];
-        return _QueueItemCard(
-          key: ValueKey(item.id),
-          item: item,
-          index: index,
-          currentStatus: widget.currentStatus,
-          onMoveToFiltered: () => _moveItem(item, QueueStatus.filtered),
-          onRestore: () => _moveItem(item, QueueStatus.willPush),
-          onApprove: () => _moveItem(item, QueueStatus.willPush),
-          onReject: () => _moveItem(item, QueueStatus.filtered),
-          onReview: () => showDeliveryReview(context, ref, item.id),
-        );
-      },
-    );
-  }
-
-  void _onReorderItem(int oldIndex, int newIndex) async {
-    if (oldIndex == newIndex) return;
-
-    final movedItem = _localItems[oldIndex];
-
-    // 标记拖动中，防止外部更新覆盖
-    _isReordering = true;
-
-    // 1. 本地立即更新列表顺序，同时重新计算预估时间
-    setState(() {
-      final item = _localItems.removeAt(oldIndex);
-      _localItems.insert(newIndex, item);
-      _recalculateLocalScheduledTimes();
-    });
-
-    try {
-      // 2. 后端请求
-      await ref
-          .read(contentQueueProvider.notifier)
-          .reorderToIndex(movedItem.id, newIndex);
-
-      // 延迟解除锁定并软刷新
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) {
-          _isReordering = false;
-          ref.read(contentQueueProvider.notifier).softRefresh();
-        }
-      });
-    } catch (e) {
-      // 失败时回滚本地状态
-      _isReordering = false;
-      setState(() {
-        final item = _localItems.removeAt(newIndex);
-        _localItems.insert(oldIndex, item);
-        _recalculateLocalScheduledTimes();
-      });
-
-      if (mounted) {
-        Toast.show(context, formatApiErrorMessage(e, fallbackMessage: '排序失败'));
-      }
-    }
-  }
-
-  /// 根据当前列表顺序重新计算本地预估推送时间（用于即时UI反馈）
-  void _recalculateLocalScheduledTimes() {
-    if (_localItems.isEmpty) return;
-
-    // 基于第一个条目的时间，按列表顺序递增分配时间
-    final baseTime = _localItems.first.scheduledTime ?? DateTime.now();
-    const interval = Duration(minutes: 10); // 默认间隔
-
-    for (int i = 0; i < _localItems.length; i++) {
-      final newTime = baseTime.add(interval * i);
-      _localItems[i] = _localItems[i].copyWith(scheduledTime: newTime);
-    }
-  }
-
-  void _startSelection(int id) {
-    setState(() {
-      _isSelectionMode = true;
-      _selectedIds.add(id);
-    });
-  }
-
-  void _toggleSelect(int id) {
-    if (!_isSelectionMode) return;
-    setState(() {
-      if (_selectedIds.contains(id)) {
-        _selectedIds.remove(id);
-        if (_selectedIds.isEmpty) _isSelectionMode = false;
-      } else {
-        _selectedIds.add(id);
-      }
-    });
-  }
-
-  Widget _buildBatchActionBar() {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return Positioned(
-      left: 20,
-      right: 20,
-      bottom: 24,
-      child: Card(
-        color: colorScheme.primaryContainer,
-        elevation: 8,
-        shadowColor: colorScheme.shadow.withValues(alpha: 0.2),
-        shape: const RoundedRectangleBorder(borderRadius: AppShape.sheetBorder),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final compact =
-                constraints.maxWidth <
-                MediaQuery.textScalerOf(context).scale(500);
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colorScheme.onPrimaryContainer.withValues(
-                        alpha: 0.1,
-                      ),
-                      borderRadius: BorderRadius.circular(AppShape.pill),
-                    ),
-                    child: Text(
-                      '已选 ${_selectedIds.length}',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: colorScheme.onPrimaryContainer,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  if (compact)
-                    IconButton.filled(
-                      tooltip: '立即推送',
-                      onPressed: _batchPushNow,
-                      icon: const Icon(Icons.flash_on_rounded),
-                    )
-                  else
-                    FilledButton.icon(
-                      onPressed: _batchPushNow,
-                      icon: const Icon(Icons.flash_on_rounded, size: 18),
-                      label: const Text('立即推送'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: colorScheme.onPrimaryContainer,
-                        foregroundColor: colorScheme.primaryContainer,
-                      ),
-                    ),
-                  const SizedBox(width: 8),
-                  if (compact)
-                    IconButton.filledTonal(
-                      tooltip: '批量排期',
-                      onPressed: _batchReschedule,
-                      icon: const Icon(Icons.schedule_send_rounded),
-                    )
-                  else
-                    FilledButton.tonalIcon(
-                      onPressed: _batchReschedule,
-                      icon: const Icon(Icons.schedule_send_rounded, size: 18),
-                      label: const Text('批量排期'),
-                    ),
-                  const SizedBox(width: 8),
-                  IconButton.filledTonal(
-                    tooltip: '取消选择',
-                    onPressed: () => setState(() {
-                      _isSelectionMode = false;
-                      _selectedIds.clear();
-                    }),
-                    icon: const Icon(Icons.close_rounded, size: 20),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-    ).animate().slideY(
-      begin: 1,
-      end: 0,
-      duration: AppMotion.surfaceEnter,
-      curve: AppMotion.emphasizedCurve,
-    );
-  }
-
-  Future<void> _batchPushNow() async {
-    final ids = _selectedIds.toList();
-    final idsSet = ids.toSet();
-
-    // 乐观更新：将选中项移到列表最前面并更新时间
-    final selectedItems = _localItems
-        .where((i) => idsSet.contains(i.id))
-        .toList();
-    final otherItems = _localItems
-        .where((i) => !idsSet.contains(i.id))
-        .toList();
-
-    setState(() {
-      _isSelectionMode = false;
-      _selectedIds.clear();
-
-      // 重新排列：选中项放在最前，时间从现在开始递增
+  Future<void> _act(List<QueueItem> items, String action) async {
+    if (_busy) return;
+    DateTime? time;
+    if (action == 'schedule') {
       final now = DateTime.now();
-      const interval = Duration(seconds: 10);
-      for (int i = 0; i < selectedItems.length; i++) {
-        selectedItems[i] = selectedItems[i].copyWith(
-          scheduledTime: now.add(interval * i),
-        );
-      }
-      // 其他项时间顺延
-      final baseTime = now.add(interval * selectedItems.length);
-      const normalInterval = Duration(minutes: 10);
-      for (int i = 0; i < otherItems.length; i++) {
-        otherItems[i] = otherItems[i].copyWith(
-          scheduledTime: baseTime.add(normalInterval * i),
-        );
-      }
-
-      _localItems = [...selectedItems, ...otherItems];
-    });
-
-    try {
-      final runId = await ref
-          .read(contentQueueProvider.notifier)
-          .batchPushNow(selectedItems.map((i) => i.id).toList());
-      if (mounted) {
-        final suffix = runId == null
-            ? ''
-            : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
-        Toast.show(context, '批量推送任务已创建$suffix');
-      }
-    } catch (e) {
-      if (mounted) {
-        Toast.show(context, formatApiErrorMessage(e, fallbackMessage: '操作失败'));
-      }
-    }
-  }
-
-  Future<void> _batchReschedule() async {
-    final ids = _selectedIds.toList();
-    final now = DateTime.now();
-    final picked = await showScheduleTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-      helpText: '批量排期起始时间',
-    );
-
-    if (picked == null) return;
-
-    var startTime = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      picked.hour,
-      picked.minute,
-    );
-    if (startTime.isBefore(now)) {
-      startTime = now.add(const Duration(seconds: 10));
-    }
-
-    setState(() {
-      _isSelectionMode = false;
-      _selectedIds.clear();
-    });
-
-    try {
-      await ref
-          .read(contentQueueProvider.notifier)
-          .batchReschedule(
-            _localItems
-                .where((i) => ids.contains(i.id))
-                .map((i) => i.id)
-                .toList(),
-            startTime,
-          );
-      if (mounted) {
-        Toast.show(context, '批量排期完成');
-      }
-    } catch (e) {
-      if (mounted) {
-        Toast.show(context, formatApiErrorMessage(e, fallbackMessage: '操作失败'));
-      }
-    }
-  }
-
-  Future<void> _pushNow(QueueItem item) async {
-    try {
-      final result = await ref
-          .read(contentQueueProvider.notifier)
-          .pushNow(item.id);
-      if (!mounted) return;
-      Toast.show(
-        context,
-        result.needsDeliveryReview
-            ? '发送结果未知，请到不推送列表逐条核对'
-            : result.status == 'success'
-            ? '已推送成功'
-            : result.displayReason ?? '尚未发送，请查看队列状态',
+      final date = await showDatePicker(
+        context: context,
+        initialDate: now,
+        firstDate: now,
+        lastDate: now.add(const Duration(days: 365)),
+        helpText: '发送日期',
       );
-    } catch (error) {
-      if (mounted) {
-        Toast.show(
-          context,
-          formatApiErrorMessage(error, fallbackMessage: '发送未确认，请刷新队列核对'),
-        );
-      }
-    }
-  }
-
-  Future<void> _updateSchedule(QueueItem item, DateTime newTime) async {
-    try {
-      await ref
-          .read(contentQueueProvider.notifier)
-          .updateSchedule(item.id, newTime);
-    } catch (e) {
-      if (mounted) {
-        Toast.show(context, formatApiErrorMessage(e, fallbackMessage: '更新失败'));
-      }
-    }
-  }
-
-  Future<void> _moveItem(QueueItem item, QueueStatus newStatus) async {
-    setState(() {
-      _localItems.removeWhere((i) => i.id == item.id);
-    });
-
-    try {
-      await ref
-          .read(contentQueueProvider.notifier)
-          .moveToStatus(item.id, newStatus);
-      if (mounted) {
-        final dest = newStatus == QueueStatus.filtered ? '已过滤' : '待推送';
-        Toast.show(
-          context,
-          '已移动到"$dest"列表',
-          action: SnackBarAction(
-            label: '撤销',
-            onPressed: () => _moveItem(item, widget.currentStatus),
-          ),
-        );
-      }
-    } catch (e) {
-      setState(() {
-        _localItems.add(item);
-      });
-      if (mounted) {
-        Toast.show(context, formatApiErrorMessage(e, fallbackMessage: '操作失败'));
-      }
-    }
-  }
-}
-
-class _QueueItemCard extends StatelessWidget {
-  const _QueueItemCard({
-    super.key,
-    required this.item,
-    required this.index,
-    required this.currentStatus,
-    this.isSelected = false,
-    this.isSelectionMode = false,
-    this.animateEntry = true,
-    this.onToggleSelect,
-    this.onLongPress,
-    this.onMoveToFiltered,
-    this.onRestore,
-    this.onApprove,
-    this.onReject,
-    this.onUpdateSchedule,
-    this.onPushNow,
-    this.onReview,
-  });
-
-  final QueueItem item;
-  final int index;
-  final QueueStatus currentStatus;
-  final bool isSelected;
-  final bool isSelectionMode;
-  final bool animateEntry;
-  final VoidCallback? onToggleSelect;
-  final VoidCallback? onLongPress;
-  final VoidCallback? onMoveToFiltered;
-  final VoidCallback? onRestore;
-  final VoidCallback? onApprove;
-  final VoidCallback? onReject;
-  final Function(DateTime)? onUpdateSchedule;
-  final VoidCallback? onPushNow;
-  final VoidCallback? onReview;
-
-  List<MediaAsset> get _coverAssets => item.mediaAssets
-      .where(
-        (asset) =>
-            asset.mediaType == MediaType.image &&
-            asset.role != MediaRole.avatar &&
-            asset.sources.isNotEmpty,
-      )
-      .toList(growable: false);
-
-  MediaAsset? get _coverAsset => _coverAssets.firstOrNull;
-
-  List<String> get _coverCandidates {
-    return _coverAssets
-        .expand((asset) => asset.sources)
-        .map((source) => source.url.trim())
-        .where((url) => url.isNotEmpty)
-        .toList(growable: false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isWillPush = currentStatus == QueueStatus.willPush;
-    final reasonText = (item.displayReason ?? '').trim();
-    final coverCandidates = _coverCandidates;
-
-    final card = LayoutBuilder(
-      builder: (context, constraints) {
-        final compact =
-            constraints.maxWidth < MediaQuery.textScalerOf(context).scale(480);
-        final body = Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              if (coverCandidates.isNotEmpty) ...[
-                _buildCover(coverCandidates),
-                const SizedBox(width: 12),
-              ],
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.title ?? '无标题内容',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        PlatformBadge(platform: item.displayPlatform),
-                        if (item.needsDeliveryReview)
-                          _Badge(label: '结果待核对', color: colorScheme.error),
-                        if (item.isNsfw)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 8),
-                            child: _Badge(
-                              label: 'NSFW',
-                              color: colorScheme.error,
-                            ),
-                          ),
-                        if (!isWillPush && item.scheduledTime != null)
-                          Text(
-                            DateFormat(
-                              'MM-dd HH:mm',
-                            ).format(item.scheduledTime!.toLocal()),
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: colorScheme.outline,
-                            ),
-                          ),
-                      ],
-                    ),
-                    if (!isWillPush && reasonText.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        reasonText,
-                        maxLines: item.needsDeliveryReview ? null : 2,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: colorScheme.error,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-        final controls = <Widget>[
-          if (isSelectionMode)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Checkbox(
-                value: isSelected,
-                onChanged: onToggleSelect == null
-                    ? null
-                    : (_) => onToggleSelect?.call(),
-              ),
-            )
-          else
-            _buildActions(context),
-
-          if (isWillPush && !isSelectionMode && !item.isProcessing)
-            ReorderableDragStartListener(
-              index: index,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Icon(
-                  Icons.drag_indicator_rounded,
-                  size: 20,
-                  color: colorScheme.outline.withValues(alpha: 0.3),
-                ),
-              ),
-            ),
-        ];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: AnimatedContainer(
-            duration: AppMotion.stateChange,
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? colorScheme.primary.withValues(alpha: 0.05)
-                  : colorScheme.surfaceContainerLow,
-              borderRadius: AppShape.paneBorder,
-              border: Border.all(
-                color: isSelected
-                    ? colorScheme.primary
-                    : colorScheme.outlineVariant.withValues(alpha: 0.3),
-                width: isSelected ? 2 : 1,
-              ),
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: isSelectionMode ? onToggleSelect : null,
-                onLongPress: onLongPress,
-                borderRadius: AppShape.paneBorder,
-                child: compact
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          body,
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 0, 4, 8),
-                            child: Row(
-                              children: [
-                                if (isWillPush && !item.isProcessing)
-                                  _buildTimeSection(context, detached: true),
-                                const Spacer(),
-                                ...controls,
-                              ],
-                            ),
-                          ),
-                        ],
-                      )
-                    : IntrinsicHeight(
-                        child: Row(
-                          children: [
-                            if (isWillPush && !item.isProcessing)
-                              _buildTimeSection(context),
-                            Expanded(child: body),
-                            ...controls,
-                          ],
-                        ),
-                      ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-
-    if (animateEntry) {
-      return card
-          .animate()
-          .fadeIn(delay: AppMotion.listItemStagger * (index % 15))
-          .slideX(begin: 0.1, end: 0, curve: AppMotion.standardCurve);
-    }
-    return card;
-  }
-
-  Widget _buildTimeSection(BuildContext context, {bool detached = false}) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final localTime = item.scheduledTime?.toLocal();
-    final timeStr = localTime != null
-        ? DateFormat('HH:mm').format(localTime)
-        : '--:--';
-
-    final borderRadius = detached
-        ? AppShape.cardBorder
-        : const BorderRadius.only(
-            topLeft: Radius.circular(AppShape.pane),
-            bottomLeft: Radius.circular(AppShape.pane),
-          );
-    return Material(
-      color: colorScheme.primary.withValues(alpha: 0.08),
-      borderRadius: borderRadius,
-      clipBehavior: Clip.antiAlias,
-      child: PopupMenuButton<dynamic>(
-        useRootNavigator: true,
-        borderRadius: borderRadius,
-        clipBehavior: Clip.antiAlias,
-        popUpAnimationStyle: MediaQuery.disableAnimationsOf(context)
-            ? AnimationStyle.noAnimation
-            : null,
-        tooltip: '调整时间',
-        offset: const Offset(72, 0),
-        shape: const RoundedRectangleBorder(borderRadius: AppShape.paneBorder),
-        onSelected: (value) async {
-          final now = DateTime.now();
-          DateTime? newTime;
-          if (value is int) {
-            final baseTime = localTime ?? now;
-            newTime = baseTime.isBefore(now)
-                ? now.add(Duration(minutes: value))
-                : baseTime.add(Duration(minutes: value));
-          } else if (value == 'now') {
-            onPushNow?.call();
-            return;
-          } else if (value == 'custom') {
-            await _pickTime(context);
-            return;
-          }
-          if (newTime != null) {
-            if (newTime.isBefore(now)) {
-              newTime = now.add(const Duration(seconds: 10));
-            }
-            onUpdateSchedule?.call(newTime);
-          }
-        },
-        itemBuilder: (context) => [
-          PopupMenuItem(
-            value: 'now',
-            child: Row(
-              children: [
-                Icon(Icons.bolt_rounded, size: 20, color: colorScheme.primary),
-                const SizedBox(width: 12),
-                const Text('立即推送'),
-              ],
-            ),
-          ),
-          const PopupMenuDivider(),
-          const PopupMenuItem(value: 10, child: Text('+10 分钟')),
-          const PopupMenuItem(value: 30, child: Text('+30 分钟')),
-          const PopupMenuItem(value: 60, child: Text('+1 小时')),
-          const PopupMenuDivider(),
-          const PopupMenuItem(
-            value: 'custom',
-            child: Row(
-              children: [
-                Icon(Icons.edit_calendar_rounded, size: 20),
-                SizedBox(width: 12),
-                Text('自定义..'),
-              ],
-            ),
-          ),
-        ],
-        child: Container(
-          width: MediaQuery.textScalerOf(context).scale(48) + 24,
-          padding: detached
-              ? const EdgeInsets.symmetric(vertical: 8)
-              : EdgeInsets.zero,
-          alignment: Alignment.center,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                timeStr,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w900,
-                  color: colorScheme.primary,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Icon(
-                Icons.timer_outlined,
-                size: 14,
-                color: colorScheme.primary.withValues(alpha: 0.5),
-              ),
-            ],
-          ),
+      if (date == null || !mounted) return;
+      final picked = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(
+          now.add(const Duration(minutes: 10)),
         ),
-      ),
-    );
-  }
-
-  Future<void> _pickTime(BuildContext context) async {
-    final now = DateTime.now();
-    final localTime = item.scheduledTime?.toLocal();
-    final initialTime = localTime != null && localTime.isAfter(now)
-        ? TimeOfDay.fromDateTime(localTime)
-        : TimeOfDay.now();
-
-    final picked = await showScheduleTimePicker(
-      context: context,
-      initialTime: initialTime,
-    );
-
-    if (picked != null) {
-      final finalTime = DateTime(
-        now.year,
-        now.month,
-        now.day,
+        helpText: '发送时间',
+      );
+      if (picked == null || !mounted) return;
+      time = DateTime(
+        date.year,
+        date.month,
+        date.day,
         picked.hour,
         picked.minute,
       );
-      onUpdateSchedule?.call(
-        finalTime.isBefore(now)
-            ? now.add(const Duration(seconds: 10))
-            : finalTime,
-      );
+      if (!time.isAfter(DateTime.now())) {
+        Toast.show(context, '请选择未来的时间');
+        return;
+      }
     }
-  }
-
-  Widget _buildCover(List<String> coverCandidates) {
-    return ClipRRect(
-      borderRadius: AppShape.cardMediaBorder,
-      child: NetworkThumbnail(
-        imageUrl: coverCandidates.first,
-        fallbackUrls: coverCandidates.skip(1).toList(growable: false),
-        mediaAsset: _coverAsset,
-        mediaAssets: _coverAssets,
-        purpose: MediaPurpose.card,
-        width: 52,
-        height: 52,
-        fit: BoxFit.cover,
-      ),
+    setState(() => _busy = true);
+    var completed = 0;
+    String? errorMessage;
+    for (final item in items) {
+      try {
+        final actions = ref.read(contentQueueProvider.notifier);
+        if (action == 'send') {
+          final result = await actions.pushNow(item.id);
+          if (result.status != 'success') {
+            errorMessage = result.deliveryUnconfirmed
+                ? '未收到发送回执'
+                : (result.displayReason ?? '尚未发送');
+            continue;
+          }
+        } else if (action == 'schedule') {
+          await actions.updateSchedule(item.id, time!);
+        } else {
+          await actions.moveToStatus(
+            item.id,
+            QueueStatus.filtered,
+            reason: '已取消发送',
+          );
+        }
+        completed++;
+        _selected.remove(item.id);
+      } catch (error) {
+        errorMessage = formatApiErrorMessage(error);
+      }
+    }
+    if (!mounted) return;
+    setState(() => _busy = false);
+    widget.onRefresh();
+    final label = action == 'send'
+        ? '已发送'
+        : action == 'schedule'
+        ? '已设置发送时间'
+        : '已取消';
+    Toast.show(
+      context,
+      '$label $completed 项${errorMessage == null ? '' : '；$errorMessage'}',
+      isError: errorMessage != null,
     );
   }
-
-  Widget _buildActions(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    if (item.needsDeliveryReview) {
-      return Padding(
-        padding: const EdgeInsets.only(right: 8),
-        child: FilledButton.tonal(
-          onPressed: onReview,
-          child: const Text('核对结果'),
-        ),
-      );
-    }
-    if (item.isProcessing || item.status == 'success') {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Text(item.isProcessing ? '正在发送' : '已送达'),
-      );
-    }
-    if (currentStatus == QueueStatus.willPush) {
-      return Padding(
-        padding: const EdgeInsets.only(right: 8),
-        child: IconButton.filledTonal(
-          onPressed: onMoveToFiltered,
-          tooltip: '移至不推送',
-          icon: Icon(
-            Icons.delete_sweep_rounded,
-            color: colorScheme.error,
-            size: 20,
-          ),
-          style: IconButton.styleFrom(
-            backgroundColor: colorScheme.error.withValues(alpha: 0.1),
-          ),
-        ),
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: IconButton.filledTonal(
-        onPressed: onRestore,
-        tooltip: '恢复待推送',
-        icon: const Icon(Icons.restore_page_rounded, size: 20),
-      ),
-    );
-  }
-}
-
-class _Badge extends StatelessWidget {
-  const _Badge({required this.label, required this.color});
-  final String label;
-  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(AppShape.pill),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: color,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
+    final chats = ref.watch(botChatsProvider).value ?? [];
+    final names = {for (final chat in chats) chat.id: chat.displayName};
+    final list = CustomScrollView(
+      controller: _scroll,
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        for (final section in widget.header) SliverToBoxAdapter(child: section),
+        if (_busy) const SliverToBoxAdapter(child: LinearProgressIndicator()),
+        if (widget.items.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: Text('暂无${widget.currentStatus.label}内容')),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.all(16),
+            sliver: SliverList.separated(
+              itemCount: widget.items.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final item = widget.items[index];
+                final canEdit = _editable(item) && !_busy;
+                final asset = item.mediaAssets
+                    .where(
+                      (a) =>
+                          a.mediaType == MediaType.image &&
+                          a.role != MediaRole.avatar &&
+                          a.sources.isNotEmpty,
+                    )
+                    .firstOrNull;
+                final time = item.scheduledTime;
+                final selected = _selected.contains(item.id);
+                final row = Material(
+                  color: selected
+                      ? Theme.of(context).colorScheme.secondaryContainer
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(16),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: _selectionMode
+                        ? canEdit
+                              ? () => setState(() {
+                                  selected
+                                      ? _selected.remove(item.id)
+                                      : _selected.add(item.id);
+                                })
+                              : null
+                        : () => context.push('/collection/${item.contentId}'),
+                    onLongPress: canEdit
+                        ? () => setState(() {
+                            _selectionMode = true;
+                            _selected.add(item.id);
+                          })
+                        : null,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (asset != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 12),
+                                  child: NetworkThumbnail(
+                                    imageUrl: asset.sources.first.url,
+                                    mediaAsset: asset,
+                                    purpose: MediaPurpose.card,
+                                    width: 56,
+                                    height: 56,
+                                    fit: BoxFit.cover,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.title?.trim().isNotEmpty == true
+                                          ? item.title!
+                                          : '无标题内容',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleSmall,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '发往 ${names[item.botChatId] ?? item.targetId ?? item.platform}',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (_selectionMode)
+                                Checkbox(
+                                  value: selected,
+                                  onChanged: canEdit
+                                      ? (value) => setState(() {
+                                          value == true
+                                              ? _selected.add(item.id)
+                                              : _selected.remove(item.id);
+                                        })
+                                      : null,
+                                )
+                              else if (_editable(item))
+                                PopupMenuButton<String>(
+                                  tooltip: '推送操作',
+                                  enabled: !_busy,
+                                  onSelected: (action) => action == 'select'
+                                      ? setState(() {
+                                          _selectionMode = true;
+                                          _selected.add(item.id);
+                                        })
+                                      : _act([item], action),
+                                  itemBuilder: (_) => [
+                                    PopupMenuItem(
+                                      value: 'send',
+                                      child: Text(
+                                        item.reasonCode == 'approval_required'
+                                            ? '确认并发送'
+                                            : '立即发送',
+                                      ),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'schedule',
+                                      child: Text('设置发送时间…'),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'select',
+                                      child: Text('选择'),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'cancel',
+                                      child: Text('取消发送'),
+                                    ),
+                                  ],
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            item.isProcessing
+                                ? '正在发送'
+                                : item.deliveryUnconfirmed
+                                ? '未收到发送回执'
+                                : item.status == 'success'
+                                ? (item.pushedAt == null
+                                      ? '已发送'
+                                      : DateFormat(
+                                          'M月d日 HH:mm',
+                                        ).format(item.pushedAt!.toLocal()))
+                                : item.reasonCode == 'approval_required'
+                                ? '等待确认发送'
+                                : item.status == 'failed'
+                                ? (item.displayReason ?? '发送失败')
+                                : time == null
+                                ? '等待发送'
+                                : '计划 ${DateFormat('M月d日 HH:mm').format(time.toLocal())}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+                return widget.animateEntries &&
+                        !MediaQuery.disableAnimationsOf(context)
+                    ? row.animate().fadeIn(
+                        delay: AppMotion.listItemStagger * (index % 15),
+                      )
+                    : row;
+              },
+            ),
+          ),
+        if (widget.onLoadMore != null)
+          SliverToBoxAdapter(
+            child: Center(
+              child: TextButton(
+                onPressed: _loadingMore
+                    ? null
+                    : () async {
+                        setState(() => _loadingMore = true);
+                        try {
+                          await widget.onLoadMore!();
+                        } catch (error) {
+                          if (context.mounted) {
+                            Toast.show(
+                              context,
+                              formatApiErrorMessage(error),
+                              isError: true,
+                            );
+                          }
+                        } finally {
+                          if (mounted) setState(() => _loadingMore = false);
+                        }
+                      },
+                child: Text(_loadingMore ? '正在加载…' : '加载更多'),
+              ),
+            ),
+          ),
+      ],
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(child: list),
+        if (_selectionMode)
+          Material(
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text('已选 ${_selected.length} 项'),
+                    TextButton(
+                      onPressed: _busy
+                          ? null
+                          : () => setState(() {
+                              _selected.clear();
+                              _selectionMode = false;
+                            }),
+                      child: const Text('取消选择'),
+                    ),
+                    FilledButton.tonal(
+                      onPressed: _busy || _selected.isEmpty
+                          ? null
+                          : () => _act(
+                              widget.items
+                                  .where((i) => _selected.contains(i.id))
+                                  .toList(),
+                              'send',
+                            ),
+                      child: const Text('发送'),
+                    ),
+                    TextButton(
+                      onPressed: _busy || _selected.isEmpty
+                          ? null
+                          : () => _act(
+                              widget.items
+                                  .where((i) => _selected.contains(i.id))
+                                  .toList(),
+                              'cancel',
+                            ),
+                      child: const Text('取消发送'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

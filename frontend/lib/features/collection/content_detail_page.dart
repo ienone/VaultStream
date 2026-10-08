@@ -1,6 +1,10 @@
+import '../automation/widgets/push_content_dialog.dart';
+import '../player/global_playback_controller.dart';
+import '../events/providers/knowledge_event_provider.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/widgets/predictive_back_dialog.dart';
@@ -20,6 +24,8 @@ import 'providers/content_actions_controller.dart';
 import 'utils/content_parser.dart';
 import 'widgets/detail/content_templates.dart';
 import 'widgets/detail/detail_sections.dart';
+import 'widgets/detail/components/unified_stats.dart';
+import 'widgets/detail/components/tags_section.dart';
 import 'widgets/detail/gallery/gallery_navigation.dart';
 import 'widgets/dialogs/content_template_picker.dart';
 import 'widgets/list/collection_card_preview.dart';
@@ -57,7 +63,7 @@ class ContentDetailPage extends ConsumerStatefulWidget {
   final double? initialPlaybackSeconds;
   final int? initialMediaAssetId;
 
-  /// 工作区内的阅读器保持单一阅读流，不再嵌套辅助双栏。
+  /// 内嵌入口的关闭与专注阅读动作；布局仍由阅读器自身空间决定。
   final VoidCallback? onClose;
   final VoidCallback? onToggleFocus;
   final bool focused;
@@ -69,7 +75,9 @@ class ContentDetailPage extends ConsumerStatefulWidget {
 class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   final ScrollController _scrollController = ScrollController();
   final Map<String, GlobalKey> _headerKeys = {};
-  String? _activeHeader;
+  final _readingHeaderKey = GlobalKey();
+  final _activeHeader = ValueNotifier<String?>(null);
+  final _headerProgress = ValueNotifier<double>(0);
   int _selectedImageIndex = 0;
   StreamSubscription<SseEvent>? _sseSub;
   DateTime _lastScrollCheck = DateTime.now();
@@ -108,6 +116,15 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   void _onScroll() {
     if (!mounted) return;
 
+    final header = _readingHeaderKey.currentContext?.findRenderObject();
+    final threshold = header is RenderBox && header.hasSize
+        ? header.size.height
+        : 180.0;
+    final offset = _scrollController.hasClients
+        ? _scrollController.offset
+        : 0.0;
+    _headerProgress.value = ((offset - threshold + 48) / 48).clamp(0.0, 1.0);
+
     final now = DateTime.now();
     if (now.difference(_lastScrollCheck).inMilliseconds < 100) return;
     _lastScrollCheck = now;
@@ -120,17 +137,17 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       if (ctx == null) continue;
       final box = ctx.findRenderObject() as RenderBox?;
       if (box == null || !box.attached) continue;
-      final offset = box.localToGlobal(Offset.zero).dy;
-      if (offset < 200) {
+      final viewport = RenderAbstractViewport.maybeOf(box);
+      if (viewport == null || !_scrollController.hasClients) continue;
+      final offset = viewport.getOffsetToReveal(box, 0).offset;
+      if (offset <= _scrollController.offset + 32) {
         visible = entry.key;
       } else {
         break;
       }
     }
 
-    if (visible != null && visible != _activeHeader) {
-      setState(() => _activeHeader = visible);
-    }
+    _activeHeader.value = visible;
   }
 
   @override
@@ -138,6 +155,8 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     _sseSub?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _activeHeader.dispose();
+    _headerProgress.dispose();
     super.dispose();
   }
 
@@ -145,10 +164,13 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   Widget build(BuildContext context) {
     final detailAsync = ref.watch(contentDetailProvider(widget.contentId));
 
-    return detailAsync.when(
-      data: _buildLoaded,
-      loading: _buildLoading,
-      error: _buildError,
+    return ScrollConfiguration(
+      behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+      child: detailAsync.when(
+        data: _buildLoaded,
+        loading: _buildLoading,
+        error: _buildError,
+      ),
     );
   }
 
@@ -159,7 +181,11 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final metrics = WindowMetrics.fromSize(
-          Size(constraints.maxWidth, constraints.maxHeight),
+          Size(
+            constraints.maxWidth /
+                (MediaQuery.textScalerOf(context).scale(16) / 16),
+            constraints.maxHeight,
+          ),
         );
         return Scaffold(
           appBar: _buildAppBar(
@@ -168,7 +194,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                 ? '正在打开内容'
                 : preview!.title!.trim(),
           ),
-          body: widget.onClose == null && metrics.supportsSupportingPane
+          body: metrics.supportsSupportingPane
               ? _previewUsesImmersiveMedia(preview)
                     ? _buildLoadingImmersive(preview!)
                     : _buildLoadingTwoPane(preview)
@@ -210,7 +236,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             ],
           ),
         ),
-        const VerticalDivider(width: 1),
+        const SizedBox(width: AppSpacing.md),
         const SizedBox(
           width: AppPane.supportingWidth,
           child: Padding(
@@ -239,7 +265,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Expanded(flex: 13, child: _ImmersiveMediaSkeleton()),
-            VerticalDivider(width: 1, color: scheme.outlineVariant),
+            const SizedBox(width: AppSpacing.md),
             Expanded(
               flex: 8,
               child: ColoredBox(
@@ -289,7 +315,11 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final metrics = WindowMetrics.fromSize(
-          Size(constraints.maxWidth, constraints.maxHeight),
+          Size(
+            constraints.maxWidth /
+                (MediaQuery.textScalerOf(context).scale(16) / 16),
+            constraints.maxHeight,
+          ),
         );
         final images = ContentParser.extractAllImages(
           detail,
@@ -333,10 +363,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           initialMediaAssetId: widget.initialMediaAssetId,
         );
 
-        final body =
-            widget.onClose == null &&
-                metrics.supportsSupportingPane &&
-                (detail.hasExternalOriginal || detail.platform == 'telegram')
+        final body = metrics.supportsSupportingPane
             ? templateContext.usesImmersiveMediaLayout
                   ? _buildImmersiveMediaPane(templateContext)
                   : _buildTwoPane(templateContext)
@@ -371,6 +398,18 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         overflow: TextOverflow.ellipsis,
       ),
       actions: [
+        if (detail != null &&
+            ref.watch(
+                  globalPlaybackProvider.select(
+                    (state) => state.request?.contentId,
+                  ),
+                ) ==
+                detail.id)
+          IconButton(
+            tooltip: '播放设置与队列',
+            icon: const Icon(Icons.queue_music_rounded),
+            onPressed: () => context.push('/player'),
+          ),
         if (widget.onToggleFocus != null)
           IconButton(
             tooltip: widget.focused ? '显示列表' : '专注阅读',
@@ -406,69 +445,99 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
   // --- 布局 ---
 
-  Widget _buildSinglePane(TemplateContext ctx) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
-        child: ListView(
-          key: const ValueKey('content-detail-primary-scroll'),
-          controller: _scrollController,
-          padding: EdgeInsets.all(
-            ctx.metrics.isCompact ? AppSpacing.md : AppSpacing.lg,
+  Widget _buildSinglePane(TemplateContext ctx) => _buildReadingPane(ctx, false);
+
+  Widget _buildTwoPane(TemplateContext ctx) => _buildReadingPane(ctx, true);
+
+  Widget _buildReadingPane(TemplateContext ctx, bool supporting) {
+    final article = ctx.detail.template == ContentTemplate.article;
+    final events = ref.watch(knowledgeEventsProvider(ctx.detail.id));
+    supporting =
+        supporting &&
+        (article ||
+            ctx.detail.tags.isNotEmpty ||
+            ctx.detail.sourceTags.isNotEmpty ||
+            ctx.detail.manualEditFields.isNotEmpty ||
+            events.hasError ||
+            (events.value?.items.isNotEmpty ?? false));
+    final sidebarSections = <Widget>[
+      if (article &&
+          ContentParser.extractHeaders(
+            ContentParser.getMarkdownContent(ctx.detail),
+          ).isNotEmpty)
+        ValueListenableBuilder<String?>(
+          valueListenable: _activeHeader,
+          builder: (context, active, _) => ContentOutline(
+            detail: ctx.detail,
+            activeHeader: active,
+            headerKeys: _headerKeys,
+            padding: EdgeInsets.zero,
           ),
+        ),
+      if (events.hasError || (events.value?.items.isNotEmpty ?? false))
+        ContentEventLinks(contentId: ctx.detail.id),
+      if (ctx.detail.manualEditFields.isNotEmpty ||
+          ctx.detail.parseCandidate != null)
+        ParseCandidatePanel(
+          detail: ctx.detail,
+          onResolve: ctx.onResolveParseCandidate!,
+        ),
+      if ([
+        ...ctx.detail.tags,
+        ...ctx.detail.sourceTags,
+      ].any((tag) => tag.trim().isNotEmpty))
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _SharedDetailHeader(
-              detail: ctx.detail,
-              showSourceLine: true,
-              sharedTransition: widget.preview?.id == ctx.detail.id,
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: AppSpacing.md),
-                ParseStatusBanner(
-                  detail: ctx.detail,
-                  onReParse: () => _reParse(ctx.detail),
-                ),
-                if (ctx.detail.isParseFailed || ctx.detail.isParsePending)
-                  const SizedBox(height: AppSpacing.md),
-                _ConstrainBody(
-                  template: ctx.detail.template,
-                  child: ContentTemplateBody(context_: ctx),
-                ),
-                const SizedBox(height: AppSpacing.xl),
-                ContentEventLinks(contentId: ctx.detail.id),
-                ContentSupportingSections(
-                  detail: ctx.detail,
-                  onResolveParseCandidate: ctx.onResolveParseCandidate,
-                ),
-                const SizedBox(height: AppSpacing.xxl),
-              ],
-            ),
+            const DetailSectionHeader(title: '标签'),
+            TagsSection(detail: ctx.detail),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildTwoPane(TemplateContext ctx) {
+    ];
+    Widget sectionDivider() => const Divider(height: 32, thickness: 1);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
-          child: ListView(
-            key: const ValueKey('content-detail-primary-scroll'),
-            controller: _scrollController,
-            padding: const EdgeInsets.all(AppSpacing.xl),
-            children: [
-              _SharedDetailHeader(
-                detail: ctx.detail,
-                showSourceLine: false,
-                sharedTransition: widget.preview?.id == ctx.detail.id,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: AppPane.readableMaxWidth,
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: ListView(
+                key: const ValueKey('content-detail-primary-scroll'),
+                controller: _scrollController,
+                padding: EdgeInsets.all(
+                  ctx.metrics.isCompact ? AppSpacing.md : AppSpacing.xl,
+                ),
                 children: [
+                  KeyedSubtree(
+                    key: _readingHeaderKey,
+                    child: _SharedDetailHeader(
+                      detail: ctx.detail,
+                      showSourceLine: true,
+                      sharedTransition: widget.preview?.id == ctx.detail.id,
+                    ),
+                  ),
+                  if (!supporting &&
+                      article &&
+                      ContentParser.extractHeaders(
+                        ContentParser.getMarkdownContent(ctx.detail),
+                      ).isNotEmpty)
+                    ExpansionTile(
+                      title: const Text('目录'),
+                      children: [
+                        ValueListenableBuilder<String?>(
+                          valueListenable: _activeHeader,
+                          builder: (context, active, _) => ContentOutline(
+                            detail: ctx.detail,
+                            activeHeader: active,
+                            headerKeys: _headerKeys,
+                            showTitle: false,
+                          ),
+                        ),
+                      ],
+                    ),
                   const SizedBox(height: AppSpacing.md),
                   ParseStatusBanner(
                     detail: ctx.detail,
@@ -480,66 +549,76 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                     template: ctx.detail.template,
                     child: ContentTemplateBody(context_: ctx),
                   ),
-                  const SizedBox(height: AppSpacing.xxl),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const VerticalDivider(width: 1),
-        SizedBox(
-          width: AppPane.supportingWidth,
-          child: Column(
-            children: [
-              if (ctx.detail.template == ContentTemplate.article)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.md,
-                    AppSpacing.md,
-                    AppSpacing.md,
-                    0,
-                  ),
-                  child: AnimatedBuilder(
-                    animation: _scrollController,
-                    builder: (context, _) {
-                      final visible =
-                          _scrollController.hasClients &&
-                          _scrollController.offset >= 136;
-                      return _DockedArticleTitle(
-                        key: ValueKey(
-                          visible
-                              ? 'content-detail-docked-title-visible'
-                              : 'content-detail-docked-title-hidden',
-                        ),
-                        detail: ctx.detail,
-                        visible: visible,
-                      );
-                    },
-                  ),
-                ),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  children: [
-                    ContentIdentityPanel(detail: ctx.detail),
-                    const SizedBox(height: AppSpacing.md),
-                    if (ctx.detail.template == ContentTemplate.article)
-                      ContentOutline(
-                        detail: ctx.detail,
-                        activeHeader: _activeHeader,
-                        headerKeys: _headerKeys,
-                      ),
+                  const SizedBox(height: AppSpacing.xl),
+                  if (!supporting) ...[
                     ContentEventLinks(contentId: ctx.detail.id),
                     ContentSupportingSections(
+                      showStats: false,
                       detail: ctx.detail,
                       onResolveParseCandidate: ctx.onResolveParseCandidate,
                     ),
                   ],
-                ),
+                  const SizedBox(height: AppSpacing.xxl),
+                ],
               ),
-            ],
+            ),
           ),
         ),
+        if (supporting)
+          SizedBox(
+            width: 256,
+            child: Material(
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+              borderRadius: AppShape.paneBorder,
+              clipBehavior: Clip.antiAlias,
+              child: ListView(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                children: [
+                  ValueListenableBuilder<double>(
+                    valueListenable: _headerProgress,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _displayDetailTitle(ctx.detail),
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        ContentSourceLine(
+                          detail: ctx.detail,
+                          showPlatform: false,
+                          showOriginalAction: false,
+                        ),
+                        UnifiedStats(detail: ctx.detail),
+                        if (sidebarSections.isNotEmpty) sectionDivider(),
+                      ],
+                    ),
+                    builder: (context, progress, child) => ClipRect(
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        heightFactor: progress,
+                        child: Opacity(
+                          opacity: progress,
+                          child: Transform.translate(
+                            offset: Offset(0, 12 * (1 - progress)),
+                            child: child,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  for (
+                    var index = 0;
+                    index < sidebarSections.length;
+                    index++
+                  ) ...[
+                    if (index > 0) sectionDivider(),
+                    sidebarSections[index],
+                  ],
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -554,6 +633,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         child: ImmersiveMediaDetail(
           context_: ctx,
           sharedHeaderBuilder: (child) => ContentSharedTransition(
+            destination: true,
             contentId: ctx.detail.id,
             enabled: widget.preview?.id == ctx.detail.id,
             immersiveMedia: true,
@@ -771,6 +851,7 @@ class _LoadingSharedHeader extends StatelessWidget {
 
     if (preview == null) return surface;
     return ContentSharedTransition(
+      destination: true,
       contentId: contentId,
       immersiveMedia: immersiveMedia,
       child: surface,
@@ -1079,6 +1160,7 @@ class _Header extends StatelessWidget {
             showOriginalAction: false,
           ),
         ],
+        UnifiedStats(detail: detail),
         if (isQuestionAnswer && (answerCount > 0 || followerCount > 0)) ...[
           const SizedBox(height: AppSpacing.sm),
           Wrap(
@@ -1188,6 +1270,7 @@ class _SharedDetailHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return ContentSharedTransition(
+      destination: true,
       contentId: detail.id,
       enabled: sharedTransition,
       child: Material(
@@ -1206,73 +1289,6 @@ class _SharedDetailHeader extends StatelessWidget {
               : _Header(detail: detail, showSourceLine: showSourceLine),
         ),
       ),
-    );
-  }
-}
-
-class _DockedArticleTitle extends StatelessWidget {
-  const _DockedArticleTitle({
-    super.key,
-    required this.detail,
-    required this.visible,
-  });
-
-  final ContentDetail detail;
-  final bool visible;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final title = _displayDetailTitle(detail);
-    return AnimatedSize(
-      duration: AppMotion.contentSwap,
-      curve: AppMotion.standardCurve,
-      alignment: Alignment.topCenter,
-      child: visible
-          ? Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.md),
-              child: AnimatedSlide(
-                duration: AppMotion.contentSwap,
-                curve: AppMotion.standardCurve,
-                offset: visible ? Offset.zero : const Offset(0, -0.08),
-                child: AnimatedOpacity(
-                  duration: AppMotion.contentSwap,
-                  opacity: visible ? 1 : 0,
-                  child: Container(
-                    key: const ValueKey('content-detail-docked-title'),
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.secondaryContainer,
-                      borderRadius: AppShape.paneBorder,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '正在阅读',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.onSecondaryContainer,
-                          ),
-                        ),
-                        const SizedBox(height: AppSpacing.xxs),
-                        Text(
-                          title,
-                          maxLines: 4,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            color: theme.colorScheme.onSecondaryContainer,
-                            fontWeight: FontWeight.w700,
-                            height: 1.3,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            )
-          : const SizedBox.shrink(),
     );
   }
 }
@@ -1335,6 +1351,8 @@ class _MoreMenu extends StatelessWidget {
       icon: const Icon(Icons.more_vert_rounded),
       onSelected: (value) {
         switch (value) {
+          case 'push':
+            showPushContentDialog(context, [detail.id]);
           case 'edit':
             onEdit();
           case 'event':
@@ -1348,6 +1366,15 @@ class _MoreMenu extends StatelessWidget {
         }
       },
       itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: 'push',
+          child: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.send_outlined),
+            title: Text('推送…'),
+          ),
+        ),
         const PopupMenuItem(
           value: 'edit',
           child: ListTile(

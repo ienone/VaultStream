@@ -902,7 +902,7 @@ class AutomationTab extends ConsumerWidget {
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerRight,
-                  child: FilledButton.tonal(
+                  child: SettingSaveButton(
                     onPressed: () async {
                       final notifier = ref.read(
                         systemSettingsProvider.notifier,
@@ -936,7 +936,9 @@ class AutomationTab extends ConsumerWidget {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, _) => const Text('加载失败'),
+      error: (_, _) => SettingLoadFailure(
+        onRetry: () => ref.invalidate(systemSettingsProvider),
+      ),
     );
   }
 
@@ -1007,7 +1009,7 @@ class AutomationTab extends ConsumerWidget {
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerRight,
-                  child: FilledButton.tonal(
+                  child: SettingSaveButton(
                     onPressed: () async {
                       final notifier = ref.read(
                         systemSettingsProvider.notifier,
@@ -1044,7 +1046,9 @@ class AutomationTab extends ConsumerWidget {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, _) => const Text('加载失败'),
+      error: (_, _) => SettingLoadFailure(
+        onRetry: () => ref.invalidate(systemSettingsProvider),
+      ),
     );
   }
 
@@ -1114,7 +1118,7 @@ class AutomationTab extends ConsumerWidget {
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerRight,
-                  child: FilledButton.tonal(
+                  child: SettingSaveButton(
                     onPressed: () async {
                       final notifier = ref.read(
                         systemSettingsProvider.notifier,
@@ -1155,7 +1159,9 @@ class AutomationTab extends ConsumerWidget {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, _) => const Text('加载失败'),
+      error: (_, _) => SettingLoadFailure(
+        onRetry: () => ref.invalidate(systemSettingsProvider),
+      ),
     );
   }
 

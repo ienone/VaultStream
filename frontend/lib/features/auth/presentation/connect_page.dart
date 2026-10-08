@@ -53,8 +53,7 @@ class _ConnectPageState extends ConsumerState<ConnectPage> {
     if (result['success'] == true) {
       if (result['auth_ok'] == true) {
         // 仅在鉴权成功后才持久化凭据，路由守卫依赖此状态跳转
-        await ref.read(localSettingsProvider.notifier).setBaseUrl(url);
-        await ref.read(localSettingsProvider.notifier).setApiToken(token);
+        await ref.read(localSettingsProvider.notifier).setConnection(url, token);
         if (mounted) {
           Toast.show(context, '连接成功');
           // localSettingsProvider 状态更新后路由会自动跳转
@@ -62,7 +61,7 @@ class _ConnectPageState extends ConsumerState<ConnectPage> {
       } else {
         if (mounted) {
           setState(() {
-            _error = '服务器连接成功，但 API 密钥错误。请检查控制台打印的密钥。';
+            _error = 'API 密钥无效，请检查后重试。';
             _isLoading = false;
           });
         }

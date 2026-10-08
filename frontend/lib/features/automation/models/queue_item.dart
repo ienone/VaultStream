@@ -6,9 +6,9 @@ part 'queue_item.freezed.dart';
 part 'queue_item.g.dart';
 
 enum QueueStatus {
-  willPush('will_push', '待推送'),
-  filtered('filtered', '不推送'),
-  pushed('pushed', '已推送');
+  willPush('will_push', '待发送'),
+  filtered('filtered', '未发送'),
+  pushed('pushed', '已发送');
 
   const QueueStatus(this.value, this.label);
   final String value;
@@ -51,7 +51,7 @@ abstract class QueueItem with _$QueueItem {
 
   String get displayPlatform => sourcePlatform ?? platform;
 
-  bool get needsDeliveryReview => reasonCode == 'delivery_unknown';
+  bool get deliveryUnconfirmed => reasonCode == 'delivery_unknown';
   bool get isProcessing => status == 'processing';
 
   String? get displayReason {

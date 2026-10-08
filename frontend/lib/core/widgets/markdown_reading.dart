@@ -11,9 +11,9 @@ import '../../theme/design_tokens.dart';
 class HeaderBuilder extends MarkdownElementBuilder {
   final Map<String, GlobalKey> keys;
   final TextStyle? style;
-  final Map<String, int> _occurrenceCount = {};
+  final Map<String, int> _occurrenceCount;
 
-  HeaderBuilder(this.keys, this.style);
+  HeaderBuilder(this.keys, this.style, this._occurrenceCount);
 
   @override
   Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
@@ -21,7 +21,7 @@ class HeaderBuilder extends MarkdownElementBuilder {
     // 为重复的标题生成唯一标识符，防止 GlobalKey 冲突
     final count = _occurrenceCount[text] ?? 0;
     _occurrenceCount[text] = count + 1;
-    final uniqueKey = count == 0 ? text : '$text-$count';
+    final uniqueKey = '${text.length}:$text:$count';
 
     final key = keys.putIfAbsent(uniqueKey, () => GlobalKey());
     return Container(

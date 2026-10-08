@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/layout/responsive_layout.dart';
 import '../../../theme/design_tokens.dart';
 import '../../dashboard/models/stats.dart';
 import '../../dashboard/providers/dashboard_provider.dart' as dashboard;
@@ -27,64 +26,35 @@ class ProcessingAutomationPanel extends ConsumerWidget {
         ref.invalidate(systemSettingsProvider);
         ref.invalidate(semanticIndexStatusProvider);
       },
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          AppSpacing.lg,
-          AppSpacing.lg,
-          AppSpacing.xxxl,
-        ),
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final cards = _buildStages(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+            children: [
+              ..._buildStages(
                 ref: ref,
                 queueState: queue,
                 diagnostics: diagnostics.value,
                 settingsState: settings,
                 semanticState: semantic,
-              );
-              final twoColumns = ResponsiveLayout.widthClassFor(
-                constraints.maxWidth,
-              ).supportsSupportingPane;
-              if (!twoColumns) {
-                return Column(
-                  children: [
-                    for (final card in cards) ...[
-                      card,
-                      const SizedBox(height: AppSpacing.sm),
-                    ],
-                  ],
-                );
-              }
-              return Wrap(
-                spacing: AppSpacing.sm,
-                runSpacing: AppSpacing.sm,
-                children: [
-                  for (final card in cards)
-                    SizedBox(
-                      width: (constraints.maxWidth - AppSpacing.sm) / 2,
-                      child: card,
-                    ),
-                ],
-              );
-            },
+              ),
+              if (queue.hasError ||
+                  diagnostics.hasError ||
+                  settings.hasError ||
+                  semantic.hasError)
+                _LoadWarning(
+                  onRetry: () {
+                    ref.invalidate(dashboard.queueStatsProvider);
+                    ref.invalidate(dashboard.backgroundTaskDiagnosticsProvider);
+                    ref.invalidate(systemSettingsProvider);
+                    ref.invalidate(semanticIndexStatusProvider);
+                  },
+                ),
+            ],
           ),
-          if (queue.hasError ||
-              diagnostics.hasError ||
-              settings.hasError ||
-              semantic.hasError) ...[
-            const SizedBox(height: AppSpacing.sm),
-            _LoadWarning(
-              onRetry: () {
-                ref.invalidate(dashboard.queueStatsProvider);
-                ref.invalidate(dashboard.backgroundTaskDiagnosticsProvider);
-                ref.invalidate(systemSettingsProvider);
-                ref.invalidate(semanticIndexStatusProvider);
-              },
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
@@ -149,6 +119,7 @@ class ProcessingAutomationPanel extends ConsumerWidget {
     final pending = (semantic?['pending_total'] as num?)?.toInt() ?? 0;
 
     return [
+      const _StageGroupHeading(title: '保存与归档'),
       _ProcessingStageSection(
         title: '解析',
         policyEnabled: settingsReady ? parseEnabled : null,
@@ -176,7 +147,7 @@ class ProcessingAutomationPanel extends ConsumerWidget {
             : settingsState.hasError
             ? '解析策略读取失败'
             : !parseEnabled
-            ? '已暂停领取，新内容继续排队'
+            ? '已暂停'
             : parse == null
             ? '正在读取解析状态'
             : '${parse.processing} 处理中 · ${parse.unprocessed} 待处理 · ${parse.parseFailed} 失败',
@@ -198,11 +169,12 @@ class ProcessingAutomationPanel extends ConsumerWidget {
             : !settingsReady
             ? '正在读取媒体归档策略'
             : !archiveEnabled
-            ? '已关闭，不下载远程媒体'
+            ? '已关闭'
             : '随解析归档${archiveImages ? '图片' : ''}${archiveImages && archiveVideos ? '和' : ''}${archiveVideos ? '视频' : ''}${!archiveImages && !archiveVideos ? '（子项均关闭）' : ''}',
         settingsPath: '/settings?tab=storage',
         settingsLabel: '媒体归档设置',
       ),
+      const _StageGroupHeading(title: '理解与整理', showModelSettings: true),
       _ProcessingStageSection(
         title: '自动摘要',
         policyEnabled: settingsReady ? summaryEnabled : null,
@@ -220,16 +192,14 @@ class ProcessingAutomationPanel extends ConsumerWidget {
         status: settingsState.hasError
             ? '摘要策略读取失败'
             : !settingsReady
-            ? '正在读取内容理解策略'
+            ? '正在读取摘要设置'
             : summaryEnabled
             ? '解析后自动生成摘要'
-            : '仅在内容详情手动生成摘要',
+            : '已关闭',
         latestRun: summaryRun,
-        settingsPath: '/settings?tab=automation',
-        settingsLabel: '模型配置',
       ),
       _ProcessingStageSection(
-        title: '多来源自动聚合',
+        title: '自动整理相关内容',
         policyEnabled: settingsReady ? aggregationEnabled : null,
         onPolicyChanged: (value) => ref
             .read(systemSettingsProvider.notifier)
@@ -246,17 +216,17 @@ class ProcessingAutomationPanel extends ConsumerWidget {
             : aggregationEnabled
             ? _toneForRun(aggregationRun)
             : _StageTone.inactive,
-        status: !settingsReady
-            ? '正在读取聚合策略'
+        status: settingsState.hasError
+            ? '整理设置读取失败'
+            : !settingsReady
+            ? '正在读取整理设置'
             : aggregationEnabled
-            ? '每小时检查新解析内容，使用文本模型生成带来源引句的事件综合；结果待核实'
-            : '已关闭；开启后每批发送最多 20 条新内容及 10 条关联材料（优先既有事件，其余取近七天），每条正文前 6000 字符；首次新内容取最近 24 小时',
+            ? '每小时整理一次'
+            : '已关闭',
         latestRun: aggregationRun,
-        settingsPath: '/settings?tab=automation',
-        settingsLabel: '模型配置',
       ),
       _ProcessingStageSection(
-        title: '聚合结果推送',
+        title: '发送整理后的内容',
         policyEnabled: settingsReady ? aggregationPushEnabled : null,
         onPolicyChanged: (value) => ref
             .read(systemSettingsProvider.notifier)
@@ -273,14 +243,16 @@ class ProcessingAutomationPanel extends ConsumerWidget {
             : aggregationPushEnabled
             ? _StageTone.ok
             : _StageTone.inactive,
-        status: !settingsReady
-            ? '正在读取推送策略'
+        status: settingsState.hasError
+            ? '发送设置读取失败'
+            : !settingsReady
+            ? '正在读取发送设置'
             : aggregationPushEnabled
-            ? '允许新聚合结果按分发规则审批和推送；仍遵守全局暂停及目标开关'
-            : '已关闭；聚合结果可在收藏和知识事件中查看，已有队列也暂停发送',
+            ? '按分发规则发送'
+            : '已关闭',
       ),
       _ProcessingStageSection(
-        title: '全文 / 语义索引',
+        title: '搜索索引',
         policyEnabled: settingsReady ? semanticEnabled : null,
         onPolicyChanged: (value) => ref
             .read(systemSettingsProvider.notifier)
@@ -302,17 +274,42 @@ class ProcessingAutomationPanel extends ConsumerWidget {
             : settingsState.hasError
             ? '自动索引策略读取失败'
             : semantic == null
-            ? '全文检索可用；正在读取语义索引状态'
-            : '全文检索可用 · 语义已索引 $indexed · 待索引 $pending${semanticEnabled ? '' : ' · 自动索引已关闭'}',
+            ? '正在读取索引状态'
+            : '已索引 $indexed · 待索引 $pending${semanticEnabled ? '' : ' · 自动索引已关闭'}',
         latestRun: semanticRun,
-        settingsPath: '/settings?tab=automation',
-        settingsLabel: '模型配置',
       ),
     ];
   }
 }
 
-class _ProcessingStageSection extends StatelessWidget {
+class _StageGroupHeading extends StatelessWidget {
+  const _StageGroupHeading({
+    required this.title,
+    this.showModelSettings = false,
+  });
+
+  final String title;
+  final bool showModelSettings;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 24, 8, 8),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+        ),
+        if (showModelSettings)
+          TextButton(
+            onPressed: () => context.push('/settings?tab=automation'),
+            child: const Text('模型配置'),
+          ),
+      ],
+    ),
+  );
+}
+
+class _ProcessingStageSection extends StatefulWidget {
   const _ProcessingStageSection({
     required this.title,
     required this.icon,
@@ -333,87 +330,128 @@ class _ProcessingStageSection extends StatelessWidget {
   final String? settingsPath;
   final String? settingsLabel;
   final bool? policyEnabled;
-  final ValueChanged<bool>? onPolicyChanged;
+  final Future<void> Function(bool)? onPolicyChanged;
   final BackgroundTaskRun? latestRun;
   final List<FailedParseTask> failures;
+
+  @override
+  State<_ProcessingStageSection> createState() =>
+      _ProcessingStageSectionState();
+}
+
+class _ProcessingStageSectionState extends State<_ProcessingStageSection> {
+  bool _saving = false;
+  String? _saveError;
+
+  Future<void> _changePolicy(bool value) async {
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
+    try {
+      await widget.onPolicyChanged!(value);
+    } catch (_) {
+      if (mounted) setState(() => _saveError = '保存失败，请重试');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final toneColor = _toneColor(cs, tone);
+    final toneColor = _toneColor(cs, widget.tone);
     return Padding(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Material(
+        color: cs.surfaceContainerLow,
+        borderRadius: AppShape.cardBorder,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, color: toneColor),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Text(
-                  title,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+              Row(
+                children: [
+                  Icon(widget.icon, color: toneColor),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
-                ),
+                  if (widget.onPolicyChanged != null)
+                    Semantics(
+                      label: widget.title,
+                      child: Switch(
+                        value: widget.policyEnabled ?? false,
+                        onChanged: widget.policyEnabled == null || _saving
+                            ? null
+                            : _changePolicy,
+                      ),
+                    )
+                  else
+                    _StageBadge(tone: widget.tone),
+                ],
               ),
-              if (onPolicyChanged != null)
-                Semantics(
-                  label: title,
-                  child: Switch.adaptive(
-                    value: policyEnabled ?? false,
-                    onChanged: policyEnabled == null ? null : onPolicyChanged,
+              const SizedBox(height: AppSpacing.sm),
+              Text(widget.status, style: theme.textTheme.bodyMedium),
+              if (_saveError != null)
+                Text(
+                  _saveError!,
+                  style: theme.textTheme.bodyMedium?.copyWith(color: cs.error),
+                ),
+              if (widget.failures.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.sm),
+                for (final failure in widget.failures.take(3))
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.error_outline_rounded, color: cs.error),
+                    title: Text(
+                      failure.title?.trim().isNotEmpty == true
+                          ? failure.title!
+                          : '解析失败',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: failure.contentId == null
+                        ? null
+                        : const Icon(Icons.chevron_right_rounded),
+                    onTap: failure.contentId == null
+                        ? null
+                        : () =>
+                              context.push('/collection/${failure.contentId}'),
                   ),
-                )
-              else
-                _StageBadge(tone: tone),
+              ],
+              const SizedBox(height: AppSpacing.sm),
+              Wrap(
+                spacing: AppSpacing.xs,
+                runSpacing: AppSpacing.xs,
+                children: [
+                  if (widget.settingsPath != null)
+                    OutlinedButton.icon(
+                      onPressed: () => context.push(widget.settingsPath!),
+                      icon: const Icon(Icons.tune_rounded, size: 18),
+                      label: Text(widget.settingsLabel!),
+                    ),
+                  if (widget.latestRun != null &&
+                      widget.latestRun!.runId.isNotEmpty)
+                    TextButton.icon(
+                      onPressed: () =>
+                          context.push('/tasks/${widget.latestRun!.runId}'),
+                      icon: const Icon(Icons.receipt_long_rounded, size: 18),
+                      label: const Text('最近运行'),
+                    ),
+                ],
+              ),
             ],
           ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(status, style: theme.textTheme.bodyMedium),
-          if (failures.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.sm),
-            for (final failure in failures.take(3))
-              ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.error_outline_rounded, color: cs.error),
-                title: Text('内容 #${failure.contentId ?? failure.id}'),
-                subtitle: Text(
-                  '解析未完成，打开内容查看原因或重新解析',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: failure.contentId == null
-                    ? null
-                    : const Icon(Icons.chevron_right_rounded),
-                onTap: failure.contentId == null
-                    ? null
-                    : () => context.push('/collection/${failure.contentId}'),
-              ),
-          ],
-          const SizedBox(height: AppSpacing.sm),
-          Wrap(
-            spacing: AppSpacing.xs,
-            runSpacing: AppSpacing.xs,
-            children: [
-              if (settingsPath != null)
-                OutlinedButton.icon(
-                  onPressed: () => context.push(settingsPath!),
-                  icon: const Icon(Icons.tune_rounded, size: 18),
-                  label: Text(settingsLabel!),
-                ),
-              if (latestRun != null && latestRun!.runId.isNotEmpty)
-                TextButton.icon(
-                  onPressed: () => context.push('/tasks/${latestRun!.runId}'),
-                  icon: const Icon(Icons.receipt_long_rounded, size: 18),
-                  label: const Text('最近运行'),
-                ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -466,7 +504,6 @@ class _LoadWarning extends StatelessWidget {
       child: ListTile(
         leading: const Icon(Icons.sync_problem_rounded),
         title: const Text('部分阶段状态暂时不可用'),
-        subtitle: const Text('已保留其余可用状态，可单独重试读取。'),
         trailing: TextButton(onPressed: onRetry, child: const Text('重试')),
       ),
     );

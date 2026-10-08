@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../media/media_asset.dart';
@@ -62,9 +63,9 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
   void didUpdateWidget(covariant NetworkThumbnail oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.imageUrl != widget.imageUrl ||
-        oldWidget.fallbackUrls != widget.fallbackUrls ||
+        !listEquals(oldWidget.fallbackUrls, widget.fallbackUrls) ||
         oldWidget.mediaAsset != widget.mediaAsset ||
-        oldWidget.mediaAssets != widget.mediaAssets ||
+        !listEquals(oldWidget.mediaAssets, widget.mediaAssets) ||
         oldWidget.purpose != widget.purpose) {
       _resetResolver();
     }

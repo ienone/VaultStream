@@ -3,22 +3,30 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 final playbackRouteObserverProvider = Provider<PlaybackRouteObserver>((ref) {
   final observer = PlaybackRouteObserver();
-  ref.onDispose(observer.topPage.dispose);
+  ref.onDispose(observer.revision.dispose);
   return observer;
 });
 
 /// Popup menus and dialogs do not take ownership of the page's web video.
 /// Full-screen media uses a PageRoute and participates in the handoff.
 class PlaybackRouteObserver extends NavigatorObserver {
-  final topPage = ValueNotifier<Route<dynamic>?>(null);
+  final revision = ValueNotifier<int>(0);
   final _routes = <Route<dynamic>>[];
 
-  bool ownsPage(Route<dynamic>? route) =>
-      route == null ||
-      (_routes.contains(route) ? route == topPage.value : route.isCurrent);
+  bool ownsPage(Route<dynamic>? route) {
+    if (route == null) return true;
+    if (!_routes.contains(route)) return route.isCurrent;
+    // GoRouter forwards nested Navigator events to its root observers.
+    // A shell and its child page can both be current in their own stacks.
+    return route ==
+        _routes
+            .whereType<PageRoute<dynamic>>()
+            .where((candidate) => candidate.navigator == route.navigator)
+            .lastOrNull;
+  }
 
   void _update() {
-    topPage.value = _routes.whereType<PageRoute<dynamic>>().lastOrNull;
+    revision.value++;
   }
 
   @override

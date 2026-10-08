@@ -61,7 +61,11 @@ enum ContentTemplate {
   bool get constrainsBodyWidth =>
       this == ContentTemplate.article ||
       this == ContentTemplate.imageNote ||
-      this == ContentTemplate.document;
+      this == ContentTemplate.document ||
+      this == ContentTemplate.shortPost ||
+      this == ContentTemplate.bookmark ||
+      this == ContentTemplate.collectionIndex ||
+      this == ContentTemplate.profile;
 
   /// 媒体是否是该模板的主体。
   bool get mediaIsPrimary =>
@@ -142,15 +146,17 @@ ContentTemplate resolveContentTemplate({
 extension ContentDetailTemplate on ContentDetail {
   /// 平台为短帖截取的标题不再重复正文；人工标题始终保留。
   bool get shortPostTitleRepeatsBody {
-    if (template != ContentTemplate.shortPost || manualEditFields.contains('title')) {
+    if (template != ContentTemplate.shortPost ||
+        manualEditFields.contains('title')) {
       return false;
     }
-    final heading = (title ?? '').trim()
-        .replaceFirst(RegExp(r'(?:…|\.{3})+$'), '').trimRight();
+    final heading = (title ?? '')
+        .trim()
+        .replaceFirst(RegExp(r'(?:…|\.{3})+$'), '')
+        .trimRight();
     final text = (body ?? '').trim();
     return heading.isNotEmpty && text.startsWith(heading);
   }
-
 
   ContentTemplate get template =>
       resolveContentTemplate(layoutType: layoutType, contentType: contentType);

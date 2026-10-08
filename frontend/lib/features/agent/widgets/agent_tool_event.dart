@@ -31,8 +31,8 @@ class _AgentToolEventState extends State<AgentToolEvent>
       (widget.event['ok'] == false || widget.event['error'] != null);
 
   Object? get _details {
-    if (widget.running) return widget.event['args'];
     return {
+      'tool': widget.event['tool'],
       if (widget.event['args'] != null) 'args': widget.event['args'],
       if (widget.event['error'] != null) 'error': widget.event['error'],
       if (widget.event['result'] != null) 'result': widget.event['result'],
@@ -51,7 +51,7 @@ class _AgentToolEventState extends State<AgentToolEvent>
   @override
   void initState() {
     super.initState();
-    _expanded = _failed;
+    _expanded = false;
     _animation =
         AnimationController(
           vsync: this,
@@ -61,15 +61,6 @@ class _AgentToolEventState extends State<AgentToolEvent>
           if (status == AnimationStatus.dismissed && mounted) setState(() {});
         });
     _height = _animation.drive(CurveTween(curve: AppMotion.standardCurve));
-  }
-
-  @override
-  void didUpdateWidget(covariant AgentToolEvent oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    final wasFailed =
-        !oldWidget.running &&
-        (oldWidget.event['ok'] == false || oldWidget.event['error'] != null);
-    if (_failed && !wasFailed) _setExpanded(true);
   }
 
   void _setExpanded(bool expanded) {
@@ -103,7 +94,7 @@ class _AgentToolEventState extends State<AgentToolEvent>
     final citations = citationsFromToolResult(widget.event);
     final actionSummary = actionSummaryFromToolResult(widget.event);
     final statusLabel = widget.running
-        ? '调用中'
+        ? '进行中'
         : _failed
         ? '失败'
         : '已完成';
@@ -141,7 +132,7 @@ class _AgentToolEventState extends State<AgentToolEvent>
                         const SizedBox(width: AppSpacing.xs),
                         Expanded(
                           child: Text(
-                            '${widget.event['tool'] ?? 'tool'} $statusLabel',
+                            '${_toolLabel(widget.event['tool'])} · $statusLabel',
                             style: theme.textTheme.labelMedium?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
@@ -200,3 +191,18 @@ class _AgentToolEventState extends State<AgentToolEvent>
     );
   }
 }
+
+String _toolLabel(Object? tool) => switch (tool) {
+  'search_content' => '搜索内容',
+  'read_content' => '阅读内容',
+  'read_image' => '识别图片',
+  'capture_content' => '保存内容',
+  'get_stats' => '查看统计',
+  'list_groups' => '查询推送目标',
+  'push_batch' => '加入推送队列',
+  'organize_knowledge_event' => '整理事件',
+  'api_catalog' => '查看可用操作',
+  'api_get' => '查询数据',
+  'api_mutation' => '更新数据',
+  _ => '工具操作',
+};

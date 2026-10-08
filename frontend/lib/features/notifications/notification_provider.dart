@@ -7,11 +7,12 @@ import '../../core/network/api_client.dart';
 import '../../core/network/sse_service.dart';
 import 'notification_models.dart';
 
-typedef NotificationQuery = ({String? category, String state});
+typedef NotificationQuery = ({String? category, String state, int offset});
 
 const NotificationQuery defaultNotificationQuery = (
   category: null,
   state: 'active',
+  offset: 0,
 );
 
 final notificationInboxProvider =
@@ -45,6 +46,7 @@ final notificationInboxProvider =
           'state': query.state,
           if (query.category != null) 'category': query.category,
           'limit': 100,
+          'offset': query.offset,
         },
       );
       return NotificationInbox.fromJson(

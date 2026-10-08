@@ -91,98 +91,149 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
 
       return HeroMode(
         enabled: false,
-        child: Row(
-          children: [
-            AnimatedContainer(
-              // 浏览与阅读是不同列表布局；只对阅读模式内的收折插值。
-              key: ValueKey(
-                readerVisible
-                    ? 'collection-list-pane'
-                    : 'collection-overview-pane',
-              ),
-              width: listVisible ? listWidth : 0,
-              duration: duration,
-              curve: AppMotion.standardCurve,
-              clipBehavior: Clip.hardEdge,
-              decoration: const BoxDecoration(),
-              child: OverflowBox(
-                alignment: Alignment.topLeft,
-                minWidth: listWidth,
-                maxWidth: listWidth,
-                child: ExcludeFocus(
-                  excluding: !listVisible,
-                  child: ExcludeSemantics(
-                    excluding: !listVisible,
-                    child: IgnorePointer(
-                      ignoring: !listVisible,
-                      child: widget.list,
+        child: ColoredBox(
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          child: Stack(
+            children: [
+              Row(
+                children: [
+                  AnimatedContainer(
+                    key: const ValueKey('collection-list-pane'),
+                    width: listVisible ? listWidth : 0,
+                    duration: duration,
+                    curve: AppMotion.standardCurve,
+                    clipBehavior: Clip.hardEdge,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerLow,
+                    ),
+                    child: OverflowBox(
+                      alignment: Alignment.topLeft,
+                      minWidth: listWidth,
+                      maxWidth: listWidth,
+                      child: ExcludeFocus(
+                        excluding: !listVisible,
+                        child: ExcludeSemantics(
+                          excluding: !listVisible,
+                          child: IgnorePointer(
+                            ignoring: !listVisible,
+                            child: widget.list,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-            ),
-            if (wide && readerVisible && listVisible)
-              Semantics(
-                label: '调整收藏列表宽度',
-                value: '${listWidth.round()}',
-                increasedValue:
-                    '${(listWidth + 16).clamp(280.0, maxListWidth).round()}',
-                decreasedValue:
-                    '${(listWidth - 16).clamp(280.0, maxListWidth).round()}',
-                onIncrease: () => step(16),
-                onDecrease: () => step(-16),
-                child: CallbackShortcuts(
-                  bindings: {
-                    const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
-                        step(-16),
-                    const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
-                        step(16),
-                    const SingleActivator(LogicalKeyboardKey.home): () {
-                      resize(360);
-                      _saveWidth();
-                    },
-                  },
-                  child: Focus(
-                    focusNode: _resizeFocus,
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.resizeColumn,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        dragStartBehavior: DragStartBehavior.down,
-                        onTap: _resizeFocus.requestFocus,
-                        onHorizontalDragStart: (event) {
-                          _dragOrigin = event.globalPosition.dx;
-                          _dragStartWidth = listWidth;
-                          _resizeFocus.requestFocus();
-                          setState(() => _dragging = true);
-                        },
-                        // 指针位置不依赖正在移动的拖柄，也不丢弃同帧事件。
-                        onHorizontalDragUpdate: (event) => resize(
-                          _dragStartWidth +
-                              event.globalPosition.dx -
-                              _dragOrigin,
+                  Expanded(
+                    key: const ValueKey('collection-reader-pane'),
+                    child: ClipRRect(
+                      borderRadius: wide && listVisible
+                          ? const BorderRadius.horizontal(
+                              left: Radius.circular(AppRadius.xl),
+                            )
+                          : BorderRadius.zero,
+                      child: OverflowBox(
+                        alignment: Alignment.topLeft,
+                        minWidth: wide && listVisible && readerVisible
+                            ? constraints.maxWidth - listWidth
+                            : constraints.maxWidth,
+                        maxWidth: wide && listVisible && readerVisible
+                            ? constraints.maxWidth - listWidth
+                            : constraints.maxWidth,
+                        child: Offstage(
+                          offstage: !readerVisible,
+                          child: widget.selectedId == null
+                              ? const SizedBox.shrink()
+                              : ContentDetailPage(
+                                  key: ValueKey(widget.selectedId),
+                                  contentId: widget.selectedId!,
+                                  preview: widget.preview,
+                                  onClose: widget.onClose,
+                                  focused: _focused,
+                                  onToggleFocus: wide
+                                      ? () =>
+                                            setState(() => _focused = !_focused)
+                                      : null,
+                                ),
                         ),
-                        onHorizontalDragEnd: (_) {
-                          setState(() => _dragging = false);
-                          _saveWidth();
-                        },
-                        onHorizontalDragCancel: () =>
-                            setState(() => _dragging = false),
-                        onDoubleTap: () {
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (wide && readerVisible && listVisible)
+                AnimatedPositioned(
+                  duration: duration,
+                  curve: AppMotion.standardCurve,
+                  left: listWidth - 6,
+                  top: 0,
+                  bottom: 0,
+                  width: 12,
+                  child: Semantics(
+                    label: '调整收藏列表宽度',
+                    value: '${listWidth.round()}',
+                    increasedValue:
+                        '${(listWidth + 16).clamp(280.0, maxListWidth).round()}',
+                    decreasedValue:
+                        '${(listWidth - 16).clamp(280.0, maxListWidth).round()}',
+                    onIncrease: () => step(16),
+                    onDecrease: () => step(-16),
+                    child: CallbackShortcuts(
+                      bindings: {
+                        const SingleActivator(
+                          LogicalKeyboardKey.arrowLeft,
+                        ): () =>
+                            step(-16),
+                        const SingleActivator(
+                          LogicalKeyboardKey.arrowRight,
+                        ): () =>
+                            step(16),
+                        const SingleActivator(LogicalKeyboardKey.home): () {
                           resize(360);
                           _saveWidth();
                         },
-                        child: SizedBox(
-                          width: 12,
-                          child: Center(
-                            child: Container(
-                              width: 3,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.outlineVariant,
-                                borderRadius: BorderRadius.circular(2),
+                      },
+                      child: Focus(
+                        focusNode: _resizeFocus,
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.resizeColumn,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            dragStartBehavior: DragStartBehavior.down,
+                            onTap: _resizeFocus.requestFocus,
+                            onHorizontalDragStart: (event) {
+                              _dragOrigin = event.globalPosition.dx;
+                              _dragStartWidth = listWidth;
+                              _resizeFocus.requestFocus();
+                              setState(() => _dragging = true);
+                            },
+                            // 指针位置不依赖正在移动的拖柄，也不丢弃同帧事件。
+                            onHorizontalDragUpdate: (event) => resize(
+                              _dragStartWidth +
+                                  event.globalPosition.dx -
+                                  _dragOrigin,
+                            ),
+                            onHorizontalDragEnd: (_) {
+                              setState(() => _dragging = false);
+                              _saveWidth();
+                            },
+                            onHorizontalDragCancel: () =>
+                                setState(() => _dragging = false),
+                            onDoubleTap: () {
+                              resize(360);
+                              _saveWidth();
+                            },
+                            child: SizedBox(
+                              width: 12,
+                              child: Center(
+                                child: Container(
+                                  width: 3,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: _dragging
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -191,28 +242,8 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
                     ),
                   ),
                 ),
-              ),
-            Expanded(
-              key: const ValueKey('collection-reader-pane'),
-              child: ClipRect(
-                child: Offstage(
-                  offstage: !readerVisible,
-                  child: widget.selectedId == null
-                      ? const SizedBox.shrink()
-                      : ContentDetailPage(
-                          key: ValueKey(widget.selectedId),
-                          contentId: widget.selectedId!,
-                          preview: widget.preview,
-                          onClose: widget.onClose,
-                          focused: _focused,
-                          onToggleFocus: wide
-                              ? () => setState(() => _focused = !_focused)
-                              : null,
-                        ),
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     },

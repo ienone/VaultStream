@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/layout/responsive_layout.dart';
+import '../dashboard/task_result_page.dart';
+import '../collection/content_detail_page.dart';
 import '../../core/widgets/app_filter_menu.dart';
 import '../../routing/app_navigation.dart';
+import '../../layout/root_page_actions.dart';
 import '../../theme/design_tokens.dart';
 import 'notification_models.dart';
 import 'notification_provider.dart';
@@ -21,8 +25,11 @@ class _NotificationCenterPageState
   final _scrollController = ScrollController();
   String? _category;
   String _state = 'active';
+  int _offset = 0;
+  NotificationInboxItem? _selected;
 
-  NotificationQuery get _query => (category: _category, state: _state);
+  NotificationQuery get _query =>
+      (category: _category, state: _state, offset: _offset);
 
   @override
   void dispose() {
@@ -32,7 +39,11 @@ class _NotificationCenterPageState
 
   void _changeFilter(VoidCallback change) {
     if (_scrollController.hasClients) _scrollController.jumpTo(0);
-    setState(change);
+    setState(() {
+      change();
+      _offset = 0;
+      _selected = null;
+    });
   }
 
   Future<void> _refresh() async {
@@ -43,83 +54,209 @@ class _NotificationCenterPageState
   @override
   Widget build(BuildContext context) {
     final inbox = ref.watch(notificationInboxProvider(_query));
-    return Scaffold(
-      appBar: AppBar(
-        leading: const AppBackButton(),
-        title: const Text('消息盒子'),
-        actions: [
-          IconButton(
-            tooltip: '全部标为已读',
-            onPressed: inbox.value == null || inbox.value!.unreadCount == 0
-                ? null
-                : () => _run(() => markAllNotificationsRead(ref)),
-            icon: const Icon(Icons.done_all_rounded),
-          ),
-          IconButton(
-            tooltip: '刷新',
-            onPressed: () => ref.invalidate(notificationInboxProvider(_query)),
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        top: false,
-        child: RefreshIndicator(
-          onRefresh: _refresh,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final horizontal =
-                  constraints.maxWidth > AppPane.readableMaxWidth + 32
-                  ? (constraints.maxWidth - AppPane.readableMaxWidth) / 2
-                  : AppSpacing.md;
-              return CustomScrollView(
-                controller: _scrollController,
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  SliverPadding(
-                    padding: EdgeInsets.fromLTRB(horizontal, 8, horizontal, 24),
-                    sliver: SliverToBoxAdapter(
-                      child: _InboxFilters(
-                        category: _category,
-                        state: _state,
-                        onCategoryChanged: (value) =>
-                            _changeFilter(() => _category = value),
-                        onStateChanged: (value) =>
-                            _changeFilter(() => _state = value),
-                      ),
-                    ),
-                  ),
-                  SliverPadding(
-                    padding: EdgeInsets.fromLTRB(horizontal, 0, horizontal, 24),
-                    sliver: inbox.when(
-                      data: (value) => _InboxBody(
-                        inbox: value,
-                        state: _state,
-                        onOpen: _open,
-                        onAction: _applyAction,
-                      ),
-                      loading: () => const SliverFillRemaining(
-                        hasScrollBody: false,
-                        child: Center(child: CircularProgressIndicator()),
-                      ),
-                      error: (error, _) => SliverFillRemaining(
-                        hasScrollBody: false,
-                        child: _InboxError(
-                          message: formatApiErrorMessage(
-                            error,
-                            fallbackMessage: '消息盒子加载失败',
-                          ),
-                          onRetry: () =>
-                              ref.invalidate(notificationInboxProvider(_query)),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = ResponsiveLayout.widthClassFor(
+          constraints.maxWidth,
+        ).supportsSupportingPane;
+        final showingDetail = !wide && _selected != null;
+        final list = _buildList(inbox);
+        return PopScope(
+          canPop: !showingDetail,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) setState(() => _selected = null);
+          },
+          child: Scaffold(
+            appBar: AppBar(
+              automaticallyImplyLeading: false,
+              leading: showingDetail
+                  ? BackButton(
+                      onPressed: () => setState(() => _selected = null),
+                    )
+                  : buildRootPageLeading(context),
+              title: const Text('消息'),
+              actions: [
+                IconButton(
+                  tooltip: '全部标为已读',
+                  onPressed:
+                      inbox.value == null || inbox.value!.unreadCount == 0
+                      ? null
+                      : () => _run(() => markAllNotificationsRead(ref)),
+                  icon: const Icon(Icons.done_all_rounded),
+                ),
+                IconButton(
+                  tooltip: '刷新',
+                  onPressed: () =>
+                      ref.invalidate(notificationInboxProvider(_query)),
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
+              ],
+            ),
+            body: wide && _selected != null
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(
+                        width: 360,
+                        child: ColoredBox(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerLow,
+                          child: list,
                         ),
                       ),
+                      Expanded(
+                        child: _selected == null
+                            ? const SizedBox.shrink()
+                            : _buildDetail(_selected!),
+                      ),
+                    ],
+                  )
+                : showingDetail
+                ? _buildDetail(_selected!)
+                : list,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildList(AsyncValue<NotificationInbox> inbox) => SafeArea(
+    top: false,
+    child: RefreshIndicator(
+      onRefresh: _refresh,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final horizontal =
+              constraints.maxWidth > AppPane.readableMaxWidth + 32
+              ? (constraints.maxWidth - AppPane.readableMaxWidth) / 2
+              : AppSpacing.md;
+          return CustomScrollView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(horizontal, 8, horizontal, 24),
+                sliver: SliverToBoxAdapter(
+                  child: _InboxFilters(
+                    category: _category,
+                    state: _state,
+                    onCategoryChanged: (value) =>
+                        _changeFilter(() => _category = value),
+                    onStateChanged: (value) =>
+                        _changeFilter(() => _state = value),
+                  ),
+                ),
+              ),
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(horizontal, 0, horizontal, 24),
+                sliver: inbox.when(
+                  data: (value) => _InboxBody(
+                    inbox: value,
+                    state: _state,
+                    onOpen: _open,
+                    selectedId: _selected?.id,
+                    onAction: _applyAction,
+                  ),
+                  loading: () => const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                  error: (error, _) => SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _InboxError(
+                      message: formatApiErrorMessage(
+                        error,
+                        fallbackMessage: '消息加载失败',
+                      ),
+                      onRetry: () =>
+                          ref.invalidate(notificationInboxProvider(_query)),
                     ),
                   ),
-                ],
-              );
-            },
-          ),
-        ),
+                ),
+              ),
+              if (inbox.value case final data?)
+                if (_offset > 0 || _offset + data.items.length < data.total)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          TextButton(
+                            onPressed: _offset == 0
+                                ? null
+                                : () => _changePage(_offset - 100),
+                            child: const Text('上一页'),
+                          ),
+                          Text(
+                            '${_offset ~/ 100 + 1} / ${(data.total / 100).ceil()}',
+                          ),
+                          TextButton(
+                            onPressed: _offset + data.items.length >= data.total
+                                ? null
+                                : () => _changePage(_offset + 100),
+                            child: const Text('下一页'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+            ],
+          );
+        },
+      ),
+    ),
+  );
+
+  void _changePage(int offset) {
+    if (_scrollController.hasClients) _scrollController.jumpTo(0);
+    setState(() {
+      _offset = offset;
+      _selected = null;
+    });
+  }
+
+  Widget _buildDetail(NotificationInboxItem item) {
+    final uri = Uri.tryParse(item.route ?? '');
+    final segments = uri?.pathSegments ?? const <String>[];
+    if (segments.length == 2 && segments.first == 'tasks') {
+      return TaskResultPane(key: ValueKey(item.id), runId: segments[1]);
+    }
+    if (segments.length == 2 && segments.first == 'collection') {
+      final id = int.tryParse(segments[1]);
+      if (id != null) {
+        return ContentDetailPage(
+          key: ValueKey(item.id),
+          contentId: id,
+          onClose: () => setState(() => _selected = null),
+        );
+      }
+    }
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(item.title, style: Theme.of(context).textTheme.headlineSmall),
+          if (item.body?.isNotEmpty == true) ...[
+            const SizedBox(height: 16),
+            SelectableText(item.body!),
+          ],
+          if (item.route?.isNotEmpty == true) ...[
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () => openAppLocation(context, item.route!),
+              child: Text(switch (item.category) {
+                'agent' => '打开对话',
+                'account' => '打开账号',
+                'digest' => '查看动态',
+                _ => '打开详情',
+              }),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -128,8 +265,7 @@ class _NotificationCenterPageState
     if (item.isUnread) {
       await _run(() => applyNotificationAction(ref, item.id, 'read'));
     }
-    if (!mounted || item.route == null || item.route!.isEmpty) return;
-    openAppLocation(context, item.route!);
+    if (mounted) setState(() => _selected = item);
   }
 
   Future<void> _applyAction(NotificationInboxItem item, String action) async {
@@ -185,8 +321,10 @@ class _InboxFilters extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = (168 * MediaQuery.textScalerOf(context).scale(14) / 14)
-            .clamp(0.0, constraints.maxWidth);
+        final width =
+            constraints.maxWidth >= MediaQuery.textScalerOf(context).scale(280)
+            ? (constraints.maxWidth - AppSpacing.sm) / 2
+            : constraints.maxWidth;
         return Wrap(
           spacing: AppSpacing.sm,
           runSpacing: AppSpacing.sm,
@@ -198,10 +336,10 @@ class _InboxFilters extends StatelessWidget {
                 value: category ?? 'all',
                 options: const {
                   'all': '全部类别',
-                  'task': '任务回执',
+                  'task': '任务',
                   'account': '账号状态',
                   'agent': 'Agent 消息',
-                  'capture': '捕获回执',
+                  'capture': '保存记录',
                   'digest': '周期摘要',
                   'system': '系统消息',
                 },
@@ -235,12 +373,14 @@ class _InboxFilters extends StatelessWidget {
 class _InboxBody extends StatelessWidget {
   const _InboxBody({
     required this.inbox,
+    this.selectedId,
     required this.state,
     required this.onOpen,
     required this.onAction,
   });
 
   final NotificationInbox inbox;
+  final int? selectedId;
   final String state;
   final Future<void> Function(NotificationInboxItem) onOpen;
   final Future<void> Function(NotificationInboxItem, String) onAction;
@@ -262,6 +402,7 @@ class _InboxBody extends StatelessWidget {
         return _InboxTile(
           key: ValueKey(item.id),
           item: item,
+          selected: item.id == selectedId,
           onOpen: () => onOpen(item),
           onAction: (action) => onAction(item, action),
         );
@@ -274,11 +415,13 @@ class _InboxTile extends StatelessWidget {
   const _InboxTile({
     super.key,
     required this.item,
+    this.selected = false,
     required this.onOpen,
     required this.onAction,
   });
 
   final NotificationInboxItem item;
+  final bool selected;
   final VoidCallback onOpen;
   final ValueChanged<String> onAction;
 
@@ -286,15 +429,16 @@ class _InboxTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final hasDestination = item.route?.isNotEmpty == true;
     return Material(
-      color: item.isUnread
+      color: selected
+          ? scheme.secondaryContainer
+          : item.isUnread
           ? scheme.primaryContainer.withValues(alpha: 0.28)
           : Colors.transparent,
       borderRadius: BorderRadius.circular(AppRadius.md),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: hasDestination ? onOpen : null,
+        onTap: onOpen,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           child: Column(
@@ -339,8 +483,8 @@ class _InboxTile extends StatelessWidget {
                 const SizedBox(height: AppSpacing.xs),
                 Text(
                   item.body!.trim(),
-                  maxLines: hasDestination ? 3 : null,
-                  overflow: hasDestination ? TextOverflow.ellipsis : null,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium,
                 ),
               ],

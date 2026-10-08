@@ -1,3 +1,6 @@
+import '../settings/presentation/tabs/push_tab.dart';
+import '../automation/widgets/favorites_sync_automation_panel.dart';
+import '../settings/providers/favorites_sync_provider.dart';
 import 'telegram_account_page.dart';
 import '../../routing/app_navigation.dart';
 import 'package:flutter/material.dart';
@@ -21,6 +24,25 @@ class AccountDetailPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (platform == 'telegram') return const TelegramAccountPage();
+    if (platform == 'qq') {
+      return Scaffold(
+        appBar: AppBar(
+          leading: const AppBackButton(fallback: '/accounts'),
+          title: const Text('QQ'),
+        ),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: AppPane.readableMaxWidth,
+            ),
+            child: const SingleChildScrollView(
+              padding: EdgeInsets.all(20),
+              child: PushTab(platform: 'qq'),
+            ),
+          ),
+        ),
+      );
+    }
     final health = ref.watch(platformHealthProvider);
     return Scaffold(
       appBar: AppBar(
@@ -162,7 +184,7 @@ class _AccountDetailBody extends ConsumerWidget {
   );
 }
 
-class _AccountOverview extends StatelessWidget {
+class _AccountOverview extends ConsumerWidget {
   const _AccountOverview({required this.account, required this.controls});
 
   final Widget controls;
@@ -170,7 +192,7 @@ class _AccountOverview extends StatelessWidget {
   final PlatformHealthStatus account;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final status = _accountStatus(account);
@@ -226,26 +248,32 @@ class _AccountOverview extends StatelessWidget {
           ),
         ],
         const SizedBox(height: AppSpacing.lg),
-        Text('能力与状态', style: theme.textTheme.titleMedium),
-        const SizedBox(height: AppSpacing.sm),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _CapabilityRow(
-              title: '本地登录信息',
-              value: account.hasCookie ? '已保存' : '未保存',
-            ),
-            _CapabilityRow(
-              title: '浏览器登录',
-              value: account.browserAuthSupported ? '支持' : '不支持',
-            ),
-            _CapabilityRow(title: '收藏同步', value: _favoritesCapability(account)),
-            _CapabilityRow(
-              title: '同步认证',
-              value: _optionalValidity(account.favoritesAuthenticated),
-            ),
-          ],
-        ),
+        if (account.favoritesSupported)
+          ref
+              .watch(favoritesSyncStatusProvider)
+              .when(
+                loading: () => const LinearProgressIndicator(),
+                error: (error, _) => TextButton(
+                  onPressed: () => ref.invalidate(favoritesSyncStatusProvider),
+                  child: const Text('同步设置读取失败，重试'),
+                ),
+                data: (data) {
+                  final sync = data.platforms
+                      .where((s) => s.platform == account.platform)
+                      .firstOrNull;
+                  return sync == null
+                      ? const SizedBox.shrink()
+                      : AccountFavoritesSyncControls(status: sync);
+                },
+              ),
+        if (account.platform == 'bilibili')
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: const Text('手动凭据'),
+            children: [
+              const ConnectionTab().buildBiliAdvancedEditor(context, ref),
+            ],
+          ),
         if (account.lastFavoritesRun != null) ...[
           const SizedBox(height: AppSpacing.xl),
           _LastSyncCard(
@@ -254,47 +282,6 @@ class _AccountOverview extends StatelessWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-class _CapabilityRow extends StatelessWidget {
-  const _CapabilityRow({required this.title, required this.value});
-
-  final String title;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final label = Text(
-            title,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          );
-          final content = Text(value, style: theme.textTheme.bodyMedium);
-          if (constraints.maxWidth <
-              320 * MediaQuery.textScalerOf(context).scale(1)) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [label, const SizedBox(height: 4), content],
-            );
-          }
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: label),
-              const SizedBox(width: AppSpacing.md),
-              Flexible(child: content),
-            ],
-          );
-        },
-      ),
     );
   }
 }
@@ -316,52 +303,39 @@ class _AccountControls extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final pending = ref.watch(platformAuthActionsProvider);
     final busy = pending.any((key) => key.startsWith('${account.platform}:'));
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Wrap(
-          spacing: AppSpacing.sm,
-          runSpacing: AppSpacing.sm,
-          children: [
-            if (account.browserAuthSupported || account.platform == 'twitter')
-              FilledButton.tonalIcon(
-                onPressed: busy ? null : onLogin,
-                icon: Icon(
-                  account.platform == 'twitter'
-                      ? Icons.key_rounded
-                      : Icons.qr_code_2_rounded,
-                ),
-                label: Text(
-                  account.platform == 'twitter'
-                      ? '保存网页登录'
-                      : !account.hasCookie
-                      ? '连接账号'
-                      : account.browserAuthValid == false
-                      ? '重新登录'
-                      : '更新登录',
-                ),
+        if (account.browserAuthSupported || account.platform == 'twitter')
+          Expanded(
+            child: FilledButton.tonalIcon(
+              onPressed: busy ? null : onLogin,
+              icon: Icon(
+                account.platform == 'twitter'
+                    ? Icons.key_rounded
+                    : Icons.qr_code_2_rounded,
               ),
-            if (account.hasCookie &&
-                (account.browserAuthSupported || account.platform == 'twitter'))
-              OutlinedButton.icon(
-                onPressed: busy ? null : onCheck,
-                icon: const Icon(Icons.health_and_safety_outlined),
-                label: const Text('检测有效性'),
+              label: Text(
+                account.platform == 'twitter'
+                    ? '保存网页登录'
+                    : !account.hasCookie
+                    ? '连接账号'
+                    : account.browserAuthValid == false
+                    ? '重新登录'
+                    : '更新登录',
               ),
-            if (account.hasCookie)
-              TextButton.icon(
-                onPressed: busy ? null : onLogout,
-                icon: const Icon(Icons.logout_rounded),
-                label: const Text('清除登录'),
-              ),
-            if (account.favoritesSupported)
-              TextButton.icon(
-                onPressed: () => context.go('/automation/sync'),
-                icon: const Icon(Icons.sync_rounded),
-                label: const Text('管理收藏同步'),
-              ),
-          ],
-        ),
+            ),
+          ),
+        if (account.hasCookie)
+          PopupMenuButton<String>(
+            tooltip: '账号操作',
+            enabled: !busy,
+            onSelected: (value) => value == 'check' ? onCheck() : onLogout(),
+            itemBuilder: (_) => [
+              if (account.browserAuthSupported || account.platform == 'twitter')
+                const PopupMenuItem(value: 'check', child: Text('检测有效性')),
+              const PopupMenuItem(value: 'logout', child: Text('清除登录')),
+            ],
+          ),
       ],
     );
   }
@@ -517,18 +491,6 @@ _accountStatus(PlatformHealthStatus account) {
   );
 }
 
-String _favoritesCapability(PlatformHealthStatus account) {
-  if (!account.favoritesSupported) return '不支持';
-  if (account.favoritesSync['available'] == false) return '当前不可用';
-  return account.favoritesEnabled ? '已启用' : '未启用';
-}
-
-String _optionalValidity(bool? value) => switch (value) {
-  true => '有效',
-  false => '无效',
-  null => '未检查',
-};
-
 List<String> _repairSteps(PlatformHealthStatus account) {
   final steps = <String>[];
   if (!account.hasCookie) {
@@ -537,7 +499,7 @@ List<String> _repairSteps(PlatformHealthStatus account) {
           ? '点击“保存网页登录”，填写你已登录 X 网页的 auth_token 和 ct0。'
           : account.browserAuthSupported
           ? '使用“连接账号”完成平台扫码登录。'
-          : '返回账号中心，在该平台的手动凭据区域完成配置。',
+          : '在下方“手动凭据”中完成配置。',
     );
   } else if (account.browserAuthValid == false) {
     steps.add('使用“重新登录”更新失效的登录信息。');
@@ -546,7 +508,7 @@ List<String> _repairSteps(PlatformHealthStatus account) {
     steps.add('点击“检测有效性”检查登录状态。');
   }
   if (account.favoritesSupported && !account.favoritesEnabled) {
-    steps.add('进入收藏同步设置，仅在需要时启用该平台。');
+    steps.add('在本页开启“同步收藏”。');
   } else if (account.favoritesAuthenticated == false) {
     steps.add('登录恢复后再次运行收藏同步认证检查。');
   }

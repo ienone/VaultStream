@@ -3,21 +3,25 @@ import 'package:flutter/material.dart';
 import '../../../../../core/media/media_asset.dart';
 import 'full_screen_gallery.dart';
 
-/// Keep the source visible during drag dismissal while using platform back motion.
-class _GalleryRoute extends PageRoute<void>
-    with MaterialRouteTransitionMixin<void> {
-  _GalleryRoute({required this.builder});
-
-  final WidgetBuilder builder;
+/// A media overlay has its own drag dismissal; it is not a page transition.
+class _GalleryRoute extends PageRouteBuilder<void> {
+  _GalleryRoute({required WidgetBuilder builder, required bool reduceMotion})
+    : super(
+        opaque: false,
+        transitionDuration: reduceMotion
+            ? Duration.zero
+            : const Duration(milliseconds: 260),
+        reverseTransitionDuration: reduceMotion
+            ? Duration.zero
+            : const Duration(milliseconds: 240),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            builder(context),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            FadeTransition(opacity: animation, child: child),
+      );
 
   @override
-  Widget buildContent(BuildContext context) => builder(context);
-
-  @override
-  bool get maintainState => true;
-
-  @override
-  bool get opaque => false;
+  bool get popGestureEnabled => false;
 }
 
 Future<void> pushFullScreenGallery({
@@ -33,6 +37,7 @@ Future<void> pushFullScreenGallery({
 }) {
   return Navigator.of(context, rootNavigator: true).push(
     _GalleryRoute(
+      reduceMotion: MediaQuery.disableAnimationsOf(context),
       builder: (context) => FullScreenGallery(
         images: images,
         fallbackUrlsByImage: fallbackUrlsByImage,

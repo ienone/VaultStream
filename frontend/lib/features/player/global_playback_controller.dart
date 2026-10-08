@@ -25,6 +25,7 @@ class PlaybackRequest {
     required this.urls,
     required this.audioOnly,
     this.mediaAsset,
+    this.posterAsset,
     this.segments = const [],
   });
 
@@ -33,6 +34,7 @@ class PlaybackRequest {
   final List<String> urls;
   final bool audioOnly;
   final MediaAsset? mediaAsset;
+  final MediaAsset? posterAsset;
   final List<MediaSegment> segments;
 
   factory PlaybackRequest.fromJson(Map<String, dynamic> json) =>
@@ -47,6 +49,11 @@ class PlaybackRequest {
             ? null
             : MediaAsset.fromJson(
                 Map<String, dynamic>.from(json['media_asset'] as Map),
+              ),
+        posterAsset: json['poster_asset'] == null
+            ? null
+            : MediaAsset.fromJson(
+                Map<String, dynamic>.from(json['poster_asset'] as Map),
               ),
         segments: (json['segments'] as List<dynamic>? ?? const [])
             .map(
@@ -66,6 +73,13 @@ class PlaybackRequest {
         : {
             ...mediaAsset!.toJson(),
             'purpose': MediaPurpose.detail.name,
+            'sources': const <Object>[],
+          },
+    'poster_asset': posterAsset == null
+        ? null
+        : {
+            ...posterAsset!.toJson(),
+            'purpose': MediaPurpose.card.name,
             'sources': const <Object>[],
           },
     'segments': segments.map((item) => item.toJson()).toList(growable: false),

@@ -1,3 +1,4 @@
+import '../automation/widgets/push_content_dialog.dart';
 import '../../layout/root_page_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -573,7 +574,11 @@ class _FeedCard extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final coverAssets = item.mediaAssets
-        .where((asset) => asset.mediaType == MediaType.image)
+        .where(
+          (asset) =>
+              asset.mediaType == MediaType.image &&
+              asset.role != MediaRole.avatar,
+        )
         .toList(growable: false);
     final coverUrl = coverAssets.firstOrNull?.sources.firstOrNull?.url ?? '';
 
@@ -682,6 +687,13 @@ class _FeedCard extends StatelessWidget {
                       icon: const Icon(Icons.schedule_rounded, size: 19),
                       label: const Text('稍后'),
                     ),
+                  TextButton.icon(
+                    onPressed: busy
+                        ? null
+                        : () => showPushContentDialog(context, [item.id]),
+                    icon: const Icon(Icons.send_outlined, size: 19),
+                    label: const Text('推送'),
+                  ),
                   TextButton(
                     onPressed: busy ? null : onIgnore,
                     child: const Text('忽略'),
@@ -891,8 +903,20 @@ String _displayTitle(DiscoveryItem item) {
 
 String? _displaySummary(DiscoveryItem item) {
   final summary = (item.previewText ?? item.summary)?.trim() ?? '';
-  if (summary.isEmpty || summary == _displayTitle(item)) return null;
-  return summary.replaceAll(RegExp(r'\s+'), ' ');
+  final title = _displayTitle(item).replaceAll(RegExp(r'\s+'), ' ').trim();
+  var preview = summary.replaceAll(RegExp(r'\s+'), ' ').trim();
+  final titlePrefix = title.replaceFirst(RegExp(r'(…|\.{3})$'), '').trim();
+  if (preview.isEmpty ||
+      preview == title ||
+      (titlePrefix.isNotEmpty &&
+          titlePrefix != title &&
+          preview.startsWith(titlePrefix))) {
+    return null;
+  }
+  if (title.isNotEmpty && preview.startsWith(title)) {
+    preview = preview.substring(title.length).trimLeft();
+  }
+  return preview.isEmpty ? null : preview;
 }
 
 DateTime _itemTime(DiscoveryItem item) =>

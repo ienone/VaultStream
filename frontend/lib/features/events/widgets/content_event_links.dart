@@ -15,7 +15,15 @@ class ContentEventLinks extends ConsumerWidget {
     final events = ref.watch(knowledgeEventsProvider(contentId));
     return events.when(
       loading: () => const SizedBox.shrink(),
-      error: (_, _) => const SizedBox.shrink(),
+      error: (_, _) => Row(
+        children: [
+          const Expanded(child: Text('关联事件加载失败')),
+          TextButton(
+            onPressed: () => ref.invalidate(knowledgeEventsProvider(contentId)),
+            child: const Text('重试'),
+          ),
+        ],
+      ),
       data: (data) {
         if (data.items.isEmpty) return const SizedBox.shrink();
         final theme = Theme.of(context);

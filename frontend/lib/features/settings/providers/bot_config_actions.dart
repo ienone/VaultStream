@@ -200,10 +200,13 @@ class BotConfigActions {
     return candidates.first.id;
   }
 
-  Future<BotChatSyncResult> syncConfiguredChats() async {
+  Future<BotChatSyncResult> syncConfiguredChats({String? platform}) async {
     final configs = await listConfigs();
     final active = configs.where(
-      (config) => config.enabled && config.hasUsableCredentials,
+      (config) =>
+          config.enabled &&
+          config.hasUsableCredentials &&
+          (platform == null || config.platform == platform),
     );
     if (active.isEmpty) {
       return const BotChatSyncResult(configured: false);

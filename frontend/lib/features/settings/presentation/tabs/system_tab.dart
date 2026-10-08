@@ -211,7 +211,9 @@ class SystemTab extends ConsumerWidget {
         );
       },
       loading: () => const LoadingGroup(),
-      error: (_, _) => const SizedBox.shrink(),
+      error: (_, _) => SettingLoadFailure(
+        onRetry: () => ref.invalidate(systemSettingsProvider),
+      ),
     );
   }
 
@@ -227,39 +229,19 @@ class SystemTab extends ConsumerWidget {
       initialValues: {
         'archive_image_max_count': maxCount.toString(),
         'archive_video_max_count': videoMaxCount.toString(),
-        'archive_video_max_bytes': videoMaxBytes.toString(),
+        'archive_video_max_bytes': (videoMaxBytes / 1000000).toString(),
       },
       builder: (context, controllers) {
-        final textTheme = Theme.of(context).textTheme;
-        Widget limitField(String title, String help, String settingKey) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(title, style: textTheme.bodyLarge),
-              const SizedBox(height: 8),
-              Semantics(
-                label: title,
-                child: TextField(
-                  controller: controllers[settingKey],
-                  keyboardType: TextInputType.number,
-                  onSubmitted: (val) {
-                    final num = int.tryParse(val) ?? 0;
-                    ref
-                        .read(systemSettingsProvider.notifier)
-                        .updateSetting(settingKey, num, category: 'storage');
-                  },
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                help,
-                style: textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          );
-        }
+        Widget limitField(String title, String help, String settingKey) =>
+            _ArchiveLimitField(
+              title: title,
+              help: help,
+              controller: controllers[settingKey]!,
+              bytes: settingKey == 'archive_video_max_bytes',
+              onSave: (value) => ref
+                  .read(systemSettingsProvider.notifier)
+                  .updateSetting(settingKey, value, category: 'storage'),
+            );
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -295,7 +277,7 @@ class SystemTab extends ConsumerWidget {
                       width: fieldWidth,
                       child: limitField(
                         '单条内容最多图片数',
-                        '0 表示不限数量；建议 20–50 张以节省空间。',
+                        '0 表示不限数量。',
                         'archive_image_max_count',
                       ),
                     ),
@@ -310,7 +292,7 @@ class SystemTab extends ConsumerWidget {
                     SizedBox(
                       width: fieldWidth,
                       child: limitField(
-                        '单个视频上限（字节）',
+                        '单个视频上限（MB）',
                         '0 表示使用默认上限。',
                         'archive_video_max_bytes',
                       ),
@@ -324,6 +306,91 @@ class SystemTab extends ConsumerWidget {
       },
     );
   }
+}
+
+class _ArchiveLimitField extends StatefulWidget {
+  const _ArchiveLimitField({
+    required this.title,
+    required this.help,
+    required this.controller,
+    required this.bytes,
+    required this.onSave,
+  });
+
+  final String title;
+  final String help;
+  final TextEditingController controller;
+  final bool bytes;
+  final Future<void> Function(int) onSave;
+
+  @override
+  State<_ArchiveLimitField> createState() => _ArchiveLimitFieldState();
+}
+
+class _ArchiveLimitFieldState extends State<_ArchiveLimitField> {
+  bool _saving = false;
+  String? _error;
+
+  Future<void> _save() async {
+    if (_saving) return;
+    final text = widget.controller.text.trim();
+    final value = widget.bytes ? double.tryParse(text) : int.tryParse(text);
+    if (value == null ||
+        !value.isFinite ||
+        value < 0 ||
+        (widget.bytes && value > 0 && value * 1000000 < 1)) {
+      setState(() => _error = widget.bytes ? '请输入有效的非负容量' : '请输入 0 或正整数');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.onSave(
+        widget.bytes ? (value * 1000000).round() : value.toInt(),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已保存')));
+      }
+    } catch (_) {
+      if (mounted) setState(() => _error = '保存失败，请重试');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    controller: widget.controller,
+    enabled: !_saving,
+    keyboardType: TextInputType.numberWithOptions(decimal: widget.bytes),
+    onSubmitted: (_) => _save(),
+    onChanged: (_) {
+      if (_error != null) setState(() => _error = null);
+    },
+    decoration: InputDecoration(
+      labelText: widget.title,
+      helperText: widget.help,
+      helperMaxLines: 2,
+      errorText: _error,
+      suffixIcon: _saving
+          ? const Padding(
+              padding: EdgeInsets.all(14),
+              child: SizedBox.square(
+                dimension: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          : IconButton(
+              tooltip: '保存${widget.title}',
+              onPressed: _save,
+              icon: const Icon(Icons.check_rounded),
+            ),
+    ),
+  );
 }
 
 class _AppAboutSection extends StatefulWidget {

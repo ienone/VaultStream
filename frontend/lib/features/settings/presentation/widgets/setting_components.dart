@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../../../core/utils/toast.dart';
 import '../../../../theme/design_tokens.dart';
@@ -192,13 +191,93 @@ class LoadingGroup extends StatelessWidget {
   const LoadingGroup({super.key});
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 200,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerLow,
-        borderRadius: AppShape.sheetBorder,
-      ),
-      child: const Center(child: CircularProgressIndicator()),
-    ).animate(onPlay: (c) => c.repeat()).shimmer();
+    return const SizedBox(
+      height: 72,
+      child: Center(child: CircularProgressIndicator()),
+    );
   }
+}
+
+class SettingLoadFailure extends StatelessWidget {
+  const SettingLoadFailure({super.key, required this.onRetry});
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    child: Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      children: [
+        const Text('设置读取失败'),
+        TextButton.icon(
+          onPressed: onRetry,
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('重试'),
+        ),
+      ],
+    ),
+  );
+}
+
+class SettingSaveButton extends StatefulWidget {
+  const SettingSaveButton({
+    super.key,
+    required this.onPressed,
+    required this.child,
+  });
+  final Future<void> Function() onPressed;
+  final Widget child;
+
+  @override
+  State<SettingSaveButton> createState() => _SettingSaveButtonState();
+}
+
+class _SettingSaveButtonState extends State<SettingSaveButton> {
+  bool _saving = false;
+  bool _failed = false;
+
+  Future<void> _save() async {
+    if (_saving) return;
+    setState(() {
+      _saving = true;
+      _failed = false;
+    });
+    try {
+      await widget.onPressed();
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.end,
+    children: [
+      FilledButton.tonal(
+        onPressed: _saving ? null : _save,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Opacity(opacity: _saving ? 0 : 1, child: widget.child),
+            if (_saving)
+              const SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+          ],
+        ),
+      ),
+      if (_failed)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(
+            '保存失败，请重试',
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        ),
+    ],
+  );
 }

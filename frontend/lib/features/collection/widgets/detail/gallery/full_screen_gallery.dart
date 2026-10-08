@@ -48,7 +48,11 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
   late PageController _controller;
   final FocusNode _keyboardFocus = FocusNode(debugLabel: 'fullscreen-gallery');
   final GlobalKey _viewportKey = GlobalKey();
-  double _dragOffset = 0;
+  Offset _dragOffset = Offset.zero;
+  Offset _dragOrigin = Offset.zero;
+  Offset _dragStartOffset = Offset.zero;
+  bool _dragging = false;
+  bool _closing = false;
   final Map<int, int> _rotationTurns = {};
   final Map<int, TransformationController> _transformControllers = {};
   bool _isZoomed = false;
@@ -56,7 +60,7 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
   Offset _doubleTapPosition = Offset.zero;
   late final AnimationController _dragReturn;
   late final AnimationController _zoomMotion;
-  double _dragReturnStart = 0;
+  Offset _dragReturnStart = Offset.zero;
   Matrix4Tween? _zoomTween;
   TransformationController? _zoomTarget;
 
@@ -215,10 +219,10 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
   }
 
   void _returnFromDrag() {
-    if (_dragOffset == 0) return;
+    if (_dragOffset == Offset.zero) return;
     _dragReturn.stop();
     if (MediaQuery.disableAnimationsOf(context)) {
-      setState(() => _dragOffset = 0);
+      setState(() => _dragOffset = Offset.zero);
       return;
     }
     _dragReturnStart = _dragOffset;
@@ -242,31 +246,44 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
           _changePage(-1),
       const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
           _changePage(1),
-      const SingleActivator(LogicalKeyboardKey.escape): () =>
-          Navigator.pop(context),
+      const SingleActivator(LogicalKeyboardKey.escape): () => _close(),
     },
     child: Focus(
       focusNode: _keyboardFocus,
       autofocus: true,
-      child: HeroMode(
-        enabled: !MediaQuery.disableAnimationsOf(context),
-        child: AnnotatedRegion<SystemUiOverlayStyle>(
-          value: SystemUiOverlayStyle.light,
-          child: Theme(
-            data: AppTheme.dark(
-              ColorScheme.fromSeed(
-                seedColor:
-                    widget.contentColor ??
-                    Theme.of(context).colorScheme.primary,
-                brightness: Brightness.dark,
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _close();
+        },
+        child: HeroMode(
+          enabled: !MediaQuery.disableAnimationsOf(context),
+          child: AnnotatedRegion<SystemUiOverlayStyle>(
+            value: SystemUiOverlayStyle.light,
+            child: Theme(
+              data: AppTheme.dark(
+                ColorScheme.fromSeed(
+                  seedColor:
+                      widget.contentColor ??
+                      Theme.of(context).colorScheme.primary,
+                  brightness: Brightness.dark,
+                ),
               ),
+              child: Builder(builder: _buildGallery),
             ),
-            child: Builder(builder: _buildGallery),
           ),
         ),
       ),
     ),
   );
+
+  void _close() {
+    if (_closing) return;
+    _closing = true;
+    _dragReturn.stop();
+    _zoomMotion.stop();
+    Navigator.of(context).pop();
+  }
 
   void _changePage(int delta) {
     final target = _currentIndex + delta;
@@ -283,53 +300,29 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
   }
 
   Widget _buildGallery(BuildContext context) {
-    final opacity = (1 - (_dragOffset.abs() / 300)).clamp(0.0, 1.0);
+    final opacity = (1 - (_dragOffset.distance / 300)).clamp(0.0, 1.0);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          // Glass Background
+          // Fade the overlay while keeping the source page visible during a drag.
           Positioned.fill(
             child: GestureDetector(
               excludeFromSemantics: true,
-              onTap: () => Navigator.pop(context),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                child: Container(
-                  color: Colors.black.withValues(alpha: opacity),
-                ),
-              ),
+              onTap: () => _close(),
+              child: ColoredBox(color: Colors.black.withValues(alpha: opacity)),
             ),
           ),
           // Images
-          GestureDetector(
-            onVerticalDragStart: _isZoomed ? null : (_) => _dragReturn.stop(),
-            onVerticalDragUpdate: _isZoomed
-                ? null
-                : (details) {
-                    setState(() {
-                      _dragOffset += details.primaryDelta!;
-                    });
-                  },
-            onVerticalDragEnd: _isZoomed
-                ? null
-                : (details) {
-                    if (_dragOffset.abs() > 100) {
-                      Navigator.pop(context);
-                    } else {
-                      _returnFromDrag();
-                    }
-                  },
-            onVerticalDragCancel: _returnFromDrag,
-            child: Transform.translate(
-              offset: Offset(0, _dragOffset),
+          Transform.translate(
+            offset: _dragOffset,
+            child: Transform.scale(
+              scale: 1 - (1 - opacity) * .18,
               child: PageView.builder(
                 key: _viewportKey,
                 controller: _controller,
-                physics: _isZoomed
-                    ? const NeverScrollableScrollPhysics()
-                    : const PageScrollPhysics(),
+                physics: const NeverScrollableScrollPhysics(),
                 itemCount: widget.images.length,
                 onPageChanged: (i) {
                   _zoomMotion.stop();
@@ -347,23 +340,54 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
                   final transformController = _getTransformController(index);
                   return GestureDetector(
                     excludeFromSemantics: true,
-                    onTap: () => Navigator.pop(context),
+                    onTap: () => _close(),
                     onDoubleTapDown: (details) {
                       _doubleTapPosition = details.localPosition;
                     },
                     onDoubleTap: () => _handleDoubleTap(index),
                     child: InteractiveViewer(
-                      onInteractionStart: (_) => _zoomMotion.stop(),
+                      onInteractionStart: (details) {
+                        _zoomMotion.stop();
+                        _dragReturn.stop();
+                        _dragging = !_isZoomed;
+                        _dragOrigin = details.focalPoint;
+                        _dragStartOffset = _dragOffset;
+                      },
+                      onInteractionUpdate: (details) {
+                        if (details.pointerCount > 1 || details.scale > 1.01) {
+                          _dragging = false;
+                          _returnFromDrag();
+                        } else if (_dragging) {
+                          setState(
+                            () => _dragOffset =
+                                _dragStartOffset +
+                                details.focalPoint -
+                                _dragOrigin,
+                          );
+                        }
+                      },
+                      onInteractionEnd: (details) {
+                        if (_dragging &&
+                            (_dragOffset.distance > 90 ||
+                                (_dragOffset.distance > 24 &&
+                                    details.velocity.pixelsPerSecond.distance >
+                                        850))) {
+                          _close();
+                        } else {
+                          _returnFromDrag();
+                        }
+                        _dragging = false;
+                      },
                       transformationController: transformController,
                       minScale: 1.0,
                       maxScale: 4.0,
-                      panEnabled: true,
+                      panEnabled: _isZoomed,
                       scaleEnabled: true,
                       child: Center(
-                        child: Hero(
-                          tag: _getHeroTag(index),
-                          child: _RotatingGalleryImage(
-                            quarterTurns: _rotationTurns[index] ?? 0,
+                        child: _RotatingGalleryImage(
+                          quarterTurns: _rotationTurns[index] ?? 0,
+                          child: Hero(
+                            tag: _getHeroTag(index),
                             child: NetworkThumbnail(
                               imageUrl: widget.images[index],
                               mediaAsset: widget
@@ -395,54 +419,57 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
               minimum: const EdgeInsets.all(AppSpacing.sm),
               child: Align(
                 alignment: Alignment.topCenter,
-                child: MediaOverlaySurface(
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.xxs),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          tooltip: '关闭图集',
-                          onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close_rounded),
-                        ),
-                        Flexible(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: AppSpacing.xs,
-                            ),
-                            child: Text(
-                              '${_currentIndex + 1} / ${widget.images.length}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.labelLarge
-                                  ?.copyWith(color: Colors.white),
+                child: Opacity(
+                  opacity: opacity,
+                  child: MediaOverlaySurface(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpacing.xxs),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: '关闭图集',
+                            onPressed: () => _close(),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                          Flexible(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.xs,
+                              ),
+                              child: Text(
+                                '${_currentIndex + 1} / ${widget.images.length}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.labelLarge
+                                    ?.copyWith(color: Colors.white),
+                              ),
                             ),
                           ),
-                        ),
-                        IconButton(
-                          tooltip: _isZoomed ? '还原图片' : '放大图片',
-                          icon: Icon(
-                            _isZoomed
-                                ? Icons.zoom_out_rounded
-                                : Icons.zoom_in_rounded,
+                          IconButton(
+                            tooltip: _isZoomed ? '还原图片' : '放大图片',
+                            icon: Icon(
+                              _isZoomed
+                                  ? Icons.zoom_out_rounded
+                                  : Icons.zoom_in_rounded,
+                            ),
+                            onPressed: _zoomFromToolbar,
                           ),
-                          onPressed: _zoomFromToolbar,
-                        ),
-                        IconButton(
-                          tooltip: '旋转图片',
-                          icon: const Icon(Icons.rotate_right_rounded),
-                          onPressed: () => setState(() {
-                            _rotationTurns[_currentIndex] =
-                                (_rotationTurns[_currentIndex] ?? 0) + 1;
-                          }),
-                        ),
-                        IconButton(
-                          tooltip: _saving ? '正在保存' : '保存图片',
-                          icon: const Icon(Icons.download_rounded),
-                          onPressed: _saving ? null : _saveCurrentImage,
-                        ),
-                      ],
+                          IconButton(
+                            tooltip: '旋转图片',
+                            icon: const Icon(Icons.rotate_right_rounded),
+                            onPressed: () => setState(() {
+                              _rotationTurns[_currentIndex] =
+                                  (_rotationTurns[_currentIndex] ?? 0) + 1;
+                            }),
+                          ),
+                          IconButton(
+                            tooltip: _saving ? '正在保存' : '保存图片',
+                            icon: const Icon(Icons.download_rounded),
+                            onPressed: _saving ? null : _saveCurrentImage,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -520,7 +547,7 @@ class _RotatingGalleryImage extends StatelessWidget {
               maxWidth: canvasWidth,
               minHeight: canvasHeight,
               maxHeight: canvasHeight,
-              child: child,
+              child: Center(child: child),
             ),
           ),
         );

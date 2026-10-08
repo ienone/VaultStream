@@ -18,10 +18,7 @@ class BatchSelection extends _$BatchSelection {
     } else {
       newIds.add(id);
     }
-    state = state.copyWith(
-      selectedIds: newIds,
-      isSelectionMode: newIds.isNotEmpty,
-    );
+    state = state.copyWith(selectedIds: newIds, isSelectionMode: true);
   }
 
   void selectAll(List<int> ids) {

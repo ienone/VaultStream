@@ -195,11 +195,62 @@ class _AgentPageState extends ConsumerState<AgentPage> {
   }
 
   Future<void> _clearSession() async {
-    await _removeCurrentDraft();
-    await _controller.clearSession();
+    if (_streaming || _sessionId == null) return;
+    var clearing = false;
+    String? failure;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, updateDialog) => PopScope(
+          canPop: !clearing,
+          child: AlertDialog(
+            title: const Text('清空当前会话？'),
+            content: Text(failure ?? '会话消息和输入草稿将被删除，无法撤销。'),
+            actions: [
+              TextButton(
+                onPressed: clearing ? null : () => Navigator.pop(dialogContext),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: clearing
+                    ? null
+                    : () async {
+                        updateDialog(() {
+                          clearing = true;
+                          failure = null;
+                        });
+                        try {
+                          await _controller.clearSession();
+                          if (!mounted) return;
+                          await _removeCurrentDraft();
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+                        } catch (_) {
+                          if (dialogContext.mounted) {
+                            updateDialog(() {
+                              clearing = false;
+                              failure = '清空失败，请重试。';
+                            });
+                          }
+                        }
+                      },
+                child: Text(clearing ? '正在清空…' : '清空'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
-  void _scrollToBottom() {
+  void _scrollToBottom({bool onlyIfNearBottom = false}) {
+    if (onlyIfNearBottom &&
+        _scrollController.hasClients &&
+        _scrollController.position.extentAfter > 100) {
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
       _scrollController.animateTo(
@@ -215,7 +266,7 @@ class _AgentPageState extends ConsumerState<AgentPage> {
     final provider = agentControllerProvider(widget.initialSessionId);
     ref.listen(
       provider.select((state) => state.timeline),
-      (_, _) => _scrollToBottom(),
+      (_, _) => _scrollToBottom(onlyIfNearBottom: true),
     );
     ref.listen(
       provider.select((state) => state.sessionId),
@@ -228,14 +279,21 @@ class _AgentPageState extends ConsumerState<AgentPage> {
           Size(constraints.maxWidth, constraints.maxHeight),
         );
         final supportsSessionPane = metrics.supportsSupportingPane;
+        final citations = <AgentCitation>[];
+        final citationKeys = <String>{};
+        for (final item in _timeline) {
+          if (item.kind != AgentTimelineKind.toolResult) continue;
+          for (final citation in citationsFromToolResult(item.event!)) {
+            if (citation.appRoute != null &&
+                citationKeys.add('${citation.kind}:${citation.appRoute}')) {
+              citations.add(citation);
+            }
+          }
+        }
         final supportsEvidencePane =
             supportsSessionPane &&
             metrics.widthClass.atLeast(WindowWidthClass.large) &&
-            _timeline.any(
-              (item) =>
-                  item.kind == AgentTimelineKind.toolCall ||
-                  item.kind == AgentTimelineKind.toolResult,
-            );
+            citations.isNotEmpty;
         return Scaffold(
           key: _scaffoldKey,
           appBar: AppBar(
@@ -302,9 +360,14 @@ class _AgentPageState extends ConsumerState<AgentPage> {
                   children: [
                     SizedBox(
                       width: AppPane.supportingWidth,
-                      child: _SessionPane(state: this),
+                      child: ColoredBox(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerLow,
+                        child: _SessionPane(state: this),
+                      ),
                     ),
-                    const VerticalDivider(width: 1),
+                    const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: _ConversationPane(
                         state: this,
@@ -312,10 +375,15 @@ class _AgentPageState extends ConsumerState<AgentPage> {
                       ),
                     ),
                     if (supportsEvidencePane) ...[
-                      const VerticalDivider(width: 1),
+                      const SizedBox(width: AppSpacing.sm),
                       SizedBox(
                         width: AppPane.supportingWidth,
-                        child: _EvidenceRunPane(timeline: _timeline),
+                        child: ColoredBox(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerLow,
+                          child: _CitationPane(citations: citations),
+                        ),
                       ),
                     ],
                   ],
@@ -723,110 +791,30 @@ class _Bubble extends StatelessWidget {
   }
 }
 
-class _EvidenceRunPane extends StatelessWidget {
-  const _EvidenceRunPane({required this.timeline});
+class _CitationPane extends StatelessWidget {
+  const _CitationPane({required this.citations});
 
-  final List<AgentTimelineItem> timeline;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final toolItems = timeline
-        .where(
-          (item) =>
-              item.kind == AgentTimelineKind.toolCall ||
-              item.kind == AgentTimelineKind.toolResult,
-        )
-        .toList(growable: false);
-    final citations = <AgentCitation>[];
-    final citationKeys = <String>{};
-    for (final item in toolItems) {
-      for (final citation in citationsFromToolResult(item.event!)) {
-        final key = '${citation.kind}:${citation.appRoute}:${citation.title}';
-        if (citationKeys.add(key)) citations.add(citation);
-      }
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('证据与运行', style: theme.textTheme.titleMedium),
-              const SizedBox(height: 4),
-              Text(
-                '${citations.length} 条引用 · ${toolItems.length} 次工具调用',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(12),
-            children: [
-              if (citations.isNotEmpty) ...[
-                Text('引用', style: theme.textTheme.labelLarge),
-                const SizedBox(height: 8),
-                for (final citation in citations)
-                  AgentCitationTile(citation: citation, showExcerpt: true),
-                const SizedBox(height: 16),
-              ],
-              Text('工具过程', style: theme.textTheme.labelLarge),
-              const SizedBox(height: 8),
-              for (final item in toolItems)
-                _RunListTile(
-                  event: item.event!,
-                  running: item.kind == AgentTimelineKind.toolCall,
-                ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _RunListTile extends StatelessWidget {
-  const _RunListTile({required this.event, required this.running});
-
-  final Map<String, dynamic> event;
-  final bool running;
+  final List<AgentCitation> citations;
 
   @override
-  Widget build(BuildContext context) {
-    final failed = !running && (event['ok'] == false || event['error'] != null);
-    final theme = Theme.of(context);
-    final summary = actionSummaryFromToolResult(event);
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(
-        running
-            ? Icons.pending_outlined
-            : failed
-            ? Icons.error_outline_rounded
-            : Icons.check_circle_outline_rounded,
-        color: failed ? theme.colorScheme.error : null,
+  Widget build(BuildContext context) => CustomScrollView(
+    slivers: [
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        sliver: SliverToBoxAdapter(
+          child: Text('引用', style: Theme.of(context).textTheme.titleMedium),
+        ),
       ),
-      title: Text(event['tool']?.toString() ?? 'tool'),
-      subtitle: Text(
-        summary ??
-            (running
-                ? '调用中'
-                : failed
-                ? '执行失败'
-                : '执行完成'),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+        sliver: SliverList.builder(
+          itemCount: citations.length,
+          itemBuilder: (context, index) =>
+              AgentCitationTile(citation: citations[index], showExcerpt: true),
+        ),
       ),
-    );
-  }
+    ],
+  );
 }
 
 class _Notice extends StatelessWidget {

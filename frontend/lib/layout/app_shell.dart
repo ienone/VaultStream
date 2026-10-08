@@ -9,7 +9,6 @@ import '../features/player/global_player_widgets.dart';
 import '../features/collection/models/capture_draft.dart';
 import '../features/collection/widgets/dialogs/add_content_dialog.dart';
 import '../core/utils/toast.dart';
-import '../theme/design_tokens.dart';
 import 'navigation_sidebar.dart';
 
 class AppShell extends ConsumerStatefulWidget {
@@ -24,7 +23,6 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   bool _isShowingSheet = false;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
-  Size? _windowSize;
 
   @override
   void initState() {
@@ -120,83 +118,68 @@ class _AppShellState extends ConsumerState<AppShell> {
       },
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final metrics = WindowMetrics.fromSize(constraints.biggest);
-          final resized = _windowSize != constraints.biggest;
-          _windowSize = constraints.biggest;
-          final useRail = metrics.widthClass.atLeast(WindowWidthClass.medium);
-          final mode = ref
-              .watch(sidebarModeProvider)
-              .forWidth(
-                constraints.maxWidth /
-                    (MediaQuery.textScalerOf(context).scale(16) / 16),
-              );
-          final sidebarVisible = mode != SidebarMode.hidden;
-          final sidebarWidth = mode == SidebarMode.expanded
-              ? NavigationSidebar.expandedWidth
-              : NavigationSidebar.compactWidth;
+          final useRail =
+              constraints.maxWidth /
+                  (MediaQuery.textScalerOf(context).scale(16) / 16) >=
+              ResponsiveLayout.mediumBreakpoint;
           return SidebarScope(
-            visible: sidebarVisible,
+            visible: useRail,
             openDrawer: () => _scaffoldKey.currentState!.openDrawer(),
             child: Scaffold(
               key: _scaffoldKey,
-              drawer: Drawer(
-                child: NavigationSidebar(
-                  expanded: true,
-                  selectedIndex: widget.navigationShell.currentIndex,
-                  onDestinationSelected: _onDestinationSelected,
-                  closeDrawer: () => _scaffoldKey.currentState!.closeDrawer(),
-                ),
-              ),
-              body: Row(
-                children: [
-                  AnimatedContainer(
-                    width: sidebarVisible ? sidebarWidth : 0,
-                    duration: resized || MediaQuery.disableAnimationsOf(context)
-                        ? Duration.zero
-                        : AppMotion.standard,
-                    curve: AppMotion.standardCurve,
-                    clipBehavior: Clip.hardEdge,
-                    decoration: const BoxDecoration(),
-                    child: OverflowBox(
-                      alignment: Alignment.topLeft,
-                      minWidth: sidebarWidth,
-                      maxWidth: sidebarWidth,
-                      child: ExcludeFocus(
-                        excluding: !sidebarVisible,
-                        child: ExcludeSemantics(
-                          excluding: !sidebarVisible,
-                          child: NavigationSidebar(
-                            expanded: mode == SidebarMode.expanded,
-                            selectedIndex: widget.navigationShell.currentIndex,
-                            onDestinationSelected: _onDestinationSelected,
-                          ),
-                        ),
+              backgroundColor: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerLowest,
+              drawer: useRail
+                  ? null
+                  : Drawer(
+                      width: NavigationSidebar.compactWidth,
+                      child: NavigationSidebar(
+                        selectedIndex: widget.navigationShell.currentIndex,
+                        onDestinationSelected: _onDestinationSelected,
+                        closeDrawer: () =>
+                            _scaffoldKey.currentState!.closeDrawer(),
                       ),
                     ),
-                  ),
+              body: Row(
+                children: [
+                  if (useRail)
+                    SizedBox(
+                      width: NavigationSidebar.compactWidth,
+                      child: NavigationSidebar(
+                        selectedIndex: widget.navigationShell.currentIndex,
+                        onDestinationSelected: _onDestinationSelected,
+                      ),
+                    ),
                   Expanded(
                     key: const ValueKey('root-content'),
-                    child: SafeArea(
-                      top: false,
-                      bottom: useRail,
-                      left: !useRail,
-                      child: Column(
-                        children: [
-                          Expanded(
-                            // Route barriers belong to the content pane. Without
-                            // this boundary they also hide the preceding rail
-                            // from the accessibility tree.
-                            child: Semantics(
-                              container: true,
-                              child: widget.navigationShell,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(useRail ? 28 : 0),
+                        bottomLeft: Radius.circular(useRail ? 28 : 0),
+                      ),
+                      child: SafeArea(
+                        top: false,
+                        bottom: useRail,
+                        left: !useRail,
+                        child: Column(
+                          children: [
+                            Expanded(
+                              // Route barriers belong to the content pane. Without
+                              // this boundary they also hide the preceding rail
+                              // from the accessibility tree.
+                              child: Semantics(
+                                container: true,
+                                child: widget.navigationShell,
+                              ),
                             ),
-                          ),
-                          Offstage(
-                            offstage:
-                                MediaQuery.viewInsetsOf(context).bottom > 0,
-                            child: const GlobalMiniPlayer(),
-                          ),
-                        ],
+                            Offstage(
+                              offstage:
+                                  MediaQuery.viewInsetsOf(context).bottom > 0,
+                              child: const GlobalMiniPlayer(),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -205,26 +188,30 @@ class _AppShellState extends ConsumerState<AppShell> {
               bottomNavigationBar:
                   useRail || MediaQuery.viewInsetsOf(context).bottom > 0
                   ? null
-                  : NavigationBar(
-                      selectedIndex: widget.navigationShell.currentIndex,
-                      onDestinationSelected: _onDestinationSelected,
-                      destinations: const [
-                        NavigationDestination(
-                          icon: Icon(Icons.dynamic_feed_outlined),
-                          selectedIcon: Icon(Icons.dynamic_feed_rounded),
-                          label: '动态',
+                  : SafeArea(
+                      top: false,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          children: [
+                            for (final entry in const [
+                              ('动态', Icons.dynamic_feed_outlined),
+                              ('收藏库', Icons.perm_media_outlined),
+                              ('自动化', Icons.account_tree_outlined),
+                            ].indexed)
+                              Expanded(
+                                child: AppNavigationDestination(
+                                  label: entry.$2.$1,
+                                  icon: entry.$2.$2,
+                                  selected:
+                                      widget.navigationShell.currentIndex ==
+                                      entry.$1,
+                                  onTap: () => _onDestinationSelected(entry.$1),
+                                ),
+                              ),
+                          ],
                         ),
-                        NavigationDestination(
-                          icon: Icon(Icons.perm_media_outlined),
-                          selectedIcon: Icon(Icons.perm_media_rounded),
-                          label: '收藏库',
-                        ),
-                        NavigationDestination(
-                          icon: Icon(Icons.account_tree_outlined),
-                          selectedIcon: Icon(Icons.account_tree_rounded),
-                          label: '自动化',
-                        ),
-                      ],
+                      ),
                     ),
             ),
           );

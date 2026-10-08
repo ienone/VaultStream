@@ -1,3 +1,6 @@
+import '../collection/providers/collection_provider.dart';
+import '../collection/models/content.dart';
+import '../collection/widgets/list/collection_card_preview.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -6,7 +9,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
 
-import '../../core/layout/responsive_layout.dart';
+import '../../core/widgets/network_thumbnail.dart';
+import '../../core/media/media_asset.dart';
 import '../../core/media/media_segment.dart';
 import '../../core/media/media_source_session.dart';
 import '../../core/network/api_client.dart';
@@ -329,7 +333,7 @@ class PlaybackSessionControls extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (state.request?.audioOnly == false)
-          SwitchListTile.adaptive(
+          SwitchListTile(
             key: const ValueKey('video-audio-only-toggle'),
             contentPadding: EdgeInsets.zero,
             title: const Text('仅听声音'),
@@ -913,10 +917,7 @@ class _PlaybackSegmentListState extends ConsumerState<PlaybackSegmentList> {
         ? '章节'
         : '逐字稿';
 
-    Widget buildList(Duration? position) {
-      final selectedIndex = position == null
-          ? null
-          : _activeSegmentIndex(segments, position);
+    Widget buildList(int? selectedIndex) {
       final tiles = ListView.separated(
         key: ValueKey(selectedType),
         padding: EdgeInsets.zero,
@@ -1056,9 +1057,18 @@ class _PlaybackSegmentListState extends ConsumerState<PlaybackSegmentList> {
     if (player == null || !player.value.isInitialized) {
       return buildList(null);
     }
+    int? previousIndex;
+    Widget? segmentList;
     return ValueListenableBuilder<VideoPlayerValue>(
       valueListenable: player,
-      builder: (context, value, _) => buildList(value.position),
+      builder: (context, value, _) {
+        final index = _activeSegmentIndex(segments, value.position);
+        if (segmentList == null || previousIndex != index) {
+          previousIndex = index;
+          segmentList = buildList(index);
+        }
+        return segmentList!;
+      },
     );
   }
 }
@@ -1112,11 +1122,28 @@ class GlobalMiniPlayer extends ConsumerWidget {
     if (request == null) {
       return const SizedBox.shrink();
     }
+    final currentRoute = GoRouterState.of(context).uri;
+    if (currentRoute.path == '/collection/${request.contentId}' ||
+        (currentRoute.path == '/collection' &&
+            currentRoute.queryParameters['item'] == '${request.contentId}')) {
+      return const SizedBox.shrink();
+    }
     final actions = ref.read(globalPlaybackProvider.notifier);
     final player = actions.videoController;
     final scheme = Theme.of(context).colorScheme;
+    final poster =
+        request.posterAsset ??
+        ref
+            .watch(contentDetailProvider(request.contentId))
+            .value
+            ?.mediaAssets
+            .where(
+              (asset) =>
+                  asset.mediaType == MediaType.image &&
+                  asset.role != MediaRole.avatar,
+            )
+            .firstOrNull;
     final audioPresentation = request.audioOnly || state.videoAudioOnly;
-    final compact = WindowMetrics.of(context).heightClass.isCompact;
     final status = state.loading
         ? '正在载入'
         : state.failure != null
@@ -1127,7 +1154,7 @@ class GlobalMiniPlayer extends ConsumerWidget {
 
     return Material(
       key: const ValueKey('global-mini-player'),
-      color: scheme.surfaceContainerHigh,
+      color: scheme.surfaceContainerHighest,
       child: SafeArea(
         top: false,
         child: Semantics(
@@ -1140,88 +1167,107 @@ class GlobalMiniPlayer extends ConsumerWidget {
                   current.path == '/collection' &&
                   current.queryParameters['item'] == '${request.contentId}';
               if (current.path != location && !inCollection) {
-                context.push(location);
+                context.push(
+                  location,
+                  extra: ShareCard(
+                    id: request.contentId,
+                    platform: '',
+                    url: '',
+                    title: request.title,
+                    mediaAssets: [?poster],
+                  ),
+                );
               }
             },
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: compact ? 56 : 72),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: compact ? 72 : 88,
-                    height: compact ? 56 : 72,
-                    child: audioPresentation || player == null
-                        ? Icon(
-                            audioPresentation
-                                ? Icons.graphic_eq_rounded
-                                : Icons.movie_outlined,
-                            color: scheme.primary,
-                          )
-                        : AspectRatio(
-                            aspectRatio: player.value.aspectRatio == 0
-                                ? 16 / 9
-                                : player.value.aspectRatio,
-                            child: _PlaybackVideoView(controller: player),
-                          ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: AppSpacing.sm,
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            request.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          if (status != null) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              status,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (state.loading)
-                    const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: SizedBox.square(
-                        dimension: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
-                  else if (player != null && state.initialized)
-                    ValueListenableBuilder<VideoPlayerValue>(
-                      valueListenable: player,
-                      builder: (context, value, _) => IconButton(
-                        tooltip: value.isPlaying ? '暂停' : '播放',
-                        onPressed: actions.togglePlayback,
-                        icon: Icon(
-                          value.isPlaying
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
+            child: ContentSharedTransition(
+              enabled:
+                  GoRouterState.of(context).uri.path !=
+                  '/collection/${request.contentId}',
+              contentId: request.contentId,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 56),
+                child: Row(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: ClipRRect(
+                        borderRadius: AppShape.cardMediaBorder,
+                        child: SizedBox(
+                          width: 64,
+                          height: 44,
+                          child: poster != null
+                              ? NetworkThumbnail(
+                                  mediaAsset: poster,
+                                  purpose: MediaPurpose.card,
+                                )
+                              : Icon(
+                                  audioPresentation
+                                      ? Icons.graphic_eq_rounded
+                                      : Icons.movie_outlined,
+                                  color: scheme.primary,
+                                ),
                         ),
                       ),
                     ),
-                  IconButton(
-                    tooltip: '关闭播放器',
-                    onPressed: actions.close,
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                  const SizedBox(width: 4),
-                ],
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: AppSpacing.sm,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              request.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                            if (status != null) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                status,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (state.loading)
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    else if (player != null && state.initialized)
+                      ValueListenableBuilder<VideoPlayerValue>(
+                        valueListenable: player,
+                        builder: (context, value, _) => IconButton(
+                          tooltip: value.isPlaying ? '暂停' : '播放',
+                          onPressed: actions.togglePlayback,
+                          icon: Icon(
+                            value.isPlaying
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                          ),
+                        ),
+                      ),
+                    IconButton(
+                      tooltip: '关闭播放器',
+                      onPressed: actions.close,
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1288,7 +1334,7 @@ class _PlaybackVideoView extends ConsumerWidget {
         ?.route;
     final observer = ref.watch(playbackRouteObserverProvider);
     return ValueListenableBuilder(
-      valueListenable: observer.topPage,
+      valueListenable: observer.revision,
       builder: (context, _, _) => _PlaybackVideoMount(
         controller: controller,
         active:

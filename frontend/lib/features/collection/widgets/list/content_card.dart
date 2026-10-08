@@ -1,6 +1,6 @@
+import '../../../automation/widgets/push_content_dialog.dart';
 import 'package:flutter/material.dart';
 
-import '../../../../theme/design_tokens.dart';
 import '../../models/content.dart';
 import 'collection_card_preview.dart';
 
@@ -15,6 +15,9 @@ class ContentCard extends StatefulWidget {
     required this.content,
     this.onTap,
     this.onLongPress,
+    this.onSelectionStart,
+    this.onSelectionMove,
+    this.onSelectionEnd,
     this.isSelectionMode = false,
     this.isSelected = false,
     this.isList = false,
@@ -24,6 +27,9 @@ class ContentCard extends StatefulWidget {
   final ShareCard content;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+  final GestureLongPressStartCallback? onSelectionStart;
+  final GestureLongPressMoveUpdateCallback? onSelectionMove;
+  final GestureLongPressEndCallback? onSelectionEnd;
   final bool isSelectionMode;
   final bool isSelected;
   final bool isList;
@@ -37,62 +43,63 @@ class _ContentCardState extends State<ContentCard> {
   bool _isHovered = false;
 
   void _handleTap() {
-    setState(() => _isHovered = false);
     widget.onTap?.call();
+    setState(() => _isHovered = false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
     return Semantics(
       selected: widget.isSelectionMode ? widget.isSelected : widget.isActive,
-      child: Container(
-        foregroundDecoration: BoxDecoration(
-          color: widget.isActive ? scheme.primary.withValues(alpha: .06) : null,
-          borderRadius: AppShape.cardBorder,
-          border: widget.isActive
-              ? Border.all(color: scheme.primary, width: 2)
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: GestureDetector(
+          onLongPress: widget.onSelectionStart == null
+              ? widget.onLongPress
               : null,
-        ),
-        child: MouseRegion(
-          onEnter: (_) => setState(() => _isHovered = true),
-          onExit: (_) => setState(() => _isHovered = false),
-          child: GestureDetector(
-            onLongPress: widget.onLongPress,
-            child: Stack(
-              children: [
-                Padding(
-                  padding: EdgeInsets.only(
-                    right: widget.isSelectionMode ? 40 : 0,
-                  ),
-                  child: CollectionCardPreview(
-                    content: widget.content,
-                    onTap: widget.onTap == null ? null : _handleTap,
-                    isHovered: _isHovered,
-                    isList: widget.isList,
+          onLongPressStart: widget.onSelectionStart,
+          onLongPressMoveUpdate: widget.onSelectionMove,
+          onLongPressEnd: widget.onSelectionEnd,
+          child: Stack(
+            children: [
+              CollectionCardPreview(
+                content: widget.content,
+                onTap: widget.onTap == null ? null : _handleTap,
+                isHovered: !widget.isSelectionMode && _isHovered,
+                transparentSurface: widget.isSelectionMode,
+                isList: widget.isList,
+                isEmphasized: widget.isSelectionMode ? false : widget.isActive,
+                trailingSpace: 40,
+              ),
+              if (!widget.isSelectionMode)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: PopupMenuButton<String>(
+                    tooltip: '内容操作',
+                    onSelected: (value) {
+                      if (value == 'push') {
+                        showPushContentDialog(context, [widget.content.id]);
+                      }
+                      if (value == 'select') widget.onLongPress?.call();
+                    },
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(value: 'push', child: Text('推送…')),
+                      if (widget.onLongPress != null)
+                        const PopupMenuItem(value: 'select', child: Text('选择')),
+                    ],
                   ),
                 ),
-                if (widget.isSelectionMode)
-                  Positioned(
-                    top: AppSpacing.xs,
-                    right: AppSpacing.xs,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: widget.isSelected
-                            ? scheme.primary
-                            : scheme.surface.withValues(alpha: 0.85),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: scheme.primary, width: 2),
-                      ),
-                      padding: const EdgeInsets.all(AppSpacing.xxs),
-                      child: widget.isSelected
-                          ? Icon(Icons.check, size: 16, color: scheme.onPrimary)
-                          : const SizedBox(width: 16, height: 16),
-                    ),
+              if (widget.isSelectionMode && widget.isSelected)
+                const Positioned(
+                  top: 8,
+                  right: 12,
+                  child: ExcludeSemantics(
+                    child: Icon(Icons.check_rounded, size: 20),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
         ),
       ),

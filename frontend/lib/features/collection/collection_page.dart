@@ -1,3 +1,4 @@
+import 'widgets/list/content_workspace_motion.dart';
 import '../../layout/root_page_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,7 +14,7 @@ import 'providers/collection_filter_provider.dart';
 import 'providers/collection_provider.dart';
 import 'providers/search_history_provider.dart';
 import 'widgets/detail/detail_sections.dart';
-import 'widgets/dialogs/batch_action_sheet.dart';
+import 'widgets/dialogs/batch_action_bar.dart';
 import 'widgets/dialogs/collection_filter_sheet.dart';
 import 'widgets/list/collection_list.dart';
 import 'widgets/list/collection_search_entry.dart';
@@ -47,7 +48,9 @@ class CollectionPage extends ConsumerStatefulWidget {
   ConsumerState<CollectionPage> createState() => _CollectionPageState();
 }
 
-class _CollectionPageState extends ConsumerState<CollectionPage> {
+class _CollectionPageState extends ConsumerState<CollectionPage>
+    with SingleTickerProviderStateMixin {
+  late final _motion = ContentMorphController(vsync: this);
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   String? _lastAppliedRouteFilterSignature;
@@ -98,6 +101,11 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
 
   void _openContent(ShareCard content) {
     if (content.id == widget.selectedContentId) return;
+    _motion.navigate(context, content.id, () => _navigateContent(content));
+  }
+
+  void _navigateContent(ShareCard content) {
+    if (content.id == widget.selectedContentId) return;
     _preview = content;
     final uri = GoRouterState.of(context).uri;
     final location = uri
@@ -116,6 +124,12 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   }
 
   void _closeReader() {
+    final id = widget.selectedContentId;
+    if (id == null) return;
+    _motion.navigate(context, id, _navigateClose, reverse: true);
+  }
+
+  void _navigateClose() {
     final uri = GoRouterState.of(context).uri;
     final query = {...uri.queryParametersAll}..remove('item');
     context.replace(uri.replace(queryParameters: query).toString());
@@ -158,6 +172,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
 
   @override
   void dispose() {
+    _motion.dispose();
     // 离开页面时不清空筛选：从详情返回必须恢复原有查询与结果。
     final entry = _readerHistory;
     _readerHistory = null;
@@ -214,102 +229,111 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     );
     final collectionAsync = ref.watch(collectionProvider);
     final selection = ref.watch(batchSelectionProvider);
-    return CollectionWorkspace(
-      selectedId: widget.selectedContentId,
-      preview: _preview?.id == widget.selectedContentId ? _preview : null,
-      onClose: _closeReader,
-      list: LayoutBuilder(
-        builder: (context, constraints) {
-          final compact = _searchBelowToolbar(constraints.maxWidth);
-          final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
-          final columns = widget.selectedContentId == null
-              ? (constraints.maxWidth / (360 * textScale)).floor().clamp(1, 4)
-              : 1;
-          return Scaffold(
-            appBar: selection.isSelectionMode
-                ? _buildSelectionAppBar(selection)
-                : _buildAppBar(filter, constraints.maxWidth),
-            body: Column(
-              children: [
-                if (!selection.isSelectionMode && compact)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.md,
-                      AppSpacing.sm,
-                      AppSpacing.md,
-                      AppSpacing.sm,
+    return ContentWorkspaceMotion(
+      controller: _motion,
+      child: CollectionWorkspace(
+        selectedId: widget.selectedContentId,
+        preview: _preview?.id == widget.selectedContentId ? _preview : null,
+        onClose: _closeReader,
+        list: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = _searchBelowToolbar(constraints.maxWidth);
+            final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+            final columns = widget.selectedContentId == null
+                ? (constraints.maxWidth / (360 * textScale)).floor().clamp(1, 4)
+                : 1;
+            return Scaffold(
+              backgroundColor: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerLow,
+              appBar: selection.isSelectionMode
+                  ? _buildSelectionAppBar(selection)
+                  : _buildAppBar(filter, constraints.maxWidth),
+              body: Column(
+                children: [
+                  if (compact)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.md,
+                        AppSpacing.sm,
+                        AppSpacing.md,
+                        AppSpacing.sm,
+                      ),
+                      child: CollectionSearchEntry(
+                        controller: _searchController,
+                        onSubmit: _performSearch,
+                        onOpenPage: _openSearchPage,
+                      ),
                     ),
-                    child: CollectionSearchEntry(
-                      controller: _searchController,
-                      onSubmit: _performSearch,
-                      onOpenPage: _openSearchPage,
-                    ),
-                  ),
-                if (!selection.isSelectionMode)
                   _ActiveFilterBar(
                     filter: filter,
                     resultTotal: collectionAsync.value?.total,
                   ),
-                Expanded(
-                  child: collectionAsync.when(
-                    skipLoadingOnRefresh: true,
-                    data: (response) => CollectionList(
-                      items: response.items,
-                      columns: columns,
-                      onOpenContent: _openContent,
-                      activeId: widget.selectedContentId,
-                      scrollController: _scrollController,
-                      isLoadingMore:
-                          collectionAsync.isLoading &&
-                          response.items.isNotEmpty,
-                      onLoadMore: response.hasMore
-                          ? ref.read(collectionProvider.notifier).fetchMore
-                          : null,
-                      onRefresh: _refresh,
-                      isSelectionMode: selection.isSelectionMode,
-                      selectedIds: selection.selectedIds,
-                      onToggleSelection: (id) => ref
-                          .read(batchSelectionProvider.notifier)
-                          .toggleSelection(id),
-                      onLongPress: (id) {
-                        if (widget.selectedContentId != null) _closeReader();
-                        final notifier = ref.read(
-                          batchSelectionProvider.notifier,
-                        );
-                        notifier.enterSelectionMode();
-                        notifier.toggleSelection(id);
-                      },
-                      emptyState: _buildEmptyState(filter),
-                    ),
-                    loading: () => CollectionSkeleton(columns: columns),
-                    error: (error, _) => Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(AppSpacing.xl),
-                        child: ContentEmptyState(
-                          icon: Icons.cloud_off_rounded,
-                          message: '无法加载收藏库',
-                          action: FilledButton.tonal(
-                            onPressed: () => ref.invalidate(collectionProvider),
-                            child: const Text('重试'),
+                  Expanded(
+                    child: collectionAsync.when(
+                      skipLoadingOnRefresh: true,
+                      data: (response) => CollectionList(
+                        items: response.items,
+                        columns: columns,
+                        onOpenContent: _openContent,
+                        activeId: widget.selectedContentId,
+                        scrollController: _scrollController,
+                        isLoadingMore:
+                            collectionAsync.isLoading &&
+                            response.items.isNotEmpty,
+                        onLoadMore: response.hasMore
+                            ? ref.read(collectionProvider.notifier).fetchMore
+                            : null,
+                        onRefresh: _refresh,
+                        isSelectionMode: selection.isSelectionMode,
+                        selectedIds: selection.selectedIds,
+                        selectionEnabled: !selection.isProcessing,
+                        onSelectionChanged: (ids) => ref
+                            .read(batchSelectionProvider.notifier)
+                            .selectAll(ids.toList()),
+                        onToggleSelection: (id) => ref
+                            .read(batchSelectionProvider.notifier)
+                            .toggleSelection(id),
+                        onLongPress: (id) {
+                          // Selection changes the list only; the reader keeps its route and state.
+                          final notifier = ref.read(
+                            batchSelectionProvider.notifier,
+                          );
+                          notifier.toggleSelection(id);
+                        },
+                        emptyState: _buildEmptyState(filter),
+                      ),
+                      loading: () => CollectionSkeleton(columns: columns),
+                      error: (error, _) => Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(AppSpacing.xl),
+                          child: ContentEmptyState(
+                            icon: Icons.cloud_off_rounded,
+                            message: '无法加载收藏库',
+                            action: FilledButton.tonal(
+                              onPressed: () =>
+                                  ref.invalidate(collectionProvider),
+                              child: const Text('重试'),
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            floatingActionButton: selection.isSelectionMode
-                ? FloatingActionButton.extended(
-                    onPressed: selection.isProcessing || selection.count == 0
-                        ? null
-                        : () => showBatchActions(context),
-                    icon: const Icon(Icons.checklist_rounded),
-                    label: Text('操作 (${selection.count})'),
-                  )
-                : null,
-          );
-        },
+                ],
+              ),
+              bottomNavigationBar: selection.isSelectionMode
+                  ? const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.all(Radius.circular(16)),
+                        child: BatchActionBar(),
+                      ),
+                    )
+                  : null,
+            );
+          },
+        ),
       ),
     );
   }
@@ -347,7 +371,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
 
     return AppBar(
       leading: buildRootPageLeading(context),
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
       scrolledUnderElevation: 0,
       toolbarHeight: WindowMetrics.of(context).heightClass.isCompact
           ? 48
@@ -396,7 +420,8 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
       toolbarHeight: WindowMetrics.of(context).heightClass.isCompact
           ? 48
           : null,
-      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
+      scrolledUnderElevation: 0,
       leading: IconButton(
         tooltip: '退出选择',
         icon: const Icon(Icons.close_rounded),

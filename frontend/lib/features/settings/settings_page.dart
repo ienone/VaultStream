@@ -51,7 +51,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _SettingsSection(
       key: 'push',
       title: '推送与通知',
-      subtitle: 'Bot 凭证、权限与周期摘要',
+      subtitle: '应用内摘要与账号入口',
       icon: Icons.outbox_rounded,
       child: PushTab(),
     ),

@@ -67,6 +67,18 @@ class LocalSettings extends _$LocalSettings {
     state = state.copyWith(apiToken: '');
   }
 
+  Future<void> setConnection(String url, String token) async {
+    if (isSecureStorageInitialized) {
+      await secureStorage.write(key: apiTokenStorageKey, value: token);
+    }
+    if (isSharedPrefsInitialized) {
+      await sharedPrefs.setString(_keyBaseUrl, url);
+      await sharedPrefs.remove(apiTokenStorageKey);
+    }
+    initialApiToken = token;
+    state = LocalSettingsState(baseUrl: url, apiToken: token);
+  }
+
   Future<Map<String, dynamic>> validateConnection(
     String baseUrl,
     String apiToken,
@@ -77,43 +89,30 @@ class LocalSettings extends _$LocalSettings {
           baseUrl: baseUrl,
           connectTimeout: const Duration(seconds: 10),
           receiveTimeout: const Duration(seconds: 10),
+          headers: {'X-API-Token': apiToken},
+          followRedirects: false,
         ),
       );
 
-      // 1. 先尝试免鉴权探测后端
-      final initResponse = await dio.get('/init-status');
-      if (initResponse.statusCode != 200) {
+      final response = await dio.get('/auth/check');
+      if (response.statusCode != 204) {
         return {
           'success': false,
-          'error': '后端响应错误: ${initResponse.statusCode}',
+          'error': '后端响应错误: ${response.statusCode}',
         };
-      }
-
-      final initData = initResponse.data;
-
-      // 2. 尝试带 Token 鉴权 (如果有 Token)
-      bool authOk = false;
-      if (apiToken.isNotEmpty) {
-        try {
-          final authResponse = await dio.get(
-            '/dashboard/stats',
-            options: Options(headers: {'X-API-Token': apiToken}),
-          );
-          authOk = authResponse.statusCode == 200;
-        } catch (_) {
-          authOk = false;
-        }
       }
 
       return {
         'success': true,
-        'auth_ok': authOk,
-        'needs_setup': initData['needs_setup'] ?? false,
-        'version': initData['version'],
+        'auth_ok': true,
       };
     } on DioException catch (e) {
+      if (e.response?.statusCode == 401) {
+        return {'success': true, 'auth_ok': false};
+      }
       String msg = '连接失败: ';
-      if (e.type == DioExceptionType.connectionTimeout) {
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
         msg += '连接超时';
       } else if (e.type == DioExceptionType.badResponse) {
         msg += '状态码 ${e.response?.statusCode}';

@@ -157,29 +157,31 @@ class ContentParser {
   }
 
   static List<HeaderLine> extractHeaders(String markdown) {
-    // 移除代码块，防止代码块内的 ### 被识别为标题
-    final cleanedMarkdown = markdown.replaceAll(RegExp(r'```[\s\S]*?```'), '');
-    final lines = cleanedMarkdown.split('\n');
-    final List<HeaderLine> headers = [];
-    final Map<String, int> counts = {};
-
-    for (var line in lines) {
-      final match = RegExp(r'^(#{1,6})\s+(.+)$').firstMatch(line.trim());
-      if (match != null) {
-        var text = match.group(2)!;
-        text = text.replaceAll(RegExp(r'[*_`~]'), '');
-        if (text.trim().isEmpty) continue;
+    final headers = <HeaderLine>[];
+    final counts = <String, int>{};
+    void visit(md.Node node) {
+      if (node is! md.Element) return;
+      if (RegExp(r'^h[1-6]$').hasMatch(node.tag)) {
+        final text = node.textContent;
         final count = counts[text] ?? 0;
         counts[text] = count + 1;
-        final uniqueId = count == 0 ? text : '$text-$count';
         headers.add(
           HeaderLine(
-            level: match.group(1)!.length,
+            level: int.parse(node.tag.substring(1)),
             text: text,
-            uniqueId: uniqueId,
+            uniqueId: '${text.length}:$text:$count',
           ),
         );
       }
+      for (final child in node.children ?? const <md.Node>[]) {
+        visit(child);
+      }
+    }
+
+    for (final node in md.Document(
+      extensionSet: md.ExtensionSet.gitHubFlavored,
+    ).parseLines(markdown.split('\n'))) {
+      visit(node);
     }
     return headers;
   }

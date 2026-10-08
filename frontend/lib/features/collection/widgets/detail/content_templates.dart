@@ -93,7 +93,7 @@ class ContentTemplateBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final body = switch (context_.detail.template) {
       ContentTemplate.article => _ArticleBody(ctx: context_),
-      ContentTemplate.imageNote => _ImageNoteBody(ctx: context_),
+      ContentTemplate.imageNote => _ImageNoteStack(ctx: context_),
       ContentTemplate.shortPost => _ShortPostBody(ctx: context_),
       ContentTemplate.gallery => _GalleryBody(ctx: context_),
       ContentTemplate.video => _VideoBody(ctx: context_),
@@ -138,7 +138,7 @@ class ImmersiveMediaDetail extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(flex: 13, child: _ImmersiveMediaViewer(ctx: ctx)),
-        VerticalDivider(width: 1, color: scheme.outlineVariant),
+        const SizedBox(width: AppSpacing.md),
         Expanded(
           flex: 8,
           child: ColoredBox(
@@ -216,6 +216,7 @@ class _ImmersiveTextBody extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (ctx.detail.hasBody) _BodyText(ctx: ctx, hideMedia: true),
+        if (ctx.images.isNotEmpty) _AttachedPlayback(ctx: ctx),
         if (quoted != null) ...[
           const SizedBox(height: AppSpacing.md),
           _QuotedContent(raw: quoted),
@@ -272,19 +273,13 @@ class _ImmersiveMediaViewerState extends State<_ImmersiveMediaViewer> {
   Widget build(BuildContext context) {
     final ctx = widget.ctx;
     final scheme = Theme.of(context).colorScheme;
-    final playableVideo = _playableMedia(ctx, audio: false);
-    if (ctx.images.isEmpty && playableVideo.urls.isNotEmpty) {
+    if (ctx.images.isEmpty) {
       return ColoredBox(
         key: const ValueKey('immersive-video-viewer'),
         color: scheme.surfaceContainerLowest,
-        child: Center(
-          child: AspectRatio(
-            aspectRatio: 16 / 9,
-            child: GlobalPlaybackSurface(
-              request: _playbackRequest(ctx, playableVideo, audioOnly: false),
-              initialPosition: ctx.initialPlaybackPosition,
-            ),
-          ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: _AttachedPlayback(ctx: ctx),
         ),
       );
     }
@@ -630,6 +625,46 @@ class _CoverBlock extends StatelessWidget {
   return (asset: null, urls: const []);
 }
 
+/// Mixed social posts keep every playable attachment in the same session.
+class _AttachedPlayback extends StatelessWidget {
+  const _AttachedPlayback({required this.ctx});
+
+  final TemplateContext ctx;
+
+  @override
+  Widget build(BuildContext context) {
+    final assets = ctx.detail.mediaAssets.where(
+      (asset) =>
+          (asset.mediaType == MediaType.video ||
+              asset.mediaType == MediaType.audio) &&
+          asset.sources.isNotEmpty,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final asset in assets)
+          Padding(
+            key: ValueKey('post-media-${asset.id}'),
+            padding: const EdgeInsets.only(bottom: AppSpacing.md),
+            child: ClipRRect(
+              borderRadius: AppShape.cardBorder,
+              child: GlobalPlaybackSurface(
+                request: _playbackRequest(ctx, (
+                  asset: asset,
+                  urls: asset.sources.map((source) => source.url).toList(),
+                ), audioOnly: asset.mediaType == MediaType.audio),
+                activateOnMount: ctx.initialMediaAssetId == asset.id,
+                initialPosition: ctx.initialMediaAssetId == asset.id
+                    ? ctx.initialPlaybackPosition
+                    : null,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 // --- 模板主体 ---
 
 /// 文章：连续阅读为主，正文限宽。
@@ -681,7 +716,12 @@ class _DocumentBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final attachments = ctx.detail.mediaAssets;
+    final attachments = ctx.detail.mediaAssets.where(
+      (asset) =>
+          asset.role != MediaRole.avatar &&
+          asset.role != MediaRole.cover &&
+          asset.role != MediaRole.poster,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -809,17 +849,17 @@ class _DocumentAttachmentTileState
     final size =
         firstSource?.sizeBytes ??
         (widget.asset.metadata['size_bytes'] as num?)?.toInt();
-    final metadata = [
-      if (firstSource?.mimeType != null) firstSource!.mimeType!,
+    final subtitle = [
       if (size != null) _formatFileSize(size),
-    ].join(' · ');
+      ?_error,
+    ].join('\n');
 
     return Card(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: ListTile(
         leading: const Icon(Icons.description_outlined),
         title: Text(name),
-        subtitle: Text([if (metadata.isNotEmpty) metadata, ?_error].join('\n')),
+        subtitle: subtitle.isEmpty ? null : Text(subtitle),
         trailing: _busy
             ? const SizedBox.square(
                 dimension: 20,
@@ -1022,36 +1062,7 @@ class _PagedMediaViewerState extends State<_PagedMediaViewer> {
   }
 }
 
-/// 图文笔记：文字与图片交错，两者的对应关系是主体。
-class _ImageNoteBody extends StatelessWidget {
-  const _ImageNoteBody({required this.ctx});
-
-  final TemplateContext ctx;
-
-  @override
-  Widget build(BuildContext context) {
-    if (!ctx.isCompact && ctx.images.isNotEmpty && ctx.detail.hasBody) {
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth >= 720) {
-            return Row(
-              key: const ValueKey('image-note-split-layout'),
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(flex: 6, child: _PagedMediaViewer(ctx: ctx)),
-                const SizedBox(width: AppSpacing.xl),
-                Expanded(flex: 4, child: _BodyText(ctx: ctx)),
-              ],
-            );
-          }
-          return _ImageNoteStack(ctx: ctx);
-        },
-      );
-    }
-    return _ImageNoteStack(ctx: ctx);
-  }
-}
-
+/// 窄屏图文笔记；宽屏媒体布局由详情工作区统一负责。
 class _ImageNoteStack extends StatelessWidget {
   const _ImageNoteStack({required this.ctx});
 
@@ -1062,6 +1073,7 @@ class _ImageNoteStack extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _AttachedPlayback(ctx: ctx),
         if (ctx.images.isNotEmpty) ...[
           _PagedMediaViewer(ctx: ctx),
           if (ctx.detail.hasBody) const SizedBox(height: AppSpacing.lg),
@@ -1086,6 +1098,7 @@ class _ShortPostBody extends StatelessWidget {
       key: const ValueKey('short-post-compact-body'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _AttachedPlayback(ctx: ctx),
         if (ctx.images.isNotEmpty) ...[
           _PagedMediaViewer(ctx: ctx),
           const SizedBox(height: AppSpacing.lg),
@@ -1122,7 +1135,6 @@ class _QuotedContent extends StatelessWidget {
       decoration: BoxDecoration(
         color: scheme.surfaceContainer,
         borderRadius: AppShape.paneBorder,
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.7)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1221,6 +1233,7 @@ class _GalleryBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _AttachedPlayback(ctx: ctx),
         if (ctx.images.isNotEmpty)
           _PagedMediaViewer(ctx: ctx)
         else
@@ -1348,11 +1361,18 @@ PlaybackRequest _playbackRequest(
 }) => PlaybackRequest(
   contentId: ctx.detail.id,
   title: (ctx.detail.title ?? '').trim().isEmpty
-      ? '内容 ${ctx.detail.id}'
+      ? (audioOnly ? '音频' : '视频')
       : ctx.detail.title!.trim(),
   urls: playable.urls,
   audioOnly: audioOnly,
   mediaAsset: playable.asset,
+  posterAsset: ctx.detail.mediaAssets
+      .where(
+        (asset) =>
+            asset.mediaType == MediaType.image &&
+            asset.role != MediaRole.avatar,
+      )
+      .firstOrNull,
   segments: ctx.detail.mediaSegments,
 );
 
@@ -1406,6 +1426,7 @@ class _ProfileBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _AttachedPlayback(ctx: ctx),
         if (ctx.detail.hasBody) ...[
           const DetailSectionHeader(title: '简介'),
           _BodyText(ctx: ctx),
@@ -1420,13 +1441,13 @@ class _ProfileBody extends StatelessWidget {
 }
 
 /// 书签：只记录链接和"为什么保存"，并提供升级解析入口。
-class _BookmarkBody extends ConsumerWidget {
+class _BookmarkBody extends StatelessWidget {
   const _BookmarkBody({required this.ctx});
 
   final TemplateContext ctx;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final detail = ctx.detail;
     final originalUrl = detail.externalOriginalUrl;
@@ -1457,17 +1478,12 @@ class _BookmarkBody extends ConsumerWidget {
                 Wrap(
                   spacing: AppSpacing.xs,
                   children: [
-                    FilledButton.tonalIcon(
-                      onPressed: () =>
-                          SafeUrlLauncher.openExternal(context, originalUrl),
-                      icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                      label: const Text('打开链接'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: ctx.onReParse,
-                      icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
-                      label: const Text('尝试解析正文'),
-                    ),
+                    if (!detail.isParseFailed && !detail.isParsePending)
+                      TextButton.icon(
+                        onPressed: ctx.onReParse,
+                        icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+                        label: const Text('尝试解析正文'),
+                      ),
                   ],
                 ),
               ],
@@ -1522,23 +1538,52 @@ class ContentSupportingSections extends StatelessWidget {
 }
 
 /// 目录。仅文章模板在宽屏使用。
-class ContentOutline extends StatelessWidget {
+class ContentOutline extends StatefulWidget {
   const ContentOutline({
     super.key,
     required this.detail,
     required this.activeHeader,
     required this.headerKeys,
+    this.showTitle = true,
+    this.padding = const EdgeInsets.all(AppSpacing.md),
   });
 
+  final bool showTitle;
+  final EdgeInsetsGeometry padding;
   final ContentDetail detail;
   final String? activeHeader;
   final Map<String, GlobalKey> headerKeys;
 
   @override
-  Widget build(BuildContext context) {
-    final headers = ContentParser.extractHeaders(
-      ContentParser.getMarkdownContent(detail),
+  State<ContentOutline> createState() => _ContentOutlineState();
+}
+
+class _ContentOutlineState extends State<ContentOutline> {
+  late List<HeaderLine> headers;
+
+  @override
+  void initState() {
+    super.initState();
+    _readHeaders();
+  }
+
+  void _readHeaders() {
+    headers = ContentParser.extractHeaders(
+      ContentParser.getMarkdownContent(widget.detail),
     );
+  }
+
+  @override
+  void didUpdateWidget(ContentOutline oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (ContentParser.getMarkdownContent(oldWidget.detail) !=
+        ContentParser.getMarkdownContent(widget.detail)) {
+      _readHeaders();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     if (headers.isEmpty) return const SizedBox.shrink();
     final minimumLevel = headers
         .map((header) => header.level)
@@ -1548,7 +1593,7 @@ class ContentOutline extends StatelessWidget {
     return Container(
       key: const ValueKey('content-detail-outline-surface'),
       width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.md),
+      padding: widget.padding,
       decoration: BoxDecoration(
         color: scheme.surfaceContainerLow,
         borderRadius: AppShape.paneBorder,
@@ -1556,13 +1601,13 @@ class ContentOutline extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const DetailSectionHeader(title: '目录'),
+          if (widget.showTitle) const DetailSectionHeader(title: '目录'),
           const SizedBox(height: AppSpacing.xs),
           for (final header in headers)
             _OutlineEntry(
               header: header,
               depth: (header.level - minimumLevel).clamp(0, 3),
-              active: activeHeader == header.uniqueId,
+              active: widget.activeHeader == header.uniqueId,
               onTap: () => _scrollTo(header.uniqueId),
             ),
         ],
@@ -1571,7 +1616,7 @@ class ContentOutline extends StatelessWidget {
   }
 
   void _scrollTo(String headerId) {
-    final target = headerKeys[headerId]?.currentContext;
+    final target = widget.headerKeys[headerId]?.currentContext;
     if (target == null) return;
     Scrollable.ensureVisible(
       target,

@@ -1,3 +1,4 @@
+import 'content_workspace_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -22,15 +23,26 @@ class ContentSharedTransition extends StatelessWidget {
     required this.child,
     this.immersiveMedia = false,
     this.enabled = true,
+    this.destination = false,
   });
 
   final int contentId;
   final Widget child;
   final bool immersiveMedia;
   final bool enabled;
+  final bool destination;
 
   @override
   Widget build(BuildContext context) {
+    final motion = ContentWorkspaceMotion.maybeOf(context);
+    if (motion != null) {
+      return ContentMotionAnchor(
+        controller: motion,
+        id: contentId,
+        destination: destination,
+        child: child,
+      );
+    }
     if (!enabled || MediaQuery.disableAnimationsOf(context)) return child;
     return Hero(
       tag: contentSharedTransitionTag(contentId),
@@ -108,6 +120,9 @@ class CollectionCardPreview extends StatelessWidget {
     required this.content,
     this.onTap,
     this.isHovered = false,
+    this.isEmphasized = false,
+    this.trailingSpace = 0,
+    this.transparentSurface = false,
     this.isTinyCardOverride,
     this.isList = false,
   });
@@ -115,6 +130,9 @@ class CollectionCardPreview extends StatelessWidget {
   final ShareCard content;
   final VoidCallback? onTap;
   final bool isHovered;
+  final bool isEmphasized;
+  final double trailingSpace;
+  final bool transparentSurface;
   final bool isList;
 
   /// 强制紧凑模式。为 null 时由卡片自身可用宽度决定。
@@ -165,16 +183,28 @@ class CollectionCardPreview extends StatelessWidget {
             isTiny: tiny,
             isList: isList,
             isHovered: isHovered,
+            isEmphasized: isEmphasized,
+            trailingSpace: trailingSpace,
+            transparentSurface: transparentSurface,
           ),
         );
 
         if (onTap == null) return surface;
 
-        return Material(
-          color: Colors.transparent,
-          borderRadius: AppShape.cardBorder,
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(onTap: onTap, child: surface),
+        return MergeSemantics(
+          child: Stack(
+            children: [
+              surface,
+              Positioned.fill(
+                child: Material(
+                  type: MaterialType.transparency,
+                  borderRadius: AppShape.cardBorder,
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(onTap: onTap),
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -192,6 +222,9 @@ class _CardSurface extends StatelessWidget {
     required this.avatarAsset,
     required this.isTiny,
     required this.isHovered,
+    required this.isEmphasized,
+    required this.trailingSpace,
+    required this.transparentSurface,
     required this.isList,
   });
 
@@ -204,6 +237,9 @@ class _CardSurface extends StatelessWidget {
   final MediaAsset? avatarAsset;
   final bool isTiny;
   final bool isHovered;
+  final bool isEmphasized;
+  final double trailingSpace;
+  final bool transparentSurface;
   final bool isList;
 
   @override
@@ -215,6 +251,7 @@ class _CardSurface extends StatelessWidget {
       content: content,
       avatarUrl: avatarUrl,
       avatarAsset: avatarAsset,
+      compact: isList,
     );
     final text = Column(
       mainAxisSize: MainAxisSize.min,
@@ -222,7 +259,7 @@ class _CardSurface extends StatelessWidget {
       children: [
         Text(
           _displayTitle,
-          maxLines: isList ? 3 : 4,
+          maxLines: isList ? 2 : 3,
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.titleMedium,
         ),
@@ -261,14 +298,20 @@ class _CardSurface extends StatelessWidget {
             ),
           );
     return AnimatedContainer(
-      duration: AppMotion.stateChange,
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : AppMotion.stateChange,
       curve: AppMotion.standardCurve,
       decoration: BoxDecoration(
         borderRadius: AppShape.cardBorder,
-        color: isHovered
-            ? scheme.surfaceContainerHigh
+        color: transparentSurface
+            ? Colors.transparent
+            : isEmphasized
+            ? scheme.primary.withValues(alpha: .10)
+            : isHovered
+            ? scheme.onSurface.withValues(alpha: .04)
             : isList
-            ? scheme.surface
+            ? Colors.transparent
             : scheme.surfaceContainerLow,
       ),
       clipBehavior: Clip.antiAlias,
@@ -276,14 +319,20 @@ class _CardSurface extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          metadata,
-          const SizedBox(height: AppSpacing.xs),
+          Padding(
+            padding: EdgeInsets.only(right: trailingSpace),
+            child: metadata,
+          ),
+          const SizedBox(height: AppSpacing.sm),
           LayoutBuilder(
             builder: (context, constraints) {
               if (media == null) return text;
               final textScale = MediaQuery.textScalerOf(context).scale(16) / 16;
               final stacked =
+                  !isList &&
                   constraints.maxWidth - 88 - AppSpacing.sm < 200 * textScale;
+              final thumbnailWidth = constraints.maxWidth < 320 ? 72.0 : 88.0;
+              if (isList && constraints.maxWidth / textScale < 200) return text;
               if (stacked) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -302,7 +351,7 @@ class _CardSurface extends StatelessWidget {
                 children: [
                   Expanded(child: text),
                   const SizedBox(width: AppSpacing.sm),
-                  SizedBox(width: 88, height: 64, child: media),
+                  SizedBox(width: thumbnailWidth, height: 64, child: media),
                 ],
               );
             },
@@ -336,8 +385,10 @@ class _CardMeta extends StatelessWidget {
     required this.content,
     required this.avatarUrl,
     required this.avatarAsset,
+    this.compact = false,
   });
 
+  final bool compact;
   final ShareCard content;
   final String avatarUrl;
   final MediaAsset? avatarAsset;
@@ -349,6 +400,41 @@ class _CardMeta extends StatelessWidget {
     final date = content.publishedAt ?? content.createdAt;
     final author = content.authorName?.trim() ?? '';
 
+    if (compact) {
+      final source = switch (content.platform.toLowerCase()) {
+        'universal' => '网页',
+        'bilibili' => 'Bilibili',
+        'zhihu' => '知乎',
+        'xiaohongshu' => '小红书',
+        'weibo' => '微博',
+        'telegram' => 'Telegram',
+        _ => content.platform,
+      };
+      return DefaultTextStyle(
+        style: theme.textTheme.labelSmall!.copyWith(
+          color: scheme.onSurfaceVariant,
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                [
+                  content.template.label,
+                  source,
+                  author,
+                ].where((v) => v.isNotEmpty).join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (date != null) ...[
+              const SizedBox(width: 8),
+              Text(DateFormat('MM-dd').format(date.toLocal())),
+            ],
+          ],
+        ),
+      );
+    }
     return Wrap(
       spacing: AppSpacing.xs,
       runSpacing: AppSpacing.xxs,

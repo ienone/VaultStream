@@ -8,7 +8,7 @@ import '../../../utils/content_parser.dart';
 import '../../../../../core/widgets/markdown_reading.dart';
 import 'media_gallery_item.dart';
 
-class RichContent extends StatelessWidget {
+class RichContent extends StatefulWidget {
   final ContentDetail detail;
   final Map<String, GlobalKey> headerKeys;
   final bool useHero;
@@ -25,6 +25,24 @@ class RichContent extends StatelessWidget {
   });
 
   @override
+  State<RichContent> createState() => _RichContentState();
+}
+
+class _RichContentState extends State<RichContent> {
+  ContentDetail get detail => widget.detail;
+  Map<String, GlobalKey> get headerKeys => widget.headerKeys;
+  bool get useHero => widget.useHero;
+  bool get hideMedia => widget.hideMedia;
+  Color? get contentColor => widget.contentColor;
+  late MarkdownStyleSheet _style;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _style = readingMarkdownStyle(context);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final mediaUrls = ContentParser.extractAllMedia(detail);
@@ -36,11 +54,12 @@ class RichContent extends StatelessWidget {
     final rawMarkdown = _getMarkdownContent(detail);
     final markdown = _preprocessMarkdown(rawMarkdown);
 
+    final headingOccurrences = <String, int>{};
     final Set<String> usedHeroTags = {};
     final List<Widget> children = [];
 
     if (markdown.isNotEmpty) {
-      final style = readingMarkdownStyle(context);
+      final style = _style;
       // 从 Markdown 文本中提取图片标识，只保留能匹配统一媒体资产的条目。
       final inlineImageUrls = ContentParser.extractMarkdownImageUrls(markdown)
           .map(
@@ -51,36 +70,45 @@ class RichContent extends StatelessWidget {
           .toList(growable: false);
 
       children.add(
-        RepaintBoundary(
-          child: MarkdownBody(
-            data: markdown,
-            selectable: true,
-            // 社交消息的单换行属于原始排版。
-            softLineBreak: const [
-              'xiaohongshu',
-              'telegram',
-            ].contains(detail.platform),
-            onTapLink: (text, href, title) async {
-              await SafeUrlLauncher.openExternal(context, href);
-            },
-            styleSheet: style,
-            builders: {
-              'h1': HeaderBuilder(headerKeys, style.h1),
-              'h2': HeaderBuilder(headerKeys, style.h2),
-              'h3': HeaderBuilder(headerKeys, style.h3),
-              'code': CodeElementBuilder(context),
-            },
-            // ignore: deprecated_member_use
-            imageBuilder: (uri, title, alt) => _buildMarkdownImage(
-              context,
-              detail,
-              uri,
-              alt,
-              galleryImages: inlineImageUrls,
-              fallbackUrlsByImage: mediaFallbacks,
-              useHero: useHero,
-              usedHeroTags: usedHeroTags,
-            ),
+        _ArticleMarkdownBody(
+          key: ObjectKey(detail),
+          data: markdown,
+          selectable: true,
+          // 社交消息的单换行属于原始排版。
+          softLineBreak: const [
+            'xiaohongshu',
+            'telegram',
+          ].contains(detail.platform),
+          onTapLink: (text, href, title) async {
+            await SafeUrlLauncher.openExternal(context, href);
+          },
+          styleSheet: style,
+          builders: {
+            for (final entry in <String, TextStyle?>{
+              'h1': style.h1,
+              'h2': style.h2,
+              'h3': style.h3,
+              'h4': style.h4,
+              'h5': style.h5,
+              'h6': style.h6,
+            }.entries)
+              entry.key: HeaderBuilder(
+                headerKeys,
+                entry.value,
+                headingOccurrences,
+              ),
+            'code': CodeElementBuilder(context),
+          },
+          // ignore: deprecated_member_use
+          imageBuilder: (uri, title, alt) => _buildMarkdownImage(
+            context,
+            detail,
+            uri,
+            alt,
+            galleryImages: inlineImageUrls,
+            fallbackUrlsByImage: mediaFallbacks,
+            useHero: useHero,
+            usedHeroTags: usedHeroTags,
           ),
         ),
       );
@@ -351,4 +379,26 @@ class RichContent extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Isolate paragraphs and media instead of caching one article-sized layer.
+class _ArticleMarkdownBody extends MarkdownBody {
+  const _ArticleMarkdownBody({
+    super.key,
+    required super.data,
+    super.selectable,
+    super.softLineBreak,
+    super.onTapLink,
+    super.styleSheet,
+    super.builders,
+    super.imageBuilder,
+  });
+
+  @override
+  Widget build(BuildContext context, List<Widget>? children) => super.build(
+    context,
+    children
+        ?.map((child) => RepaintBoundary(child: child))
+        .toList(growable: false),
+  );
 }
