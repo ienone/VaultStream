@@ -51,8 +51,6 @@ backend/data_eval/
 backend/logs/
 backend/exports/
 backend/.test-runtime/
-backend/tests/logs/
-backend/tests/outputs/
 backend/manual_tests/
 /.runtime/
 
