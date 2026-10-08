@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import logger, log_context
 from app.core.database import AsyncSessionLocal
 from app.core.time_utils import utcnow
+from app.core.events import event_bus
 from app.models import Content, ContentStatus, Platform, Task, TaskStatus
 from app.adapters import close_adapter
 from app.adapters.errors import AdapterError, RetryableAdapterError
@@ -23,7 +24,7 @@ from app.media.processor import store_archive_images, store_archive_videos
 from app.media.color import extract_cover_color
 from app.media.references import apply_archive_media
 from app.core.queue import task_queue
-from app.core.queue_adapter import TaskQueue
+from app.core.queue import TaskQueue
 from app.utils.datetime_utils import normalize_datetime_for_db
 from app.utils.url_utils import normalize_share_url_input
 from app.services.post_ingest import PostIngestService
@@ -171,6 +172,9 @@ class ContentParser:
 
             content.status = ContentStatus.PROCESSING
             await session.commit()
+            await event_bus.publish("content_updated", {
+                "id": content.id, "status": ContentStatus.PROCESSING.value,
+            })
 
             adapter = None
             try:
@@ -337,6 +341,14 @@ class ContentParser:
             title=content.title,
         )
 
+        # Parsed facts are committed: readers need not wait for summary/index work.
+        await event_bus.publish("content_updated", {
+            "id": content.id,
+            "title": content.title,
+            "status": content.status.value,
+            "platform": content.platform.value if content.platform else None,
+            "cover_url": content.cover_url,
+        })
         await PostIngestService().run_for_content(
             session,
             content,
@@ -346,15 +358,6 @@ class ContentParser:
             distribution=True,
         )
 
-        # 广播更新事件
-        from app.core.events import event_bus
-        await event_bus.publish("content_updated", {
-            "id": content.id,
-            "title": content.title,
-            "status": content.status.value,
-            "platform": content.platform.value if content.platform else None,
-            "cover_url": content.cover_url
-        })
         return execution_result
 
     async def _settle_parse_error(

@@ -1,12 +1,12 @@
 # QQ Bot 收发
 
-NapCat HTTP 客户端上报到 `/api/v1/bot/qq/{config_id}/events`，token 与对应 BotConfig 的 `napcat_access_token` 一致。接收端验证原始 body 的 HMAC-SHA1（`x-signature`），忽略自身消息及非消息事件。只处理 enabled 且 is_monitoring 的 BotChat；群 chat_id 使用数字，私聊使用 `private:QQ号`。
+NapCat HTTP 客户端仍可上报到 `/api/v1/bot/qq/{config_id}/events`，接收端核验原始 body 的 HMAC-SHA1（`x-signature`）后确认收到，不再从任何群聊或私聊事件自动收录。`BotChat.is_monitoring` 不能恢复旧 QQ 写入路径。
 
-文字链接、JSON 分享卡片中的跳转链接、合并转发与引用中的文字链接复用 ContentService 和解析队列。私聊无链接文字保存到收藏库；纯图片、视频等 QQ 附件尚未接入捕获。群内解析完成后复用分发器回复图文和媒体，私聊先确认收录，结果使用配置的全量规则推送。链接重复使用既有内容，同消息重报通过 ContentSource 上下文判断。
+收藏转存与链接解析是独立能力：自动群预览只使用专用解析器并回复；只有管理员当前明确要求保存时，BOT 才调用收藏工具。全局 `chat_capture_enabled` 开关控制是否接受聊天转存，默认 true；开启仍不表示自动收藏。QQ 与 Telegram 的链接、文字和附件统一在 ContentService 写入之前核对开关、管理员身份和外层保存请求，不信任引用、转发或解析正文中的指令。
 
 `qq_chat_policies` 系统设置按 QQ 会话数字 ID 保存 `excluded_parse_platforms` 和 `max_messages_per_hour`。排除平台在解析入队前判断，Bilibili 包括 b23.tv。小时限频在 NapCat 发群消息前执行，自动推送、解析回复和测试消息共享额度；数据库原子保留发送次数，重启不清空，失败发送也占用本次额度。私聊不受群限频影响。
 
-Telegram 私聊直接发送链接、转发消息或附件复用原有 `/save` 捕获及权限检查，不需要额外命令。
+Telegram 的 `/save` 与明确保存请求使用相同管理员和全局策略。普通私聊分享、转发与附件不再自动收藏。
 
 依据：NapCat 官方网络配置 https://napneko.github.io/config/basic ，事件鉴权同时核对部署版本实现。
 
@@ -14,18 +14,14 @@ Telegram 私聊直接发送链接、转发消息或附件复用原有 `/save` �
 
 ## Koishi 聊天与收藏工具
 
-Koishi 通过 NapCat 的反向 WebSocket `/onebot` 接收聊天；ChatLuna 负责模型对话，独立的 [koishi-plugin-vaultstream](../../../integrations/koishi-plugin-vaultstream/README.md) 直接调用现有收藏搜索、正文和分享 API。插件不调用 `/agent/run`，不复制索引或推送队列。
+Koishi 通过 NapCat 的反向 WebSocket `/onebot` 接收聊天。[koishi-plugin-vaultstream](../../../integrations/koishi-plugin-vaultstream/README.md) 将管理员私聊交给后端 QQ Agent 入口，复用同一个 `AgentService`、会话和工具账本；不再在 ChatLuna 中维护独立的收藏搜索/保存工具。
 
-收藏工具仅向配置白名单内的 OneBot 管理员私聊开放，每次执行重新检查当前会话。Character 群白名单内使用共享群上下文，模型可选择回复、沉默或延迟跟进；当前保留 40 条近期消息，回复后冷却 5 秒。所有群消息（包括普通闲聊、昵称和 @）按停顿聚合，连续 3 秒没有新消息时触发一次接话判断，不要求累计条数或活跃度评分；人设明确允许自然插话。闲置主动唤醒关闭。同群关闭核心聊天入口，避免重复回复。白名单外的群仍按成员隔离聊天记录，仅在明确 @ 机器人时回复；私聊继续使用核心聊天和收藏工具。普通聊天用户保持 Koishi 默认权限，不授予跨会话管理权限。
+私聊 Agent 与群聊转存工具都仅向白名单内的 OneBot 管理员开放，插件和后端共同检查真实账号及会话。群聊 `vaultstream_save` 调用 `/group-capture`，按群与管理员隔离会话，只开放 capture_content；返回转存回执，不读取或回传私人收藏正文。小i的人设从服务端配置传给该 Agent 会话。自然语言保存从当前、引用、转发和最近消息的真实材料中选择；所有材料都须明确要求保存，有选择或否定指令时优先遵从。消息级运行和内容来源记录防止重报重复写入，插件持久查询原运行以返回解析完成结果。
 
-人设称呼“小 i 同学／小i”与 QQ 昵称 `wam` 指向同一机器人。群聊预设的 `nick_name` 和核心 `botNames` 均包含 `wam`，群聊和私聊提示词明确这层身份关系；QQ 的 @ 仍按账号 ID 识别。明确呼唤机器人并包含“闭嘴”“先别说话”“安静一会”时，Character 静默 120 秒。当前群聊和私聊默认模型为 `deepseek/deepseek-flash-non-thinking`，适配器实际请求 `deepseek-flash` 并传入 `reasoning_effort: none`。
+Character 继续负责允许群聊的人设与接话，默认 40 条近期上下文、45 秒冷却。群消息的专用链接解析由后端独立[公开预览入口](QQ_GROUP_PREVIEW.md)处理，排除 B 站和 universal，不入收藏库。群内追问可调用 `vaultstream_group_context` 读取本群近期公开结果，无法访问管理员收藏。
 
-接入插件的管理员私聊应关闭原 BotChat 的 `is_monitoring`，保留 `enabled` 与 `is_push_target`。这样普通 AI 对话不会被旧 HTTP 回调自动收藏，明确保存使用 `vaultstream.save URL`；订阅推送继续经过原分发队列。群聊原有收录策略不变。
+启用新入口的管理员私聊和群聊都应关闭原 BotChat 的 `is_monitoring`，保留 `enabled` 与 `is_push_target`，清理已失效的旧监控配置。订阅推送继续经过原分发队列，但不再充当本次捕获的完成回执。后端 `qq_bot_agent` 配置包含 `enabled/admin_qq/group_ids/persona`；群发送继续共用 `qq_chat_policies` 限频。
 
 阿里云 Koishi 服务已改为 systemd 直接运行 Node 的 Koishi CLI，工作目录为 `/root/.koishi/data/instances/default`，仅监听 `127.0.0.1:5140`，管理台继续由原 Nginx 鉴权代理。运行凭据放在服务器权限 `0600` 的 `.env`，配置用 `${{ env.VAULTSTREAM_API_TOKEN }}` / `${{ env.CHATLUNA_MODEL_API_KEY }}` 引用。不要恢复 AppImage 自动重启循环。
 
-2026-09-26 部署基线：Node 22.23.3、Koishi 4.18.11、OneBot 6.9.4、ChatLuna 1.4.0、OpenAI Like 1.4.1、Character 0.0.234、VaultStream 插件 0.1.0。上游副本为 [ienone/chatluna](https://github.com/ienone/chatluna) 和 [ienone/chatluna-character](https://github.com/ienone/chatluna-character)；业务改动维护在本仓库的独立插件中。升级前的实例、systemd 单元和管理员私聊开关备份位于服务器 `/root/koishi-backups/20260926T034803Z`。
-
-## 小 i 自动链接解析（2026-10-07）
-
-新能力由小 i 消息触发插件调用 `/bot/qq/{config_id}/preview`，独立于 is_monitoring 收藏回调。生产只开放私聊及群 1081948298；链接与 JSON 卡片自动解析，默认不入库。管理员明确收藏才调用保存工具；管理员明确解析允许内容清洗兜底。旧监控入口当前关闭。结果复用推送图文与合并转发格式，正文截断、不发送视频，按实际字段显示文字统计。
+2026-09-26 集成版本：Node 22.23.3、Koishi 4.18.11、OneBot 6.9.4、ChatLuna 1.4.0、OpenAI Like 1.4.1、Character 0.0.234、VaultStream 插件 0.2.0。上游副本为 [ienone/chatluna](https://github.com/ienone/chatluna) 和 [ienone/chatluna-character](https://github.com/ienone/chatluna-character)；业务改动维护在本仓库的独立插件中。最初升级前的实例、systemd 单元和管理员私聊开关备份位于服务器 `/root/koishi-backups/20260926T034803Z`。

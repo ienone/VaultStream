@@ -37,6 +37,8 @@ active
 - `POST /api/v1/contents/{content_id}/patrol-score` 在响应前完成评分并结算 run，仅适用于发现流内容；非发现流内容返回业务错误。
 - `GET /api/v1/contents/{content_id}/processing-status` 汇总内容后处理状态，不应被前端当成新的内容详情模型。
 
+自动摘要关闭且尚无摘要时返回 `disabled`，不会把未配置摘要密钥列作当前故障。启用摘要但仍在等待解析时，缺少密钥只保留为配置详情；解析成功后确实阻塞摘要生成时才列为阶段问题。解析失败的原始错误以内容详情或 `read_content` 返回的错误为准，后处理的 `blocked` 不是解析根因。
+
 后台动作的“已受理”不等于“已经成功”。前端必须按具体 response model 区分同步完成与异步受理，并保留 `run_id` 供任务详情追踪。
 
 ## 搜索与语义索引

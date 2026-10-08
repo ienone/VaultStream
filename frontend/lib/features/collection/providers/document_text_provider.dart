@@ -36,13 +36,7 @@ class DocumentText {
 
 final documentTextProvider = FutureProvider.autoDispose
     .family<List<DocumentText>, int>((ref, contentId) async {
-      ref.watch(sseServiceProvider.notifier);
-      final subscription = SseEventBus().eventStream.listen((event) {
-        if (event.type == 'content_updated' && event.data['id'] == contentId) {
-          ref.invalidateSelf();
-        }
-      });
-      ref.onDispose(subscription.cancel);
+      refreshOnEvents(ref, (event) => affectsContent(event, contentId));
       final response = await ref
           .watch(apiClientProvider)
           .get<Map<String, dynamic>>('/contents/$contentId/document-text');

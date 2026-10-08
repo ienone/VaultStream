@@ -31,6 +31,7 @@ class _PushTabState extends ConsumerState<PushTab> {
   bool _isSyncingChats = false;
   bool _isGeneratingDigest = false;
   bool _pushConfigExpanded = false;
+  bool _isSavingCapturePolicy = false;
   String _botPlatform = 'telegram';
 
   final _tgTokenController = TextEditingController();
@@ -378,6 +379,14 @@ class _PushTabState extends ConsumerState<PushTab> {
                   ),
                 ),
                 const SizedBox(height: 28),
+                settingsAsync.when(
+                  data: _buildChatCaptureSetting,
+                  loading: () => const LinearProgressIndicator(),
+                  error: (_, _) => SettingLoadFailure(
+                    onRetry: () => ref.invalidate(systemSettingsProvider),
+                  ),
+                ),
+                const SizedBox(height: 28),
                 ListTile(
                   title: const Text('Telegram 账号与机器人'),
                   trailing: const Icon(Icons.chevron_right_rounded),
@@ -522,6 +531,53 @@ class _PushTabState extends ConsumerState<PushTab> {
         constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
         child: content,
       ),
+    );
+  }
+
+  Widget _buildChatCaptureSetting(List<SystemSetting> settings) {
+    final enabled =
+        settings
+            .firstWhere(
+              (setting) => setting.key == 'chat_capture_enabled',
+              orElse: () =>
+                  const SystemSetting(key: 'chat_capture_enabled', value: true),
+            )
+            .value ==
+        true;
+    return SwitchListTile(
+      contentPadding: EdgeInsets.zero,
+      title: const Text('允许机器人转存收藏'),
+      subtitle: Text(
+        _isSavingCapturePolicy ? '保存中…' : '群聊和私聊均需管理员明确要求保存；自动链接解析不入库。',
+      ),
+      value: enabled,
+      onChanged: _isSavingCapturePolicy
+          ? null
+          : (value) async {
+              setState(() => _isSavingCapturePolicy = true);
+              try {
+                await ref
+                    .read(systemSettingsProvider.notifier)
+                    .updateSetting(
+                      'chat_capture_enabled',
+                      value,
+                      category: 'bot',
+                    );
+                await ref.read(systemSettingsProvider.future);
+                if (mounted) {
+                  showToast(context, value ? '已允许管理员请求转存' : '已关闭机器人转存');
+                }
+              } catch (error) {
+                if (mounted) {
+                  showToast(
+                    context,
+                    formatApiErrorMessage(error, fallbackMessage: '设置保存失败'),
+                  );
+                }
+              } finally {
+                if (mounted) setState(() => _isSavingCapturePolicy = false);
+              }
+            },
     );
   }
 

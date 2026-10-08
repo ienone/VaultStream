@@ -220,9 +220,12 @@ async def _upsert_run(
             f"Background task run id belongs to another task: {run_id}"
         )
     serialized = _serialize_run(saved)
-    if terminal:
-        await _publish_diagnostics_update(task_name, saved.status, run_id=run_id)
-        if write_result.rowcount:
+    if write_result.rowcount:
+        await _publish_diagnostics_update(
+            task_name, saved.status, run_id=run_id,
+            content_id=serialized.get("content_id"),
+        )
+        if terminal:
             await _record_run_notification(serialized)
     return serialized
 
@@ -255,10 +258,13 @@ async def _publish_diagnostics_update(
     status: str,
     *,
     run_id: str | None = None,
+    content_id: int | None = None,
 ) -> None:
     payload = {"task": task_name, "status": status}
     if run_id:
         payload["run_id"] = run_id
+    if content_id is not None:
+        payload["content_id"] = content_id
     try:
         await event_bus.publish("background_task_updated", payload)
     except Exception as error:

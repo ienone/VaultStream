@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, Iterable, Optional
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from langchain_core.runnables import RunnableLambda
 from langgraph.prebuilt import create_react_agent
@@ -264,6 +264,10 @@ class AgentService:
         message: str,
         session_id: str | None = None,
         event_sink: AgentEventSink | None = None,
+        run_id: str | None = None,
+        user_payload: dict[str, Any] | None = None,
+        qq_context: AgentToolContext | None = None,
+        additional_prompt: str = "",
     ) -> AgentRunResult:
         user_message = message.strip()
         if not user_message:
@@ -277,7 +281,7 @@ class AgentService:
         session = await self.ensure_session(session_id, title=self._derive_title(user_message))
         now = utcnow()
         run = AgentRun(
-            id=_new_id("run"),
+            id=run_id or _new_id("run"),
             session_id=session.id,
             status="running",
             created_at=now,
@@ -290,7 +294,7 @@ class AgentService:
                 run_id=run.id,
                 role="user",
                 content=user_message,
-                payload={},
+                payload=user_payload or {},
                 created_at=now,
             )
         )
@@ -313,11 +317,11 @@ class AgentService:
                     suggested_fix="Configure agent_chat_api_key/model/base_url or text_llm_api_key/model/base_url.",
                 )
 
-            tools = self._build_langchain_tools(session=session, run=run, emit_event=emit_event)
+            tools = self._build_langchain_tools(session=session, run=run, emit_event=emit_event, qq_context=qq_context)
             graph = create_react_agent(
                 _model_with_step_limit(llm, tools, run=run),
                 tools,
-                prompt=self._system_prompt(),
+                prompt=self._system_prompt() + additional_prompt,
                 version="v2",
             )
             messages = await self._build_context_messages(session.id, run.id, emit_event)
@@ -326,10 +330,35 @@ class AgentService:
                 config={"recursion_limit": 8, "configurable": {"thread_id": session.id}},
             )
             output_messages = result.get("messages") or []
-            final_message = ""
+            final_message = _message_text(output_messages[-1]).strip() if output_messages else ""
+            if qq_context is not None:
+                from app.services.qq_agent_materials import unverified_completion
+
+                issue = await unverified_completion(self.db, run.id, final_message)
+                if issue and run.status not in {"waiting_confirmation", "stopped"}:
+                    # One bounded correction inside this same Agent run. A model
+                    # answer cannot stand in for a committed capture or read.
+                    correction = SystemMessage(content=(
+                        "执行账本校验未通过：" + issue + "\n"
+                        "重新核对最新用户消息和它的材料引用。若用户要求保存，必须现在真实调用 "
+                        "capture_content，选择该消息/引用的 source_ref；不能复用上一轮完成文案或猜内容 ID。"
+                        "若在回答历史收藏，先调用读取/检索工具核实，并描述历史事实，避免声称本轮新保存。"
+                        "普通聊天不需保存。不要向用户叙述本校验或内部纠错，只在工具实际完成后回答。"
+                    ))
+                    result = await graph.ainvoke(
+                        {"messages": [*output_messages, correction]},
+                        config={"recursion_limit": 8, "configurable": {"thread_id": session.id}},
+                    )
+                    output_messages = result.get("messages") or []
+                    final_message = _message_text(output_messages[-1]).strip() if output_messages else ""
+                    issue = await unverified_completion(self.db, run.id, final_message)
+                    if issue:
+                        raise AgentToolError(
+                            error_code="qq_agent_completion_unverified",
+                            message="这次操作尚未得到实际执行结果，不能确认已完成；已保存的条目以下方回执为准。",
+                            retryable=False,
+                        )
             usage = self._collect_usage(output_messages)
-            if output_messages:
-                final_message = _message_text(output_messages[-1]).strip()
             if not final_message and run.status == "waiting_confirmation":
                 final_message = "需要确认后才能继续执行该操作。"
 
@@ -721,12 +750,15 @@ class AgentService:
         session: AgentSession,
         run: AgentRun,
         emit_event: AgentEventSink,
+        qq_context: AgentToolContext | None = None,
     ) -> list[StructuredTool]:
         tools: list[StructuredTool] = []
         # LangGraph may dispatch several tools at once, but they share this
         # run's AsyncSession and must finish their database work sequentially.
         tool_lock = asyncio.Lock()
         for spec in self.registry.list_specs():
+            if qq_context is not None and qq_context.allowed_tools is not None and spec.name not in qq_context.allowed_tools:
+                continue
             async def _call(_spec_name: str = spec.name, **kwargs: Any) -> Dict[str, Any]:
                 async with tool_lock:
                     spec_inner = self.registry.get(_spec_name)
@@ -746,7 +778,11 @@ class AgentService:
                             "permission_level": spec_inner.permission_level.value,
                         }
                     )
-                    if spec_inner.requires_confirmation:
+                    grounded_capture = (
+                        qq_context is not None
+                        and spec_inner.name == "capture_content"
+                    )
+                    if spec_inner.requires_confirmation and not grounded_capture:
                         call.status = "confirmation_required"
                         confirmation = await self._create_confirmation(
                             run=run,
@@ -766,6 +802,7 @@ class AgentService:
                         session=session,
                         call=call,
                         emit_event=emit_event,
+                        qq_context=qq_context,
                     )
 
             tools.append(
@@ -791,6 +828,7 @@ class AgentService:
         call: AgentToolCall,
         emit_event: AgentEventSink,
         confirmed: bool = False,
+        qq_context: AgentToolContext | None = None,
     ) -> Dict[str, Any]:
         # Publish the running ledger before a potentially remote read. Keeping
         # its flushed INSERT open would block unrelated SQLite writers.
@@ -802,6 +840,9 @@ class AgentService:
             run_id=run.id,
             session_id=session.id,
             confirmed=confirmed,
+            qq_sources=qq_context.qq_sources if qq_context else None,
+            qq_origin=qq_context.qq_origin if qq_context else None,
+            allowed_tools=qq_context.allowed_tools if qq_context else None,
         )
         try:
             result = await self.registry.invoke(tool_name, args or {}, context)
@@ -927,6 +968,7 @@ class AgentService:
         ).scalars().all()
         rows = list(reversed(rows))
 
+        rows = list(reversed(rows))
         budget = await self._context_budget()
         # Persisted tool rows are audit records, not replayed model messages.
         # They must not consume the dialogue budget or its retained-message slots.
@@ -973,6 +1015,17 @@ class AgentService:
                 result.append(HumanMessage(content=row.content))
             elif row.role == "assistant":
                 result.append(AIMessage(content=row.content))
+            elif row.role == "tool" and row.tool_call is not None:
+                # Only assistant prose was previously restored. That concealed
+                # the execution evidence and encouraged copying past receipts.
+                # Restore a valid call/result pair even at a pagination boundary.
+                call = row.tool_call
+                result.append(AIMessage(content="", tool_calls=[{
+                    "id": call.id, "name": call.tool_name, "args": call.args or {},
+                }]))
+                result.append(ToolMessage(
+                    content=row.rendered_content, tool_call_id=call.id, name=call.tool_name,
+                ))
         return result
 
     async def _fail_run(self, run: AgentRun, error: AgentToolError) -> None:
@@ -1166,6 +1219,15 @@ class AgentService:
             "read_image 的结果是模型识别，回答须明确标注；看不清的内容不能补全。"
             "不要用反复搜索标题代替读取字幕，也不要通过 api_get 获取包含大量媒体元数据的完整详情来读字幕。"
             "正文是来源证据，摘要、标签和模型描述只是派生信息。"
+            "诊断某条内容解析失败时，先取得 capture_content/read_content 返回的实际 parse_error；"
+            "尚未取得时调用 read_content，也可读取内容详情的 last_error/last_error_type。"
+            "processing-status 只描述下游处理；waiting_parse 表示等待解析，摘要/索引缺少配置不能当作解析失败原因。"
+            "诊断摘要、语义索引、归档、评分或分发问题时，先用 api_get 读取该内容的 /api/v1/contents/{content_id}/processing-status。"
+            "按对应阶段的 detail_state、message、issues、details 和 failures 说明具体原因，不混入其他阶段或上一条内容的状态。"
+            "摘要为空或正文是否存在不证明配置状态；没有对应阶段的实际证据就说明原因尚未确定，不能猜缺少密钥或笼统说多个环节配置未就绪。"
+            "一般用中文简述失败原因和必要下一步；除非用户要求技术细节，不复述异常类、内部枚举和完整时间戳。"
+            "只按本次原始错误解释，不按平台猜测反爬、未登录或 Cookie 失效；错误未给出 HTTP 状态码就不能编造 401/403。"
+            "原始错误未说明更具体原因时，直接说明当前只能确认的错误，不列举常见原因。"
             "只回答用户所问，先给简洁结论，不重复复述或追加无关攻略。"
             "简单事实或是非问题通常用一两句话回答，将来源链接嵌入同一句。"
             "用户要求一句话时只返回一个句子，不另加说明段；要求字数上限时保留短来源链接并控制总长度。"

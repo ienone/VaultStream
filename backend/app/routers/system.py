@@ -167,20 +167,13 @@ async def get_init_status(
     db: AsyncSession = Depends(get_db)
 ):
     """获取初始化状态（无需 Token）"""
-    from app.models import BotConfig, SystemSetting
-    
-    # 引导完成状态与模型配置解耦：LLM 功能是可选项，不能再用 API Key 判断。
-    setting_result = await db.execute(
-        select(SystemSetting.value).where(SystemSetting.key == "onboarding_completed")
-    )
-    onboarding_completed = str(setting_result.scalar_one_or_none() or "").lower() == "true"
-    
+    from app.models import BotConfig
+
     # 检查是否有 Bot 配置
     bot_result = await db.execute(select(func.count()).select_from(BotConfig))
     bot_count = bot_result.scalar() or 0
     
     return {
-        "needs_setup": not onboarding_completed,
         "has_bot": bot_count > 0,
         "version": "0.1.0"
     }
@@ -370,6 +363,8 @@ async def update_setting(
     _: None = Depends(require_api_token),
 ):
     """创建或更新设置"""
+    if key == "chat_capture_enabled" and type(update.value) is not bool:
+        raise HTTPException(status_code=422, detail="chat_capture_enabled must be a boolean")
     from app.services.settings_service import set_setting_value
     setting = await set_setting_value(key, update.value, category, update.description)
     return _serialize_setting_for_response(setting)

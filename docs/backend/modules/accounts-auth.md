@@ -94,3 +94,5 @@ Bot 配置 CRUD、保存后的 Telegram 进程同步、手动启停以及 Napcat
 `GET /api/v1/telegram-account/status`、`PUT /api/v1/telegram-account/options`（channels_enabled、saved_enabled）与 `POST /api/v1/telegram-account/sync` 均需要 API Token。同步受理返回 202 和 run_id；未配置、关闭或正在同步返回 409。只有周期任务 leader 使用账号会话。Flutter 控制面已接入两项开关及手动同步，显式二维码登录及两步验证已接入，尚待真实账号验收。关闭任一同步项会取消并等待当前批次退出；开关修改与手动启动使用同一锁，只有 leader 处理这两种操作。
 
 原生登录与同步共用客户端配置，但仅登录开启 updates 以等待扫码确认。用户显式开启一次登录，二维码过期或失败后需主动重试；服务器不自动请求短信或验证码。登录会话只驻留内存，授权由 Telethon 保存到权限 600 的会话文件，两步验证密码不持久化。关闭弹窗取消登录、服务关闭断开连接，最长五分钟自动结束；旧 login_id 不能取消新会话。
+
+平台健康接口的 `favorites_sync.last_result` 从对应平台的最近任务账本结果读取；单平台读取 `result.result`，多平台读取 `result.results[platform]`，无结果为 null。配置中的 `FavoritesSyncPlatformState` 只承载运行策略，不持有同步结果。

@@ -10,7 +10,7 @@
 
 **修复前复现：** 向隔离库提交一个 `task_type=parse_content` 的 RUNNING Task，`started_at` 为一天前；重建 TaskQueue 后 `dequeue(timeout=1)` 返回 None。原实现只领 PENDING，正常捕获取消与进程硬中断不能混为一谈。
 
-**当前：** [TaskQueue](../../backend/app/core/queue_adapter.py)每行只执行一次，30 分钟超时后结算失败，不重领同一任务；移除世代和执行预算。[解析提交](../../backend/app/tasks/parsing.py)仍检查任务处于 RUNNING，并重新读取人工编辑/删除，将正文、媒体事实和 Task 完成原子写入。用户可以明确重新发起解析。
+**当前：** [TaskQueue](../../backend/app/core/queue.py)每行只执行一次，30 分钟超时后结算失败，不重领同一任务；移除世代和执行预算。[解析提交](../../backend/app/tasks/parsing.py)仍检查任务处于 RUNNING，并重新读取人工编辑/删除，将正文、媒体事实和 Task 完成原子写入。用户可以明确重新发起解析。
 
 **验收：** 临时验收确认失败不重复执行、超时不重领且迟到结果不能提交；既有人工修订、删除和后处理失败边界继续通过。
 

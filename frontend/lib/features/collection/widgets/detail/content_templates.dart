@@ -1,3 +1,4 @@
+import '../../../../core/widgets/media_image_hero.dart';
 import '../../../../core/widgets/media_image_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -308,12 +309,19 @@ class _ImmersiveMediaViewerState extends State<_ImmersiveMediaViewer> {
                       AppSpacing.md,
                       ctx.images.length > 1 ? 92 : AppSpacing.md,
                     ),
-                    child: NetworkThumbnail(
-                      imageUrl: image,
-                      fallbackUrls: ctx.imageFallbacks[image] ?? const [],
-                      mediaAsset: ctx.imageAssets[image],
-                      purpose: MediaPurpose.detail,
-                      fit: BoxFit.contain,
+                    child: Center(
+                      child: MediaImageHero(
+                        tag: index == 0
+                            ? 'content-image-${ctx.detail.id}'
+                            : 'image-$index-${ctx.detail.id}',
+                        child: NetworkThumbnail(
+                          imageUrl: image,
+                          fallbackUrls: ctx.imageFallbacks[image] ?? const [],
+                          mediaAsset: ctx.imageAssets[image],
+                          purpose: MediaPurpose.detail,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
                     ),
                   ),
                 );
@@ -975,12 +983,21 @@ class _PagedMediaViewerState extends State<_PagedMediaViewer> {
                           label:
                               '查看第 ${index + 1} 张图片，共 ${ctx.images.length} 张',
                           onPressed: _openFullScreen,
-                          child: NetworkThumbnail(
-                            imageUrl: image,
-                            fallbackUrls: ctx.imageFallbacks[image] ?? const [],
-                            mediaAsset: ctx.imageAssets[image],
-                            purpose: MediaPurpose.detail,
-                            fit: BoxFit.contain,
+                          child: Center(
+                            child: MediaImageHero(
+                              tag: index == 0
+                                  ? 'content-image-${ctx.detail.id}'
+                                  : 'image-$index-${ctx.detail.id}',
+                              borderRadius: AppShape.paneBorder,
+                              child: NetworkThumbnail(
+                                imageUrl: image,
+                                fallbackUrls:
+                                    ctx.imageFallbacks[image] ?? const [],
+                                mediaAsset: ctx.imageAssets[image],
+                                purpose: MediaPurpose.detail,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
                           ),
                         );
                       },

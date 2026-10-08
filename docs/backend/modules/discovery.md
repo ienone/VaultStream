@@ -85,7 +85,7 @@ Telegram 公开频道同样检查 HTTP 与公开消息页结构，失败传播�
 
 Telegram 公开消息读取网页 video.tgme_widget_message_video 的真实 src，播放器背景图仅作封面。DiscoveryItem 显式传递 layout_type 和 archive_metadata，入库保留视频布局及 images/videos 分类；不根据视频地址伪造图片封面。
 
-发现媒体归档按既有总开关、图片开关、视频开关及数量/大小限制执行。图片与视频分别交给现有处理器；只替换成功归档的地址，保留未归档媒体，避免图片归档后丢失同一消息的视频。RSS 未分类的媒体仍按其图片 contract 处理。
+发现媒体归档按既有总开关、图片开关、视频开关及数量/大小限制执行。图片与视频分别交给现有处理器；只替换成功归档的地址，保留未归档媒体，避免图片归档后丢失同一消息的视频。RSS 发现与收藏共用 RssAdapter 的正文、日期和媒体解析；发现保留 archive_metadata 中的图片/视频分类、原始 entry_id 和游标。抓取或条目解析失败不推进游标，合法空订阅正常返回。
 
 ## Telegram 原生账号来源
 

@@ -37,12 +37,13 @@ from app.services.background_task_state import (
 )
 from app.services.automation_policy import AutomationPolicyService
 from app.services.distribution.decision import should_distribute, DECISION_WILL_PUSH
+from app.services.distribution.receipt_policy import EXPLICIT_PUSH, has_qq_agent_receipt
 from app.services.distribution.delivery_state import (
     DELIVERY_PREPARING, DELIVERY_SENDING, DELIVERY_UNKNOWN, LOCK_TIMEOUT,
     UNKNOWN_MESSAGE, delivery_is_resolved, owns_delivery,
     recover_expired_deliveries,
 )
-from app.tasks.distributor import ContentDistributor
+from app.push.media import build_content_payload
 from app.core.events import event_bus
 
 # ── 常量 ──────────────────────────────────────────────
@@ -109,7 +110,6 @@ class DistributionQueueWorker:
         self.worker_count = worker_count
         self.running = False
         self._tasks: list[asyncio.Task] = []
-        self._distributor = ContentDistributor()
 
     def start(self):
         """启动所有 worker"""
@@ -603,7 +603,7 @@ class DistributionQueueWorker:
 
         # 5. 构建推送 payload
         try:
-            content_dict = await self._distributor._build_content_payload(
+            content_dict = build_content_payload(
                 content, rule, media_assets=content.media_assets,
                 target_platform=item.target_platform,
             )
@@ -652,6 +652,11 @@ class DistributionQueueWorker:
                 reason, code = policy.reason, policy.code
         if reason:
             await self._defer(session, item, reason, code, terminal=code not in {"distribution_paused", "target_unavailable"})
+            return
+
+        if (not manual and item.approved_by != EXPLICIT_PUSH
+                and await has_qq_agent_receipt(session, content.id, bot_chat, actual_target_id)):
+            await self._defer(session, item, "此 QQ 私聊由 Agent 返回收藏回执", "qq_agent_receipt", terminal=True)
             return
 
         # Persist the send boundary before IO. Neither a lost response nor a

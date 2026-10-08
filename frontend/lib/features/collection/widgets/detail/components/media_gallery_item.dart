@@ -1,3 +1,4 @@
+import '../../../../../core/widgets/media_image_hero.dart';
 import 'package:flutter/material.dart';
 import '../../../../../core/widgets/media_image_button.dart';
 import '../../../../../core/media/media_asset.dart';
@@ -76,8 +77,9 @@ class MediaGalleryItem extends StatelessWidget {
         decoration: BoxDecoration(borderRadius: effectiveBorderRadius),
         child: ClipRRect(
           borderRadius: effectiveBorderRadius,
-          child: Hero(
+          child: MediaImageHero(
             tag: heroTag,
+            borderRadius: effectiveBorderRadius,
             child: NetworkThumbnail(
               imageUrl: url,
               mediaAsset: mediaAssetsByImage[url],

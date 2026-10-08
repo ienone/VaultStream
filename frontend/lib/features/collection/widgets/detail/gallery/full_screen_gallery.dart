@@ -1,3 +1,4 @@
+import '../../../../../core/widgets/media_image_hero.dart';
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:file_selector/file_selector.dart';
@@ -300,7 +301,8 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
   }
 
   Widget _buildGallery(BuildContext context) {
-    final opacity = (1 - (_dragOffset.distance / 300)).clamp(0.0, 1.0);
+    final progress = ModalRoute.of(context)!.animation!;
+    final dragOpacity = (1 - (_dragOffset.distance / 300)).clamp(0.0, 1.0);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -311,14 +313,32 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
             child: GestureDetector(
               excludeFromSemantics: true,
               onTap: () => _close(),
-              child: ColoredBox(color: Colors.black.withValues(alpha: opacity)),
+              child: AnimatedBuilder(
+                animation: progress,
+                builder: (context, _) {
+                  final amount =
+                      Curves.easeOutCubic.transform(progress.value) *
+                      dragOpacity;
+                  return BackdropFilter(
+                    filter: ImageFilter.blur(
+                      sigmaX: 16 * amount,
+                      sigmaY: 16 * amount,
+                    ),
+                    child: ColoredBox(
+                      color: Theme.of(
+                        this.context,
+                      ).colorScheme.surface.withValues(alpha: 0.2 * amount),
+                    ),
+                  );
+                },
+              ),
             ),
           ),
           // Images
           Transform.translate(
             offset: _dragOffset,
             child: Transform.scale(
-              scale: 1 - (1 - opacity) * .18,
+              scale: 1 - (1 - dragOpacity) * .18,
               child: PageView.builder(
                 key: _viewportKey,
                 controller: _controller,
@@ -386,7 +406,7 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
                       child: Center(
                         child: _RotatingGalleryImage(
                           quarterTurns: _rotationTurns[index] ?? 0,
-                          child: Hero(
+                          child: MediaImageHero(
                             tag: _getHeroTag(index),
                             child: NetworkThumbnail(
                               imageUrl: widget.images[index],
@@ -419,8 +439,8 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
               minimum: const EdgeInsets.all(AppSpacing.sm),
               child: Align(
                 alignment: Alignment.topCenter,
-                child: Opacity(
-                  opacity: opacity,
+                child: FadeTransition(
+                  opacity: progress,
                   child: MediaOverlaySurface(
                     child: Padding(
                       padding: const EdgeInsets.all(AppSpacing.xxs),
@@ -486,19 +506,24 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
 
   Widget _pageButton(BuildContext context, {required bool previous}) =>
       Positioned.fill(
-        child: SafeArea(
-          minimum: const EdgeInsets.all(AppSpacing.md),
-          child: Align(
-            alignment: previous ? Alignment.centerLeft : Alignment.centerRight,
-            child: MediaOverlaySurface(
-              child: IconButton(
-                tooltip: previous ? '上一张' : '下一张',
-                icon: Icon(
-                  previous
-                      ? Icons.chevron_left_rounded
-                      : Icons.chevron_right_rounded,
+        child: FadeTransition(
+          opacity: ModalRoute.of(context)!.animation!,
+          child: SafeArea(
+            minimum: const EdgeInsets.all(AppSpacing.md),
+            child: Align(
+              alignment: previous
+                  ? Alignment.centerLeft
+                  : Alignment.centerRight,
+              child: MediaOverlaySurface(
+                child: IconButton(
+                  tooltip: previous ? '上一张' : '下一张',
+                  icon: Icon(
+                    previous
+                        ? Icons.chevron_left_rounded
+                        : Icons.chevron_right_rounded,
+                  ),
+                  onPressed: () => _changePage(previous ? -1 : 1),
                 ),
-                onPressed: () => _changePage(previous ? -1 : 1),
               ),
             ),
           ),

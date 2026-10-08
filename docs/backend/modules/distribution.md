@@ -31,7 +31,7 @@ active
 
 内容入库后，`DistributionService` 根据条件匹配规则，生成 `content_queue_items`。规则表单原子保存规则与目标集合，不再隐式回填历史；要求确认的规则生成 approval_required 项。手动选择内容和目标使用同一队列，rule_id=null，单项确认不改变内容全局审批。`enqueue_content_background` 只负责创建/关闭独立 session 和记录后台异常；旧空 `DistributionEngine` 别名与测试透传函数已删除。worker 消费队列并调用 push service，将结果记录到 pushed records。
 
-队列列表和单项响应批量/按项附带卡片用途的统一 `media_assets`，签名 URL 使用当前请求 origin。前端队列预览不再自行猜测或改写封面 URL。worker 推送前会连同变体一次性加载媒体资产；`ContentDistributor` 按 Telegram/QQ 能力选择本地可上传变体，并只把后端明确允许直连的远端原址作为兜底。Telegram 与 NapCat push service 只消费该 `media_items`，不再读取旧 archive metadata 或 `cover_url`；QQ 音频映射为 OneBot record 段。
+队列列表和单项响应批量/按项附带卡片用途的统一 `media_assets`，签名 URL 使用当前请求 origin。前端队列预览不再自行猜测或改写封面 URL。worker 推送前会连同变体一次性加载媒体资产；`push.media.build_content_payload` 按 Telegram/QQ 能力选择本地可上传变体，并只把后端明确允许直连的远端原址作为兜底。Telegram 与 NapCat push service 只消费该 `media_items`，不再读取旧 archive metadata 或 `cover_url`；QQ 音频映射为 OneBot record 段。
 
 分发队列的 enqueue、cancel、batch retry、push/schedule/reorder/status/repush，以及规则删除与人工扫描动作已从匿名响应收敛为命名 response model，并纳入 OpenAPI schema gate。数量字段表达当前请求已完成的数据库状态变更；`run_id` 仅在确实创建后台运行时出现。规则目标删除保持 `204 No Content`，同样由门禁固定。
 
@@ -79,6 +79,8 @@ active
 
 ## 发送期间的策略变化
 
+QQ Agent 收藏会由插件向原管理员私聊返回回执。自动入队和发送前检查真实 `ContentSource` 与 `AgentRun` 的关联，只跳过相同 Bot 配置、相同私聊用户的目标；要求来源含对应 run、session 与材料引用，旧 `qq_bot` 来源不受影响。其他目标及现有规则照常执行。网页明确入队、排期、重试和已确认的 Agent 推送使用队列现有 `approved_by=explicit_push` 记录这次发送授权，手动立即发送同样可执行。此标记只控制回执去重，其他规则及发送策略沿用现有行为；Agent 指定目标时只对该目标入队。
+
 手动立即发送与自动领取都用状态条件更新，且同内容、同平台、同目标只能有一个处理中队列项。已有成功发送记录按平台及目标去重。渲染结束、实际发送前重新检查规则/目标启用、内容资格、规则匹配、人工审核、聚合推送与自动暂停；手动发送保留原有显式绕过自动暂停的语义。目标路由变化会暂缓并提示刷新队列，不能沿旧目标身份直接发送到新目标。已发起的网络请求不承诺能被稍后的开关撤回。
 
 队列 API 的单项和批量状态变更同样与 worker 领取串行；不能通过重试、取消或重推清除活跃发送锁。并发变化返回 409 并回滚整个请求。
@@ -122,3 +124,5 @@ active
 2026-10-07 单图预览进一步收敛：只有一张配图时，将配图节点与后续正文合成同一条图文消息；视频预览只使用封面图，标题、简介、统计及原链接放在同一消息。多图和文章的多张插图继续按原节点顺序组织。
 
 该版本已部署。用真实显示器视频 BV11apP6jEzH 再次解析并发送到管理员私聊，QQ get_msg 回读为一张图片和一段文字，含标题、简介、播放量和原链接，没有 forward/video 段；收藏 257、来源 66 均未变化。此检查使用线上解析器与真实 QQ 发送，不代表收到新的用户消息。
+
+单项、批量和按内容进行排期、重试、过滤共用 `queue_operations` 的状态转换及领取冲突检查。重新排期统一清除旧失败信息与锁，保留尝试次数和已知回执；显式重推才清除回执及对应去重记录。数据库提交、事件和运行记录仍在原请求边界完成。

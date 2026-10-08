@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../../core/media/media_asset.dart';
+import '../../../../../theme/design_tokens.dart';
 import 'full_screen_gallery.dart';
 
 /// A media overlay has its own drag dismissal; it is not a page transition.
@@ -10,14 +11,14 @@ class _GalleryRoute extends PageRouteBuilder<void> {
         opaque: false,
         transitionDuration: reduceMotion
             ? Duration.zero
-            : const Duration(milliseconds: 260),
+            : AppMotion.surfaceEnter,
         reverseTransitionDuration: reduceMotion
             ? Duration.zero
-            : const Duration(milliseconds: 240),
+            : AppMotion.standard,
         pageBuilder: (context, animation, secondaryAnimation) =>
             builder(context),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-            FadeTransition(opacity: animation, child: child),
+            child,
       );
 
   @override

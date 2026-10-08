@@ -39,6 +39,7 @@ from app.routers import (
     bot_config,
     bot_management,
     qq_events,
+    qq_agent,
     qq_preview,
     browser_auth,
     contents,
@@ -147,6 +148,8 @@ async def lifespan(app: FastAPI):
     # 周期任务单实例机制：只有 leader 进程启动后台循环
     from app.services.background_task_leader import background_task_leader
     periodic_tasks_started = background_task_leader.try_acquire()
+    from app.services.telegram_bot_service import telegram_bot_runtime
+    telegram_bot_runtime.bind(app, owner=periodic_tasks_started)
     if periodic_tasks_started:
         from app.core.database import AsyncSessionLocal
         from app.services.bot_config_service import get_bot_runtime_service
@@ -299,6 +302,7 @@ app.include_router(system.router, prefix="/api/v1", tags=["system"])
 app.include_router(media.router, prefix="/api/v1", tags=["media"])
 app.include_router(bot_management.router, prefix="/api/v1", tags=["bot"])
 app.include_router(qq_events.router, prefix="/api/v1", tags=["bot"])
+app.include_router(qq_agent.router, prefix="/api/v1", tags=["bot"])
 app.include_router(qq_preview.router, prefix="/api/v1", tags=["bot"])
 app.include_router(bot_config.router, prefix="/api/v1", tags=["bot-config"])
 app.include_router(events.router, prefix="/api/v1", tags=["events"])

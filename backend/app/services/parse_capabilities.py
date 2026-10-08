@@ -37,23 +37,11 @@ def dedicated_parse_capability(url: str) -> ParseCapability:
 
     path = parsed.path.rstrip("/")
     normalized = urlunsplit(("https", host, path, parsed.query, ""))
+    if host == "b23.tv" or host.endswith(".b23.tv") or host == "bilibili.com" or host.endswith(".bilibili.com"):
+        return ParseCapability(normalized, reason="excluded_platform")
+
     def supported(platform: str, content_type: str, canonical: str | None = None):
         return ParseCapability(canonical or normalized, platform, content_type, reason="supported")
-
-    if host == "b23.tv" and re.fullmatch(r"/[A-Za-z0-9]+", path):
-        return ParseCapability(normalized, "bilibili", short_link=True, reason="short_link")
-    if host in {"bilibili.com", "www.bilibili.com", "m.bilibili.com"}:
-        for kind, pattern in {
-            "video": r"/video/(?:BV[0-9A-Za-z]{10}|av[0-9]+)",
-            "article": r"/read/cv[0-9]+", "dynamic": r"/opus/[0-9]+",
-            "bangumi": r"/bangumi/play/(?:ss|ep)[0-9]+",
-        }.items():
-            if re.fullmatch(pattern, path):
-                return supported("bilibili", kind)
-    if host == "t.bilibili.com" and re.fullmatch(r"/[0-9]+", path):
-        return supported("bilibili", "dynamic")
-    if host == "live.bilibili.com" and re.fullmatch(r"/[0-9]+", path):
-        return supported("bilibili", "live")
 
     if host in {"xhslink.com", "www.xhslink.com"} and re.fullmatch(r"/(?:a/|o/)?[A-Za-z0-9]+", path):
         return ParseCapability(normalized, "xiaohongshu", short_link=True, reason="short_link")
@@ -118,13 +106,11 @@ async def resolve_dedicated_parse_capability(url: str) -> ParseCapability:
             headers={"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15"},
             max_bytes=2 * 1024 * 1024,
         )
-    # Redirect identity is usable even when the destination HTML blocks access;
-    # the dedicated parser fetches the object through its platform API.
-    resolved = dedicated_parse_capability(str(response.url))
-    if resolved.supported and resolved.platform == capability.platform:
-        return resolved
     if response.status_code != 200:
         raise ValueError("Short link resolution failed")
+    resolved = dedicated_parse_capability(response.url)
+    if resolved.supported and resolved.platform == capability.platform:
+        return resolved
     # The existing Weibo adapter also recognizes these IDs in its app share
     # page. Inspect only that first-party page, never arbitrary redirected HTML.
     if capability.platform == "weibo" and urlsplit(response.url).hostname == "mapp.api.weibo.cn":

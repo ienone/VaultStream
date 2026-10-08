@@ -106,3 +106,9 @@ Telegram options 写入同样要求 leader（否则 503）；关闭任一同步�
 队列列表与统计不再把已有成功发送记录的同内容、同平台、同目标的其他旧排期算作待发送；发送中和未收到发送回执的条目仍保留，不能被成功记录遮蔽。单项接口与数据库记录保持可追溯。
 
 已发送队列（`status=pushed` / `success`）按完成时间、ID 倒序分页；待发送队列继续按计划时间、ID 正序。
+
+### 聊天转存策略
+
+PUT `/settings/chat_capture_enabled` 只接受 boolean value（其他类型 422），沿用 SystemSettingResponse。开启只允许管理员明确保存，关闭禁止 Bot 转存；普通群聊、私聊分享均不自动收藏。链接、文字和文件捕获统一在写入前核验策略和来源身份。Telegram 请求的 client_context 包含当前外层 user_id、request_text；QQ 身份与外层请求由认证入口建立，转发、引用仅作材料。持久来源记录只保留实际保存指令 save_instruction，不复制完整外层消息。
+
+POST `/bot/qq/{config_id}/group-capture` 使用 QQGroupCaptureRequest（QQ 原消息材料及 group_id）和 QQGroupCaptureResponse；先验证管理员、群白名单与启用状态，群 Agent 只开放 capture_content，响应不包含私人收藏正文。旧签名 HTTP events 端点仅确认收到，不再自动保存。

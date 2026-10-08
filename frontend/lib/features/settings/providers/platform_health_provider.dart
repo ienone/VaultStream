@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
@@ -96,8 +97,12 @@ class PlatformHealthResponse {
 final platformHealthProvider = FutureProvider<PlatformHealthResponse>((
   ref,
 ) async {
-  final response = await ref.read(apiClientProvider).get('/platform-health');
+  final cancelToken = CancelToken();
+  ref.onDispose(cancelToken.cancel);
+  final response = await ref
+      .watch(apiClientProvider)
+      .get('/platform-health', cancelToken: cancelToken);
   return PlatformHealthResponse.fromJson(
     Map<String, dynamic>.from(response.data as Map),
   );
-});
+}, retry: (_, _) => null);

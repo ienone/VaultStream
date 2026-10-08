@@ -441,7 +441,7 @@ class AutomationTab extends ConsumerWidget {
         return ExpandableSettingTile(
           title: '摘要模型',
           subtitle: _getSummarySubtitle(settings),
-          expandedContent: _buildSummaryConfigEditor(context, ref),
+          expandedContent: _buildModelConfigEditor(context, ref, 'summary'),
         );
       },
       loading: () => const LoadingGroup(),
@@ -462,22 +462,26 @@ class AutomationTab extends ConsumerWidget {
           data: (settings) => Column(
             children: [
               ExpandableSettingTile(
-                title: '文本模型',
-                subtitle: _getLlmSubtitle(settings, 'text'),
-                expandedContent: _buildLlmConfigEditor(context, ref, 'text'),
-              ),
-              ExpandableSettingTile(
-                title: '视觉模型',
-                subtitle: _getLlmSubtitle(settings, 'vision'),
-                expandedContent: _buildLlmConfigEditor(context, ref, 'vision'),
+                title: '通用模型（文字与图像）',
+                subtitle: _getLlmSubtitle(settings),
+                expandedContent: _buildModelConfigEditor(
+                  context,
+                  ref,
+                  'text_llm',
+                ),
               ),
               ExpandableSettingTile(
                 title: '向量模型',
                 subtitle: _getEmbeddingSubtitle(settings),
-                expandedContent: _buildEmbeddingConfigEditor(
+                expandedContent: _buildModelConfigEditor(
                   context,
                   ref,
-                  semanticStatusAsync,
+                  'embedding',
+                  footer: _buildSemanticIndexStatus(
+                    context,
+                    ref,
+                    semanticStatusAsync,
+                  ),
                 ),
               ),
             ],
@@ -616,11 +620,8 @@ class AutomationTab extends ConsumerWidget {
     switch (key) {
       case 'text_llm':
         return 'text_llm';
-      case 'vision_llm':
-        return 'vision_llm';
       case 'content_understanding':
         if (details['text_llm'] == true) return 'text_llm';
-        if (details['vision_llm'] == true) return 'vision_llm';
         return null;
       case 'summary_generation':
         return 'summary_generation';
@@ -748,8 +749,8 @@ class AutomationTab extends ConsumerWidget {
 
   bool _isEnvConfigured(String value) => value.startsWith('***');
 
-  String _getLlmSubtitle(List<SystemSetting> settings, String type) {
-    final prefix = type == 'text' ? 'text_llm' : 'vision_llm';
+  String _getLlmSubtitle(List<SystemSetting> settings) {
+    const prefix = 'text_llm';
     final model =
         settings
                 .firstWhere(
@@ -831,338 +832,122 @@ class AutomationTab extends ConsumerWidget {
     return '$modelLabel • $dimension 维 • $keyLabel';
   }
 
-  Widget _buildLlmConfigEditor(
+  Widget _buildModelConfigEditor(
     BuildContext context,
     WidgetRef ref,
-    String type,
-  ) {
-    // type: 'text' or 'vision'
-    final settingsAsync = ref.watch(systemSettingsProvider);
-    return settingsAsync.when(
-      data: (settings) {
-        final prefix = type == 'text' ? 'text_llm' : 'vision_llm';
-        final baseUrl =
-            settings
-                    .firstWhere(
-                      (s) => s.key == '${prefix}_api_base',
-                      orElse: () => const SystemSetting(key: '', value: ''),
-                    )
-                    .value
-                as String? ??
-            '';
-        final apiKey =
-            settings
-                    .firstWhere(
-                      (s) => s.key == '${prefix}_api_key',
-                      orElse: () => const SystemSetting(key: '', value: ''),
-                    )
-                    .value
-                as String? ??
-            '';
-        final model =
-            settings
-                    .firstWhere(
-                      (s) => s.key == '${prefix}_model',
-                      orElse: () => const SystemSetting(key: '', value: ''),
-                    )
-                    .value
-                as String? ??
-            '';
-
-        final isKeyFromEnv = _isEnvConfigured(apiKey);
-
-        return SettingsEditorDraft(
-          initialValues: {
-            'base': baseUrl,
-            'key': isKeyFromEnv ? '' : apiKey,
-            'model': model,
-          },
-          builder: (context, controllers) {
-            final baseController = controllers['base']!;
-            final keyController = controllers['key']!;
-            final modelController = controllers['model']!;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _SettingsField(
-                  controller: baseController,
-                  label: 'API 地址',
-                  hint: 'https://api.example.com/v1',
-                  keyboardType: TextInputType.url,
-                ),
-                const SizedBox(height: 12),
-                _SettingsField(
-                  controller: keyController,
-                  label: 'API 密钥',
-                  obscureText: true,
-                  description: isKeyFromEnv ? '已通过环境变量配置；仅在更换密钥时输入。' : null,
-                ),
-                const SizedBox(height: 12),
-                _SettingsField(controller: modelController, label: '模型名称'),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: SettingSaveButton(
-                    onPressed: () async {
-                      final notifier = ref.read(
-                        systemSettingsProvider.notifier,
-                      );
-                      await notifier.updateSetting(
-                        '${prefix}_api_base',
-                        baseController.text,
-                        category: 'llm',
-                      );
-                      // 仅在用户实际输入了新密钥时才更新
-                      if (keyController.text.isNotEmpty) {
-                        await notifier.updateSetting(
-                          '${prefix}_api_key',
-                          keyController.text,
-                          category: 'llm',
+    String target, {
+    Widget? footer,
+  }) {
+    final defaults = switch (target) {
+      'text_llm' => {'api_base': '', 'api_key': '', 'model': ''},
+      'summary' => {
+        'api_key': '',
+        'model': 'gemini-3.1-flash-lite-preview',
+        'api_version': 'v1beta',
+      },
+      'embedding' => {
+        'api_key': '',
+        'model': 'gemini-embedding-2',
+        'output_dimensionality': '1536',
+      },
+      _ => throw ArgumentError.value(target),
+    };
+    const labels = {
+      'api_base': 'API 地址',
+      'api_key': 'API 密钥',
+      'model': '模型名称',
+      'api_version': 'API 版本',
+      'output_dimensionality': '输出维度',
+    };
+    return ref
+        .watch(systemSettingsProvider)
+        .when(
+          data: (settings) {
+            final values = {
+              for (final entry in defaults.entries)
+                entry.key:
+                    (getSettingValue(
+                              settings,
+                              '${target}_${entry.key}',
+                              entry.value,
+                            ) ??
+                            entry.value)
+                        .toString(),
+            };
+            final hasSavedKey = _isEnvConfigured(values['api_key']!);
+            if (hasSavedKey) values['api_key'] = '';
+            return SettingsEditorDraft(
+              key: ValueKey(target),
+              initialValues: values,
+              builder: (context, controllers) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final field in defaults.keys) ...[
+                    _SettingsField(
+                      controller: controllers[field]!,
+                      label: labels[field]!,
+                      obscureText: field == 'api_key',
+                      hint: field == 'api_base'
+                          ? 'https://api.example.com/v1'
+                          : null,
+                      keyboardType: field == 'api_base'
+                          ? TextInputType.url
+                          : field == 'output_dimensionality'
+                          ? TextInputType.number
+                          : null,
+                      description: field == 'api_key' && hasSavedKey
+                          ? '已配置；仅在更换密钥时输入。'
+                          : field == 'output_dimensionality'
+                          ? '推荐 768 / 1536 / 3072'
+                          : null,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: _ModelSaveButton(
+                      onSave: () async {
+                        final updates = <String, dynamic>{};
+                        for (final field in defaults.keys) {
+                          final text = controllers[field]!.text.trim();
+                          if (field == 'api_key' && text.isEmpty) continue;
+                          if (field == 'output_dimensionality') {
+                            final dimension = int.tryParse(text);
+                            if (dimension == null ||
+                                dimension < 128 ||
+                                dimension > 3072) {
+                              showToast(context, '输出维度须为 128–3072 的整数');
+                              return;
+                            }
+                            updates[field] = dimension;
+                          } else {
+                            updates[field] = text.isEmpty
+                                ? defaults[field]!
+                                : text;
+                          }
+                        }
+                        final notifier = ref.read(
+                          systemSettingsProvider.notifier,
                         );
-                      }
-                      await notifier.updateSetting(
-                        '${prefix}_model',
-                        modelController.text,
-                        category: 'llm',
-                      );
-                      if (context.mounted) showToast(context, 'LLM 配置已保存');
-                    },
-                    child: const Text('保存配置'),
+                        for (final entry in updates.entries) {
+                          await notifier.updateSetting(
+                            '${target}_${entry.key}',
+                            entry.value,
+                            category: target == 'text_llm' ? 'llm' : target,
+                          );
+                        }
+                        if (context.mounted) showToast(context, '模型配置已保存');
+                      },
+                    ),
                   ),
-                ),
-              ],
+                  if (footer != null) ...[const SizedBox(height: 24), footer],
+                ],
+              ),
             );
           },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (_, _) => const Text('加载失败'),
         );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, _) => SettingLoadFailure(
-        onRetry: () => ref.invalidate(systemSettingsProvider),
-      ),
-    );
-  }
-
-  Widget _buildSummaryConfigEditor(BuildContext context, WidgetRef ref) {
-    final settingsAsync = ref.watch(systemSettingsProvider);
-    return settingsAsync.when(
-      data: (settings) {
-        final apiKey =
-            settings
-                    .firstWhere(
-                      (s) => s.key == 'summary_api_key',
-                      orElse: () => const SystemSetting(key: '', value: ''),
-                    )
-                    .value
-                as String? ??
-            '';
-        final model =
-            settings
-                    .firstWhere(
-                      (s) => s.key == 'summary_model',
-                      orElse: () => const SystemSetting(
-                        key: '',
-                        value: 'gemini-3.1-flash-lite-preview',
-                      ),
-                    )
-                    .value
-                as String? ??
-            'gemini-3.1-flash-lite-preview';
-        final apiVersion =
-            settings
-                    .firstWhere(
-                      (s) => s.key == 'summary_api_version',
-                      orElse: () =>
-                          const SystemSetting(key: '', value: 'v1beta'),
-                    )
-                    .value
-                as String? ??
-            'v1beta';
-
-        final isKeyFromEnv = _isEnvConfigured(apiKey);
-        return SettingsEditorDraft(
-          initialValues: {
-            'key': isKeyFromEnv ? '' : apiKey,
-            'model': model,
-            'version': apiVersion,
-          },
-          builder: (context, controllers) {
-            final keyController = controllers['key']!;
-            final modelController = controllers['model']!;
-            final versionController = controllers['version']!;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _SettingsField(
-                  controller: keyController,
-                  label: 'API 密钥',
-                  obscureText: true,
-                  description: isKeyFromEnv ? '已通过环境变量配置；仅在更换密钥时输入。' : null,
-                ),
-                const SizedBox(height: 12),
-                _SettingsField(
-                  controller: modelController,
-                  label: '模型名称',
-                  description: '用于摘要、标签和 RAG 切片生成。',
-                ),
-                const SizedBox(height: 12),
-                _SettingsField(controller: versionController, label: 'API 版本'),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: SettingSaveButton(
-                    onPressed: () async {
-                      final notifier = ref.read(
-                        systemSettingsProvider.notifier,
-                      );
-                      if (keyController.text.isNotEmpty) {
-                        await notifier.updateSetting(
-                          'summary_api_key',
-                          keyController.text,
-                          category: 'summary',
-                        );
-                      }
-                      await notifier.updateSetting(
-                        'summary_model',
-                        modelController.text.trim().isEmpty
-                            ? 'gemini-3.1-flash-lite-preview'
-                            : modelController.text.trim(),
-                        category: 'summary',
-                      );
-                      await notifier.updateSetting(
-                        'summary_api_version',
-                        versionController.text.trim().isEmpty
-                            ? 'v1beta'
-                            : versionController.text.trim(),
-                        category: 'summary',
-                      );
-                      if (context.mounted) showToast(context, '摘要模型配置已保存');
-                    },
-                    child: const Text('保存配置'),
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, _) => SettingLoadFailure(
-        onRetry: () => ref.invalidate(systemSettingsProvider),
-      ),
-    );
-  }
-
-  Widget _buildEmbeddingConfigEditor(
-    BuildContext context,
-    WidgetRef ref,
-    AsyncValue<Map<String, dynamic>> semanticStatusAsync,
-  ) {
-    final settingsAsync = ref.watch(systemSettingsProvider);
-    return settingsAsync.when(
-      data: (settings) {
-        final apiKey =
-            settings
-                    .firstWhere(
-                      (s) => s.key == 'embedding_api_key',
-                      orElse: () => const SystemSetting(key: '', value: ''),
-                    )
-                    .value
-                as String? ??
-            '';
-        final model =
-            settings
-                    .firstWhere(
-                      (s) => s.key == 'embedding_model',
-                      orElse: () => const SystemSetting(
-                        key: '',
-                        value: 'gemini-embedding-2',
-                      ),
-                    )
-                    .value
-                as String? ??
-            'gemini-embedding-2';
-        final dimension = parseIntSetting(
-          getSettingValue(settings, 'embedding_output_dimensionality', 1536),
-          1536,
-        );
-
-        final isKeyFromEnv = _isEnvConfigured(apiKey);
-        return SettingsEditorDraft(
-          initialValues: {
-            'key': isKeyFromEnv ? '' : apiKey,
-            'model': model,
-            'dimension': '$dimension',
-          },
-          builder: (context, controllers) {
-            final keyController = controllers['key']!;
-            final modelController = controllers['model']!;
-            final dimController = controllers['dimension']!;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _SettingsField(
-                  controller: keyController,
-                  label: 'API 密钥',
-                  obscureText: true,
-                  description: isKeyFromEnv ? '已通过环境变量配置；仅在更换密钥时输入。' : null,
-                ),
-                const SizedBox(height: 12),
-                _SettingsField(controller: modelController, label: '模型名称'),
-                const SizedBox(height: 12),
-                _SettingsField(
-                  controller: dimController,
-                  label: '输出维度',
-                  description: '推荐 768 / 1536 / 3072',
-                  keyboardType: TextInputType.number,
-                ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: SettingSaveButton(
-                    onPressed: () async {
-                      final notifier = ref.read(
-                        systemSettingsProvider.notifier,
-                      );
-                      if (keyController.text.isNotEmpty) {
-                        await notifier.updateSetting(
-                          'embedding_api_key',
-                          keyController.text,
-                          category: 'embedding',
-                        );
-                      }
-                      await notifier.updateSetting(
-                        'embedding_model',
-                        modelController.text.trim().isEmpty
-                            ? 'gemini-embedding-2'
-                            : modelController.text.trim(),
-                        category: 'embedding',
-                      );
-                      final dimension =
-                          int.tryParse(dimController.text.trim()) ?? 1536;
-                      await notifier.updateSetting(
-                        'embedding_output_dimensionality',
-                        dimension,
-                        category: 'embedding',
-                      );
-                      if (context.mounted) {
-                        showToast(context, 'Embedding 配置已保存');
-                      }
-                    },
-                    child: const Text('保存配置'),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                _buildSemanticIndexStatus(context, ref, semanticStatusAsync),
-              ],
-            );
-          },
-        );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, _) => SettingLoadFailure(
-        onRetry: () => ref.invalidate(systemSettingsProvider),
-      ),
-    );
   }
 
   Widget _buildSemanticIndexStatus(
@@ -1604,3 +1389,44 @@ class _SettingsField extends StatelessWidget {
 
 String _sourceIntervalLabel(int minutes) =>
     minutes % 60 == 0 ? '${minutes ~/ 60} 小时' : '$minutes 分钟';
+
+class _ModelSaveButton extends StatefulWidget {
+  const _ModelSaveButton({required this.onSave});
+
+  final Future<void> Function() onSave;
+
+  @override
+  State<_ModelSaveButton> createState() => _ModelSaveButtonState();
+}
+
+class _ModelSaveButtonState extends State<_ModelSaveButton> {
+  bool _saving = false;
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await widget.onSave();
+    } catch (error) {
+      if (mounted) {
+        showToast(
+          context,
+          formatApiErrorMessage(error, fallbackMessage: '配置保存失败，请重试'),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => FilledButton.tonalIcon(
+    onPressed: _saving ? null : _save,
+    icon: _saving
+        ? const SizedBox.square(
+            dimension: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+        : const Icon(Icons.save_outlined),
+    label: Text(_saving ? '保存中…' : '保存配置'),
+  );
+}

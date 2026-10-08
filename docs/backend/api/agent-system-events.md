@@ -52,6 +52,7 @@ Agent API 只提供受控编排能力，不代表 Agent 可以绕过收藏、同
 - `GET /api/v1/auth/check` 使用现有 Token 鉴权，成功返回 `204 No Content`，无效密钥返回 `401 invalid_api_token`。不查询数据库或扫描存储，供首次连接和设置页验证使用。
 
 - `/health` 与 `/api/v1/health` 返回同一健康结构。
+- `GET /api/v1/init-status` 返回 `has_bot` 和 `version`，用于连接探测；不再返回首次向导状态 `needs_setup`。服务器连接成功后仍需验证 API 密钥。
 - 健康检查区分数据库、队列、FTS、worker、模型供应商和后台任务状态。
 - `GET /api/v1/ai/capabilities` 描述配置与能力，不执行真实模型请求。
 - `POST /api/v1/ai/connectivity-test` 执行真实连通性测试并记录 `run_id`。
@@ -87,3 +88,15 @@ Agent API 只提供受控编排能力，不代表 Agent 可以绕过收藏、同
 - API token 只通过 `X-API-Token` 或 Bearer header 传递，不放入 URL query。
 - 业务错误应使用稳定错误码和明确 HTTP 状态，不应只返回自由文本。
 - 写操作返回 `run_id` 时必须说明它代表受理、调度还是已经执行。
+
+## QQ 管理员私聊
+
+- `POST /api/v1/bot/qq/{config_id}/agent`：API token 鉴权；请求 `user_id`、`message_id`、`text`、有序 `links`、`attachments`，可附 `quote` 与 `forwarded`。附件字段是 `url`、`filename`、可选 `mime_type`；引用和转发项使用相同消息材料结构，不包含 `user_id`。不接受群 ID、调用方自报授权或会话 ID。
+- `GET /api/v1/bot/qq/{config_id}/agent/runs/{run_id}?user_id=...`：验证同一管理员会话归属并恢复回执，不重新执行任务。
+- `POST /api/v1/bot/qq/{config_id}/agent/confirmations/{confirmation_id}`：请求 `user_id`、`approved`，校验会话归属后调用既有正式确认执行器。
+- 三个入口均返回 `QQAgentResponse`：`session_id`、`run_id`、`status`、`message`、`confirmation_required`、`confirmation`、`captures`、`duplicate`。`captures` 包含本次已保存的内容 ID、类型、当前解析状态、标题、作者、摘要、最多 1500 字符正文节选、原文 URL、站内 route 与可空 `collection_url`（从合法公开 `base_url` 构造）。未解析不伪造结构化正文，保存与解析状态分开表达。
+- 后端设置 `qq_bot_agent`：`enabled`（布尔）、`admin_qq`（QQ 号码字符串数组）、`persona`（可选人设）。其他入口配置字段与群聊白名单仍由各自服务解释。
+
+`/ai/capabilities` 使用 `text_llm` 表示通用模型，文字和图像共用配置，不再返回独立 `vision_llm` 能力；连通性和模型发现不再接受 `vision_llm` 目标。
+
+`background_task_updated` 在开始和终态持久化后发送，payload 为 `task`、`status`、`run_id`，以及该任务关联内容时的 `content_id`。客户端按 run ID 更新任务页、按 content ID 更新内容及处理阶段。`connected` 表示订阅已连接，客户端应重读当前页面事实，以补偿离线或事件保留窗口之外的变化；不把事件载荷直接覆盖成完整内容。

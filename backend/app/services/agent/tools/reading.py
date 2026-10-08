@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from app.models import Content
 from app.models.media import MediaAsset, MediaType, MediaRole
+from app.services.agent.content_evidence import PARSE_ERROR_SCHEMA, content_parse_error
 from app.services.agent.tool_registry import AgentToolContext, AgentToolError, AgentToolRegistry
 from app.services.media_segments import extract_media_segments
 from app.services.document_text import build_document_text_items, document_assets
@@ -31,8 +32,10 @@ def register_reading_tool(registry: AgentToolRegistry) -> None:
     registry.register(name='read_content', description=(
         '读取收藏原文或视频字幕。找到视频章节后，用 content_id 与 start_seconds/end_seconds '
         '读取对应时间段的完整字幕，不要反复搜索章节标题。PDF 使用 document_asset_id 与 page_number '
-        '读取指定文件的原生文本页；offset 可继续读取超长页。返回可点击 route。'),
-        args_model=ReadContentArgs, result_schema={'type': 'object'},
+        '读取指定文件的原生文本页；offset 可继续读取超长页。返回可点击 route、内容 status，'
+        '解析失败时返回原始 parse_error（message/type/at），用于核对实际失败原因。'),
+        args_model=ReadContentArgs, result_schema={'type': 'object', 'properties': {
+            'status': {'type': ['string', 'null']}, 'parse_error': PARSE_ERROR_SCHEMA}},
         permission_level='read', permissions=['content:read'], handler=read_content)
 
 
@@ -40,6 +43,8 @@ async def read_content(args: dict, context: AgentToolContext) -> dict:
     content = await context.db.get(Content, args['content_id'])
     if content is None:
         raise AgentToolError(error_code='content_not_found', message='收藏内容不存在', retryable=False)
+    evidence = {'status': content.status.value if content.status else None,
+                'parse_error': content_parse_error(content)}
     documents = build_document_text_items(content, await document_assets(context.db, content.id))
     if args.get('document_asset_id') is not None:
         document = next((d for d in documents if d.media_asset_id == args['document_asset_id']), None)
@@ -47,7 +52,7 @@ async def read_content(args: dict, context: AgentToolContext) -> dict:
         if page is None:
             raise AgentToolError(error_code='document_page_not_found', message='该文件页不存在或尚未提取正文', retryable=False)
         offset = args.get('offset', 0)
-        return {'content_id': content.id, 'document_asset_id': document.media_asset_id,
+        return {**evidence, 'content_id': content.id, 'document_asset_id': document.media_asset_id,
                 'page_number': page.page_number, 'filename': document.filename,
                 'source_kind': 'pdf_native_text', 'text': page.text[offset:offset + 12000],
                 'next_offset': offset + 12000 if offset + 12000 < len(page.text) else None,
@@ -61,7 +66,7 @@ async def read_content(args: dict, context: AgentToolContext) -> dict:
     offset, limit = args.get('offset', 0), args.get('limit', 10)
     chunks = (content.rich_payload or {}).get('chunks', [])
     page = selected[offset:offset + limit]
-    result = {'content_id': content.id, 'title': content.title, 'author': content.author_name,
+    result = {**evidence, 'content_id': content.id, 'title': content.title, 'author': content.author_name,
         'documents': [{'document_asset_id': d.media_asset_id, 'filename': d.filename,
                        'status': d.status, 'page_count': d.page_count, 'text_page_count': d.text_page_count} for d in documents],
         'route': f'/collection/{content.id}', 'source_kind': 'stored_original', 'segments': [

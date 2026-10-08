@@ -30,20 +30,13 @@ class Collection extends _$Collection {
     _generation++;
     if (request != _request) _loadedPages = 1;
     _request = request;
-    ref.watch(sseServiceProvider.notifier);
-    Timer? refreshTimer;
-    final subscription = SseEventBus().eventStream.listen((event) {
-      if (!_collectionEventTypes.contains(event.type)) return;
-      refreshTimer?.cancel();
-      refreshTimer = Timer(
-        const Duration(milliseconds: 300),
-        ref.invalidateSelf,
-      );
-    });
-    ref.onDispose(() {
-      refreshTimer?.cancel();
-      subscription.cancel();
-    });
+    refreshOnEvents(
+      ref,
+      (event) =>
+          _collectionEventTypes.contains(event.type) ||
+          (event.type == 'background_task_updated' &&
+              event.data['content_id'] != null),
+    );
 
     // 后端拥有筛选和排序。实时刷新重读已加载页，不在客户端猜测归属，
     // 也不把阅读中的长列表缩回第一页。
@@ -98,6 +91,7 @@ class Collection extends _$Collection {
 
 @riverpod
 Future<ContentDetail> contentDetail(Ref ref, int id) async {
+  refreshOnEvents(ref, (event) => affectsContent(event, id));
   final dio = ref.watch(apiClientProvider);
   final response = await dio.get('/contents/$id');
   return ContentDetail.fromJson(response.data);
@@ -106,6 +100,7 @@ Future<ContentDetail> contentDetail(Ref ref, int id) async {
 /// 后处理状态使用正式 contract，不推断后台任务是否完成。
 @riverpod
 Future<ContentProcessingStatus> contentProcessingStatus(Ref ref, int id) async {
+  refreshOnEvents(ref, (event) => affectsContent(event, id));
   final dio = ref.watch(apiClientProvider);
   final response = await dio.get('/contents/$id/processing-status');
   return ContentProcessingStatus.fromJson(

@@ -20,7 +20,7 @@
 
 **判断与边界：** 默认不展开全部配置有利于首用；需启用后的真实校验及提交仍属功能验收范围。
 
-**当前实现：** [auth/presentation/onboarding_page.dart](../../../frontend/lib/features/auth/presentation/onboarding_page.dart)。取证状态：`onboarding-ai`、`onboarding-notification`。
+**历史页面（已退役）：** 模型配置已并入[设置页](../../../frontend/lib/features/settings/settings_page.dart)，账号配置使用账号中心。取证状态：`onboarding-ai`、`onboarding-notification`。
 
 ## 03 初始设置：账号与完成
 
@@ -30,7 +30,7 @@
 
 **判断与边界：** 此处只模拟未初始化状态以进入向导，未提交初始化，也未连接任何平台。
 
-**当前实现：** [auth/presentation/onboarding_page.dart](../../../frontend/lib/features/auth/presentation/onboarding_page.dart)。取证状态：`onboarding-accounts`、`onboarding-finish`。
+**历史页面（已退役）：** 模型配置已并入[设置页](../../../frontend/lib/features/settings/settings_page.dart)，账号配置使用账号中心。取证状态：`onboarding-accounts`、`onboarding-finish`。
 
 ## 04 动态：待收录
 

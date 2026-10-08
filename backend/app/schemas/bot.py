@@ -170,15 +170,12 @@ class BotRuntimeResponse(BaseModel):
 
 
 class BotRuntimeActionResponse(BaseModel):
-    """Telegram Bot 进程控制结果。"""
+    """Telegram Bot 异步生命周期控制结果。"""
 
     status: str
     run_id: str
     reason: Optional[str] = None
-    pid: Optional[int] = None
     error: Optional[str] = None
-    stopped: Optional[Dict[str, Any]] = None
-    started: Optional[Dict[str, Any]] = None
 
 
 class TelegramChatSyncResponse(BaseModel):

@@ -166,14 +166,6 @@ class PlatformHealthService:
             favorites_available = favorites_supported
             favorites_error: str | None = None
             favorites_status_error: dict[str, Any] | None = None
-            platform_state = (
-                await self.config_service.get_favorites_sync_platform_state(
-                    platform,
-                    default_rate_per_minute=task.default_rate_for(platform),
-                )
-            )
-            favorites_last_result = platform_state.last_result
-
             if favorites_supported and favorites_enabled:
                 fetcher_cls = task.get_fetcher_cls(platform)
                 if fetcher_cls is not None:
@@ -219,6 +211,13 @@ class PlatformHealthService:
                 platform,
             )
             latest_platform_status = self._platform_run_status(latest_run, platform)
+            run_result = latest_run.get("result") if latest_run else None
+            favorites_last_result = None
+            if isinstance(run_result, dict):
+                if latest_run.get("scope") == platform:
+                    favorites_last_result = run_result.get("result")
+                elif isinstance(run_result.get("results"), dict):
+                    favorites_last_result = run_result["results"].get(platform)
             issues: list[str] = []
             if (
                 browser_auth_supported

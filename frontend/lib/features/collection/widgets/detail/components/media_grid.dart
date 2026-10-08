@@ -1,3 +1,4 @@
+import '../../../../../core/widgets/media_image_hero.dart';
 import 'package:flutter/material.dart';
 import '../../../../../core/widgets/media_image_button.dart';
 import 'package:frontend/core/utils/media_utils.dart';
@@ -255,8 +256,9 @@ class MediaGrid extends StatelessWidget {
       onPressed: onImageTap == null ? null : () => onImageTap!(index),
       child: ClipRRect(
         borderRadius: AppShape.cardBorder,
-        child: Hero(
+        child: MediaImageHero(
           tag: _getHeroTag(index),
+          borderRadius: AppShape.cardBorder,
           child: isVideo(imageUrl)
               ? _buildVideoThumbnail(context, imageUrl)
               : NetworkThumbnail(

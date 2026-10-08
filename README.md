@@ -42,9 +42,11 @@ Flutter + FastAPI + SQLite；当前模块和职责以文档索引与代码为准
 
 ## 部署
 
-本地开发从仓库根目录运行 `make help` 查看命令。先创建根目录 `.venv`（后端依赖基线使用 Python 3.13），再运行 `make install`；后端配置参考 `backend/.env.example` 创建 `backend/.env`。`make dev-backend` 使用该虚拟环境在前台启动 API，后台任务另在 `backend` 目录用同一解释器运行 `-m app.worker`。
+本地开发从仓库根目录运行 `make help` 查看命令。先创建根目录 `.venv`（后端依赖基线使用 Python 3.13），再运行 `make install`；后端配置参考 `backend/.env.example` 创建 `backend/.env`。`make dev-backend` 使用该虚拟环境在前台启动 API，也可直接运行 `backend/start.sh`（Windows 使用 `backend/start.ps1`）。启动脚本仅调用应用入口；数据库初始化、后台任务和 Bot 启停由应用生命周期管理，无需另开 worker。
 
 `make frontend-install` 在解析依赖后应用必需的路由适配；前端启动、分析和 Web 构建入口也会检查该适配。`make frontend-check` 执行静态分析和 Web 构建；`make check-openapi` 和 `make check-schema` 分别验证 API 文档及新建数据库结构。实际功能按变更执行一次性流程验收，不维护持久测试套件。
+
+Docker 构建上下文只包含 Dockerfile 声明的运行文件，后端保留数据库迁移、WebKit、Chromium 和 ffmpeg。发布流程对后端镜像只构建一次，扫描通过后推送同一镜像；Android 分架构 APK 和 Web 发布继续等待该检查通过。
 
 ### 前端
 

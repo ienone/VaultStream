@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -30,8 +30,8 @@ from app.schemas import (
 )
 from app.schemas.media import MediaAssetManifest, MediaPurpose
 from app.schemas.queue import ManualPushRequest, ManualPushResponse
-from app.services.distribution.delivery_state import (
-    delivery_is_resolved,
+from app.services.distribution.queue_operations import (
+    QueueEditConflict, filter_item, lock_item_for_edit, schedule_item,
 )
 from app.services.background_task_state import (
     record_task_run_error,
@@ -53,21 +53,12 @@ router = APIRouter(prefix="/distribution-queue", tags=["distribution-queue"])
 
 
 async def _lock_queue_item_for_edit(db: AsyncSession, item: ContentQueueItem) -> None:
-    """Serialize the edit with worker claims; never release an active send."""
-    result = await db.execute(
-        update(ContentQueueItem).where(
-            ContentQueueItem.id == item.id,
-            ContentQueueItem.status == item.status,
-            ContentQueueItem.status != QueueItemStatus.PROCESSING,
-            delivery_is_resolved(),
-        ).values(status=item.status).execution_options(synchronize_session=False)
-    )
-    if result.rowcount != 1:
+    try:
+        await lock_item_for_edit(db, item)
+    except QueueEditConflict as exc:
         raise HTTPException(status_code=409, detail={
-            "code": "queue_item_requires_review",
-            "message": "队列项正在发送、未收到发送回执或状态已变化，请刷新后逐条处理。",
-        })
-
+            "code": "queue_item_requires_review", "message": str(exc),
+        }) from exc
 
 
 def _as_utc(dt: Optional[datetime]) -> Optional[datetime]:
@@ -468,6 +459,7 @@ async def enqueue_content_endpoint(
     enqueued_count = await DistributionService(db).enqueue_content(
         content_id,
         force=request.force,
+        manual=True,
     )
     logger.info(f"手动入队: content_id={content_id}, enqueued={enqueued_count}")
     await event_bus.publish("queue_updated", {
@@ -501,14 +493,7 @@ async def retry_queue_item(
 
     await _lock_queue_item_for_edit(db, item)
 
-    item.status = QueueItemStatus.SCHEDULED
-    item.locked_at = None
-    item.locked_by = None
-    item.next_attempt_at = None
-    item.scheduled_at = utcnow()
-    item.last_error = None
-    item.last_error_type = None
-    item.last_error_at = None
+    schedule_item(item, at=utcnow())
     if request.reset_attempts:
         item.attempt_count = 0
 
@@ -538,13 +523,7 @@ async def cancel_queue_item(
 
     await _lock_queue_item_for_edit(db, item)
 
-    item.status = QueueItemStatus.FAILED
-    item.locked_at = None
-    item.locked_by = None
-    item.last_error = "Canceled manually"
-    item.last_error_type = "manual_canceled"
-    item.next_attempt_at = None
-    item.last_error_at = utcnow()
+    filter_item(item, reason='Canceled manually', error_type='manual_canceled', at=utcnow())
 
     await db.commit()
 
@@ -582,25 +561,11 @@ async def set_queue_item_status(
 
     if target_status == "will_push":
         if item.status != QueueItemStatus.SUCCESS:
-            item.approved_by = "manual"
-            item.status = QueueItemStatus.SCHEDULED
-            item.scheduled_at = now
-            item.locked_at = None
-            item.locked_by = None
-            item.next_attempt_at = None
-            item.last_error = None
-            item.last_error_type = None
-            item.last_error_at = None
+            schedule_item(item, at=now)
     elif target_status == "filtered":
         if item.status != QueueItemStatus.SUCCESS:
             reason = str(payload.get("reason") or "Filtered manually").strip() or "Filtered manually"
-            item.status = QueueItemStatus.FAILED
-            item.locked_at = None
-            item.locked_by = None
-            item.next_attempt_at = None
-            item.last_error = reason
-            item.last_error_type = "manual_filtered"
-            item.last_error_at = now
+            filter_item(item, reason=reason, error_type='manual_filtered', at=now)
     else:
         raise HTTPException(status_code=400, detail="Unsupported status")
 
@@ -646,12 +611,7 @@ async def schedule_queue_item(
         raise HTTPException(status_code=400, detail="Cannot reschedule a pushed queue item")
 
     await _lock_queue_item_for_edit(db, item)
-    item.status = QueueItemStatus.SCHEDULED
-    item.approved_by = "manual"
-    item.scheduled_at = scheduled_at
-    item.next_attempt_at = None
-    item.locked_at = None
-    item.locked_by = None
+    schedule_item(item, at=scheduled_at)
 
     await db.commit()
     await db.refresh(item)
@@ -724,14 +684,7 @@ async def batch_retry_queue_items(
     retried_ids = []
     for item in items:
         await _lock_queue_item_for_edit(db, item)
-        item.status = QueueItemStatus.SCHEDULED
-        item.locked_at = None
-        item.locked_by = None
-        item.next_attempt_at = None
-        item.scheduled_at = now
-        item.last_error = None
-        item.last_error_type = None
-        item.last_error_at = None
+        schedule_item(item, at=now)
         retried_ids.append(item.id)
 
     await db.commit()
@@ -778,12 +731,7 @@ async def batch_push_now_queue_items(
     for item in items:
         if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
             await _lock_queue_item_for_edit(db, item)
-            item.status = QueueItemStatus.SCHEDULED
-            item.scheduled_at = now
-            item.next_attempt_at = None
-            item.last_error = None
-            item.last_error_type = None
-            item.last_error_at = None
+            schedule_item(item, at=now)
             changed += 1
             changed_item_ids.append(item.id)
             content_ids.append(item.content_id)
@@ -843,12 +791,7 @@ async def batch_schedule_queue_items(
             continue
         if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
             await _lock_queue_item_for_edit(db, item)
-            item.status = QueueItemStatus.SCHEDULED
-            item.scheduled_at = start_time + timedelta(seconds=interval_seconds * idx)
-            item.next_attempt_at = None
-            item.last_error = None
-            item.last_error_type = None
-            item.last_error_at = None
+            schedule_item(item, at=start_time + timedelta(seconds=interval_seconds * idx))
             changed += 1
             changed_item_ids.append(item.id)
 
@@ -883,12 +826,7 @@ async def set_content_queue_status(
                 continue
 
             await _lock_queue_item_for_edit(db, item)
-            item.status = QueueItemStatus.SCHEDULED
-            item.scheduled_at = now
-            item.next_attempt_at = None
-            item.last_error = None
-            item.last_error_type = None
-            item.last_error_at = None
+            schedule_item(item, at=now)
             changed += 1
         await db.commit()
         await event_bus.publish("queue_updated", {
@@ -906,13 +844,7 @@ async def set_content_queue_status(
             if item.status == QueueItemStatus.SUCCESS:
                 continue
             await _lock_queue_item_for_edit(db, item)
-            item.status = QueueItemStatus.FAILED
-            item.locked_at = None
-            item.locked_by = None
-            item.next_attempt_at = None
-            item.last_error = reason
-            item.last_error_type = "manual_filtered"
-            item.last_error_at = now
+            filter_item(item, reason=reason, error_type='manual_filtered', at=now)
             changed += 1
         await db.commit()
         await event_bus.publish("queue_updated", {
@@ -950,15 +882,7 @@ async def repush_now_content_queue(
         if target_id and item.target_id != target_id:
             continue
         await _lock_queue_item_for_edit(db, item)
-        item.status = QueueItemStatus.SCHEDULED
-        item.scheduled_at = now
-        item.next_attempt_at = None
-        item.locked_at = None
-        item.locked_by = None
-        item.message_id = None
-        item.last_error = None
-        item.last_error_type = None
-        item.last_error_at = None
+        schedule_item(item, at=now, clear_receipt=True)
         changed += 1
         affected_targets.add(item.target_id)
 
@@ -1013,15 +937,7 @@ async def batch_repush_now_content_queue(
     target_pairs: set[tuple[int, str]] = set()
     for item in items:
         await _lock_queue_item_for_edit(db, item)
-        item.status = QueueItemStatus.SCHEDULED
-        item.scheduled_at = now
-        item.next_attempt_at = None
-        item.locked_at = None
-        item.locked_by = None
-        item.message_id = None
-        item.last_error = None
-        item.last_error_type = None
-        item.last_error_at = None
+        schedule_item(item, at=now, clear_receipt=True)
         changed += 1
         target_pairs.add((item.content_id, item.target_id))
 
@@ -1116,12 +1032,7 @@ async def push_now_content_queue(
     for item in items:
         if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
             await _lock_queue_item_for_edit(db, item)
-            item.status = QueueItemStatus.SCHEDULED
-            item.scheduled_at = now
-            item.next_attempt_at = None
-            item.last_error = None
-            item.last_error_type = None
-            item.last_error_at = None
+            schedule_item(item, at=now)
             changed += 1
             changed_item_ids.append(item.id)
 
@@ -1171,12 +1082,7 @@ async def schedule_content_queue(
     for item in items:
         if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
             await _lock_queue_item_for_edit(db, item)
-            item.status = QueueItemStatus.SCHEDULED
-            item.scheduled_at = scheduled_at
-            item.next_attempt_at = None
-            item.last_error = None
-            item.last_error_type = None
-            item.last_error_at = None
+            schedule_item(item, at=scheduled_at)
             changed += 1
 
     await db.commit()
@@ -1221,12 +1127,7 @@ async def batch_push_now_content_queue(
     for item in items:
         if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
             await _lock_queue_item_for_edit(db, item)
-            item.status = QueueItemStatus.SCHEDULED
-            item.scheduled_at = now
-            item.next_attempt_at = None
-            item.last_error = None
-            item.last_error_type = None
-            item.last_error_at = None
+            schedule_item(item, at=now)
             changed += 1
             changed_item_ids.append(item.id)
 
@@ -1285,12 +1186,7 @@ async def batch_reschedule_content_queue(
         for item in grouped.get(content_id, []):
             if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
                 await _lock_queue_item_for_edit(db, item)
-                item.status = QueueItemStatus.SCHEDULED
-                item.scheduled_at = scheduled
-                item.next_attempt_at = None
-                item.last_error = None
-                item.last_error_type = None
-                item.last_error_at = None
+                schedule_item(item, at=scheduled)
                 changed += 1
 
     await db.commit()

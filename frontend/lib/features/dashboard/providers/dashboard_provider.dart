@@ -1,6 +1,3 @@
-import 'dart:async';
-
-import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
@@ -32,24 +29,10 @@ Future<SystemHealth> systemHealth(Ref ref) async {
 
 final backgroundTaskDiagnosticsProvider =
     FutureProvider<BackgroundTaskDiagnostics>((ref) async {
-      ref.watch(sseServiceProvider.notifier);
-      Timer? refreshTimer;
-      final subscription = SseEventBus().eventStream.listen((event) {
-        if (!_diagnosticsEventTypes.contains(event.type)) return;
-        refreshTimer?.cancel();
-        refreshTimer = Timer(
-          const Duration(milliseconds: 250),
-          ref.invalidateSelf,
-        );
-      });
-      final webRefreshTimer = kIsWeb
-          ? Timer(const Duration(seconds: 5), ref.invalidateSelf)
-          : null;
-      ref.onDispose(() {
-        refreshTimer?.cancel();
-        webRefreshTimer?.cancel();
-        subscription.cancel();
-      });
+      refreshOnEvents(
+        ref,
+        (event) => _diagnosticsEventTypes.contains(event.type),
+      );
 
       final dio = ref.watch(apiClientProvider);
       final response = await dio.get('/background-tasks/diagnostics');
@@ -66,6 +49,12 @@ const _diagnosticsEventTypes = {
 
 final backgroundTaskRunProvider =
     FutureProvider.family<BackgroundTaskRun, String>((ref, runId) async {
+      refreshOnEvents(
+        ref,
+        (event) =>
+            event.type == 'background_task_updated' &&
+            event.data['run_id'] == runId,
+      );
       final dio = ref.watch(apiClientProvider);
       final response = await dio.get('/background-tasks/runs/$runId');
       return BackgroundTaskRun.fromJson(
