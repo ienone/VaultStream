@@ -10,7 +10,6 @@ active
 - 当前代码：`backend/app/adapters/universal_adapter.py`
 - 当前类：`UniversalAdapter`
 - 相关工具：`backend/app/adapters/utils/tiered_fetcher.py`、`backend/app/adapters/utils/content_agent.py`
-- 测试：`backend/tests/test_public_parser_integrity.py`
 
 ## 背景
 
@@ -34,8 +33,9 @@ active
 - 多级抓取，尽量先使用低成本路径；已知验证页不作为正文。
 - Telegraph 的 `article.tl_article_content`，以及 Article/NewsArticle/BlogPosting/TechArticle 中单一 `itemprop=articleBody`，可直接转换并读取明确元数据，零模型调用。存在音视频/iframe 或明确付费标识时继续原处理流程，不声称简单抽取覆盖复杂页面。
 - 重定向后按最终 URL 解析相对链接。
-- 使用 LangChain function calling 和本地 Pydantic contract 完成选择器、结构扫描与字段抽取；缺失工具调用、字段类型错误或越界行号直接失败，不使用正则 JSON 提取或静默回退。
+- 使用 LangChain function calling 和本地 Pydantic contract 完成选择器、结构扫描与字段抽取；缺失工具调用、字段类型错误或超出输入全文的行号直接失败；对已被正文边界排除的页头/页尾重复清理操作直接省略，不使用正则 JSON 提取或静默回退。
 - 内容处理过程复用同一个 `ChatOpenAI`，OpenAI 兼容端点使用 chat completions，并保留完整模型名。
+- 模型只返回实际消费的选择器、元数据和清理操作，不要求生成随后丢弃的选择理由或文章摘要；摘要由独立后处理开关控制。
 - 输出统一 `ParsedContent`，供内容服务入库。
 
 ## 与代码的关系
@@ -47,15 +47,15 @@ active
 
 ## 配置
 
-确定性正文提取无需配置模型 Key；其他页面才要求文本模型。通用适配器读取 `LLMConfig`，保留完整模型名，不经过已退休的 Crawl4AI provider 字符串转换。抓取与 Agent 处理异常保持原始类型，不一律标为可重试；未生效的 `use_magic/user_data_dir/max_retries` 参数已移除。
+确定性正文提取无需配置模型 Key；其他页面才要求文本模型。通用适配器读取 `LLMConfig`，保留完整模型名和 `text_llm_extra_body` 供应商参数，不经过已退休的 Crawl4AI provider 字符串转换。DeepSeek Flash 的结构化抽取需要关闭思考以使用指定工具；该设置由现有数据库配置传递，不在解析器内硬编码供应商。抓取与 Agent 处理异常保持原始类型，不一律标为可重试；未生效的 `use_magic/user_data_dir/max_retries` 参数已移除。
 
 ## 已知限制
 
 - 通用解析质量依赖抓取结果；非确定性路径还依赖 LLM 输出。
 - 2026-09-19 Telegraph 真实样本已完成适配器解析，正文 1978 字符，标题/作者齐全，模型调用为 0；schema.org 路径仅完成离线合同验收。
 - JS 重渲染、登录墙、反爬和动态内容可能导致抓取失败。
-- 真实 LLM 集成测试必须标记为 integration，不应进入默认测试集合。
+- 验证采用一次性真实流程或离线合同检查；不保留常规测试套件，边界见仓库协作指南。
 
 ## 使用方式
 
-这是知识库文档，不是待办清单。若要调整 tiered fetch、content agent 或通用解析策略，先创建 plan，并同步更新 adapter 测试。
+这是知识库文档，不是待办清单。若要调整 tiered fetch、content agent 或通用解析策略，先读取相关 plan，按实际改动执行一次性验收并更新结果。

@@ -31,7 +31,7 @@ active
 
 ## 分发队列
 
-- 队列项以具体内容、规则和目标组合为操作边界。
+- 自动队列以内容、规则和目标组合为操作边界；手动项 `rule_id=null`，按内容与 BotChat 唯一。统计按队列项计数，与列表一致。
 - `/api/v1/distribution-queue/items` 提供状态、内容、规则、目标、卡片用途的有序 `media_assets` 和分页筛选；签名媒体 URL 跟随当前请求 origin。
 - 单条队列项的 retry、cancel、push-now、schedule、status 和 reorder 只影响该目标。
 - `content/{content_id}` 系列接口会影响同一内容关联的多个目标，只能在用户明确选择内容维度操作时使用。
@@ -41,19 +41,12 @@ active
 
 发送未知结果沿用 `status=failed`，以 `reason_code/last_error_type=delivery_unknown` 明确标识，并提供带时区的 `last_error_at`。未知记录属于 `filtered` 列表，普通重试、取消、批量排期/重推不能修改它。单项 push-now 是同步执行路径，调用方必须读取返回资源状态，不能无论结果如何都提示“已加入队列”。
 
-`POST /api/v1/distribution-queue/items/{item_id}/reconcile` 是仅记录人工核对的动作：
-
-- 请求模型 `QueueDeliveryReconcileRequest`：`outcome` 为 `delivered` 或 `not_sent`；`observed_error_at` 原样对应最近读取的 `last_error_at`；`message_id` 为 1–200 字符、去除首尾空白的可选字符串。未知字段拒绝。
-- `delivered` 必须有目标消息 ID；`not_sent` 不允许携带消息 ID，否则 400。缺字段、无效枚举/时间或超长输入按 schema 返回 422。
-- 以该项当前未知状态和同一观察时间做条件校验；记录不存在、状态/观察时间已变化或发送记录冲突返回 409。重复确认不会再写一条推送记录。
-- 200 返回 `ContentQueueItemResponse`，不创建运行、不发送消息。确认已送达原子更新 SUCCESS、PushedRecord、目标统计并关闭核对通知，记录时间为人工核对时间。确认未发送保留 FAILED、`delivery_not_sent` 和 `next_attempt_at=null`，清零尝试计数，须另行排期才执行。
-- 确认未发送还会在同一事务停止当前同内容、平台、目标的其他已排期或待自动重试项，标记为 FAILED、`delivery_not_sent`、`next_attempt_at=null` 并保留其历史尝试计数；任一停止项均可通过现有单项排期接口恢复。其他未知、发送中、已送达记录与其他内容或目标不受影响。
-- 消息深链 `/automation/distribution?review_item={id}` 打开同一个逐条核对界面；前端不从消息里的旧快照直接确认，而是重新读取单项。
+发送回执缺失只在队列记录，不产生人工核对任务或填写消息 ID 的流程；已删除 reconcile 接口和 review_item 深链。保留发送中及未知结果的自动重发保护。
 
 ## 规则与目标
 
 - `/api/v1/distribution-rules` 管理匹配与渲染规则。
-- 规则和目标关联由 `/distribution-rules/{rule_id}/targets` 单独维护。
+- 创建／更新规则支持可选 `bot_chat_ids`（1–50 个），提供时原子保存完整目标集合；新增目标水位为绑定时刻。无效目标返回 409 且不保留部分规则修改。独立目标接口继续服务既有 API 调用方。
 - 规则删除和人工分发扫描返回各自命名结果；规则目标删除使用 bodyless `204`，调用方不得等待 JSON。
 - 历史回填支持仅新内容、最近若干天和全部历史；preview 只返回候选数量，不创建目标或队列项。
 - `/api/v1/targets` 是跨规则目标视图，平台口径统一为 `telegram` 或 `qq`。
@@ -101,3 +94,15 @@ Telegram options 写入同样要求 leader（否则 503）；关闭任一同步�
 - POST `/api/v1/telegram-account/login/{login_id}/password` 接受 `{password: string}` → TelegramLoginStatus；当前不需要密码时 409。
 - DELETE `/api/v1/telegram-account/login/{login_id}` → TelegramLoginStatus，等待连接退出；不会登出已完成的授权会话。
 - TelegramLoginStatus：login_id、state（waiting/qr/password_required/authorized/expired/failed/cancelled）、qrcode_b64、expires_at、message。只有 qr 状态提供二维码，终态清空二维码。所有请求要求 API Token 和当前 leader；其他进程 503。登录最长五分钟，二维码自身到期后不自动重发。
+
+## 手动选择内容推送
+
+`POST /distribution-queue/manual` 接受 `content_ids`（1–50）、`bot_chat_ids`（1–10），最多 100 个组合，拒绝额外字段。目标必须启用、可访问、允许推送且属于启用的主 Bot；内容必须解析完成且未删除，聚合外发策略继续生效。无效内容、目标、已有发送中或未知结果返回 409，事务回滚。
+
+200 返回 `ManualPushResponse {item_ids, already_sent}`，只准备手动队列，不声明送达。手动项使用 `approved_by=manual`，不改变内容全局审批或收藏状态；客户端逐项调用现有 `/items/{id}/push-now`，读取实际 status。重复准备复用同一项，已送达组合只计入 already_sent。失败仍在正式队列中处理；未收到发送回执的记录保留，阻止自动重复发送。
+
+规则要求人工确认时，匹配的新内容进入 `failed/approval_required`、无自动重试；逐项立即发送或显式排期只确认该队列项。删除规则或移除目标时若存在 processing／delivery_unknown，返回 409。保存规则不再隐式扫描全部历史内容。
+
+队列列表与统计不再把已有成功发送记录的同内容、同平台、同目标的其他旧排期算作待发送；发送中和未收到发送回执的条目仍保留，不能被成功记录遮蔽。单项接口与数据库记录保持可追溯。
+
+已发送队列（`status=pushed` / `success`）按完成时间、ID 倒序分页；待发送队列继续按计划时间、ID 正序。

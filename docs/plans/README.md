@@ -10,6 +10,8 @@
 
 ## 当前实施与待核对范围
 
+- [模型调用降本提速与 Jev 评估](2026-09-26-model-workflow.plan.md) · [进展与验证](2026-09-26-model-workflow.process.md)：已取得账单并完成第一批本地优化，真实模型对照待访问授权。
+
 - [公开内容解析探索](2026-09-19-public-parser-exploration.plan.md) · [验收与边界](2026-09-19-public-parser-exploration.process.md)：知乎、小红书匿名正文与通用网页成本优化已本地验收。
 
 - [产品与架构改进](2026-09-14-product-architecture-review.plan.md) · [进展](2026-09-14-product-architecture-review.process.md)：P0 本地实现与验收完成，后续从来源与账号、耐久后处理继续。

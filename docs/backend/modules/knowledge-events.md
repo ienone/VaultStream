@@ -35,7 +35,7 @@ router 只负责鉴权、输入验证和稳定错误映射；事件编排位于 
 
 ## 验证
 
-- 当前长期回归只保护最后成员约束及并发删除。创建、分类、恢复和 Agent 组织等流程曾完成本地验收，其大范围 mock/CRUD 测试已删除，后续修改时针对性验证。
+- 最后成员约束、并发删除及创建、分类、恢复和 Agent 组织等流程按变更执行一次性验收，见[验证策略](../testing.md)。
 - m32 在仓库实验数据库建立 `knowledge_events` 与 `knowledge_event_members`；当前 schema gate 版本为 33，后续 m33 用于媒体书签，不改变知识事件表。
 - 真实探针通过正式 Agent invoke → confirmation → approve 链路调用 service/repository，在仓库 SQLite 中创建事件并加入第二条内容，验证两条成员均记录 `agent` 来源，结束后清理自身事件、成员、内容和 Agent 会话记录。
 

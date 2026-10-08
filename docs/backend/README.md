@@ -6,7 +6,7 @@ active
 
 后端位于 `backend/app/`，核心栈为 FastAPI、SQLAlchemy async、SQLite、后台任务、平台适配器、媒体处理和推送分发。
 
-本目录记录当前实现；目标边界见[产品与架构整体方案](../plans/2026-09-14-product-architecture-review.plan.md#backend)。解析任务已收敛为一次执行、超时失败；分发未知结果核对和事件证据 TTL 保护继续保留。[持续处理完整性问题](../issues/2026-09-14-continuous-processing-integrity.md)记录当前取舍与尚未完成的耐久交接边界。
+本目录记录当前实现；目标边界见[产品与架构整体方案](../plans/2026-09-14-product-architecture-review.plan.md#backend)。解析任务已收敛为一次执行、超时失败；分发未知结果的自动重发保护和事件证据 TTL 保护继续保留，人工核对流程已移除。[持续处理完整性问题](../issues/2026-09-14-continuous-processing-integrity.md)记录当前取舍与尚未完成的耐久交接边界。
 
 ## 基础入口
 
@@ -39,7 +39,7 @@ active
 
 ## 阅读规则
 
-- 修改 API：先读 `api.md`，再读对应领域分册、真实 router/schema、客户端和测试。
+- 修改 API：先读 `api.md`，再读对应领域分册、真实 router/schema、客户端和已有验收证据。
 - 修改模型或查询：先读 `database.md` 和对应数据库分册，再核对 ORM 与实际 schema。
 - 修改业务模块：读取对应 `modules/*.md`，但以代码和可重复验证为最终事实。
 
@@ -48,7 +48,7 @@ active
 - router 保持薄层，业务编排进入 service/task，数据访问进入 repository。
 - 外部副作用必须经过用户可见策略和权限边界。
 - API 不返回调用方需要猜测的多形态 contract。
-- 集成和真实平台测试必须显式标记，不进入默认测试。
+- 集成与真实平台行为按变更执行一次性验收，外部副作用须具备用户授权。
 
 ## 验证命令
 

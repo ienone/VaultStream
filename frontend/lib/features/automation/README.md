@@ -29,19 +29,16 @@
 *   `queue_item.dart`: 队列中的内容条目，包含平台、作者、调度时间等信息。
 *   `distribution_rule.dart`: 分发规则模型。
 *   `bot_chat.dart`: Bot 关联的群组/频道信息。
-*   `pushed_record.dart`: 推送历史记录。
 
 ### `providers/` (状态管理)
 *   `queue_provider.dart`: 管理内容队列的获取、筛选、排序及状态移动。
 *   `distribution_rules_provider.dart`: 管理分发规则的 CRUD 状态。
 *   `bot_chats_provider.dart`: 处理 Bot 群组的同步与管理。
-*   `pushed_records_provider.dart`: 管理推送历史列表。
 
 ### `widgets/` (UI 组件)
-*   `queue_content_list.dart`: 内容队列列表容器，包含拖拽排序逻辑。
-*   `rule_list_tile.dart`: 规则选择行，保留启用开关、审批状态和查看/编辑菜单。
+*   `queue_content_list.dart`: 待发送与已发送共用的分页列表，发送记录保留逐条渐入动画。
+*   `rule_list_tile.dart`: 规则选择行，与全部内容共用点击表面，保留启用开关和删除菜单。
 *   `distribution_rule_editor.dart`: 规则页面复用的响应式编辑面。
-*   `pushed_record_tile.dart`: 推送历史条目。
 
 ## 设计规范
 *   UI 风格: 严格遵循 Material 3 Expressive 设计规范。

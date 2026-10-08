@@ -15,6 +15,8 @@ active
 - `XIAOHONGSHU_ADAPTER.md`
 - `ZHIHU_ADAPTER.md`
 - [Telegram 消息关系与订阅适配依据](TELEGRAM_MESSAGE_SEMANTICS.md)
+- [QQ Bot 收发与现有聊天接入](QQ_BOT.md)
+- [小 i 聊天机器人源码调研与自研建议](QQ_CHATBOT_SOURCE_REVIEW.md)
 
 ## 代码对应
 

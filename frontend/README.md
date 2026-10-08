@@ -178,8 +178,6 @@ frontend/
 │   └── theme/                           # 主题配置
 │       └── app_theme.dart               # Material 3 主题定义
 │
-├── test/                                # Widget 和集成测试
-│
 ├── web/                                 # Web 构建输出
 │   └── index.html                       # HTML 入口
 │
@@ -426,14 +424,14 @@ flutter build linux --release
 
 ## 验证
 
-日常改动按实际流程做针对性验收，临时脚本验证后删除；布局、文案和平台行为不建立长期 widget/mock 套件。长期回归只保护分页竞态、播放器持久恢复和日志脱敏。
+日常改动按实际流程执行一次性验收，临时脚本验证后删除，不保留单元测试或常规测试套件。
 
 ```bash
 flutter analyze --no-pub
-flutter test --no-pub
+flutter build web --no-pub
 ```
 
-修改需要生成的模型后先运行代码生成。Codex 沙盒中的 Flutter/Dart 命令必须按根目录 AGENTS.md 提权执行。真实浏览器/设备验收记录必要结果和截图，不以测试数量或覆盖率代替。
+修改需要生成的模型后先运行代码生成。Codex 沙盒中的 Flutter/Dart 命令必须按根目录 AGENTS.md 提权执行。真实浏览器/设备验收只记录必要结果、实际输入范围和未验证限制。
 
 ## 调试
 

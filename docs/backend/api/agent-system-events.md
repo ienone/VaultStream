@@ -49,6 +49,8 @@ Agent API 只提供受控编排能力，不代表 Agent 可以绕过收藏、同
 
 ## 健康与能力
 
+- `GET /api/v1/auth/check` 使用现有 Token 鉴权，成功返回 `204 No Content`，无效密钥返回 `401 invalid_api_token`。不查询数据库或扫描存储，供首次连接和设置页验证使用。
+
 - `/health` 与 `/api/v1/health` 返回同一健康结构。
 - 健康检查区分数据库、队列、FTS、worker、模型供应商和后台任务状态。
 - `GET /api/v1/ai/capabilities` 描述配置与能力，不执行真实模型请求。
@@ -59,6 +61,8 @@ Agent API 只提供受控编排能力，不代表 Agent 可以绕过收藏、同
 - 平台解析测试无论业务成功或失败都返回同一个具名诊断响应，并保留 `run_id`、平台、耗时和显式 `ok/status/error`；HTTP 失败仍按公共错误规则处理。
 
 “已配置”“健康检查通过”“真实业务调用成功”是三个不同层级，界面不得合并为一个布尔状态。
+
+后台诊断 `/background-tasks/diagnostics` 的 `task_states` 中 `last_started_at`、`last_success_at`、`last_error_at` 使用可空 UTC 时间；`failed_parse_tasks` 提供可空 `title`，内容不存在或无标题时为 null。
 
 ## SSE 事件
 

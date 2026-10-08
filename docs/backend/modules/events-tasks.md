@@ -33,7 +33,7 @@ active
 
 任务落盘后通过 event bus 提示前端刷新；事件 payload 不是事实源。运行账本与 SSE 持久事件表由数据库初始化入口创建，后续变更使用 Alembic 增量迁移；已移除旧 JSON 列表回填和 event bus 自行建表逻辑。
 
-终态 run 会交给消息盒子判断是否值得通知：所有失败进入消息盒子，只有用户主动触发的成功产生完成回执。消息写入失败只记录告警，不回滚已经正确结算的运行账本。消息去重与用户状态见 `notification-inbox.md`。
+终态 run 会交给消息盒子判断是否值得通知：业务失败进入消息盒子，自动索引与分发轮询除外，只有用户主动触发的成功产生完成回执。消息写入失败只记录告警，不回滚已经正确结算的运行账本。消息去重与用户状态见 `notification-inbox.md`。
 
 `NotificationDigestTask` 只在 leader 中运行并周期检查用户配置；到期时调用确定性的摘要 service，结果写入同一任务汇总状态。禁用或未到期时不创建 run 或消息，空窗口只推进摘要游标。
 
@@ -47,9 +47,9 @@ Bot 进程控制和 chat 同步已经离开 API router 并进入可注入 servic
 
 `TaskWorker` 在每次从解析队列领取任务前通过 `AutomationPolicyService` 读取持久化的 `enable_parse_worker`。关闭时 worker 保持存活但不调用 dequeue，既有 pending 任务原样等待；内容捕获和入队不受影响，重新开启后继续领取。该策略不抢占或中断已经进入执行中的解析任务。
 
-## 测试
+## 验证
 
-长期回归与临时验收边界见 [验证策略](../testing.md)。本模块其余行为在变更时针对性验收，不保留逐方法测试清单。
+按实际变更执行一次性检查或真实流程验收，边界见[验证策略](../testing.md)。
 
 ## 与其他模块交互
 
@@ -88,4 +88,4 @@ Bot 进程控制和 chat 同步已经离开 API router 并进入可注入 servic
 
 任务与通知统一使用 `task_run_presentation` 的标题、结果摘要和终态集合。任务结果先显示摘要和有意义的指标；全零同步指标不重复成四个格子，run ID、触发来源与错误码放在诊断区。
 
-`BackgroundTaskRun` 负责一次执行的持久状态、关联和结果。`background_task_state:*` 只保留真实常驻 worker 的运行健康快照，不能当作某次执行结果；逐内容 embedding 没有独立 worker，已移除其重复投影写入，只保留对应 `content_embedding` 运行记录。
+`BackgroundTaskRun` 负责一次执行的持久状态、关联和结果。`background_task_state:*` 只保留真实常驻 worker 的运行健康快照，不能当作某次执行结果；逐内容 embedding 没有独立 worker，已移除其重复投影写入，以 ContentEmbedding 的索引状态和 failure_reason 为事实源，不重复创建自动 content_embedding 运行记录。

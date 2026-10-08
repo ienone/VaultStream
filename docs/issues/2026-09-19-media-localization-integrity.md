@@ -36,3 +36,11 @@
 临时压缩验收：一张仓库 JPEG 样本 43,852 B → 25,164 B，缩略图 3,920 B；合成噪声 PNG 2,218,426 B → 458,840 B。另一个 JPEG 转码未节省空间，因此保留单份源图；110 B 的小 PNG 不增加缩略图。仅代表这些样本，不推断全库节省比例。临时脚本验收后删除。
 
 追加验收覆盖真实文件缺失/损坏后的服务端核验、重复入队合并、执行修复、关闭开关、编辑竞态及停用媒体类型隔离。前端使用真实 HTTP 图片和 Flutter 解码缓存验证：签名变化不增加下载，文件版本、账号或服务器变化重新下载。
+
+## 2026-09-27 线上 HTTPS 媒体地址修复
+
+浏览器实测：HTTPS 页面收到 HTTP 的本地媒体与图片代理地址，Chrome 报 `blockedReason=mixed-content`；manifest 200 不代表图片可显示。外层 Nginx 终止 TLS，内层重写转发协议为 HTTP，后端按观察到的 request origin 生成地址。
+
+本次使用已有 `STORAGE_PUBLIC_BASE_URL=https://vaultstream.ienone.top` 配置明确公开媒体 origin，不放宽代理信任。线上动态页图片与内容 27196 的图片详情实际恢复；浏览器本地图片 200、视频范围读取 206，复验窗口无混合内容拦截。资产 5448、5582、5548、5563 的 HTTPS 实际读取均为 200，包含图片代理。这些样本不代表历史全库文件完整性。
+
+部署镜像为 `login-media-20260927`，基于当时生产 `repository-consolidation-cfbbba78`，保留其已有变更。配置和 Compose 回退备份在 `/opt/vaultstream/backups/login-media-20260927`。后续升级须保留公开媒体 origin，并以 HTTPS 浏览器实际渲染验收，不能只验 manifest 或资源状态码。

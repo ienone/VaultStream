@@ -44,7 +44,7 @@ Flutter + FastAPI + SQLite；当前模块和职责以文档索引与代码为准
 
 本地开发从仓库根目录运行 `make help` 查看命令。先创建根目录 `.venv`（后端依赖基线使用 Python 3.13），再运行 `make install`；后端配置参考 `backend/.env.example` 创建 `backend/.env`。`make dev-backend` 使用该虚拟环境在前台启动 API，后台任务另在 `backend` 目录用同一解释器运行 `-m app.worker`。
 
-`make frontend-install` 在解析依赖后应用必需的路由适配；前端启动、分析、测试和 Web 构建入口也会检查该适配。`make test` 运行少量长期回归，不包含外部平台集成验收；`make check-openapi` 和 `make check-schema` 分别验证 API 文档及新建数据库结构。
+`make frontend-install` 在解析依赖后应用必需的路由适配；前端启动、分析和 Web 构建入口也会检查该适配。`make frontend-check` 执行静态分析和 Web 构建；`make check-openapi` 和 `make check-schema` 分别验证 API 文档及新建数据库结构。实际功能按变更执行一次性流程验收，不维护持久测试套件。
 
 ### 前端
 
@@ -111,7 +111,8 @@ curl -o .env https://raw.githubusercontent.com/ienone/VaultStream/main/backend/.
 编辑 `.env` 配置文件，填入域名：
 
 ```ini
-BASE_URL=https://vaultstream.your-domain.com            # 用于生成图片链接
+BASE_URL=https://vaultstream.your-domain.com
+STORAGE_PUBLIC_BASE_URL=https://vaultstream.your-domain.com # 浏览器媒体地址，防止内层 HTTP 生成混合内容
 CORS_ALLOWED_ORIGINS=https://vaultstream.your-domain.com # 允许跨域请求的前端源，一般同上
 ```
 
@@ -231,13 +232,11 @@ VaultStream/
 │   │   ├── schemas/         # 请求/响应 Schema
 │   │   ├── media/           # 媒体处理
 │   │   └── core/            # 配置、数据库、日志和事件
-│   ├── tests/               # 正式 pytest 测试
 │   ├── manual_tests/        # 本地平台探针（不进入 CI）
 │   ├── data/                # 本地运行数据（Git 忽略）
 │   └── migrations/          # 当前架构管理文件
 ├── frontend/
-│   ├── lib/features/        # 动态、收藏库、自动化、Agent、设置等
-│   └── test/                # Flutter 单元与 Widget 测试
+│   └── lib/features/        # 动态、收藏库、自动化、Agent、设置等
 ├── docs/                    # 现状、计划、问题和知识资料
 └── scripts/                 # 可重复的仓库维护/验证脚本
 ```
