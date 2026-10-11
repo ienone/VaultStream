@@ -33,7 +33,7 @@ active
 
 原始文件通过 `POST /captures/file` 或 `POST /captures/files` 流式写入内容寻址 storage，并创建 ready 的 `MediaAsset` 与 original archive `MediaVariant`。同一次系统分享的多个文件保留在一个内容对象中：多张图片使用 gallery，混合附件使用 document，并按分享顺序保存资产。单文件标题默认取净化后的文件名；多文件使用数量标题，用户说明保存在正文中，分享时间等来源上下文保存在 `ContentSource`。上传链路不等待 OCR 或转码，也不伪造已提取正文。
 
-Telegram Bot 的显式 `/save` 也是该 contract 的生产者：回复图片、文件、音视频或语音时，Bot 先通过 Telegram 文件接口取得原件，再以单项 multipart 调用 `/captures/files`，保留 `telegram_bot` 来源和消息上下文。私聊中严格匹配保存前缀的自然语言请求复用同一处理器；疑问句、其他普通聊天和群聊文本不自动归档。Bot 不自行写内容、媒体表或 storage，也不把已监控 chat 的 discovery 缓冲混入用户主动归档。
+Telegram Bot 的显式 `/save` 也是该 contract 的生产者：回复图片、文件、音视频或语音时，Bot 先通过 Telegram 文件接口取得原件，再以单项 multipart 调用 `/captures/files`，保留 `telegram_bot` 来源和消息上下文。自然语言收藏由 Agent loop 选择保存工具并提供当前外层授权原文；疑问句、其他普通聊天和群聊文本不自动归档。Bot 不自行写内容、媒体表或 storage，也不把已监控 chat 的 discovery 缓冲混入用户主动归档。
 
 平台解析器统一输出 `ParsedContent`，写入边界位于 `tasks/parsing.py`：
 

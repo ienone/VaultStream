@@ -60,8 +60,8 @@ active
 - BotChat 删除、启停切换和 heartbeat 使用独立命名响应；heartbeat 只确认本次状态写入，不代表 Bot 进程整体健康。
 - Telegram 服务 start/stop/restart 使用 `BotRuntimeActionResponse`，返回真实进程状态和稳定 `run_id`；restart 任一内部阶段失败时整体状态为 error。手动群组同步返回 `BotConfigSyncChatsResponse.run_id`，QQ 配置自动同步会在响应前先创建 run 再交给后台执行。Bot 配置 create/update/activate 返回 `BotConfigMutationResponse`，delete 返回 `BotConfigDeleteResponse`，均直接携带后续运行的 kind、run ID、状态和错误；配置已提交但运行时失败时仍明确返回配置事实，不伪装成事务回滚。
 - Telegram `/save` 是用户显式捕获入口：链接逐项调用 `/api/v1/shares`，纯文本调用 `/api/v1/captures/text`，图片、文件、音视频与语音下载后作为 multipart 调用 `/api/v1/captures/files`。私聊里严格匹配“帮我保存 …”“收藏：…”等明确前缀的文本也进入同一个 `save_command`，不另建写路径。三类入口统一写入 `Content`、`ContentSource(source=telegram_bot)`；链接进入正式解析队列，原始文本和附件使用各自既有后处理。回复消息时只保存必要的 chat/message/forwarded/media group/attachment type 上下文。
-- 显式捕获不复用 `handle_monitored_message`。文本路由只在私聊且严格命中保存前缀时截获，否则继续交给原监控处理器；后者仍只负责已启用 chat 的发现缓冲，两条路径的用户意图和内容状态不同。
-- 当前一次请求只处理一条消息中的一个附件；跨消息 media group 合并、开放式自然语言判断和不确定场景确认尚未接入 Bot 捕获。
+- 显式捕获不复用 `handle_monitored_message`。显式命令由命令处理器接收，自然语言收藏由 Agent loop 判断；普通分享和监控事件不能绕过收藏授权。
+- 当前一次请求只处理一条消息中的一个附件；跨消息 media group 合并仍由既有捕获处理器负责；自然语言保存意图由 Agent loop 判断，不新增独立意图分类。
 - QR code 当前是普通 HTTP 查询，不是 WebSocket 流。
 
 ## 变更检查
@@ -112,3 +112,7 @@ Telegram options 写入同样要求 leader（否则 503）；关闭任一同步�
 PUT `/settings/chat_capture_enabled` 只接受 boolean value（其他类型 422），沿用 SystemSettingResponse。开启只允许管理员明确保存，关闭禁止 Bot 转存；普通群聊、私聊分享均不自动收藏。链接、文字和文件捕获统一在写入前核验策略和来源身份。Telegram 请求的 client_context 包含当前外层 user_id、request_text；QQ 身份与外层请求由认证入口建立，转发、引用仅作材料。持久来源记录只保留实际保存指令 save_instruction，不复制完整外层消息。
 
 POST `/bot/qq/{config_id}/group-capture` 使用 QQGroupCaptureRequest（QQ 原消息材料及 group_id）和 QQGroupCaptureResponse；先验证管理员、群白名单与启用状态，群 Agent 只开放 capture_content，响应不包含私人收藏正文。旧签名 HTTP events 端点仅确认收到，不再自动保存。
+
+## QQ Agent 链接解析格式
+
+`POST /bot/qq/{config_id}/preview` 当前请求/响应及发送边界见 [QQ 链接解析](../../knowledges/adapters/QQ_GROUP_PREVIEW.md)。format 复用现有 full、summary、text；选择只影响本次回复，不修改分发规则。Bot 收藏写入必须携带当前 request_text 与 Agent 逐字摘录的 save_instruction；后端核验管理员、开关和原文归属，不重复调用意图模型。
