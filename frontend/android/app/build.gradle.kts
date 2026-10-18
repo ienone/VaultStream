@@ -30,26 +30,26 @@ android {
         versionName = flutter.versionName
     }
 
+    val releaseKeystore = file("release.jks")
+    check(releaseKeystore.isFile) {
+        "Android builds require frontend/android/app/release.jks; debug signing is disabled."
+    }
+    fun signingSecret(name: String): String =
+        System.getenv(name)?.takeIf { it.isNotBlank() }
+            ?: error("Android signing environment variable $name is required.")
+
     signingConfigs {
         create("release") {
-            val keystoreFile = file("release.jks")
-            if (keystoreFile.exists()) {
-                storeFile = keystoreFile
-                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
-            }
+            storeFile = releaseKeystore
+            storePassword = signingSecret("ANDROID_KEYSTORE_PASSWORD")
+            keyAlias = signingSecret("ANDROID_KEY_ALIAS")
+            keyPassword = signingSecret("ANDROID_KEY_PASSWORD")
         }
     }
 
-    buildTypes {
-        release {
-            signingConfig = if (file("release.jks").exists()) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
-            }
-        }
+    // Debug, profile and release must retain the same install identity.
+    buildTypes.configureEach {
+        signingConfig = signingConfigs.getByName("release")
     }
 }
 
