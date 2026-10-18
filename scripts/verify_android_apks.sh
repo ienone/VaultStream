@@ -8,7 +8,8 @@ apks=(frontend/build/app/outputs/flutter-apk/*.apk)
 (( ${#apks[@]} > 0 ))
 for apk in "${apks[@]}"; do
   certificate=$("$sdk_tools/apksigner" verify --print-certs "$apk")
-  actual=$(printf '%s\n' "$certificate" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+  actual=$(printf '%s\n' "$certificate" | sed -n 's/^.*certificate SHA-256 digest: //p' | sort -u)
+  printf '%s\n%s\n' "$apk" "$certificate"
   [[ "$actual" == "$EXPECTED_CERT_SHA256" ]] || { echo "::error::Signing certificate mismatch: $apk"; exit 1; }
   package=$("$sdk_tools/aapt" dump badging "$apk" | sed -n '1p')
   [[ "$package" == *"name='com.vaultstream.frontend'"* ]] || { echo "::error::Package name mismatch: $apk"; exit 1; }
