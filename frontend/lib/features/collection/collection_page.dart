@@ -1,3 +1,5 @@
+import '../../routing/content_route_extra.dart';
+import '../../routing/page_origin.dart';
 import '../../layout/root_page_actions.dart';
 
 import 'package:material_ui/material_ui.dart';
@@ -97,10 +99,16 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     }
   }
 
-  void _openContent(ShareCard content) {
+  void _openContent(ShareCard content, BuildContext sourceContext) {
     if (content.id == widget.selectedContentId) return;
     if (!CollectionWorkspace.supportsSplit(context)) {
-      context.push('/collection/${content.id}', extra: content);
+      context.push(
+        '/collection/${content.id}',
+        extra: ContentRouteExtra(
+          preview: content,
+          origin: PageOrigin(sourceContext),
+        ),
+      );
       return;
     }
     _navigateContent(content);

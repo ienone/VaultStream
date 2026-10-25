@@ -1,3 +1,5 @@
+import '../../routing/content_route_extra.dart';
+import '../../routing/page_origin.dart';
 import '../../core/widgets/app_filter_menu.dart';
 import '../../core/layout/app_page_body.dart';
 import '../../layout/root_page_actions.dart';
@@ -262,7 +264,7 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
     }
   }
 
-  void _openContent(QueueItem item) {
+  void _openContent(QueueItem item, BuildContext sourceContext) {
     _preview = ShareCard(
       id: item.contentId,
       platform: item.platform,
@@ -271,7 +273,13 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
       mediaAssets: item.mediaAssets,
     );
     if (!AppListDetailWorkspace.supportsSplit(context)) {
-      context.push('/collection/${item.contentId}', extra: _preview);
+      context.push(
+        '/collection/${item.contentId}',
+        extra: ContentRouteExtra(
+          preview: _preview!,
+          origin: PageOrigin(sourceContext),
+        ),
+      );
       return;
     }
     final uri = GoRouterState.of(context).uri;

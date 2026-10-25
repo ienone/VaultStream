@@ -1,3 +1,5 @@
+import '../../routing/content_route_extra.dart';
+import '../../routing/page_origin.dart';
 import '../../core/utils/toast.dart';
 
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
@@ -76,7 +78,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     }
   }
 
-  void _openItem(DiscoveryItem item) {
+  void _openItem(DiscoveryItem item, BuildContext sourceContext) {
     if (widget.selectedContentId == item.id) return;
     _preview = ShareCard(
       id: item.id,
@@ -90,7 +92,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
       publishedAt: item.publishedAt,
     );
     if (!CollectionWorkspace.supportsSplit(context)) {
-      context.push('/collection/${item.id}', extra: _preview);
+      context.push(
+        '/collection/${item.id}',
+        extra: ContentRouteExtra(
+          preview: _preview!,
+          origin: PageOrigin(sourceContext),
+        ),
+      );
       return;
     }
     if (widget.selectedContentId == null) {
@@ -288,7 +296,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                     item: item,
                     selected: widget.selectedContentId == item.id,
                     busy: _busyItems.contains(item.id),
-                    onOpen: () => _openItem(item),
+                    onOpen: (sourceContext) => _openItem(item, sourceContext),
                     onPromote: () => _actOnItem(item, stateValue: 'promoted'),
                     onSnooze: () => _actOnItem(item, stateValue: 'snoozed'),
                     onRestore: () => _actOnItem(item, stateValue: 'visible'),
@@ -640,7 +648,7 @@ class _FeedCard extends StatelessWidget {
   final DiscoveryItem item;
   final bool selected;
   final bool busy;
-  final VoidCallback onOpen;
+  final ValueChanged<BuildContext> onOpen;
   final VoidCallback onPromote;
   final VoidCallback onSnooze;
   final VoidCallback onRestore;
@@ -711,7 +719,7 @@ class _FeedCard extends StatelessWidget {
       borderRadius: AppShape.cardBorder,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: busy ? null : onOpen,
+        onTap: busy ? null : () => onOpen(context),
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.md),
           child: Column(

@@ -331,9 +331,9 @@ class AppTheme {
         builders: {
           TargetPlatform.android: AppPredictiveBackTransitionsBuilder(),
           TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
-          TargetPlatform.macOS: FadeForwardsPageTransitionsBuilder(),
-          TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.windows: AppPredictiveBackTransitionsBuilder(),
+          TargetPlatform.macOS: AppPredictiveBackTransitionsBuilder(),
+          TargetPlatform.linux: AppPredictiveBackTransitionsBuilder(),
         },
       ),
     );

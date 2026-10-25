@@ -39,7 +39,7 @@ class CollectionList extends StatefulWidget {
   final ScrollController scrollController;
   final bool isLoadingMore;
   final RefreshCallback onRefresh;
-  final ValueChanged<ShareCard> onOpenContent;
+  final void Function(ShareCard, BuildContext) onOpenContent;
   final int? activeId;
   final ValueChanged<int>? onDeleted;
   final bool isSelectionMode;
@@ -326,7 +326,7 @@ class _CollectionListState extends State<CollectionList> {
           if (widget.isSelectionMode) {
             widget.onToggleSelection?.call(item.id);
           } else {
-            widget.onOpenContent(item);
+            widget.onOpenContent(item, _keys[item.id]!.currentContext!);
           }
         },
       ),

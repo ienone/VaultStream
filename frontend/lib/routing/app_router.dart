@@ -1,3 +1,6 @@
+import 'content_route_extra.dart';
+import 'page_origin.dart';
+
 import 'dart:async';
 
 import 'navigation_scope.dart';
@@ -232,10 +235,16 @@ GoRouter goRouter(Ref ref) {
                             state.uri.queryParameters['media_asset'] ?? '',
                           );
                           final extra = state.extra;
-                          final preview = extra is ShareCard && extra.id == id
-                              ? extra
+                          final card = extra is ContentRouteExtra
+                              ? extra.preview
+                              : extra;
+                          final preview = card is ShareCard && card.id == id
+                              ? card
                               : null;
-                          return MaterialPage<void>(
+                          return OriginMaterialPage<void>(
+                            origin: extra is ContentRouteExtra
+                                ? extra.origin
+                                : null,
                             key: state.pageKey,
                             child: ContentDetailPage(
                               contentId: id,

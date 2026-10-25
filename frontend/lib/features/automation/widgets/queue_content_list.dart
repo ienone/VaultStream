@@ -25,7 +25,7 @@ class QueueContentList extends ConsumerStatefulWidget {
     this.activeContentId,
   });
   final List<QueueItem> items;
-  final ValueChanged<QueueItem> onOpen;
+  final void Function(QueueItem, BuildContext) onOpen;
   final int? activeContentId;
   final QueueStatus currentStatus;
   final VoidCallback onRefresh;
@@ -37,6 +37,7 @@ class QueueContentList extends ConsumerStatefulWidget {
 
 class _QueueContentListState extends ConsumerState<QueueContentList> {
   final _scroll = ScrollController();
+  final _itemKeys = <int, GlobalKey>{};
   final _selected = <int>{};
   bool get _selectionMode => _selected.isNotEmpty;
   bool _busy = false;
@@ -54,6 +55,8 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
       _selected.clear();
     }
     _selected.retainAll(widget.items.where(_editable).map((item) => item.id));
+    final ids = widget.items.map((item) => item.id).toSet();
+    _itemKeys.removeWhere((id, _) => !ids.contains(id));
   }
 
   bool _editable(QueueItem item) =>
@@ -180,6 +183,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                 final time = item.scheduledTime;
                 final selected = _selected.contains(item.id);
                 final row = Material(
+                  key: _itemKeys.putIfAbsent(item.id, () => GlobalKey()),
                   color: (selected || widget.activeContentId == item.contentId)
                       ? Theme.of(context).colorScheme.secondaryContainer
                       : Theme.of(context).colorScheme.surfaceContainerLow,
@@ -194,7 +198,10 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                                       : _selected.add(item.id);
                                 })
                               : null
-                        : () => widget.onOpen(item),
+                        : () => widget.onOpen(
+                            item,
+                            _itemKeys[item.id]!.currentContext!,
+                          ),
                     onLongPress: canEdit
                         ? () => setState(() {
                             _selected.add(item.id);
