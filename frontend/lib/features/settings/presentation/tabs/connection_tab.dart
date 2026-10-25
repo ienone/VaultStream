@@ -175,31 +175,25 @@ class ConnectionTab extends ConsumerWidget {
               ),
             ],
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 12, 4, 24),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: FilledButton.tonalIcon(
-                onPressed: () => _testConnection(
+          const SizedBox(height: 24),
+          SettingGroup(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.network_check_rounded),
+                title: const Text('测试连接'),
+                onTap: () => _testConnection(
                   context,
                   ref,
                   localSettings.baseUrl,
                   localSettings.apiToken,
                 ),
-                icon: const Icon(Icons.cell_tower_rounded),
-                label: const Text('测试服务器连接'),
               ),
-            ),
-          ),
-          const SizedBox(height: 32),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => _confirmLogout(context, ref),
-              style: TextButton.styleFrom(foregroundColor: colorScheme.error),
-              icon: const Icon(Icons.logout_rounded),
-              label: const Text('退出登录'),
-            ),
+              ListTile(
+                leading: Icon(Icons.logout_rounded, color: colorScheme.error),
+                title: Text('退出登录', style: TextStyle(color: colorScheme.error)),
+                onTap: () => _confirmLogout(context, ref),
+              ),
+            ],
           ),
           const SizedBox(height: 40),
         ],

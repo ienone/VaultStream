@@ -56,17 +56,6 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
                 settingsAsync,
                 ref.watch(semanticIndexStatusProvider),
               ),
-              const SizedBox(height: 24),
-              ExpandableSettingTile(
-                title: '能力与连通性',
-                expandedContent: Consumer(
-                  builder: (context, ref, _) => _buildAiCapabilitySummary(
-                    context,
-                    ref,
-                    ref.watch(aiCapabilitiesProvider),
-                  ),
-                ),
-              ),
             ],
           );
     return AppPageBody(child: content);
@@ -269,7 +258,7 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
     data: (settings) => SettingGroup(
       children: [
         ExpandableSettingTile(
-          title: '通用模型（文字与图像）',
+          title: '通用模型',
           subtitle: _getLlmSubtitle(settings),
           expandedContent: _buildModelConfigEditor(context, ref, 'text_llm'),
         ),
@@ -300,163 +289,6 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
     ),
   );
 
-  Widget _buildAiCapabilitySummary(
-    BuildContext context,
-    WidgetRef ref,
-    AsyncValue<List<Map<String, dynamic>>> capabilitiesAsync,
-  ) {
-    final theme = Theme.of(context);
-    return capabilitiesAsync.when(
-      data: (capabilities) {
-        final visibleCapabilities = capabilities.where((capability) {
-          final key = capability['key']?.toString() ?? '';
-          return key != 'semantic_search' && key != 'agent';
-        }).toList();
-        if (visibleCapabilities.isEmpty) {
-          return const Text('暂无能力状态数据');
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: visibleCapabilities.map((capability) {
-            final key = capability['key']?.toString() ?? '';
-            final status = capability['status']?.toString() ?? 'unknown';
-            final summary = capability['summary']?.toString() ?? '';
-            final issues = (capability['issues'] as List<dynamic>? ?? [])
-                .map((item) => item.toString())
-                .where((item) => item.isNotEmpty)
-                .toList();
-            final details = capability['details'] is Map
-                ? Map<String, dynamic>.from(capability['details'] as Map)
-                : <String, dynamic>{};
-            final connectivity = details['connectivity'] is Map
-                ? Map<String, dynamic>.from(details['connectivity'] as Map)
-                : null;
-            final testTarget = _aiConnectivityTarget(key, details);
-            final connectivityText = _aiConnectivitySummary(connectivity);
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        capability['label']?.toString() ?? key,
-                        style: theme.textTheme.titleSmall,
-                      ),
-                      Text(
-                        _aiCapabilityStatusLabel(status),
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: _aiCapabilityColor(context, status),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (summary.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(summary, style: theme.textTheme.bodyMedium),
-                  ],
-                  if (issues.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      issues.first,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: _aiCapabilityColor(context, status),
-                      ),
-                    ),
-                  ],
-                  if (connectivityText != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      connectivityText,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                  if (testTarget != null) ...[
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        icon: const Icon(Icons.network_check_rounded),
-                        label: const Text('测试连通性'),
-                        onPressed: () =>
-                            _runAiConnectivityTest(context, ref, testTarget),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            );
-          }).toList(),
-        );
-      },
-      loading: () => const LoadingGroup(),
-      error: (error, _) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            formatApiErrorMessage(
-              error,
-              fallbackMessage: '暂时无法读取能力状态，请稍后重试',
-              includeRequestId: false,
-            ),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.error,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              label: const Text('重新加载'),
-              icon: const Icon(Icons.refresh_rounded),
-              onPressed: () => ref.invalidate(aiCapabilitiesProvider),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String? _aiConnectivityTarget(String key, Map<String, dynamic> details) {
-    switch (key) {
-      case 'text_llm':
-        return 'text_llm';
-      case 'content_understanding':
-        if (details['text_llm'] == true) return 'text_llm';
-        return null;
-      case 'summary_generation':
-        return 'summary_generation';
-      case 'semantic_search':
-        return 'semantic_search';
-      case 'agent':
-        if (details['agent_chat'] == true) return 'agent_chat';
-        return null;
-      default:
-        return null;
-    }
-  }
-
-  String? _aiConnectivitySummary(Map<String, dynamic>? connectivity) {
-    if (connectivity == null || connectivity.isEmpty) return null;
-    final status = connectivity['status']?.toString();
-    final result = connectivity['result'] is Map
-        ? Map<String, dynamic>.from(connectivity['result'] as Map)
-        : <String, dynamic>{};
-    final elapsed = result['elapsed_ms'];
-    final suffix = elapsed == null ? '' : '，耗时 $elapsed 毫秒';
-    if (status == 'success') {
-      return '最近测试成功$suffix';
-    }
-    final error = connectivity['error']?.toString();
-    return error == null || error.isEmpty ? '最近测试失败' : '最近测试失败: $error';
-  }
-
   Future<void> _runAiConnectivityTest(
     BuildContext context,
     WidgetRef ref,
@@ -477,40 +309,6 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
           formatApiErrorMessage(e, fallbackMessage: '连通性测试失败'),
         );
       }
-    }
-  }
-
-  Color _aiCapabilityColor(BuildContext context, String status) {
-    final colorScheme = Theme.of(context).colorScheme;
-    switch (status) {
-      case 'available':
-        return colorScheme.primary;
-      case 'partial':
-      case 'pending':
-        return colorScheme.tertiary;
-      case 'disabled':
-        return colorScheme.outline;
-      case 'unavailable':
-        return colorScheme.error;
-      default:
-        return colorScheme.primary;
-    }
-  }
-
-  String _aiCapabilityStatusLabel(String status) {
-    switch (status) {
-      case 'available':
-        return '可用';
-      case 'partial':
-        return '部分可用';
-      case 'pending':
-        return '待索引';
-      case 'disabled':
-        return '已关闭';
-      case 'unavailable':
-        return '不可用';
-      default:
-        return status;
     }
   }
 
@@ -668,49 +466,63 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
                           ? TextInputType.number
                           : null,
                       description: field == 'api_key' && hasSavedKey
-                          ? '已配置；仅在更换密钥时输入。'
-                          : field == 'output_dimensionality'
-                          ? '推荐 768 / 1536 / 3072'
+                          ? '留空保留原密钥'
                           : null,
                     ),
                     const SizedBox(height: 12),
                   ],
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: _ModelSaveButton(
-                      onSave: () async {
-                        final updates = <String, dynamic>{};
-                        for (final field in defaults.keys) {
-                          final text = controllers[field]!.text.trim();
-                          if (field == 'api_key' && text.isEmpty) continue;
-                          if (field == 'output_dimensionality') {
-                            final dimension = int.tryParse(text);
-                            if (dimension == null ||
-                                dimension < 128 ||
-                                dimension > 3072) {
-                              showToast(context, '输出维度须为 128–3072 的整数');
-                              return;
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 8,
+                    children: [
+                      TextButton.icon(
+                        icon: const Icon(Icons.network_check_rounded),
+                        label: const Text('测试连接'),
+                        onPressed: () => _runAiConnectivityTest(
+                          context,
+                          ref,
+                          switch (target) {
+                            'embedding' => 'semantic_search',
+                            'summary' => 'summary_generation',
+                            _ => 'text_llm',
+                          },
+                        ),
+                      ),
+                      _ModelSaveButton(
+                        onSave: () async {
+                          final updates = <String, dynamic>{};
+                          for (final field in defaults.keys) {
+                            final text = controllers[field]!.text.trim();
+                            if (field == 'api_key' && text.isEmpty) continue;
+                            if (field == 'output_dimensionality') {
+                              final dimension = int.tryParse(text);
+                              if (dimension == null ||
+                                  dimension < 128 ||
+                                  dimension > 3072) {
+                                showToast(context, '输出维度须为 128–3072 的整数');
+                                return;
+                              }
+                              updates[field] = dimension;
+                            } else {
+                              updates[field] = text.isEmpty
+                                  ? defaults[field]!
+                                  : text;
                             }
-                            updates[field] = dimension;
-                          } else {
-                            updates[field] = text.isEmpty
-                                ? defaults[field]!
-                                : text;
                           }
-                        }
-                        final notifier = ref.read(
-                          systemSettingsProvider.notifier,
-                        );
-                        for (final entry in updates.entries) {
-                          await notifier.updateSetting(
-                            '${target}_${entry.key}',
-                            entry.value,
-                            category: target == 'text_llm' ? 'llm' : target,
+                          final notifier = ref.read(
+                            systemSettingsProvider.notifier,
                           );
-                        }
-                        if (context.mounted) showToast(context, '模型配置已保存');
-                      },
-                    ),
+                          for (final entry in updates.entries) {
+                            await notifier.updateSetting(
+                              '${target}_${entry.key}',
+                              entry.value,
+                              category: target == 'text_llm' ? 'llm' : target,
+                            );
+                          }
+                          if (context.mounted) showToast(context, '模型配置已保存');
+                        },
+                      ),
+                    ],
                   ),
                   if (footer != null) ...[const SizedBox(height: 24), footer],
                 ],
